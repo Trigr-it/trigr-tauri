@@ -414,7 +414,23 @@ fn get_app_version() -> String {
 // ── Help / External (Phase 3) ───────────────────────────────────────────────
 
 #[tauri::command]
-fn open_help() {}
+fn open_help(app: tauri::AppHandle) {
+    // If help window already exists, just show and focus it
+    if let Some(win) = app.get_webview_window("help") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(
+        &app,
+        "help",
+        tauri::WebviewUrl::App("help.html".into()),
+    )
+    .title("Trigr — User Guide")
+    .inner_size(1000.0, 700.0)
+    .resizable(true)
+    .build();
+}
 
 #[tauri::command]
 fn open_config_folder(_app: tauri::AppHandle) {
