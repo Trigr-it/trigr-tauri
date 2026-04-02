@@ -1,10 +1,8 @@
 name: Release
-
 on:
   push:
     tags:
       - 'v*'
-
 jobs:
   release:
     runs-on: windows-latest
@@ -12,18 +10,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
+          node-version: 24
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
       - name: Install dependencies
         run: npm install
-
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
