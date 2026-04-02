@@ -32,6 +32,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Trigr ${{ github.ref_name }}'
-          releaseBody: 'See release notes.'
-          releaseDraft: true
+          releaseDraft: false
+          generateReleaseNotes: true
           prerelease: true
