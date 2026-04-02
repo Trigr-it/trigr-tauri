@@ -24,6 +24,5 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           shared-key: release-${{ matrix.target }}
-          save-always: true
       - name: Fetch dependencies
         run: cargo fetch --manifest-path src-tauri/Cargo.toml
