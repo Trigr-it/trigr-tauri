@@ -123,6 +123,10 @@ function App() {
         window.electronAPI?.updateAssignments(migrated, loadProfile);
         window.electronAPI?.updateProfileSettings(config.profileSettings || {});
         window.electronAPI?.setActiveGlobalProfile(loadProfile);
+        // Register pause hotkey with Rust backend if one is stored in config
+        if (config.globalPauseToggleKey) {
+          window.electronAPI?.setPauseHotkey(config.globalPauseToggleKey);
+        }
         // If the main process auto-restored from a backup, surface that to the user
         if (config._restoredFrom) setBackupRestoredFrom(config._restoredFrom);
 
@@ -192,7 +196,12 @@ function App() {
     };
   }, []);
 
-  // ── Prompted auto-update check on startup ─────────────────
+  // ── UPDATER — DO NOT MODIFY WITHOUT EXPLICIT INSTRUCTION ──
+  // Permissions required: updater:allow-check, updater:default (default.json)
+  // process:allow-restart required for relaunch after install
+  // Removing any of these permissions will cause silent failure
+  // Test any changes with cargo tauri dev before releasing
+  // Both x64 and ARM64 builds required in release.yml matrix
   useEffect(() => {
     async function checkForUpdates() {
       try {

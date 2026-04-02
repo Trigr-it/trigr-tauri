@@ -265,8 +265,10 @@ fn update_assignments(assignments: Value, profile: String) {
 }
 
 #[tauri::command]
-fn toggle_macros(enabled: bool) {
+fn toggle_macros(enabled: bool, app: tauri::AppHandle) {
     hotkeys::set_macros_enabled(enabled);
+    tray::rebuild_tray_menu(&app);
+    tray::update_tray_icon(&app, enabled);
 }
 
 #[tauri::command]
@@ -345,12 +347,14 @@ fn update_autocorrect_enabled(enabled: bool) {
 
 #[tauri::command]
 fn set_global_pause_key(combo: String) -> Value {
-    let _ = combo;
+    hotkeys::set_pause_hotkey(&combo);
     serde_json::json!({ "ok": true })
 }
 
 #[tauri::command]
-fn clear_global_pause_key() {}
+fn clear_global_pause_key() {
+    hotkeys::clear_pause_hotkey();
+}
 
 #[tauri::command]
 fn check_hotkey_conflict(combo: String) -> Value {
