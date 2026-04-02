@@ -1,0 +1,219 @@
+.numpad-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  user-select: none;
+}
+
+.numpad-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Nav key grid: 3 cols × 3 rows, 42×42 px cells with 4 px gaps ────────── */
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 42px);
+  grid-template-rows: repeat(3, 42px);
+  gap: 4px;
+}
+
+/* ── Divider between nav and numpad sections ───────────────────────────────── */
+
+.numpad-section-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border-bright);
+  margin: 2px 0;
+}
+
+/* ── Numpad key grid: 4 cols × 5 rows, 42×42 px cells with 4 px gaps ─────── */
+
+.numpad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 42px);
+  grid-template-rows: repeat(5, 42px);
+  gap: 4px;
+}
+
+/* ── Individual key ────────────────────────────────────────────────────────── */
+
+.np-key {
+  position: relative;
+  background: var(--key-bg);
+  border: 1px solid var(--key-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-key);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s ease;
+  padding: 0;
+  outline: none;
+  overflow: hidden;
+}
+
+/* Top-edge gloss — matches .key::before in KeyboardCanvas.css */
+.np-key::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
+  border-radius: 5px 5px 0 0;
+  pointer-events: none;
+}
+
+.np-key:hover:not(.no-layer) {
+  background: var(--key-bg-hover);
+  border-color: #484868;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-key-hover);
+}
+
+.np-key:active:not(.no-layer) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.np-key.no-layer {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.np-key.no-layer:hover {
+  transform: none;
+  background: var(--key-bg);
+  border-color: var(--key-border);
+  box-shadow: var(--shadow-key);
+}
+
+.np-key.assigned {
+  background: var(--key-bg-assigned);
+  border-color: var(--key-border-assigned);
+  box-shadow: var(--shadow-key), 0 0 12px rgba(232,160,32,0.08);
+  opacity: 1 !important;
+}
+
+.np-key.assigned::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(232,160,32,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.np-key.assigned:hover {
+  border-color: rgba(232,160,32,0.7);
+}
+
+.np-key.selected {
+  background: var(--key-bg-selected);
+  border-color: var(--key-border-selected);
+  box-shadow: 0 0 20px rgba(232,160,32,0.25), inset 0 0 12px rgba(232,160,32,0.05);
+  transform: translateY(-1px);
+  opacity: 1 !important;
+}
+
+.np-key.selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(232,160,32,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.np-key.firing {
+  background: rgba(80, 200, 120, 0.15) !important;
+  border-color: rgba(80, 200, 120, 0.7) !important;
+  box-shadow: 0 0 18px rgba(80,200,120,0.3) !important;
+  animation: np-fire 0.6s ease;
+  opacity: 1 !important;
+}
+
+@keyframes np-fire {
+  0%   { background: rgba(80, 200, 120, 0.35); box-shadow: 0 0 24px rgba(80,200,120,0.5); }
+  100% { background: rgba(80, 200, 120, 0.15); box-shadow: 0 0 18px rgba(80,200,120,0.3); }
+}
+
+/* ── Key label ─────────────────────────────────────────────────────────────── */
+
+.np-key-label {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  text-align: center;
+  line-height: 1.2;
+  white-space: pre;
+  pointer-events: none;
+}
+
+.np-key.selected .np-key-label {
+  color: var(--accent);
+}
+
+.np-key.assigned .np-key-label {
+  color: var(--text-primary);
+}
+
+.np-key.no-layer .np-key-label {
+  opacity: 0.5;
+}
+
+/* ── Light mode overrides — mirrors KeyboardCanvas.css ─────────────────────── */
+
+[data-theme="light"] .np-key {
+  box-shadow: var(--shadow-key);
+}
+
+[data-theme="light"] .np-key::before {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.4), transparent);
+}
+
+[data-theme="light"] .np-key:hover:not(.no-layer) {
+  border-color: var(--border-bright);
+  box-shadow: var(--shadow-key-hover);
+}
+
+[data-theme="light"] .np-key:active:not(.no-layer) {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.10);
+}
+
+[data-theme="light"] .np-key.no-layer:hover {
+  box-shadow: var(--shadow-key);
+}
+
+[data-theme="light"] .np-key.assigned {
+  box-shadow:
+    var(--shadow-key),
+    0 0 8px rgba(232,160,32,0.12);
+}
+
+[data-theme="light"] .np-key.selected {
+  box-shadow:
+    0 0 0 2px rgba(232,160,32,0.35),
+    inset 0 0 8px rgba(232,160,32,0.06);
+}
+
+/* ── Assigned indicator dot ────────────────────────────────────────────────── */
+
+.np-key-dot {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}

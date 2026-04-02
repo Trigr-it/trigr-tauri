@@ -40,9 +40,9 @@
 | `electron/main.js` | Rust modules in `src-tauri/src/` |
 | `ipcMain.handle()` | `#[tauri::command]` functions |
 | `ipcRenderer.invoke()` | `invoke()` from `@tauri-apps/api/core` |
-| `uiohook-napi` | `rdev` crate |
-| `koffi` + Win32 API | `windows-rs` crate |
-| koffi SendInput | `enigo` crate |
+| `uiohook-napi` | `windows-sys` SetWindowsHookExW (WH_KEYBOARD_LL + WH_MOUSE_LL) |
+| `koffi` + Win32 API | `windows-sys` crate |
+| koffi SendInput | `windows-sys` SendInput (Phase 5) |
 | `better-sqlite3` | `rusqlite` crate |
 | `electron-store` / JSON | `serde_json` + `std::fs` |
 | Custom HTTPS auto-updater | `tauri-plugin-updater` |
@@ -150,16 +150,16 @@ If any crate fails on ARM64, find an alternative before proceeding. Do not assum
 
 | # | Phase | Status | Notes |
 |---|---|---|---|
-| 0 | Codebase analysis + migration plan | ⬜ | Send first — plan only, no code |
-| 1 | Project scaffold + React migration | ⬜ | App window opens, UI renders |
-| 2 | Config read/write | ⬜ | load_config_safe, save_config, backups |
-| 3 | Tray + window management | ⬜ | Close to tray, autolaunch, show/hide |
-| 4 | Global hotkey capture (rdev) | ⬜ | ARM64 verify first — PLAN ONLY prompt |
-| 5 | Text injection + Send Hotkey | ⬜ | MVP milestone — first real action fires |
-| 6 | Foreground watcher + app profiles | ⬜ | Profile auto-switching |
-| 7 | Text expansions | ⬜ | Trigger detection, replacement injection |
-| 8 | Macro sequence + remaining actions | ⬜ | All action types complete |
-| 9 | Quick Search overlay | ⬜ | Ctrl+Space floating window |
+| 0 | Codebase analysis + migration plan | ✅ | Complete |
+| 1 | Project scaffold + React migration | ✅ | App window opens, UI renders |
+| 2 | Config read/write | ✅ | load_config_safe, save_config, backups, import/export, file dialogs |
+| 3 | Tray + window management | ✅ | Close to tray, autolaunch, show/hide, registry startup, tray menu |
+| 4 | Global hotkey capture (windows-sys) | ✅ | ARM64 verified, SetWindowsHookExW LL hooks, full matching + double-tap |
+| 5 | Text injection + Send Hotkey | ✅ | SendInput Unicode text + VK-based hotkey sim, macro sequences |
+| 6 | Foreground watcher + app profiles | ✅ | Win32 API process detection, 1500ms poll, visibility guard |
+| 7 | Text expansions | ✅ | Buffer tracking, space + immediate triggers, clipboard paste injection |
+| 8 | Macro sequence + remaining actions | ✅ | Wait for Input step added, all action types complete |
+| 9 | Quick Search overlay | ✅ | Pre-created hidden window, cursor-following position, Ctrl+Space toggle |
 | 10 | Auto-updater + installer | ⬜ | Shippable build — share with testers |
 
 ---
@@ -169,6 +169,33 @@ If any crate fails on ARM64, find an alternative before proceeding. Do not assum
 **Dev MVP (Phase 5 complete):** App launches, tray icon shows, at least one hotkey fires a Type Text action. Test on device before continuing.
 
 **Shippable MVP (Phase 10 complete):** All current Electron Alpha features working, NSIS installer produced, auto-updater configured. Share with existing 2 testers. Electron version stays live until Tauri confirmed stable.
+
+---
+
+## 10a — Critical Implementation Rules
+
+These rules were discovered during development and must not be violated. Each caused a serious bug when broken.
+
+### Hook Callback — No I/O
+`keyboard_hook_proc` and `mouse_hook_proc` in `hotkeys.rs` must NEVER contain `println!`, file writes, or any blocking operation. Windows silently removes the LL hook if the callback takes >300ms to return. All diagnostic logging must happen on the processor thread via `send_event()`.
+
+### Recording/Capture Check Order
+In `handle_keydown()`, the `IS_RECORDING_HOTKEY` and `IS_CAPTURING_KEY` checks must remain ABOVE the `APP_INPUT_FOCUSED` guard. Moving them below causes capture to silently fail when Trigr has focus.
+
+### Two-Path Capture
+Keystroke capture uses two paths: the LL hook (when other apps have focus) and a JS `keydown` listener in `tauriAPI.js` (when Trigr's WebView2 has focus). The JS `window.__trigr_recording` / `__trigr_capturing` flags MUST stay in sync with the Rust `IS_RECORDING_HOTKEY` / `IS_CAPTURING_KEY` atomics. Both flags must be cleared when the capture event is received (in `onHotkeyRecorded` / `onKeyCaptured`).
+
+### Suppress Flags Before SendInput
+`SUPPRESS_SIMULATED` must be set `true` before any `SendInput` call in `actions.rs` or `expansions.rs`. `SUPPRESS_NEXT_CLIPBOARD_WRITE` must be set `true` before any internal clipboard write. Omitting either causes Trigr to intercept its own simulated keystrokes or log its own clipboard writes.
+
+### Startup Assignment Sync
+`updateAssignments(assignments, profile)` must be called from the frontend after config loads on startup (`App.jsx`). The Tauri command parameter name must match the Rust function signature exactly (e.g. `config` not `incoming`). Missing this call causes `assignments=0` on all hotkeys.
+
+### Modifier Release Before Injection
+`release_held_modifiers()` (using `GetAsyncKeyState`) must be called before any clipboard paste or text injection. Without this, physically held modifiers (e.g. Ctrl+Shift from the trigger) combine with the injected Shift+Insert or Ctrl+V, sending the wrong key combination to the target app.
+
+### Hook Thread Architecture
+The LL hook runs on a dedicated high-priority thread with a `PeekMessageW` polling loop (not `GetMessageW`). This is required because the Tauri main thread's message pump is monopolised by WebView2's COM dispatch when the app has focus, preventing LL hook callbacks from being serviced. A health monitor thread reinstalls hooks if the heartbeat stalls for 30s.
 
 ---
 
@@ -212,4 +239,10 @@ Record key decisions and findings here after each session.
 
 | Date | Phase | What was done | Key findings / decisions |
 |---|---|---|---|
-| — | — | — | — |
+| 2026-04-01 | Phase 2 | Config read/write complete | config.rs module with full fallback chain, atomic save, backup management. Added tauri-plugin-dialog for import/export/browse file dialogs. opener crate for open_config_folder/open_external. Capabilities file created for Tauri v2 permissions. |
+| 2026-04-01 | Phase 3 | Tray + window management complete | tray.rs module: tray icon with PNG decode, menu (Open/Pause/Start with Windows/Quit), left-click toggle, close-to-tray via on_window_event, autolaunch --autolaunch flag, registry read/write for startup. png crate used for icon loading. |
+| 2026-04-01 | Phase 4 | Global hotkey capture complete | Skipped rdev — used windows-sys SetWindowsHookExW directly (ARM64 verified). WH_KEYBOARD_LL + WH_MOUSE_LL on background thread, event channel to processor thread. Full VK→keyId mapping, modifier tracking, storage key matching, double-tap with timer-based detection, hotkey recording, key capture, bare key support, mouse buttons + scroll wheel. |
+| 2026-04-01 | Phase 5 | Text injection + Send Hotkey complete | actions.rs: SendInput KEYEVENTF_UNICODE for Type Text (with surrogate pair support for emoji), VK-based key simulation for Send Hotkey, modifier release before action, bare key Backspace erase, macro sequence executor (Type Text, Press Key, Wait, Open URL steps). No enigo needed — windows-sys SendInput handles everything. suppressNextClipboardWrite flag established for future clipboard manager. |
+| 2026-04-01 | Phase 6 | Foreground watcher + app profiles complete | foreground.rs: GetForegroundWindow + GetWindowThreadProcessId + OpenProcess + QueryFullProcessImageNameW via windows-sys. 1500ms poll on background thread, HWND cache optimization. Visibility guard (is_visible && !is_minimized). Self-detection via exe stem. Profile auto-switching with global fallback. get_foreground_process command exposed. |
+| 2026-04-02 | Phase 7 | Text expansions complete | expansions.rs: keystroke buffer (50 char rolling), space-triggered + immediate-mode expansion matching, backspace trigger deletion + Shift+Insert clipboard paste injection. Win32 clipboard API (OpenClipboard/GetClipboardData/SetClipboardData) for {clipboard} token and paste. Global variable tokens ({{var}}, {date}, {time}, {dayofweek}, {cursor}). Built-in autocorrect dictionary (~50 common typos). suppressNextClipboardWrite pattern established. Buffer integrated into hotkeys.rs event processor. |
+| 2026-04-02 | Phase 8 | Macro sequence + Wait for Input complete | Added "Wait for Input" step to execute_macro_step in actions.rs. WaitEvent enum + one-shot mpsc channel in hotkeys.rs. Event processor forwards key/mouse events to waiter before normal handling. Supports LButton/RButton/MButton/AnyKey/SpecificKey input types, press/release/pressRelease triggers. Two-phase pressRelease state machine is per-waiter. 30s timeout. Clears waiter on timeout/cancel/macro-disable. Waited-for keystrokes pass through to target app (no suppression). Keystroke capture modes (recording + key capture) already working from Phase 4. |

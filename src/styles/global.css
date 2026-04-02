@@ -1,0 +1,122 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-base: #0d0d11;
+  --bg-surface: #13131a;
+  --bg-elevated: #1a1a24;
+  --bg-hover: #20202d;
+  --bg-active: #252535;
+
+  --accent: #e8a020;
+  --accent-dim: #b87c14;
+  --accent-glow: rgba(232, 160, 32, 0.15);
+  --accent-glow-strong: rgba(232, 160, 32, 0.3);
+
+  --text-primary: #f0ede8;
+  --text-secondary: #a8a6c2;
+  --text-muted: #72708c;
+
+  --border: #262638;
+  --border-bright: #3e3e56;
+  --border-accent: rgba(232, 160, 32, 0.4);
+
+  --key-bg: #1e1e2c;
+  --key-bg-hover: #252538;
+  --key-bg-assigned: #201f0c;
+  --key-bg-selected: #1f1a08;
+  --key-border: #353550;
+  --key-border-assigned: rgba(232, 160, 32, 0.65);
+  --key-border-selected: var(--accent);
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+
+  --shadow-key: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+  --shadow-key-hover: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  --shadow-panel: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* ── Light theme ──────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-base:     #f0f0f5;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f5f5fa;
+  --bg-hover:    #ebebf0;
+  --bg-active:   #e0e0ea;
+
+  --text-primary:   #1a1a2e;
+  --text-secondary: #4a4a6a;
+  --text-muted:     #9090b0;
+
+  --border:        #dcdce8;
+  --border-bright: #c8c8dc;
+  --border-accent: rgba(232, 160, 32, 0.5);
+
+  --key-bg:              #ffffff;
+  --key-bg-hover:        #f0f0fa;
+  --key-bg-assigned:     #fffbf0;
+  --key-bg-selected:     #fff8e8;
+  --key-border:          #d0d0e0;
+  --key-border-assigned: rgba(232, 160, 32, 0.5);
+  --key-border-selected: #e8a020;
+
+  --shadow-key:       0 1px 4px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+  --shadow-key-hover: 0 2px 8px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
+  --shadow-panel:     0 4px 16px rgba(0,0,0,0.12);
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Smooth theme transition on all elements that use CSS vars */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+input, textarea, select {
+  font-family: var(--font-body);
+  outline: none;
+}
