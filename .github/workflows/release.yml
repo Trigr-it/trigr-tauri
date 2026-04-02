@@ -30,7 +30,6 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           shared-key: release-${{ matrix.target }}
-          save-always: true
       - name: Install dependencies
         run: npm install
       - name: Build and release
