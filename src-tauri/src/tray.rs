@@ -1,4 +1,5 @@
 use log::info;
+use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
@@ -305,6 +306,7 @@ const REG_NAME: &str = "Trigr";
 fn get_startup_enabled_sync() -> bool {
     let output = Command::new("reg")
         .args(["query", REG_RUN, "/v", REG_NAME])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output();
 
     match output {
@@ -328,12 +330,14 @@ fn set_startup_enabled_impl(enable: bool) {
             let value = format!("\"{}\" --autolaunch", exe_str);
             let _ = Command::new("reg")
                 .args(["add", REG_RUN, "/v", REG_NAME, "/d", &value, "/f"])
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .output();
             info!("[Trigr] Startup enabled: {}", value);
         }
     } else {
         let _ = Command::new("reg")
             .args(["delete", REG_RUN, "/v", REG_NAME, "/f"])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output();
         info!("[Trigr] Startup disabled");
     }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/refs/heads/dev/crates/tauri-cli/schema.json",
   "productName": "Trigr",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "identifier": "com.nodescaffold.trigr",
   "build": {
     "beforeDevCommand": "npm run dev",
