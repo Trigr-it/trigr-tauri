@@ -407,8 +407,8 @@ fn set_startup_enabled(enabled: bool) {
 }
 
 #[tauri::command]
-fn get_app_version() -> String {
-    "0.1.0".to_string()
+fn get_app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 // ── Help / External (Phase 3) ───────────────────────────────────────────────
