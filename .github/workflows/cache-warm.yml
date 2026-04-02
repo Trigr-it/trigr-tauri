@@ -1,0 +1,29 @@
+name: Cache Warm
+on:
+  push:
+    branches:
+      - main
+jobs:
+  cache:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - target: aarch64-pc-windows-msvc
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: release-${{ matrix.target }}
+          save-always: true
+      - name: Fetch dependencies
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml
