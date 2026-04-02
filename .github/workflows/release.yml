@@ -5,7 +5,14 @@ on:
       - 'v*'
 jobs:
   release:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - target: aarch64-pc-windows-msvc
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
     steps:
@@ -16,6 +23,8 @@ jobs:
           node-version: 24
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -33,3 +42,4 @@ jobs:
           releaseDraft: false
           generateReleaseNotes: true
           prerelease: false
+          args: --target ${{ matrix.target }}

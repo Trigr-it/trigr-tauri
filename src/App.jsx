@@ -212,9 +212,6 @@ function App() {
         }
       } catch (e) {
         console.error('Update check failed:', e);
-        console.error('Error details:', JSON.stringify(e));
-        // Temporary: show alert so we can see the error
-        alert('Update check error: ' + (e?.message || JSON.stringify(e)));
       }
     }
     checkForUpdates();

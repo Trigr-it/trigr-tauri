@@ -201,7 +201,7 @@ export default function KeyboardCanvas({
       if (availableWidth > 0 && Math.abs(availableWidth - lastWidth) >= 1) {
         lastWidth = availableWidth;
         const scaleX = availableWidth / KEYBOARD_NATURAL_WIDTH;
-        setScale(Math.max(0.3, scaleX));
+        setScale(Math.min(1.0, Math.max(0.3, scaleX)));
       }
     });
     ro.observe(el);
