@@ -34,4 +34,4 @@ jobs:
           releaseName: 'Trigr ${{ github.ref_name }}'
           releaseDraft: false
           generateReleaseNotes: true
-          prerelease: true
+          prerelease: false
