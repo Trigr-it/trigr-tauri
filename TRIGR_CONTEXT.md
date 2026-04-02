@@ -440,3 +440,23 @@ All 6 core documents are stored in Google Drive (Trigr folder) as Google Docs AN
 `trigr-help.html` — pixel-perfect HTML guide with live interactive UI demos  
 Hosted at GitHub Pages  
 Screenshot status (as of March 2026): screenshots 10, 12, and 16 still placeholder
+
+---
+
+## 20 — Release Process
+
+To release a new version, tell CC: "release patch", "release minor", or "release major".
+
+CC should then:
+1. Read current version from `src-tauri/tauri.conf.json`
+2. Increment appropriately (patch = x.x.+1, minor = x.+1.0, major = +1.0.0)
+3. Update version in BOTH `tauri.conf.json` AND `package.json`
+4. Commit: `"Release vX.X.X"`
+5. Push to main
+6. Tag: `git tag vX.X.X`
+7. Push tag: `git push origin vX.X.X`
+8. Confirm the GitHub Actions URL to monitor the build
+
+Never skip steps 3 or 7. Both files must match and tag must be pushed to trigger the build.
+
+The release is published automatically when the build completes — no manual draft publishing step. Release notes are auto-generated from commit messages since the last tag.
