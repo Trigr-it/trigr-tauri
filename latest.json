@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "notes": "Trigr Alpha v0.1.0 — initial release",
+  "pub_date": "2026-04-02T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSMFVjOS9zRXlWWVBHUWcrL0RQQnJ0b1g5Y2dkRE5FbkthOTJkdkxxRHVPMjJPaHRicnVpR3JBK0MvSUZhcnN4OXlvOVFTQ0JpTXdrakMzb3A1WGZoK0J4UGlCcTYzSlFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1MTI1MjQzCWZpbGU6VHJpZ3JfMC4xLjBfeDY0LXNldHVwLmV4ZQpabGVhQXgrZ3FqMGlra0NsMUdEck1Db1JxM3BBeW5FNGVsdUJCbFRhdVVhSE4ybjhONFlmZnBEdUhQSGJOaU5mNXRLclFxTW1wUTRreG53aVpZMEREdz09Cg==",
+      "url": "https://github.com/Trigr-it/trigr-tauri/releases/download/v0.1.0-alpha.4/Trigr_0.1.0_x64-setup.exe"
+    }
+  }
+}
