@@ -1,0 +1,638 @@
+.keyboard-canvas-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+/* Flex row that holds the keyboard, the toggle button, and the numpad slide.
+   Sits below the modifier bar and keyboard label, so the numpad aligns with
+   the keyboard body rather than the top of the entire canvas column. */
+.keyboard-body-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+}
+
+.modifier-bar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border-bright);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.combo-key-bare {
+  color: #ff9040;
+  border-color: rgba(255, 144, 64, 0.4);
+}
+
+.combo-bare-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-left: 2px;
+  white-space: nowrap;
+}
+
+/* ── LABEL ────────────────────────────────────────────── */
+.keyboard-label strong {
+  color: var(--accent);
+}
+
+.keyboard-label-selected {
+  color: var(--text-secondary);
+}
+
+/* ── SCALE WRAPPER ────────────────────────────────────── */
+/* Gives the flow the correct visual height of the scaled keyboard.
+   Without this, CSS transform leaves the natural height reserved.
+   flex: 1 + min-width: 0 fills available width and shrinks when numpad opens. */
+.keyboard-scale-wrap {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: visible;
+}
+
+/* ── KEYBOARD OUTER ───────────────────────────────────── */
+.keyboard-outer {
+  flex-shrink: 0; /* never let the outer get squished by flexbox */
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+  padding: 16px 18px 18px;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 24px 64px rgba(0,0,0,0.6),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+  position: relative;
+}
+
+.keyboard-outer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 13px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.02) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.keyboard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.keyboard-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ── KEYS ─────────────────────────────────────────────── */
+.key {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--key-bg);
+  border: 1px solid var(--key-border);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.key::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
+  border-radius: 5px 5px 0 0;
+  pointer-events: none;
+}
+
+.key:hover {
+  background: var(--key-bg-hover);
+  border-color: #484868;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.key:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+/* No modifier selected — dim non-system keys */
+.key.no-layer {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.key.no-layer:hover {
+  transform: none;
+  background: var(--key-bg);
+  border-color: var(--key-border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.key.system {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.key.system:hover {
+  transform: none;
+  background: var(--key-bg);
+  border-color: var(--key-border);
+}
+
+.key.assigned {
+  background: var(--key-bg-assigned);
+  border-color: var(--key-border-assigned);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(232,160,32,0.08), inset 0 1px 0 rgba(255,255,255,0.04);
+  opacity: 1 !important; /* always full opacity when assigned */
+}
+
+.key.assigned::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(232,160,32,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.key.assigned:hover {
+  border-color: rgba(232,160,32,0.7);
+}
+
+.key.selected {
+  background: var(--key-bg-selected);
+  border-color: var(--key-border-selected);
+  box-shadow: 0 0 20px rgba(232,160,32,0.25), inset 0 0 12px rgba(232,160,32,0.05);
+  transform: translateY(-1px);
+  opacity: 1 !important;
+}
+
+.key.selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(232,160,32,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Firing flash */
+.key.firing {
+  background: rgba(80,200,120,0.15) !important;
+  border-color: rgba(80,200,120,0.7) !important;
+  box-shadow: 0 0 18px rgba(80,200,120,0.3) !important;
+  animation: key-fire 0.6s ease;
+  opacity: 1 !important;
+}
+
+@keyframes key-fire {
+  0%   { background: rgba(80,200,120,0.35); box-shadow: 0 0 24px rgba(80,200,120,0.5); }
+  100% { background: rgba(80,200,120,0.15); box-shadow: 0 0 18px rgba(80,200,120,0.3); }
+}
+
+/* Assigned indicator dot */
+.key-assigned-dot {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+  z-index: 1;
+}
+
+.key-label {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+  position: relative;
+}
+
+.key.selected .key-label { color: var(--accent); }
+.key.assigned .key-label { color: var(--text-primary); }
+
+.key-sublabel {
+  font-family: var(--font-body);
+  font-size: 7px;
+  color: var(--text-muted);
+  position: absolute;
+  top: 3px; left: 5px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Double-tap badge — shown when a ×2 assignment exists */
+.key-double-badge {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 2;
+  letter-spacing: -0.01em;
+}
+
+/* ── HINT ROW ─────────────────────────────────────────── */
+.keyboard-hint-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  /* Fixed height prevents layout shift */
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.hint-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.hint-dot {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+
+.assigned-dot { background: rgba(232,160,32,0.15); border-color: rgba(232,160,32,0.5); }
+.selected-dot { background: rgba(232,160,32,0.3);  border-color: var(--accent); }
+.system-dot   { background: transparent; border-color: var(--border-bright); opacity: 0.6; }
+
+/* ── MODIFIER BAR ─────────────────────────────────── */
+.modifier-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  width: 100%;
+  /* Fixed height prevents layout shift when combo-hint ↔ combo-active content swaps */
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+.modifier-bar-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.modifier-bar-keys {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mod-layer-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.mod-layer-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+}
+
+.mod-layer-btn.active {
+  background: color-mix(in srgb, var(--mod-color) 12%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--mod-color) 50%, transparent);
+  color: var(--mod-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mod-color) 20%, transparent);
+}
+
+.modifier-bar-combo {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.combo-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combo-active {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.combo-active-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.combo-key {
+  background: var(--bg-active);
+  border: 1px solid var(--border-bright);
+  border-bottom-width: 2px;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.combo-key-target {
+  color: var(--text-secondary);
+  border-style: dashed;
+  border-color: var(--border-accent);
+  animation: pulse-dash 1.5s ease infinite;
+}
+
+@keyframes pulse-dash {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.combo-plus {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 300;
+}
+
+/* ── LABEL ────────────────────────────────────────── */
+.keyboard-label {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.label-muted { color: var(--text-muted); font-size: 11px; }
+.label-assigning { font-size: 12px; color: var(--text-secondary); }
+.label-assigning strong { color: var(--accent); }
+.label-combo { color: var(--accent); }
+
+/* ── NO-LAYER STATE ───────────────────────────────── */
+.key.no-layer {
+  cursor: default;
+  opacity: 0.50;
+}
+
+.key.no-layer:hover {
+  transform: none;
+  background: var(--key-bg);
+  border-color: var(--key-border);
+  box-shadow: var(--shadow-key);
+}
+
+/* ── LIGHT MODE OVERRIDES ─────────────────────────── */
+
+/* Keyboard shell: replace the heavy dark shadow with something subtle so it
+   doesn't bleed over the hint row or any adjacent UI beneath the keyboard. */
+[data-theme="light"] .keyboard-outer {
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 4px 16px rgba(0,0,0,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+}
+
+/* The ::before sheen is near-invisible on a white surface — give it a touch
+   more presence so the keyboard still has some depth. */
+[data-theme="light"] .keyboard-outer::before {
+  background: linear-gradient(160deg, rgba(255,255,255,0.6) 0%, transparent 40%);
+}
+
+/* Keys: replace all hardcoded dark rgba shadows with light-friendly values.
+   The --shadow-key and --shadow-key-hover variables are already set in
+   global.css for light mode, but individual rules override them with
+   hardcoded values — so we re-apply them explicitly here. */
+[data-theme="light"] .key {
+  box-shadow: var(--shadow-key);
+}
+
+[data-theme="light"] .key:hover {
+  border-color: var(--border-bright);
+  box-shadow: var(--shadow-key-hover);
+}
+
+[data-theme="light"] .key:active {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.10);
+}
+
+[data-theme="light"] .key.no-layer:hover {
+  box-shadow: var(--shadow-key);
+}
+
+[data-theme="light"] .key.assigned {
+  box-shadow:
+    var(--shadow-key),
+    0 0 8px rgba(232,160,32,0.12);
+}
+
+[data-theme="light"] .key.selected {
+  box-shadow:
+    0 0 0 2px rgba(232,160,32,0.35),
+    inset 0 0 8px rgba(232,160,32,0.06);
+}
+
+/* The top-edge gloss is redundant on a light surface; tone it way down. */
+[data-theme="light"] .key::before {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.4), transparent);
+}
+
+/* Hint row: push it clear of even the lightest residual keyboard shadow. */
+[data-theme="light"] .keyboard-hint-row {
+  margin-top: 6px;
+}
+
+/* ── RECORD HOTKEY BUTTON ─────────────────────────────── */
+
+.record-btn {
+  padding: 0 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.record-btn:hover {
+  color: var(--accent);
+  border-color: var(--border-accent);
+}
+
+.record-btn.recording {
+  color: #e05050;
+  border-color: rgba(224, 80, 80, 0.5);
+  background: rgba(224, 80, 80, 0.08);
+  cursor: pointer;
+}
+
+.record-btn.recording:hover {
+  background: rgba(224, 80, 80, 0.14);
+}
+
+.record-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e05050;
+  flex-shrink: 0;
+  animation: record-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes record-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+
+/* Capture confirmation text */
+.record-hint {
+  color: var(--text-secondary) !important;
+  font-style: normal !important;
+  animation: record-hint-in 0.2s ease;
+}
+
+.record-captured {
+  color: var(--accent) !important;
+  font-style: normal !important;
+  font-weight: 600;
+  animation: record-hint-in 0.2s ease;
+}
+
+@keyframes record-hint-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Dim the keyboard body while recording */
+.keyboard-outer.recording {
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/* Disabled state for modifier buttons during recording */
+.mod-layer-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── KEYBOARD EMPTY STATE ─────────────────────────────── */
+.keyboard-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 24px 28px;
+  text-align: center;
+  width: 100%;
+  animation: empty-fade-in 0.25s ease;
+}
+
+@keyframes empty-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.keyboard-empty-icon {
+  font-size: 32px;
+  color: #e8a020;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+[data-theme="light"] .keyboard-empty-icon {
+  color: #c8860a;
+}
+
+.keyboard-empty-heading {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.keyboard-empty-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 400px;
+  line-height: 1.55;
+}
+
+.keyboard-empty-record-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.keyboard-empty-record-hint strong {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* Bare Keys button when no app-specific profile is active */
+.bare-key-unavailable {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}

@@ -1,0 +1,329 @@
+/* ── MOUSE CANVAS WRAPPER ─────────────────────────────── */
+.mouse-canvas-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.mouse-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.mouse-label strong {
+  color: var(--accent);
+}
+
+/* Label states (mirrors KeyboardCanvas.css) */
+.label-muted     { color: var(--text-muted); font-size: 11px; }
+.label-assigning { font-size: 12px; color: var(--text-secondary); }
+.label-assigning strong { color: var(--accent); }
+.label-combo     { color: var(--accent); }
+
+/* ── DIAGRAM ──────────────────────────────────────────── */
+.mouse-diagram {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+/* ── SVG SHELL ────────────────────────────────────────── */
+.mouse-svg {
+  width: 196px;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 12px 32px rgba(0,0,0,0.55));
+  overflow: visible;
+}
+
+/* ── CABLE NUB ────────────────────────────────────────── */
+.mc-cable {
+  fill: var(--bg-elevated);
+  stroke: var(--border-bright);
+  stroke-width: 0.5;
+}
+
+.mc-cable-shine {
+  fill: rgba(255,255,255,0.04);
+  stroke: none;
+}
+
+.mc-cable-outline {
+  fill: none;
+  stroke: var(--border-bright);
+  stroke-width: 0.75;
+}
+
+/* ── BODY ─────────────────────────────────────────────── */
+.mc-body-fill {
+  fill: var(--bg-surface);
+  stroke: none;
+}
+
+.mc-body-outline {
+  fill: none;
+  stroke: var(--border-bright);
+  stroke-width: 1;
+}
+
+/* ── PALM AREA ────────────────────────────────────────── */
+.mc-palm {
+  fill: var(--bg-elevated);
+  opacity: 0.4;
+}
+
+/* ── STRUCTURAL DIVIDERS ──────────────────────────────── */
+.mc-div {
+  stroke: var(--border-bright);
+  stroke-width: 0.75;
+  stroke-linecap: square;
+}
+
+/* ── SCROLL WHEEL ─────────────────────────────────────── */
+.mc-wheel {
+  fill: var(--bg-elevated);
+  stroke: var(--border-bright);
+  stroke-width: 0.75;
+}
+
+.mc-wheel-ridge {
+  stroke: rgba(255,255,255,0.12);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+/* ── ZONE RECTS (base state) ──────────────────────────── */
+.mc-zone {
+  fill: var(--key-bg);
+  transition: fill 0.1s ease;
+}
+
+.mc-zone:hover {
+  fill: var(--key-bg-hover);
+}
+
+.mc-zone.no-layer {
+  fill: var(--key-bg);
+  opacity: 0.35;
+  cursor: default;
+}
+
+.mc-zone.bare-blocked {
+  fill: var(--key-bg);
+  opacity: 0.2;
+}
+
+.mc-zone.assigned {
+  fill: var(--key-bg-assigned);
+  opacity: 1 !important;
+}
+
+.mc-zone.selected {
+  fill: var(--key-bg-selected);
+  opacity: 1 !important;
+}
+
+.mc-zone.firing {
+  fill: rgba(80,200,120,0.18) !important;
+  animation: mc-zone-fire 0.6s ease;
+  opacity: 1 !important;
+}
+
+@keyframes mc-zone-fire {
+  0%   { fill: rgba(80,200,120,0.38); }
+  100% { fill: rgba(80,200,120,0.18); }
+}
+
+.mc-zone.risky:not(.selected):not(.assigned) {
+  fill: rgba(245,158,11,0.09);
+}
+
+/* ── ZONE LABELS ──────────────────────────────────────── */
+.mc-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.mc-label.selected { fill: var(--accent); }
+.mc-label.assigned { fill: var(--text-primary); }
+.mc-label.dimmed   { opacity: 0.3; }
+
+/* ── ASSIGNED DOT ─────────────────────────────────────── */
+.mc-dot {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+
+/* ── RISKY ICON ───────────────────────────────────────── */
+.mc-risky-icon {
+  font-size: 8px;
+  fill: rgba(245,158,11,0.9);
+}
+
+/* ── DOUBLE-CLICK BADGE ───────────────────────────────── */
+.mc-double-badge {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 700;
+  fill: var(--accent);
+  opacity: 0.85;
+}
+
+/* ── ADVISORY BANNER ──────────────────────────────────── */
+.mouse-advisory {
+  width: 100%;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mouse-advisory-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.mouse-advisory-icon {
+  font-size: 14px;
+  line-height: 1.3;
+  flex-shrink: 0;
+  color: #f59e0b;
+}
+
+.mouse-advisory-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.mouse-advisory-text strong {
+  color: #f59e0b;
+}
+
+.mouse-advisory-link {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 5px;
+  color: #f59e0b;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.03em;
+}
+
+.mouse-advisory-link:hover {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.8);
+}
+
+.mouse-advisory-create {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mouse-advisory-input {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg-base);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-body);
+  outline: none;
+  min-width: 0;
+}
+
+.mouse-advisory-input:focus {
+  border-color: rgba(245, 158, 11, 0.9);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
+}
+
+.mouse-advisory-btn-confirm {
+  height: 28px;
+  padding: 0 10px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  border-radius: 5px;
+  color: #f59e0b;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.mouse-advisory-btn-confirm:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+.mouse-advisory-btn-confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mouse-advisory-btn-cancel {
+  height: 28px;
+  width: 28px;
+  background: none;
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mouse-advisory-btn-cancel:hover {
+  border-color: var(--border-accent);
+  color: var(--text-secondary);
+}
+
+/* ── HINT ROW ─────────────────────────────────────────── */
+.mouse-hint-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* Reuse keyboard canvas hint-chip / hint-dot styles */
+.mouse-hint-row .hint-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.mouse-hint-row .hint-dot {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+
+.mouse-hint-row .assigned-dot { background: rgba(232,160,32,0.15); border-color: rgba(232,160,32,0.5); }
+.mouse-hint-row .selected-dot { background: rgba(232,160,32,0.3);  border-color: var(--accent); }
+.mouse-hint-row .risky-dot    { background: rgba(245,158,11,0.15);  border-color: rgba(245,158,11,0.6); }

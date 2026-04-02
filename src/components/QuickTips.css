@@ -1,0 +1,73 @@
+.quick-tips {
+  width: 100%;
+  padding: 8px 0 4px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Tip list ── */
+.qt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Individual row ── */
+.qt-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.qt-icon {
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+}
+
+.qt-text {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--qt-text);
+}
+
+/* ── Dismiss link ── */
+.qt-dismiss {
+  margin-top: 6px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 10px;
+  color: var(--qt-dismiss);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  display: block;
+  transition: color 0.12s;
+}
+
+.qt-dismiss:hover {
+  color: var(--text-secondary);
+}
+
+/* ── CSS variables — dark (default) ── */
+:root {
+  --qt-text:    #6a6880;
+  --qt-dismiss: #3a3860;
+}
+
+/* ── CSS variables — light ── */
+[data-theme="light"] {
+  --qt-text:    #6060a0;
+  --qt-dismiss: #b0b0c8;
+}

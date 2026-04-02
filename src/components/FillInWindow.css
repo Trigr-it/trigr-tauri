@@ -1,0 +1,206 @@
+/* ── Fill-in window — dark theme (default) ────────────────────────────────── */
+
+:root {
+  --fi-bg:           #13131a;
+  --fi-border:       #2e2e40;
+  --fi-header-sep:   rgba(255, 255, 255, 0.07);
+  --fi-label:        #8a8799;
+  --fi-input-bg:     #1a1a24;
+  --fi-input-border: #2e2e40;
+  --fi-input-text:   #f0ede8;
+  --fi-placeholder:  #3a384a;
+  --fi-cancel-text:  #6a6880;
+  --fi-btn-text:     #0d0d11;
+  --fi-close-color:  #4a4860;
+  --fi-shadow:       0 16px 48px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* ── Fill-in window — light theme ─────────────────────────────────────────── */
+
+[data-theme="light"] {
+  --fi-bg:           #ffffff;
+  --fi-border:       #e0e0f0;
+  --fi-header-sep:   rgba(0, 0, 0, 0.07);
+  --fi-label:        #6060a0;
+  --fi-input-bg:     #f5f5fa;
+  --fi-input-border: #e0e0f0;
+  --fi-input-text:   #1a1a2e;
+  --fi-placeholder:  #b0b0c8;
+  --fi-cancel-text:  #6060a0;
+  --fi-btn-text:     #ffffff;
+  --fi-close-color:  #b0b0c8;
+  --fi-shadow:       0 8px 32px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Reset ────────────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  font-family: 'DM Sans', 'Inter', -apple-system, 'Segoe UI', sans-serif;
+}
+
+.fillin-win-empty {
+  height: 100vh;
+  background: transparent;
+}
+
+/* ── Window shell ─────────────────────────────────────────────────────────── */
+
+.fillin-win {
+  background: var(--fi-bg);
+  border: 1px solid var(--fi-border);
+  border-radius: 10px;
+  box-shadow: var(--fi-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.fillin-win-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px 9px;
+  border-bottom: 1px solid var(--fi-header-sep);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.fillin-win-icon {
+  font-size: 14px;
+  color: #e8a020;
+  flex-shrink: 0;
+}
+
+.fillin-win-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e8a020;
+  flex: 1;
+}
+
+.fillin-win-close {
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  color: var(--fi-close-color);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  -webkit-app-region: no-drag;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.fillin-win-close:hover {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff5555;
+}
+
+/* ── Field rows ──────────────────────────────────────────────────────────── */
+
+.fillin-win-fields {
+  padding: 10px 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.fillin-win-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fillin-win-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fi-label);
+}
+
+.fillin-win-input {
+  height: 32px;
+  padding: 0 10px;
+  background: var(--fi-input-bg);
+  border: 1px solid var(--fi-input-border);
+  border-radius: 6px;
+  color: var(--fi-input-text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  user-select: text;
+}
+
+.fillin-win-input:focus {
+  border-color: rgba(232, 160, 32, 0.55);
+  box-shadow: 0 0 0 2px rgba(232, 160, 32, 0.08);
+}
+
+.fillin-win-input::placeholder {
+  color: var(--fi-placeholder);
+}
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+
+.fillin-win-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 4px 12px 10px;
+  flex-shrink: 0;
+}
+
+.fillin-win-cancel {
+  height: 28px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--fi-input-border);
+  border-radius: 5px;
+  color: var(--fi-cancel-text);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fillin-win-cancel:hover {
+  border-color: rgba(232, 160, 32, 0.3);
+  color: #e8a020;
+}
+
+.fillin-win-ok {
+  height: 28px;
+  padding: 0 16px;
+  background: #e8a020;
+  border: 1px solid #e8a020;
+  border-radius: 5px;
+  color: var(--fi-btn-text);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fillin-win-ok:hover {
+  background: #f0b030;
+  border-color: #f0b030;
+}

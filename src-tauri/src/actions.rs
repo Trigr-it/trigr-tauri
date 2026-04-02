@@ -1,0 +1,844 @@
+use log::{info, warn};
+use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
+
+use windows_sys::Win32::System::DataExchange::{
+    CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
+};
+use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    KEYEVENTF_UNICODE, VIRTUAL_KEY,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+
+/// Future clipboard manager checks this flag and skips logging if set.
+pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
+
+const CF_UNICODETEXT: u32 = 13;
+
+// ── Timing constants (matching Electron defaults) ───────────────────────────
+
+const INITIAL_DELAY_MS: u64 = 10;
+const MODIFIER_SETTLE_MS: u64 = 30;
+const MACRO_TRIGGER_DELAY_MS: u64 = 10;
+const KEYSTROKE_DELAY_MS: u64 = 10;
+const HOTKEY_SETTLE_MS: u64 = 10;
+const CLIPBOARD_RESTORE_DELAY_MS: u64 = 50;
+
+// ── Modifier VK codes ───────────────────────────────────────────────────────
+
+const VK_LCONTROL: u16 = 0xA2;
+const VK_LALT: u16 = 0xA4;
+const VK_LSHIFT: u16 = 0xA0;
+const VK_LWIN: u16 = 0x5B;
+const VK_BACKSPACE: u16 = 0x08;
+const VK_INSERT: u16 = 0x2D;
+
+// ── Public action executor ──────────────────────────────────────────────────
+
+/// Execute a macro action. Called from the hotkey processor thread.
+/// `target_hwnd` = the foreground window HWND captured at hotkey fire time.
+/// `is_altgr` = true if Ctrl+Alt (AltGr) was held — dead character may have leaked.
+pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_altgr: bool) {
+    let macro_type = macro_val
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let label = macro_val
+        .get("label")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(unlabelled)");
+    let data = macro_val.get("data");
+
+    println!("[ACTION] Firing: [{}] {} altgr={}", macro_type, label, is_altgr);
+    info!("[Trigr] Firing: [{}] {}", macro_type, label);
+
+    // Initial delay — lets Windows finish delivering the trigger keydown
+    thread::sleep(Duration::from_millis(INITIAL_DELAY_MS));
+
+    // Erase leaked character for bare keys or AltGr dead characters
+    if is_bare || is_altgr {
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+        if is_altgr {
+            thread::sleep(Duration::from_millis(10));
+        }
+        send_vk_tap(VK_BACKSPACE);
+        thread::sleep(Duration::from_millis(5));
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+    }
+
+    // NOTE: modifier release is handled by each action handler (inject_via_clipboard,
+    // send_unicode_text, execute_send_hotkey) using release_held_modifiers() which
+    // reads physical state via GetAsyncKeyState. Do NOT release here — it would
+    // fool GetAsyncKeyState into thinking modifiers are already up.
+
+    match macro_type {
+        "text" => {
+            if let Some(text) = data.and_then(|d| d.get("text")).and_then(|v| v.as_str()) {
+                thread::sleep(Duration::from_millis(MACRO_TRIGGER_DELAY_MS));
+                let method = resolve_input_method(data);
+                output_text(text, &method, target_hwnd);
+            }
+        }
+
+        "hotkey" => {
+            if let Some(d) = data {
+                thread::sleep(Duration::from_millis(HOTKEY_SETTLE_MS));
+                execute_send_hotkey(d);
+            }
+        }
+
+        "url" => {
+            if let Some(url) = data.and_then(|d| d.get("url")).and_then(|v| v.as_str()) {
+                let _ = opener::open(url);
+            }
+        }
+
+        "app" | "folder" => {
+            if let Some(path) = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()) {
+                let _ = opener::open(path);
+            }
+        }
+
+        "macro" => {
+            if let Some(steps) = data.and_then(|d| d.get("steps")).and_then(|v| v.as_array()) {
+                info!("[Trigr] Macro sequence: {} step(s)", steps.len());
+                for (i, step) in steps.iter().enumerate() {
+                    let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                    info!("[Trigr]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
+                    execute_macro_step(step, target_hwnd);
+                }
+            }
+        }
+
+        _ => {
+            warn!("[Trigr] Unknown macro type: {}", macro_type);
+        }
+    }
+
+    // Re-press modifiers that were held (user may still be holding them physically)
+    // Skip this — the user's physical key state will naturally reassert via the hook
+}
+
+// ── Input method resolution ─────────────────────────────────────────────────
+
+/// Resolve the effective input method: macro override → global default (shift-insert).
+fn resolve_input_method(data: Option<&Value>) -> String {
+    if let Some(d) = data {
+        // Check macro-level override
+        let method = d
+            .get("inputMethod")
+            .or_else(|| d.get("pasteMethod")) // legacy field name
+            .and_then(|v| v.as_str());
+        if let Some(m) = method {
+            if m != "global" {
+                return m.to_string();
+            }
+        }
+    }
+    // Default: clipboard paste via Shift+Insert (instant, any text length)
+    "shift-insert".to_string()
+}
+
+// ── Text output dispatcher ──────────────────────────────────────────────────
+
+fn output_text(text: &str, method: &str, target_hwnd: isize) {
+    match method {
+        "send-input" | "direct" => {
+            // Character-by-character fallback for apps that don't support paste
+            println!("[ACTION] SendInput char-by-char: {} chars", text.chars().count());
+            send_unicode_text(text, target_hwnd);
+        }
+        _ => {
+            // Default: clipboard paste (instant)
+            println!("[ACTION] Clipboard paste: {} chars", text.chars().count());
+            inject_via_clipboard(text, target_hwnd);
+        }
+    }
+}
+
+// ── Clipboard paste injection ───────────────────────────────────────────────
+// CRITICAL: SUPPRESS_SIMULATED must be set true before any SendInput call.
+// SUPPRESS_NEXT_CLIPBOARD_WRITE must be set before any internal clipboard write.
+// New injection paths must follow this pattern or Trigr will intercept its own
+// simulated keystrokes and/or log its own clipboard writes.
+
+fn inject_via_clipboard(text: &str, target_hwnd: isize) {
+    // Save current clipboard contents (suppress flag set BEFORE open)
+    let prev = read_clipboard();
+    println!("[CLIP] prev clipboard: {:?}", prev.as_deref().map(|s| &s[..s.len().min(60)]));
+
+    // Write replacement text to clipboard (suppress set inside write_clipboard)
+    let write_ok = write_clipboard(text);
+    println!("[CLIP] write_clipboard({} chars) → {}", text.chars().count(), write_ok);
+
+    // Suppress the hook so our simulated keystrokes aren't intercepted
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+
+    // Release physically held modifiers
+    let held = release_held_modifiers();
+
+    // Restore focus to the target window captured at hotkey fire time
+    if target_hwnd != 0 {
+        unsafe {
+            let ok = SetForegroundWindow(target_hwnd as _);
+            println!("[CLIP] SetForegroundWindow({:?}) → {}", target_hwnd, ok);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    // Check if Ctrl+V is mapped as a hotkey — if so, use Shift+Insert instead
+    let use_ctrl_v = !is_ctrl_v_mapped();
+    if use_ctrl_v {
+        println!("[CLIP] Pasting with Ctrl+V");
+        send_vk_key(VK_LCONTROL, false);
+        send_vk_key(0x56, false); // V
+        send_vk_key(0x56, true);
+        send_vk_key(VK_LCONTROL, true);
+    } else {
+        println!("[CLIP] Pasting with Shift+Insert (Ctrl+V is mapped)");
+        send_vk_key(VK_LSHIFT, false);
+        send_vk_key(VK_INSERT, false);
+        send_vk_key(VK_INSERT, true);
+        send_vk_key(VK_LSHIFT, true);
+    }
+
+    // Re-press modifiers that were physically held
+    restore_modifiers(&held);
+
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+
+    // Wait for paste to complete, then restore original clipboard
+    thread::sleep(Duration::from_millis(CLIPBOARD_RESTORE_DELAY_MS));
+    write_clipboard(&prev.unwrap_or_default());
+    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::Relaxed);
+    println!("[CLIP] clipboard restored");
+}
+
+/// Check if Ctrl+V is mapped as a hotkey in the current assignments.
+fn is_ctrl_v_mapped() -> bool {
+    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let profile = &state.active_profile;
+    let key = format!("{}::Ctrl::KeyV", profile);
+    state.assignments.contains_key(&key)
+}
+
+// ── Win32 clipboard operations ──────────────────────────────────────────────
+
+fn read_clipboard() -> Option<String> {
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return None;
+        }
+        let handle = GetClipboardData(CF_UNICODETEXT);
+        if handle.is_null() {
+            CloseClipboard();
+            return None;
+        }
+        let ptr = GlobalLock(handle) as *const u16;
+        if ptr.is_null() {
+            CloseClipboard();
+            return None;
+        }
+        let mut len = 0;
+        while *ptr.add(len) != 0 {
+            len += 1;
+        }
+        let text = String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len));
+        GlobalUnlock(handle);
+        CloseClipboard();
+        Some(text)
+    }
+}
+
+fn write_clipboard(text: &str) -> bool {
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let byte_len = wide.len() * 2;
+    // Set suppress BEFORE touching the clipboard so any clipboard listener skips this write
+    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::Relaxed);
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            let err = windows_sys::Win32::Foundation::GetLastError();
+            println!("[CLIP] OpenClipboard failed, GetLastError={}", err);
+            return false;
+        }
+        if EmptyClipboard() == 0 {
+            let err = windows_sys::Win32::Foundation::GetLastError();
+            println!("[CLIP] EmptyClipboard failed, GetLastError={}", err);
+            CloseClipboard();
+            return false;
+        }
+        let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
+        if h_mem.is_null() {
+            println!("[CLIP] GlobalAlloc failed for {} bytes", byte_len);
+            CloseClipboard();
+            return false;
+        }
+        let ptr = GlobalLock(h_mem) as *mut u16;
+        if ptr.is_null() {
+            println!("[CLIP] GlobalLock failed");
+            CloseClipboard();
+            return false;
+        }
+        std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+        GlobalUnlock(h_mem);
+        let result = SetClipboardData(CF_UNICODETEXT, h_mem);
+        if result.is_null() {
+            let err = windows_sys::Win32::Foundation::GetLastError();
+            println!("[CLIP] SetClipboardData failed, GetLastError={}", err);
+            CloseClipboard();
+            return false;
+        }
+        CloseClipboard();
+        true
+    }
+}
+
+// ── Type Text: character-by-character fallback ──────────────────────────────
+
+fn send_unicode_text(text: &str, target_hwnd: isize) {
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+    let held = release_held_modifiers();
+
+    // Restore focus to target window
+    if target_hwnd != 0 {
+        unsafe {
+            SetForegroundWindow(target_hwnd as _);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    for ch in text.chars() {
+        let code = ch as u32;
+        if code > 0xFFFF {
+            let adjusted = code - 0x10000;
+            let hi = (0xD800 + (adjusted >> 10)) as u16;
+            let lo = (0xDC00 + (adjusted & 0x3FF)) as u16;
+            send_unicode_key(hi, false);
+            send_unicode_key(hi, true);
+            send_unicode_key(lo, false);
+            send_unicode_key(lo, true);
+        } else {
+            send_unicode_key(code as u16, false);
+            send_unicode_key(code as u16, true);
+        }
+        if KEYSTROKE_DELAY_MS > 0 {
+            thread::sleep(Duration::from_millis(KEYSTROKE_DELAY_MS));
+        }
+    }
+
+    restore_modifiers(&held);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+}
+
+fn send_unicode_key(scan: u16, key_up: bool) {
+    let mut flags = KEYEVENTF_UNICODE;
+    if key_up {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    let input = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: 0,
+                wScan: scan,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe {
+        SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+// ── Send Hotkey: VK-based key simulation ────────────────────────────────────
+
+fn execute_send_hotkey(data: &Value) {
+    let key_name = match data.get("key").and_then(|v| v.as_str()) {
+        Some(k) => k,
+        None => return,
+    };
+
+    let modifiers = data
+        .get("modifiers")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let target_vk = match display_name_to_vk(key_name) {
+        Some(vk) => vk,
+        None => {
+            warn!("[Trigr] Unknown Send Hotkey key: {}", key_name);
+            return;
+        }
+    };
+
+    println!(
+        "[ACTION] Send Hotkey: [{}] + {}",
+        modifiers.join("+"),
+        key_name
+    );
+
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+
+    // Release physically held modifiers so they don't combine with the target combo
+    let held = release_held_modifiers();
+
+    // Press target modifiers
+    let mod_vks: Vec<u16> = modifiers
+        .iter()
+        .filter_map(|m| match m.to_lowercase().as_str() {
+            "ctrl" => Some(VK_LCONTROL),
+            "alt" => Some(VK_LALT),
+            "shift" => Some(VK_LSHIFT),
+            "win" => Some(VK_LWIN),
+            _ => None,
+        })
+        .collect();
+
+    for &vk in &mod_vks {
+        send_vk_key(vk, false);
+    }
+
+    // Press and release the target key
+    send_vk_key(target_vk, false);
+    send_vk_key(target_vk, true);
+
+    // Release modifiers
+    for &vk in mod_vks.iter().rev() {
+        send_vk_key(vk, true);
+    }
+
+    restore_modifiers(&held);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+}
+
+// ── Macro sequence step executor ────────────────────────────────────────────
+
+fn execute_macro_step(step: &Value, target_hwnd: isize) {
+    let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
+
+    match step_type {
+        "Type Text" => {
+            if !step_value.is_empty() {
+                thread::sleep(Duration::from_millis(MACRO_TRIGGER_DELAY_MS));
+                output_text(step_value, "shift-insert", target_hwnd);
+            }
+        }
+
+        "Press Key" => {
+            if !step_value.is_empty() {
+                // Parse "Ctrl+Shift+N" style strings
+                let parts: Vec<&str> = step_value.split('+').map(|s| s.trim()).collect();
+                if let Some((&key_name, mod_parts)) = parts.split_last() {
+                    let target_vk = match display_name_to_vk(key_name) {
+                        Some(vk) => vk,
+                        None => {
+                            warn!("[Trigr] Unknown macro step key: {}", key_name);
+                            return;
+                        }
+                    };
+
+                    let mod_vks: Vec<u16> = mod_parts
+                        .iter()
+                        .filter_map(|m| match m.to_lowercase().as_str() {
+                            "ctrl" => Some(VK_LCONTROL),
+                            "alt" => Some(VK_LALT),
+                            "shift" => Some(VK_LSHIFT),
+                            "win" => Some(VK_LWIN),
+                            _ => None,
+                        })
+                        .collect();
+
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+                    for &vk in &mod_vks {
+                        send_vk_key(vk, false);
+                    }
+                    send_vk_key(target_vk, false);
+                    send_vk_key(target_vk, true);
+                    for &vk in mod_vks.iter().rev() {
+                        send_vk_key(vk, true);
+                    }
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+                }
+            }
+        }
+
+        "Wait (ms)" => {
+            let ms: u64 = step_value.parse().unwrap_or(500).min(30000);
+            thread::sleep(Duration::from_millis(ms));
+        }
+
+        "Open URL" => {
+            if !step_value.is_empty() {
+                let _ = opener::open(step_value);
+            }
+        }
+
+        "Wait for Input" => {
+            wait_for_input(step_value);
+        }
+
+        _ => {
+            warn!("[Trigr] Unknown macro step type: {}", step_type);
+        }
+    }
+}
+
+// ── Wait for Input step ─────────────────────────────────────────────────────
+
+fn wait_for_input(config_json: &str) {
+    use crate::hotkeys::{self, WaitEvent};
+    use std::sync::mpsc::RecvTimeoutError;
+
+    // Parse config from JSON stored in step.value
+    let config: serde_json::Value = serde_json::from_str(config_json).unwrap_or_default();
+    let input_type = config.get("inputType").and_then(|v| v.as_str()).unwrap_or("LButton");
+    let trigger = config.get("trigger").and_then(|v| v.as_str()).unwrap_or("press");
+    let specific_key = config.get("specificKey").and_then(|v| v.as_str()).unwrap_or("");
+
+    // Extract just the key name from "Ctrl+Enter" style strings
+    let wanted_key = specific_key.split('+').last().unwrap_or("").to_string();
+
+    let is_mouse = matches!(input_type, "LButton" | "RButton" | "MButton");
+    let mouse_name = match input_type {
+        "LButton" => "MOUSE_LEFT",
+        "RButton" => "MOUSE_RIGHT",
+        "MButton" => "MOUSE_MIDDLE",
+        _ => "",
+    };
+
+    println!(
+        "[WAIT] Wait for Input: type={} trigger={} key={}",
+        input_type, trigger, wanted_key
+    );
+
+    const TIMEOUT: Duration = Duration::from_secs(30);
+    const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+    // Register the waiter channel
+    let rx = hotkeys::register_wait_for_input();
+
+    // Two-phase state for pressRelease trigger (per-waiter, not global)
+    let mut phase = "down"; // "down" = waiting for press, "up" = waiting for release
+
+    let deadline = std::time::Instant::now() + TIMEOUT;
+
+    loop {
+        // Check timeout
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            println!("[WAIT] Timed out after 30s");
+            break;
+        }
+
+        // Check if macros were disabled
+        if !hotkeys::MACROS_ENABLED.load(Ordering::Relaxed) {
+            println!("[WAIT] Cancelled — macros disabled");
+            break;
+        }
+
+        // Wait for next event with short timeout for polling cancellation
+        let timeout = remaining.min(POLL_INTERVAL);
+        match rx.recv_timeout(timeout) {
+            Ok(event) => {
+                let matched = match (&event, is_mouse) {
+                    // Mouse events
+                    (WaitEvent::MouseDown { button_name }, true) => {
+                        button_name == mouse_name && matches!(trigger, "press" | "pressRelease")
+                    }
+                    (WaitEvent::MouseUp { button_name }, true) => {
+                        button_name == mouse_name && matches!(trigger, "release" | "pressRelease")
+                    }
+                    // Keyboard events
+                    (WaitEvent::KeyDown { key_id }, false) => {
+                        let key_matches = input_type == "AnyKey"
+                            || (input_type == "SpecificKey" && *key_id == wanted_key);
+                        key_matches && matches!(trigger, "press" | "pressRelease")
+                    }
+                    (WaitEvent::KeyUp { key_id }, false) => {
+                        let key_matches = input_type == "AnyKey"
+                            || (input_type == "SpecificKey" && *key_id == wanted_key);
+                        key_matches && matches!(trigger, "release" | "pressRelease")
+                    }
+                    _ => false,
+                };
+
+                if !matched {
+                    continue;
+                }
+
+                // Handle pressRelease two-phase state machine
+                if trigger == "pressRelease" {
+                    let is_down = matches!(event, WaitEvent::KeyDown { .. } | WaitEvent::MouseDown { .. });
+                    if phase == "down" && is_down {
+                        phase = "up"; // Got the press, now wait for release
+                        println!("[WAIT] pressRelease phase 1: press detected, waiting for release");
+                        continue;
+                    } else if phase == "up" && !is_down {
+                        println!("[WAIT] pressRelease phase 2: release detected, done");
+                        break; // Got the release, done
+                    }
+                    continue; // Not the right phase
+                }
+
+                // Simple press or release trigger
+                println!("[WAIT] Input detected: {:?}", event);
+                break;
+            }
+            Err(RecvTimeoutError::Timeout) => continue, // Poll loop
+            Err(RecvTimeoutError::Disconnected) => {
+                println!("[WAIT] Channel disconnected");
+                break;
+            }
+        }
+    }
+
+    // Always clear the waiter on exit
+    hotkeys::clear_wait_for_input();
+    println!("[WAIT] Wait for Input complete");
+}
+
+// ── Low-level VK key simulation ─────────────────────────────────────────────
+
+fn send_vk_key(vk: u16, key_up: bool) {
+    let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
+
+    let input = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk as VIRTUAL_KEY,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+
+    unsafe {
+        SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+fn send_vk_key_checked(vk: u16, key_up: bool) -> u32 {
+    let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
+    let input = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk as VIRTUAL_KEY,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32) }
+}
+
+fn send_vk_tap(vk: u16) {
+    send_vk_key(vk, false);
+    send_vk_key(vk, true);
+}
+
+// ── Release/restore modifiers ───────────────────────────────────────────────
+
+/// All modifier VK codes we track (left + right variants).
+const ALL_MODIFIER_VKS: &[(u16, &str)] = &[
+    (0xA2, "LCtrl"),
+    (0xA3, "RCtrl"),
+    (0xA0, "LShift"),
+    (0xA1, "RShift"),
+    (0xA4, "LAlt"),
+    (0xA5, "RAlt"),
+    (0x5B, "LWin"),
+    (0x5C, "RWin"),
+];
+
+/// Check if a key is physically held using GetAsyncKeyState.
+fn is_key_down(vk: u16) -> bool {
+    unsafe { GetAsyncKeyState(vk as i32) < 0 }
+}
+
+/// Read which modifiers are physically held, release them all via SendInput,
+/// and return the list of VKs that were held (for later re-press).
+pub fn release_held_modifiers() -> Vec<u16> {
+    println!("[MOD] release_held_modifiers() called");
+    let mut held = Vec::new();
+    for &(vk, name) in ALL_MODIFIER_VKS {
+        let raw = unsafe { GetAsyncKeyState(vk as i32) };
+        let down = raw < 0;
+        println!("[MOD]   {} (0x{:02X}): GetAsyncKeyState={} (0x{:04X}) down={}", name, vk, raw, raw as u16, down);
+        if down {
+            held.push(vk);
+            send_vk_key(vk, true);
+        }
+    }
+    if held.is_empty() {
+        println!("[MOD]   No modifiers detected as held — forcing release of all");
+        // Fallback: if GetAsyncKeyState doesn't see them, release all anyway
+        for &(vk, _) in ALL_MODIFIER_VKS {
+            send_vk_key(vk, true);
+        }
+    } else {
+        println!("[MOD]   Released {} modifier(s)", held.len());
+    }
+    held
+}
+
+/// Re-press modifiers that were held before injection.
+pub fn restore_modifiers(held: &[u16]) {
+    for &vk in held {
+        send_vk_key(vk, false);
+    }
+}
+
+/// Release ALL modifier keys unconditionally (legacy — used in preamble).
+fn release_all_modifiers() {
+    for &(vk, _) in ALL_MODIFIER_VKS {
+        send_vk_key(vk, true);
+    }
+}
+
+// ── Display name → VK code mapping ─────────────────────────────────────────
+// Maps the display names used in the UI / macro.data.key to Windows VK codes.
+
+fn display_name_to_vk(name: &str) -> Option<u16> {
+    match name.to_uppercase().as_str() {
+        // Letters
+        "A" => Some(0x41),
+        "B" => Some(0x42),
+        "C" => Some(0x43),
+        "D" => Some(0x44),
+        "E" => Some(0x45),
+        "F" => Some(0x46),
+        "G" => Some(0x47),
+        "H" => Some(0x48),
+        "I" => Some(0x49),
+        "J" => Some(0x4A),
+        "K" => Some(0x4B),
+        "L" => Some(0x4C),
+        "M" => Some(0x4D),
+        "N" => Some(0x4E),
+        "O" => Some(0x4F),
+        "P" => Some(0x50),
+        "Q" => Some(0x51),
+        "R" => Some(0x52),
+        "S" => Some(0x53),
+        "T" => Some(0x54),
+        "U" => Some(0x55),
+        "V" => Some(0x56),
+        "W" => Some(0x57),
+        "X" => Some(0x58),
+        "Y" => Some(0x59),
+        "Z" => Some(0x5A),
+        // Digits
+        "0" => Some(0x30),
+        "1" => Some(0x31),
+        "2" => Some(0x32),
+        "3" => Some(0x33),
+        "4" => Some(0x34),
+        "5" => Some(0x35),
+        "6" => Some(0x36),
+        "7" => Some(0x37),
+        "8" => Some(0x38),
+        "9" => Some(0x39),
+        // Function keys
+        "F1" => Some(0x70),
+        "F2" => Some(0x71),
+        "F3" => Some(0x72),
+        "F4" => Some(0x73),
+        "F5" => Some(0x74),
+        "F6" => Some(0x75),
+        "F7" => Some(0x76),
+        "F8" => Some(0x77),
+        "F9" => Some(0x78),
+        "F10" => Some(0x79),
+        "F11" => Some(0x7A),
+        "F12" => Some(0x7B),
+        // Navigation
+        "UP" | "ARROWUP" => Some(0x26),
+        "DOWN" | "ARROWDOWN" => Some(0x28),
+        "LEFT" | "ARROWLEFT" => Some(0x25),
+        "RIGHT" | "ARROWRIGHT" => Some(0x27),
+        "HOME" => Some(0x24),
+        "END" => Some(0x23),
+        "PAGEUP" => Some(0x21),
+        "PAGEDOWN" => Some(0x22),
+        "INSERT" => Some(0x2D),
+        "DELETE" => Some(0x2E),
+        // Special
+        "SPACE" => Some(0x20),
+        "TAB" => Some(0x09),
+        "ENTER" | "RETURN" => Some(0x0D),
+        "ESCAPE" | "ESC" => Some(0x1B),
+        "BACKSPACE" => Some(0x08),
+        "CAPSLOCK" => Some(0x14),
+        "NUMLOCK" => Some(0x90),
+        "SCROLLLOCK" => Some(0x91),
+        "PRINTSCREEN" => Some(0x2C),
+        "PAUSE" => Some(0x13),
+        // Symbols
+        "MINUS" | "-" => Some(0xBD),
+        "EQUAL" | "=" => Some(0xBB),
+        "BRACKETLEFT" | "[" => Some(0xDB),
+        "BRACKETRIGHT" | "]" => Some(0xDD),
+        "SEMICOLON" | ";" => Some(0xBA),
+        "QUOTE" | "'" => Some(0xDE),
+        "BACKQUOTE" | "`" => Some(0xC0),
+        "BACKSLASH" | "\\" => Some(0xDC),
+        "COMMA" | "," => Some(0xBC),
+        "PERIOD" | "." => Some(0xBE),
+        "SLASH" | "/" => Some(0xBF),
+        // Numpad
+        "NUMPAD0" => Some(0x60),
+        "NUMPAD1" => Some(0x61),
+        "NUMPAD2" => Some(0x62),
+        "NUMPAD3" => Some(0x63),
+        "NUMPAD4" => Some(0x64),
+        "NUMPAD5" => Some(0x65),
+        "NUMPAD6" => Some(0x66),
+        "NUMPAD7" => Some(0x67),
+        "NUMPAD8" => Some(0x68),
+        "NUMPAD9" => Some(0x69),
+        "NUMPADDECIMAL" => Some(0x6E),
+        "NUMPADMULTIPLY" => Some(0x6A),
+        "NUMPADADD" => Some(0x6B),
+        "NUMPADSUBTRACT" => Some(0x6D),
+        "NUMPADDIVIDE" => Some(0x6F),
+        // Bare modifier keys (for Send Hotkey targeting a modifier itself)
+        "CTRL" | "CONTROL" => Some(VK_LCONTROL),
+        "ALT" => Some(VK_LALT),
+        "SHIFT" => Some(VK_LSHIFT),
+        "WIN" | "META" => Some(VK_LWIN),
+        _ => None,
+    }
+}
+
+// ── Public wrappers for overlay use ─────────────────────────────────────────
+
+pub fn read_clipboard_pub() -> Option<String> {
+    read_clipboard()
+}
+
+pub fn write_clipboard_pub(text: &str) {
+    write_clipboard(text);
+}
+
+pub fn send_vk_key_pub(vk: u16, key_up: bool) {
+    send_vk_key(vk, key_up);
+}

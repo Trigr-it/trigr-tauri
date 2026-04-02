@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Trigr — User Guide</title>
+<style>
+@font-face{font-family:'Rajdhani';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/Rajdhani-600.woff2') format('woff2')}
+@font-face{font-family:'Rajdhani';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/Rajdhani-700.woff2') format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/DMSans-400.woff2') format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/DMSans-500.woff2') format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/DMSans-600.woff2') format('woff2')}
+</style>
+<style>
+/* ── Reset & page ── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;font-size:15px;color:#1a1a2e;background:#f4f4f8;line-height:1.6}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;background:#fff;border-right:1px solid #e4e4ee;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;flex-shrink:0}
+.main{margin-left:240px;flex:1;padding:44px 52px;max-width:980px}
+.sidebar-logo{padding:16px 18px;border-bottom:1px solid #e4e4ee;display:flex;align-items:center;gap:10px}
+.sidebar-logo-icon{width:28px;height:28px;background:#1a1a2e;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-name{font-family:'Rajdhani',sans-serif;font-size:18px;font-weight:700;color:#1a1a2e}
+.logo-ver{font-size:10px;color:#9090b0;margin-top:1px}
+.sidebar-section{padding:12px 18px 4px;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#b0b0c8}
+.nav-link{display:block;padding:6px 18px;font-size:13px;color:#5050a0;cursor:pointer;transition:all 0.1s;border-left:2px solid transparent}
+.nav-link:hover{background:#f5f5ff;color:#1a1a2e;border-left-color:#e0e0f0}
+.nav-link.active{background:#fff8ed;color:#c8860a;border-left-color:#e8a020;font-weight:500}
+.nav-sub{padding-left:30px;font-size:12px}
+.page{display:none}.page.active{display:block}
+.ph{margin-bottom:32px}
+.ph h1{font-size:26px;font-weight:600;color:#1a1a2e;letter-spacing:-0.02em;margin-bottom:6px}
+.ph .lead{font-size:15px;color:#6060a0;line-height:1.55;max-width:620px}
+h2{font-size:17px;font-weight:600;color:#1a1a2e;margin:32px 0 10px;padding-bottom:6px;border-bottom:1px solid #e8e8f4}
+h3{font-size:14px;font-weight:600;color:#1a1a2e;margin:20px 0 6px}
+p{color:#4a4a6a;margin-bottom:10px;line-height:1.6;font-size:14px}
+ul,ol{margin:8px 0 12px 20px;color:#4a4a6a;font-size:14px}
+li{margin-bottom:5px}
+.steps{list-style:none;margin:12px 0 20px;padding:0;counter-reset:steps}
+.steps li{counter-increment:steps;display:flex;gap:12px;margin-bottom:12px;align-items:flex-start}
+.steps li::before{content:counter(steps);min-width:22px;height:22px;border-radius:50%;background:#e8a020;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.steps li p{margin:0;font-size:14px;color:#4a4a6a}
+/* Callouts */
+.callout{border-radius:8px;padding:11px 14px;margin:14px 0;border-left:3px solid}
+.callout.tip{background:#fff8ed;border-color:#e8a020}
+.callout.info{background:#f0f4ff;border-color:#4a7ff5}
+.callout.warn{background:#fff3e0;border-color:#f59c0a}
+.callout .ct{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px}
+.callout.tip .ct{color:#c8860a}.callout.info .ct{color:#2d5fd4}.callout.warn .ct{color:#c27a00}
+.callout p{margin:0;font-size:13px;color:#4a4a6a}
+/* Badges */
+.badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;margin:0 1px}
+.badge.gold{background:#fff4e0;color:#b87000;border:1px solid #f5d080}
+.badge.blue{background:#e8f0ff;color:#2d5fd4;border:1px solid #b0c8f8}
+.badge.green{background:#e8f8ee;color:#1a8040;border:1px solid #90d8a8}
+.badge.purple{background:#f0eaff;color:#6030c0;border:1px solid #c0a8f0}
+.badge.red{background:#ffe8e8;color:#c03030;border:1px solid #f0a8a8}
+kbd{background:#f0f0f8;border:1px solid #d0d0e8;border-bottom-width:2px;border-radius:4px;font-size:11px;font-family:'DM Sans',sans-serif;padding:1px 6px;color:#1a1a2e}
+/* Tables */
+.gt{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+.gt th{background:#f5f5fa;padding:7px 11px;text-align:left;font-weight:600;color:#1a1a2e;border:1px solid #e0e0f0}
+.gt td{padding:7px 11px;border:1px solid #e0e0f0;color:#4a4a6a;vertical-align:top}
+.gt tr:nth-child(even) td{background:#fafafa}
+/* Feature cards */
+.fc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:11px;margin:14px 0}
+.fc{background:#fff;border:1px solid #e8e8f0;border-radius:9px;padding:13px}
+.fc-ic{font-size:17px;margin-bottom:6px}
+.fc h4{font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:3px}
+.fc p{font-size:12px;color:#6060a0;margin:0;line-height:1.45}
+/* Text Expansions panel (non-kf component — preserved) */
+.exp{background:#13131a;border:1px solid #1e1e2a;border-radius:0 0 8px 8px;width:100%}
+.exp-hd{display:flex;align-items:center;padding:7px 11px;border-bottom:1px solid #1e1e2a}
+.exp-title{font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#4a4860;display:flex;align-items:center;gap:5px;cursor:default}
+.exp-hint{font-size:9px;color:#2a2a3a;margin-left:5px;font-weight:400;text-transform:none;letter-spacing:0}
+.exp-add{margin-left:auto;background:#e8a020;border:none;border-radius:5px;color:#0d0d11;font-size:10px;font-weight:700;padding:3px 9px;cursor:default;font-family:'Rajdhani',sans-serif}
+.exp-tabs{display:flex;align-items:center;gap:1px;padding:5px 9px;border-bottom:1px solid #1e1e2a;flex-wrap:wrap}
+.exp-tab{padding:3px 8px;font-size:10px;color:#4a4860;cursor:default;display:flex;align-items:center;gap:3px;white-space:nowrap}
+.exp-tab.a{color:#e8a020;border-bottom:1px solid #e8a020;border-radius:0}
+.exp-dot{width:5px;height:5px;border-radius:50%}
+.exp-tc{font-size:8px;background:#1e1e2a;padding:0 3px;border-radius:6px}
+.exp-cat-btn{margin-left:auto;font-size:10px;color:#3a3860;cursor:default;padding:2px 7px;border:1px solid #252535;border-radius:4px}
+.exp-body{padding:7px 9px}
+.exp-sec{font-size:8px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#3a3860;padding:4px 0 5px;display:flex;align-items:center;gap:5px}
+.exp-sec::before{content:'';width:5px;height:5px;border-radius:50%}
+.exp-sec.unc::before{background:#4a4860}.exp-sec.email::before{background:#50c878}.exp-sec.team::before{background:#ff5555}
+.exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:6px}
+.exp-item{display:flex;align-items:center;gap:4px;background:#1a1a24;border:1px solid #252535;border-radius:4px;padding:3px 6px;font-size:9px}
+.exp-trig{background:#252535;border-radius:3px;padding:1px 4px;font-weight:700;color:#e8a020;font-size:8px;font-family:'Rajdhani',sans-serif}
+.exp-cbadge{background:#1e3a28;border:1px solid rgba(80,200,120,0.3);color:#50c878;font-size:7px;font-weight:600;padding:0 3px;border-radius:3px}
+.exp-cbadge.team{background:#3a1e1e;border-color:rgba(255,85,85,0.3);color:#ff8888}
+.exp-arr{color:#3a3860;font-size:8px}
+.exp-prev{color:#6a6880;font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}
+.exp-edit{font-size:8px;color:#4a4860;margin-left:auto;cursor:default}
+.exp-del{font-size:8px;color:#3a3860;cursor:default}
+.exp-ed{background:#0d0d11;border-top:1px solid #1e1e2a;padding:9px 11px}
+.exp-cols{display:flex;gap:8px}
+.exp-left{width:135px;flex-shrink:0}
+.exp-right{flex:1}
+.exp-fl{font-size:8px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#3a3860;margin-bottom:3px}
+.exp-tin{width:100%;background:#1a1a24;border:1px solid #2e2e40;border-radius:5px;color:#e8a020;font-size:12px;font-weight:700;padding:5px 8px;font-family:'Rajdhani',sans-serif}
+.exp-modes{display:flex;gap:4px;margin-top:4px;align-items:center}
+.exp-mode{font-size:8px;color:#3a3860;display:flex;align-items:center;gap:2px}
+.exp-mode.a{background:rgba(232,160,32,0.12);color:#e8a020;padding:1px 5px;border-radius:10px;border:1px solid rgba(232,160,32,0.3);font-size:8px}
+.rte-tb{display:flex;align-items:center;gap:2px;background:#1a1a24;border:1px solid #2e2e40;border-radius:5px 5px 0 0;padding:3px 5px;border-bottom:none}
+.rte-b{width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#6a6880;border-radius:3px;cursor:default;font-family:'Rajdhani',sans-serif}
+.rte-div{width:1px;height:12px;background:#2e2e40;margin:0 2px}
+.rte-ins{display:flex;align-items:center;gap:2px;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600;color:#8a8799;cursor:default;border:1px solid #2e2e40;background:#16161f;font-family:'Rajdhani',sans-serif}
+.rte-body{background:#1a1a24;border:1px solid #2e2e40;border-radius:0 0 5px 5px;min-height:55px;padding:6px 8px;font-size:11px;color:#d0cde8;line-height:1.5}
+.exp-cat-r{display:flex;align-items:center;gap:7px;margin-top:6px}
+.exp-cat-l{font-size:8px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#3a3860}
+.exp-cat-s{background:#1a1a24;border:1px solid #2e2e40;border-radius:4px;color:#8a8799;font-size:9px;padding:2px 16px 2px 6px;cursor:default}
+.exp-ftr{display:flex;justify-content:flex-end;gap:5px;margin-top:7px}
+.exp-cancel{padding:4px 10px;background:transparent;border:1px solid #2e2e40;border-radius:5px;color:#6a6880;font-size:10px;cursor:default}
+.exp-save{padding:4px 12px;background:#e8a020;border:none;border-radius:5px;color:#0d0d11;font-size:10px;font-weight:700;cursor:default;font-family:'Rajdhani',sans-serif}
+
+@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:20px 16px}}
+
+/* ════════════════════════════════════════════════════════════
+   KF COMPONENT SYSTEM — exact source extraction
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --bg-base:#0d0d11; --bg-surface:#13131a; --bg-elevated:#1a1a24;
+  --bg-hover:#20202d; --bg-active:#252535;
+  --accent:#e8a020; --accent-dim:#b87c14;
+  --accent-glow:rgba(232,160,32,0.15); --accent-glow-strong:rgba(232,160,32,0.3);
+  --text-primary:#f0ede8; --text-secondary:#8a8799; --text-muted:#4a4860;
+  --border:#1e1e2a; --border-bright:#2e2e40; --border-accent:rgba(232,160,32,0.4);
+  --key-bg:#16161f; --key-bg-hover:#1e1e2c; --key-bg-assigned:#1a1a10; --key-bg-selected:#1f1a08;
+  --key-border:#252535; --key-border-assigned:rgba(232,160,32,0.5); --key-border-selected:#e8a020;
+  --font-display:'Rajdhani',sans-serif; --font-body:'DM Sans',sans-serif;
+  --shadow-key:0 2px 8px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.04);
+  --shadow-key-hover:0 4px 16px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.06);
+}
+/* ── Light theme (from src/styles/global.css) ───────────────────────── */
+.kf[data-theme="light"] {
+  --bg-base:     #f0f0f5;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f5f5fa;
+  --bg-hover:    #ebebf0;
+  --bg-active:   #e0e0ea;
+
+  --text-primary:   #1a1a2e;
+  --text-secondary: #4a4a6a;
+  --text-muted:     #9090b0;
+
+  --border:        #dcdce8;
+  --border-bright: #c8c8dc;
+  --border-accent: rgba(232, 160, 32, 0.5);
+
+  --key-bg:              #ffffff;
+  --key-bg-hover:        #f0f0fa;
+  --key-bg-assigned:     #fffbf0;
+  --key-bg-selected:     #fff8e8;
+  --key-border:          #d0d0e0;
+  --key-border-assigned: rgba(232, 160, 32, 0.5);
+  --key-border-selected: #e8a020;
+
+  --shadow-key:       0 1px 4px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+  --shadow-key-hover: 0 2px 8px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
+  --shadow-panel:     0 4px 16px rgba(0,0,0,0.12);
+}
+
+/* Light theme keyboard overrides (from src/components/KeyboardCanvas.css) */
+.kf[data-theme="light"] .kf-kb-outer {
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 4px 16px rgba(0,0,0,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+}
+.kf[data-theme="light"] .kf-kb-outer::before {
+  background: linear-gradient(160deg, rgba(255,255,255,0.6) 0%, transparent 40%);
+}
+.kf[data-theme="light"] .kf-key {
+  box-shadow: var(--shadow-key);
+}
+.kf[data-theme="light"] .kf-key:hover {
+  border-color: var(--border-bright);
+  box-shadow: var(--shadow-key-hover);
+}
+.kf[data-theme="light"] .kf-key.nl:hover {
+  box-shadow: var(--shadow-key);
+}
+.kf[data-theme="light"] .kf-key.asgn {
+  box-shadow: var(--shadow-key), 0 0 8px rgba(232,160,32,0.12);
+}
+.kf[data-theme="light"] .kf-key.sel {
+  box-shadow: 0 0 0 2px rgba(232,160,32,0.35), inset 0 0 8px rgba(232,160,32,0.06);
+}
+.kf[data-theme="light"] .kf-key::before {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.4), transparent);
+}
+
+/* Light theme: sidebar, panels, status bar adjustments */
+.kf[data-theme="light"] .kf-tb {
+  box-shadow: 0 1px 0 var(--border);
+}
+.kf[data-theme="light"] .kf-mbar {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.kf[data-theme="light"] .kf-rp-foot .kf-btn-save {
+  box-shadow: 0 2px 8px rgba(232,160,32,0.25);
+}
+/* Status bar chips in light mode */
+.kf[data-theme="light"] .kf-chip {
+  background: rgba(80,200,120,0.08);
+}
+/* Macro toggle */
+.kf[data-theme="light"] .kf-toggle.on {
+  background: rgba(80,200,120,0.12);
+}
+/* Combo key hint */
+.kf[data-theme="light"] .kf-ck {
+  background: var(--bg-elevated);
+  border-color: var(--border-bright);
+}
+/* Legend dots */
+.kf[data-theme="light"] .kf-ld.sys {
+  opacity: 0.7;
+}
+
+/* ── Demo breakout + scale system ───────────────────────────────
+   .kf-demo-wrap  : outer visible shell — breaks out of .main column,
+                   its height is set by JS to match the scaled content.
+   .kf-demo-scale : inner div rendered at NATIVE_W (1560px) then
+                   CSS transform-scaled down to fill the wrapper.
+   ─────────────────────────────────────────────────────────────── */
+.kf-demo-wrap {
+  margin: 28px 0;
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #dcdce8;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  background: #f0f0f5;
+  width: 100%;
+}
+.kf-demo-scale {
+  transform-origin: top left;
+  /* width + transform set by JS */
+}
+/* App wrapper */
+.kf{display:flex;flex-direction:column;background:var(--bg-base);font-family:var(--font-body);font-size:14px;color:var(--text-primary);overflow:hidden;user-select:none;height:720px}
+/* Hide demos until JS has scaled them — prevents snap-in flash */
+.kf:not(.kf-ready){visibility:hidden}
+.kf.kf-ready{visibility:visible;transition:opacity 0.15s ease;opacity:1}
+.kf-body{display:flex;flex:1;overflow:hidden}
+.kf-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:14px 14px 18px;min-width:0;position:relative;overflow-y:auto;gap:8px;background:radial-gradient(ellipse 60% 40% at 50% 60%,rgba(232,160,32,0.04) 0%,transparent 70%),var(--bg-base)}
+.kf-main::before{content:'';position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:32px 32px}
+/* Title bar */
+.kf-tb{height:48px;background:var(--bg-surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex-shrink:0;position:relative;z-index:10}
+.kf-tb-left{display:flex;align-items:center;gap:0;flex:1;min-width:0}
+.kf-tb-right{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.kf-logo{display:flex;align-items:center;gap:7px;margin-right:12px;flex-shrink:0}
+.kf-logo-name{font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--text-primary);letter-spacing:0.04em}
+.kf-tb-div{width:1px;height:18px;background:var(--border-bright);margin-right:12px;flex-shrink:0}
+/* Area tabs */
+.kf-area-tabs{display:flex;align-items:center;gap:2px;flex-shrink:0}
+.kf-area-tab{height:28px;padding:0 12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text-muted);font-family:var(--font-body);font-size:13px;font-weight:500;cursor:pointer;transition:color 0.15s,border-color 0.15s;white-space:nowrap;margin-bottom:-1px}
+.kf-area-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+/* Profile tabs */
+.kf-ptabs{display:flex;align-items:center;gap:2px}
+.kf-ptg{display:flex;align-items:center;gap:1px}
+.kf-pt{height:26px;padding:0 12px;background:transparent;border:1px solid transparent;border-radius:5px;color:var(--text-secondary);font-family:var(--font-body);font-size:12px;font-weight:500;transition:all 0.15s;white-space:nowrap;cursor:pointer}
+.kf-pt:hover{color:var(--text-primary);background:var(--bg-hover)}
+.kf-pt.active{background:var(--accent-glow);border-color:var(--border-accent);color:var(--accent)}
+.kf-pt.add{color:var(--text-muted);font-size:15px;padding:0 8px}
+.kf-pt.add:hover{color:var(--accent)}
+.kf-pt-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 4px var(--accent);margin-left:4px;vertical-align:middle}
+.kf-pt-gdot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#50c878;box-shadow:0 0 5px rgba(80,200,120,0.7);margin-left:4px;vertical-align:middle}
+/* Macro toggle */
+.kf-toggle{display:flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:0.08em;border:1px solid;font-family:var(--font-body);cursor:default}
+.kf-toggle.on{background:rgba(80,200,120,0.1);border-color:rgba(80,200,120,0.3);color:#50c878}
+.kf-toggle-dot{width:5px;height:5px;border-radius:50%;background:#50c878;box-shadow:0 0 5px #50c878;animation:kfpulse 2s ease infinite}
+/* Icon btn */
+.kf-icon-btn{width:26px;height:26px;border-radius:5px;background:transparent;border:none;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:pointer;transition:background 0.12s,color 0.12s}
+.kf-icon-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+/* Window controls */
+.kf-wcs{display:flex;align-items:center;gap:3px}
+.kf-wc{width:26px;height:26px;border-radius:5px;background:transparent;border:none;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:default}
+.kf-wc:hover{background:var(--bg-hover);color:var(--text-primary)}
+.kf-wc.cl:hover{background:rgba(255,80,80,0.15);color:#ff5555}
+/* Sidebar */
+.kf-sb{width:200px;flex-shrink:0;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.kf-sb-hd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px;border-bottom:1px solid var(--border)}
+.kf-sb-title{font-family:var(--font-display);font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)}
+.kf-sb-cnt{background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-secondary);font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px}
+.kf-sb-tabs{display:flex;overflow-x:auto;border-bottom:1px solid var(--border);padding:0 5px;scrollbar-width:none}
+.kf-sb-tab{flex-shrink:0;height:28px;padding:0 8px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text-muted);font-size:10px;font-weight:600;font-family:var(--font-display);letter-spacing:0.05em;cursor:pointer;transition:color 0.15s,border-color 0.15s;white-space:nowrap;margin-bottom:-1px}
+.kf-sb-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.kf-sb-list{flex:1;overflow-y:auto;padding:6px}
+.kf-sb-group{margin-bottom:10px}
+.kf-sb-gh{display:flex;align-items:center;gap:3px;padding:4px 6px;margin-bottom:2px;border-radius:4px}
+.kf-sb-group.active .kf-sb-gh{background:var(--accent-glow)}
+.kf-sb-mk{background:var(--bg-active);border:1px solid var(--border-bright);color:var(--accent);font-family:var(--font-display);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;letter-spacing:0.04em}
+.kf-sb-group.active .kf-sb-mk{border-color:var(--border-accent)}
+.kf-sb-mp{color:var(--text-muted);font-size:10px}
+.kf-sb-gc{margin-left:auto;background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-muted);font-size:9px;font-weight:600;padding:0 4px;border-radius:8px}
+.kf-sb-item{display:flex;align-items:flex-start;gap:7px;padding:6px 6px;border-radius:4px;margin-bottom:1px;border:1px solid transparent;cursor:pointer;transition:background 0.15s,border-color 0.15s}
+.kf-sb-item:hover{background:var(--bg-hover);border-color:var(--border-bright)}
+.kf-sb-item.active{background:var(--accent-glow)!important;border-color:var(--border-accent)!important}
+.kf-sb-badge{display:inline-block;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-secondary);font-family:var(--font-display);font-size:9px;font-weight:600;padding:2px 5px;border-radius:3px;min-width:24px;text-align:center;flex-shrink:0}
+.kf-sb-item.tt .kf-sb-badge{border-color:rgba(100,180,255,0.3);color:#64b4ff}
+.kf-sb-item.hk .kf-sb-badge{border-color:rgba(200,100,255,0.3);color:#c864ff}
+.kf-sb-item.ap .kf-sb-badge{border-color:rgba(80,200,120,0.3);color:#50c878}
+.kf-sb-item.ur .kf-sb-badge{border-color:rgba(255,200,50,0.3);color:#ffc832}
+.kf-sb-item.mc .kf-sb-badge{border-color:rgba(255,120,60,0.3);color:#ff783c}
+.kf-sb-info{flex:1;min-width:0}
+.kf-sb-label{font-size:11px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3;margin-bottom:2px}
+.kf-sb-item.active .kf-sb-label{color:var(--accent)}
+.kf-sb-type{font-size:10px;color:var(--text-muted)}
+/* View switcher */
+.kf-vs{display:flex;gap:3px;padding:3px;background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:9px;flex-shrink:0}
+.kf-vs-btn{height:26px;padding:0 15px;border-radius:6px;background:transparent;border:none;color:var(--text-muted);font-family:var(--font-display);font-size:12px;font-weight:600;letter-spacing:0.04em;cursor:pointer;transition:all 0.15s}
+.kf-vs-btn.active{background:var(--bg-active);color:var(--accent);border:1px solid var(--border-accent)}
+/* Modifier bar */
+.kf-mbar{display:flex;align-items:center;gap:12px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:9px;padding:8px 14px;width:100%;position:relative;z-index:1}
+.kf-mbar-lbl{font-family:var(--font-display);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);flex-shrink:0}
+.kf-mbar-keys{display:flex;gap:5px;flex-shrink:0}
+.kf-mmod{height:28px;padding:0 14px;border-radius:6px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-secondary);font-family:var(--font-display);font-size:13px;font-weight:600;letter-spacing:0.04em;cursor:pointer;transition:all 0.15s}
+.kf-mmod:hover{border-color:var(--border-accent);color:var(--text-primary);background:var(--bg-hover)}
+.kf-mmod.active{background:color-mix(in srgb,var(--mc) 12%,var(--bg-elevated));border-color:color-mix(in srgb,var(--mc) 50%,transparent);color:var(--mc);box-shadow:0 0 10px color-mix(in srgb,var(--mc) 20%,transparent)}
+.kf-combo-hint{font-size:11px;color:var(--text-muted);font-style:italic}
+.kf-combo{display:flex;align-items:center;gap:4px}
+.kf-combo-lbl{font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-right:3px}
+.kf-ck{background:var(--bg-active);border:1px solid var(--border-bright);border-bottom-width:2px;color:var(--accent);font-family:var(--font-display);font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.04em}
+.kf-ck.target{color:var(--text-secondary);border-style:dashed;border-color:var(--border-accent);animation:kfdash 1.5s ease infinite}
+.kf-ck-plus{color:var(--text-muted);font-size:12px;font-weight:300}
+/* Keyboard canvas */
+.kf-kb-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;position:relative;z-index:1}
+.kf-kb-lbl{font-size:11px;color:var(--text-muted)}
+.kf-kb-lbl strong{color:var(--accent)}
+.kf-kb-outer{background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:13px;padding:14px 16px 16px;box-shadow:0 0 0 1px var(--border),0 20px 60px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.04);position:relative;flex-shrink:0}
+.kf-kb-outer::before{content:'';position:absolute;inset:0;border-radius:12px;background:linear-gradient(160deg,rgba(255,255,255,0.02) 0%,transparent 50%);pointer-events:none}
+.kf-kb-body{display:flex;flex-direction:column;gap:3px}
+.kf-kr{display:flex;gap:3px;align-items:center}
+.kf-key{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:5px;background:var(--key-bg);border:1px solid var(--key-border);cursor:pointer;transition:all 0.1s ease;box-shadow:var(--shadow-key);overflow:hidden;flex-shrink:0}
+.kf-key::before{content:'';position:absolute;top:0;left:0;right:0;height:40%;background:linear-gradient(to bottom,rgba(255,255,255,0.05),transparent);pointer-events:none}
+.kf-key:hover{background:var(--key-bg-hover);border-color:#333348;transform:translateY(-1px);box-shadow:var(--shadow-key-hover)}
+.kf-key.sys{cursor:default;opacity:0.45}
+.kf-key.sys:hover{transform:none;background:var(--key-bg);border-color:var(--key-border);box-shadow:var(--shadow-key)}
+.kf-key.nl{cursor:default;opacity:0.3}
+.kf-key.nl:hover{transform:none;background:var(--key-bg);border-color:var(--key-border)}
+.kf-key.asgn{background:var(--key-bg-assigned);border-color:var(--key-border-assigned);box-shadow:0 2px 8px rgba(0,0,0,0.4),0 0 12px rgba(232,160,32,0.08),inset 0 1px 0 rgba(255,255,255,0.04);opacity:1!important}
+.kf-key.asgn::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(232,160,32,0.06) 0%,transparent 70%);pointer-events:none}
+.kf-key.sel{background:var(--key-bg-selected);border-color:var(--key-border-selected);box-shadow:0 0 20px rgba(232,160,32,0.25),inset 0 0 12px rgba(232,160,32,0.05);transform:translateY(-1px);opacity:1!important}
+.kf-key.sel::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(232,160,32,0.12) 0%,transparent 70%);pointer-events:none}
+.kf-key-dot{position:absolute;top:3px;right:3px;width:4px;height:4px;border-radius:50%;background:var(--accent);box-shadow:0 0 3px var(--accent);z-index:1}
+.kf-key-lbl{font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--text-secondary);letter-spacing:0.02em;line-height:1;pointer-events:none;z-index:1;position:relative}
+.kf-key.sel .kf-key-lbl{color:var(--accent)}
+.kf-key.asgn .kf-key-lbl{color:var(--text-primary)}
+.kf-key-sub{font-family:var(--font-body);font-size:6px;color:var(--text-muted);position:absolute;top:2px;left:4px;pointer-events:none;z-index:1}
+.kf-legend{display:flex;align-items:center;gap:16px;margin-top:6px;justify-content:center}
+.kf-lc{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text-muted)}
+.kf-ld{width:7px;height:7px;border-radius:2px;border:1px solid}
+.kf-ld.asgn{background:rgba(232,160,32,0.15);border-color:rgba(232,160,32,0.5)}
+.kf-ld.sel{background:rgba(232,160,32,0.3);border-color:var(--accent)}
+.kf-ld.sys{background:transparent;border-color:var(--border-bright);opacity:0.5}
+/* Right action panel */
+.kf-rp{width:300px;flex-shrink:0;background:var(--bg-surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.kf-rp-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.kf-rp-title{display:flex;align-items:center;gap:8px}
+.kf-rp-title span{font-family:var(--font-display);font-size:12px;font-weight:600;letter-spacing:0.04em;color:var(--text-secondary);text-transform:uppercase}
+.kf-rp-badge{background:var(--accent-glow);border:1px solid var(--border-accent);color:var(--accent);font-family:var(--font-display);font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:0.04em}
+.kf-rp-mbadge{background:var(--bg-active);border:1px solid var(--border-bright);color:var(--text-secondary);font-family:var(--font-display);font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px}
+.kf-rp-x{width:22px;height:22px;border-radius:4px;background:transparent;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s}
+.kf-rp-x:hover{background:var(--bg-hover);color:var(--text-primary)}
+.kf-rp-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.kf-rp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;text-align:center;padding:32px 20px;gap:10px}
+.kf-rp-empty h3{font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-secondary);letter-spacing:0.04em}
+.kf-rp-empty p{font-size:12px;color:var(--text-muted);line-height:1.6}
+/* Type grid */
+.kf-tg{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.kf-tb2{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 6px;border-radius:7px;background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);cursor:pointer;transition:all 0.15s}
+.kf-tb2:hover{border-color:var(--border-bright);background:var(--bg-hover);color:var(--text-primary)}
+.kf-tb2.active{background:color-mix(in srgb,var(--tc) 8%,var(--bg-elevated));border-color:color-mix(in srgb,var(--tc) 40%,transparent);color:var(--tc)}
+.kf-tb2-ic{font-size:15px;line-height:1}
+.kf-tb2-lbl{font-size:9px;font-weight:600;letter-spacing:0.04em;text-align:center;line-height:1.2}
+.kf-tc-tt{--tc:#64b4ff}.kf-tc-hk{--tc:#c864ff}.kf-tc-ap{--tc:#50c878}.kf-tc-ur{--tc:#ffc832}.kf-tc-fl{--tc:#ffc832}.kf-tc-mc{--tc:#ff783c}
+/* Form elements */
+.kf-fl{font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px}
+.kf-fin{height:34px;padding:0 10px;background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:5px;color:var(--text-primary);font-size:12px;width:100%;font-family:var(--font-body)}
+.kf-fta{padding:9px 10px;background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:5px;color:var(--text-primary);font-size:12px;resize:vertical;line-height:1.5;width:100%;min-height:70px;font-family:var(--font-body)}
+.kf-fhint{font-size:10px;color:var(--text-muted);line-height:1.4;margin-top:2px}
+.kf-fsec{display:flex;flex-direction:column;gap:5px}
+.kf-frow{display:flex;gap:5px}
+.kf-frow .kf-fin{flex:1}
+.kf-fbrowse{height:34px;padding:0 10px;background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:5px;color:var(--text-secondary);font-size:11px;cursor:pointer;white-space:nowrap;transition:all 0.15s;font-family:var(--font-body)}
+.kf-fbrowse:hover{border-color:var(--border-accent);color:var(--accent)}
+/* Modifier toggles */
+.kf-mg{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.kf-mt{height:30px;border-radius:5px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-secondary);font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;font-family:var(--font-body)}
+.kf-mt.active{background:var(--accent-glow);border-color:var(--border-accent);color:var(--accent)}
+/* Hotkey preview */
+.kf-hkprev{display:flex;align-items:center;gap:5px;padding:7px 9px;background:var(--bg-elevated);border:1px solid var(--border-accent);border-radius:5px;margin-top:3px;flex-wrap:wrap}
+.kf-hkprev-lbl{font-size:10px;color:var(--text-muted);margin-right:3px}
+.kf-hkprev kbd{background:var(--bg-active);border:1px solid var(--border-bright);border-bottom-width:2px;color:var(--accent);font-size:10px;font-family:var(--font-display);font-weight:600;padding:2px 7px;border-radius:4px;letter-spacing:0.04em}
+.kf-hk-plus{color:var(--text-muted);font-size:11px}
+/* Macro steps */
+.kf-steps{display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
+.kf-step{display:flex;align-items:center;gap:5px}
+.kf-step-num{width:18px;height:18px;border-radius:50%;background:var(--accent);color:#0d0d11;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--font-display)}
+.kf-step-badge{border-radius:3px;padding:2px 6px;font-size:9px;font-weight:700;font-family:var(--font-display);flex-shrink:0}
+.kf-step-badge.tt{background:rgba(232,160,32,0.15);color:#e8a020}
+.kf-step-badge.pk{background:rgba(200,100,255,0.15);color:#c864ff}
+.kf-step-badge.wt{background:rgba(100,180,255,0.12);color:#64b4ff}
+.kf-step-badge.wi{background:rgba(255,85,85,0.12);color:#ff8888}
+.kf-step-val{background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:4px;padding:2px 7px;font-size:11px;color:var(--text-primary);flex:1;font-family:var(--font-display);font-weight:600}
+.kf-step-rm{width:20px;height:20px;border-radius:4px;background:transparent;border:none;color:var(--text-muted);font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s}
+.kf-step-rm:hover{background:rgba(255,80,80,0.1);color:#ff5555}
+.kf-add-step{height:30px;width:100%;background:var(--bg-elevated);border:1px dashed var(--border-bright);border-radius:5px;color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.15s;font-family:var(--font-body)}
+.kf-add-step:hover{border-color:var(--border-accent);color:var(--accent);background:var(--accent-glow)}
+/* Panel footer */
+.kf-rp-foot{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0}
+.kf-rp-acts{display:flex;align-items:center;gap:5px}
+.kf-btn-cl,.kf-btn-dup{height:34px;padding:0 12px;background:transparent;border:1px solid var(--border-bright);border-radius:5px;color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:var(--font-body)}
+.kf-btn-cl:hover{border-color:rgba(255,80,80,0.4);color:#ff5555;background:rgba(255,80,80,0.06)}
+.kf-btn-dup:hover{border-color:var(--border-accent);color:var(--accent);background:var(--accent-glow)}
+.kf-btn-save{width:100%;height:34px;background:var(--accent);border:none;border-radius:5px;color:#0d0d11;font-size:13px;font-weight:700;font-family:var(--font-display);letter-spacing:0.04em;cursor:pointer;transition:all 0.15s}
+.kf-btn-save:hover{background:#f0b030;box-shadow:0 4px 16px rgba(232,160,32,0.3)}
+/* Status bar */
+.kf-sbar{height:26px;background:var(--bg-surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;flex-shrink:0}
+.kf-sbar-l,.kf-sbar-r{display:flex;align-items:center;gap:7px}
+.kf-sind{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:500;color:#50c878}
+.kf-sdot{width:5px;height:5px;border-radius:50%;background:#50c878;box-shadow:0 0 4px #50c878;animation:kfpulse 2s ease infinite;flex-shrink:0}
+.kf-ssep{color:var(--border-bright);font-size:11px}
+.kf-si{font-size:10px;color:var(--text-muted)}
+.kf-si strong{color:var(--accent);font-weight:600}
+.kf-chip{font-size:9px;font-weight:500;padding:1px 6px;border-radius:8px;border:1px solid;color:#50c878;border-color:rgba(80,200,120,0.2);background:rgba(80,200,120,0.05)}
+.kf-ver{font-size:9px;color:var(--border-bright)}
+/* Animations */
+@keyframes kfpulse{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes kfdash{0%,100%{opacity:1}50%{opacity:0.4}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-icon"><svg viewBox="0 0 16 16" fill="none" width="16" height="16"><rect x="1" y="2" width="5" height="3" rx="1" fill="#e8a020"/><rect x="8" y="2" width="3" height="3" rx="1" fill="#e8a020" opacity="0.6"/><rect x="13" y="2" width="2" height="3" rx="1" fill="#e8a020" opacity="0.4"/><rect x="1" y="7" width="3" height="3" rx="1" fill="#e8a020" opacity="0.5"/><rect x="6" y="7" width="9" height="3" rx="1" fill="#e8a020" opacity="0.8"/></svg></div>
+    <div><div class="logo-name">Trigr</div><div class="logo-ver">User Guide v1.0</div></div>
+  </div>
+  <div class="sidebar-section">Getting Started</div>
+  <a class="nav-link active" onclick="show('intro')">Introduction</a>
+  <a class="nav-link" onclick="show('interface')">The Interface</a>
+  <div class="sidebar-section">Hotkeys</div>
+  <a class="nav-link" onclick="show('hk-overview')">Overview</a>
+  <a class="nav-link nav-sub" onclick="show('hk-create')">Creating a hotkey</a>
+  <a class="nav-link nav-sub" onclick="show('hk-text')">Type Text</a>
+  <a class="nav-link nav-sub" onclick="show('hk-sendkey')">Send Hotkey</a>
+  <a class="nav-link nav-sub" onclick="show('hk-app')">Open App / Folder</a>
+  <a class="nav-link nav-sub" onclick="show('hk-url')">Open URL</a>
+  <a class="nav-link nav-sub" onclick="show('hk-macro')">Macro Sequence</a>
+  <a class="nav-link nav-sub" onclick="show('hk-mouse')">Mouse Buttons</a>
+  <div class="sidebar-section">Text Expansions</div>
+  <a class="nav-link" onclick="show('exp-overview')">Overview</a>
+  <a class="nav-link nav-sub" onclick="show('exp-create')">Creating an expansion</a>
+  <a class="nav-link nav-sub" onclick="show('exp-dynamic')">Dynamic fields</a>
+  <a class="nav-link nav-sub" onclick="show('exp-cats')">Categories</a>
+  <a class="nav-link nav-sub" onclick="show('exp-instant')">Instant trigger</a>
+  <div class="sidebar-section">Profiles</div>
+  <a class="nav-link" onclick="show('profiles')">Using profiles</a>
+  <a class="nav-link nav-sub" onclick="show('profiles-app')">App-specific profiles</a>
+  <div class="sidebar-section">Autocorrect</div>
+  <a class="nav-link" onclick="show('autocorrect')">Autocorrect</a>
+  <div class="sidebar-section">Settings</div>
+  <a class="nav-link" onclick="show('settings')">Settings &amp; compatibility</a>
+  <a class="nav-link nav-sub" onclick="show('quick-search')">Quick Search</a>
+  <div class="sidebar-section">Help</div>
+  <a class="nav-link" onclick="show('troubleshooting')">Troubleshooting</a>
+</nav>
+<main class="main">
+
+<!-- ═══ INTRO ═══ -->
+<div id="intro" class="page active">
+<div class="ph"><h1>Welcome to Trigr</h1><p class="lead">Trigr is a visual hotkey, macro and text expansion manager for Windows. No coding required — click a key, assign an action, done.</p></div>
+<div class="fc-grid">
+  <div class="fc"><div class="fc-ic">⌨</div><h4>Hotkeys &amp; Macros</h4><p>Assign Ctrl+E or Ctrl+Alt+Q to type text, open apps, run sequences and more.</p></div>
+  <div class="fc"><div class="fc-ic">✦</div><h4>Text Expansions</h4><p>Type a trigger word, press Space, and it instantly expands into full formatted text.</p></div>
+  <div class="fc"><div class="fc-ic">⬡</div><h4>App Profiles</h4><p>Profiles auto-switch when you change windows — different macros per application.</p></div>
+  <div class="fc"><div class="fc-ic">◈</div><h4>Macro Sequences</h4><p>Chain actions together — type, press keys, wait for clicks, open URLs.</p></div>
+</div>
+<h2>Quick start</h2>
+<ol class="steps">
+  <li><p>Click the <strong>Trigr icon</strong> in the system tray (bottom right of taskbar) to open the app</p></li>
+  <li><p>Click <kbd>Ctrl</kbd> in the modifier bar above the keyboard</p></li>
+  <li><p>Click any key — e.g. <kbd>E</kbd> — to select the Ctrl+E combination</p></li>
+  <li><p>Choose an action type in the right panel and fill in the details</p></li>
+  <li><p>Click <strong>Assign to Key</strong> — the key gains an amber dot</p></li>
+  <li><p>Press <kbd>Ctrl</kbd>+<kbd>E</kbd> in any application — your macro fires!</p></li>
+</ol>
+<div class="callout tip"><div class="ct">System tray</div><p>Closing the Trigr window does not stop it — it keeps running in the background. Click the tray icon to reopen. The status bar shows <strong>Macros Active</strong> with a green dot when running.</p></div>
+</div>
+
+<!-- ═══ INTERFACE ═══ -->
+<div id="interface" class="page">
+<div class="ph"><h1>The Interface</h1><p class="lead">Trigr has four main areas: the title bar with profiles, the assignments sidebar, the keyboard canvas, and the action panel.</p></div>
+
+<div class="kf" data-theme="light" id="ui-interface">
+  <div class="kf-tb">
+    <div class="kf-tb-left">
+      <div class="kf-logo">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg>
+        <span class="kf-logo-name">Trigr</span>
+      </div>
+      <div class="kf-tb-div"></div>
+      <div class="kf-area-tabs">
+        <button class="kf-area-tab active">Mapping</button>
+        <button class="kf-area-tab">✦ Text Expansions</button>
+      </div>
+      <div class="kf-tb-div"></div>
+      <div class="kf-ptabs">
+        <div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div>
+        <div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div>
+        <div class="kf-ptg"><button class="kf-pt">Front<span class="kf-pt-dot"></span></button></div>
+        <button class="kf-pt add">+</button>
+      </div>
+    </div>
+    <div class="kf-tb-right">
+      <div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div>
+      <button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      <div class="kf-wcs">
+        <button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button>
+        <button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>
+        <button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      </div>
+    </div>
+  </div>
+  <div class="kf-body">
+    <div class="kf-sb">
+      <div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">2</span></div>
+      <div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">ALT</button></div>
+      <div class="kf-sb-list">
+        <div class="kf-sb-group active">
+          <div class="kf-sb-gh"><span class="kf-sb-mk">Alt</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk">key</span><span class="kf-sb-gc">2</span></div>
+          <div class="kf-sb-item ap"><span class="kf-sb-badge">` </span><div class="kf-sb-info"><div class="kf-sb-label">Node Calcs</div><div class="kf-sb-type">Open App</div></div></div>
+          <div class="kf-sb-item mc"><span class="kf-sb-badge">F5</span><div class="kf-sb-info"><div class="kf-sb-label">Draw Pline</div><div class="kf-sb-type">Macro</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="kf-main" style="min-height:644px">
+      <div class="kf-vs"><button class="kf-vs-btn active">⌨ Keyboard</button><button class="kf-vs-btn">🖱 Mouse</button></div>
+      <div class="kf-mbar">
+        <span class="kf-mbar-lbl">Modifier Layer</span>
+        <div class="kf-mbar-keys">
+          <button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button>
+          <button class="kf-mmod" style="--mc:#c864ff">Alt</button>
+          <button class="kf-mmod" style="--mc:#50c878">Shift</button>
+          <button class="kf-mmod" style="--mc:#ffc832">⊞ Win</button>
+        </div>
+        <span class="kf-combo-hint">↑ Select 1–3 modifiers to view that hotkey layer</span>
+      </div>
+      <div class="kf-kb-lbl">Select modifier keys above, then click a key to assign a hotkey</div>
+      <div class="kf-kb-outer" id="kb-interface"></div>
+    </div>
+    <div class="kf-rp">
+      <div class="kf-rp-hd"><div class="kf-rp-title"><span>Action</span></div></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;text-align:center;gap:8px">
+        <svg width="40" height="40" viewBox="0 0 32 32" fill="none" style="opacity:0.2"><rect x="2" y="5" width="9" height="6" rx="2" stroke="#8a8799" stroke-width="1.5"/><rect x="13" y="5" width="6" height="6" rx="2" stroke="#8a8799" stroke-width="1.5"/><rect x="21" y="5" width="9" height="6" rx="2" stroke="#8a8799" stroke-width="1.5"/><rect x="2" y="15" width="6" height="6" rx="2" stroke="#8a8799" stroke-width="1.5"/><rect x="10" y="15" width="20" height="6" rx="2" stroke="#8a8799" stroke-width="1.5"/></svg>
+        <h3 style="font-family:var(--font-display);font-size:14px;color:var(--text-secondary);letter-spacing:0.04em;font-weight:600">Select a Key</h3>
+        <p style="font-size:11px;color:var(--text-muted);line-height:1.6;margin:0">Choose a modifier layer, then click any keyboard key to assign a macro.</p>
+      </div>
+    </div>
+  </div>
+  <div class="kf-sbar">
+    <div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">·</span><span class="kf-si">2 assigned</span></div>
+    <div class="kf-sbar-r"><span class="kf-chip">⬤ Listener</span><span class="kf-chip">⬤ Executor</span><span class="kf-ver">Trigr v1.0</span></div>
+  </div>
+</div>
+
+<h3>Title bar — profiles</h3>
+<p>Profile tabs across the top. Active profile highlighted in amber. Linked-app profiles show a coloured dot. Click <strong>+</strong> to add a new profile. Double-click to rename, right-click for more options.</p>
+<h3>Assignments sidebar</h3>
+<p>Left panel shows all assignments grouped by modifier layer. Click any item to jump to editing it. The sidebar auto-resets to "All" when you switch profiles.</p>
+<h3>Modifier bar</h3>
+<p>Toggle <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>Win</kbd> to select the hotkey layer. The keyboard is dimmed until at least one modifier is active.</p>
+<h3>Action panel</h3>
+<p>Opens on the right when you click a key. Shows the action type grid and all form fields for that assignment.</p>
+<h3>Status bar</h3>
+<p>Bottom bar shows macros active state, assignment count, and the Listener/Executor engine indicators — both should show green when the engine is running.</p>
+</div>
+
+<!-- ═══ HK OVERVIEW ═══ -->
+<div id="hk-overview" class="page">
+<div class="ph"><h1>Hotkeys</h1><p class="lead">A hotkey is a modifier+key combination that triggers an action. Press Ctrl+E and your email signature types itself. Press Alt+Backquote and your CAD app launches.</p></div>
+<h2>Modifier combinations</h2>
+<table class="gt">
+  <thead><tr><th>Modifier(s)</th><th>Example</th><th>Common use</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge gold">Ctrl</span></td><td>Ctrl+E</td><td>Type text, open URLs</td></tr>
+    <tr><td><span class="badge purple">Alt</span></td><td>Alt+Backquote</td><td>Open specific applications</td></tr>
+    <tr><td><span class="badge green">Shift</span></td><td>Shift+F5</td><td>Run macro sequences</td></tr>
+    <tr><td><span class="badge blue">Win</span></td><td>Win+E</td><td>Open folders</td></tr>
+    <tr><td><span class="badge gold">Ctrl</span>+<span class="badge purple">Alt</span></td><td>Ctrl+Alt+Q</td><td>Complex CAD commands</td></tr>
+    <tr><td><span class="badge gold">Ctrl</span>+<span class="badge green">Shift</span></td><td>Ctrl+Shift+E</td><td>Alternative email template</td></tr>
+  </tbody>
+</table>
+<h2>Action types</h2>
+<div class="fc-grid">
+  <div class="fc"><div class="fc-ic">✦</div><h4>Type Text</h4><p>Types any text at the cursor — plain or formatted.</p></div>
+  <div class="fc"><div class="fc-ic">⌨</div><h4>Send Hotkey</h4><p>Fires a different key combo — remap shortcuts.</p></div>
+  <div class="fc"><div class="fc-ic">⬡</div><h4>Open App</h4><p>Launches any application or file.</p></div>
+  <div class="fc"><div class="fc-ic">⊕</div><h4>Open URL</h4><p>Opens a website in your browser.</p></div>
+  <div class="fc"><div class="fc-ic">📁</div><h4>Open Folder</h4><p>Opens a folder in File Explorer.</p></div>
+  <div class="fc"><div class="fc-ic">◈</div><h4>Macro Sequence</h4><p>Chains multiple actions in order.</p></div>
+</div>
+</div>
+
+<!-- ═══ HK CREATE ═══ -->
+<div id="hk-create" class="page">
+<div class="ph"><h1>Creating a hotkey</h1><p class="lead">Select a modifier, click a key, configure the action. Same process for all action types.</p></div>
+
+<div class="kf" data-theme="light" id="ui-create">
+  <div class="kf-tb">
+    <div class="kf-tb-left">
+      <div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div>
+      <div class="kf-tb-div"></div>
+      <div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">✦ Text Expansions</button></div>
+      <div class="kf-tb-div"></div>
+      <div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div>
+    </div>
+    <div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div>
+  </div>
+  <div class="kf-body">
+    <div class="kf-sb">
+      <div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">1</span></div>
+      <div class="kf-sb-tabs"><button class="kf-sb-tab">ALL</button><button class="kf-sb-tab active">ALT</button></div>
+      <div class="kf-sb-list">
+        <div class="kf-sb-group active">
+          <div class="kf-sb-gh"><span class="kf-sb-mk">Alt</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk">key</span><span class="kf-sb-gc">1</span></div>
+          <div class="kf-sb-item ap active"><span class="kf-sb-badge">` </span><div class="kf-sb-info"><div class="kf-sb-label">Node Calcs</div><div class="kf-sb-type">Open App</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="kf-main" style="min-height:644px">
+      <div class="kf-vs"><button class="kf-vs-btn active">⌨ Keyboard</button><button class="kf-vs-btn">🖱 Mouse</button></div>
+      <div class="kf-mbar">
+        <span class="kf-mbar-lbl">Modifier Layer</span>
+        <div class="kf-mbar-keys">
+          <button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button>
+          <button class="kf-mmod active" style="--mc:#c864ff">Alt</button>
+          <button class="kf-mmod" style="--mc:#50c878">Shift</button>
+          <button class="kf-mmod" style="--mc:#ffc832">⊞ Win</button>
+        </div>
+        <div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck">Alt</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd></div>
+      </div>
+      <div class="kf-kb-lbl">Assigning: <strong>Alt + Backquote</strong></div>
+      <div class="kf-kb-outer" id="kb-create"></div>
+    </div>
+    <div class="kf-rp">
+      <div class="kf-rp-hd">
+        <div class="kf-rp-title"><span class="kf-rp-mbadge">Alt</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">` </span></div>
+        <button class="kf-rp-x">✕</button>
+      </div>
+      <div class="kf-rp-body">
+        <div class="kf-tg">
+          <button class="kf-tb2 kf-tc-tt"><span class="kf-tb2-ic">✦</span><span class="kf-tb2-lbl">Type Text</span></button>
+          <button class="kf-tb2 kf-tc-hk"><span class="kf-tb2-ic">⌨</span><span class="kf-tb2-lbl">Send Hotkey</span></button>
+          <button class="kf-tb2 kf-tc-ap active"><span class="kf-tb2-ic">⬡</span><span class="kf-tb2-lbl">Open App</span></button>
+          <button class="kf-tb2 kf-tc-ur"><span class="kf-tb2-ic">⊕</span><span class="kf-tb2-lbl">Open URL</span></button>
+          <button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">📁</span><span class="kf-tb2-lbl">Open Folder</span></button>
+          <button class="kf-tb2 kf-tc-mc"><span class="kf-tb2-ic">◈</span><span class="kf-tb2-lbl">Macro Sequence</span></button>
+        </div>
+        <div class="kf-fsec"><div class="kf-fl">Application Path</div><div class="kf-frow"><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:11px;color:var(--text-secondary)">C:\Users\You\Downloads\NodeCalcs.exe</div><button class="kf-fbrowse">Browse…</button></div></div>
+        <div class="kf-fsec"><div class="kf-fl">Display Label <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">Node Calcs</div></div>
+        <div class="kf-fhint">Enter the full path to the .exe or any file to open</div>
+      </div>
+      <div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Update</button></div>
+    </div>
+  </div>
+  <div class="kf-sbar">
+    <div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">·</span><span class="kf-si">1 assigned</span><span class="kf-ssep">·</span><span class="kf-si">Layer: <strong>Alt</strong></span><span class="kf-ssep">·</span><span class="kf-si">Editing: <strong>Alt+`</strong></span></div>
+    <div class="kf-sbar-r"><span class="kf-chip">⬤ Listener</span><span class="kf-chip">⬤ Executor</span><span class="kf-ver">Trigr v1.0</span></div>
+  </div>
+</div>
+
+<ol class="steps">
+  <li><p>Click a modifier button above the keyboard — e.g. <kbd>Ctrl</kbd> for the Ctrl layer, or <kbd>Alt</kbd> for the Alt layer</p></li>
+  <li><p>Click the key to assign on the visual keyboard. Keys with an amber dot are already assigned on this layer.</p></li>
+  <li><p>Choose your action type from the grid in the right panel</p></li>
+  <li><p>Fill in the required fields for that action type</p></li>
+  <li><p>Optionally add a <strong>Display Label</strong> — shown in the sidebar. Auto-generated if left blank.</p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+<div class="callout tip"><div class="ct">Editing, reassigning, duplicating</div><p>Click any assigned key (amber dot) to edit it. Use <strong>Reassign</strong> in the panel header to move the assignment to a different key combo without recreating it. Use <strong>Duplicate</strong> to copy it to a new hotkey.</p></div>
+</div>
+
+<!-- ═══ HK TEXT ═══ -->
+<div id="hk-text" class="page">
+<div class="ph"><h1>Type Text</h1><p class="lead">Instantly types any text at your cursor when the hotkey is pressed.</p></div>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">2</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">Ctrl</button></div><div class="kf-sb-list"><div class="kf-sb-group active"><div class="kf-sb-gh"><span class="kf-sb-mk" style="color:var(--accent)">Ctrl</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk" style="color:var(--accent)">key</span><span class="kf-sb-gc">2</span></div><div class="kf-sb-item tt active"><span class="kf-sb-badge">E</span><div class="kf-sb-info"><div class="kf-sb-label">Email Signature</div><div class="kf-sb-type">Type Text</div></div></div><div class="kf-sb-item ur"><span class="kf-sb-badge">G</span><div class="kf-sb-info"><div class="kf-sb-label">Open Gmail</div><div class="kf-sb-type">Open URL</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn active">&#x2328; Keyboard</button><button class="kf-vs-btn">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod active" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod" style="--mc:#c864ff">Alt</button><button class="kf-mmod" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button></div><div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck">Ctrl</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd></div></div><div class="kf-kb-lbl">Assigning: <strong>Ctrl + E</strong></div><div class="kf-kb-outer" id="kb-hktext"></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span class="kf-rp-mbadge">Ctrl</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">E</span></div><div style="display:flex;gap:5px;align-items:center"><button style="height:22px;padding:0 8px;font-size:10px;border:1px solid var(--border-bright);border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer;font-family:var(--font-body)">&#x2194; Reassign</button><button class="kf-rp-x">&#x2715;</button></div></div><div class="kf-rp-body"><div class="kf-tg"><button class="kf-tb2 kf-tc-tt active"><span class="kf-tb2-ic">&#x2736;</span><span class="kf-tb2-lbl">Type Text</span></button><button class="kf-tb2 kf-tc-hk"><span class="kf-tb2-ic">&#x2328;</span><span class="kf-tb2-lbl">Send Hotkey</span></button><button class="kf-tb2 kf-tc-ap"><span class="kf-tb2-ic">&#x2B21;</span><span class="kf-tb2-lbl">Open App</span></button><button class="kf-tb2 kf-tc-ur"><span class="kf-tb2-ic">&#x2295;</span><span class="kf-tb2-lbl">Open URL</span></button><button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">&#x1F4C1;</span><span class="kf-tb2-lbl">Open Folder</span></button><button class="kf-tb2 kf-tc-mc"><span class="kf-tb2-ic">&#x25C8;</span><span class="kf-tb2-lbl">Macro Sequence</span></button></div><div class="kf-fsec"><div class="kf-fl">Text to type</div><textarea class="kf-fta" rows="5" readonly>Kind regards,&#10;&#10;Your Name&#10;your.email@company.com&#10;+44 7700 900000</textarea></div><div class="kf-fsec"><div class="kf-fl">Display Label <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">Email Signature</div></div></div><div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Update</button></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">2 assigned</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Layer: <strong>Ctrl</strong></span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Editing: <strong>Ctrl+E</strong></span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<ol class="steps">
+  <li><p>Select a modifier layer and click a key</p></li>
+  <li><p>Select <span class="badge gold">Type Text</span> from the action grid</p></li>
+  <li><p>Type your text in the replacement field. Multi-line is supported — press Enter for new lines.</p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+<div class="callout tip"><div class="ct">CAD and specialist software</div><p>If text is not appearing correctly in an application like BricsCAD, go to <strong>Settings → Compatibility</strong> and switch to <strong>Direct Keystrokes</strong> mode. This works with most CAD programs out of the box.</p></div>
+</div>
+
+<!-- ═══ HK SENDKEY ═══ -->
+<div id="hk-sendkey" class="page">
+<div class="ph"><h1>Send Hotkey</h1><p class="lead">Fires a different key combination when your hotkey is pressed — remap shortcuts, create easier alternatives to complex combos.</p></div>
+
+<div class="kf" data-theme="light">
+  <div class="kf-tb">
+    <div class="kf-tb-left">
+      <div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div>
+      <div class="kf-tb-div"></div>
+      <div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div>
+    </div>
+    <div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div></div>
+  </div>
+  <div class="kf-body" style="min-height:644px">
+    <div class="kf-sb">
+      <div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">2</span></div>
+      <div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">CTRL</button></div>
+      <div class="kf-sb-list">
+        <div class="kf-sb-group active">
+          <div class="kf-sb-gh"><span class="kf-sb-mk">Ctrl</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk">key</span><span class="kf-sb-gc">2</span></div>
+          <div class="kf-sb-item hk active"><span class="kf-sb-badge">1</span><div class="kf-sb-info"><div class="kf-sb-label">Reopen Tab</div><div class="kf-sb-type">Send Hotkey</div></div></div>
+          <div class="kf-sb-item hk"><span class="kf-sb-badge">Q</span><div class="kf-sb-info"><div class="kf-sb-label">Close Window</div><div class="kf-sb-type">Send Hotkey</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="kf-main" style="min-height:644px;justify-content:center">
+      <div class="kf-mbar" style="max-width:440px">
+        <span class="kf-mbar-lbl">Modifier Layer</span>
+        <div class="kf-mbar-keys">
+          <button class="kf-mmod active" style="--mc:#64b4ff">Ctrl</button>
+          <button class="kf-mmod" style="--mc:#c864ff">Alt</button>
+          <button class="kf-mmod" style="--mc:#50c878">Shift</button>
+          <button class="kf-mmod" style="--mc:#ffc832">⊞ Win</button>
+        </div>
+        <div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck">Ctrl</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd></div>
+      </div>
+      <div class="kf-kb-lbl">Assigning: <strong>Ctrl + 1</strong></div>
+      <div class="kf-kb-outer" id="kb-sendkey"></div>
+    </div>
+    <div class="kf-rp">
+      <div class="kf-rp-hd">
+        <div class="kf-rp-title"><span class="kf-rp-mbadge">Ctrl</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">1</span></div>
+        <button class="kf-rp-x">✕</button>
+      </div>
+      <div class="kf-rp-body">
+        <div class="kf-tg">
+          <button class="kf-tb2 kf-tc-tt"><span class="kf-tb2-ic">✦</span><span class="kf-tb2-lbl">Type Text</span></button>
+          <button class="kf-tb2 kf-tc-hk active"><span class="kf-tb2-ic">⌨</span><span class="kf-tb2-lbl">Send Hotkey</span></button>
+          <button class="kf-tb2 kf-tc-ap"><span class="kf-tb2-ic">⬡</span><span class="kf-tb2-lbl">Open App</span></button>
+          <button class="kf-tb2 kf-tc-ur"><span class="kf-tb2-ic">⊕</span><span class="kf-tb2-lbl">Open URL</span></button>
+          <button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">📁</span><span class="kf-tb2-lbl">Open Folder</span></button>
+          <button class="kf-tb2 kf-tc-mc"><span class="kf-tb2-ic">◈</span><span class="kf-tb2-lbl">Macro Sequence</span></button>
+        </div>
+        <div class="kf-fsec"><div class="kf-fl">Modifier keys to send</div><div class="kf-mg"><button class="kf-mt active">Ctrl</button><button class="kf-mt">Alt</button><button class="kf-mt active">Shift</button><button class="kf-mt">Win</button></div></div>
+        <div class="kf-fsec"><div class="kf-fl">Key to send</div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">T</div></div>
+        <div class="kf-hkprev"><span class="kf-hkprev-lbl">Preview:</span><kbd>Ctrl</kbd><span class="kf-hk-plus">+</span><kbd>Shift</kbd><span class="kf-hk-plus">+</span><kbd>T</kbd></div>
+        <div class="kf-fsec"><div class="kf-fl">Display Label <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">Reopen Tab</div></div>
+      </div>
+      <div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Assign to Key</button></div>
+    </div>
+  </div>
+  <div class="kf-sbar">
+    <div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">·</span><span class="kf-si">2 assigned</span><span class="kf-ssep">·</span><span class="kf-si">Editing: <strong>Ctrl+1</strong></span></div>
+    <div class="kf-sbar-r"><span class="kf-chip">⬤ Listener</span><span class="kf-chip">⬤ Executor</span><span class="kf-ver">Trigr v1.0</span></div>
+  </div>
+</div>
+
+<ol class="steps">
+  <li><p>Select <span class="badge purple">Send Hotkey</span> from the action grid</p></li>
+  <li><p>Toggle the modifier keys to send (Ctrl, Alt, Shift, Win) using the buttons in the form</p></li>
+  <li><p>Select the target key from the dropdown</p></li>
+  <li><p>A preview shows the full combination — e.g. <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd></p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+<table class="gt">
+  <thead><tr><th>Press this</th><th>Sends this</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td><td>Reopen last closed tab in browser</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Q</kbd></td><td><kbd>Alt</kbd>+<kbd>F4</kbd></td><td>Close current window</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══ HK APP ═══ -->
+<div id="hk-app" class="page">
+<div class="ph"><h1>Open App / Open Folder</h1><p class="lead">Launch any application, file or folder with a single hotkey.</p></div>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><div class="kf-ptg"><button class="kf-pt">Photoshop<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">2</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">Alt</button></div><div class="kf-sb-list"><div class="kf-sb-group active"><div class="kf-sb-gh"><span class="kf-sb-mk" style="color:var(--accent)">Alt</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk" style="color:var(--accent)">key</span><span class="kf-sb-gc">2</span></div><div class="kf-sb-item ap active"><span class="kf-sb-badge">` </span><div class="kf-sb-info"><div class="kf-sb-label">Node Calcs</div><div class="kf-sb-type">Open App</div></div></div><div class="kf-sb-item ur"><span class="kf-sb-badge">G</span><div class="kf-sb-info"><div class="kf-sb-label">Open Gmail</div><div class="kf-sb-type">Open URL</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn active">&#x2328; Keyboard</button><button class="kf-vs-btn">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod active" style="--mc:#c864ff">Alt</button><button class="kf-mmod" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button></div><div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck">Alt</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd></div></div><div class="kf-kb-lbl">Assigning: <strong>Alt + ` </strong></div><div class="kf-kb-outer" id="kb-hkapp"></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span class="kf-rp-mbadge">Alt</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">` </span></div><div style="display:flex;gap:5px;align-items:center"><button style="height:22px;padding:0 8px;font-size:10px;border:1px solid var(--border-bright);border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer;font-family:var(--font-body)">&#x2194; Reassign</button><button class="kf-rp-x">&#x2715;</button></div></div><div class="kf-rp-body"><div class="kf-tg"><button class="kf-tb2 kf-tc-tt"><span class="kf-tb2-ic">&#x2736;</span><span class="kf-tb2-lbl">Type Text</span></button><button class="kf-tb2 kf-tc-hk"><span class="kf-tb2-ic">&#x2328;</span><span class="kf-tb2-lbl">Send Hotkey</span></button><button class="kf-tb2 kf-tc-ap active"><span class="kf-tb2-ic">&#x2B21;</span><span class="kf-tb2-lbl">Open App</span></button><button class="kf-tb2 kf-tc-ur"><span class="kf-tb2-ic">&#x2295;</span><span class="kf-tb2-lbl">Open URL</span></button><button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">&#x1F4C1;</span><span class="kf-tb2-lbl">Open Folder</span></button><button class="kf-tb2 kf-tc-mc"><span class="kf-tb2-ic">&#x25C8;</span><span class="kf-tb2-lbl">Macro Sequence</span></button></div><div class="kf-fsec"><div class="kf-fl">Application Path</div><div class="kf-frow"><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:11px;color:var(--text-secondary)">C:\Program Files\NodeCalcs\nc.exe</div><button class="kf-fbrowse">Browse&#x2026;</button></div><div class="kf-fhint">Browse to any .exe or file &#8212; Trigr opens it in its default application.</div></div><div class="kf-fsec"><div class="kf-fl">Display Label <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">Node Calcs</div></div></div><div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Update</button></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">2 assigned</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Layer: <strong>Alt</strong></span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Editing: <strong>Alt+` </strong></span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<h2>Open App</h2>
+<ol class="steps">
+  <li><p>Select <span class="badge green">Open App</span> from the action grid</p></li>
+  <li><p>Click <strong>Browse</strong> and navigate to the <code>.exe</code> file</p></li>
+  <li><p>Optionally add a Display Name — e.g. "BricsCAD"</p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+<div class="callout info"><div class="ct">Opening files directly</div><p>Browse to any file — not just .exe files. Trigr opens it in its default application. Useful for frequently accessed spreadsheets, PDFs or project files.</p></div>
+<h2>Open Folder</h2>
+<ol class="steps">
+  <li><p>Select <span class="badge green">Open Folder</span> from the action grid</p></li>
+  <li><p>Click <strong>Browse</strong> and select a folder</p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+</div>
+
+<!-- ═══ HK URL ═══ -->
+<div id="hk-url" class="page">
+<div class="ph"><h1>Open URL</h1><p class="lead">Open any website in your default browser with a single hotkey.</p></div>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">2</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">Ctrl</button></div><div class="kf-sb-list"><div class="kf-sb-group active"><div class="kf-sb-gh"><span class="kf-sb-mk" style="color:var(--accent)">Ctrl</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk" style="color:var(--accent)">key</span><span class="kf-sb-gc">2</span></div><div class="kf-sb-item tt"><span class="kf-sb-badge">E</span><div class="kf-sb-info"><div class="kf-sb-label">Email Signature</div><div class="kf-sb-type">Type Text</div></div></div><div class="kf-sb-item ur active"><span class="kf-sb-badge">G</span><div class="kf-sb-info"><div class="kf-sb-label">Open Gmail</div><div class="kf-sb-type">Open URL</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn active">&#x2328; Keyboard</button><button class="kf-vs-btn">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod active" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod" style="--mc:#c864ff">Alt</button><button class="kf-mmod" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button></div><div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck">Ctrl</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd></div></div><div class="kf-kb-lbl">Assigning: <strong>Ctrl + G</strong></div><div class="kf-kb-outer" id="kb-hkurl"></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span class="kf-rp-mbadge">Ctrl</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">G</span></div><div style="display:flex;gap:5px;align-items:center"><button style="height:22px;padding:0 8px;font-size:10px;border:1px solid var(--border-bright);border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer;font-family:var(--font-body)">&#x2194; Reassign</button><button class="kf-rp-x">&#x2715;</button></div></div><div class="kf-rp-body"><div class="kf-tg"><button class="kf-tb2 kf-tc-tt"><span class="kf-tb2-ic">&#x2736;</span><span class="kf-tb2-lbl">Type Text</span></button><button class="kf-tb2 kf-tc-hk"><span class="kf-tb2-ic">&#x2328;</span><span class="kf-tb2-lbl">Send Hotkey</span></button><button class="kf-tb2 kf-tc-ap"><span class="kf-tb2-ic">&#x2B21;</span><span class="kf-tb2-lbl">Open App</span></button><button class="kf-tb2 kf-tc-ur active"><span class="kf-tb2-ic">&#x2295;</span><span class="kf-tb2-lbl">Open URL</span></button><button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">&#x1F4C1;</span><span class="kf-tb2-lbl">Open Folder</span></button><button class="kf-tb2 kf-tc-mc"><span class="kf-tb2-ic">&#x25C8;</span><span class="kf-tb2-lbl">Macro Sequence</span></button></div><div class="kf-fsec"><div class="kf-fl">URL</div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">https://mail.google.com</div></div><div class="kf-fsec"><div class="kf-fl">Display Label <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">Gmail</div></div></div><div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Assign to Key</button></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">2 assigned</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Layer: <strong>Ctrl</strong></span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Editing: <strong>Ctrl+G</strong></span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<ol class="steps">
+  <li><p>Select <span class="badge blue">Open URL</span> from the action grid</p></li>
+  <li><p>Type or paste the full URL including <code>https://</code></p></li>
+  <li><p>Optionally add a display name — e.g. "Gmail"</p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+</div>
+
+<!-- ═══ HK MACRO ═══ -->
+<div id="hk-macro" class="page">
+<div class="ph"><h1>Macro Sequence</h1><p class="lead">Chain multiple actions together into a single hotkey — type text, press keys, wait for input, open URLs — executed in order.</p></div>
+<table class="gt">
+  <thead><tr><th>Step type</th><th>What it does</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge gold">Type Text</span></td><td>Types text at the cursor</td><td><code>pline</code></td></tr>
+    <tr><td><span class="badge purple">Press Key</span></td><td>Presses a key or key combo</td><td><code>Enter</code></td></tr>
+    <tr><td><span class="badge blue">Wait (ms)</span></td><td>Pauses for milliseconds</td><td><code>500</code></td></tr>
+    <tr><td><span class="badge green">Open URL</span></td><td>Opens a URL mid-sequence</td><td><code>https://...</code></td></tr>
+    <tr><td><span class="badge red">Wait for Input</span></td><td>Pauses until user clicks or presses a key</td><td>Left Click — Press &amp; Release</td></tr>
+  </tbody>
+</table>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">BricsCAD<span class="kf-pt-dot"></span></button></div><div class="kf-ptg"><button class="kf-pt">Default<span class="kf-pt-gdot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">3</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">Shift</button></div><div class="kf-sb-list"><div class="kf-sb-group active"><div class="kf-sb-gh"><span class="kf-sb-mk" style="color:var(--accent)">Shift</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk" style="color:var(--accent)">key</span><span class="kf-sb-gc">3</span></div><div class="kf-sb-item mc active"><span class="kf-sb-badge">F5</span><div class="kf-sb-info"><div class="kf-sb-label">Draw Pline</div><div class="kf-sb-type">Macro</div></div></div><div class="kf-sb-item mc"><span class="kf-sb-badge">F6</span><div class="kf-sb-info"><div class="kf-sb-label">Hatch Fill</div><div class="kf-sb-type">Macro</div></div></div><div class="kf-sb-item mc"><span class="kf-sb-badge">F7</span><div class="kf-sb-info"><div class="kf-sb-label">Mirror Sel.</div><div class="kf-sb-type">Macro</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn active">&#x2328; Keyboard</button><button class="kf-vs-btn">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod" style="--mc:#c864ff">Alt</button><button class="kf-mmod active" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button></div><div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck">Shift</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd></div></div><div class="kf-kb-lbl">Assigning: <strong>Shift + F5</strong></div><div class="kf-kb-outer" id="kb-hkmacro"></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span class="kf-rp-mbadge">Shift</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">F5</span></div><div style="display:flex;gap:5px;align-items:center"><button style="height:22px;padding:0 8px;font-size:10px;border:1px solid var(--border-bright);border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer;font-family:var(--font-body)">&#x2194; Reassign</button><button class="kf-rp-x">&#x2715;</button></div></div><div class="kf-rp-body"><div class="kf-tg"><button class="kf-tb2 kf-tc-tt"><span class="kf-tb2-ic">&#x2736;</span><span class="kf-tb2-lbl">Type Text</span></button><button class="kf-tb2 kf-tc-hk"><span class="kf-tb2-ic">&#x2328;</span><span class="kf-tb2-lbl">Send Hotkey</span></button><button class="kf-tb2 kf-tc-ap"><span class="kf-tb2-ic">&#x2B21;</span><span class="kf-tb2-lbl">Open App</span></button><button class="kf-tb2 kf-tc-ur"><span class="kf-tb2-ic">&#x2295;</span><span class="kf-tb2-lbl">Open URL</span></button><button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">&#x1F4C1;</span><span class="kf-tb2-lbl">Open Folder</span></button><button class="kf-tb2 kf-tc-mc active"><span class="kf-tb2-ic">&#x25C8;</span><span class="kf-tb2-lbl">Macro Sequence</span></button></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div class="kf-fl" style="margin:0">Steps</div><select style="background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:4px;color:var(--text-secondary);font-size:10px;padding:2px 6px;font-family:var(--font-body)"><option>Direct Keystrokes</option></select></div><div class="kf-steps"><div class="kf-step"><span class="kf-step-num">1</span><span class="kf-step-badge tt">Type Text</span><span class="kf-step-val">pline</span><button class="kf-step-rm">&#xD7;</button></div><div class="kf-step"><span class="kf-step-num">2</span><span class="kf-step-badge pk">Press Key</span><span class="kf-step-val">Enter</span><button class="kf-step-rm">&#xD7;</button></div><div class="kf-step"><span class="kf-step-num">3</span><span class="kf-step-badge wi">Wait for Input</span><span class="kf-step-val" style="font-size:10px">Left Click &#8212; Press &amp; Release</span><button class="kf-step-rm">&#xD7;</button></div><div class="kf-step"><span class="kf-step-num">4</span><span class="kf-step-badge tt">Type Text</span><span class="kf-step-val">close</span><button class="kf-step-rm">&#xD7;</button></div><div class="kf-step"><span class="kf-step-num">5</span><span class="kf-step-badge pk">Press Key</span><span class="kf-step-val">Enter</span><button class="kf-step-rm">&#xD7;</button></div></div><button class="kf-add-step">+ Add Step</button></div><div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Assign to Key</button></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">3 assigned</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Profile: <strong>BricsCAD</strong></span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Editing: <strong>Shift+F5</strong></span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<ol class="steps">
+  <li><p>Select <span class="badge red">Macro Sequence</span> from the action grid</p></li>
+  <li><p>Click <strong>+ Add Step</strong> to add your first step</p></li>
+  <li><p>Choose the step type from the dropdown and enter the value</p></li>
+  <li><p>Keep adding steps. Drag the <strong>⠿</strong> handle on the left to reorder.</p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+<div class="callout tip"><div class="ct">CAD example — draw pline then wait for click</div><p>Step 1: Type Text → <code>pline</code> &nbsp;·&nbsp; Step 2: Press Key → <code>Enter</code> &nbsp;·&nbsp; Step 3: Wait for Input → Left Click &nbsp;·&nbsp; Step 4: Type Text → <code>close</code> &nbsp;·&nbsp; Step 5: Press Key → <code>Enter</code></p></div>
+<div class="callout tip"><div class="ct">Input method for CAD</div><p>Set the input method dropdown at the top of the sequence form to <strong>Direct Keystrokes</strong> for use in BricsCAD and most engineering applications.</p></div>
+</div>
+
+<!-- ═══ HK MOUSE ═══ -->
+<div id="hk-mouse" class="page">
+<div class="ph"><h1>Mouse Buttons</h1><p class="lead">Assign macros to mouse buttons — Middle Click, Back, Forward, and extra buttons on gaming mice. Switch to the Mouse view using the toggle above the keyboard.</p></div>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">2</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">MOUSE</button></div><div class="kf-sb-list"><div class="kf-sb-group active"><div class="kf-sb-gh"><span class="kf-sb-mk" style="color:var(--accent)">Mouse</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk" style="color:var(--accent)">key</span><span class="kf-sb-gc">2</span></div><div class="kf-sb-item hk active"><span class="kf-sb-badge">Back</span><div class="kf-sb-info"><div class="kf-sb-label">Undo</div><div class="kf-sb-type">Send Hotkey</div></div></div><div class="kf-sb-item hk"><span class="kf-sb-badge">Fwd</span><div class="kf-sb-info"><div class="kf-sb-label">Redo</div><div class="kf-sb-type">Send Hotkey</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn">&#x2328; Keyboard</button><button class="kf-vs-btn active">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod" style="--mc:#c864ff">Alt</button><button class="kf-mmod" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button></div><span class="kf-combo-hint">Hold a modifier then click a button for a layered assignment</span></div><div style="display:flex;gap:28px;align-items:flex-start;margin-top:16px;padding:0 8px"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:100px;background:var(--bg-elevated);border:2px solid var(--border-bright);border-radius:48px 48px 30px 30px;overflow:hidden"><div style="display:flex"><div style="flex:1;background:var(--key-bg);border-right:1px solid var(--border-bright);padding:12px 5px;text-align:center;font-size:9px;color:var(--text-muted);min-height:44px;display:flex;align-items:center;justify-content:center">L</div><div style="width:18px;background:var(--bg-active);display:flex;align-items:center;justify-content:center"><div style="width:8px;height:18px;background:var(--border-bright);border-radius:4px;border:1px solid var(--border-accent)"></div></div><div style="flex:1;background:var(--key-bg);border-left:1px solid var(--border-bright);padding:12px 5px;text-align:center;font-size:9px;color:var(--text-muted);min-height:44px;display:flex;align-items:center;justify-content:center">R</div></div><div style="background:var(--bg-elevated);border-top:1px solid var(--border);padding:6px 8px;display:flex;justify-content:center"><div style="background:rgba(100,180,255,0.12);border:1px solid rgba(100,180,255,0.35);border-radius:4px;padding:3px 10px;font-size:9px;color:#64b4ff;font-weight:700;font-family:var(--font-display)">Middle</div></div><div style="display:flex;gap:5px;padding:6px 8px;border-top:1px solid var(--border);justify-content:center"><div style="background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:4px;padding:3px 8px;font-size:8px;color:var(--accent);font-weight:700;font-family:var(--font-display)">&#x25C4; Back</div><div style="background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:4px;padding:3px 8px;font-size:8px;color:var(--text-muted);font-weight:700;font-family:var(--font-display)">Fwd &#x25BA;</div></div><div style="padding:5px 8px;border-top:1px solid var(--border);display:flex;justify-content:center;gap:4px"><div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:8px;color:var(--text-muted);font-family:var(--font-display);font-weight:600">X1</div><div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:8px;color:var(--text-muted);font-family:var(--font-display);font-weight:600">X2</div><div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:8px;color:var(--text-muted);font-family:var(--font-display);font-weight:600">X3</div></div></div><div style="font-size:9px;color:var(--text-muted)">Back selected (amber)</div></div><div style="display:flex;flex-direction:column;gap:10px;padding-top:6px"><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted)">Button Support</div><div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--text-secondary)"><div>Left / Right Click <span style="color:var(--text-muted);font-size:10px">&#8212; use with modifier only</span></div><div style="color:#64b4ff">Middle Click</div><div style="color:var(--accent)">&#x25C4; Back / Forward &#x25BA;</div><div>X1&#8211;X5 <span style="color:var(--text-muted);font-size:10px">&#8212; gaming mouse extra buttons</span></div></div><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-top:6px">With Modifiers</div><div style="font-size:11px;color:var(--text-secondary);line-height:1.55;max-width:240px">Ctrl+Back, Alt+Back etc. work as separate assignments on top of the bare button.</div></div></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span class="kf-rp-mbadge">&#8212;</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">Back</span></div><div style="display:flex;gap:5px;align-items:center"><button style="height:22px;padding:0 8px;font-size:10px;border:1px solid var(--border-bright);border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer;font-family:var(--font-body)">&#x2194; Reassign</button><button class="kf-rp-x">&#x2715;</button></div></div><div class="kf-rp-body"><div class="kf-tg"><button class="kf-tb2 kf-tc-tt"><span class="kf-tb2-ic">&#x2736;</span><span class="kf-tb2-lbl">Type Text</span></button><button class="kf-tb2 kf-tc-hk active"><span class="kf-tb2-ic">&#x2328;</span><span class="kf-tb2-lbl">Send Hotkey</span></button><button class="kf-tb2 kf-tc-ap"><span class="kf-tb2-ic">&#x2B21;</span><span class="kf-tb2-lbl">Open App</span></button><button class="kf-tb2 kf-tc-ur"><span class="kf-tb2-ic">&#x2295;</span><span class="kf-tb2-lbl">Open URL</span></button><button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">&#x1F4C1;</span><span class="kf-tb2-lbl">Open Folder</span></button><button class="kf-tb2 kf-tc-mc"><span class="kf-tb2-ic">&#x25C8;</span><span class="kf-tb2-lbl">Macro Sequence</span></button></div><div class="kf-fsec"><div class="kf-fl">Modifier keys to send</div><div class="kf-mg"><button class="kf-mt active">Ctrl</button><button class="kf-mt">Alt</button><button class="kf-mt">Shift</button><button class="kf-mt">Win</button></div></div><div class="kf-fsec"><div class="kf-fl">Key to send</div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">Z</div></div><div class="kf-hkprev"><span class="kf-hkprev-lbl">Preview:</span><kbd>Ctrl</kbd><span class="kf-hk-plus">+</span><kbd>Z</kbd></div><div class="kf-fsec"><div class="kf-fl">Display Label <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">Undo</div></div></div><div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Assign to Key</button></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">2 mouse assigned</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Selected: <strong>Back</strong></span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<h2>Assigning mouse buttons</h2>
+<ol class="steps">
+  <li><p>Click <strong>🖱 Mouse</strong> in the view toggle above the keyboard</p></li>
+  <li><p>Optionally select a modifier (Ctrl, Alt, Shift) first to create a layered combination like Ctrl+Back</p></li>
+  <li><p>Click the mouse button you want to assign in the diagram</p></li>
+  <li><p>Choose your action type and configure it in the right panel</p></li>
+  <li><p>Click <strong>Assign to Key</strong></p></li>
+</ol>
+<div class="callout tip"><div class="ct">Left and Right Click</div><p>Assigning to bare Left or Right Click replaces their normal function — only do this with a modifier held, e.g. <strong>Ctrl+Left Click</strong>, or in an app-specific profile where that app handles clicks differently.</p></div>
+<div class="callout info"><div class="ct">Extra buttons (X1–X5)</div><p>The X1–X5 slots correspond to the extra side buttons on gaming and productivity mice. If your mouse only has Back/Forward, the X1–X5 slots won't trigger.</p></div>
+<h2>Mouse button reference</h2>
+<table class="gt">
+  <thead><tr><th>Button</th><th>Standard name</th><th>Common use</th></tr></thead>
+  <tbody>
+    <tr><td>Left</td><td>Button 1</td><td>Primary click — assign with modifier only</td></tr>
+    <tr><td>Right</td><td>Button 2</td><td>Context menu — assign with modifier only</td></tr>
+    <tr><td>Middle</td><td>Button 3</td><td>Tab close, scroll lock — safe to reassign bare</td></tr>
+    <tr><td>Back</td><td>Button 4 / XButton1</td><td>Browser back — ideal for Undo macros</td></tr>
+    <tr><td>Forward</td><td>Button 5 / XButton2</td><td>Browser forward — ideal for Redo macros</td></tr>
+    <tr><td>X1–X5</td><td>Extra buttons</td><td>Gaming mice side buttons</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══ EXP OVERVIEW ═══ -->
+<div id="exp-overview" class="page">
+<div class="ph"><h1>Text Expansions</h1><p class="lead">Type a short trigger word, press Space, and Trigr instantly replaces it with your full text — anywhere on your computer.</p></div>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab">Mapping</button><button class="kf-area-tab active">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><div class="kf-ptg"><button class="kf-pt">Front<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-main" style="min-height:644px;padding:20px 24px;align-items:stretch"><div style="background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:10px;overflow:hidden;width:100%"><div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)"><span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">&#x2261; TEXT EXPANSIONS</span><span style="font-size:10px;color:var(--text-muted);margin-left:6px">&#xB7; type trigger + Space</span><button style="margin-left:auto;background:var(--accent);border:none;border-radius:5px;color:#0d0d11;font-size:10px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:var(--font-display)">+ Add</button></div><div style="display:flex;align-items:center;padding:5px 12px;border-bottom:1px solid var(--border);gap:2px"><div style="padding:3px 9px;font-size:10px;color:var(--accent);border-bottom:2px solid var(--accent);cursor:pointer">All <span style="font-size:8px;background:var(--bg-active);padding:0 3px;border-radius:6px">7</span></div><div style="padding:3px 9px;font-size:10px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#50c878;display:inline-block"></span> Email <span style="font-size:8px;background:var(--bg-elevated);padding:0 3px;border-radius:6px">6</span></div><div style="padding:3px 9px;font-size:10px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#ff5555;display:inline-block"></span> Teamhood <span style="font-size:8px;background:var(--bg-elevated);padding:0 3px;border-radius:6px">0</span></div><div style="padding:3px 9px;font-size:10px;color:var(--text-muted);cursor:pointer">Uncategorised <span style="font-size:8px;background:var(--bg-elevated);padding:0 3px;border-radius:6px">1</span></div><button style="margin-left:auto;font-size:10px;color:var(--text-muted);border:1px solid var(--border-bright);border-radius:4px;padding:2px 8px;background:transparent;cursor:pointer;font-family:var(--font-body)">+ Category</button></div><div style="padding:10px 12px"><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);padding:3px 0 6px;display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--text-muted);display:inline-block"></span>UNCATEGORISED</div><div style="display:flex;align-items:center;gap:6px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:5px;padding:5px 9px;font-size:10px;margin-bottom:8px"><span style="background:var(--bg-active);border-radius:3px;padding:1px 6px;font-weight:700;color:var(--accent);font-size:9px;font-family:var(--font-display)">rnode</span><span style="font-size:9px;color:var(--accent)">&#x26A1;</span><span style="color:var(--text-muted);font-size:9px">&#x2192;</span><span style="color:var(--text-secondary);font-size:10px;flex:1"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="5e2c312c271e30313a3b3b303937303b3b2c703d3133">[email&#160;protected]</a></span><span style="font-size:9px;color:var(--text-muted);cursor:pointer">Edit</span></div><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);padding:3px 0 6px;display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:#50c878;display:inline-block"></span>EMAIL</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px"><div style="display:flex;align-items:center;gap:5px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:5px;padding:5px 9px;font-size:10px"><span style="background:var(--bg-active);border-radius:3px;padding:1px 5px;font-weight:700;color:var(--accent);font-size:9px;font-family:var(--font-display)">signoff</span><span style="font-size:7px;background:#1e3a28;border:1px solid rgba(80,200,120,0.3);color:#50c878;padding:0 4px;border-radius:3px;font-weight:600">Email</span><span style="color:var(--text-muted);font-size:9px">&#x2192;</span><span style="color:var(--text-secondary);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Thanks, any queries...</span><span style="font-size:9px;color:var(--text-muted);cursor:pointer">Edit</span></div><div style="display:flex;align-items:center;gap:5px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:5px;padding:5px 9px;font-size:10px"><span style="background:var(--bg-active);border-radius:3px;padding:1px 5px;font-weight:700;color:var(--accent);font-size:9px;font-family:var(--font-display)">node3d</span><span style="font-size:7px;background:#1e3a28;border:1px solid rgba(80,200,120,0.3);color:#50c878;padding:0 4px;border-radius:3px;font-weight:600">Email</span><span style="color:var(--text-muted);font-size:9px">&#x2192;</span><span style="color:var(--text-secondary);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Link to view model...</span><span style="font-size:9px;color:var(--text-muted);cursor:pointer">Edit</span></div><div style="display:flex;align-items:center;gap:5px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:5px;padding:5px 9px;font-size:10px"><span style="background:var(--bg-active);border-radius:3px;padding:1px 5px;font-weight:700;color:var(--accent);font-size:9px;font-family:var(--font-display)">nodenew</span><span style="font-size:7px;background:#1e3a28;border:1px solid rgba(80,200,120,0.3);color:#50c878;padding:0 4px;border-radius:3px;font-weight:600">Email</span><span style="color:var(--text-muted);font-size:9px">&#x2192;</span><span style="color:var(--text-secondary);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Please find attached...</span><span style="font-size:9px;color:var(--text-muted);cursor:pointer">Edit</span></div><div style="display:flex;align-items:center;gap:5px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:5px;padding:5px 9px;font-size:10px"><span style="background:var(--bg-active);border-radius:3px;padding:1px 5px;font-weight:700;color:var(--accent);font-size:9px;font-family:var(--font-display)">noderevp</span><span style="font-size:7px;background:#1e3a28;border:1px solid rgba(80,200,120,0.3);color:#50c878;padding:0 4px;border-radius:3px;font-weight:600">Email</span><span style="color:var(--text-muted);font-size:9px">&#x2192;</span><span style="color:var(--text-secondary);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Please find revised...</span><span style="font-size:9px;color:var(--text-muted);cursor:pointer">Edit</span></div></div></div></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">7 expansions</span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<h2>How it works</h2>
+<p>Type your trigger word anywhere — email, Word, browser, CAD — then press <kbd>Space</kbd>. Trigr deletes the trigger word and pastes your replacement text instantly.</p>
+<table class="gt">
+  <thead><tr><th>Text Expansion</th><th>Hotkey (Type Text)</th></tr></thead>
+  <tbody>
+    <tr><td>Trigger: type a word + Space</td><td>Trigger: press a key combo</td></tr>
+    <tr><td>Rich text with formatting</td><td>Plain or rich text</td></tr>
+    <tr><td>Dynamic fields — dates, clipboard</td><td>Static text only</td></tr>
+    <tr><td>Global across all profiles</td><td>Per-profile</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══ EXP CREATE ═══ -->
+<div id="exp-create" class="page">
+<div class="ph"><h1>Creating a text expansion</h1><p class="lead">Expansions are created from the Text Expansions panel.</p></div>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab">Mapping</button><button class="kf-area-tab active">&#x2736; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-main" style="min-height:644px;padding:20px 24px;align-items:stretch"><div style="background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:10px;overflow:hidden;width:100%"><div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)"><span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">&#x2261; TEXT EXPANSIONS</span><span style="font-size:10px;color:var(--text-muted);margin-left:6px">&#xB7; type trigger + Space</span><button style="margin-left:auto;background:var(--accent);border:none;border-radius:5px;color:#0d0d11;font-size:10px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:var(--font-display)">+ Add</button></div><div style="display:flex;align-items:center;padding:5px 12px;border-bottom:1px solid var(--border);gap:2px"><div style="padding:3px 9px;font-size:10px;color:var(--accent);border-bottom:2px solid var(--accent)">All <span style="font-size:8px;background:var(--bg-active);padding:0 3px;border-radius:6px">7</span></div><div style="padding:3px 9px;font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#50c878;display:inline-block"></span> Email <span style="font-size:8px;background:var(--bg-elevated);padding:0 3px;border-radius:6px">6</span></div><div style="padding:3px 9px;font-size:10px;color:var(--text-muted)">Uncategorised <span style="font-size:8px;background:var(--bg-elevated);padding:0 3px;border-radius:6px">1</span></div><button style="margin-left:auto;font-size:10px;color:var(--text-muted);border:1px solid var(--border-bright);border-radius:4px;padding:2px 8px;background:transparent;cursor:pointer;font-family:var(--font-body)">+ Category</button></div><div style="background:var(--bg-base);padding:14px 16px;border-bottom:1px solid var(--border)"><div style="display:flex;gap:16px"><div style="width:145px;flex-shrink:0"><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">Trigger</div><input style="width:100%;background:var(--bg-elevated);border:1px solid var(--border-accent);border-radius:5px;color:var(--accent);font-size:15px;font-weight:700;padding:6px 10px;font-family:var(--font-display)" value="signoff" readonly/><div style="display:flex;gap:5px;margin-top:8px;align-items:center"><span style="font-size:9px;color:var(--text-muted);padding:2px 8px;border-radius:10px;border:1px solid transparent">+ Space</span><span style="font-size:9px;color:var(--accent);padding:2px 8px;border-radius:10px;border:1px solid var(--border-accent);background:var(--accent-glow)">&#x26A1; Instant</span></div></div><div style="flex:1"><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">Replacement</div><div style="display:flex;align-items:center;gap:3px;background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:5px 5px 0 0;padding:5px 8px;border-bottom:none"><span style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text-secondary);border-radius:3px;cursor:pointer">B</span><span style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;font-style:italic;color:var(--text-secondary);border-radius:3px;cursor:pointer">I</span><span style="width:1px;height:13px;background:var(--border-bright);margin:0 4px"></span><span style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-secondary);border-radius:3px;cursor:pointer">&#x2630;</span><span style="width:1px;height:13px;background:var(--border-bright);margin:0 4px"></span><span style="padding:2px 9px;border-radius:4px;font-size:10px;font-weight:600;color:var(--text-secondary);border:1px solid var(--border-bright);background:var(--bg-base);cursor:pointer;font-family:var(--font-display)">Insert &#x25BE;</span></div><div style="background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:0 0 5px 5px;min-height:80px;padding:9px 11px;font-size:13px;color:var(--text-primary);line-height:1.6">Kind regards,<br><br>Your Name<br><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="5b22342e29753e363a32371b3834362b3a352275383436">[email&#160;protected]</a></div></div></div><div style="display:flex;align-items:center;gap:12px;margin-top:12px"><span style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted)">Category</span><select style="background:var(--bg-elevated);border:1px solid var(--border-bright);border-radius:5px;color:var(--text-secondary);font-size:11px;padding:4px 12px;font-family:var(--font-body)"><option>Email</option><option>Uncategorised</option></select><div style="margin-left:auto;display:flex;gap:7px"><button style="padding:5px 14px;background:transparent;border:1px solid var(--border-bright);border-radius:5px;color:var(--text-secondary);font-size:12px;cursor:pointer;font-family:var(--font-body)">Cancel</button><button style="padding:5px 16px;background:var(--accent);border:none;border-radius:5px;color:#0d0d11;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-display)">Save</button></div></div></div><div style="padding:10px 14px"><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);padding:4px 0 7px;display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:#50c878;display:inline-block"></span>EMAIL</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px"><div style="display:flex;align-items:center;gap:5px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:5px;padding:6px 10px;font-size:10px"><span style="background:var(--bg-active);border-radius:3px;padding:1px 6px;font-weight:700;color:var(--accent);font-size:9px;font-family:var(--font-display)">node3d</span><span style="color:var(--text-muted);font-size:9px">&#x2192;</span><span style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Link to view model...</span></div><div style="display:flex;align-items:center;gap:5px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:5px;padding:6px 10px;font-size:10px"><span style="background:var(--bg-active);border-radius:3px;padding:1px 6px;font-weight:700;color:var(--accent);font-size:9px;font-family:var(--font-display)">nodenew</span><span style="color:var(--text-muted);font-size:9px">&#x2192;</span><span style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Please find attached...</span></div></div></div></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">7 expansions</span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<ol class="steps">
+  <li><p>In the Text Expansions panel, click <strong>+ Add</strong></p></li>
+  <li><p>Enter your <strong>trigger word</strong> — short, no spaces. Examples: <code>signoff</code>, <code>myemail</code>, <code>/me</code></p></li>
+  <li><p>Type your <strong>replacement text</strong> in the editor. Use the toolbar (B, I, list buttons) for formatting.</p></li>
+  <li><p>Optionally assign a <strong>Category</strong> using the dropdown</p></li>
+  <li><p>Click <strong>Save</strong></p></li>
+</ol>
+<div class="callout warn"><div class="ct">Choose unique trigger words</div><p>Avoid common words. <code>me</code> would fire every time you type "me" in conversation. Use a prefix like <code>/me</code> or <code>myemail</code>.</p></div>
+</div>
+
+<!-- ═══ EXP DYNAMIC ═══ -->
+<div id="exp-dynamic" class="page">
+<div class="ph"><h1>Dynamic fields</h1><p class="lead">Click <strong>Insert</strong> in the toolbar to add automatically-generated content — dates, clipboard, fill-in prompts.</p></div>
+<table class="gt">
+  <thead><tr><th>Field</th><th>Inserts</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>Clipboard</td><td>Current clipboard contents</td><td>Whatever you last copied</td></tr>
+    <tr><td>DD/MM/YYYY</td><td>Today's date (UK format)</td><td>22/03/2026</td></tr>
+    <tr><td>MM/DD/YYYY</td><td>Today's date (US format)</td><td>03/22/2026</td></tr>
+    <tr><td>YYYY-MM-DD</td><td>Today's date (ISO)</td><td>2026-03-22</td></tr>
+    <tr><td>HH:MM</td><td>Current time</td><td>14:35</td></tr>
+    <tr><td>HH:MM:SS</td><td>Current time with seconds</td><td>14:35:42</td></tr>
+    <tr><td>Day</td><td>Day of the week</td><td>Monday</td></tr>
+    <tr><td>↕ Cursor</td><td>Cursor position after expansion</td><td>Cursor moves here</td></tr>
+    <tr><td>Fill-in: Label</td><td>Prompts for input at expansion time</td><td>Popup: "Enter Recipient Name"</td></tr>
+  </tbody>
+</table>
+<div class="callout tip"><div class="ct">Fill-in fields</div><p>When an expansion with a fill-in field fires, a small popup asks you to type a value before pasting. The typed value replaces the field in the output. Ideal for email templates where the recipient name changes.</p></div>
+</div>
+
+<!-- ═══ EXP CATS ═══ -->
+<div id="exp-cats" class="page">
+<div class="ph"><h1>Categories</h1><p class="lead">Organise expansions into named tabs — Email, Legal, CAD, Support — to keep your library manageable.</p></div>
+<ol class="steps">
+  <li><p>Click <strong>+ Category</strong> next to the tab bar</p></li>
+  <li><p>Type a name and press Enter</p></li>
+  <li><p>When creating an expansion, use the <strong>Category</strong> dropdown to assign it</p></li>
+</ol>
+<p>Click a category tab to filter to that group only. The <strong>All</strong> tab shows everything grouped by category, with Uncategorised items at the top. Right-click a category tab to delete it — expansions move to Uncategorised, not deleted.</p>
+</div>
+
+<!-- ═══ EXP INSTANT ═══ -->
+<div id="exp-instant" class="page">
+<div class="ph"><h1>Instant trigger</h1><p class="lead">By default expansions fire when you press Space after the trigger word. Instant mode fires the moment the last character is typed — no Space needed.</p></div>
+<p>Enable per expansion using the <strong>⚡ Instant</strong> toggle below the trigger field when creating or editing. The expansion list shows a lightning bolt icon on instant-mode items.</p>
+<div class="callout warn"><div class="ct">Use with care</div><p>Instant mode can fire unexpectedly if your trigger word appears inside longer words you type naturally. Use a distinctive prefix like <code>/</code> or <code>.</code> to avoid accidental matches.</p></div>
+</div>
+
+<!-- ═══ PROFILES ═══ -->
+<div id="profiles" class="page">
+<div class="ph"><h1>Profiles</h1><p class="lead">Profiles let you have different sets of hotkeys for different purposes. Default is always active; app-linked profiles take over automatically when that app is in focus.</p></div>
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><div class="kf-ptg"><button class="kf-pt">Photoshop<span class="kf-pt-dot"></span></button></div><div class="kf-ptg"><button class="kf-pt">Front<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">3</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">Ctrl</button><button class="kf-sb-tab">Alt</button></div><div class="kf-sb-list"><div class="kf-sb-group"><div class="kf-sb-gh"><span class="kf-sb-mk">Ctrl</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk">key</span><span class="kf-sb-gc">2</span></div><div class="kf-sb-item tt"><span class="kf-sb-badge">E</span><div class="kf-sb-info"><div class="kf-sb-label">Email Signature</div><div class="kf-sb-type">Type Text</div></div></div><div class="kf-sb-item ur"><span class="kf-sb-badge">G</span><div class="kf-sb-info"><div class="kf-sb-label">Open Gmail</div><div class="kf-sb-type">Open URL</div></div></div></div><div class="kf-sb-group"><div class="kf-sb-gh"><span class="kf-sb-mk">Alt</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk">key</span><span class="kf-sb-gc">1</span></div><div class="kf-sb-item ap"><span class="kf-sb-badge">` </span><div class="kf-sb-info"><div class="kf-sb-label">Node Calcs</div><div class="kf-sb-type">Open App</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn active">&#x2328; Keyboard</button><button class="kf-vs-btn">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod" style="--mc:#c864ff">Alt</button><button class="kf-mmod" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button></div><span class="kf-combo-hint">&#x2191; Select 1&#8211;3 modifiers to view that hotkey layer</span></div><div class="kf-kb-lbl">Select modifier keys above, then click a key to assign a hotkey</div><div class="kf-kb-outer" id="kb-profiles"></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span>Action</span></div></div><div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;text-align:center;gap:8px"><svg width="40" height="40" viewBox="0 0 32 32" fill="none" style="opacity:0.2"><rect x="2" y="5" width="9" height="6" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="13" y="5" width="6" height="6" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="21" y="5" width="9" height="6" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="15" width="6" height="6" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="15" width="20" height="6" rx="2" stroke="currentColor" stroke-width="1.5"/></svg><h3 style="font-family:var(--font-display);font-size:14px;color:var(--text-secondary);letter-spacing:0.04em;font-weight:600">Select a Key</h3><p style="font-size:11px;color:var(--text-muted);line-height:1.6;margin:0">Choose a modifier layer, then click any keyboard key to assign a macro.</p></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">3 assigned</span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+<ul>
+  <li><strong>Double-click</strong> a profile tab to rename it (except Default)</li>
+  <li><strong>Right-click</strong> a profile tab — rename, duplicate or delete</li>
+  <li><strong>Drag</strong> profile tabs to reorder them</li>
+  <li>Click <strong>+</strong> to create a new profile</li>
+</ul>
+<div class="callout tip"><div class="ct">Moving assignments between profiles</div><p>Open any assignment and click <strong>Copy to Profile</strong> or <strong>Move to Profile</strong> in the footer to transfer it without recreating from scratch.</p></div>
+</div>
+
+<!-- ═══ PROFILES APP ═══ -->
+<div id="profiles-app" class="page">
+<div class="ph"><h1>App-specific profiles</h1><p class="lead">Link a profile to an application — Trigr auto-switches when that app comes into focus, and switches back when you leave it.</p></div>
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#x2736; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg" style="position:relative"><button class="kf-pt active">BricsCAD<span class="kf-pt-dot"></span></button><button class="kf-icon-btn" style="width:18px;height:18px;opacity:1;color:var(--accent)"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><div style="position:absolute;top:36px;left:0;z-index:100;background:var(--bg-elevated);border:1px solid var(--border-accent);border-radius:10px;padding:14px 16px;min-width:230px;box-shadow:0 8px 32px rgba(0,0,0,0.15);display:flex;flex-direction:column;gap:10px"><div style="font-family:var(--font-display);font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent)">BricsCAD</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:9px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted)">Linked App</span><span style="font-size:12px;color:var(--text-primary)">BricsCAD.exe</span></div><div style="display:flex;gap:6px"><button style="height:26px;padding:0 12px;background:var(--bg-active);border:1px solid var(--border-accent);border-radius:5px;color:var(--accent);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-body)">Browse&#x2026;</button><button style="height:26px;padding:0 10px;background:transparent;border:1px solid var(--border-bright);border-radius:5px;color:var(--text-muted);font-size:10px;cursor:pointer;font-family:var(--font-body)">Clear</button></div><p style="font-size:10px;color:var(--text-muted);line-height:1.5;margin:0">When BricsCAD is focused, Trigr switches to this profile automatically.</p></div></div><div class="kf-ptg"><button class="kf-pt">Photoshop<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">3</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">BARE</button></div><div class="kf-sb-list"><div class="kf-sb-group active"><div class="kf-sb-gh"><span class="kf-sb-mk" style="color:var(--accent)">Bare</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk" style="color:var(--accent)">key</span><span class="kf-sb-gc">3</span></div><div class="kf-sb-item tt active"><span class="kf-sb-badge">P</span><div class="kf-sb-info"><div class="kf-sb-label">PLINE command</div><div class="kf-sb-type">Type Text</div></div></div><div class="kf-sb-item tt"><span class="kf-sb-badge">H</span><div class="kf-sb-info"><div class="kf-sb-label">HATCH command</div><div class="kf-sb-type">Type Text</div></div></div><div class="kf-sb-item tt"><span class="kf-sb-badge">M</span><div class="kf-sb-info"><div class="kf-sb-label">MIRROR command</div><div class="kf-sb-type">Type Text</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn active">&#x2328; Keyboard</button><button class="kf-vs-btn">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod" style="--mc:#c864ff">Alt</button><button class="kf-mmod" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button><button class="kf-mmod active" style="--mc:#ff9040">Bare Keys</button></div><div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck" style="color:#ff9040;border-color:rgba(255,144,64,0.4)">Bare</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd><span style="font-size:10px;color:var(--text-muted);margin-left:6px;font-style:italic">&#8212; fires only when linked app is focused</span></div></div><div class="kf-kb-lbl">Assigning: <strong>Bare + P</strong></div><div class="kf-kb-outer" id="kb-profilesapp"></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span class="kf-rp-mbadge">Bare</span><span style="color:var(--text-muted);font-size:11px;margin:0 2px">+</span><span class="kf-rp-badge">P</span></div><div style="display:flex;gap:5px;align-items:center"><button style="height:22px;padding:0 8px;font-size:10px;border:1px solid var(--border-bright);border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer;font-family:var(--font-body)">&#x2194; Reassign</button><button class="kf-rp-x">&#x2715;</button></div></div><div class="kf-rp-body"><div class="kf-tg"><button class="kf-tb2 kf-tc-tt active"><span class="kf-tb2-ic">&#x2736;</span><span class="kf-tb2-lbl">Type Text</span></button><button class="kf-tb2 kf-tc-hk"><span class="kf-tb2-ic">&#x2328;</span><span class="kf-tb2-lbl">Send Hotkey</span></button><button class="kf-tb2 kf-tc-ap"><span class="kf-tb2-ic">&#x2B21;</span><span class="kf-tb2-lbl">Open App</span></button><button class="kf-tb2 kf-tc-ur"><span class="kf-tb2-ic">&#x2295;</span><span class="kf-tb2-lbl">Open URL</span></button><button class="kf-tb2 kf-tc-fl"><span class="kf-tb2-ic">&#x1F4C1;</span><span class="kf-tb2-lbl">Open Folder</span></button><button class="kf-tb2 kf-tc-mc"><span class="kf-tb2-ic">&#x25C8;</span><span class="kf-tb2-lbl">Macro Sequence</span></button></div><div class="kf-fsec"><div class="kf-fl">Text to type</div><textarea class="kf-fta" rows="3" readonly>pline&#10;</textarea><div class="kf-fhint">Fires only when BricsCAD is the active window.</div></div><div class="kf-fsec"><div class="kf-fl">Display Label <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div><div class="kf-fin" style="display:flex;align-items:center;height:34px;font-size:12px;color:var(--text-primary)">PLINE command</div></div></div><div class="kf-rp-foot"><div class="kf-rp-acts"><button class="kf-btn-cl">Clear Key</button><button class="kf-btn-dup">Duplicate</button></div><button class="kf-btn-save">Update</button></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">3 assigned</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Profile: <strong>BricsCAD</strong></span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Layer: <strong>Bare</strong></span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Editing: <strong>Bare+P</strong></span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+<ol class="steps">
+  <li><p>Click <strong>+</strong> to create a new profile and name it — e.g. "BricsCAD"</p></li>
+  <li><p>In the profile settings, use <strong>Link to App</strong> and browse to the application's <code>.exe</code> file</p></li>
+  <li><p>A coloured dot appears on the profile tab confirming it is linked</p></li>
+  <li><p>Add hotkey assignments to this profile — they only fire when that app is in focus</p></li>
+</ol>
+<h2>Bare key assignments</h2>
+<p>App-specific profiles unlock a <span class="badge gold">Bare</span> tab in the modifier bar. Bare key hotkeys have no modifier — they fire from a single keypress but only when the linked app is in the foreground.</p>
+<div class="callout tip"><div class="ct">CAD programs</div><p>Use bare keys for single-letter shortcuts that only activate inside the CAD window — they won't interfere with typing in emails or other apps.</p></div>
+<div class="callout warn"><div class="ct">Auto-switching pauses while editing</div><p>While Trigr is in focus, profile auto-switching is paused. This lets you configure your CAD profile without it switching away mid-edit.</p></div>
+</div>
+
+<!-- ═══ AUTOCORRECT ═══ -->
+<div id="autocorrect" class="page">
+<div class="ph"><h1>Autocorrect</h1><p class="lead">Automatically fix common typos as you type, in any application.</p></div>
+<p>In the Text Expansions panel, click the <strong>TEXT EXPANSIONS</strong> label in the top-left — it toggles between Text Expansions view and Autocorrect view.</p>
+<h2>Built-in corrections</h2>
+<p>Toggle the built-in library to enable around 50 common English typo corrections at once:</p>
+<table class="gt">
+  <thead><tr><th>You type</th><th>Corrected to</th></tr></thead>
+  <tbody>
+    <tr><td>teh</td><td>the</td></tr>
+    <tr><td>recieve</td><td>receive</td></tr>
+    <tr><td>occured</td><td>occurred</td></tr>
+    <tr><td>seperate</td><td>separate</td></tr>
+    <tr><td>definately</td><td>definitely</td></tr>
+    <tr><td>im</td><td>I'm</td></tr>
+  </tbody>
+</table>
+<h2>Custom corrections</h2>
+<p>Click <strong>+ Add</strong> in the Autocorrect view. Enter the typo on the left and the correction on the right. Corrections fire on Space, same as text expansions.</p>
+</div>
+
+<!-- ═══ SETTINGS ═══ -->
+<div id="settings" class="page">
+<div class="ph"><h1>Settings</h1><p class="lead">Access settings via the cog icon ⚙ in the top-right of the title bar.</p></div>
+<h2>Compatibility</h2>
+<p>If text output is not working correctly in a specific application, change the input method:</p>
+<table class="gt">
+  <thead><tr><th>Method</th><th>Best for</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge gold">Direct Keystrokes</span></td><td>CAD software, BricsCAD, engineering tools. Default. Works out of the box.</td></tr>
+    <tr><td><span class="badge blue">Clipboard (Shift+Insert)</span></td><td>Apps that block Ctrl+V but accept Shift+Insert</td></tr>
+    <tr><td><span class="badge blue">Clipboard (Ctrl+V)</span></td><td>Standard applications — fastest method</td></tr>
+    <tr><td><span class="badge purple">SendInput API</span></td><td>Maximum compatibility — injects at the Windows level</td></tr>
+  </tbody>
+</table>
+<p>The <strong>Pre-execution delay</strong> slider (0–500ms) sets how long Trigr waits after a hotkey fires before sending output. Increase if an application needs more time to be ready to receive input.</p>
+<h2>Quick Search</h2>
+<p>Press <kbd>Win</kbd>+<kbd>Space</kbd> (default) from anywhere to open a floating search panel across all your macros and expansions. Change the hotkey in Settings → Quick Search.</p>
+<h2>Backup &amp; Restore</h2>
+<p>Use <strong>Export Config</strong> to save all your assignments, profiles and expansions as a JSON backup file. Use <strong>Import Config</strong> to restore from backup. Always export before reinstalling or making large structural changes.</p>
+<div class="callout warn"><div class="ct">Do not store passwords</div><p>Avoid storing passwords or credentials as text expansions or macro text. Use a dedicated password manager such as Bitwarden or 1Password. All Trigr data is stored locally on your device only — nothing is ever transmitted to any external server.</p></div>
+</div>
+
+<!-- ═══ QUICK SEARCH ═══ -->
+<div id="quick-search" class="page">
+<div class="ph"><h1>Quick Search</h1><p class="lead">A floating search panel that surfaces any hotkey, macro or expansion instantly — without opening the main Trigr window.</p></div>
+
+<div class="kf" data-theme="light"><div class="kf-tb"><div class="kf-tb-left"><div class="kf-logo"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="6" height="4" rx="1.5" fill="#e8a020" opacity="0.9"/><rect x="10" y="5" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.6"/><rect x="16" y="5" width="2" height="4" rx="1" fill="#e8a020" opacity="0.4"/><rect x="2" y="11" width="4" height="4" rx="1.5" fill="#e8a020" opacity="0.5"/><rect x="8" y="11" width="10" height="4" rx="1.5" fill="#e8a020" opacity="0.8"/></svg><span class="kf-logo-name">Trigr</span></div><div class="kf-tb-div"></div><div class="kf-area-tabs"><button class="kf-area-tab active">Mapping</button><button class="kf-area-tab">&#10022; Text Expansions</button></div><div class="kf-tb-div"></div><div class="kf-ptabs"><div class="kf-ptg"><button class="kf-pt active">Default<span class="kf-pt-gdot"></span></button></div><div class="kf-ptg"><button class="kf-pt">BricsCAD<span class="kf-pt-dot"></span></button></div><button class="kf-pt add">+</button></div></div><div class="kf-tb-right"><div class="kf-toggle on"><span class="kf-toggle-dot"></span>ACTIVE</div><button class="kf-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div class="kf-wcs"><button class="kf-wc"><svg width="9" height="2" viewBox="0 0 9 2"><rect width="9" height="2" rx="1" fill="currentColor"/></svg></button><button class="kf-wc"><svg width="9" height="9" viewBox="0 0 9 9"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button><button class="kf-wc cl"><svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="1" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="1" x2="1" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div></div></div><div class="kf-body"><div class="kf-sb"><div class="kf-sb-hd"><span class="kf-sb-title">Assignments</span><span class="kf-sb-cnt">2</span></div><div class="kf-sb-tabs"><button class="kf-sb-tab active">ALL</button><button class="kf-sb-tab">Shift</button></div><div class="kf-sb-list"><div class="kf-sb-group active"><div class="kf-sb-gh"><span class="kf-sb-mk" style="color:var(--accent)">Shift</span><span class="kf-sb-mp">+</span><span class="kf-sb-mk" style="color:var(--accent)">key</span><span class="kf-sb-gc">2</span></div><div class="kf-sb-item mc"><span class="kf-sb-badge">F5</span><div class="kf-sb-info"><div class="kf-sb-label">Draw Pline</div><div class="kf-sb-type">Macro</div></div></div><div class="kf-sb-item mc"><span class="kf-sb-badge">F6</span><div class="kf-sb-info"><div class="kf-sb-label">Hatch Fill</div><div class="kf-sb-type">Macro</div></div></div></div></div></div><div class="kf-main" style="min-height:644px"><div class="kf-vs"><button class="kf-vs-btn active">&#x2328; Keyboard</button><button class="kf-vs-btn">&#x1F5B1; Mouse</button></div><div class="kf-mbar"><span class="kf-mbar-lbl">Modifier Layer</span><div class="kf-mbar-keys"><button class="kf-mmod" style="--mc:#64b4ff">Ctrl</button><button class="kf-mmod" style="--mc:#c864ff">Alt</button><button class="kf-mmod active" style="--mc:#50c878">Shift</button><button class="kf-mmod" style="--mc:#ffc832">&#x22de; Win</button></div><div class="kf-combo"><span class="kf-combo-lbl">Layer:</span><kbd class="kf-ck">Shift</kbd><span class="kf-ck-plus">+</span><kbd class="kf-ck target">key</kbd></div></div><div class="kf-kb-lbl">Layer: <strong>Shift</strong></div><div class="kf-kb-outer" id="kb-qs" style="position:relative"><div style="position:absolute;inset:0;background:rgba(240,240,245,0.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:50"><div style="width:480px;background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,0.18),0 0 0 1px rgba(232,160,32,0.1);overflow:hidden"><div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)"><span style="font-size:15px;color:var(--text-muted)">&#x2315;</span><span style="flex:1;font-size:14px;color:var(--text-primary);font-family:var(--font-body)">pline</span><span style="font-size:9px;color:var(--text-muted);border:1px solid var(--border-bright);border-radius:4px;padding:2px 7px">Esc</span></div><div style="font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);padding:7px 16px 3px">MACROS &#8212; BricsCAD</div><div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--accent-glow);border-left:2px solid var(--accent)"><span style="width:24px;height:24px;background:rgba(200,100,255,0.15);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;color:#c864ff">&#x25C8;</span><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--text-primary)">Draw Pline &amp; Close</div><div style="font-size:10px;color:var(--text-muted)">Macro Sequence &#xB7; 5 steps</div></div><div style="display:flex;gap:3px"><span style="background:rgba(80,200,120,0.12);border:1px solid rgba(80,200,120,0.35);color:#50c878;font-family:var(--font-display);font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">Shift</span><span style="background:var(--accent-glow);border:1px solid var(--border-accent);color:var(--accent);font-family:var(--font-display);font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">F5</span></div></div><div style="display:flex;align-items:center;gap:10px;padding:8px 16px"><span style="width:24px;height:24px;background:var(--bg-elevated);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;color:var(--accent)">&#x2736;</span><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;color:var(--text-secondary)">Polyline command</div><div style="font-size:10px;color:var(--text-muted)">Type Text &#xB7; Default &#xB7; Ctrl+P</div></div><div style="display:flex;gap:3px"><span style="background:rgba(100,180,255,0.1);border:1px solid rgba(100,180,255,0.3);color:#64b4ff;font-family:var(--font-display);font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">Ctrl</span><span style="background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-secondary);font-family:var(--font-display);font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">P</span></div></div><div style="font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);padding:5px 16px 3px">TEXT EXPANSIONS</div><div style="display:flex;align-items:center;gap:10px;padding:8px 16px"><span style="width:24px;height:24px;background:var(--bg-elevated);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;color:var(--text-primary)">&#x2736;</span><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;color:var(--text-secondary)"><span style="color:var(--accent);font-family:var(--font-display);font-weight:700">pline</span> &#x2192; PLINE command with close sequence&#x2026;</div><div style="font-size:10px;color:var(--text-muted)">Text Expansion</div></div><span style="font-size:9px;color:var(--text-muted)">+ Space</span></div><div style="display:flex;align-items:center;justify-content:space-between;padding:7px 16px;border-top:1px solid var(--border);background:var(--bg-base)"><div style="display:flex;gap:12px"><span style="font-size:9px;color:var(--text-muted);display:flex;align-items:center;gap:4px"><span style="border:1px solid var(--border-bright);border-radius:3px;padding:1px 5px;font-size:8px">&#x2191;&#x2193;</span> Navigate</span><span style="font-size:9px;color:var(--text-muted);display:flex;align-items:center;gap:4px"><span style="border:1px solid var(--border-bright);border-radius:3px;padding:1px 5px;font-size:8px">Enter</span> Fire</span><span style="font-size:9px;color:var(--text-muted);display:flex;align-items:center;gap:4px"><span style="border:1px solid var(--border-bright);border-radius:3px;padding:1px 5px;font-size:8px">Tab</span> Edit</span></div><span style="font-size:9px;color:var(--text-muted)">3 results</span></div></div></div></div></div><div class="kf-rp"><div class="kf-rp-hd"><div class="kf-rp-title"><span>Action</span></div></div><div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;text-align:center;gap:10px"><p style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin:0">Press <strong>Win+Space</strong> from anywhere to open Quick Search over any application.</p><p style="font-size:11px;color:var(--text-muted);line-height:1.6;margin:0">Change the hotkey in <strong>Settings &#x2192; Quick Search</strong>.</p></div></div></div><div class="kf-sbar"><div class="kf-sbar-l"><span class="kf-sind"><span class="kf-sdot"></span>Macros Active</span><span class="kf-ssep">&#xB7;</span><span class="kf-si">Quick Search open</span></div><div class="kf-sbar-r"><span class="kf-chip">&#x2B24; Listener</span><span class="kf-chip">&#x2B24; Executor</span><span class="kf-ver">Trigr v1.0</span></div></div></div>
+
+<h2>Opening Quick Search</h2>
+<p>Press <kbd>Win</kbd>+<kbd>Space</kbd> from anywhere — even when Trigr's window is closed — to open the panel. Start typing immediately; results filter live across all profiles and categories.</p>
+<h2>What you can do</h2>
+<table class="gt">
+  <thead><tr><th>Action</th><th>How</th></tr></thead>
+  <tbody>
+    <tr><td>Fire a macro or expansion</td><td>Select the result, press <kbd>Enter</kbd></td></tr>
+    <tr><td>Open the assignment in the editor</td><td>Select the result, press <kbd>Tab</kbd></td></tr>
+    <tr><td>Navigate results</td><td>Arrow keys <kbd>↑</kbd> <kbd>↓</kbd></td></tr>
+    <tr><td>Close without firing</td><td>Press <kbd>Esc</kbd> or click outside</td></tr>
+  </tbody>
+</table>
+<h2>Changing the hotkey</h2>
+<p>Go to <strong>Settings → Quick Search</strong> and click the hotkey field. Press your desired combination. The default <kbd>Win</kbd>+<kbd>Space</kbd> conflicts with Windows search on some systems — change it to <kbd>Ctrl</kbd>+<kbd>Space</kbd> or a function key if needed.</p>
+<div class="callout tip"><div class="ct">Fire without opening Trigr</div><p>Quick Search lets you trigger any macro or expansion even if the Trigr window has never been opened in that session. As long as the tray icon is running, the search panel works.</p></div>
+</div>
+
+<!-- ═══ TROUBLESHOOTING ═══ -->
+<div id="troubleshooting" class="page">
+<div class="ph"><h1>Troubleshooting</h1><p class="lead">Common issues and how to fix them. If a problem persists, check the status bar — both Listener and Executor chips should be green.</p></div>
+<h2>Macros not firing</h2>
+<table class="gt">
+  <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Nothing happens at all</td><td>Engine not running</td><td>Check status bar — if Listener/Executor chips are not shown or grey, restart Trigr via the tray icon</td></tr>
+    <tr><td>Macro fires in some apps but not others</td><td>App intercepts the hotkey before Trigr</td><td>Change the hotkey to a different combination less likely to conflict</td></tr>
+    <tr><td>Correct key pressed but wrong macro fires</td><td>Wrong profile active</td><td>Check the profile tab — the active one is highlighted amber. Auto-switching may have changed it.</td></tr>
+    <tr><td>Hotkey fires but nothing is typed</td><td>Input method mismatch</td><td>Go to Settings → Compatibility and switch to <span class="badge gold">Direct Keystrokes</span> or <span class="badge purple">SendInput API</span></td></tr>
+  </tbody>
+</table>
+<h2>Text output problems</h2>
+<table class="gt">
+  <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Text appears with wrong characters or missing letters</td><td>Try <span class="badge blue">Clipboard (Ctrl+V)</span> mode — avoids keystroke translation issues</td></tr>
+    <tr><td>Text pasted in wrong field or wrong window</td><td>Increase the Pre-execution delay in Settings (try 150–300ms)</td></tr>
+    <tr><td>CAD app ignores typed text</td><td>Use <span class="badge gold">Direct Keystrokes</span> mode — required by most CAD applications including BricsCAD</td></tr>
+    <tr><td>Rich text formatting lost</td><td>The target app may not support rich text via clipboard. Use the "Paste as plain text" toggle on the expansion.</td></tr>
+  </tbody>
+</table>
+<h2>Text expansions not triggering</h2>
+<table class="gt">
+  <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Trigger word typed + Space but nothing happens</td><td>Check that Text Expansions are enabled — look for the "TEXT EXPANSIONS" label below the keyboard. It should not be greyed out.</td></tr>
+    <tr><td>Only fires sometimes</td><td>Make sure you are pressing <kbd>Space</kbd> after the final character with no pause.</td></tr>
+    <tr><td>Fires inside words unexpectedly</td><td>Your trigger word appears as part of longer words. Use a distinctive prefix like <code>/</code> or <code>.</code></td></tr>
+    <tr><td>Dynamic date field shows wrong date</td><td>Verify system date/time is correct in Windows Settings</td></tr>
+  </tbody>
+</table>
+<h2>Profile auto-switching not working</h2>
+<ol class="steps">
+  <li><p>Confirm the profile has a coloured dot — this indicates it is linked to an app</p></li>
+  <li><p>In profile settings, click <strong>Link to App</strong> and verify the correct <code>.exe</code> path is set</p></li>
+  <li><p>Make sure Trigr itself is not in focus — auto-switching pauses while you are editing inside Trigr</p></li>
+  <li><p>Some apps launch through launchers or wrappers — link to the actual process <code>.exe</code>, not a shortcut</p></li>
+</ol>
+<h2>Status bar reference</h2>
+<table class="gt">
+  <thead><tr><th>Status bar state</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><span style="color:#50c878;font-weight:600">● Macros Active</span> with green Listener + Executor chips</td><td>Everything running normally</td></tr>
+    <tr><td>Listener chip missing or grey</td><td>Keyboard/mouse hook not registered — restart Trigr</td></tr>
+    <tr><td>Executor chip missing or grey</td><td>Output engine not ready — restart Trigr, check antivirus isn't blocking it</td></tr>
+    <tr><td><span style="color:#ff8888;font-weight:600">Macros Paused</span></td><td>You have manually paused via tray icon or keyboard shortcut — click tray icon to resume</td></tr>
+  </tbody>
+</table>
+<div class="callout warn"><div class="ct">Antivirus false positives</div><p>Some antivirus tools flag keyboard hook software as suspicious. If Trigr stops working after an antivirus scan, add the Trigr install folder to your AV exclusions list. All Trigr code is open source — nothing is sent to any server.</p></div>
+<div class="callout info"><div class="ct">Run as Administrator</div><p>A small number of applications — primarily administrative tools and some games — run at elevated privilege and block input from non-elevated processes. If macros don't fire in a specific app, try right-clicking the Trigr tray icon and selecting <strong>Restart as Administrator</strong>.</p></div>
+</div>
+
+</main>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ── Navigation ──
+function show(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active'));
+  var page = document.getElementById(id);
+  if (page) page.classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(function(a) {
+    if (a.getAttribute('onclick') === "show('" + id + "')") a.classList.add('active');
+  });
+  window.scrollTo(0, 0);
+  // Re-scale demos on the newly visible page
+  if (typeof window._trigrRescale === 'function') setTimeout(window._trigrRescale, 80);
+}
+
+// ── Demo scale system ──────────────────────────────────────────────────
+// Wraps every .kf app shell in a scale container and resizes it to fit
+// the guide column at proper 16:9 (1280x720) proportions.
+(function() {
+  var NATIVE_W = 1280;
+  var NATIVE_H = 720;
+
+  function wrapAll() {
+    document.querySelectorAll('.kf').forEach(function(kf) {
+      // Skip if already inside a scale div
+      var par = kf.parentElement;
+      if (par && par.classList.contains('kf-demo-scale')) return;
+
+      // Ensure light theme
+      kf.setAttribute('data-theme', 'light');
+
+      var wrap = document.createElement('div');
+      wrap.className = 'kf-demo-wrap';
+      var scale = document.createElement('div');
+      scale.className = 'kf-demo-scale';
+      kf.parentNode.insertBefore(wrap, kf);
+      scale.appendChild(kf);
+      wrap.appendChild(scale);
+    });
+    rescale();
+  }
+
+  function rescale() {
+    document.querySelectorAll('.kf-demo-wrap').forEach(function(wrap) {
+      var scale = wrap.querySelector('.kf-demo-scale');
+      if (!scale) return;
+      // Temporarily clear transform to measure accurately
+      scale.style.transform = 'none';
+      scale.style.width = NATIVE_W + 'px';
+      var availW = wrap.getBoundingClientRect().width;
+      if (availW <= 0) return;
+      var s = Math.min(1, availW / NATIVE_W);
+      scale.style.transform = 'scale(' + s + ')';
+      wrap.style.height = Math.ceil(NATIVE_H * s) + 'px';
+      // Reveal now that scaling is applied
+      var kf = scale.querySelector('.kf');
+      if (kf && !kf.classList.contains('kf-ready')) kf.classList.add('kf-ready');
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // Small delay lets fonts + layout settle
+    setTimeout(wrapAll, 30);
+    window.addEventListener('resize', function() { setTimeout(rescale, 30); });
+  });
+
+  // Expose rescale so show() can call it after page switch
+  window._trigrRescale = rescale;
+})();
+
+
+var KU=42,KG=4,KH=42;
+var ROWS=[
+  [{id:'Escape',l:'Esc',w:1},{sp:1,w:.5},{id:'F1',l:'F1',w:1},{id:'F2',l:'F2',w:1},{id:'F3',l:'F3',w:1},{id:'F4',l:'F4',w:1},{sp:1,w:.35},{id:'F5',l:'F5',w:1},{id:'F6',l:'F6',w:1},{id:'F7',l:'F7',w:1},{id:'F8',l:'F8',w:1},{sp:1,w:.35},{id:'F9',l:'F9',w:1},{id:'F10',l:'F10',w:1},{id:'F11',l:'F11',w:1},{id:'F12',l:'F12',w:1}],
+  [{id:'Backquote',l:'`',s:'~',w:1},{id:'Digit1',l:'1',s:'!',w:1},{id:'Digit2',l:'2',s:'@',w:1},{id:'Digit3',l:'3',s:'#',w:1},{id:'Digit4',l:'4',s:'$',w:1},{id:'Digit5',l:'5',s:'%',w:1},{id:'Digit6',l:'6',s:'^',w:1},{id:'Digit7',l:'7',s:'&',w:1},{id:'Digit8',l:'8',s:'*',w:1},{id:'Digit9',l:'9',s:'(',w:1},{id:'Digit0',l:'0',s:')',w:1},{id:'Minus',l:'-',s:'_',w:1},{id:'Equal',l:'=',s:'+',w:1},{id:'Backspace',l:'⌫',w:2}],
+  [{id:'Tab',l:'Tab',w:1.5},{id:'KeyQ',l:'Q',w:1},{id:'KeyW',l:'W',w:1},{id:'KeyE',l:'E',w:1},{id:'KeyR',l:'R',w:1},{id:'KeyT',l:'T',w:1},{id:'KeyY',l:'Y',w:1},{id:'KeyU',l:'U',w:1},{id:'KeyI',l:'I',w:1},{id:'KeyO',l:'O',w:1},{id:'KeyP',l:'P',w:1},{id:'BracketLeft',l:'[',s:'{',w:1},{id:'BracketRight',l:']',s:'}',w:1},{id:'Backslash',l:'\\',s:'|',w:1.5}],
+  [{id:'CapsLock',l:'Caps',w:1.75},{id:'KeyA',l:'A',w:1},{id:'KeyS',l:'S',w:1},{id:'KeyD',l:'D',w:1},{id:'KeyF',l:'F',w:1},{id:'KeyG',l:'G',w:1},{id:'KeyH',l:'H',w:1},{id:'KeyJ',l:'J',w:1},{id:'KeyK',l:'K',w:1},{id:'KeyL',l:'L',w:1},{id:'Semicolon',l:';',s:':',w:1},{id:'Quote',l:"'",s:'"',w:1},{id:'Enter',l:'Enter',w:2.25}],
+  [{id:'ShiftLeft',l:'Shift',w:2.25},{id:'KeyZ',l:'Z',w:1},{id:'KeyX',l:'X',w:1},{id:'KeyC',l:'C',w:1},{id:'KeyV',l:'V',w:1},{id:'KeyB',l:'B',w:1},{id:'KeyN',l:'N',w:1},{id:'KeyM',l:'M',w:1},{id:'Comma',l:',',s:'<',w:1},{id:'Period',l:'.',s:'>',w:1},{id:'Slash',l:'/',s:'?',w:1},{id:'ShiftRight',l:'Shift',w:2.75}],
+  [{id:'ControlLeft',l:'Ctrl',w:1.25},{id:'MetaLeft',l:'⊞',w:1.25},{id:'AltLeft',l:'Alt',w:1.25},{id:'Space',l:'',w:6.25},{id:'AltRight',l:'Alt',w:1.25},{id:'MetaRight',l:'⊞',w:1.25},{id:'ContextMenu',l:'☰',w:1.25},{id:'ControlRight',l:'Ctrl',w:1.25}]
+];
+var SYS=new Set(['ShiftLeft','ShiftRight','ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','CapsLock']);
+function kw(width){return width*KU+(width-1)*KG;}
+
+// Render a keyboard into an element with given assigned/selected keys
+function renderKB(el, assigned, selected, noLayer) {
+  if (!el) return;
+  var body = document.createElement('div');
+  body.className='kf-kb-body';
+  ROWS.forEach(function(row) {
+    var rowEl=document.createElement('div');
+    rowEl.className='kf-kr';
+    row.forEach(function(k) {
+      if (k.sp) {
+        var sp=document.createElement('div');
+        sp.style.cssText='width:'+k.w*KU+'px;flex-shrink:0';
+        rowEl.appendChild(sp); return;
+      }
+      var el2=document.createElement('div');
+      el2.className='kf-key';
+      el2.style.cssText='width:'+kw(k.w)+'px;height:'+KH+'px';
+      var isSys=SYS.has(k.id);
+      var isAsgn=assigned&&assigned.indexOf(k.id)!==-1;
+      var isSel=selected&&selected.indexOf(k.id)!==-1;
+      if (isSys) el2.classList.add('sys');
+      else if (noLayer) el2.classList.add('nl');
+      if (isAsgn&&!isSel) el2.classList.add('asgn');
+      if (isSel) el2.classList.add('sel');
+      if (isAsgn&&!isSel) { var d=document.createElement('span'); d.className='kf-key-dot'; el2.appendChild(d); }
+      if (k.s) { var sl=document.createElement('span'); sl.className='kf-key-sub'; sl.textContent=k.s; el2.appendChild(sl); }
+      var lbl=document.createElement('span'); lbl.className='kf-key-lbl'; lbl.textContent=k.l; el2.appendChild(lbl);
+      rowEl.appendChild(el2);
+    });
+    body.appendChild(rowEl);
+  });
+  // Legend
+  var leg=document.createElement('div'); leg.className='kf-legend';
+  leg.innerHTML='<div class="kf-lc"><span class="kf-ld asgn"></span>Assigned</div><div class="kf-lc"><span class="kf-ld sel"></span>Selected</div><div class="kf-lc"><span class="kf-ld sys"></span>Modifier key</div>';
+  el.appendChild(body); el.appendChild(leg);
+}
+
+// Build all static keyboards on page load
+window.addEventListener('DOMContentLoaded', function() {
+  // Interface — no layer, no assignments
+  renderKB(document.getElementById('kb-interface'), [], [], true);
+
+  // Creating a hotkey — Alt layer, Backquote selected
+  renderKB(document.getElementById('kb-create'), ['Backquote'], ['Backquote'], false);
+
+  // Send Hotkey — Ctrl layer, Digit1 selected, KeyQ assigned
+  renderKB(document.getElementById('kb-sendkey'), ['Digit1','KeyQ'], ['Digit1'], false);
+
+  // Type Text — Ctrl layer, E selected
+  renderKB(document.getElementById('kb-hktext'), ['KeyE','KeyG'], ['KeyE'], false);
+
+  // Open App — Alt layer, Backquote selected
+  renderKB(document.getElementById('kb-hkapp'), ['Backquote'], ['Backquote'], false);
+
+  // Open URL — Ctrl layer, G selected
+  renderKB(document.getElementById('kb-hkurl'), ['KeyE','KeyG'], ['KeyG'], false);
+
+  // Macro — Shift layer, F5 selected
+  renderKB(document.getElementById('kb-hkmacro'), ['F5','F6','F7'], ['F5'], false);
+
+  // Profiles — no layer
+   renderKB(document.getElementById('kb-profiles'), [], [], true);
+
+  // Profiles-app — Bare layer, P selected
+  renderKB(document.getElementById('kb-profilesapp'), ['KeyP','KeyH','KeyM'], ['KeyP'], false);
+
+  // Quick Search — Shift layer, F5+F6 assigned
+  renderKB(document.getElementById('kb-qs'), ['F5','F6'], [], false);
+});
+</script>
+</body>
+</html>

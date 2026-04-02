@@ -1,0 +1,309 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-base);
+  overflow: hidden;
+}
+
+/* ── Backup auto-restore banner ──────────────────────────────────────────── */
+.backup-restored-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: rgba(232, 100, 32, 0.12);
+  border-bottom: 1px solid rgba(232, 100, 32, 0.3);
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.backup-restored-icon {
+  font-size: 12px;
+  color: #e06420;
+  flex-shrink: 0;
+}
+
+.backup-restored-text {
+  flex: 1;
+  font-size: 11px;
+  color: #c85818;
+  line-height: 1.4;
+}
+
+[data-theme="light"] .backup-restored-text {
+  color: #a04010;
+}
+
+.backup-restored-dismiss {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid rgba(232, 100, 32, 0.4);
+  border-radius: 4px;
+  color: #e06420;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.backup-restored-dismiss:hover {
+  background: rgba(232, 100, 32, 0.15);
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 20px 20px 24px;
+  min-width: 0;
+  position: relative;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 60%, rgba(232, 160, 32, 0.04) 0%, transparent 70%),
+    var(--bg-base);
+}
+
+/* Subtle grid texture */
+.main-area::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+
+/* ── VIEW SWITCHER (Keyboard / Mouse tabs) ────────────── */
+.view-switcher {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.view-tab {
+  height: 28px;
+  padding: 0 18px;
+  border-radius: 7px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.view-tab.active {
+  background: var(--bg-active);
+  color: var(--accent);
+  border: 1px solid var(--border-accent);
+}
+
+/* ── Keyboard + numpad slide-out wrapper ───────────────────── */
+
+.keyboard-numpad-wrap {
+  /* Explicit width breaks the circular dependency where keyboard-canvas-wrap { width: 100% }
+     was resolving to the keyboard's own natural content width (770px), making scale = 1 always.
+     Now width comes from main-area (stable), so scale is anchored to actual available space. */
+  width: 100%;
+}
+
+/* Slide container — zero-width when closed, expands on open */
+.numpad-slide {
+  max-width: 0;
+  overflow: hidden;
+  transition: max-width 200ms ease;
+  flex-shrink: 0;
+}
+
+.numpad-slide--open {
+  max-width: 220px; /* 4×42px keys + 3×4px gaps + 2×12px padding = 204px */
+}
+
+/* Toggle arrow button */
+.numpad-toggle-btn {
+  align-self: center;
+  width: 18px;
+  height: 52px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  margin-left: -1px;
+  flex-shrink: 0;
+  padding: 0;
+  outline: none;
+}
+
+.numpad-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.numpad-toggle-btn.open {
+  border-radius: 6px 0 0 6px;
+  margin-left: 0;
+  margin-right: -1px;
+}
+
+/* ── Text Expansions full-view layout ──────────────────────── */
+.main-area--expansions {
+  align-items: stretch;
+  padding: 12px 20px 20px;
+  overflow: hidden; /* te-list handles internal scrolling */
+}
+
+/* Notification toast */
+.notification {
+  position: fixed;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 1000;
+  animation: notif-in 0.2s ease;
+  white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+.notification.info {
+  color: var(--text-secondary);
+  border-color: var(--border-bright);
+}
+
+@keyframes notif-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── Update banner ──────────────────────────────────────────── */
+.update-banner {
+  position: fixed;
+  bottom: 28px; /* sit above the 28px status bar */
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  background: #92400e;
+  border-top: 1px solid #b45309;
+  color: #fef3c7;
+  font-size: 12px;
+  font-weight: 500;
+  -webkit-app-region: no-drag;
+}
+
+.update-banner__text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update-banner__progress {
+  width: 120px;
+  height: 4px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.update-banner__progress-bar {
+  display: block;
+  height: 100%;
+  background: #fbbf24;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.update-banner__pct {
+  width: 34px;
+  text-align: right;
+  flex-shrink: 0;
+  color: #fde68a;
+}
+
+.update-banner__btn {
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.update-banner__btn--restart {
+  background: #fbbf24;
+  color: #1c1400;
+}
+
+.update-banner__btn--restart:hover {
+  background: #fcd34d;
+}
+
+.update-banner__btn--later {
+  background: transparent;
+  color: #fde68a;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+.update-banner__btn--later:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.update-banner__btn--restart:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+@keyframes update-dots {
+  0%   { content: '.';   }
+  33%  { content: '..';  }
+  66%  { content: '...'; }
+}
+.update-banner__dots::after {
+  content: '...';
+  animation: update-dots 1.2s steps(1, end) infinite;
+}
