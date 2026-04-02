@@ -1,6 +1,7 @@
 use log::info;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use tauri::{
     image::Image,
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
@@ -8,8 +9,11 @@ use tauri::{
     AppHandle, Emitter, Manager,
 };
 
-static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
 static HAS_SHOWN_BALLOON: AtomicBool = AtomicBool::new(false);
+
+/// Pre-generated tray icons stored at startup — normal and alpha-dimmed paused variant.
+static TRAY_ICON_NORMAL: OnceLock<Image<'static>> = OnceLock::new();
+static TRAY_ICON_PAUSED: OnceLock<Image<'static>> = OnceLock::new();
 
 // ── Autolaunch detection ────────────────────────────────────────────────────
 
@@ -20,22 +24,35 @@ pub fn is_autolaunch() -> bool {
 // ── Tray setup ──────────────────────────────────────────────────────────────
 
 pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let tray_icon = load_tray_icon(app)?;
+    let (rgba, width, height) = load_tray_icon_raw(app)?;
+
+    // Store normal icon
+    let normal = Image::new_owned(rgba.clone(), width, height);
+    let _ = TRAY_ICON_NORMAL.set(normal);
+
+    // Generate paused icon by dimming alpha to 1/3
+    let mut paused_rgba = rgba.clone();
+    for i in (3..paused_rgba.len()).step_by(4) {
+        paused_rgba[i] = paused_rgba[i] / 3;
+    }
+    let paused = Image::new_owned(paused_rgba, width, height);
+    let _ = TRAY_ICON_PAUSED.set(paused);
+
+    // Build tray with normal icon
+    let tray_icon = Image::new_owned(rgba, width, height);
     build_tray(app.handle(), tray_icon)?;
     info!("[Trigr] System tray created");
     Ok(())
 }
 
-/// Decode a PNG file to RGBA bytes + dimensions.
-fn decode_png(path: &std::path::Path) -> Result<Image<'static>, Box<dyn std::error::Error>> {
+/// Decode a PNG to raw RGBA bytes + dimensions (for icon generation).
+fn decode_png_raw(path: &std::path::Path) -> Result<(Vec<u8>, u32, u32), Box<dyn std::error::Error>> {
     let file = std::fs::File::open(path)?;
     let decoder = png::Decoder::new(file);
     let mut reader = decoder.read_info()?;
     let mut buf = vec![0u8; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf)?;
     buf.truncate(info.buffer_size());
-
-    // Convert RGB to RGBA if needed
     let rgba = match info.color_type {
         png::ColorType::Rgba => buf,
         png::ColorType::Rgb => {
@@ -46,43 +63,51 @@ fn decode_png(path: &std::path::Path) -> Result<Image<'static>, Box<dyn std::err
             }
             rgba
         }
-        _ => buf, // Assume RGBA for other types
+        _ => buf,
     };
-
-    Ok(Image::new_owned(rgba, info.width, info.height))
+    Ok((rgba, info.width, info.height))
 }
 
-fn load_tray_icon(app: &tauri::App) -> Result<Image<'static>, Box<dyn std::error::Error>> {
-    // In production: bundled resource
+fn load_tray_icon_raw(app: &tauri::App) -> Result<(Vec<u8>, u32, u32), Box<dyn std::error::Error>> {
     let resource_path = app
         .path()
         .resource_dir()
         .map(|d| d.join("icons").join("tray-icon.png"))
         .unwrap_or_default();
-
     if resource_path.exists() {
-        return decode_png(&resource_path);
+        return decode_png_raw(&resource_path);
     }
-
-    // Dev mode: assets/icons relative to project root
     let dev_path = std::env::current_dir()?
         .join("assets")
         .join("icons")
         .join("tray-icon.png");
     if dev_path.exists() {
-        return decode_png(&dev_path);
+        return decode_png_raw(&dev_path);
     }
-
-    // Final fallback: app icon
     let fallback = std::env::current_dir()?.join("icons").join("icon.png");
-    decode_png(&fallback)
+    decode_png_raw(&fallback)
+}
+
+/// Swap the tray icon between active (normal) and paused (alpha-dimmed) states.
+/// Reads from pre-generated static images — no disk I/O on toggle.
+pub fn update_tray_icon(app: &AppHandle, macros_enabled: bool) {
+    let icon = if macros_enabled {
+        TRAY_ICON_NORMAL.get()
+    } else {
+        TRAY_ICON_PAUSED.get()
+    };
+    if let Some(img) = icon {
+        if let Some(tray) = app.tray_by_id("trigr-tray") {
+            let _ = tray.set_icon(Some(img.clone()));
+        }
+    }
 }
 
 fn build_tray(
     app: &AppHandle,
     icon: Image<'static>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let enabled = MACROS_ENABLED.load(Ordering::Relaxed);
+    let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
 
     // Menu items
     let open_item = MenuItem::with_id(app, "open", "Open Trigr", true, None::<&str>)?;
@@ -168,7 +193,7 @@ fn build_tray(
 /// Rebuild the tray menu (e.g. after pause/resume state change).
 pub fn rebuild_tray_menu(app: &AppHandle) {
     if let Some(tray) = app.tray_by_id("trigr-tray") {
-        let enabled = MACROS_ENABLED.load(Ordering::Relaxed);
+        let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
 
         let tooltip = if enabled {
             "Trigr — Active"
@@ -238,8 +263,8 @@ fn toggle_window_visibility(app: &AppHandle) {
 // ── Pause toggle ────────────────────────────────────────────────────────────
 
 fn toggle_pause(app: &AppHandle) {
-    let was_enabled = MACROS_ENABLED.load(Ordering::Relaxed);
-    MACROS_ENABLED.store(!was_enabled, Ordering::Relaxed);
+    let was_enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
+    crate::hotkeys::MACROS_ENABLED.store(!was_enabled, Ordering::Relaxed);
     let now_enabled = !was_enabled;
 
     info!(
@@ -249,17 +274,19 @@ fn toggle_pause(app: &AppHandle) {
     );
 
     rebuild_tray_menu(app);
+    update_tray_icon(app, now_enabled);
 
     // Notify the renderer of the state change
     if let Some(window) = app.get_webview_window("main") {
+        let state = crate::hotkeys::engine_state().lock().unwrap();
         let _ = window.emit(
             "engine-status",
             serde_json::json!({
                 "uiohookAvailable": false,
                 "nutjsAvailable": false,
                 "macrosEnabled": now_enabled,
-                "activeProfile": "Default",
-                "globalPauseToggleKey": null,
+                "activeProfile": state.active_profile,
+                "globalPauseToggleKey": state.pause_hotkey_str,
                 "isDemoMode": false
             }),
         );
@@ -267,7 +294,7 @@ fn toggle_pause(app: &AppHandle) {
 }
 
 pub fn are_macros_enabled() -> bool {
-    MACROS_ENABLED.load(Ordering::Relaxed)
+    crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed)
 }
 
 // ── Start with Windows (registry) ───────────────────────────────────────────

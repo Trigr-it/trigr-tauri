@@ -108,6 +108,15 @@ fn add_overlay_to_suppress(overlay: Option<(u8, u32)>) {
     }
 }
 
+/// Insert the pause hotkey into the suppress set.
+fn add_pause_to_suppress(pause: Option<(u8, u32)>) {
+    if let Some(combo) = pause {
+        if let Ok(mut w) = suppress_keys().write() {
+            w.insert(combo);
+        }
+    }
+}
+
 /// Map Trigr key ID back to VK code (reverse of vk_to_key_id).
 fn key_id_to_vk(key_id: &str) -> Option<u32> {
     match key_id {
@@ -171,6 +180,9 @@ pub(crate) struct EngineState {
     capture_sole_modifier: Option<String>,
     // Overlay hotkey — parsed as (modifier_bits, vk_code)
     overlay_hotkey: Option<(u8, u32)>,
+    // Global pause hotkey — parsed as (modifier_bits, vk_code)
+    pause_hotkey: Option<(u8, u32)>,
+    pub(crate) pause_hotkey_str: Option<String>,
 }
 
 use std::sync::Arc;
@@ -189,6 +201,8 @@ impl Default for EngineState {
             pending_is_bare: false,
             capture_sole_modifier: None,
             overlay_hotkey: Some((1, 0x20)), // Default: Ctrl+Space (bits=1=Ctrl, vk=0x20=Space)
+            pause_hotkey: None, // Set via set_global_pause_key command
+            pause_hotkey_str: None,
         }
     }
 }
@@ -568,6 +582,32 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     if let HookEvent::KeyDown { vk_code, .. } | HookEvent::KeyUp { vk_code, .. } = &event {
                         update_modifier_state(*vk_code, matches!(event, HookEvent::KeyDown { .. }));
                     }
+                    // Pause hotkey must fire even when paused — it's the only way to unpause
+                    if let HookEvent::KeyDown { vk_code, .. } = &event {
+                        if !is_modifier_vk(*vk_code) && has_any_modifier() {
+                            if let Ok(state) = engine_state().try_lock() {
+                                if let Some((mod_bits, vk)) = state.pause_hotkey {
+                                    if modifier_bits() == mod_bits && key_id_to_vk(vk_to_key_id(*vk_code).unwrap_or("")).map(|v| v as u32) == Some(vk) {
+                                        let pause_str = state.pause_hotkey_str.clone();
+                                        let profile = state.active_profile.clone();
+                                        drop(state);
+                                        MACROS_ENABLED.store(true, Ordering::Relaxed);
+                                        println!("[PAUSE] Unpaused via hotkey");
+                                        crate::tray::rebuild_tray_menu(&app);
+                                        crate::tray::update_tray_icon(&app, true);
+                                        let _ = app.emit("engine-status", serde_json::json!({
+                                            "uiohookAvailable": HOOKS_RUNNING.load(Ordering::Relaxed),
+                                            "nutjsAvailable": false,
+                                            "macrosEnabled": true,
+                                            "activeProfile": profile,
+                                            "globalPauseToggleKey": pause_str,
+                                            "isDemoMode": false,
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                    }
                     continue;
                 }
                 // Forward to Wait for Input waiter before normal handling
@@ -741,6 +781,38 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                 crate::actions::release_held_modifiers();
                 SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
                 let _ = app.emit("toggle-overlay", Value::Null);
+                return;
+            }
+        }
+        drop(state);
+    }
+
+    // ── Global pause hotkey check (works even when paused) ────────────
+    if has_any_modifier() {
+        let state = engine_state().lock().unwrap();
+        if let Some((mod_bits, vk)) = state.pause_hotkey {
+            let current_bits = modifier_bits();
+            let key_vk = key_id_to_vk(key_id);
+            if current_bits == mod_bits && key_vk == Some(vk) {
+                drop(state);
+                let was_enabled = MACROS_ENABLED.load(Ordering::Relaxed);
+                MACROS_ENABLED.store(!was_enabled, Ordering::Relaxed);
+                let now_enabled = !was_enabled;
+                println!("[PAUSE] Global pause toggled: macros={}", now_enabled);
+                // Rebuild tray menu and notify frontend
+                crate::tray::rebuild_tray_menu(app);
+                crate::tray::update_tray_icon(app, now_enabled);
+                {
+                    let st = engine_state().lock().unwrap();
+                    let _ = app.emit("engine-status", serde_json::json!({
+                        "uiohookAvailable": HOOKS_RUNNING.load(Ordering::Relaxed),
+                        "nutjsAvailable": false,
+                        "macrosEnabled": now_enabled,
+                        "activeProfile": st.active_profile,
+                        "globalPauseToggleKey": st.pause_hotkey_str,
+                        "isDemoMode": false,
+                    }));
+                }
                 return;
             }
         }
@@ -1310,6 +1382,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     state.active_profile = profile;
     rebuild_suppress_keys(&state.assignments, &state.active_profile);
     add_overlay_to_suppress(state.overlay_hotkey);
+    add_pause_to_suppress(state.pause_hotkey);
     println!("[ENGINE] Assignments stored: {} entries", state.assignments.len());
 }
 
@@ -1318,6 +1391,7 @@ pub fn set_active_profile(profile: String) {
     state.active_profile = profile.clone();
     rebuild_suppress_keys(&state.assignments, &state.active_profile);
     add_overlay_to_suppress(state.overlay_hotkey);
+    add_pause_to_suppress(state.pause_hotkey);
     info!("[Trigr] Active profile: {}", profile);
 }
 
@@ -1369,8 +1443,30 @@ pub fn set_overlay_hotkey(combo: &str) {
         state.overlay_hotkey = Some(parsed);
         rebuild_suppress_keys(&state.assignments, &state.active_profile);
         add_overlay_to_suppress(Some(parsed));
+        add_pause_to_suppress(state.pause_hotkey);
         println!("[HOOK] Overlay hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
+}
+
+pub fn set_pause_hotkey(combo: &str) {
+    if let Some(parsed) = parse_hotkey_combo(combo) {
+        let mut state = engine_state().lock().unwrap();
+        state.pause_hotkey = Some(parsed);
+        state.pause_hotkey_str = Some(combo.to_string());
+        rebuild_suppress_keys(&state.assignments, &state.active_profile);
+        add_overlay_to_suppress(state.overlay_hotkey);
+        add_pause_to_suppress(Some(parsed));
+        println!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+    }
+}
+
+pub fn clear_pause_hotkey() {
+    let mut state = engine_state().lock().unwrap();
+    state.pause_hotkey = None;
+    state.pause_hotkey_str = None;
+    rebuild_suppress_keys(&state.assignments, &state.active_profile);
+    add_overlay_to_suppress(state.overlay_hotkey);
+    println!("[HOOK] Pause hotkey cleared");
 }
 
 pub fn get_engine_status() -> Value {
@@ -1380,7 +1476,7 @@ pub fn get_engine_status() -> Value {
         "nutjsAvailable": false,
         "macrosEnabled": MACROS_ENABLED.load(Ordering::Relaxed),
         "activeProfile": state.active_profile,
-        "globalPauseToggleKey": null,
+        "globalPauseToggleKey": state.pause_hotkey_str,
         "isDemoMode": false,
     })
 }
