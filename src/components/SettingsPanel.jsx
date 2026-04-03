@@ -136,7 +136,7 @@ export default function SettingsPanel({
           <div className="settings-section-title">PRIVACY &amp; SECURITY</div>
 
           <div className="settings-privacy-block">
-            <p>All your data is stored locally on this device only. Trigr never transmits your assignments, expansions or keystrokes to any server. No analytics, telemetry or usage tracking of any kind.</p>
+            <p>All your data is stored locally on this device only. Trigr never transmits your assignments, expansions or keystrokes to any server. Local usage stats are stored on your device only. No data ever leaves your machine.</p>
             <p className="settings-config-path-row">
               Config file:
               <code className="settings-config-path" title={configPath}>{configPath || '…'}</code>

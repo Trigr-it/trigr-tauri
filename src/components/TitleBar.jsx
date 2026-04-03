@@ -213,6 +213,13 @@ export default function TitleBar({
           >
             Text Expansion
           </button>
+          <button
+            className={`area-tab${activeArea === 'analytics' ? ' active' : ''}`}
+            onClick={() => onAreaChange?.('analytics')}
+            type="button"
+          >
+            Analytics
+          </button>
         </div>
 
         {/* Profile tabs — only shown in Mapping area */}

@@ -250,7 +250,7 @@ If `load_config_safe()` returns `(None, None)` (all config sources failed), the 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "bundle": {
     "active": true,
     "targets": ["nsis"],

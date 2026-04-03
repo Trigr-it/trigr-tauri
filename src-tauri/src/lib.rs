@@ -2,6 +2,7 @@ use serde_json::Value;
 use tauri::{Emitter, Listener, Manager};
 
 mod actions;
+mod analytics;
 mod config;
 mod expansions;
 mod foreground;
@@ -615,6 +616,9 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                     if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
                         drop(state);
                         actions::execute_action(&macro_val, false, target_hwnd, false);
+                        let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
+                        let analytics_type = if at == "macro" { "macro" } else { "hotkey" };
+                        analytics::log_action(analytics_type, 0);
                     }
                 }
             }
@@ -623,6 +627,8 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                     // Resolve dynamic tokens ({date:...}, {time:...}, {clipboard}, {cursor}, etc.)
                     let global_vars = expansions::get_global_variables();
                     let (resolved, cursor_back) = expansions::resolve_tokens(raw_text, &global_vars);
+
+                    analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32);
 
                     actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
                         .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -692,6 +698,18 @@ fn reset_onboarding() -> bool {
         obj.insert("onboarding_complete".to_string(), Value::Bool(false));
     }
     config::save_config(&merged)
+}
+
+// ── Analytics ───────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_analytics() -> Value {
+    analytics::get_stats()
+}
+
+#[tauri::command]
+fn reset_analytics() -> bool {
+    analytics::reset_stats()
 }
 
 // ── Auto-updater (Phase 10) ─────────────────────────────────────────────────
@@ -776,7 +794,8 @@ pub fn run() {
             // Initialize config module with app data dir
             let app_data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data)?;
-            config::init(app_data);
+            config::init(app_data.clone());
+            analytics::init(app_data);
 
             // Set up system tray
             if let Err(e) = tray::setup_tray(app) {
@@ -984,6 +1003,9 @@ pub fn run() {
             update_search_settings,
             // Onboarding
             reset_onboarding,
+            // Analytics
+            get_analytics,
+            reset_analytics,
             // Updater
             check_for_updates,
             install_update,
