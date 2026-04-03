@@ -60,7 +60,11 @@ window.electronAPI = {
   },
   respondFillIn: (value) => emit('fill-in-response', value),
 
-  fillInReady:  ()         => invoke('fill_in_ready'),
+  fillInReady:    ()         => invoke('fill_in_ready'),
+  resizeFillin:   (height)   => invoke('fillin_resize', { height }),
+  onFillInRequestReady: (callback) => {
+    listen('fill-in-request-ready', () => callback()).then(u => { listeners['fill-in-request-ready'] = u; });
+  },
   onFillInShow: (callback) => {
     listen('fill-in-show', (event) => callback(event.payload)).then(u => { listeners['fill-in-show'] = u; });
   },
@@ -78,6 +82,9 @@ window.electronAPI = {
   // ── Global compatibility settings ───────────────────────────────────────────
   updateGlobalSettings: (settings) => invoke('update_global_settings', { settings }),
 
+  // ── Global variables (text expansion tokens) ───────────────────────────────
+  updateGlobalVariables: (vars) => invoke('update_global_variables', { vars }),
+
   // ── Onboarding ──────────────────────────────────────────────────────────────
   resetOnboarding: () => invoke('reset_onboarding'),
 
@@ -93,6 +100,7 @@ window.electronAPI = {
   // ── Config path & folder ────────────────────────────────────────────────────
   getConfigPath:    () => invoke('get_config_path'),
   openConfigFolder: () => invoke('open_config_folder'),
+  openLogsFolder:   () => invoke('open_logs_folder'),
 
   // ── Backup & restore ────────────────────────────────────────────────────────
   exportConfig:   ()         => invoke('export_config'),

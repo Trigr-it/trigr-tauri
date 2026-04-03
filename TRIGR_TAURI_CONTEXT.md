@@ -73,6 +73,8 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 |---|---|---|
 | OnboardingTour | `src/components/OnboardingTour.jsx` | 5-step first-run tour with progressive coach marks |
 | OnboardingTour CSS | `src/components/OnboardingTour.css` | Tour overlay, tooltip, coach mark styling (CSS variables only) |
+| FillInWindow | `src/components/FillInWindow.jsx` | Fill-in field prompt window for {fillIn:Label} tokens |
+| FillInWindow CSS | `src/components/FillInWindow.css` | Fill-in window styling (transparent bg, content-based auto-resize) |
 
 ---
 
@@ -120,6 +122,11 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 **Commands added post-MVP:**
 - `reset_onboarding` — sets `onboarding_complete: false` in config, returns `bool`
 - `set_window_resizable` — calls `window.set_resizable(bool)` on the main window
+- `update_global_variables` — pushes global variables HashMap to expansion engine
+- `fill_in_ready` — renderer ready handshake for fill-in window
+- `fillin_resize` — JS-driven content-based window resize (same pattern as overlay_resize)
+- `fill_in_submit` — receives fill-in field values (or null for cancel) from renderer
+- `open_logs_folder` — opens the log directory in File Explorer
 
 ---
 
@@ -210,6 +217,31 @@ Keystroke capture uses two paths: the LL hook (when other apps have focus) and a
 ### Hook Thread Architecture
 The LL hook runs on a dedicated high-priority thread with a `PeekMessageW` polling loop (not `GetMessageW`). This is required because the Tauri main thread's message pump is monopolised by WebView2's COM dispatch when the app has focus, preventing LL hook callbacks from being serviced. A health monitor thread reinstalls hooks if the heartbeat stalls for 30s.
 
+### Keystroke Buffering During Injection
+`INJECTION_IN_PROGRESS` (AtomicBool in hotkeys.rs) is set via `InjectionGuard` before injection starts. While true, `keyboard_hook_proc` swallows real user keystrokes and buffers them in `INJECTION_BUFFER` for replay after injection completes. Exception: if `FILLIN_HWND` matches the foreground window, keystrokes pass through (user is typing in fill-in input). Replayed keystrokes are fed into the expansion buffer to support sequential triggers.
+
+### Fill-In Window Architecture
+- Pre-created hidden at startup in lib.rs setup() with `transparent(true)` + WebView2 COM `SetDefaultBackgroundColor(0,0,0,0)` — DO NOT remove either
+- Window sizing is content-based via JS auto-resize (`fillin_resize` command) — DO NOT set fixed heights in Rust
+- `FILL_IN_ACTIVE` (AtomicBool) prevents concurrent fill-in invocations
+- `FILLIN_HWND` (AtomicIsize, set via `win.hwnd()`) lets the hook pass keystrokes to fill-in input
+- `FILLIN_HWND` guard in `handle_keydown` skips expansion buffer while fill-in is visible
+- Ready handshake: Rust emits `fill-in-request-ready`, JS calls `fillInReady()`, Rust waits on mpsc channel (5s timeout)
+- Fill-in flow runs on dedicated spawned thread — never blocks the processor thread
+- `on_window_event` CloseRequested handler prevents destruction, hides window, sends cancel via channel
+
+### Autocorrect — Disabled for Alpha
+Both custom (`GLOBAL::AUTOCORRECT::`) and built-in (`builtin_autocorrect()`) autocorrect checks are commented out in `check_space_trigger()`. The Autocorrect tab is hidden in TextExpansions.jsx. Space-triggered text expansions continue to work normally.
+
+### Trailing Space — Synthetic Keystroke
+Autocorrect/expansion trailing space is sent as a synthetic `VK_SPACE` keystroke via SendInput, NOT included in the clipboard paste string. Some apps (browsers, web inputs) strip trailing whitespace from clipboard paste.
+
+### Structured Logging (tauri-plugin-log)
+`tauri-plugin-log` is registered in the builder chain in lib.rs. Log file: `AppData\Local\com.nodescaffold.trigr\logs\trigr.log`. Targets: LogDir (file) + Stdout. 5MB max file size, KeepOne rotation, Info level. **CRITICAL:** Call `.clear_targets()` after `Builder::new()` before adding targets — the plugin ships with 2 default targets (Stdout + LogDir) and `.target()` appends, not replaces. Without `.clear_targets()`, every log entry is duplicated. All Rust modules use `log::info!()` / `log::error!()` / `log::warn!()` — never `println!()`. Settings panel has "Open logs folder" button.
+
+### Config Factory Defaults
+If `load_config_safe()` returns `(None, None)` (all config sources failed), the `load_config` Tauri command writes a factory-default config `{ "profiles": ["Default"], "assignments": {}, "activeProfile": "Default" }` via the atomic write path and returns it to the frontend. This ensures a valid config file always exists after the first load attempt.
+
 ---
 
 ## 11 — Tauri Config Reference
@@ -218,7 +250,7 @@ The LL hook runs on a dedicated high-priority thread with a `PeekMessageW` polli
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "bundle": {
     "active": true,
     "targets": ["nsis"],
@@ -260,3 +292,5 @@ Record key decisions and findings here after each session.
 | 2026-04-02 | Phase 7 | Text expansions complete | expansions.rs: keystroke buffer (50 char rolling), space-triggered + immediate-mode expansion matching, backspace trigger deletion + Shift+Insert clipboard paste injection. Win32 clipboard API (OpenClipboard/GetClipboardData/SetClipboardData) for {clipboard} token and paste. Global variable tokens ({{var}}, {date}, {time}, {dayofweek}, {cursor}). Built-in autocorrect dictionary (~50 common typos). suppressNextClipboardWrite pattern established. Buffer integrated into hotkeys.rs event processor. |
 | 2026-04-02 | Phase 8 | Macro sequence + Wait for Input complete | Added "Wait for Input" step to execute_macro_step in actions.rs. WaitEvent enum + one-shot mpsc channel in hotkeys.rs. Event processor forwards key/mouse events to waiter before normal handling. Supports LButton/RButton/MButton/AnyKey/SpecificKey input types, press/release/pressRelease triggers. Two-phase pressRelease state machine is per-waiter. 30s timeout. Clears waiter on timeout/cancel/macro-disable. Waited-for keystrokes pass through to target app (no suppression). Keystroke capture modes (recording + key capture) already working from Phase 4. |
 | 2026-04-03 | Post-MVP | Onboarding tour built | 5-step first-run tour (OnboardingTour.jsx + CSS). Progressive coach marks with SVG mask cutouts, deferred tooltip positioning, active detection for hotkey creation flow. New config field `onboarding_complete` (bool). New Rust commands: `reset_onboarding`, `set_window_resizable`. Window resize locked during tour. Restart button in SettingsPanel HELP section. Existing-user migration: if `hasSeenWelcome` is true and `onboarding_complete` undefined, auto-sets `onboarding_complete: true` to skip tour for alpha testers. |
+| 2026-04-03 | Post-MVP | Expansion fixes + fill-in fields + global vars | Autocorrect disabled for Alpha. Trailing space sent as synthetic keystroke. Initial injection delay 30ms. Keystroke buffer-and-replay (INJECTION_IN_PROGRESS + InjectionGuard). Blank clipboard entry fix. Fill-in field tokens ({fillIn:Label}) fully implemented: pre-created hidden window, Electron-style ready handshake, FILL_IN_ACTIVE concurrency guard, FILLIN_HWND hook passthrough, content-based auto-resize via JS→Rust IPC. Global variables wired to Rust (update_global_variables command + frontend sync). Insert dropdown scroll fix + dynamic maxHeight. htmlToPlainText double-newline fix. Diagnostic logs cleaned. v0.1.9 released. |
+| 2026-04-03 | Post-MVP | Structured logging + config hardening | Added tauri-plugin-log: file + stdout targets, 5MB rotation, Info level. .clear_targets() required before .target() to avoid duplicate entries. "Open logs folder" button in Settings. Config hardening: factory-default write on total config failure (all sources return None). Converted remaining println! in config.rs to log::info!/error!. |

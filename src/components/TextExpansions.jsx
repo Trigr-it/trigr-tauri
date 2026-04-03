@@ -7,10 +7,12 @@ import './TextExpansions.css';
 function htmlToPlainText(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<\/div>/gi, '\n');
+    .replace(/<br\s*\/?>/gi, '\n')           // 1. <br> → newline
+    .replace(/<\/p>/gi, '\n')                 // 2. closing </p> → newline
+    .replace(/<\/div>/gi, '\n')               //    closing </div> → newline
+    .replace(/<\/li>/gi, '\n')                //    closing </li> → newline
+    .replace(/<div[^>]*>/gi, '')              // 3. opening <div> → nothing
+    .replace(/<p[^>]*>/gi, '');               //    opening <p> → nothing
   // Replace token chips with their raw token strings before stripping markup
   tmp.querySelectorAll('[data-token]').forEach(el => {
     el.replaceWith(document.createTextNode(el.dataset.token));
@@ -140,11 +142,16 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
       }
     }
 
+    function onScroll(e) {
+      if (menuRef.current?.contains(e.target)) return;
+      close();
+    }
+
     document.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('scroll', close, { capture: true });
+    window.addEventListener('scroll', onScroll, { capture: true });
     return () => {
       document.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('scroll', close, { capture: true });
+      window.removeEventListener('scroll', onScroll, { capture: true });
     };
   }, [showInsert]);
 
@@ -341,7 +348,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
         <div
           ref={menuRef}
           className="rte-insert-menu"
-          style={{ top: menuPos.top, left: menuPos.left }}
+          style={{ top: menuPos.top, left: menuPos.left, maxHeight: window.innerHeight - menuPos.top - 16 }}
         >
           {/* Fill-in label input — always mounted so ref is always valid,
               toggled visible/hidden via CSS to avoid React render-timing races */}
