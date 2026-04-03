@@ -148,6 +148,13 @@ export default function SettingsPanel({
             >
               Open config folder
             </button>
+            <button
+              type="button"
+              className="settings-action-btn"
+              onClick={() => window.electronAPI?.openLogsFolder()}
+            >
+              Open logs folder
+            </button>
           </div>
 
           <div className="settings-security-notice">

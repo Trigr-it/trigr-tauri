@@ -1,9 +1,10 @@
 use log::info;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
+use tauri::{AppHandle, Manager};
 
 use windows_sys::Win32::System::DataExchange::{
     CloseClipboard, GetClipboardData, OpenClipboard, SetClipboardData, EmptyClipboard,
@@ -40,6 +41,60 @@ impl Drop for InjectionGuard {
         crate::hotkeys::INJECTION_IN_PROGRESS
             .store(false, std::sync::atomic::Ordering::Relaxed);
     }
+}
+
+// ── App handle for fill-in IPC ──────────────────────────────────────────────
+
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+
+pub fn init_app_handle(handle: AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+// ── Fill-in response channel ───────────────────────────────────────────────
+
+static FILL_IN_TX: OnceLock<Mutex<Option<mpsc::Sender<Option<HashMap<String, String>>>>>> =
+    OnceLock::new();
+
+pub fn fill_in_tx() -> &'static Mutex<Option<mpsc::Sender<Option<HashMap<String, String>>>>> {
+    FILL_IN_TX.get_or_init(|| Mutex::new(None))
+}
+
+// ── Fill-in ready signal (renderer → Rust handshake) ───────────────────────
+
+static FILL_IN_READY_TX: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
+
+pub fn fill_in_ready_tx() -> &'static Mutex<Option<mpsc::Sender<()>>> {
+    FILL_IN_READY_TX.get_or_init(|| Mutex::new(None))
+}
+
+/// Extract {fillIn:Label} tokens from text. Returns list of field labels.
+fn extract_fill_in_fields(text: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("{fillIn:") {
+        let after = &rest[start + 8..];
+        if let Some(end) = after.find('}') {
+            let label = after[..end].to_string();
+            if !label.is_empty() && !fields.contains(&label) {
+                fields.push(label);
+            }
+            rest = &after[end + 1..];
+        } else {
+            break;
+        }
+    }
+    fields
+}
+
+/// Substitute {fillIn:Label} tokens with user-supplied values.
+fn resolve_fill_in_tokens(text: &str, values: &HashMap<String, String>) -> String {
+    let mut result = text.to_string();
+    for (label, value) in values {
+        let token = format!("{{fillIn:{}}}", label);
+        result = result.replace(&token, value);
+    }
+    result
 }
 
 // ── State ───────────────────────────────────────────────────────────────────
@@ -226,23 +281,33 @@ pub fn check_immediate_triggers() -> bool {
 // ── Fire expansion ──────────────────────────────────────────────────────────
 
 fn fire_expansion(
-    trigger: &str,
+    _trigger: &str,
     trigger_len: usize,
     delete_extra: bool,
     text: &str,
     global_vars: &HashMap<String, String>,
 ) {
-    // Resolve tokens in the replacement text
+    // Check for {fillIn:...} tokens — if present, spawn a dedicated thread for the
+    // entire fill-in + injection flow so the processor thread is never blocked.
+    let fill_in_fields = extract_fill_in_fields(text);
+    if !fill_in_fields.is_empty() {
+        // Prevent concurrent fill-in invocations
+        if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let text = text.to_string();
+        let global_vars = global_vars.clone();
+        let trigger_len = trigger_len;
+        thread::spawn(move || {
+            fire_expansion_with_fillin(fill_in_fields, &text, trigger_len, delete_extra, &global_vars);
+        });
+        return;
+    }
+
+    // No fill-in tokens — resolve and inject directly
     let (resolved, cursor_back) = resolve_tokens(text, global_vars);
 
-    println!(
-        "[EXP] fire_expansion trigger=\"{}\" len={} delete_extra={} resolved=\"{}\" ({} chars) cursor_back={}",
-        trigger, trigger_len, delete_extra,
-        &resolved[..resolved.len().min(80)], resolved.len(), cursor_back
-    );
-
     if resolved.is_empty() {
-        println!("[EXP] Resolved text is empty — skipping injection");
         return;
     }
 
@@ -250,7 +315,6 @@ fn fire_expansion(
     let target_hwnd = unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
     };
-    println!("[EXP] Captured target HWND: 0x{:X}", target_hwnd);
 
     // Wait for any prior injection to finish (handles sequential autocorrects)
     while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::Relaxed) {
@@ -275,7 +339,6 @@ fn fire_expansion(
 
         // Delete trigger word + space (if applicable)
         let delete_count = trigger_len + if delete_extra { 1 } else { 0 };
-        println!("[EXP] Deleting {} chars (trigger {} + extra {})", delete_count, trigger_len, delete_extra as u8);
         for _ in 0..delete_count {
             send_vk_tap(VK_BACKSPACE);
             thread::sleep(Duration::from_millis(5));
@@ -283,8 +346,6 @@ fn fire_expansion(
 
         thread::sleep(Duration::from_millis(10));
 
-        // Inject replacement via clipboard
-        println!("[EXP] Calling inject_via_clipboard with {} chars, HWND=0x{:X}", resolved.len(), target_hwnd);
         inject_via_clipboard(&resolved, target_hwnd);
 
         // Move cursor back if {cursor} was present
@@ -305,7 +366,6 @@ fn fire_expansion(
         let buffered: Vec<crate::hotkeys::BufferedKey> =
             crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
         if !buffered.is_empty() {
-            println!("[EXP] Replaying {} buffered keystrokes", buffered.len());
             crate::hotkeys::SUPPRESS_SIMULATED
                 .store(true, std::sync::atomic::Ordering::Relaxed);
             for key in &buffered {
@@ -345,6 +405,184 @@ fn fire_expansion(
 
         // _guard drops here → INJECTION_IN_PROGRESS = false
     });
+}
+
+/// Fill-in flow: runs entirely on a dedicated thread so the processor thread is never blocked.
+/// Sequence: show window → wait for response → resolve tokens → inject.
+fn fire_expansion_with_fillin(
+    fill_in_fields: Vec<String>,
+    text: &str,
+    trigger_len: usize,
+    delete_extra: bool,
+    global_vars: &HashMap<String, String>,
+) {
+    crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+
+    let app = match APP_HANDLE.get() {
+        Some(a) => a,
+        None => {
+            println!("[EXP] No app handle — cannot show fill-in window");
+            return;
+        }
+    };
+
+    // Capture target HWND BEFORE showing fill-in window (it will steal focus)
+    let target_hwnd = unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
+    };
+
+    // Create response channel
+    let (tx, rx) = mpsc::channel();
+    *fill_in_tx().lock().unwrap() = Some(tx);
+
+    // Read theme from config for the fill-in window
+    let theme = crate::config::load_config()
+        .and_then(|c| c.get("theme").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| "dark".to_string());
+
+    // Show fill-in window, wait for renderer ready signal, then emit field data
+    if let Some(win) = app.get_webview_window("fillin") {
+        use tauri::Emitter;
+
+        // Store fill-in HWND before show — stable from window creation, no focus dependency
+        if let Ok(hwnd) = win.hwnd() {
+            let hwnd_val = hwnd.0 as isize;
+            crate::hotkeys::FILLIN_HWND.store(hwnd_val, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let _ = win.show();
+        let _ = win.set_focus();
+
+        // Ask renderer to signal ready (handles subsequent shows after first mount)
+        let _ = win.emit("fill-in-request-ready", serde_json::json!({}));
+
+        // Wait for FillInWindow.jsx to signal it's mounted and listening (5s timeout)
+        let (ready_tx, ready_rx) = mpsc::channel();
+        *fill_in_ready_tx().lock().unwrap() = Some(ready_tx);
+        let _ = ready_rx.recv_timeout(Duration::from_secs(5));
+        *fill_in_ready_tx().lock().unwrap() = None;
+
+        // Renderer is ready — emit field data
+        let _ = win.emit("fill-in-show", serde_json::json!({
+            "fields": fill_in_fields,
+            "theme": theme,
+        }));
+    }
+
+    // Block on this dedicated thread waiting for user response (60s timeout)
+    let response = rx.recv_timeout(Duration::from_secs(60));
+    *fill_in_tx().lock().unwrap() = None;
+
+    // Clear fill-in HWND and hide window, restore focus to the original target app
+    crate::hotkeys::FILLIN_HWND.store(0, std::sync::atomic::Ordering::Relaxed);
+    if let Some(win) = app.get_webview_window("fillin") {
+        let _ = win.hide();
+    }
+    if target_hwnd != 0 {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(target_hwnd as _);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    // Fill-in UI is fully closed — allow new fill-in invocations
+    crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+
+    let text_after_fillin = match response {
+        Ok(Some(values)) => {
+            resolve_fill_in_tokens(text, &values)
+        }
+        Ok(None) => {
+            return;
+        }
+        Err(_) => {
+            return;
+        }
+    };
+
+    // Resolve remaining tokens
+    let (resolved, cursor_back) = resolve_tokens(&text_after_fillin, global_vars);
+
+    if resolved.is_empty() {
+        return;
+    }
+
+    // Wait for any prior injection to finish
+    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::Relaxed) {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    let _guard = InjectionGuard::new();
+
+    // Delay to let focus settle after fill-in window hides
+    thread::sleep(Duration::from_millis(30));
+
+    crate::hotkeys::SUPPRESS_SIMULATED
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+
+    // Delete trigger word + space (if applicable)
+    let delete_count = trigger_len + if delete_extra { 1 } else { 0 };
+    for _ in 0..delete_count {
+        send_vk_tap(VK_BACKSPACE);
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    thread::sleep(Duration::from_millis(10));
+
+    inject_via_clipboard(&resolved, target_hwnd);
+
+    // Move cursor back if {cursor} was present
+    if cursor_back > 0 {
+        thread::sleep(Duration::from_millis(10));
+        for _ in 0..cursor_back {
+            send_vk_tap(VK_LEFT);
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    crate::hotkeys::SUPPRESS_SIMULATED
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+
+    // Replay any keystrokes that were buffered during injection
+    let buffered: Vec<crate::hotkeys::BufferedKey> =
+        crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
+    if !buffered.is_empty() {
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        for key in &buffered {
+            send_vk_key(key.vk_code as u16, !key.is_keydown);
+            thread::sleep(Duration::from_millis(2));
+        }
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+
+        let last_was_space = buffered.last()
+            .map(|k| k.vk_code == 0x20 && k.is_keydown)
+            .unwrap_or(false);
+        for key in &buffered {
+            if !key.is_keydown { continue; }
+            if key.vk_code == 0x20 { continue; }
+            if key.vk_code == 0x08 { buffer_pop(); continue; }
+            if key.vk_code == 0x0D || key.vk_code == 0x1B || key.vk_code == 0x09 {
+                buffer_clear();
+                break;
+            }
+            if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
+            if let Some(ch) = crate::hotkeys::vk_to_char(key.vk_code) {
+                buffer_push(ch);
+                check_immediate_triggers();
+            }
+        }
+        if last_was_space {
+            check_space_trigger();
+            buffer_clear();
+        }
+    }
+
+    crate::hotkeys::sync_modifier_state_from_os();
+    // _guard drops here → INJECTION_IN_PROGRESS = false
 }
 
 // ── Token resolution ────────────────────────────────────────────────────────
@@ -454,8 +692,7 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     let prev = read_clipboard().unwrap_or_default();
 
     // Write replacement to clipboard (suppress set inside write_clipboard)
-    let write_ok = write_clipboard(text);
-    println!("[EXP] write_clipboard({} chars) → {}", text.chars().count(), write_ok);
+    write_clipboard(text);
 
     // Release physically held modifiers
     let held = crate::actions::release_held_modifiers();
@@ -463,10 +700,9 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     // Restore focus to target window
     if target_hwnd != 0 {
         unsafe {
-            let ok = windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
                 target_hwnd as _,
             );
-            println!("[EXP] SetForegroundWindow(0x{:X}) → {}", target_hwnd, ok);
         }
         thread::sleep(Duration::from_millis(10));
     }
@@ -474,13 +710,11 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     // Check if Ctrl+V is mapped as a hotkey — if so, use Shift+Insert
     let use_ctrl_v = !is_ctrl_v_mapped();
     if use_ctrl_v {
-        println!("[EXP] Pasting with Ctrl+V");
         send_vk_key(0xA2, false); // LCtrl
         send_vk_key(0x56, false); // V
         send_vk_key(0x56, true);
         send_vk_key(0xA2, true);
     } else {
-        println!("[EXP] Pasting with Shift+Insert (Ctrl+V is mapped)");
         send_vk_key(VK_LSHIFT, false);
         send_vk_key(VK_INSERT, false);
         send_vk_key(VK_INSERT, true);
@@ -493,12 +727,13 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     // Re-press modifiers that were physically held
     crate::actions::restore_modifiers(&held);
 
-    // Restore clipboard after paste settles
+    // Restore clipboard after paste settles — skip if previous was empty to avoid blank clipboard entry
     thread::sleep(Duration::from_millis(50));
-    write_clipboard(&prev);
+    if !prev.is_empty() {
+        write_clipboard(&prev);
+    }
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
         .store(false, std::sync::atomic::Ordering::Relaxed);
-    println!("[EXP] clipboard restored");
 }
 
 fn is_ctrl_v_mapped() -> bool {
@@ -622,4 +857,8 @@ pub fn set_autocorrect_enabled(enabled: bool) {
 
 pub fn update_global_variables(vars: HashMap<String, String>) {
     state().lock().unwrap().global_variables = vars;
+}
+
+pub fn get_global_variables() -> HashMap<String, String> {
+    state().lock().unwrap().global_variables.clone()
 }

@@ -34,15 +34,23 @@ fn load_config() -> Value {
             }
             c
         }
-        None => Value::Null,
+        None => {
+            // Total config failure — write factory defaults so the file always exists
+            log::warn!("[Trigr] All config sources failed — writing factory defaults");
+            let defaults = serde_json::json!({
+                "profiles": ["Default"],
+                "assignments": {},
+                "activeProfile": "Default",
+            });
+            config::save_config(&defaults);
+            config::update_last_known_good(&defaults);
+            defaults
+        }
     }
 }
 
 #[tauri::command]
 fn save_config(config: Value) -> bool {
-    println!("[SAVE] save_config invoked, keys: {:?}",
-        config.as_object().map(|o| o.keys().collect::<Vec<_>>()));
-    println!("[SAVE] config path: {}", config::config_path().display());
     let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
 
     // Merge incoming over existing, preserving fields not in incoming
@@ -251,10 +259,6 @@ fn get_engine_status() -> Value {
 
 #[tauri::command]
 fn update_assignments(assignments: Value, profile: String) {
-    println!("[IPC] update_assignments called, profile='{}', is_object={}, keys={}",
-        profile,
-        assignments.is_object(),
-        assignments.as_object().map(|o| o.len()).unwrap_or(0));
     // Convert Value map to HashMap
     let map: std::collections::HashMap<String, Value> = assignments
         .as_object()
@@ -341,6 +345,11 @@ fn update_global_settings(settings: Value) {
 #[tauri::command]
 fn update_autocorrect_enabled(enabled: bool) {
     expansions::set_autocorrect_enabled(enabled);
+}
+
+#[tauri::command]
+fn update_global_variables(vars: std::collections::HashMap<String, String>) {
+    expansions::update_global_variables(vars);
 }
 
 // ── Pause (Phase 3) ─────────────────────────────────────────────────────────
@@ -452,6 +461,14 @@ fn open_config_folder(_app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn open_logs_folder(app: tauri::AppHandle) {
+    if let Ok(log_dir) = app.path().app_log_dir() {
+        let _ = std::fs::create_dir_all(&log_dir);
+        let _ = opener::open(log_dir.to_string_lossy().as_ref());
+    }
+}
+
+#[tauri::command]
 fn open_external(url: String) {
     let _ = opener::open(&url);
 }
@@ -523,15 +540,8 @@ fn show_overlay(app: &tauri::AppHandle) {
     let win_w = 620.0;
     let x = log_left + (log_w - win_w) / 2.0;
     let y = log_top + log_h / 3.0;
-    println!("[OVERLAY] scale={} logical: {}x{} pos: x={:.0} y={:.0}", scale, log_w, log_h, x, y);
-
     let _ = overlay.set_position(tauri::LogicalPosition::new(x, y));
     let _ = overlay.set_size(tauri::LogicalSize::new(620.0, 103.0));
-    if let (Ok(outer), Ok(inner)) = (overlay.outer_size(), overlay.inner_size()) {
-        println!("[OVERLAY] show: outer={}x{} inner={}x{} diff={}",
-            outer.width, outer.height, inner.width, inner.height,
-            outer.height as i32 - inner.height as i32);
-    }
 
     // Send search data to the overlay — includes ALL assignments (profile + global)
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
@@ -549,8 +559,6 @@ fn show_overlay(app: &tauri::AppHandle) {
             }
         })
     };
-    println!("[OVERLAY] Sending search data: {} assignment keys",
-        search_data.get("assignments").and_then(|v| v.as_object()).map(|o| o.len()).unwrap_or(0));
     let _ = overlay.emit("overlay-search-data", search_data);
 
     // Show and focus
@@ -583,12 +591,7 @@ fn close_overlay(app: tauri::AppHandle) {
 #[tauri::command]
 fn overlay_resize(height: f64, app: tauri::AppHandle) {
     let h = height.max(60.0).min(400.0);
-    if (h - height).abs() > 0.5 {
-        println!("[OVERLAY] overlay_resize: requested={} clamped={}", height, h);
-    }
     if let Some(overlay) = app.get_webview_window("overlay") {
-        let scale = overlay.scale_factor().unwrap_or(1.0);
-        println!("[OVERLAY] Setting LogicalSize(620, {}) scale_factor={}", h, scale);
         let _ = overlay.set_size(tauri::LogicalSize::new(620.0, h));
     }
 }
@@ -618,7 +621,7 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
             "expansion" | "autocorrect" => {
                 if let Some(raw_text) = result.get("text").and_then(|v| v.as_str()) {
                     // Resolve dynamic tokens ({date:...}, {time:...}, {clipboard}, {cursor}, etc.)
-                    let global_vars = std::collections::HashMap::new();
+                    let global_vars = expansions::get_global_variables();
                     let (resolved, cursor_back) = expansions::resolve_tokens(raw_text, &global_vars);
 
                     actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
@@ -711,11 +714,39 @@ fn start_download(version: String) {
 // ── Fill-in (Phase 7) ───────────────────────────────────────────────────────
 
 #[tauri::command]
-fn fill_in_ready() {}
+fn fill_in_ready() {
+    if let Ok(mut guard) = expansions::fill_in_ready_tx().lock() {
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(());
+        }
+    }
+}
+
+#[tauri::command]
+fn fillin_resize(height: f64, app: tauri::AppHandle) {
+    let h = height.max(150.0).min(600.0);
+    if let Some(win) = app.get_webview_window("fillin") {
+        let _ = win.set_size(tauri::LogicalSize::new(440.0, h));
+    }
+}
 
 #[tauri::command]
 fn fill_in_submit(values: Value) {
-    let _ = values;
+    // Convert Value to Option<HashMap<String, String>>: null = cancelled, object = submitted values
+    let result: Option<std::collections::HashMap<String, String>> = if values.is_null() {
+        None
+    } else {
+        values.as_object().map(|obj| {
+            obj.iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                .collect()
+        })
+    };
+    if let Ok(guard) = expansions::fill_in_tx().lock() {
+        if let Some(ref tx) = *guard {
+            let _ = tx.send(result);
+        }
+    }
 }
 
 // ── App builder ──────────────────────────────────────────────────────────────
@@ -724,6 +755,20 @@ fn fill_in_submit(values: Value) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .clear_targets()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir { file_name: Some("trigr.log".into()) },
+                ))
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ))
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -752,48 +797,67 @@ pub fn run() {
                 .shadow(false)
                 .build()?;
 
-            // Log initial window dimensions to diagnose viewport clipping
-            if let Ok(outer) = overlay_win.outer_size() {
-                println!("[OVERLAY] Initial outer_size: {}x{}", outer.width, outer.height);
-            }
-            if let Ok(inner) = overlay_win.inner_size() {
-                println!("[OVERLAY] Initial inner_size: {}x{}", inner.width, inner.height);
-            }
-            let scale = overlay_win.scale_factor().unwrap_or(1.0);
-            println!("[OVERLAY] Scale factor: {}", scale);
-
             // Set WebView2 default background to transparent via COM interface.
             // Tauri's transparent(true) + CSS background: transparent is not enough —
             // WebView2 renders a solid background unless SetDefaultBackgroundColor is called.
             #[cfg(target_os = "windows")]
             {
-                println!("[OVERLAY] Calling with_webview to set transparent background...");
-                match overlay_win.with_webview(|webview| {
-                    println!("[OVERLAY] Inside with_webview closure — webview accessed");
+                let _ = overlay_win.with_webview(|webview| {
                     unsafe {
                         use webview2_com::Microsoft::Web::WebView2::Win32::{
                             ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
                         };
                         use windows_core::Interface;
                         let controller = webview.controller();
-                        println!("[OVERLAY] Got controller, attempting cast to Controller2...");
-                        match controller.cast::<ICoreWebView2Controller2>() {
-                            Ok(controller2) => {
-                                match controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                                    R: 0, G: 0, B: 0, A: 0,
-                                }) {
-                                    Ok(_) => println!("[OVERLAY] SetDefaultBackgroundColor(transparent) succeeded"),
-                                    Err(e) => println!("[OVERLAY] SetDefaultBackgroundColor failed: {:?}", e),
-                                }
-                            }
-                            Err(e) => println!("[OVERLAY] Cast to Controller2 failed: {:?}", e),
+                        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                            let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                                R: 0, G: 0, B: 0, A: 0,
+                            });
                         }
                     }
-                }) {
-                    Ok(_) => println!("[OVERLAY] with_webview completed"),
-                    Err(e) => println!("[OVERLAY] with_webview failed: {:?}", e),
-                }
+                });
             }
+
+            // FILL-IN WINDOW — transparent(true) + WebView2 COM fix required
+            // See FillInWindow.jsx for full sizing documentation
+            // DO NOT remove transparent(true) or the with_webview COM block —
+            // both are required to prevent a visible background box around the panel.
+            let fillin_url = tauri::WebviewUrl::App("index.html?fillin=1".into());
+            let fillin_win = tauri::WebviewWindowBuilder::new(app, "fillin", fillin_url)
+                .title("Trigr — Fill In")
+                .inner_size(420.0, 300.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .center()
+                .build()?;
+
+            // Set WebView2 transparent background for fill-in window (async — avoid blocking startup)
+            #[cfg(target_os = "windows")]
+            {
+                std::thread::spawn(move || {
+                    let _ = fillin_win.with_webview(|webview| {
+                        unsafe {
+                            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                                ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+                            };
+                            use windows_core::Interface;
+                            let controller = webview.controller();
+                            if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                                let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                                    R: 0, G: 0, B: 0, A: 0,
+                                });
+                            }
+                        }
+                    });
+                });
+            }
+
+            // Store app handle for fill-in IPC from the expansion engine
+            expansions::init_app_handle(app.handle().clone());
 
             // Start global input hooks on dedicated high-priority thread
             hotkeys::start_hooks(app.handle().clone());
@@ -847,6 +911,18 @@ pub fn run() {
                         let _ = window.hide();
                     }
                 }
+            } else if label == "fillin" {
+                // Prevent fill-in window from being destroyed — hide and send cancel response
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    // Send None (cancel) through the fill-in channel so the waiting thread unblocks
+                    if let Ok(guard) = expansions::fill_in_tx().lock() {
+                        if let Some(ref tx) = *guard {
+                            let _ = tx.send(None);
+                        }
+                    }
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -875,6 +951,7 @@ pub fn run() {
             // Settings
             update_global_settings,
             update_autocorrect_enabled,
+            update_global_variables,
             // Pause
             set_global_pause_key,
             clear_global_pause_key,
@@ -897,6 +974,7 @@ pub fn run() {
             // Help / External
             open_help,
             open_config_folder,
+            open_logs_folder,
             open_external,
             log_debug,
             // Overlay
@@ -912,6 +990,7 @@ pub fn run() {
             start_download,
             // Fill-in
             fill_in_ready,
+            fillin_resize,
             fill_in_submit,
         ])
         .run(tauri::generate_context!())

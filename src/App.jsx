@@ -125,6 +125,8 @@ function App() {
         window.electronAPI?.updateAssignments(migrated, loadProfile);
         window.electronAPI?.updateProfileSettings(config.profileSettings || {});
         window.electronAPI?.setActiveGlobalProfile(loadProfile);
+        // Sync global variables to expansion engine
+        window.electronAPI?.updateGlobalVariables(config.globalVariables || {});
         // Register pause hotkey with Rust backend if one is stored in config
         if (config.globalPauseToggleKey) {
           window.electronAPI?.setPauseHotkey(config.globalPauseToggleKey);
@@ -296,6 +298,7 @@ function App() {
 
   const handleSaveGlobalVariables = useCallback((newVars) => {
     setGlobalVariables(newVars);
+    window.electronAPI?.updateGlobalVariables(newVars);
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars });
   }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
 

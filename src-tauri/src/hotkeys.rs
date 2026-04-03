@@ -33,6 +33,13 @@ pub static SUPPRESS_SIMULATED: AtomicBool = AtomicBool::new(false);
 /// When true, real user keystrokes are swallowed by the hook and buffered for replay.
 pub static INJECTION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+/// HWND of the fill-in window while it is visible. Set by expansions.rs, read by hook callback.
+/// When the fill-in window is foreground, keystrokes pass through without buffering.
+pub static FILLIN_HWND: AtomicIsize = AtomicIsize::new(0);
+
+/// When true, a fill-in prompt is active — prevents concurrent fill-in invocations.
+pub static FILL_IN_ACTIVE: AtomicBool = AtomicBool::new(false);
+
 /// Keystroke captured during injection for later replay.
 pub struct BufferedKey {
     pub vk_code: u32,
@@ -489,15 +496,23 @@ unsafe extern "system" fn keyboard_hook_proc(
     l_param: LPARAM,
 ) -> LRESULT {
     HOOK_HEARTBEAT.fetch_add(1, Ordering::Relaxed);
-    // Buffer real user keystrokes during injection — swallow them so they don't land in the target app
+    // Buffer real user keystrokes during injection — swallow them so they don't land in the target app.
+    // Exception: if the fill-in window is foreground, pass keystrokes through so the user can type.
     if n_code >= 0 && INJECTION_IN_PROGRESS.load(Ordering::Relaxed) && !SUPPRESS_SIMULATED.load(Ordering::Relaxed) {
-        let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
-        let is_keydown = matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
-        let is_keyup = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
-        if is_keydown || is_keyup {
-            if let Ok(mut buf) = injection_buffer().try_lock() {
-                buf.push(BufferedKey { vk_code: kb.vkCode, is_keydown });
-                return 1;
+        let fillin = FILLIN_HWND.load(Ordering::Relaxed);
+        let fg_is_fillin = fillin != 0 && {
+            let fg = windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
+            fg as isize == fillin
+        };
+        if !fg_is_fillin {
+            let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+            let is_keydown = matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+            let is_keyup = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
+            if is_keydown || is_keyup {
+                if let Ok(mut buf) = injection_buffer().try_lock() {
+                    buf.push(BufferedKey { vk_code: kb.vkCode, is_keydown });
+                    return 1;
+                }
             }
         }
     }
@@ -711,7 +726,6 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
     let key_id = match vk_to_key_id(vk) {
         Some(id) => id,
         None => {
-            println!("[PROC] keydown vk=0x{:02X} — unmapped, skipping", vk);
             return;
         }
     };
@@ -749,16 +763,10 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
     // ── Recording mode: capture combo and send to frontend ──────────────
     // Must run BEFORE APP_INPUT_FOCUSED check — recording works while Trigr UI is focused.
-    println!("[CAPTURE] check: recording={} capturing={} input_focused={} key={}",
-        IS_RECORDING_HOTKEY.load(Ordering::Relaxed),
-        IS_CAPTURING_KEY.load(Ordering::Relaxed),
-        APP_INPUT_FOCUSED.load(Ordering::Relaxed),
-        key_id);
     if IS_RECORDING_HOTKEY.load(Ordering::Relaxed) {
         IS_RECORDING_HOTKEY.store(false, Ordering::Relaxed);
 
         if key_id == "Escape" {
-            println!("[CAPTURE] Recording: Escape pressed, emitting null");
             let _ = app.emit("hotkey-recorded", Value::Null);
         } else {
             let mut mods = Vec::new();
@@ -767,12 +775,10 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
             if MOD_ALT.load(Ordering::Relaxed) { mods.push("Alt"); }
             if MOD_META.load(Ordering::Relaxed) { mods.push("Win"); }
 
-            println!("[CAPTURE] Recording: emitting hotkey-recorded mods={:?} key={}", mods, key_id);
-            let result = app.emit(
+            let _ = app.emit(
                 "hotkey-recorded",
                 serde_json::json!({ "modifiers": mods, "keyId": key_id }),
             );
-            println!("[CAPTURE] Recording: emit result={:?}", result);
         }
         return;
     }
@@ -783,7 +789,6 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
         IS_CAPTURING_KEY.store(false, Ordering::Relaxed);
 
         if key_id == "Escape" {
-            println!("[CAPTURE] Capture: Escape pressed, emitting null");
             let _ = app.emit("key-captured", Value::Null);
         } else {
             let mut parts = Vec::new();
@@ -794,9 +799,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
             parts.push(key_id_to_display(key_id).to_string());
 
             let combo = parts.join("+");
-            println!("[CAPTURE] Capture: emitting key-captured combo={}", combo);
-            let result = app.emit("key-captured", Value::String(combo));
-            println!("[CAPTURE] Capture: emit result={:?}", result);
+            let _ = app.emit("key-captured", Value::String(combo));
         }
         return;
     }
@@ -892,6 +895,11 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
         // No bare key match — handle text expansion buffer
         drop(state); // release engine lock before expansion calls
 
+        // Skip expansion buffer while fill-in window is visible — keystrokes are for the fill-in input
+        if FILLIN_HWND.load(Ordering::Relaxed) != 0 {
+            return;
+        }
+
         if key_id == "Backspace" {
             crate::expansions::buffer_pop();
         } else if key_id == "Space" {
@@ -912,12 +920,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
     let combo = build_modifier_combo();
     let profile = state.active_profile.clone();
     let storage_key = format!("{}::{}::{}", profile, combo, key_id);
-    let n_assignments = state.assignments.len();
-
-    println!("[PROC] keydown {} | storage_key={} | assignments={}", key_id, storage_key, n_assignments);
-
     if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
-        println!("[PROC] MATCH: {} → {:?}", storage_key, macro_val.get("type"));
         crate::expansions::buffer_clear();
         // Check for double-tap variant
         let double_key = format!("{}::double", storage_key);
@@ -1398,12 +1401,10 @@ pub fn macros_enabled() -> bool {
 
 pub fn set_recording(recording: bool) {
     IS_RECORDING_HOTKEY.store(recording, Ordering::Relaxed);
-    println!("[CAPTURE] IS_RECORDING_HOTKEY set to {}", IS_RECORDING_HOTKEY.load(Ordering::Relaxed));
 }
 
 pub fn set_capturing(capturing: bool) {
     IS_CAPTURING_KEY.store(capturing, Ordering::Relaxed);
-    println!("[CAPTURE] IS_CAPTURING_KEY set to {}", IS_CAPTURING_KEY.load(Ordering::Relaxed));
     if capturing {
         let mut state = engine_state().lock().unwrap();
         state.capture_sole_modifier = None;

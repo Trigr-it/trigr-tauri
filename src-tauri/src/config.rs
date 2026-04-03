@@ -142,7 +142,7 @@ pub fn load_config_safe() -> (Option<Value>, Option<String>) {
 pub fn save_config(config: &Value) -> bool {
     let path = config_path();
     let tmp_path = path.with_extension("json.tmp");
-    println!("[CONFIG] save_config writing to: {}", path.display());
+    info!("[Trigr] Saving config to: {}", path.display());
 
     // Ensure parent dir exists
     if let Some(parent) = path.parent() {
@@ -151,23 +151,20 @@ pub fn save_config(config: &Value) -> bool {
 
     match serde_json::to_string_pretty(config) {
         Ok(json) => {
-            println!("[CONFIG] JSON serialized: {} bytes", json.len());
             match fs::write(&tmp_path, &json) {
                 Ok(()) => match fs::rename(&tmp_path, &path) {
                     Ok(()) => {
-                        println!("[CONFIG] Config saved successfully");
+                        info!("[Trigr] Config saved ({} bytes)", json.len());
                         true
                     }
                     Err(e) => {
                         error!("[Trigr] Failed to rename config tmp file: {}", e);
-                        println!("[CONFIG] rename failed: {}", e);
                         let _ = fs::remove_file(&tmp_path);
                         false
                     }
                 },
                 Err(e) => {
                     error!("[Trigr] Failed to write config tmp file: {}", e);
-                    println!("[CONFIG] write failed: {}", e);
                     let _ = fs::remove_file(&tmp_path);
                     false
                 }
