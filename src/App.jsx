@@ -10,6 +10,7 @@ import SettingsPanel from './components/SettingsPanel';
 import StatusBar from './components/StatusBar';
 import TextExpansions from './components/TextExpansions';
 import WelcomeModal from './components/WelcomeModal';
+import OnboardingTour from './components/OnboardingTour';
 import QuickTips from './components/QuickTips';
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
   const [autocorrectEnabled, setAutocorrectEnabled] = useState(false);
   const [showSettings, setShowSettings]             = useState(false);
   const [showWelcome, setShowWelcome]               = useState(false);
+  const [showOnboarding, setShowOnboarding]         = useState(false);
   const [macrosEnabledOnStartup, setMacrosEnabledOnStartup] = useState(true);
   const [globalInputMethod,  setGlobalInputMethod]  = useState('direct');
   const [keystrokeDelay,     setKeystrokeDelay]     = useState(30);
@@ -136,13 +138,30 @@ function App() {
         setFirstLaunchDate(fld);
         if (!config.firstLaunchDate) needsSave = true;
 
-        if (!config.hasSeenWelcome) { setShowWelcome(true); needsSave = true; }
+        // Onboarding migration: existing users who already saw the welcome
+        // should not see the new onboarding tour after updating.
+        let onboardingComplete = config.onboarding_complete;
+        if (onboardingComplete === undefined && config.hasSeenWelcome) {
+          onboardingComplete = true;
+          needsSave = true;
+        }
+
+        if (!onboardingComplete) {
+          // New user — show onboarding tour (replaces WelcomeModal)
+          setShowOnboarding(true);
+        } else if (!config.hasSeenWelcome) {
+          // Edge case: onboarding complete but welcome not set
+          setShowWelcome(true);
+        }
+
+        needsSave = needsSave || !config.hasSeenWelcome;
         if (needsSave) {
           window.electronAPI.saveConfig({
             ...config,
             assignments: migrated,
             hasSeenWelcome: true,
             firstLaunchDate: fld,
+            onboarding_complete: onboardingComplete ?? false,
           });
         }
       }
@@ -831,6 +850,17 @@ function App() {
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
 
+  const handleOnboardingComplete = useCallback(() => {
+    setShowOnboarding(false);
+    window.electronAPI?.saveConfig({ onboarding_complete: true, hasSeenWelcome: true });
+  }, []);
+
+  const handleRestartOnboarding = useCallback(() => {
+    setShowSettings(false);
+    window.electronAPI?.resetOnboarding();
+    setShowOnboarding(true);
+  }, []);
+
   const handleDismissTips = useCallback(() => {
     setTipsHidden(true);
     window.electronAPI?.saveConfig({ tipsHidden: true });
@@ -998,7 +1028,14 @@ function App() {
 
   return (
     <div className="app">
-      {showWelcome && (
+      {showOnboarding && (
+        <OnboardingTour
+          assignments={assignments}
+          onComplete={handleOnboardingComplete}
+          onSkip={handleOnboardingComplete}
+        />
+      )}
+      {showWelcome && !showOnboarding && (
         <WelcomeModal onDismiss={handleDismissWelcome} />
       )}
       {backupRestoredFrom && (
@@ -1224,6 +1261,7 @@ function App() {
             globalPauseToggleKey={globalPauseToggleKey}
             onSetPauseKey={handleSetPauseKey}
             onClearPauseKey={handleClearPauseKey}
+            onRestartOnboarding={handleRestartOnboarding}
           />
         ) : activeArea === 'mapping' ? (
           <MacroPanel

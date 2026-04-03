@@ -67,6 +67,13 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 | Tray | `src-tauri/src/tray.rs` | System tray icon, window show/hide, autolaunch, close-to-tray |
 | Main | `src-tauri/src/main.rs` | App entry point, Tauri builder, module wiring |
 
+**React components added post-MVP:**
+
+| Component | File | Responsibility |
+|---|---|---|
+| OnboardingTour | `src/components/OnboardingTour.jsx` | 5-step first-run tour with progressive coach marks |
+| OnboardingTour CSS | `src/components/OnboardingTour.css` | Tour overlay, tooltip, coach mark styling (CSS variables only) |
+
 ---
 
 ## 05 — Storage & Config Rules (CRITICAL)
@@ -79,6 +86,8 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 - Bare key: `ProfileName::Bare::KeyCode`
 - App-specific: `AppName::Modifier::KeyCode`
 - Mouse button: `ProfileName::Modifier::MOUSE_LEFT` (MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE, MOUSE_SIDE1, MOUSE_SIDE2)
+
+**`onboarding_complete`:** Bool field in config. Default `false` for new users (triggers onboarding tour). Set to `true` when tour finishes or is skipped. Migration: auto-set to `true` on first load if `hasSeenWelcome` is already `true` (prevents existing alpha testers from seeing the tour). Reset via `reset_onboarding` Rust command (Settings > Restart Onboarding Tour).
 
 **suppressNextClipboardWrite:** Module-level bool in `actions.rs` or `expansions.rs`. Set to `true` immediately before any internal clipboard write (text expansion fire, image expansion fire, any Trigr-initiated clipboard write). The future clipboard manager checks this flag and skips logging if set, then clears it. Establish this pattern in Phase 7 even though the clipboard manager is not built yet.
 
@@ -107,6 +116,10 @@ fn get_config() -> Value { load_config_safe() }
 ```
 
 Note: Tauri command names use snake_case. Channel names map as: `get-config` → `get_config`, `save-config` → `save_config` etc.
+
+**Commands added post-MVP:**
+- `reset_onboarding` — sets `onboarding_complete: false` in config, returns `bool`
+- `set_window_resizable` — calls `window.set_resizable(bool)` on the main window
 
 ---
 
@@ -160,7 +173,7 @@ If any crate fails on ARM64, find an alternative before proceeding. Do not assum
 | 7 | Text expansions | ✅ | Buffer tracking, space + immediate triggers, clipboard paste injection |
 | 8 | Macro sequence + remaining actions | ✅ | Wait for Input step added, all action types complete |
 | 9 | Quick Search overlay | ✅ | Pre-created hidden window, cursor-following position, Ctrl+Space toggle |
-| 10 | Auto-updater + installer | ⬜ | Shippable build — share with testers |
+| 10 | Auto-updater + installer | ✅ | Shippable build — share with testers |
 
 ---
 
@@ -205,7 +218,7 @@ The LL hook runs on a dedicated high-priority thread with a `PeekMessageW` polli
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "bundle": {
     "active": true,
     "targets": ["nsis"],
@@ -246,3 +259,4 @@ Record key decisions and findings here after each session.
 | 2026-04-01 | Phase 6 | Foreground watcher + app profiles complete | foreground.rs: GetForegroundWindow + GetWindowThreadProcessId + OpenProcess + QueryFullProcessImageNameW via windows-sys. 1500ms poll on background thread, HWND cache optimization. Visibility guard (is_visible && !is_minimized). Self-detection via exe stem. Profile auto-switching with global fallback. get_foreground_process command exposed. |
 | 2026-04-02 | Phase 7 | Text expansions complete | expansions.rs: keystroke buffer (50 char rolling), space-triggered + immediate-mode expansion matching, backspace trigger deletion + Shift+Insert clipboard paste injection. Win32 clipboard API (OpenClipboard/GetClipboardData/SetClipboardData) for {clipboard} token and paste. Global variable tokens ({{var}}, {date}, {time}, {dayofweek}, {cursor}). Built-in autocorrect dictionary (~50 common typos). suppressNextClipboardWrite pattern established. Buffer integrated into hotkeys.rs event processor. |
 | 2026-04-02 | Phase 8 | Macro sequence + Wait for Input complete | Added "Wait for Input" step to execute_macro_step in actions.rs. WaitEvent enum + one-shot mpsc channel in hotkeys.rs. Event processor forwards key/mouse events to waiter before normal handling. Supports LButton/RButton/MButton/AnyKey/SpecificKey input types, press/release/pressRelease triggers. Two-phase pressRelease state machine is per-waiter. 30s timeout. Clears waiter on timeout/cancel/macro-disable. Waited-for keystrokes pass through to target app (no suppression). Keystroke capture modes (recording + key capture) already working from Phase 4. |
+| 2026-04-03 | Post-MVP | Onboarding tour built | 5-step first-run tour (OnboardingTour.jsx + CSS). Progressive coach marks with SVG mask cutouts, deferred tooltip positioning, active detection for hotkey creation flow. New config field `onboarding_complete` (bool). New Rust commands: `reset_onboarding`, `set_window_resizable`. Window resize locked during tour. Restart button in SettingsPanel HELP section. Existing-user migration: if `hasSeenWelcome` is true and `onboarding_complete` undefined, auto-sets `onboarding_complete: true` to skip tour for alpha testers. |
