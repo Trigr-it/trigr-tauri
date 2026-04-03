@@ -65,6 +65,7 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 | Expansions | `src-tauri/src/expansions.rs` | Keystroke buffer, trigger detection, text injection |
 | Foreground | `src-tauri/src/foreground.rs` | Foreground watcher, process name detection, profile auto-switching |
 | Tray | `src-tauri/src/tray.rs` | System tray icon, window show/hide, autolaunch, close-to-tray |
+| Analytics | `src-tauri/src/analytics.rs` | SQLite usage tracking — action counts, time saved, best day/week records |
 | Main | `src-tauri/src/main.rs` | App entry point, Tauri builder, module wiring |
 
 **React components added post-MVP:**
@@ -75,6 +76,8 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 | OnboardingTour CSS | `src/components/OnboardingTour.css` | Tour overlay, tooltip, coach mark styling (CSS variables only) |
 | FillInWindow | `src/components/FillInWindow.jsx` | Fill-in field prompt window for {fillIn:Label} tokens |
 | FillInWindow CSS | `src/components/FillInWindow.css` | Fill-in window styling (transparent bg, content-based auto-resize) |
+| AnalyticsPanel | `src/components/AnalyticsPanel.jsx` | Local usage analytics — today, last 7 days, records, breakdown |
+| AnalyticsPanel CSS | `src/components/AnalyticsPanel.css` | Analytics panel styling (CSS variables only) |
 
 ---
 
@@ -88,6 +91,8 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 - Bare key: `ProfileName::Bare::KeyCode`
 - App-specific: `AppName::Modifier::KeyCode`
 - Mouse button: `ProfileName::Modifier::MOUSE_LEFT` (MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE, MOUSE_SIDE1, MOUSE_SIDE2)
+
+**Analytics DB:** `trigr-analytics.db` in app data dir (alongside `keyforge-config.json`). SQLite via `rusqlite` with `bundled` feature. Single table `action_log` with columns: `id`, `timestamp` (ISO-8601 UTC), `action_type` (expansion/hotkey/macro), `char_count`, `time_saved` (seconds). Completely separate from the config system — never modify config.rs for analytics. WAL journal mode. All access via a dedicated writer thread (see Critical Implementation Rules).
 
 **`onboarding_complete`:** Bool field in config. Default `false` for new users (triggers onboarding tour). Set to `true` when tour finishes or is skipped. Migration: auto-set to `true` on first load if `hasSeenWelcome` is already `true` (prevents existing alpha testers from seeing the tour). Reset via `reset_onboarding` Rust command (Settings > Restart Onboarding Tour).
 
@@ -127,6 +132,8 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 - `fillin_resize` — JS-driven content-based window resize (same pattern as overlay_resize)
 - `fill_in_submit` — receives fill-in field values (or null for cancel) from renderer
 - `open_logs_folder` — opens the log directory in File Explorer
+- `get_analytics` — returns aggregate usage stats (total, today, last 7 days, best day, best 7 days, breakdown)
+- `reset_analytics` — deletes all analytics data, returns `bool`
 
 ---
 
@@ -230,6 +237,9 @@ The LL hook runs on a dedicated high-priority thread with a `PeekMessageW` polli
 - Fill-in flow runs on dedicated spawned thread — never blocks the processor thread
 - `on_window_event` CloseRequested handler prevents destruction, hides window, sends cancel via channel
 
+### Analytics Writer Thread
+`analytics.rs` owns a dedicated background thread that holds the only `rusqlite::Connection`. All DB access goes through `AnalyticsMsg` enum sent via `mpsc::Sender`. `log_action()` is non-blocking (channel send only) — safe to call from any thread including the action executor and expansion threads. `get_stats()` and `reset_stats()` send a message and block on a reply channel (5s timeout). Never open a second connection or access the DB from any other thread. Time saved calculation: expansion = `char_count * 0.3s`, hotkey = `3.0s`, macro = `5.0s`. Character count excludes `\r` (CRLF correction).
+
 ### Autocorrect — Disabled for Alpha
 Both custom (`GLOBAL::AUTOCORRECT::`) and built-in (`builtin_autocorrect()`) autocorrect checks are commented out in `check_space_trigger()`. The Autocorrect tab is hidden in TextExpansions.jsx. Space-triggered text expansions continue to work normally.
 
@@ -250,7 +260,7 @@ If `load_config_safe()` returns `(None, None)` (all config sources failed), the 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "bundle": {
     "active": true,
     "targets": ["nsis"],
@@ -294,3 +304,4 @@ Record key decisions and findings here after each session.
 | 2026-04-03 | Post-MVP | Onboarding tour built | 5-step first-run tour (OnboardingTour.jsx + CSS). Progressive coach marks with SVG mask cutouts, deferred tooltip positioning, active detection for hotkey creation flow. New config field `onboarding_complete` (bool). New Rust commands: `reset_onboarding`, `set_window_resizable`. Window resize locked during tour. Restart button in SettingsPanel HELP section. Existing-user migration: if `hasSeenWelcome` is true and `onboarding_complete` undefined, auto-sets `onboarding_complete: true` to skip tour for alpha testers. |
 | 2026-04-03 | Post-MVP | Expansion fixes + fill-in fields + global vars | Autocorrect disabled for Alpha. Trailing space sent as synthetic keystroke. Initial injection delay 30ms. Keystroke buffer-and-replay (INJECTION_IN_PROGRESS + InjectionGuard). Blank clipboard entry fix. Fill-in field tokens ({fillIn:Label}) fully implemented: pre-created hidden window, Electron-style ready handshake, FILL_IN_ACTIVE concurrency guard, FILLIN_HWND hook passthrough, content-based auto-resize via JS→Rust IPC. Global variables wired to Rust (update_global_variables command + frontend sync). Insert dropdown scroll fix + dynamic maxHeight. htmlToPlainText double-newline fix. Diagnostic logs cleaned. v0.1.9 released. |
 | 2026-04-03 | Post-MVP | Structured logging + config hardening | Added tauri-plugin-log: file + stdout targets, 5MB rotation, Info level. .clear_targets() required before .target() to avoid duplicate entries. "Open logs folder" button in Settings. Config hardening: factory-default write on total config failure (all sources return None). Converted remaining println! in config.rs to log::info!/error!. |
+| 2026-04-03 | Post-MVP | Local analytics feature | analytics.rs: SQLite `trigr-analytics.db` in AppData, dedicated writer thread via mpsc channel, `action_log` table. Instrumented all fire points: `fire_macro()` in hotkeys.rs, `fire_expansion()`/`fire_expansion_with_fillin()` in expansions.rs, `execute_search_result()` overlay path in lib.rs. Time saved: expansion=chars×0.3s (excluding \r), hotkey=3s, macro=5s. Stats: total, today, last 7 days, best day (MAX daily SUM), best 7 days (rolling window self-join). AnalyticsPanel.jsx: compound Today/Last 7 Days cards, 4-column records row, breakdown bars, reset with confirmation. Third nav tab in TitleBar. `rusqlite` 0.31 with bundled feature (ARM64 compatible). Privacy text updated in SettingsPanel. v0.1.11 released. |
