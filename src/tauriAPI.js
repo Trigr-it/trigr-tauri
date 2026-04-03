@@ -78,6 +78,9 @@ window.electronAPI = {
   // ── Global compatibility settings ───────────────────────────────────────────
   updateGlobalSettings: (settings) => invoke('update_global_settings', { settings }),
 
+  // ── Onboarding ──────────────────────────────────────────────────────────────
+  resetOnboarding: () => invoke('reset_onboarding'),
+
   // ── Startup ─────────────────────────────────────────────────────────────────
   getStartupEnabled:  ()        => invoke('get_startup_enabled'),
   setStartupEnabled:  (enabled) => invoke('set_startup_enabled', { enabled }),

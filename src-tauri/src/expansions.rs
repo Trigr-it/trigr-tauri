@@ -17,10 +17,30 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 
 const MAX_BUFFER_LENGTH: usize = 50;
 const VK_BACKSPACE: u16 = 0x08;
+const VK_SPACE: u16 = 0x20;
 const VK_LEFT: u16 = 0x25;
 const VK_LSHIFT: u16 = 0xA0;
 const VK_INSERT: u16 = 0x2D;
 const CF_UNICODETEXT: u32 = 13;
+
+// ── Injection guard — ensures INJECTION_IN_PROGRESS is always cleared ──────
+
+struct InjectionGuard;
+
+impl InjectionGuard {
+    fn new() -> Self {
+        crate::hotkeys::INJECTION_IN_PROGRESS
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        Self
+    }
+}
+
+impl Drop for InjectionGuard {
+    fn drop(&mut self) {
+        crate::hotkeys::INJECTION_IN_PROGRESS
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -82,41 +102,40 @@ pub fn check_space_trigger() -> bool {
 
     let buffer_lower = s.buffer.to_lowercase();
 
-    // Priority 1: Custom autocorrect
-    let ac_key = format!("GLOBAL::AUTOCORRECT::{}", buffer_lower);
-    if let Some(entry) = s.assignments.get(&ac_key).cloned() {
-        let correction = entry
-            .get("data")
-            .and_then(|d| d.get("correction"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let trigger_len = s.buffer.len();
-        let global_vars = s.global_variables.clone();
-        s.buffer.clear();
-        drop(s);
+    // Priority 1: Custom autocorrect — DISABLED FOR ALPHA
+    // let ac_key = format!("GLOBAL::AUTOCORRECT::{}", buffer_lower);
+    // if let Some(entry) = s.assignments.get(&ac_key).cloned() {
+    //     let correction = entry
+    //         .get("data")
+    //         .and_then(|d| d.get("correction"))
+    //         .and_then(|v| v.as_str())
+    //         .unwrap_or("")
+    //         .to_string();
+    //     let trigger_len = s.buffer.len();
+    //     let global_vars = s.global_variables.clone();
+    //     s.buffer.clear();
+    //     drop(s);
+    //
+    //     info!("[Trigr] Autocorrect: \"{}\" → \"{}\"", buffer_lower, correction);
+    //     let replacement = format!("{}", correction);
+    //     fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
+    //     return true;
+    // }
 
-        info!("[Trigr] Autocorrect: \"{}\" → \"{}\"", buffer_lower, correction);
-        // Correction gets a trailing space appended (matching Electron)
-        let replacement = format!("{} ", correction);
-        fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
-        return true;
-    }
-
-    // Priority 2: Built-in autocorrect
-    if s.autocorrect_enabled {
-        if let Some(correction) = builtin_autocorrect(&buffer_lower) {
-            let trigger_len = s.buffer.len();
-            let global_vars = s.global_variables.clone();
-            s.buffer.clear();
-            drop(s);
-
-            info!("[Trigr] Autocorrect (built-in): \"{}\" → \"{}\"", buffer_lower, correction);
-            let replacement = format!("{} ", correction);
-            fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
-            return true;
-        }
-    }
+    // Priority 2: Built-in autocorrect — DISABLED FOR ALPHA
+    // if s.autocorrect_enabled {
+    //     if let Some(correction) = builtin_autocorrect(&buffer_lower) {
+    //         let trigger_len = s.buffer.len();
+    //         let global_vars = s.global_variables.clone();
+    //         s.buffer.clear();
+    //         drop(s);
+    //
+    //         info!("[Trigr] Autocorrect (built-in): \"{}\" → \"{}\"", buffer_lower, correction);
+    //         let replacement = format!("{}", correction);
+    //         fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
+    //         return true;
+    //     }
+    // }
 
     // Priority 3: Text expansion (space-triggered)
     let exp_key = format!("GLOBAL::EXPANSION::{}", buffer_lower);
@@ -233,11 +252,22 @@ fn fire_expansion(
     };
     println!("[EXP] Captured target HWND: 0x{:X}", target_hwnd);
 
+    // Wait for any prior injection to finish (handles sequential autocorrects)
+    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::Relaxed) {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    // Set flag immediately on the processor thread — no race window for keystrokes to slip through
+    let guard = InjectionGuard::new();
+
     // Spawn on a separate thread to avoid blocking the event processor
     let trigger_len = trigger_len;
     thread::spawn(move || {
-        // Small delay to let the Space/character keystroke complete
-        thread::sleep(Duration::from_millis(10));
+        // Move guard into closure — Drop fires at end of injection
+        let _guard = guard;
+
+        // Delay to let the Space/character keystroke be processed by the target app
+        thread::sleep(Duration::from_millis(30));
 
         // Suppress hook so our Backspace and paste keystrokes aren't intercepted
         crate::hotkeys::SUPPRESS_SIMULATED
@@ -270,6 +300,50 @@ fn fire_expansion(
             .store(false, std::sync::atomic::Ordering::Relaxed);
         crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(false, std::sync::atomic::Ordering::Relaxed);
+
+        // Replay any keystrokes that were buffered during injection
+        let buffered: Vec<crate::hotkeys::BufferedKey> =
+            crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
+        if !buffered.is_empty() {
+            println!("[EXP] Replaying {} buffered keystrokes", buffered.len());
+            crate::hotkeys::SUPPRESS_SIMULATED
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            for key in &buffered {
+                send_vk_key(key.vk_code as u16, !key.is_keydown);
+                thread::sleep(Duration::from_millis(2));
+            }
+            crate::hotkeys::SUPPRESS_SIMULATED
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+
+            // Feed replayed keystrokes into the expansion buffer
+            let last_was_space = buffered.last()
+                .map(|k| k.vk_code == 0x20 && k.is_keydown)
+                .unwrap_or(false);
+            for key in &buffered {
+                if !key.is_keydown { continue; }
+                if key.vk_code == 0x20 { continue; } // Space handled after loop
+                if key.vk_code == 0x08 { buffer_pop(); continue; } // Backspace
+                if key.vk_code == 0x0D || key.vk_code == 0x1B || key.vk_code == 0x09 {
+                    // Enter, Escape, Tab — clear buffer and stop
+                    buffer_clear();
+                    break;
+                }
+                if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
+                if let Some(ch) = crate::hotkeys::vk_to_char(key.vk_code) {
+                    buffer_push(ch);
+                    check_immediate_triggers();
+                }
+            }
+            if last_was_space {
+                check_space_trigger();
+                buffer_clear();
+            }
+        }
+
+        // Sync modifier atomics with actual physical key state after replay
+        crate::hotkeys::sync_modifier_state_from_os();
+
+        // _guard drops here → INJECTION_IN_PROGRESS = false
     });
 }
 
@@ -412,6 +486,9 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
         send_vk_key(VK_INSERT, true);
         send_vk_key(VK_LSHIFT, true);
     }
+
+    // Send trailing space as a synthetic keystroke (not via clipboard — some apps strip trailing whitespace from paste)
+    send_vk_tap(VK_SPACE);
 
     // Re-press modifiers that were physically held
     crate::actions::restore_modifiers(&held);

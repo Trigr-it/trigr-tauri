@@ -394,6 +394,13 @@ fn hide_window(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn set_window_resizable(resizable: bool, app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_resizable(resizable);
+    }
+}
+
+#[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
@@ -672,6 +679,18 @@ fn update_search_settings(settings: Value) {
     }
 }
 
+// ── Onboarding ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn reset_onboarding() -> bool {
+    let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let mut merged = existing.clone();
+    if let Some(obj) = merged.as_object_mut() {
+        obj.insert("onboarding_complete".to_string(), Value::Bool(false));
+    }
+    config::save_config(&merged)
+}
+
 // ── Auto-updater (Phase 10) ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -866,6 +885,7 @@ pub fn run() {
             window_close,
             show_window,
             hide_window,
+            set_window_resizable,
             quit_app,
             // File dialogs
             browse_for_file,
@@ -884,6 +904,8 @@ pub fn run() {
             overlay_resize,
             execute_search_result,
             update_search_settings,
+            // Onboarding
+            reset_onboarding,
             // Updater
             check_for_updates,
             install_update,

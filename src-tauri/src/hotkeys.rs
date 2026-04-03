@@ -30,6 +30,21 @@ static APP_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
 /// When true, hook callbacks pass events through without processing.
 pub static SUPPRESS_SIMULATED: AtomicBool = AtomicBool::new(false);
 
+/// When true, real user keystrokes are swallowed by the hook and buffered for replay.
+pub static INJECTION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// Keystroke captured during injection for later replay.
+pub struct BufferedKey {
+    pub vk_code: u32,
+    pub is_keydown: bool,
+}
+
+static INJECTION_BUFFER: OnceLock<Mutex<Vec<BufferedKey>>> = OnceLock::new();
+
+pub fn injection_buffer() -> &'static Mutex<Vec<BufferedKey>> {
+    INJECTION_BUFFER.get_or_init(|| Mutex::new(Vec::new()))
+}
+
 /// Heartbeat incremented by hook callback. Health monitor detects stale hooks.
 static HOOK_HEARTBEAT: AtomicIsize = AtomicIsize::new(0);
 
@@ -406,13 +421,13 @@ fn mouse_button_to_key_id(button: MouseButton) -> &'static str {
     }
 }
 
-fn is_modifier_vk(vk: u32) -> bool {
+pub(crate) fn is_modifier_vk(vk: u32) -> bool {
     matches!(vk, 0xA0..=0xA5 | 0x5B | 0x5C)
 }
 
 // ── Character map for text expansion buffer ─────────────────────────────────
 
-fn vk_to_char(vk: u32) -> Option<char> {
+pub(crate) fn vk_to_char(vk: u32) -> Option<char> {
     match vk {
         0x41..=0x5A => Some((b'a' + (vk - 0x41) as u8) as char),
         0x30..=0x39 => Some((b'0' + (vk - 0x30) as u8) as char),
@@ -474,6 +489,18 @@ unsafe extern "system" fn keyboard_hook_proc(
     l_param: LPARAM,
 ) -> LRESULT {
     HOOK_HEARTBEAT.fetch_add(1, Ordering::Relaxed);
+    // Buffer real user keystrokes during injection — swallow them so they don't land in the target app
+    if n_code >= 0 && INJECTION_IN_PROGRESS.load(Ordering::Relaxed) && !SUPPRESS_SIMULATED.load(Ordering::Relaxed) {
+        let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+        let is_keydown = matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+        let is_keyup = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
+        if is_keydown || is_keyup {
+            if let Ok(mut buf) = injection_buffer().try_lock() {
+                buf.push(BufferedKey { vk_code: kb.vkCode, is_keydown });
+                return 1;
+            }
+        }
+    }
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::Relaxed) {
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         match w_param as u32 {
@@ -663,6 +690,18 @@ fn update_modifier_state(vk: u32, pressed: bool) {
         0xA4 | 0xA5 => MOD_ALT.store(pressed, Ordering::Relaxed),
         0x5B | 0x5C => MOD_META.store(pressed, Ordering::Relaxed),
         _ => {}
+    }
+}
+
+/// Sync modifier atomics with actual physical key state via GetAsyncKeyState.
+/// Called after injection replay to ensure modifier tracking is accurate.
+pub fn sync_modifier_state_from_os() {
+    unsafe {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        MOD_SHIFT.store(GetAsyncKeyState(0xA0) < 0 || GetAsyncKeyState(0xA1) < 0, Ordering::Relaxed);
+        MOD_CTRL.store(GetAsyncKeyState(0xA2) < 0 || GetAsyncKeyState(0xA3) < 0, Ordering::Relaxed);
+        MOD_ALT.store(GetAsyncKeyState(0xA4) < 0 || GetAsyncKeyState(0xA5) < 0, Ordering::Relaxed);
+        MOD_META.store(GetAsyncKeyState(0x5B) < 0 || GetAsyncKeyState(0x5C) < 0, Ordering::Relaxed);
     }
 }
 

@@ -866,6 +866,7 @@ export default function TextExpansions({
           >
             ✦ Text Expansions
           </button>
+          {/* Autocorrect tab hidden for Alpha
           <button
             className={`te-mode-tab${panelMode === 'autocorrect' ? ' active' : ''}`}
             onClick={() => setPanelMode('autocorrect')}
@@ -873,6 +874,7 @@ export default function TextExpansions({
           >
             Autocorrect
           </button>
+          */}
         </div>
         <div className="te-header-right">
           {panelMode !== 'globalvars' && (

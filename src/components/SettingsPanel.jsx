@@ -28,6 +28,7 @@ export default function SettingsPanel({
   globalPauseToggleKey  = null,
   onSetPauseKey,
   onClearPauseKey,
+  onRestartOnboarding,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -90,6 +91,19 @@ export default function SettingsPanel({
                 <circle cx="8" cy="11.2" r="0.7" fill="currentColor"/>
               </svg>
               Open User Guide
+            </button>
+            <button
+              type="button"
+              className="settings-action-btn settings-help-btn"
+              onClick={onRestartOnboarding}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2 8a6 6 0 0 1 10.5-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                <path d="M12.5 1.5v3h-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M14 8a6 6 0 0 1-10.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                <path d="M3.5 14.5v-3h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Restart Onboarding Tour
             </button>
             <button
               type="button"
