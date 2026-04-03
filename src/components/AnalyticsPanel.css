@@ -1,0 +1,260 @@
+/* ── Analytics Panel ───────────────────────────────────────────────────── */
+
+.analytics-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.analytics-header {
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.analytics-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.analytics-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.analytics-body::-webkit-scrollbar { width: 4px; }
+.analytics-body::-webkit-scrollbar-track { background: transparent; }
+.analytics-body::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+/* ── Section titles ────────────────────────────────────────────────────── */
+
+.analytics-section-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.analytics-section {
+  margin-bottom: 24px;
+}
+
+/* ── Section 1: Compound highlight cards (Today / Last 7 Days) ─────── */
+
+.analytics-cards-highlight {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.analytics-card-compound {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analytics-card-compound-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.analytics-card-compound-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.analytics-card-compound-value {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.analytics-card-compound-value.accent {
+  color: var(--accent);
+}
+
+.analytics-card-compound-label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Section 2: Small record cards (4-column) ──────────────────────── */
+
+.analytics-cards-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.analytics-card-sm {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.analytics-card-sm-value {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.analytics-card-sm-value.accent {
+  color: var(--accent);
+}
+
+.analytics-card-sm-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Breakdown ─────────────────────────────────────────────────────────── */
+
+.analytics-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analytics-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analytics-breakdown-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.analytics-breakdown-dot.expansion { background: var(--accent); }
+.analytics-breakdown-dot.hotkey    { background: #c864ff; }
+.analytics-breakdown-dot.macro     { background: #ff783c; }
+
+.analytics-breakdown-label {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+  min-width: 80px;
+}
+
+.analytics-breakdown-count {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 50px;
+  text-align: right;
+}
+
+.analytics-breakdown-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-hover);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.analytics-breakdown-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.analytics-breakdown-bar.expansion { background: var(--accent); }
+.analytics-breakdown-bar.hotkey    { background: #c864ff; }
+.analytics-breakdown-bar.macro     { background: #ff783c; }
+
+.analytics-breakdown-pct {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── Reset button ──────────────────────────────────────────────────────── */
+
+.analytics-reset-row {
+  padding-top: 8px;
+}
+
+.analytics-reset-btn {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.analytics-reset-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-color: var(--border-bright);
+}
+
+.analytics-reset-btn--confirm {
+  color: #e85454;
+  border-color: #e8545466;
+}
+
+.analytics-reset-btn--confirm:hover {
+  background: #e854540d;
+  color: #e85454;
+  border-color: #e85454;
+}
+
+/* ── Empty state ───────────────────────────────────────────────────────── */
+
+.analytics-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.analytics-empty-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}

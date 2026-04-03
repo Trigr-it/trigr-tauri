@@ -12,6 +12,7 @@ import TextExpansions from './components/TextExpansions';
 import WelcomeModal from './components/WelcomeModal';
 import OnboardingTour from './components/OnboardingTour';
 import QuickTips from './components/QuickTips';
+import AnalyticsPanel from './components/AnalyticsPanel';
 
 function App() {
   const [assignments, setAssignments]       = useState({});
@@ -28,7 +29,7 @@ function App() {
   const [expansionCategories, setExpansionCategories] = useState([]);
   const [globalVariables, setGlobalVariables]         = useState({});   // { 'my.name': 'Rory Brady', … }
   const [activeView, setActiveView]                 = useState('keyboard'); // 'keyboard' | 'mouse'
-  const [activeArea, setActiveArea]                 = useState('mapping');  // 'mapping' | 'expansions'
+  const [activeArea, setActiveArea]                 = useState('mapping');  // 'mapping' | 'expansions' | 'analytics'
   const [numpadOpen, setNumpadOpen]                 = useState(false);
   const [isRecording, setIsRecording]               = useState(false);
   const [recordCapture, setRecordCapture]           = useState(null);
@@ -1159,7 +1160,7 @@ function App() {
             profileLinked={profileLinked}
           />
         )}
-        <main className={`main-area${activeArea === 'expansions' ? ' main-area--expansions' : ''}`}>
+        <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}`}>
           {activeArea === 'mapping' && (
             <div className="view-switcher">
               <button
@@ -1218,6 +1219,9 @@ function App() {
               onStopRecord={handleStopRecord}
               recordCapture={recordCapture}
             />
+          )}
+          {activeArea === 'analytics' && (
+            <AnalyticsPanel />
           )}
           {activeArea === 'expansions' && (
             // Phase 3: Text Expansions will eventually support its own profile bar

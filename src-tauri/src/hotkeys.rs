@@ -1162,6 +1162,11 @@ fn fire_macro(macro_val: Value, is_bare: bool, app: &AppHandle) {
     thread::spawn(move || {
         crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr);
 
+        // Log analytics
+        let action_type = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
+        let analytics_type = if action_type == "macro" { "macro" } else { "hotkey" };
+        crate::analytics::log_action(analytics_type, 0);
+
         // Notify frontend for visual feedback
         let _ = app_clone.emit(
             "macro-fired",

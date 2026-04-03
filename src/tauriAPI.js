@@ -150,6 +150,10 @@ window.electronAPI = {
     listen('overlay-fired', (event) => callback(event.payload)).then(u => { listeners['overlay-fired'] = u; });
   },
 
+  // ── Analytics ───────────────────────────────────────────────────────────────
+  getAnalytics:  () => invoke('get_analytics'),
+  resetAnalytics: () => invoke('reset_analytics'),
+
   // ── Global pause toggle ─────────────────────────────────────────────────────
   setPauseHotkey:      (combo) => invoke('set_global_pause_key', { combo }),
   clearPauseHotkey:    ()      => invoke('clear_global_pause_key'),

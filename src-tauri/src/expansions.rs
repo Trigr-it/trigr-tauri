@@ -311,6 +311,8 @@ fn fire_expansion(
         return;
     }
 
+    crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32);
+
     // Capture target HWND NOW before spawning the thread
     let target_hwnd = unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
@@ -506,6 +508,8 @@ fn fire_expansion_with_fillin(
     if resolved.is_empty() {
         return;
     }
+
+    crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32);
 
     // Wait for any prior injection to finish
     while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::Relaxed) {
