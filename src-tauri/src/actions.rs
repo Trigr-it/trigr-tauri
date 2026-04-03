@@ -105,12 +105,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
 
         "macro" => {
             if let Some(steps) = data.and_then(|d| d.get("steps")).and_then(|v| v.as_array()) {
-                info!("[Trigr] Macro sequence: {} step(s)", steps.len());
+                let method = resolve_input_method(data);
+                info!("[Trigr] Macro sequence: {} step(s), method={}", steps.len(), method);
                 for (i, step) in steps.iter().enumerate() {
                     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
                     info!("[Trigr]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
-                    execute_macro_step(step, target_hwnd);
+                    execute_macro_step(step, target_hwnd, &method);
                 }
             }
         }
@@ -140,8 +141,9 @@ fn resolve_input_method(data: Option<&Value>) -> String {
             }
         }
     }
-    // Default: clipboard paste via Shift+Insert (instant, any text length)
-    "shift-insert".to_string()
+    // Fall through to global default from settings
+    let state = crate::hotkeys::engine_state().lock().unwrap();
+    state.global_input_method.clone()
 }
 
 // ── Text output dispatcher ──────────────────────────────────────────────────
@@ -425,7 +427,7 @@ fn execute_send_hotkey(data: &Value) {
 
 // ── Macro sequence step executor ────────────────────────────────────────────
 
-fn execute_macro_step(step: &Value, target_hwnd: isize) {
+fn execute_macro_step(step: &Value, target_hwnd: isize, method: &str) {
     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -433,7 +435,7 @@ fn execute_macro_step(step: &Value, target_hwnd: isize) {
         "Type Text" => {
             if !step_value.is_empty() {
                 thread::sleep(Duration::from_millis(MACRO_TRIGGER_DELAY_MS));
-                output_text(step_value, "shift-insert", target_hwnd);
+                output_text(step_value, method, target_hwnd);
             }
         }
 

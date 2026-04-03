@@ -95,16 +95,30 @@ fn modifier_string_to_bits(combo: &str) -> u8 {
 
 /// Rebuild the suppress key set from current assignments.
 /// Must be called while holding the engine_state lock — overlay_hotkey is read from the state.
-fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str) {
+fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, profile_settings: &HashMap<String, Value>) {
     let mut set = HashSet::new();
     let prefix = format!("{}::", profile);
+    // Bare keys only suppress when the active profile is app-linked
+    let is_linked = profile_settings.get(profile)
+        .and_then(|s| s.get("linkedApp"))
+        .and_then(|v| v.as_str())
+        .is_some();
     for key in assignments.keys() {
         if !key.starts_with(&prefix) { continue; }
         let parts: Vec<&str> = key.split("::").collect();
         if parts.len() < 3 { continue; }
         let combo_str = parts[1];
-        if combo_str == "BARE" || combo_str == "GLOBAL" { continue; }
+        if combo_str == "GLOBAL" { continue; }
         if parts.last() == Some(&"double") { continue; }
+        if combo_str == "BARE" {
+            if is_linked {
+                let key_id = parts[2];
+                if let Some(vk) = key_id_to_vk(key_id) {
+                    set.insert((0u8, vk));
+                }
+            }
+            continue;
+        }
         let key_id = parts[2];
         if let Some(vk) = key_id_to_vk(key_id) {
             let bits = modifier_string_to_bits(combo_str);
@@ -205,6 +219,8 @@ pub(crate) struct EngineState {
     // Global pause hotkey — parsed as (modifier_bits, vk_code)
     pause_hotkey: Option<(u8, u32)>,
     pub(crate) pause_hotkey_str: Option<String>,
+    // Global input method — resolved when per-assignment method is "global" or absent
+    pub(crate) global_input_method: String,
 }
 
 use std::sync::Arc;
@@ -225,6 +241,7 @@ impl Default for EngineState {
             overlay_hotkey: Some((1, 0x20)), // Default: Ctrl+Space (bits=1=Ctrl, vk=0x20=Space)
             pause_hotkey: None, // Set via set_global_pause_key command
             pause_hotkey_str: None,
+            global_input_method: "direct".to_string(),
         }
     }
 }
@@ -527,11 +544,9 @@ unsafe extern "system" fn keyboard_hook_proc(
                 // Suppress matched hotkey combos — prevent keystroke reaching target app
                 if !is_modifier_vk(kb.vkCode) && MACROS_ENABLED.load(Ordering::Relaxed) {
                     let bits = modifier_bits();
-                    if bits != 0 {
-                        if let Ok(set) = suppress_keys().try_read() {
-                            if set.contains(&(bits, kb.vkCode)) {
-                                return 1;
-                            }
+                    if let Ok(set) = suppress_keys().try_read() {
+                        if set.contains(&(bits, kb.vkCode)) {
+                            return 1;
                         }
                     }
                 }
@@ -945,10 +960,40 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                     return;
                 }
             }
-            // First tap — record time
+            // First tap — record time and start single-press timer at keydown
             state.last_hotkey_time.insert(storage_key.clone(), now);
-            state.pending_macro = Some(macro_val);
-            state.pending_storage_key = Some(storage_key);
+
+            // Cancel any existing pending timer for this key
+            if let Some(old_cancel) = state.pending_single_cancel.remove(&storage_key) {
+                old_cancel.store(true, Ordering::Relaxed);
+            }
+
+            let cancel_flag = Arc::new(AtomicBool::new(false));
+            state.pending_single_cancel.insert(storage_key.clone(), cancel_flag.clone());
+
+            info!("[Trigr] x1 First tap: {} — waiting {}ms", storage_key, dtw);
+
+            let sk = storage_key.clone();
+            let app_clone = app.clone();
+            let macro_clone = macro_val.clone();
+            drop(state);
+
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(dtw));
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return; // Second tap came in — cancelled
+                }
+                // Single confirmed — fire directly from timer thread
+                {
+                    let mut state = engine_state().lock().unwrap();
+                    state.pending_single_cancel.remove(&sk);
+                    state.last_hotkey_time.remove(&sk);
+                }
+                info!("[Trigr] x1 Single confirmed: {}", sk);
+                fire_macro(macro_clone, false, &app_clone);
+            });
+            // Don't set pending_macro — timer handles firing
+            return;
         } else {
             // No double variant — fire directly at keyup
             state.pending_macro = Some(macro_val);
@@ -1425,7 +1470,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     let mut state = engine_state().lock().unwrap();
     state.assignments = assignments;
     state.active_profile = profile;
-    rebuild_suppress_keys(&state.assignments, &state.active_profile);
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
     println!("[ENGINE] Assignments stored: {} entries", state.assignments.len());
@@ -1434,7 +1479,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
 pub fn set_active_profile(profile: String) {
     let mut state = engine_state().lock().unwrap();
     state.active_profile = profile.clone();
-    rebuild_suppress_keys(&state.assignments, &state.active_profile);
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
     info!("[Trigr] Active profile: {}", profile);
@@ -1453,6 +1498,9 @@ pub fn update_global_settings(settings: &Value) {
     let mut state = engine_state().lock().unwrap();
     if let Some(dtw) = settings.get("doubleTapWindow").and_then(|v| v.as_u64()) {
         state.double_tap_window_ms = dtw;
+    }
+    if let Some(m) = settings.get("globalInputMethod").and_then(|v| v.as_str()) {
+        state.global_input_method = m.to_string();
     }
 }
 
@@ -1486,7 +1534,7 @@ pub fn set_overlay_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
         let mut state = engine_state().lock().unwrap();
         state.overlay_hotkey = Some(parsed);
-        rebuild_suppress_keys(&state.assignments, &state.active_profile);
+        rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         add_overlay_to_suppress(Some(parsed));
         add_pause_to_suppress(state.pause_hotkey);
         println!("[HOOK] Overlay hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
@@ -1498,7 +1546,7 @@ pub fn set_pause_hotkey(combo: &str) {
         let mut state = engine_state().lock().unwrap();
         state.pause_hotkey = Some(parsed);
         state.pause_hotkey_str = Some(combo.to_string());
-        rebuild_suppress_keys(&state.assignments, &state.active_profile);
+        rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         add_overlay_to_suppress(state.overlay_hotkey);
         add_pause_to_suppress(Some(parsed));
         println!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
@@ -1509,7 +1557,7 @@ pub fn clear_pause_hotkey() {
     let mut state = engine_state().lock().unwrap();
     state.pause_hotkey = None;
     state.pause_hotkey_str = None;
-    rebuild_suppress_keys(&state.assignments, &state.active_profile);
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     println!("[HOOK] Pause hotkey cleared");
 }
