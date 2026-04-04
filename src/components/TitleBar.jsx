@@ -228,12 +228,13 @@ export default function TitleBar({
 
     function measure() {
       const containerWidth = container.offsetWidth;
+      if (containerWidth === 0) return; // not rendered yet
       const nonDefault = profiles.slice(1);
       let usedWidth = 0;
       let count = 0;
       for (const p of nonDefault) {
         const el = tabElsRef.current[p];
-        if (!el) break;
+        if (!el || el.offsetWidth === 0) { count++; continue; } // not measured yet — assume fits
         const w = el.offsetWidth + GAP;
         // If this tab would overflow, check if we need pill space
         if (usedWidth + w > containerWidth - (count < nonDefault.length - 1 ? PILL_WIDTH : 0)) break;
@@ -241,14 +242,15 @@ export default function TitleBar({
         count++;
       }
       // If all fit, no need for pill reservation
-      if (count === nonDefault.length) setVisibleCount(Infinity);
+      if (count >= nonDefault.length) setVisibleCount(Infinity);
       else setVisibleCount(count);
     }
 
-    measure();
+    // Defer first measurement so the DOM has rendered tabs
+    const raf = requestAnimationFrame(() => requestAnimationFrame(measure));
     const ro = new ResizeObserver(measure);
     ro.observe(container);
-    return () => ro.disconnect();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [profiles]);
 
   // ── Close overflow dropdown on outside click ─────────────
