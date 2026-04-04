@@ -511,8 +511,8 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
       <!-- PANEL 2: Hotkey -->
       <div class="demo-panel">
         <div class="demo-panel-label"><span class="demo-panel-tag">Hotkey</span></div>
-        <div class="demo-panel-title">One combo.<br>Any action.</div>
-        <div class="demo-panel-sub">Press <span class="demo-code">Ctrl+E</span> and launch any app instantly — your image editor, terminal, or anything else, without touching the mouse.</div>
+        <div class="demo-panel-title">One key.<br>Multiple actions.</div>
+        <div class="demo-panel-sub">Press <span class="demo-code">Ctrl+E</span> and watch Trigr fire a full macro sequence — two terminals open, commands run, everything done before you've moved your hand.</div>
         <div class="demo-screen">
           <div class="demo-screen-bar">
             <div class="demo-screen-dots"><span></span><span></span><span></span></div>
@@ -545,13 +545,7 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
                       <span class="demo-snap-dots"><i></i><i></i><i></i></span>
                       <span class="demo-snap-title">Terminal 1</span>
                     </div>
-                    <div class="demo-snap-body demo-snap-doc-body">
-                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> git status</div>
-                      <div class="snap-term-line snap-term-out">On branch <span style="color:#e8a020;">main</span></div>
-                      <div class="snap-term-line snap-term-out snap-term-green">nothing to commit</div>
-                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> git pull</div>
-                      <div class="snap-term-line snap-term-out">Already up to date.</div>
-                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> <span class="snap-term-cursor">█</span></div>
+                    <div class="demo-snap-body demo-snap-doc-body" id="term1-body">
                     </div>
                   </div>
                   <!-- Terminal 2 window -->
@@ -560,12 +554,7 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
                       <span class="demo-snap-dots"><i></i><i></i><i></i></span>
                       <span class="demo-snap-title">Terminal 2</span>
                     </div>
-                    <div class="demo-snap-body demo-snap-doc-body">
-                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> npm run dev</div>
-                      <div class="snap-term-line snap-term-out">Starting dev server...</div>
-                      <div class="snap-term-line snap-term-out snap-term-green">✓ Ready on localhost:3000</div>
-                      <div class="snap-term-line snap-term-out" style="opacity:0.5;">watching for changes</div>
-                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> <span class="snap-term-cursor">█</span></div>
+                    <div class="demo-snap-body demo-snap-doc-body" id="term2-body">
                     </div>
                   </div>
                 </div>
@@ -646,6 +635,7 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
 .snap-term-prompt { color:#e8a020; font-weight:700; }
 .snap-term-out { color:#72708c; padding-left:14px; }
 .snap-term-green { color:#50c878; }
+.snap-term-dim { opacity:0.45; }
 .snap-term-cursor { color:#e8a020; animation:blink 1s step-end infinite; }
 .demo-hk-idle { display:flex; align-items:center; gap:10px; transition:opacity 0.2s; }
 .demo-hk-combo { display:flex; align-items:center; gap:4px; }
@@ -732,7 +722,14 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
   var snapBrief  = document.getElementById('snap-brief');
   var hkT = null, hkDone = false;
 
+  var term1 = document.getElementById('term1-body');
+  var term2 = document.getElementById('term2-body');
+  var allHkTimers = [];
+
+  function hkAfter(fn, ms){ var t = setTimeout(fn, ms); allHkTimers.push(t); return t; }
+
   function hkReset(){
+    allHkTimers.forEach(clearTimeout); allHkTimers = [];
     hkDone = false;
     ctrlKey.classList.remove('active');
     eKey.classList.remove('active');
@@ -740,24 +737,97 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
     hkIdle.style.opacity = '1';
     if(snapEditor){ snapEditor.classList.remove('snap-in'); snapEditor.classList.remove('snap-full'); }
     if(snapBrief)  snapBrief.classList.remove('snap-in');
+    if(term1) term1.innerHTML = '';
+    if(term2) term2.innerHTML = '';
+  }
+
+  // Append a prompt line with a typing cursor, type cmd char by char, then call done()
+  function termType(container, cmd, done){
+    var line = document.createElement('div');
+    line.className = 'snap-term-line';
+    line.innerHTML = '<span class="snap-term-prompt">~$</span> <span class="snap-term-typing"></span><span class="snap-term-cursor">█</span>';
+    container.appendChild(line);
+    var typeEl = line.querySelector('.snap-term-typing');
+    var curEl  = line.querySelector('.snap-term-cursor');
+    var i = 0;
+    function step(){
+      if(i < cmd.length){
+        typeEl.textContent += cmd[i++];
+        allHkTimers.push(setTimeout(step, 55));
+      } else {
+        // Remove cursor, press enter
+        curEl.remove();
+        allHkTimers.push(setTimeout(done, 120));
+      }
+    }
+    allHkTimers.push(setTimeout(step, 80));
+  }
+
+  // Append output lines instantly
+  function termOut(container, lines){
+    lines.forEach(function(l){
+      var d = document.createElement('div');
+      d.className = 'snap-term-line snap-term-out' + (l.green ? ' snap-term-green' : '') + (l.dim ? ' snap-term-dim' : '');
+      d.innerHTML = l.text;
+      container.appendChild(d);
+    });
+  }
+
+  // Append idle prompt with blinking cursor
+  function termPrompt(container){
+    var d = document.createElement('div');
+    d.className = 'snap-term-line';
+    d.innerHTML = '<span class="snap-term-prompt">~$</span> <span class="snap-term-cursor">█</span>';
+    container.appendChild(d);
   }
 
   function hkDoFire(){
     hkIdle.style.opacity = '0';
     hkFlash.classList.add('pop');
     hkFired.classList.add('show');
-    setTimeout(function(){ hkFlash.classList.remove('pop'); }, 220);
-    // Terminal 1 opens full width first
-    if(snapEditor){
-      snapEditor.classList.add('snap-in');
-      snapEditor.classList.add('snap-full');
-    }
-    // After 900ms Terminal 2 slides in, both go to 50%
-    hkT = setTimeout(function(){
-      if(snapEditor) snapEditor.classList.remove('snap-full');
-      if(snapBrief)  snapBrief.classList.add('snap-in');
-    }, 900);
-    hkT = setTimeout(hkReset, 5500);
+    hkAfter(function(){ hkFlash.classList.remove('pop'); }, 220);
+
+    // ── Terminal 1 opens full width ──
+    snapEditor.classList.add('snap-in');
+    snapEditor.classList.add('snap-full');
+
+    // T1: type "git status"
+    hkAfter(function(){
+      termType(term1, 'git status', function(){
+        termOut(term1, [
+          { text: 'On branch <span style="color:#e8a020">main</span>' },
+          { text: 'nothing to commit, working tree clean', green: true }
+        ]);
+        // T1: type "git pull"
+        hkAfter(function(){
+          termType(term1, 'git pull', function(){
+            termOut(term1, [{ text: 'Already up to date.' }]);
+            termPrompt(term1);
+          });
+        }, 400);
+      });
+    }, 300);
+
+    // ── After 1800ms Terminal 2 snaps in, T1 shrinks to 50% ──
+    hkAfter(function(){
+      snapEditor.classList.remove('snap-full');
+      snapBrief.classList.add('snap-in');
+
+      // T2: type "npm run dev"
+      hkAfter(function(){
+        termType(term2, 'npm run dev', function(){
+          termOut(term2, [
+            { text: 'Starting dev server...' },
+            { text: '✓ Ready on localhost:3000', green: true },
+            { text: 'watching for changes', dim: true }
+          ]);
+          termPrompt(term2);
+        });
+      }, 350);
+    }, 1800);
+
+    // Reset after full sequence
+    hkAfter(hkReset, 7500);
   }
 
   document.addEventListener('keydown', function(e){
