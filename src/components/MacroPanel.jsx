@@ -521,7 +521,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const hasSubRow = ['Type Text', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window'].includes(step.type);
+  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window'].includes(step.type);
 
   // Parse JSON values for structured step types
   let appData = { path: '', args: '' };
@@ -562,25 +562,29 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
             onChange={e => updateStep({ ...step, value: e.target.value })}
           />
         )}
-        {step.type === 'Open URL' && (
-          <input
-            className="form-input macro-step-value"
-            placeholder="https://example.com"
-            value={step.value || ''}
-            onChange={e => updateStep({ ...step, value: e.target.value })}
-          />
-        )}
-
         <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
       </div>
 
-      {/* Sub-row: Type Text — full-width textarea */}
+      {/* Sub-row: Type Text — full-width input */}
       {step.type === 'Type Text' && (
         <div className="wfi-config-row">
           <input
             className="form-input"
             style={{ flex: 1 }}
             placeholder="Text to type..."
+            value={step.value || ''}
+            onChange={e => updateStep({ ...step, value: e.target.value })}
+          />
+        </div>
+      )}
+
+      {/* Sub-row: Open URL — full-width input */}
+      {step.type === 'Open URL' && (
+        <div className="wfi-config-row">
+          <input
+            className="form-input"
+            style={{ flex: 1 }}
+            placeholder="https://example.com"
             value={step.value || ''}
             onChange={e => updateStep({ ...step, value: e.target.value })}
           />
