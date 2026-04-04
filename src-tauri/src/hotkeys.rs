@@ -781,20 +781,16 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
     if IS_RECORDING_HOTKEY.load(Ordering::Relaxed) {
         IS_RECORDING_HOTKEY.store(false, Ordering::Relaxed);
 
-        if key_id == "Escape" {
-            let _ = app.emit("hotkey-recorded", Value::Null);
-        } else {
-            let mut mods = Vec::new();
-            if MOD_CTRL.load(Ordering::Relaxed) { mods.push("Ctrl"); }
-            if MOD_SHIFT.load(Ordering::Relaxed) { mods.push("Shift"); }
-            if MOD_ALT.load(Ordering::Relaxed) { mods.push("Alt"); }
-            if MOD_META.load(Ordering::Relaxed) { mods.push("Win"); }
+        let mut mods = Vec::new();
+        if MOD_CTRL.load(Ordering::Relaxed) { mods.push("Ctrl"); }
+        if MOD_SHIFT.load(Ordering::Relaxed) { mods.push("Shift"); }
+        if MOD_ALT.load(Ordering::Relaxed) { mods.push("Alt"); }
+        if MOD_META.load(Ordering::Relaxed) { mods.push("Win"); }
 
-            let _ = app.emit(
-                "hotkey-recorded",
-                serde_json::json!({ "modifiers": mods, "keyId": key_id }),
-            );
-        }
+        let _ = app.emit(
+            "hotkey-recorded",
+            serde_json::json!({ "modifiers": mods, "keyId": key_id }),
+        );
         return;
     }
 
@@ -803,19 +799,15 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
     if IS_CAPTURING_KEY.load(Ordering::Relaxed) {
         IS_CAPTURING_KEY.store(false, Ordering::Relaxed);
 
-        if key_id == "Escape" {
-            let _ = app.emit("key-captured", Value::Null);
-        } else {
-            let mut parts = Vec::new();
-            if MOD_CTRL.load(Ordering::Relaxed) { parts.push("Ctrl".to_string()); }
-            if MOD_SHIFT.load(Ordering::Relaxed) { parts.push("Shift".to_string()); }
-            if MOD_ALT.load(Ordering::Relaxed) { parts.push("Alt".to_string()); }
-            if MOD_META.load(Ordering::Relaxed) { parts.push("Win".to_string()); }
-            parts.push(key_id_to_display(key_id).to_string());
+        let mut parts = Vec::new();
+        if MOD_CTRL.load(Ordering::Relaxed) { parts.push("Ctrl".to_string()); }
+        if MOD_SHIFT.load(Ordering::Relaxed) { parts.push("Shift".to_string()); }
+        if MOD_ALT.load(Ordering::Relaxed) { parts.push("Alt".to_string()); }
+        if MOD_META.load(Ordering::Relaxed) { parts.push("Win".to_string()); }
+        parts.push(key_id_to_display(key_id).to_string());
 
-            let combo = parts.join("+");
-            let _ = app.emit("key-captured", Value::String(combo));
-        }
+        let combo = parts.join("+");
+        let _ = app.emit("key-captured", Value::String(combo));
         return;
     }
 
@@ -1404,38 +1396,28 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
     if IS_RECORDING_HOTKEY.load(Ordering::Relaxed) {
         IS_RECORDING_HOTKEY.store(false, Ordering::Relaxed);
 
-        if key_id == "Escape" {
-            let _ = app.emit("hotkey-recorded", Value::Null);
-        } else {
-            let mut mods = Vec::new();
-            if ctrl { mods.push("Ctrl"); }
-            if shift { mods.push("Shift"); }
-            if alt { mods.push("Alt"); }
-            if meta { mods.push("Win"); }
+        let mut mods = Vec::new();
+        if ctrl { mods.push("Ctrl"); }
+        if shift { mods.push("Shift"); }
+        if alt { mods.push("Alt"); }
+        if meta { mods.push("Win"); }
 
-            println!("[CAPTURE-JS] Recording: mods={:?} key={}", mods, key_id);
-            let _ = app.emit(
-                "hotkey-recorded",
-                serde_json::json!({ "modifiers": mods, "keyId": key_id }),
-            );
-        }
+        let _ = app.emit(
+            "hotkey-recorded",
+            serde_json::json!({ "modifiers": mods, "keyId": key_id }),
+        );
     } else if IS_CAPTURING_KEY.load(Ordering::Relaxed) {
         IS_CAPTURING_KEY.store(false, Ordering::Relaxed);
 
-        if key_id == "Escape" {
-            let _ = app.emit("key-captured", Value::Null);
-        } else {
-            let mut parts = Vec::new();
-            if ctrl { parts.push("Ctrl".to_string()); }
-            if shift { parts.push("Shift".to_string()); }
-            if alt { parts.push("Alt".to_string()); }
-            if meta { parts.push("Win".to_string()); }
-            parts.push(key_id_to_display(key_id).to_string());
+        let mut parts = Vec::new();
+        if ctrl { parts.push("Ctrl".to_string()); }
+        if shift { parts.push("Shift".to_string()); }
+        if alt { parts.push("Alt".to_string()); }
+        if meta { parts.push("Win".to_string()); }
+        parts.push(key_id_to_display(key_id).to_string());
 
-            let combo = parts.join("+");
-            println!("[CAPTURE-JS] Capture: combo={}", combo);
-            let _ = app.emit("key-captured", Value::String(combo));
-        }
+        let combo = parts.join("+");
+        let _ = app.emit("key-captured", Value::String(combo));
     }
 }
 

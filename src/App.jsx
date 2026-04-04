@@ -278,6 +278,7 @@ function App() {
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key !== 'Escape') return;
+      if (window.__trigr_capturing || window.__trigr_recording) return; // let capture handle it
       if (selectedKey) return;           // action panel is open — do nothing
       if (activeModifiers.length === 0) return; // nothing to clear
       e.preventDefault();
