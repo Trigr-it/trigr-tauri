@@ -75,7 +75,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
           <button
             className="mod-layer-btn record-btn recording"
             onClick={guardedStopRecord}
-            title="Press any key combination to capture it — Escape to cancel"
+            title="Press any key combination to capture it — click to stop"
           >
             <span className="record-dot" />
             Recording…
@@ -93,7 +93,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
 
       <div className="modifier-bar-combo">
         {isRecording ? (
-          <span className="combo-hint record-hint">Press any key combination — Escape to cancel</span>
+          <span className="combo-hint record-hint">Press any key combination — click Recording to cancel</span>
         ) : recordCapture ? (
           <span className="combo-hint record-captured">Captured: {recordCapture}</span>
         ) : activeModifiers.length === 0 ? (

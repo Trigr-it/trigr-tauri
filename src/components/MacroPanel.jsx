@@ -181,15 +181,6 @@ function HotkeyCaptureInput({ value, onChange }) {
   }
 
   function handleKeyDown(e) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      window.electronAPI?.stopKeyCapture();
-      setCapturing(false);
-      setWinBuilder(false);
-      divRef.current?.blur();
-      return;
-    }
     // Detect Win key press — switch to manual builder
     if (e.key === 'Meta') {
       e.preventDefault();
@@ -200,9 +191,17 @@ function HotkeyCaptureInput({ value, onChange }) {
     }
   }
 
+  function cancelCapture() {
+    window.electronAPI?.stopKeyCapture();
+    setCapturing(false);
+    setWinBuilder(false);
+    divRef.current?.blur();
+  }
+
   function handleBlur(e) {
-    // Don't close if focus moved to the builder dropdown or buttons inside
+    // Don't close if focus moved to the builder dropdown, buttons, or cancel inside
     if (e.currentTarget.contains(e.relatedTarget)) return;
+    if (e.relatedTarget?.dataset?.captureCancel) return;
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
@@ -228,42 +227,53 @@ function HotkeyCaptureInput({ value, onChange }) {
   return (
     <div className="form-section">
       <label className="form-label">Hotkey</label>
-      <div
-        ref={divRef}
-        className={`key-capture${capturing ? ' key-capture-active' : ''}`}
-        tabIndex={0}
-        onClick={!capturing ? startCapture : undefined}
-        onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
-        onBlur={handleBlur}
-        role="button"
-        aria-label={capturing ? 'Press your hotkey combination' : currentCombo || 'Click to capture hotkey'}
-      >
-        {capturing && winBuilder ? (
-          <div className="win-builder">
-            <kbd className="win-builder-badge">Win</kbd>
-            <span className="win-builder-plus">+</span>
-            <select
-              className="win-builder-select"
-              value={winKey}
-              onChange={e => setWinKey(e.target.value)}
-              onClick={e => e.stopPropagation()}
-            >
-              {WIN_BUILDER_KEYS.map(g => (
-                <optgroup key={g.group} label={g.group}>
-                  {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
-                </optgroup>
-              ))}
-            </select>
-            <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
-            <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
-            <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
-          </div>
-        ) : capturing ? (
-          <span className="key-capture-prompt">Press your hotkey combination…</span>
-        ) : currentCombo ? (
-          <span className="key-capture-value"><KeyChips combo={currentCombo} /></span>
-        ) : (
-          <span className="key-capture-placeholder">Click to capture hotkey…</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div
+          ref={divRef}
+          className={`key-capture${capturing ? ' key-capture-active' : ''}`}
+          tabIndex={0}
+          onClick={!capturing ? startCapture : undefined}
+          onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
+          onBlur={handleBlur}
+          role="button"
+          aria-label={capturing ? 'Press your hotkey combination' : currentCombo || 'Click to capture hotkey'}
+          style={{ flex: 1 }}
+        >
+          {capturing && winBuilder ? (
+            <div className="win-builder">
+              <kbd className="win-builder-badge">Win</kbd>
+              <span className="win-builder-plus">+</span>
+              <select
+                className="win-builder-select"
+                value={winKey}
+                onChange={e => setWinKey(e.target.value)}
+                onClick={e => e.stopPropagation()}
+              >
+                {WIN_BUILDER_KEYS.map(g => (
+                  <optgroup key={g.group} label={g.group}>
+                    {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
+              <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
+              <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
+            </div>
+          ) : capturing ? (
+            <span className="key-capture-prompt">Press your hotkey combination…</span>
+          ) : currentCombo ? (
+            <span className="key-capture-value"><KeyChips combo={currentCombo} /></span>
+          ) : (
+            <span className="key-capture-placeholder">Click to capture hotkey…</span>
+          )}
+        </div>
+        {capturing && (
+          <button
+            className="macro-advanced-toggle"
+            type="button"
+            data-capture-cancel="true"
+            onMouseDown={e => { e.preventDefault(); cancelCapture(); }}
+          >Cancel</button>
         )}
       </div>
     </div>
@@ -404,15 +414,6 @@ function KeyCaptureInput({ value, onChange }) {
   }
 
   function handleKeyDown(e) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      window.electronAPI?.stopKeyCapture();
-      setCapturing(false);
-      setWinBuilder(false);
-      divRef.current?.blur();
-      return;
-    }
     // Detect Win key press — switch to manual builder
     if (e.key === 'Meta') {
       e.preventDefault();
@@ -423,9 +424,17 @@ function KeyCaptureInput({ value, onChange }) {
     }
   }
 
+  function cancelCapture() {
+    window.electronAPI?.stopKeyCapture();
+    setCapturing(false);
+    setWinBuilder(false);
+    divRef.current?.blur();
+  }
+
   function handleBlur(e) {
-    // Don't close if focus moved to the builder dropdown or buttons inside
+    // Don't close if focus moved to the builder dropdown, buttons, or cancel inside
     if (e.currentTarget.contains(e.relatedTarget)) return;
+    if (e.relatedTarget?.dataset?.captureCancel) return;
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
@@ -446,42 +455,53 @@ function KeyCaptureInput({ value, onChange }) {
   }
 
   return (
-    <div
-      ref={divRef}
-      className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
-      tabIndex={0}
-      onClick={!capturing ? startCapture : undefined}
-      onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
-      onBlur={handleBlur}
-      role="button"
-      aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
-    >
-      {capturing && winBuilder ? (
-        <div className="win-builder">
-          <kbd className="win-builder-badge">Win</kbd>
-          <span className="win-builder-plus">+</span>
-          <select
-            className="win-builder-select"
-            value={winKey}
-            onChange={e => setWinKey(e.target.value)}
-            onClick={e => e.stopPropagation()}
-          >
-            {WIN_BUILDER_KEYS.map(g => (
-              <optgroup key={g.group} label={g.group}>
-                {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
-              </optgroup>
-            ))}
-          </select>
-          <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
-          <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
-          <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
-        </div>
-      ) : capturing ? (
-        <span className="key-capture-prompt">Press a key…</span>
-      ) : value ? (
-        <span className="key-capture-value"><KeyChips combo={value} /></span>
-      ) : (
-        <span className="key-capture-placeholder">Click to capture…</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+      <div
+        ref={divRef}
+        className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
+        tabIndex={0}
+        onClick={!capturing ? startCapture : undefined}
+        onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
+        onBlur={handleBlur}
+        role="button"
+        aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
+        style={{ flex: 1 }}
+      >
+        {capturing && winBuilder ? (
+          <div className="win-builder">
+            <kbd className="win-builder-badge">Win</kbd>
+            <span className="win-builder-plus">+</span>
+            <select
+              className="win-builder-select"
+              value={winKey}
+              onChange={e => setWinKey(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            >
+              {WIN_BUILDER_KEYS.map(g => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
+            <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
+            <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
+          </div>
+        ) : capturing ? (
+          <span className="key-capture-prompt">Press a key…</span>
+        ) : value ? (
+          <span className="key-capture-value"><KeyChips combo={value} /></span>
+        ) : (
+          <span className="key-capture-placeholder">Click to capture…</span>
+        )}
+      </div>
+      {capturing && (
+        <button
+          className="macro-advanced-toggle"
+          type="button"
+          data-capture-cancel="true"
+          onMouseDown={e => { e.preventDefault(); cancelCapture(); }}
+        >Cancel</button>
       )}
     </div>
   );
@@ -676,15 +696,16 @@ function MacroSequenceForm({ value, onChange, globalInputMethod }) {
   // Assign stable runtime IDs to steps — never persisted to config
   const idMapRef = useRef(new Map());
   const stepsWithIds = (value.steps || []).map((step, i) => {
-    if (!idMapRef.current.has(i) || idMapRef.current.get(i).step !== step) {
-      idMapRef.current.set(i, { step, id: 'step-' + (_nextStepId++) });
+    const cached = idMapRef.current.get(i);
+    if (!cached || cached.type !== step.type) {
+      idMapRef.current.set(i, { type: step.type, id: 'step-' + (_nextStepId++) });
     }
     return { ...step, _id: idMapRef.current.get(i).id };
   });
-  // Rebuild idMap keyed by _id for consistent lookup after reorders
+  // Rebuild idMap after reorders so indices stay consistent
   useEffect(() => {
     const newMap = new Map();
-    stepsWithIds.forEach((s, i) => newMap.set(i, { step: (value.steps || [])[i], id: s._id }));
+    stepsWithIds.forEach((s, i) => newMap.set(i, { type: s.type, id: s._id }));
     idMapRef.current = newMap;
   }, [value.steps]);
 

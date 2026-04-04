@@ -221,7 +221,6 @@ export default function SettingsPanel({
                   onKeyDown={async e => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (e.key === 'Escape') { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); return; }
                     if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
                     const mods = [];
                     if (e.ctrlKey)  mods.push('Ctrl');
@@ -331,7 +330,6 @@ export default function SettingsPanel({
                   onKeyDown={e => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (e.key === 'Escape') { setCapturingHotkey(false); setCapturedHotkey(null); return; }
                     if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
                     const mods = [];
                     if (e.ctrlKey)  mods.push('Ctrl');
