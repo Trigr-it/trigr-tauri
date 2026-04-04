@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, Fragment } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, Fragment, useCallback } from 'react';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './MacroPanel.css';
 
 const ACTION_TYPES = [
@@ -56,7 +59,7 @@ const TRIGGER_KEYS = [
   'Up','Down','Left','Right',
 ];
 
-const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Wait (ms)', 'Open URL', 'Wait for Input'];
+const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Open App', 'Open URL', 'Open Folder', 'Focus Window', 'Wait (ms)', 'Wait for Input'];
 
 const WFI_INPUT_OPTIONS = [
   { value: 'LButton',     label: 'Left Click'   },
@@ -125,6 +128,15 @@ function hotkeyDataToString(data) {
   return [...(data.modifiers || []), data.key || ''].filter(Boolean).join('+');
 }
 
+// ── Win key manual builder options ────────────────────────────────────────────
+const WIN_BUILDER_KEYS = [
+  { group: 'Letters', keys: 'A B C D E F G H I J K L M N O P Q R S T U V W X Y Z'.split(' ') },
+  { group: 'Numbers', keys: '0 1 2 3 4 5 6 7 8 9'.split(' ') },
+  { group: 'Function Keys', keys: 'F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12'.split(' ') },
+  { group: 'Arrow Keys', keys: ['Left', 'Right', 'Up', 'Down'] },
+  { group: 'Special', keys: ['Space', 'Tab', 'Enter', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'Insert'] },
+];
+
 // Parses a captured combo string → hotkey data fields e.g. "Ctrl+Win+F4" → { modifiers: [...], key: 'F4' }
 const HOTKEY_MODS = new Set(['Ctrl', 'Shift', 'Alt', 'Win']);
 function parseHotkeyCapture(str) {
@@ -137,6 +149,8 @@ function parseHotkeyCapture(str) {
 
 function HotkeyCaptureInput({ value, onChange }) {
   const [capturing, setCapturing] = useState(false);
+  const [winBuilder, setWinBuilder] = useState(false);
+  const [winKey, setWinKey] = useState('A');
   const divRef        = useRef(null);
   const onChangeRef   = useRef(onChange);
   const valueRef      = useRef(value);
@@ -153,6 +167,7 @@ function HotkeyCaptureInput({ value, onChange }) {
       if (!capturingRef.current) return; // guard: only process if this instance is active
       onChangeRef.current({ ...valueRef.current, ...parseHotkeyCapture(combo) });
       setCapturing(false);
+      setWinBuilder(false);
     };
     window.electronAPI.onKeyCaptured(handler);
     return () => window.electronAPI.removeAllListeners('key-captured');
@@ -160,26 +175,52 @@ function HotkeyCaptureInput({ value, onChange }) {
 
   function startCapture() {
     setCapturing(true);
+    setWinBuilder(false);
     divRef.current?.focus();
     window.electronAPI?.startKeyCapture();
   }
 
   function handleKeyDown(e) {
-    // Only intercept Escape — all other keys are captured by the main process
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
+      setWinBuilder(false);
       divRef.current?.blur();
+      return;
+    }
+    // Detect Win key press — switch to manual builder
+    if (e.key === 'Meta') {
+      e.preventDefault();
+      e.stopPropagation();
+      window.electronAPI?.stopKeyCapture();
+      setWinBuilder(true);
+      setWinKey('A');
     }
   }
 
-  function handleBlur() {
+  function handleBlur(e) {
+    // Don't close if focus moved to the builder dropdown or buttons inside
+    if (e.currentTarget.contains(e.relatedTarget)) return;
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
+      setWinBuilder(false);
     }
+  }
+
+  function confirmWinBuilder() {
+    onChangeRef.current({ ...valueRef.current, ...parseHotkeyCapture('Win+' + winKey) });
+    setCapturing(false);
+    setWinBuilder(false);
+  }
+
+  function cancelWinBuilder() {
+    setWinBuilder(false);
+    // Return to normal capture prompt
+    divRef.current?.focus();
+    window.electronAPI?.startKeyCapture();
   }
 
   const currentCombo = hotkeyDataToString(value);
@@ -191,13 +232,33 @@ function HotkeyCaptureInput({ value, onChange }) {
         ref={divRef}
         className={`key-capture${capturing ? ' key-capture-active' : ''}`}
         tabIndex={0}
-        onClick={startCapture}
-        onKeyDown={capturing ? handleKeyDown : undefined}
+        onClick={!capturing ? startCapture : undefined}
+        onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
         onBlur={handleBlur}
         role="button"
         aria-label={capturing ? 'Press your hotkey combination' : currentCombo || 'Click to capture hotkey'}
       >
-        {capturing ? (
+        {capturing && winBuilder ? (
+          <div className="win-builder">
+            <kbd className="win-builder-badge">Win</kbd>
+            <span className="win-builder-plus">+</span>
+            <select
+              className="win-builder-select"
+              value={winKey}
+              onChange={e => setWinKey(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            >
+              {WIN_BUILDER_KEYS.map(g => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
+            <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
+            <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
+          </div>
+        ) : capturing ? (
           <span className="key-capture-prompt">Press your hotkey combination…</span>
         ) : currentCombo ? (
           <span className="key-capture-value"><KeyChips combo={currentCombo} /></span>
@@ -314,6 +375,8 @@ function KeyChips({ combo }) {
 
 function KeyCaptureInput({ value, onChange }) {
   const [capturing, setCapturing] = useState(false);
+  const [winBuilder, setWinBuilder] = useState(false);
+  const [winKey, setWinKey] = useState('A');
   const divRef       = useRef(null);
   const onChangeRef  = useRef(onChange);
   const capturingRef = useRef(false);
@@ -327,6 +390,7 @@ function KeyCaptureInput({ value, onChange }) {
       if (!capturingRef.current) return; // guard: only process if this instance is active
       onChangeRef.current(combo);
       setCapturing(false);
+      setWinBuilder(false);
     };
     window.electronAPI.onKeyCaptured(handler);
     return () => window.electronAPI.removeAllListeners('key-captured');
@@ -334,26 +398,51 @@ function KeyCaptureInput({ value, onChange }) {
 
   function startCapture() {
     setCapturing(true);
+    setWinBuilder(false);
     divRef.current?.focus();
     window.electronAPI?.startKeyCapture();
   }
 
   function handleKeyDown(e) {
-    // Only intercept Escape — all other keys are captured by the main process
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
+      setWinBuilder(false);
       divRef.current?.blur();
+      return;
+    }
+    // Detect Win key press — switch to manual builder
+    if (e.key === 'Meta') {
+      e.preventDefault();
+      e.stopPropagation();
+      window.electronAPI?.stopKeyCapture();
+      setWinBuilder(true);
+      setWinKey('A');
     }
   }
 
-  function handleBlur() {
+  function handleBlur(e) {
+    // Don't close if focus moved to the builder dropdown or buttons inside
+    if (e.currentTarget.contains(e.relatedTarget)) return;
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
+      setWinBuilder(false);
     }
+  }
+
+  function confirmWinBuilder() {
+    onChangeRef.current('Win+' + winKey);
+    setCapturing(false);
+    setWinBuilder(false);
+  }
+
+  function cancelWinBuilder() {
+    setWinBuilder(false);
+    divRef.current?.focus();
+    window.electronAPI?.startKeyCapture();
   }
 
   return (
@@ -361,13 +450,33 @@ function KeyCaptureInput({ value, onChange }) {
       ref={divRef}
       className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
       tabIndex={0}
-      onClick={startCapture}
-      onKeyDown={capturing ? handleKeyDown : undefined}
+      onClick={!capturing ? startCapture : undefined}
+      onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
       onBlur={handleBlur}
       role="button"
       aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
     >
-      {capturing ? (
+      {capturing && winBuilder ? (
+        <div className="win-builder">
+          <kbd className="win-builder-badge">Win</kbd>
+          <span className="win-builder-plus">+</span>
+          <select
+            className="win-builder-select"
+            value={winKey}
+            onChange={e => setWinKey(e.target.value)}
+            onClick={e => e.stopPropagation()}
+          >
+            {WIN_BUILDER_KEYS.map(g => (
+              <optgroup key={g.group} label={g.group}>
+                {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
+          <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
+          <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
+        </div>
+      ) : capturing ? (
         <span className="key-capture-prompt">Press a key…</span>
       ) : value ? (
         <span className="key-capture-value"><KeyChips combo={value} /></span>
@@ -378,66 +487,247 @@ function KeyCaptureInput({ value, onChange }) {
   );
 }
 
+// ── Sortable step row (extracted for @dnd-kit) ─────────────────────────────
+
+let _nextStepId = 1;
+
+function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, toggleAdvanced }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step._id });
+  const style = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  const hasSubRow = ['Type Text', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window'].includes(step.type);
+
+  // Parse JSON values for structured step types
+  let appData = { path: '', args: '' };
+  if (step.type === 'Open App') { try { appData = { ...appData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
+  let focusData = { process: '', title: '' };
+  if (step.type === 'Focus Window') { try { focusData = { ...focusData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`macro-step${isDragging ? ' macro-step-dragging' : ''}${hasSubRow ? ' macro-step-wfi' : ''}`}
+    >
+      {/* Row 1: drag handle, step number, type dropdown, inline value, delete */}
+      <div className="macro-step-row">
+        <div className="step-drag-handle" {...attributes} {...listeners} title="Drag to reorder">⠿</div>
+        <div className="macro-step-num">{index + 1}</div>
+        <select
+          className="form-select macro-step-type"
+          value={step.type}
+          onChange={e => updateStep({ ...step, type: e.target.value, value: '' })}
+        >
+          {MACRO_STEP_TYPES.map(t => <option key={t}>{t}</option>)}
+        </select>
+
+        {/* Inline value fields — only for types without sub-rows */}
+        {step.type === 'Press Key' && (
+          <KeyCaptureInput
+            value={step.value || ''}
+            onChange={v => updateStep({ ...step, value: v })}
+          />
+        )}
+        {step.type === 'Wait (ms)' && (
+          <input
+            className="form-input macro-step-value"
+            placeholder="500"
+            value={step.value || ''}
+            onChange={e => updateStep({ ...step, value: e.target.value })}
+          />
+        )}
+        {step.type === 'Open URL' && (
+          <input
+            className="form-input macro-step-value"
+            placeholder="https://example.com"
+            value={step.value || ''}
+            onChange={e => updateStep({ ...step, value: e.target.value })}
+          />
+        )}
+
+        <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
+      </div>
+
+      {/* Sub-row: Type Text — full-width textarea */}
+      {step.type === 'Type Text' && (
+        <div className="wfi-config-row">
+          <input
+            className="form-input"
+            style={{ flex: 1 }}
+            placeholder="Text to type..."
+            value={step.value || ''}
+            onChange={e => updateStep({ ...step, value: e.target.value })}
+          />
+        </div>
+      )}
+
+      {/* Sub-row: Open App — path + browse, optional args */}
+      {step.type === 'Open App' && (
+        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <div className="file-input-row">
+            <input
+              className="form-input"
+              style={{ flex: 1 }}
+              placeholder="C:\Program Files\App\app.exe"
+              value={appData.path}
+              readOnly
+            />
+            <button className="browse-btn" type="button" onClick={async () => {
+              const path = await window.electronAPI?.browseForFile();
+              if (path) updateStep({ ...step, value: JSON.stringify({ ...appData, path }) });
+            }}>Browse</button>
+          </div>
+          {(advancedOpen || appData.args) ? (
+            <input
+              className="form-input"
+              placeholder="Arguments (optional)"
+              value={appData.args}
+              onChange={e => updateStep({ ...step, value: JSON.stringify({ ...appData, args: e.target.value }) })}
+            />
+          ) : (
+            <button className="macro-advanced-toggle" type="button" onClick={toggleAdvanced}>+ Advanced</button>
+          )}
+        </div>
+      )}
+
+      {/* Sub-row: Open Folder — path + browse */}
+      {step.type === 'Open Folder' && (
+        <div className="wfi-config-row">
+          <div className="file-input-row" style={{ flex: 1 }}>
+            <input
+              className="form-input"
+              style={{ flex: 1 }}
+              placeholder="C:\Users\Me\Documents"
+              value={step.value || ''}
+              readOnly
+            />
+            <button className="browse-btn" type="button" onClick={async () => {
+              const path = await window.electronAPI?.browseForFolder();
+              if (path) updateStep({ ...step, value: path });
+            }}>Browse</button>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-row: Focus Window — process + title */}
+      {step.type === 'Focus Window' && (
+        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <input
+            className="form-input"
+            placeholder="chrome.exe (optional)"
+            value={focusData.process}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...focusData, process: e.target.value }) })}
+          />
+          <input
+            className="form-input"
+            placeholder="Partial title match (optional)"
+            value={focusData.title}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...focusData, title: e.target.value }) })}
+          />
+        </div>
+      )}
+
+      {/* Sub-row: Wait for Input — labelled config dropdowns */}
+      {step.type === 'Wait for Input' && (() => {
+        let wfi = { inputType: 'LButton', trigger: 'press', specificKey: '' };
+        try { wfi = { ...wfi, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+        const updateWfi = (patch) => {
+          const next = { ...wfi, ...patch };
+          if (patch.inputType && patch.inputType !== 'SpecificKey') next.specificKey = '';
+          updateStep({ ...step, value: JSON.stringify(next) });
+        };
+        return (
+          <div className="wfi-config-row">
+            <div className="wfi-field">
+              <span className="wfi-label">Wait for:</span>
+              <select className="form-select wfi-select" value={wfi.inputType} onChange={e => updateWfi({ inputType: e.target.value })}>
+                {WFI_INPUT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="wfi-field">
+              <span className="wfi-label">Trigger:</span>
+              <select className="form-select wfi-select" value={wfi.trigger} onChange={e => updateWfi({ trigger: e.target.value })}>
+                {WFI_TRIGGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            {wfi.inputType === 'SpecificKey' && (
+              <div className="wfi-field">
+                <span className="wfi-label">Key:</span>
+                <KeyCaptureInput value={wfi.specificKey || ''} onChange={v => updateWfi({ specificKey: v })} />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 function MacroSequenceForm({ value, onChange, globalInputMethod }) {
-  const steps = value.steps || [];
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
-  const [dragIndex, setDragIndex] = useState(null);
-  const [dropIndex, setDropIndex] = useState(null);
+  const [advancedOpen, setAdvancedOpen] = useState({});
+  const [activeId, setActiveId] = useState(null);
+
+  // Assign stable runtime IDs to steps — never persisted to config
+  const idMapRef = useRef(new Map());
+  const stepsWithIds = (value.steps || []).map((step, i) => {
+    if (!idMapRef.current.has(i) || idMapRef.current.get(i).step !== step) {
+      idMapRef.current.set(i, { step, id: 'step-' + (_nextStepId++) });
+    }
+    return { ...step, _id: idMapRef.current.get(i).id };
+  });
+  // Rebuild idMap keyed by _id for consistent lookup after reorders
+  useEffect(() => {
+    const newMap = new Map();
+    stepsWithIds.forEach((s, i) => newMap.set(i, { step: (value.steps || [])[i], id: s._id }));
+    idMapRef.current = newMap;
+  }, [value.steps]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const stripIds = useCallback((steps) => steps.map(({ _id, ...rest }) => rest), []);
 
   const addStep = () => {
-    onChange({ ...value, steps: [...steps, { type: 'Type Text', value: '' }] });
+    onChange({ ...value, steps: [...(value.steps || []), { type: 'Type Text', value: '' }] });
   };
 
-  const updateStep = (i, updated) => {
-    const newSteps = steps.map((s, idx) => idx === i ? updated : s);
+  const updateStep = useCallback((updated) => {
+    const idx = stepsWithIds.findIndex(s => s._id === updated._id);
+    if (idx === -1) return;
+    const { _id, ...clean } = updated;
+    const newSteps = [...(value.steps || [])];
+    newSteps[idx] = clean;
     onChange({ ...value, steps: newSteps });
-  };
+  }, [stepsWithIds, value, onChange]);
 
-  const removeStep = (i) => {
-    onChange({ ...value, steps: steps.filter((_, idx) => idx !== i) });
-  };
+  const removeStep = useCallback((id) => {
+    const idx = stepsWithIds.findIndex(s => s._id === id);
+    if (idx === -1) return;
+    onChange({ ...value, steps: (value.steps || []).filter((_, i) => i !== idx) });
+    setAdvancedOpen(prev => { const n = { ...prev }; delete n[id]; return n; });
+  }, [stepsWithIds, value, onChange]);
 
-  function handleDragStart(e, i) {
-    setDragIndex(i);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(i)); // required for Firefox
+  function handleDragStart(event) {
+    setActiveId(event.active.id);
   }
 
-  function handleDragOver(e, i) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = e.currentTarget.getBoundingClientRect();
-    setDropIndex(e.clientY < rect.top + rect.height / 2 ? i : i + 1);
+  function handleDragEnd(event) {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = stepsWithIds.findIndex(s => s._id === active.id);
+    const newIndex = stepsWithIds.findIndex(s => s._id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(value.steps || [], oldIndex, newIndex);
+    onChange({ ...value, steps: reordered });
   }
 
-  function handleDrop(e) {
-    e.preventDefault();
-    if (dragIndex === null || dropIndex === null) return;
-    const newSteps = [...steps];
-    const [moved] = newSteps.splice(dragIndex, 1);
-    // Adjust target index after the splice removed the source item
-    const target = dropIndex > dragIndex ? dropIndex - 1 : dropIndex;
-    newSteps.splice(target, 0, moved);
-    onChange({ ...value, steps: newSteps });
-    setDragIndex(null);
-    setDropIndex(null);
-  }
-
-  function handleDragEnd() {
-    setDragIndex(null);
-    setDropIndex(null);
-  }
-
-  // Show drop line at position pos only when it represents an actual move
-  function showLineAt(pos) {
-    return (
-      dragIndex !== null &&
-      dropIndex === pos &&
-      pos !== dragIndex &&      // dropping at own position — no-op
-      pos !== dragIndex + 1     // dropping immediately after self — no-op
-    );
-  }
+  const activeStep = activeId ? stepsWithIds.find(s => s._id === activeId) : null;
 
   return (
     <div className="form-section">
@@ -455,114 +745,37 @@ function MacroSequenceForm({ value, onChange, globalInputMethod }) {
           ))}
         </select>
       </div>
-      <div
-        className="macro-steps"
-        onDragOver={e => e.preventDefault()}
-        onDrop={handleDrop}
-      >
-        {steps.length === 0 && (
-          <div className="macro-empty">No steps yet — add your first action below</div>
-        )}
-        {steps.map((step, i) => (
-          <Fragment key={i}>
-            {showLineAt(i) && <div className="step-drop-line" />}
-            <div
-              className={`macro-step${dragIndex === i ? ' macro-step-dragging' : ''}${step.type === 'Wait for Input' ? ' macro-step-wfi' : ''}`}
-              onDragOver={e => handleDragOver(e, i)}
-              onDrop={handleDrop}
-            >
-              {/* Row 1: drag handle, step number, type dropdown, value/delete */}
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <SortableContext items={stepsWithIds.map(s => s._id)} strategy={verticalListSortingStrategy}>
+          <div className="macro-steps">
+            {stepsWithIds.length === 0 && (
+              <div className="macro-empty">No steps yet — add your first action below</div>
+            )}
+            {stepsWithIds.map((step, i) => (
+              <SortableMacroStep
+                key={step._id}
+                step={step}
+                index={i}
+                updateStep={updateStep}
+                removeStep={removeStep}
+                advancedOpen={!!advancedOpen[step._id]}
+                toggleAdvanced={() => setAdvancedOpen(prev => ({ ...prev, [step._id]: !prev[step._id] }))}
+              />
+            ))}
+          </div>
+        </SortableContext>
+        <DragOverlay>
+          {activeStep ? (
+            <div className="macro-step macro-step-overlay">
               <div className="macro-step-row">
-                <div
-                  className="step-drag-handle"
-                  draggable
-                  onDragStart={e => handleDragStart(e, i)}
-                  onDragEnd={handleDragEnd}
-                  title="Drag to reorder"
-                >
-                  ⠿
-                </div>
-                <div className="macro-step-num">{i + 1}</div>
-                <select
-                  className="form-select macro-step-type"
-                  value={step.type}
-                  onChange={e => updateStep(i, { ...step, type: e.target.value })}
-                >
-                  {MACRO_STEP_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
-                {step.type !== 'Wait for Input' && (
-                  step.type === 'Press Key' ? (
-                    <KeyCaptureInput
-                      value={step.value || ''}
-                      onChange={v => updateStep(i, { ...step, value: v })}
-                    />
-                  ) : (
-                    <input
-                      className="form-input macro-step-value"
-                      placeholder={
-                        step.type === 'Wait (ms)' ? '500' :
-                        step.type === 'Open URL'  ? 'https://...' :
-                        'Text to type...'
-                      }
-                      value={step.value || ''}
-                      onChange={e => updateStep(i, { ...step, value: e.target.value })}
-                    />
-                  )
-                )}
-                <button className="step-remove" onClick={() => removeStep(i)} type="button">✕</button>
+                <div className="step-drag-handle">⠿</div>
+                <div className="macro-step-num">{stepsWithIds.findIndex(s => s._id === activeId) + 1}</div>
+                <span className="macro-step-type" style={{ fontSize: 11 }}>{activeStep.type}</span>
               </div>
-              {/* Row 2 (Wait for Input only): labelled config dropdowns */}
-              {step.type === 'Wait for Input' && (() => {
-                let wfi = { inputType: 'LButton', trigger: 'press', specificKey: '' };
-                try { wfi = { ...wfi, ...JSON.parse(step.value || '{}') }; } catch (_) {}
-                const updateWfi = (patch) => {
-                  const next = { ...wfi, ...patch };
-                  if (patch.inputType && patch.inputType !== 'SpecificKey') next.specificKey = '';
-                  updateStep(i, { ...step, value: JSON.stringify(next) });
-                };
-                return (
-                  <div className="wfi-config-row">
-                    <div className="wfi-field">
-                      <span className="wfi-label">Wait for:</span>
-                      <select
-                        className="form-select wfi-select"
-                        value={wfi.inputType}
-                        onChange={e => updateWfi({ inputType: e.target.value })}
-                      >
-                        {WFI_INPUT_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="wfi-field">
-                      <span className="wfi-label">Trigger:</span>
-                      <select
-                        className="form-select wfi-select"
-                        value={wfi.trigger}
-                        onChange={e => updateWfi({ trigger: e.target.value })}
-                      >
-                        {WFI_TRIGGER_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {wfi.inputType === 'SpecificKey' && (
-                      <div className="wfi-field">
-                        <span className="wfi-label">Key:</span>
-                        <KeyCaptureInput
-                          value={wfi.specificKey || ''}
-                          onChange={v => updateWfi({ specificKey: v })}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
             </div>
-          </Fragment>
-        ))}
-        {showLineAt(steps.length) && <div className="step-drop-line" />}
-      </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
       <button className="add-step-btn" onClick={addStep} type="button">
         + Add Step
       </button>

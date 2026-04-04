@@ -12,7 +12,15 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
     KEYEVENTF_UNICODE, VIRTUAL_KEY,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
+use windows_sys::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+};
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    SetForegroundWindow, SW_SHOW,
+};
 
 /// Future clipboard manager checks this flag and skips logging if set.
 pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
@@ -106,12 +114,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
         "macro" => {
             if let Some(steps) = data.and_then(|d| d.get("steps")).and_then(|v| v.as_array()) {
                 let method = resolve_input_method(data);
+                let mut current_hwnd = target_hwnd;
                 info!("[Trigr] Macro sequence: {} step(s), method={}", steps.len(), method);
                 for (i, step) in steps.iter().enumerate() {
                     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
                     info!("[Trigr]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
-                    execute_macro_step(step, target_hwnd, &method);
+                    execute_macro_step(step, &mut current_hwnd, &method);
                 }
             }
         }
@@ -425,9 +434,94 @@ fn execute_send_hotkey(data: &Value) {
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
 }
 
+// ── Focus Window — find a window by process name and/or title ──────────────
+
+struct FindWindowState {
+    target_process_lower: String,
+    target_title_lower: String,
+    found_hwnd: isize,
+}
+
+unsafe extern "system" fn find_window_cb(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    lparam: isize,
+) -> i32 {
+    let state = &mut *(lparam as *mut FindWindowState);
+
+    if IsWindowVisible(hwnd) == 0 {
+        return 1;
+    }
+
+    // Title check
+    if !state.target_title_lower.is_empty() {
+        let mut buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        if len <= 0 {
+            return 1;
+        }
+        let title = String::from_utf16_lossy(&buf[..len as usize]).to_lowercase();
+        if !title.contains(&state.target_title_lower) {
+            return 1;
+        }
+    }
+
+    // Process name check
+    if !state.target_process_lower.is_empty() {
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == 0 {
+            return 1;
+        }
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return 1;
+        }
+        let mut buf = [0u16; 260];
+        let mut size: u32 = 260;
+        let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
+        CloseHandleWin(handle);
+        if ok == 0 || size == 0 {
+            return 1;
+        }
+        let full_path = String::from_utf16_lossy(&buf[..size as usize]);
+        let basename = std::path::Path::new(&full_path)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if basename != state.target_process_lower
+            && basename.trim_end_matches(".exe") != state.target_process_lower.trim_end_matches(".exe")
+        {
+            return 1;
+        }
+    }
+
+    // All criteria matched
+    state.found_hwnd = hwnd as isize;
+    0 // stop enumeration
+}
+
+fn find_window_by_criteria(process_name: &str, title: &str) -> Option<isize> {
+    let mut state = FindWindowState {
+        target_process_lower: process_name.to_lowercase(),
+        target_title_lower: title.to_lowercase(),
+        found_hwnd: 0,
+    };
+    unsafe {
+        EnumWindows(
+            Some(find_window_cb),
+            &mut state as *mut FindWindowState as isize,
+        );
+    }
+    if state.found_hwnd != 0 {
+        Some(state.found_hwnd)
+    } else {
+        None
+    }
+}
+
 // ── Macro sequence step executor ────────────────────────────────────────────
 
-fn execute_macro_step(step: &Value, target_hwnd: isize, method: &str) {
+fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -435,7 +529,7 @@ fn execute_macro_step(step: &Value, target_hwnd: isize, method: &str) {
         "Type Text" => {
             if !step_value.is_empty() {
                 thread::sleep(Duration::from_millis(MACRO_TRIGGER_DELAY_MS));
-                output_text(step_value, method, target_hwnd);
+                output_text(step_value, method, *target_hwnd);
             }
         }
 
@@ -485,6 +579,88 @@ fn execute_macro_step(step: &Value, target_hwnd: isize, method: &str) {
         "Open URL" => {
             if !step_value.is_empty() {
                 let _ = opener::open(step_value);
+            }
+        }
+
+        "Open Folder" => {
+            if !step_value.is_empty() {
+                let _ = opener::open(step_value);
+            }
+        }
+
+        "Open App" => {
+            if step_value.is_empty() {
+                warn!("[Trigr] Open App step: empty value");
+                return;
+            }
+            let parsed: Value = match serde_json::from_str(step_value) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[Trigr] Open App step: invalid JSON: {}", e);
+                    return;
+                }
+            };
+            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if path.is_empty() {
+                warn!("[Trigr] Open App step: empty path");
+                return;
+            }
+            let args = parsed.get("args").and_then(|v| v.as_str()).unwrap_or("");
+
+            let verb: Vec<u16> = "open\0".encode_utf16().collect();
+            let file: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+            let params_wide: Vec<u16> = if !args.is_empty() {
+                args.encode_utf16().chain(std::iter::once(0)).collect()
+            } else {
+                Vec::new()
+            };
+            let params_ptr = if !args.is_empty() { params_wide.as_ptr() } else { std::ptr::null() };
+
+            let result = unsafe {
+                ShellExecuteW(
+                    std::ptr::null_mut(),
+                    verb.as_ptr(),
+                    file.as_ptr(),
+                    params_ptr,
+                    std::ptr::null(),
+                    SW_SHOW,
+                )
+            };
+            if (result as usize) > 32 {
+                info!("[Trigr] Open App: launched {}", path);
+            } else {
+                warn!("[Trigr] Open App: ShellExecuteW failed for {} (code {})", path, result as usize);
+            }
+        }
+
+        "Focus Window" => {
+            if step_value.is_empty() {
+                warn!("[Trigr] Focus Window step: empty value");
+                return;
+            }
+            let parsed: Value = match serde_json::from_str(step_value) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[Trigr] Focus Window step: invalid JSON: {}", e);
+                    return;
+                }
+            };
+            let process = parsed.get("process").and_then(|v| v.as_str()).unwrap_or("");
+            let title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            if process.is_empty() && title.is_empty() {
+                warn!("[Trigr] Focus Window step: both process and title are empty");
+                return;
+            }
+            match find_window_by_criteria(process, title) {
+                Some(hwnd) => {
+                    unsafe { SetForegroundWindow(hwnd as _); }
+                    thread::sleep(Duration::from_millis(50));
+                    *target_hwnd = hwnd;
+                    info!("[Trigr] Focus Window: found and focused HWND {} (process='{}' title='{}')", hwnd, process, title);
+                }
+                None => {
+                    warn!("[Trigr] Focus Window: no matching window found for process='{}' title='{}'", process, title);
+                }
             }
         }
 
