@@ -76,11 +76,9 @@ const WFI_TRIGGER_OPTIONS = [
 ];
 
 const INPUT_METHOD_OPTS = [
-  { id: 'global',       label: 'Global default',             hint: 'Use the method set in Settings → Compatibility' },
-  { id: 'direct',       label: 'Direct keystrokes',          hint: 'Simulates real keypresses — works in CAD, games' },
-  { id: 'shift-insert', label: 'Clipboard (Shift+Insert)',   hint: 'Fast for long text — universal paste shortcut' },
-  { id: 'ctrl-v',       label: 'Clipboard (Ctrl+V)',          hint: 'Standard paste — may conflict in CAD apps' },
-  { id: 'send-input',   label: 'SendInput API',               hint: 'Windows low-level injection — bypasses app filtering' },
+  { id: 'global',       label: 'Global default',  hint: 'Use the method set in Settings → Compatibility' },
+  { id: 'direct',       label: 'Direct',           hint: 'Simulates real keypresses — works in CAD, games, any app' },
+  { id: 'shift-insert', label: 'Clipboard',        hint: 'Fast for long text — pastes via clipboard' },
 ];
 
 function TextForm({ value, onChange, globalInputMethod }) {
