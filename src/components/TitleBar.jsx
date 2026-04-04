@@ -220,6 +220,8 @@ export default function TitleBar({
   }
 
   // ── Overflow measurement ─────────────────────────────────
+  const lastMeasuredWidth = useRef(0);
+
   useEffect(() => {
     const container = profileTabsRef.current;
     if (!container) return;
@@ -229,6 +231,10 @@ export default function TitleBar({
     function measure() {
       const containerWidth = container.offsetWidth;
       if (containerWidth === 0) return; // not rendered yet
+      // Guard: skip if width hasn't meaningfully changed (prevents infinite loop)
+      if (Math.abs(containerWidth - lastMeasuredWidth.current) < 1) return;
+      lastMeasuredWidth.current = containerWidth;
+
       const nonDefault = profiles.slice(1);
       let usedWidth = 0;
       let count = 0;
@@ -247,6 +253,7 @@ export default function TitleBar({
     }
 
     // Defer first measurement so the DOM has rendered tabs
+    lastMeasuredWidth.current = 0; // reset on profile change so first measure always runs
     const raf = requestAnimationFrame(() => requestAnimationFrame(measure));
     const ro = new ResizeObserver(measure);
     ro.observe(container);
