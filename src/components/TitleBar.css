@@ -53,7 +53,8 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .area-tab {
