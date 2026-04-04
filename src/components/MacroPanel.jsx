@@ -202,6 +202,8 @@ function HotkeyCaptureInput({ value, onChange }) {
     // Don't close if focus moved to the builder dropdown, buttons, or cancel inside
     if (e.currentTarget.contains(e.relatedTarget)) return;
     if (e.relatedTarget?.dataset?.captureCancel) return;
+    // Win key opens Start menu and steals focus — refocus to keep builder visible
+    if (winBuilder) { e.currentTarget.focus(); return; }
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
@@ -435,6 +437,8 @@ function KeyCaptureInput({ value, onChange }) {
     // Don't close if focus moved to the builder dropdown, buttons, or cancel inside
     if (e.currentTarget.contains(e.relatedTarget)) return;
     if (e.relatedTarget?.dataset?.captureCancel) return;
+    // Win key opens Start menu and steals focus — refocus to keep builder visible
+    if (winBuilder) { e.currentTarget.focus(); return; }
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
