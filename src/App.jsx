@@ -1126,24 +1126,12 @@ function App() {
         );
       })()}
       <TitleBar
-        activeProfile={activeProfile}
-        profiles={profiles}
-        onProfileChange={handleProfileChange}
-        onAddProfile={handleAddProfile}
-        onRenameProfile={handleRenameProfile}
         macrosEnabled={macrosEnabled}
         onToggleMacros={handleToggleMacros}
-        profileSettings={profileSettings}
-        onUpdateProfileSettings={handleUpdateProfileSettings}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         onOpenSettings={() => setShowSettings(v => !v)}
         settingsOpen={showSettings}
-        onReorderProfiles={handleReorderProfiles}
-        onDuplicateProfile={handleDuplicateProfile}
-        onDeleteProfile={handleDeleteProfile}
-        activeGlobalProfile={activeGlobalProfile}
-        onSetActiveGlobalProfile={handleSetActiveGlobalProfile}
         activeArea={activeArea}
         onAreaChange={handleSetArea}
       />
