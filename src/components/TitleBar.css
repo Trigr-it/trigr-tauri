@@ -466,6 +466,7 @@
   flex-shrink: 0;
   white-space: nowrap;
   -webkit-app-region: no-drag;
+  margin-right: 8px;
 }
 
 .profile-overflow-pill {
