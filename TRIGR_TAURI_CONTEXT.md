@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: April 2026
+> Last updated: 2026-04-04 (post v0.1.12, pre v0.1.13)
 
 ---
 
@@ -61,7 +61,7 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 |---|---|---|
 | Config | `src-tauri/src/config.rs` | Load, save, backup keyforge-config.json |
 | Hotkeys | `src-tauri/src/hotkeys.rs` | Global input hook, modifier tracking, double-tap, mouse buttons |
-| Actions | `src-tauri/src/actions.rs` | Execute all action types (Type Text, Send Hotkey, Macro, Open App/URL/Folder) |
+| Actions | `src-tauri/src/actions.rs` | Execute all action types (Type Text, Send Hotkey, Macro, Open App/URL/Folder, Focus Window) |
 | Expansions | `src-tauri/src/expansions.rs` | Keystroke buffer, trigger detection, text injection |
 | Foreground | `src-tauri/src/foreground.rs` | Foreground watcher, process name detection, profile auto-switching |
 | Tray | `src-tauri/src/tray.rs` | System tray icon, window show/hide, autolaunch, close-to-tray |
@@ -158,7 +158,7 @@ If any crate fails on ARM64, find an alternative before proceeding. Do not assum
 1. **E:\Development\Trigr-Reference** — read-only reference only. Never modify this directory.
 2. **E:\Development\Trigr** (Electron production) — never touch during Tauri migration. Testers stay on Electron until Tauri is proven.
 3. **keyforge-config.json filename** — must not change. Existing configs must load.
-4. **React UI components** — only change invoke() call targets. Never change component logic, CSS variables, or theming.
+4. **React UI components** — CSS variables only for colours. Never hardcode hex values in CSS (except green dot #22c55e and status colours).
 5. **suppressNextClipboardWrite** — must be set before every internal clipboard write, no exceptions.
 6. **Theme colours** — all colours must use CSS variables. Never hardcode hex values.
 7. **Config writes** — always owned by Rust backend. Frontend never writes directly to disk.
@@ -252,6 +252,33 @@ Autocorrect/expansion trailing space is sent as a synthetic `VK_SPACE` keystroke
 ### Config Factory Defaults
 If `load_config_safe()` returns `(None, None)` (all config sources failed), the `load_config` Tauri command writes a factory-default config `{ "profiles": ["Default"], "assignments": {}, "activeProfile": "Default" }` via the atomic write path and returns it to the frontend. This ensures a valid config file always exists after the first load attempt.
 
+### Bare Key Suppression
+Bare key assignments (e.g. `Profile::BARE::KeyQ`) are added to the `SUPPRESS_KEYS` set with `modifier_bits = 0` so the LL hook callback suppresses the original keystroke via `return 1` (skipping `CallNextHookEx`). This only happens when the active profile is app-linked (`linkedApp` present in profile settings). `rebuild_suppress_keys` receives `profile_settings` as its third parameter and checks `is_linked` before inserting bare entries.
+
+### ESC Key — Mappable, Cancel via Button
+ESC is a mappable key in both hotkey recording and key capture. The 4 `key_id == "Escape"` → emit Null cancel branches were removed from hotkeys.rs (handle_keydown and handle_js_key_event). Cancel is handled by dedicated Cancel buttons in HotkeyCaptureInput, KeyCaptureInput. SettingsPanel pause/quick-search hotkey capture uses existing ✕ buttons. App.jsx document-level ESC handler has a `__trigr_capturing || __trigr_recording` guard to avoid swallowing ESC during active capture.
+
+### Key Capture — No Blur Clearing
+HotkeyCaptureInput and KeyCaptureInput do NOT use onBlur to clear capture state when Win builder mode is active. The Win key causes WebView2 to lose focus, and blur-based clearing dismisses the builder. Instead, when `winBuilder` is true, `handleBlur` calls `e.currentTarget.focus()` to immediately refocus.
+
+### Win Key Capture — Known Limitation
+Win key combinations (Win+Left, Win+D, etc.) cannot be reliably captured as hotkeys. The Win key is processed by DWM/Shell at the OS level before the LL hook can suppress it. Win key manual builder in MacroPanel provides a dropdown alternative for assigning Win+key combos.
+
+### Macro Step Types
+`execute_macro_step` in actions.rs handles 8 step types: Type Text, Press Key, Open App, Open URL, Open Folder, Focus Window, Wait (ms), Wait for Input. The `MACRO_STEP_TYPES` array in MacroPanel.jsx must match this exact order. Open App uses `ShellExecuteW` (not `Command::new`). Focus Window uses `EnumWindows` + `SetForegroundWindow` and writes `*target_hwnd` so subsequent steps fire into the focused window. Open Folder and Open URL use `opener::open()`. Step drag-and-drop uses `@dnd-kit/sortable` with stable runtime IDs (stripped before config save).
+
+### Macro Step DnD — ID Stability
+`@dnd-kit/sortable` step IDs (idMapRef in MacroSequenceForm) must be keyed by step TYPE only, not value. Including value in the stability check causes a new ID on every keystroke → React remounts the component → input focus lost. The ID regenerates only when the step type changes or steps are added/removed/reordered.
+
+### Input Method — Simplified
+UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
+
+### Profile Accordion — Sidebar
+Profiles live in the sidebar (Sidebar.jsx ProfileAccordion), NOT the titlebar. TitleBar.jsx has no profile code. Profiles split into STATIC and APP-SPECIFIC groups with separate SortableContext instances. Cross-group drag is blocked. Default profile is always first in STATIC, not draggable. Green dot indicates activeGlobalProfile (fallback).
+
+### ResizeObserver Safety
+Any ResizeObserver that calls setState must guard against infinite loops. Store last measured width in a ref; skip callback if `Math.abs(newWidth - lastWidth) < 1`. The profile tab overflow attempt (now removed) proved this causes system freezes without the guard. Vite watch config excludes `**/src-tauri/target/**` to prevent scanning Rust build artifacts.
+
 ---
 
 ## 11 — Tauri Config Reference
@@ -260,23 +287,16 @@ If `load_config_safe()` returns `(None, None)` (all config sources failed), the 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.11",
-  "bundle": {
-    "active": true,
-    "targets": ["nsis"],
-    "icon": ["assets/icons/icon.png"],
-    "windows": {
-      "nsis": {
-        "artifactName": "Trigr-Setup.exe"
-      }
-    }
-  },
+  "version": "0.1.12",
   "app": {
     "windows": [{
       "title": "Trigr",
       "width": 1200,
       "height": 800,
+      "minWidth": 800,
+      "minHeight": 500,
       "resizable": true,
+      "decorations": false,
       "visible": false
     }]
   }
@@ -305,3 +325,5 @@ Record key decisions and findings here after each session.
 | 2026-04-03 | Post-MVP | Expansion fixes + fill-in fields + global vars | Autocorrect disabled for Alpha. Trailing space sent as synthetic keystroke. Initial injection delay 30ms. Keystroke buffer-and-replay (INJECTION_IN_PROGRESS + InjectionGuard). Blank clipboard entry fix. Fill-in field tokens ({fillIn:Label}) fully implemented: pre-created hidden window, Electron-style ready handshake, FILL_IN_ACTIVE concurrency guard, FILLIN_HWND hook passthrough, content-based auto-resize via JS→Rust IPC. Global variables wired to Rust (update_global_variables command + frontend sync). Insert dropdown scroll fix + dynamic maxHeight. htmlToPlainText double-newline fix. Diagnostic logs cleaned. v0.1.9 released. |
 | 2026-04-03 | Post-MVP | Structured logging + config hardening | Added tauri-plugin-log: file + stdout targets, 5MB rotation, Info level. .clear_targets() required before .target() to avoid duplicate entries. "Open logs folder" button in Settings. Config hardening: factory-default write on total config failure (all sources return None). Converted remaining println! in config.rs to log::info!/error!. |
 | 2026-04-03 | Post-MVP | Local analytics feature | analytics.rs: SQLite `trigr-analytics.db` in AppData, dedicated writer thread via mpsc channel, `action_log` table. Instrumented all fire points: `fire_macro()` in hotkeys.rs, `fire_expansion()`/`fire_expansion_with_fillin()` in expansions.rs, `execute_search_result()` overlay path in lib.rs. Time saved: expansion=chars×0.3s (excluding \r), hotkey=3s, macro=5s. Stats: total, today, last 7 days, best day (MAX daily SUM), best 7 days (rolling window self-join). AnalyticsPanel.jsx: compound Today/Last 7 Days cards, 4-column records row, breakdown bars, reset with confirmation. Third nav tab in TitleBar. `rusqlite` 0.31 with bundled feature (ARM64 compatible). Privacy text updated in SettingsPanel. v0.1.11 released. |
+| 2026-04-04 | Post-MVP | Macro step types + UI overhaul | **New macro steps:** Open App (ShellExecuteW + args), Open Folder (opener::open), Focus Window (EnumWindows + process/title match + SetForegroundWindow with mutable target_hwnd), Open URL (already existed). `MACRO_STEP_TYPES` = 8 types. All sub-row step UIs (Type Text, Open App, Open Folder, Focus Window, Open URL) moved to full-width rows below the step type dropdown. **@dnd-kit/sortable** replaces HTML5 drag-and-drop: stable runtime IDs via idMapRef keyed by step type only (not value — prevents focus loss on keystroke), PointerSensor with 8px distance, DragOverlay ghost. **Win key manual builder:** Meta key during capture switches to dropdown builder (Win+key selection). Win builder blur guard refocuses field when OS steals focus. **ESC mappable:** Removed 4 `key_id == "Escape"` cancel branches from hotkeys.rs, cancel via UI buttons only. App.jsx ESC guard for capture mode. **Input method simplified:** 5 options → 3 (Global default, Direct, Clipboard). **Cargo.toml:** Added `Win32_UI_Shell` feature for ShellExecuteW. |
+| 2026-04-04 | Post-MVP | Profile accordion in sidebar | Profiles moved from titlebar to sidebar accordion. TitleBar stripped to logo + nav tabs + right controls only. ProfileAccordion: collapsed header shows fallback profile (green dot) + editing profile name. Expanded: two groups (STATIC / APP-SPECIFIC) with separate SortableContext instances, cross-group drag blocked. Right-click context menu (Rename, Duplicate, Set as default fallback, Delete). Green dot fallback indicator on activeGlobalProfile. @dnd-kit/sortable for profile reordering. Default profile always first, not draggable. minWidth increased to 800px. Vite watch excludes src-tauri/target. |
