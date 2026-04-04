@@ -2,10 +2,8 @@ import React, { useState, useEffect } from 'react';
 import './SettingsPanel.css';
 
 const GLOBAL_INPUT_METHODS = [
-  { id: 'direct',       label: 'Direct keystrokes',        hint: 'Simulates real keypresses — works in CAD, games, any app' },
-  { id: 'shift-insert', label: 'Clipboard (Shift+Insert)', hint: 'Fast for long text — universal paste shortcut' },
-  { id: 'ctrl-v',       label: 'Clipboard (Ctrl+V)',        hint: 'Standard paste — may conflict in CAD applications' },
-  { id: 'send-input',   label: 'SendInput API',             hint: 'Windows low-level injection — bypasses all app input filtering' },
+  { id: 'direct',       label: 'Direct',     hint: 'Simulates real keypresses — works in CAD, games, any app' },
+  { id: 'shift-insert', label: 'Clipboard',  hint: 'Fast for long text — pastes via clipboard' },
 ];
 
 export default function SettingsPanel({
@@ -445,7 +443,7 @@ export default function SettingsPanel({
           <div className="settings-section-title">COMPATIBILITY</div>
           <p className="settings-compat-desc">
             Controls how Trigr injects text into other applications.
-            Use <strong>Direct keystrokes</strong> for CAD software and games.
+            Use <strong>Direct</strong> for CAD software and games.
           </p>
 
           <label className="settings-field-label">Global input method</label>
@@ -468,7 +466,7 @@ export default function SettingsPanel({
             ))}
           </div>
 
-          {(globalInputMethod === 'direct' || globalInputMethod === 'send-input') && (
+          {globalInputMethod === 'direct' && (
             <div className="settings-slider-row">
               <div className="settings-slider-info">
                 <span className="settings-toggle-label">Keystroke delay</span>
