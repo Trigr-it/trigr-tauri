@@ -55,6 +55,11 @@ pub fn injection_buffer() -> &'static Mutex<Vec<BufferedKey>> {
 /// Heartbeat incremented by hook callback. Health monitor detects stale hooks.
 static HOOK_HEARTBEAT: AtomicIsize = AtomicIsize::new(0);
 
+/// Total hook events processed — used for periodic alive heartbeat logging.
+static HOOK_EVENT_COUNT: AtomicIsize = AtomicIsize::new(0);
+/// Set to 1 by hook callback when nCode < 0 is received; processor thread logs and clears.
+static HOOK_NCODE_NEGATIVE: AtomicBool = AtomicBool::new(false);
+
 // Modifier state — updated on every key event
 static MOD_CTRL: AtomicBool = AtomicBool::new(false);
 static MOD_ALT: AtomicBool = AtomicBool::new(false);
@@ -72,10 +77,10 @@ fn suppress_keys() -> &'static RwLock<HashSet<(u8, u32)>> {
 
 fn modifier_bits() -> u8 {
     let mut bits = 0u8;
-    if MOD_CTRL.load(Ordering::Relaxed) { bits |= 1; }
-    if MOD_SHIFT.load(Ordering::Relaxed) { bits |= 2; }
-    if MOD_ALT.load(Ordering::Relaxed) { bits |= 4; }
-    if MOD_META.load(Ordering::Relaxed) { bits |= 8; }
+    if MOD_CTRL.load(Ordering::SeqCst) { bits |= 1; }
+    if MOD_SHIFT.load(Ordering::SeqCst) { bits |= 2; }
+    if MOD_ALT.load(Ordering::SeqCst) { bits |= 4; }
+    if MOD_META.load(Ordering::SeqCst) { bits |= 8; }
     bits
 }
 
@@ -474,26 +479,26 @@ pub(crate) fn vk_to_char(vk: u32) -> Option<char> {
 
 fn build_modifier_combo() -> String {
     let mut mods = Vec::new();
-    if MOD_CTRL.load(Ordering::Relaxed) {
+    if MOD_CTRL.load(Ordering::SeqCst) {
         mods.push("Ctrl");
     }
-    if MOD_SHIFT.load(Ordering::Relaxed) {
+    if MOD_SHIFT.load(Ordering::SeqCst) {
         mods.push("Shift");
     }
-    if MOD_ALT.load(Ordering::Relaxed) {
+    if MOD_ALT.load(Ordering::SeqCst) {
         mods.push("Alt");
     }
-    if MOD_META.load(Ordering::Relaxed) {
+    if MOD_META.load(Ordering::SeqCst) {
         mods.push("Win");
     }
     mods.join("+")
 }
 
 fn has_any_modifier() -> bool {
-    MOD_CTRL.load(Ordering::Relaxed)
-        || MOD_ALT.load(Ordering::Relaxed)
-        || MOD_SHIFT.load(Ordering::Relaxed)
-        || MOD_META.load(Ordering::Relaxed)
+    MOD_CTRL.load(Ordering::SeqCst)
+        || MOD_ALT.load(Ordering::SeqCst)
+        || MOD_SHIFT.load(Ordering::SeqCst)
+        || MOD_META.load(Ordering::SeqCst)
 }
 
 fn no_modifiers_held() -> bool {
@@ -512,11 +517,15 @@ unsafe extern "system" fn keyboard_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    HOOK_HEARTBEAT.fetch_add(1, Ordering::Relaxed);
+    HOOK_HEARTBEAT.fetch_add(1, Ordering::SeqCst);
+    HOOK_EVENT_COUNT.fetch_add(1, Ordering::SeqCst);
+    if n_code < 0 {
+        HOOK_NCODE_NEGATIVE.store(true, Ordering::SeqCst);
+    }
     // Buffer real user keystrokes during injection — swallow them so they don't land in the target app.
     // Exception: if the fill-in window is foreground, pass keystrokes through so the user can type.
-    if n_code >= 0 && INJECTION_IN_PROGRESS.load(Ordering::Relaxed) && !SUPPRESS_SIMULATED.load(Ordering::Relaxed) {
-        let fillin = FILLIN_HWND.load(Ordering::Relaxed);
+    if n_code >= 0 && INJECTION_IN_PROGRESS.load(Ordering::SeqCst) && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
+        let fillin = FILLIN_HWND.load(Ordering::SeqCst);
         let fg_is_fillin = fillin != 0 && {
             let fg = windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
             fg as isize == fillin
@@ -533,7 +542,7 @@ unsafe extern "system" fn keyboard_hook_proc(
             }
         }
     }
-    if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::Relaxed) {
+    if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         match w_param as u32 {
             WM_KEYDOWN | WM_SYSKEYDOWN => {
@@ -542,7 +551,7 @@ unsafe extern "system" fn keyboard_hook_proc(
                     scan_code: kb.scanCode,
                 });
                 // Suppress matched hotkey combos — prevent keystroke reaching target app
-                if !is_modifier_vk(kb.vkCode) && MACROS_ENABLED.load(Ordering::Relaxed) {
+                if !is_modifier_vk(kb.vkCode) && MACROS_ENABLED.load(Ordering::SeqCst) {
                     let bits = modifier_bits();
                     if let Ok(set) = suppress_keys().try_read() {
                         if set.contains(&(bits, kb.vkCode)) {
@@ -560,7 +569,7 @@ unsafe extern "system" fn keyboard_hook_proc(
             _ => {}
         }
     }
-    CallNextHookEx(KB_HOOK.load(Ordering::Relaxed) as _, n_code, w_param, l_param)
+    CallNextHookEx(KB_HOOK.load(Ordering::SeqCst) as _, n_code, w_param, l_param)
 }
 
 // CRITICAL: Same rules as keyboard_hook_proc — no I/O, no blocking. See above.
@@ -569,7 +578,7 @@ unsafe extern "system" fn mouse_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::Relaxed) {
+    if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         match w_param as u32 {
             WM_LBUTTONDOWN => send_event(HookEvent::MouseDown {
                 button: MouseButton::Left,
@@ -618,7 +627,7 @@ unsafe extern "system" fn mouse_hook_proc(
         }
     }
     CallNextHookEx(
-        MOUSE_HOOK.load(Ordering::Relaxed) as _,
+        MOUSE_HOOK.load(Ordering::SeqCst) as _,
         n_code,
         w_param,
         l_param,
@@ -633,8 +642,19 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
         .spawn(move || {
             println!("[PROC] Event processor started");
             info!("[Trigr] Event processor started");
+            let mut last_heartbeat_count: isize = 0;
             while let Ok(event) = receiver.recv() {
-                if !MACROS_ENABLED.load(Ordering::Relaxed) && !IS_RECORDING_HOTKEY.load(Ordering::Relaxed) && !IS_CAPTURING_KEY.load(Ordering::Relaxed) {
+                // Periodic heartbeat — log every 500 hook events
+                let count = HOOK_EVENT_COUNT.load(Ordering::SeqCst);
+                if count - last_heartbeat_count >= 500 {
+                    info!("[Trigr] Hook heartbeat: {} events processed", count);
+                    last_heartbeat_count = count;
+                }
+                // Log if hook callback received nCode < 0
+                if HOOK_NCODE_NEGATIVE.swap(false, Ordering::SeqCst) {
+                    info!("[Trigr] Hook nCode<0 received — hook may be dying");
+                }
+                if !MACROS_ENABLED.load(Ordering::SeqCst) && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst) && !IS_CAPTURING_KEY.load(Ordering::SeqCst) {
                     // Still track modifiers even when paused
                     if let HookEvent::KeyDown { vk_code, .. } | HookEvent::KeyUp { vk_code, .. } = &event {
                         update_modifier_state(*vk_code, matches!(event, HookEvent::KeyDown { .. }));
@@ -648,12 +668,12 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                                         let pause_str = state.pause_hotkey_str.clone();
                                         let profile = state.active_profile.clone();
                                         drop(state);
-                                        MACROS_ENABLED.store(true, Ordering::Relaxed);
+                                        MACROS_ENABLED.store(true, Ordering::SeqCst);
                                         println!("[PAUSE] Unpaused via hotkey");
                                         crate::tray::rebuild_tray_menu(&app);
                                         crate::tray::update_tray_icon(&app, true);
                                         let _ = app.emit("engine-status", serde_json::json!({
-                                            "uiohookAvailable": HOOKS_RUNNING.load(Ordering::Relaxed),
+                                            "uiohookAvailable": HOOKS_RUNNING.load(Ordering::SeqCst),
                                             "nutjsAvailable": false,
                                             "macrosEnabled": true,
                                             "activeProfile": profile,
@@ -715,10 +735,10 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
 
 fn update_modifier_state(vk: u32, pressed: bool) {
     match vk {
-        0xA0 | 0xA1 => MOD_SHIFT.store(pressed, Ordering::Relaxed),
-        0xA2 | 0xA3 => MOD_CTRL.store(pressed, Ordering::Relaxed),
-        0xA4 | 0xA5 => MOD_ALT.store(pressed, Ordering::Relaxed),
-        0x5B | 0x5C => MOD_META.store(pressed, Ordering::Relaxed),
+        0xA0 | 0xA1 => MOD_SHIFT.store(pressed, Ordering::SeqCst),
+        0xA2 | 0xA3 => MOD_CTRL.store(pressed, Ordering::SeqCst),
+        0xA4 | 0xA5 => MOD_ALT.store(pressed, Ordering::SeqCst),
+        0x5B | 0x5C => MOD_META.store(pressed, Ordering::SeqCst),
         _ => {}
     }
 }
@@ -728,10 +748,10 @@ fn update_modifier_state(vk: u32, pressed: bool) {
 pub fn sync_modifier_state_from_os() {
     unsafe {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
-        MOD_SHIFT.store(GetAsyncKeyState(0xA0) < 0 || GetAsyncKeyState(0xA1) < 0, Ordering::Relaxed);
-        MOD_CTRL.store(GetAsyncKeyState(0xA2) < 0 || GetAsyncKeyState(0xA3) < 0, Ordering::Relaxed);
-        MOD_ALT.store(GetAsyncKeyState(0xA4) < 0 || GetAsyncKeyState(0xA5) < 0, Ordering::Relaxed);
-        MOD_META.store(GetAsyncKeyState(0x5B) < 0 || GetAsyncKeyState(0x5C) < 0, Ordering::Relaxed);
+        MOD_SHIFT.store(GetAsyncKeyState(0xA0) < 0 || GetAsyncKeyState(0xA1) < 0, Ordering::SeqCst);
+        MOD_CTRL.store(GetAsyncKeyState(0xA2) < 0 || GetAsyncKeyState(0xA3) < 0, Ordering::SeqCst);
+        MOD_ALT.store(GetAsyncKeyState(0xA4) < 0 || GetAsyncKeyState(0xA5) < 0, Ordering::SeqCst);
+        MOD_META.store(GetAsyncKeyState(0x5B) < 0 || GetAsyncKeyState(0x5C) < 0, Ordering::SeqCst);
     }
 }
 
@@ -752,13 +772,13 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
         crate::expansions::buffer_clear();
 
         // Track sole modifier for key capture mode
-        if IS_CAPTURING_KEY.load(Ordering::Relaxed) {
+        if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
             let mut state = engine_state().lock().unwrap();
             let other_mods = match vk {
-                0xA0 | 0xA1 => has_any_modifier() && (MOD_CTRL.load(Ordering::Relaxed) || MOD_ALT.load(Ordering::Relaxed) || MOD_META.load(Ordering::Relaxed)),
-                0xA2 | 0xA3 => MOD_ALT.load(Ordering::Relaxed) || MOD_SHIFT.load(Ordering::Relaxed) || MOD_META.load(Ordering::Relaxed),
-                0xA4 | 0xA5 => MOD_CTRL.load(Ordering::Relaxed) || MOD_SHIFT.load(Ordering::Relaxed) || MOD_META.load(Ordering::Relaxed),
-                0x5B | 0x5C => MOD_CTRL.load(Ordering::Relaxed) || MOD_ALT.load(Ordering::Relaxed) || MOD_SHIFT.load(Ordering::Relaxed),
+                0xA0 | 0xA1 => has_any_modifier() && (MOD_CTRL.load(Ordering::SeqCst) || MOD_ALT.load(Ordering::SeqCst) || MOD_META.load(Ordering::SeqCst)),
+                0xA2 | 0xA3 => MOD_ALT.load(Ordering::SeqCst) || MOD_SHIFT.load(Ordering::SeqCst) || MOD_META.load(Ordering::SeqCst),
+                0xA4 | 0xA5 => MOD_CTRL.load(Ordering::SeqCst) || MOD_SHIFT.load(Ordering::SeqCst) || MOD_META.load(Ordering::SeqCst),
+                0x5B | 0x5C => MOD_CTRL.load(Ordering::SeqCst) || MOD_ALT.load(Ordering::SeqCst) || MOD_SHIFT.load(Ordering::SeqCst),
                 _ => false,
             };
             if !other_mods {
@@ -778,14 +798,14 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
     // ── Recording mode: capture combo and send to frontend ──────────────
     // Must run BEFORE APP_INPUT_FOCUSED check — recording works while Trigr UI is focused.
-    if IS_RECORDING_HOTKEY.load(Ordering::Relaxed) {
-        IS_RECORDING_HOTKEY.store(false, Ordering::Relaxed);
+    if IS_RECORDING_HOTKEY.load(Ordering::SeqCst) {
+        IS_RECORDING_HOTKEY.store(false, Ordering::SeqCst);
 
         let mut mods = Vec::new();
-        if MOD_CTRL.load(Ordering::Relaxed) { mods.push("Ctrl"); }
-        if MOD_SHIFT.load(Ordering::Relaxed) { mods.push("Shift"); }
-        if MOD_ALT.load(Ordering::Relaxed) { mods.push("Alt"); }
-        if MOD_META.load(Ordering::Relaxed) { mods.push("Win"); }
+        if MOD_CTRL.load(Ordering::SeqCst) { mods.push("Ctrl"); }
+        if MOD_SHIFT.load(Ordering::SeqCst) { mods.push("Shift"); }
+        if MOD_ALT.load(Ordering::SeqCst) { mods.push("Alt"); }
+        if MOD_META.load(Ordering::SeqCst) { mods.push("Win"); }
 
         let _ = app.emit(
             "hotkey-recorded",
@@ -796,14 +816,14 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
     // ── Key capture mode: capture combo string for settings ─────────────
     // Must run BEFORE APP_INPUT_FOCUSED check — capture works while Trigr UI is focused.
-    if IS_CAPTURING_KEY.load(Ordering::Relaxed) {
-        IS_CAPTURING_KEY.store(false, Ordering::Relaxed);
+    if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
+        IS_CAPTURING_KEY.store(false, Ordering::SeqCst);
 
         let mut parts = Vec::new();
-        if MOD_CTRL.load(Ordering::Relaxed) { parts.push("Ctrl".to_string()); }
-        if MOD_SHIFT.load(Ordering::Relaxed) { parts.push("Shift".to_string()); }
-        if MOD_ALT.load(Ordering::Relaxed) { parts.push("Alt".to_string()); }
-        if MOD_META.load(Ordering::Relaxed) { parts.push("Win".to_string()); }
+        if MOD_CTRL.load(Ordering::SeqCst) { parts.push("Ctrl".to_string()); }
+        if MOD_SHIFT.load(Ordering::SeqCst) { parts.push("Shift".to_string()); }
+        if MOD_ALT.load(Ordering::SeqCst) { parts.push("Alt".to_string()); }
+        if MOD_META.load(Ordering::SeqCst) { parts.push("Win".to_string()); }
         parts.push(key_id_to_display(key_id).to_string());
 
         let combo = parts.join("+");
@@ -812,7 +832,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
     }
 
     // ── Overlay hotkey check (works even when Trigr is focused) ───────
-    if MACROS_ENABLED.load(Ordering::Relaxed) && has_any_modifier() {
+    if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
         let state = engine_state().lock().unwrap();
         if let Some((mod_bits, vk)) = state.overlay_hotkey {
             let current_bits = modifier_bits();
@@ -822,13 +842,13 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                 // Clear modifier tracking AND send synthetic keyups via SendInput
                 // so the OS itself clears the modifier state. The overlay stealing
                 // focus causes real keyup events to be missed by the hook.
-                MOD_CTRL.store(false, Ordering::Relaxed);
-                MOD_SHIFT.store(false, Ordering::Relaxed);
-                MOD_ALT.store(false, Ordering::Relaxed);
-                MOD_META.store(false, Ordering::Relaxed);
-                SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+                MOD_CTRL.store(false, Ordering::SeqCst);
+                MOD_SHIFT.store(false, Ordering::SeqCst);
+                MOD_ALT.store(false, Ordering::SeqCst);
+                MOD_META.store(false, Ordering::SeqCst);
+                SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                 crate::actions::release_held_modifiers();
-                SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+                SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                 let _ = app.emit("toggle-overlay", Value::Null);
                 return;
             }
@@ -844,8 +864,8 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
             let key_vk = key_id_to_vk(key_id);
             if current_bits == mod_bits && key_vk == Some(vk) {
                 drop(state);
-                let was_enabled = MACROS_ENABLED.load(Ordering::Relaxed);
-                MACROS_ENABLED.store(!was_enabled, Ordering::Relaxed);
+                let was_enabled = MACROS_ENABLED.load(Ordering::SeqCst);
+                MACROS_ENABLED.store(!was_enabled, Ordering::SeqCst);
                 let now_enabled = !was_enabled;
                 println!("[PAUSE] Global pause toggled: macros={}", now_enabled);
                 // Rebuild tray menu and notify frontend
@@ -854,7 +874,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                 {
                     let st = engine_state().lock().unwrap();
                     let _ = app.emit("engine-status", serde_json::json!({
-                        "uiohookAvailable": HOOKS_RUNNING.load(Ordering::Relaxed),
+                        "uiohookAvailable": HOOKS_RUNNING.load(Ordering::SeqCst),
                         "nutjsAvailable": false,
                         "macrosEnabled": now_enabled,
                         "activeProfile": st.active_profile,
@@ -871,7 +891,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
     // CRITICAL: Recording and capture checks MUST remain above this guard.
     // If moved below, capture will silently fail when Trigr has focus.
     // Skip if Trigr input field is focused (normal hotkey matching suppressed)
-    if APP_INPUT_FOCUSED.load(Ordering::Relaxed) {
+    if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
         return;
     }
 
@@ -903,7 +923,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
         drop(state); // release engine lock before expansion calls
 
         // Skip expansion buffer while fill-in window is visible — keystrokes are for the fill-in input
-        if FILLIN_HWND.load(Ordering::Relaxed) != 0 {
+        if FILLIN_HWND.load(Ordering::SeqCst) != 0 {
             return;
         }
 
@@ -943,7 +963,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                     // Second tap within window — fire double immediately at keyup
                     // Cancel pending single-tap timer
                     if let Some(cancel) = state.pending_single_cancel.remove(&storage_key) {
-                        cancel.store(true, Ordering::Relaxed);
+                        cancel.store(true, Ordering::SeqCst);
                     }
                     state.last_hotkey_time.remove(&storage_key);
                     info!("[Trigr] x2 Keydown double-tap: {}", storage_key);
@@ -957,7 +977,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
             // Cancel any existing pending timer for this key
             if let Some(old_cancel) = state.pending_single_cancel.remove(&storage_key) {
-                old_cancel.store(true, Ordering::Relaxed);
+                old_cancel.store(true, Ordering::SeqCst);
             }
 
             let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -972,7 +992,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
             thread::spawn(move || {
                 thread::sleep(Duration::from_millis(dtw));
-                if cancel_flag.load(Ordering::Relaxed) {
+                if cancel_flag.load(Ordering::SeqCst) {
                     return; // Second tap came in — cancelled
                 }
                 // Single confirmed — fire directly from timer thread
@@ -1003,10 +1023,10 @@ fn handle_keyup(vk: u32, app: &AppHandle) {
         update_modifier_state(vk, false);
 
         // Key capture: bare modifier release
-        if IS_CAPTURING_KEY.load(Ordering::Relaxed) && no_modifiers_held() {
+        if IS_CAPTURING_KEY.load(Ordering::SeqCst) && no_modifiers_held() {
             let state = engine_state().lock().unwrap();
             if let Some(ref sole) = state.capture_sole_modifier {
-                IS_CAPTURING_KEY.store(false, Ordering::Relaxed);
+                IS_CAPTURING_KEY.store(false, Ordering::SeqCst);
                 let _ = app.emit("key-captured", Value::String(sole.clone()));
             }
         }
@@ -1037,7 +1057,7 @@ fn handle_keyup(vk: u32, app: &AppHandle) {
 // ── Mouse handlers ──────────────────────────────────────────────────────────
 
 fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
-    if APP_INPUT_FOCUSED.load(Ordering::Relaxed) {
+    if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
         return;
     }
 
@@ -1087,7 +1107,7 @@ fn handle_mouse_up(_button: MouseButton, _app: &AppHandle) {
 }
 
 fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
-    if APP_INPUT_FOCUSED.load(Ordering::Relaxed) || !has_any_modifier() {
+    if APP_INPUT_FOCUSED.load(Ordering::SeqCst) || !has_any_modifier() {
         return;
     }
 
@@ -1130,7 +1150,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, app: &AppHandle
         if now.duration_since(*last).as_millis() < dtw as u128 {
             // Second tap within window → fire double
             if let Some(cancel) = state.pending_single_cancel.remove(storage_key) {
-                cancel.store(true, Ordering::Relaxed);
+                cancel.store(true, Ordering::SeqCst);
             }
             state.last_hotkey_time.remove(storage_key);
             info!("[Trigr] x2 Double-tap: {}", storage_key);
@@ -1146,7 +1166,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, app: &AppHandle
 
     // Cancel any existing pending timer for this key
     if let Some(old_cancel) = state.pending_single_cancel.remove(storage_key) {
-        old_cancel.store(true, Ordering::Relaxed);
+        old_cancel.store(true, Ordering::SeqCst);
     }
 
     let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -1163,7 +1183,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, app: &AppHandle
 
     thread::spawn(move || {
         thread::sleep(std::time::Duration::from_millis(dtw));
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::SeqCst) {
             return; // Second tap came in — cancelled
         }
         // Single confirmed
@@ -1187,7 +1207,7 @@ fn fire_macro(macro_val: Value, is_bare: bool, app: &AppHandle) {
 
     // Detect AltGr (Ctrl+Alt held simultaneously) — snapshot now, modifiers
     // will be cleared by the time execute_action runs.
-    let is_altgr = MOD_CTRL.load(Ordering::Relaxed) && MOD_ALT.load(Ordering::Relaxed);
+    let is_altgr = MOD_CTRL.load(Ordering::SeqCst) && MOD_ALT.load(Ordering::SeqCst);
     if is_altgr {
         println!("[FIRE] AltGr combo detected — will erase dead character");
     }
@@ -1242,7 +1262,7 @@ fn spawn_hook_thread() {
                 windows_sys::Win32::System::Threading::SetThreadPriority(current_thread, 15);
 
                 let thread_id = windows_sys::Win32::System::Threading::GetCurrentThreadId();
-                HOOK_THREAD_ID.store(thread_id as isize, Ordering::Relaxed);
+                HOOK_THREAD_ID.store(thread_id as isize, Ordering::SeqCst);
 
                 let kb = SetWindowsHookExW(
                     WH_KEYBOARD_LL,
@@ -1251,11 +1271,13 @@ fn spawn_hook_thread() {
                     0,
                 );
                 if kb.is_null() {
-                    error!("[Trigr] Failed to install keyboard hook");
-                    HOOKS_RUNNING.store(false, Ordering::Relaxed);
+                    let err = windows_sys::Win32::Foundation::GetLastError();
+                    error!("[Trigr] Failed to install keyboard hook — GetLastError={}", err);
+                    HOOKS_RUNNING.store(false, Ordering::SeqCst);
                     return;
                 }
-                KB_HOOK.store(kb as isize, Ordering::Relaxed);
+                info!("[Trigr] LL hook registered: HHOOK=0x{:X}", kb as isize);
+                KB_HOOK.store(kb as isize, Ordering::SeqCst);
 
                 let ms = SetWindowsHookExW(
                     WH_MOUSE_LL,
@@ -1264,15 +1286,17 @@ fn spawn_hook_thread() {
                     0,
                 );
                 if ms.is_null() {
-                    error!("[Trigr] Failed to install mouse hook");
+                    let err = windows_sys::Win32::Foundation::GetLastError();
+                    error!("[Trigr] Failed to install mouse hook — GetLastError={}", err);
                     UnhookWindowsHookEx(kb);
-                    KB_HOOK.store(0, Ordering::Relaxed);
-                    HOOKS_RUNNING.store(false, Ordering::Relaxed);
+                    KB_HOOK.store(0, Ordering::SeqCst);
+                    HOOKS_RUNNING.store(false, Ordering::SeqCst);
                     return;
                 }
-                MOUSE_HOOK.store(ms as isize, Ordering::Relaxed);
-                HOOKS_RUNNING.store(true, Ordering::Relaxed);
-                HOOK_HEARTBEAT.store(0, Ordering::Relaxed);
+                info!("[Trigr] LL mouse hook registered: HHOOK=0x{:X}", ms as isize);
+                MOUSE_HOOK.store(ms as isize, Ordering::SeqCst);
+                HOOKS_RUNNING.store(true, Ordering::SeqCst);
+                HOOK_HEARTBEAT.store(0, Ordering::SeqCst);
 
                 println!("[HOOK] Input hooks installed (dedicated thread, high priority)");
 
@@ -1290,18 +1314,18 @@ fn spawn_hook_thread() {
                 }
 
                 // Cleanup
-                UnhookWindowsHookEx(KB_HOOK.load(Ordering::Relaxed) as _);
-                UnhookWindowsHookEx(MOUSE_HOOK.load(Ordering::Relaxed) as _);
-                KB_HOOK.store(0, Ordering::Relaxed);
-                MOUSE_HOOK.store(0, Ordering::Relaxed);
-                HOOKS_RUNNING.store(false, Ordering::Relaxed);
+                UnhookWindowsHookEx(KB_HOOK.load(Ordering::SeqCst) as _);
+                UnhookWindowsHookEx(MOUSE_HOOK.load(Ordering::SeqCst) as _);
+                KB_HOOK.store(0, Ordering::SeqCst);
+                MOUSE_HOOK.store(0, Ordering::SeqCst);
+                HOOKS_RUNNING.store(false, Ordering::SeqCst);
             }
         })
         .expect("Failed to spawn hook thread");
 }
 
 pub fn start_hooks(app: AppHandle) {
-    if HOOKS_RUNNING.load(Ordering::Relaxed) {
+    if HOOKS_RUNNING.load(Ordering::SeqCst) {
         return;
     }
 
@@ -1317,18 +1341,18 @@ pub fn start_hooks(app: AppHandle) {
     thread::Builder::new()
         .name("trigr-hook-monitor".to_string())
         .spawn(|| {
-            let mut last_heartbeat = HOOK_HEARTBEAT.load(Ordering::Relaxed);
+            let mut last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
             thread::sleep(Duration::from_secs(5));
             loop {
                 thread::sleep(Duration::from_secs(15));
-                let current = HOOK_HEARTBEAT.load(Ordering::Relaxed);
-                if current == last_heartbeat && HOOKS_RUNNING.load(Ordering::Relaxed) {
+                let current = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+                if current == last_heartbeat && HOOKS_RUNNING.load(Ordering::SeqCst) {
                     // Stale — wait another 15s to confirm (30s total)
                     thread::sleep(Duration::from_secs(15));
-                    let recheck = HOOK_HEARTBEAT.load(Ordering::Relaxed);
+                    let recheck = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                     if recheck == last_heartbeat {
                         println!("[HOOK] Heartbeat stale for 30s — reinstalling hooks");
-                        let tid = HOOK_THREAD_ID.load(Ordering::Relaxed);
+                        let tid = HOOK_THREAD_ID.load(Ordering::SeqCst);
                         if tid != 0 {
                             unsafe { PostThreadMessageW(tid as u32, WM_QUIT, 0, 0); }
                         }
@@ -1336,7 +1360,7 @@ pub fn start_hooks(app: AppHandle) {
                         spawn_hook_thread();
                         println!("[HOOK] Hooks reinstalled");
                         thread::sleep(Duration::from_secs(5));
-                        last_heartbeat = HOOK_HEARTBEAT.load(Ordering::Relaxed);
+                        last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                         continue;
                     }
                 }
@@ -1347,15 +1371,15 @@ pub fn start_hooks(app: AppHandle) {
 }
 
 pub fn stop_hooks() {
-    let tid = HOOK_THREAD_ID.load(Ordering::Relaxed);
-    if tid != 0 && HOOKS_RUNNING.load(Ordering::Relaxed) {
+    let tid = HOOK_THREAD_ID.load(Ordering::SeqCst);
+    if tid != 0 && HOOKS_RUNNING.load(Ordering::SeqCst) {
         unsafe { PostThreadMessageW(tid as u32, WM_QUIT, 0, 0); }
-        HOOK_THREAD_ID.store(0, Ordering::Relaxed);
+        HOOK_THREAD_ID.store(0, Ordering::SeqCst);
     }
 }
 
 pub fn hooks_running() -> bool {
-    HOOKS_RUNNING.load(Ordering::Relaxed)
+    HOOKS_RUNNING.load(Ordering::SeqCst)
 }
 
 // ── JS keydown forwarder (WebView2 capture path) ────────────────────────────
@@ -1367,7 +1391,7 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
     let key_id = code;
 
     // Check overlay hotkey (JS path — Trigr has focus)
-    if MACROS_ENABLED.load(Ordering::Relaxed) {
+    if MACROS_ENABLED.load(Ordering::SeqCst) {
         let mut js_bits = 0u8;
         if ctrl { js_bits |= 1; }
         if shift { js_bits |= 2; }
@@ -1378,13 +1402,13 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
                 if let Some((mod_bits, vk)) = state.overlay_hotkey {
                     if js_bits == mod_bits && key_id_to_vk(key_id).or_else(|| parse_hotkey_combo(key_id).map(|(_, v)| v)) == Some(vk) {
                         drop(state);
-                        MOD_CTRL.store(false, Ordering::Relaxed);
-                        MOD_SHIFT.store(false, Ordering::Relaxed);
-                        MOD_ALT.store(false, Ordering::Relaxed);
-                        MOD_META.store(false, Ordering::Relaxed);
-                        SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+                        MOD_CTRL.store(false, Ordering::SeqCst);
+                        MOD_SHIFT.store(false, Ordering::SeqCst);
+                        MOD_ALT.store(false, Ordering::SeqCst);
+                        MOD_META.store(false, Ordering::SeqCst);
+                        SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                         crate::actions::release_held_modifiers();
-                        SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+                        SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                         let _ = app.emit("toggle-overlay", Value::Null);
                         return;
                     }
@@ -1393,8 +1417,8 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
         }
     }
 
-    if IS_RECORDING_HOTKEY.load(Ordering::Relaxed) {
-        IS_RECORDING_HOTKEY.store(false, Ordering::Relaxed);
+    if IS_RECORDING_HOTKEY.load(Ordering::SeqCst) {
+        IS_RECORDING_HOTKEY.store(false, Ordering::SeqCst);
 
         let mut mods = Vec::new();
         if ctrl { mods.push("Ctrl"); }
@@ -1406,8 +1430,8 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
             "hotkey-recorded",
             serde_json::json!({ "modifiers": mods, "keyId": key_id }),
         );
-    } else if IS_CAPTURING_KEY.load(Ordering::Relaxed) {
-        IS_CAPTURING_KEY.store(false, Ordering::Relaxed);
+    } else if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
+        IS_CAPTURING_KEY.store(false, Ordering::SeqCst);
 
         let mut parts = Vec::new();
         if ctrl { parts.push("Ctrl".to_string()); }
@@ -1424,19 +1448,19 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
 // ── Public API for Tauri commands ───────────────────────────────────────────
 
 pub fn set_macros_enabled(enabled: bool) {
-    MACROS_ENABLED.store(enabled, Ordering::Relaxed);
+    MACROS_ENABLED.store(enabled, Ordering::SeqCst);
 }
 
 pub fn macros_enabled() -> bool {
-    MACROS_ENABLED.load(Ordering::Relaxed)
+    MACROS_ENABLED.load(Ordering::SeqCst)
 }
 
 pub fn set_recording(recording: bool) {
-    IS_RECORDING_HOTKEY.store(recording, Ordering::Relaxed);
+    IS_RECORDING_HOTKEY.store(recording, Ordering::SeqCst);
 }
 
 pub fn set_capturing(capturing: bool) {
-    IS_CAPTURING_KEY.store(capturing, Ordering::Relaxed);
+    IS_CAPTURING_KEY.store(capturing, Ordering::SeqCst);
     if capturing {
         let mut state = engine_state().lock().unwrap();
         state.capture_sole_modifier = None;
@@ -1444,7 +1468,7 @@ pub fn set_capturing(capturing: bool) {
 }
 
 pub fn set_input_focused(focused: bool) {
-    APP_INPUT_FOCUSED.store(focused, Ordering::Relaxed);
+    APP_INPUT_FOCUSED.store(focused, Ordering::SeqCst);
 }
 
 pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) {
@@ -1547,9 +1571,9 @@ pub fn clear_pause_hotkey() {
 pub fn get_engine_status() -> Value {
     let state = engine_state().lock().unwrap();
     serde_json::json!({
-        "uiohookAvailable": HOOKS_RUNNING.load(Ordering::Relaxed),
+        "uiohookAvailable": HOOKS_RUNNING.load(Ordering::SeqCst),
         "nutjsAvailable": false,
-        "macrosEnabled": MACROS_ENABLED.load(Ordering::Relaxed),
+        "macrosEnabled": MACROS_ENABLED.load(Ordering::SeqCst),
         "activeProfile": state.active_profile,
         "globalPauseToggleKey": state.pause_hotkey_str,
         "isDemoMode": false,

@@ -69,13 +69,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
 
     // Erase leaked character for bare keys or AltGr dead characters
     if is_bare || is_altgr {
-        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
         if is_altgr {
             thread::sleep(Duration::from_millis(10));
         }
         send_vk_tap(VK_BACKSPACE);
         thread::sleep(Duration::from_millis(5));
-        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
     }
 
     // NOTE: modifier release is handled by each action handler (inject_via_clipboard,
@@ -188,7 +188,7 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     println!("[CLIP] write_clipboard({} chars) → {}", text.chars().count(), write_ok);
 
     // Suppress the hook so our simulated keystrokes aren't intercepted
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
 
     // Release physically held modifiers
     let held = release_held_modifiers();
@@ -221,12 +221,12 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     // Re-press modifiers that were physically held
     restore_modifiers(&held);
 
-    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 
     // Wait for paste to complete, then restore original clipboard
     thread::sleep(Duration::from_millis(CLIPBOARD_RESTORE_DELAY_MS));
     write_clipboard(&prev.unwrap_or_default());
-    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::Relaxed);
+    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
     println!("[CLIP] clipboard restored");
 }
 
@@ -270,7 +270,7 @@ fn write_clipboard(text: &str) -> bool {
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let byte_len = wide.len() * 2;
     // Set suppress BEFORE touching the clipboard so any clipboard listener skips this write
-    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::Relaxed);
+    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::SeqCst);
     unsafe {
         if OpenClipboard(std::ptr::null_mut()) == 0 {
             let err = windows_sys::Win32::Foundation::GetLastError();
@@ -312,7 +312,7 @@ fn write_clipboard(text: &str) -> bool {
 // ── Type Text: character-by-character fallback ──────────────────────────────
 
 fn send_unicode_text(text: &str, target_hwnd: isize) {
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
     let held = release_held_modifiers();
 
     // Restore focus to target window
@@ -343,7 +343,7 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
     }
 
     restore_modifiers(&held);
-    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 }
 
 fn send_unicode_key(scan: u16, key_up: bool) {
@@ -400,7 +400,7 @@ fn execute_send_hotkey(data: &Value) {
         key_name
     );
 
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
 
     // Release physically held modifiers so they don't combine with the target combo
     let held = release_held_modifiers();
@@ -431,7 +431,7 @@ fn execute_send_hotkey(data: &Value) {
     }
 
     restore_modifiers(&held);
-    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 }
 
 // ── Focus Window — find a window by process name and/or title ──────────────
@@ -557,7 +557,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
                         })
                         .collect();
 
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::Relaxed);
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                     for &vk in &mod_vks {
                         send_vk_key(vk, false);
                     }
@@ -566,7 +566,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
                     for &vk in mod_vks.iter().rev() {
                         send_vk_key(vk, true);
                     }
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::Relaxed);
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                 }
             }
         }
@@ -722,7 +722,7 @@ fn wait_for_input(config_json: &str) {
         }
 
         // Check if macros were disabled
-        if !hotkeys::MACROS_ENABLED.load(Ordering::Relaxed) {
+        if !hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
             println!("[WAIT] Cancelled — macros disabled");
             break;
         }

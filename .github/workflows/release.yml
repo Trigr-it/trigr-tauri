@@ -40,6 +40,12 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Trigr ${{ github.ref_name }}'
+          releaseBody: |
+            ## Download
+            **Windows (most users):** trigr_x64-setup.exe
+            **Windows ARM:** trigr_aarch64-setup.exe
+
+            ---
           releaseDraft: false
           generateReleaseNotes: true
           prerelease: false

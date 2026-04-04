@@ -31,7 +31,7 @@ struct InjectionGuard;
 impl InjectionGuard {
     fn new() -> Self {
         crate::hotkeys::INJECTION_IN_PROGRESS
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         Self
     }
 }
@@ -39,7 +39,7 @@ impl InjectionGuard {
 impl Drop for InjectionGuard {
     fn drop(&mut self) {
         crate::hotkeys::INJECTION_IN_PROGRESS
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -292,7 +292,7 @@ fn fire_expansion(
     let fill_in_fields = extract_fill_in_fields(text);
     if !fill_in_fields.is_empty() {
         // Prevent concurrent fill-in invocations
-        if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
+        if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
             return;
         }
         let text = text.to_string();
@@ -319,7 +319,7 @@ fn fire_expansion(
     };
 
     // Wait for any prior injection to finish (handles sequential autocorrects)
-    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::Relaxed) {
+    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
         thread::sleep(Duration::from_millis(5));
     }
 
@@ -337,7 +337,7 @@ fn fire_expansion(
 
         // Suppress hook so our Backspace and paste keystrokes aren't intercepted
         crate::hotkeys::SUPPRESS_SIMULATED
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(true, std::sync::atomic::Ordering::SeqCst);
 
         // Delete trigger word + space (if applicable)
         let delete_count = trigger_len + if delete_extra { 1 } else { 0 };
@@ -360,22 +360,22 @@ fn fire_expansion(
         }
 
         crate::hotkeys::SUPPRESS_SIMULATED
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+            .store(false, std::sync::atomic::Ordering::SeqCst);
 
         // Replay any keystrokes that were buffered during injection
         let buffered: Vec<crate::hotkeys::BufferedKey> =
             crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
         if !buffered.is_empty() {
             crate::hotkeys::SUPPRESS_SIMULATED
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             for key in &buffered {
                 send_vk_key(key.vk_code as u16, !key.is_keydown);
                 thread::sleep(Duration::from_millis(2));
             }
             crate::hotkeys::SUPPRESS_SIMULATED
-                .store(false, std::sync::atomic::Ordering::Relaxed);
+                .store(false, std::sync::atomic::Ordering::SeqCst);
 
             // Feed replayed keystrokes into the expansion buffer
             let last_was_space = buffered.last()
@@ -418,7 +418,7 @@ fn fire_expansion_with_fillin(
     delete_extra: bool,
     global_vars: &HashMap<String, String>,
 ) {
-    crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+    crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
     let app = match APP_HANDLE.get() {
         Some(a) => a,
@@ -449,7 +449,7 @@ fn fire_expansion_with_fillin(
         // Store fill-in HWND before show — stable from window creation, no focus dependency
         if let Ok(hwnd) = win.hwnd() {
             let hwnd_val = hwnd.0 as isize;
-            crate::hotkeys::FILLIN_HWND.store(hwnd_val, std::sync::atomic::Ordering::Relaxed);
+            crate::hotkeys::FILLIN_HWND.store(hwnd_val, std::sync::atomic::Ordering::SeqCst);
         }
 
         let _ = win.show();
@@ -476,7 +476,7 @@ fn fire_expansion_with_fillin(
     *fill_in_tx().lock().unwrap() = None;
 
     // Clear fill-in HWND and hide window, restore focus to the original target app
-    crate::hotkeys::FILLIN_HWND.store(0, std::sync::atomic::Ordering::Relaxed);
+    crate::hotkeys::FILLIN_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
     if let Some(win) = app.get_webview_window("fillin") {
         let _ = win.hide();
     }
@@ -488,7 +488,7 @@ fn fire_expansion_with_fillin(
     }
 
     // Fill-in UI is fully closed — allow new fill-in invocations
-    crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+    crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
 
     let text_after_fillin = match response {
         Ok(Some(values)) => {
@@ -512,7 +512,7 @@ fn fire_expansion_with_fillin(
     crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32);
 
     // Wait for any prior injection to finish
-    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::Relaxed) {
+    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
         thread::sleep(Duration::from_millis(5));
     }
 
@@ -522,7 +522,7 @@ fn fire_expansion_with_fillin(
     thread::sleep(Duration::from_millis(30));
 
     crate::hotkeys::SUPPRESS_SIMULATED
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+        .store(true, std::sync::atomic::Ordering::SeqCst);
 
     // Delete trigger word + space (if applicable)
     let delete_count = trigger_len + if delete_extra { 1 } else { 0 };
@@ -545,22 +545,22 @@ fn fire_expansion_with_fillin(
     }
 
     crate::hotkeys::SUPPRESS_SIMULATED
-        .store(false, std::sync::atomic::Ordering::Relaxed);
+        .store(false, std::sync::atomic::Ordering::SeqCst);
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-        .store(false, std::sync::atomic::Ordering::Relaxed);
+        .store(false, std::sync::atomic::Ordering::SeqCst);
 
     // Replay any keystrokes that were buffered during injection
     let buffered: Vec<crate::hotkeys::BufferedKey> =
         crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
     if !buffered.is_empty() {
         crate::hotkeys::SUPPRESS_SIMULATED
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         for key in &buffered {
             send_vk_key(key.vk_code as u16, !key.is_keydown);
             thread::sleep(Duration::from_millis(2));
         }
         crate::hotkeys::SUPPRESS_SIMULATED
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+            .store(false, std::sync::atomic::Ordering::SeqCst);
 
         let last_was_space = buffered.last()
             .map(|k| k.vk_code == 0x20 && k.is_keydown)
@@ -664,7 +664,7 @@ fn write_clipboard(text: &str) -> bool {
     let byte_len = wide.len() * 2;
     // Set suppress BEFORE touching clipboard so any listener skips this write
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     unsafe {
         if OpenClipboard(std::ptr::null_mut()) == 0 {
             return false;
@@ -737,7 +737,7 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
         write_clipboard(&prev);
     }
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-        .store(false, std::sync::atomic::Ordering::Relaxed);
+        .store(false, std::sync::atomic::Ordering::SeqCst);
 }
 
 fn is_ctrl_v_mapped() -> bool {
@@ -856,7 +856,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>) {
 
 pub fn set_autocorrect_enabled(enabled: bool) {
     state().lock().unwrap().autocorrect_enabled = enabled;
-    info!("[Trigr] Autocorrect enabled: {}", enabled);
+    info!("[Trigr] Autocorrect config: {} (engine disabled for Alpha)", enabled);
 }
 
 pub fn update_global_variables(vars: HashMap<String, String>) {

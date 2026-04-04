@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-04 (post v0.1.12, pre v0.1.13)
+> Last updated: 2026-04-04 (post v0.1.13)
 
 ---
 
@@ -96,7 +96,7 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 
 **`onboarding_complete`:** Bool field in config. Default `false` for new users (triggers onboarding tour). Set to `true` when tour finishes or is skipped. Migration: auto-set to `true` on first load if `hasSeenWelcome` is already `true` (prevents existing alpha testers from seeing the tour). Reset via `reset_onboarding` Rust command (Settings > Restart Onboarding Tour).
 
-**suppressNextClipboardWrite:** Module-level bool in `actions.rs` or `expansions.rs`. Set to `true` immediately before any internal clipboard write (text expansion fire, image expansion fire, any Trigr-initiated clipboard write). The future clipboard manager checks this flag and skips logging if set, then clears it. Establish this pattern in Phase 7 even though the clipboard manager is not built yet.
+**suppressNextClipboardWrite:** Module-level bool in `actions.rs` or `expansions.rs`. Set to `true` immediately before any internal clipboard write (text expansion fire, image expansion fire, any Trigr-initiated clipboard write). The future clipboard manager will check this flag and skip logging if set, then clear it.
 
 ---
 
@@ -141,15 +141,15 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 
 Machine: Surface Pro, Windows ARM64. Every native Rust crate must be verified for ARM64 compatibility before implementation.
 
-Known status:
-- `rdev` — verify ARM64 before Phase 4
-- `enigo` — verify ARM64 before Phase 5
-- `windows-rs` — ARM64 compatible (Microsoft maintained)
-- `rusqlite` — ARM64 compatible
+Known compatible:
+- `windows-sys` — ARM64 compatible (Microsoft maintained) — used for all Win32 API
+- `rusqlite` — ARM64 compatible (bundled feature)
 - `serde_json` — ARM64 compatible (pure Rust)
 - `tauri-plugin-updater` — ARM64 compatible
 
-If any crate fails on ARM64, find an alternative before proceeding. Do not assume compatibility — test on device.
+Note: `rdev` and `enigo` were evaluated and skipped — `windows-sys` SendInput/SetWindowsHookExW handles everything directly.
+
+If any new crate is added, verify ARM64 compatibility before proceeding. Do not assume — test on device.
 
 ---
 
@@ -287,7 +287,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "app": {
     "windows": [{
       "title": "Trigr",
@@ -327,3 +327,4 @@ Record key decisions and findings here after each session.
 | 2026-04-03 | Post-MVP | Local analytics feature | analytics.rs: SQLite `trigr-analytics.db` in AppData, dedicated writer thread via mpsc channel, `action_log` table. Instrumented all fire points: `fire_macro()` in hotkeys.rs, `fire_expansion()`/`fire_expansion_with_fillin()` in expansions.rs, `execute_search_result()` overlay path in lib.rs. Time saved: expansion=chars×0.3s (excluding \r), hotkey=3s, macro=5s. Stats: total, today, last 7 days, best day (MAX daily SUM), best 7 days (rolling window self-join). AnalyticsPanel.jsx: compound Today/Last 7 Days cards, 4-column records row, breakdown bars, reset with confirmation. Third nav tab in TitleBar. `rusqlite` 0.31 with bundled feature (ARM64 compatible). Privacy text updated in SettingsPanel. v0.1.11 released. |
 | 2026-04-04 | Post-MVP | Macro step types + UI overhaul | **New macro steps:** Open App (ShellExecuteW + args), Open Folder (opener::open), Focus Window (EnumWindows + process/title match + SetForegroundWindow with mutable target_hwnd), Open URL (already existed). `MACRO_STEP_TYPES` = 8 types. All sub-row step UIs (Type Text, Open App, Open Folder, Focus Window, Open URL) moved to full-width rows below the step type dropdown. **@dnd-kit/sortable** replaces HTML5 drag-and-drop: stable runtime IDs via idMapRef keyed by step type only (not value — prevents focus loss on keystroke), PointerSensor with 8px distance, DragOverlay ghost. **Win key manual builder:** Meta key during capture switches to dropdown builder (Win+key selection). Win builder blur guard refocuses field when OS steals focus. **ESC mappable:** Removed 4 `key_id == "Escape"` cancel branches from hotkeys.rs, cancel via UI buttons only. App.jsx ESC guard for capture mode. **Input method simplified:** 5 options → 3 (Global default, Direct, Clipboard). **Cargo.toml:** Added `Win32_UI_Shell` feature for ShellExecuteW. |
 | 2026-04-04 | Post-MVP | Profile accordion in sidebar | Profiles moved from titlebar to sidebar accordion. TitleBar stripped to logo + nav tabs + right controls only. ProfileAccordion: collapsed header shows fallback profile (green dot) + editing profile name. Expanded: two groups (STATIC / APP-SPECIFIC) with separate SortableContext instances, cross-group drag blocked. Right-click context menu (Rename, Duplicate, Set as default fallback, Delete). Green dot fallback indicator on activeGlobalProfile. @dnd-kit/sortable for profile reordering. Default profile always first, not draggable. minWidth increased to 800px. Vite watch excludes src-tauri/target. |
+| 2026-04-04 | Release | v0.1.13 released | Patch release. All post-MVP work from 2026-04-04 sessions included (macro step types, UI overhaul, profile accordion). |
