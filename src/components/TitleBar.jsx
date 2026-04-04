@@ -399,37 +399,6 @@ export default function TitleBar({
                       measureRef: el => { if (el) tabElsRef.current[p] = el; },
                     }))}
 
-                    {/* Overflow pill + dropdown */}
-                    {overflowProfiles.length > 0 && (
-                      <div className="profile-overflow-wrap" ref={overflowRef}>
-                        <button
-                          className="profile-overflow-pill"
-                          onClick={() => setOverflowOpen(o => !o)}
-                          type="button"
-                        >
-                          ▾ {overflowProfiles.length} more
-                        </button>
-                        {overflowOpen && (
-                          <div className="profile-overflow-dropdown">
-                            {overflowProfiles.map(p => {
-                              const hasLink = !!profileSettings[p]?.linkedApp;
-                              const isActive = p === activeProfile;
-                              return (
-                                <button
-                                  key={p}
-                                  className={`profile-overflow-item${isActive ? ' active' : ''}`}
-                                  onClick={() => { onProfileChange(p); setOverflowOpen(false); }}
-                                >
-                                  {hasLink && <span className="profile-app-icon">🖥</span>}
-                                  {p}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
                     {/* Measure hidden tabs for overflow — render off-screen to get widths */}
                     {overflowProfiles.map(p => (
                       <div key={`measure-${p}`} className="profile-tab-group profile-tab-measure" ref={el => { if (el) tabElsRef.current[p] = el; }}>
@@ -460,6 +429,37 @@ export default function TitleBar({
                     )}
                   </div>
                 </SortableContext>
+
+                {/* Overflow pill + dropdown — outside .profile-tabs so it's never clipped */}
+                {overflowProfiles.length > 0 && (
+                  <div className="profile-overflow-wrap" ref={overflowRef} data-drag="false">
+                    <button
+                      className="profile-overflow-pill"
+                      onClick={() => setOverflowOpen(o => !o)}
+                      type="button"
+                    >
+                      ▾ {overflowProfiles.length} more
+                    </button>
+                    {overflowOpen && (
+                      <div className="profile-overflow-dropdown">
+                        {overflowProfiles.map(p => {
+                          const hasLink = !!profileSettings[p]?.linkedApp;
+                          const isActive = p === activeProfile;
+                          return (
+                            <button
+                              key={p}
+                              className={`profile-overflow-item${isActive ? ' active' : ''}`}
+                              onClick={() => { onProfileChange(p); setOverflowOpen(false); }}
+                            >
+                              {hasLink && <span className="profile-app-icon">🖥</span>}
+                              {p}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <DragOverlay>
                   {activeDragId ? (

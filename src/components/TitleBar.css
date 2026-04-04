@@ -464,6 +464,8 @@
 .profile-overflow-wrap {
   position: relative;
   flex-shrink: 0;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
 }
 
 .profile-overflow-pill {
