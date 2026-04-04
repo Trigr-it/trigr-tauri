@@ -18,7 +18,7 @@
 .profile-accordion-header {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
+  padding: 10px 16px;
   cursor: pointer;
   transition: background 0.12s;
   gap: 6px;
