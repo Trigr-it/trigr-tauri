@@ -472,6 +472,322 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
   </div>
 </div>
 
+<!-- ANIMATED DEMO -->
+<section class="demo-sec">
+  <div class="demo-inner">
+    <div class="sec-lbl" style="text-align:center;margin-bottom:16px;">See it in action</div>
+    <h2 class="sec-title" style="text-align:center;margin-bottom:12px;">Two clicks to set up.<br>Instant every time.</h2>
+    <p class="sec-sub" style="text-align:center;margin:0 auto 56px;max-width:480px;">This is what Trigr actually does — no scripts, no config files, just results.</p>
+    <div class="demo-panels">
+
+      <!-- PANEL 1: Text Expansion -->
+      <div class="demo-panel">
+        <div class="demo-panel-label"><span class="demo-panel-tag">Text Expansion</span></div>
+        <div class="demo-panel-title">Type a shortcut.<br>Get the whole thing.</div>
+        <div class="demo-panel-sub">Assign <span class="demo-code">;sig</span> to your full email signature. Never type it again.</div>
+        <div class="demo-screen">
+          <div class="demo-screen-bar">
+            <div class="demo-screen-dots"><span></span><span></span><span></span></div>
+            <div class="demo-screen-title">Email — New Message</div>
+          </div>
+          <div class="demo-screen-body">
+            <div class="demo-field-label">To:</div>
+            <div class="demo-field" style="color:#a8a6c2;">sarah&#64;clientco&#46;com</div>
+            <div class="demo-field-label">Subject:</div>
+            <div class="demo-field">Project update — Q3</div>
+            <div class="demo-field-label">Body:</div>
+            <div class="demo-field demo-field-body">
+              <span class="demo-body-static">Hi Sarah,<br><br>Please find the latest files attached for review.<br><br></span><span class="demo-typed" id="demo-typed"></span><span class="demo-expanded-inline" id="demo-expanded-inline"></span><span class="demo-cursor" id="demo-cursor">|</span>
+            </div>
+          </div>
+        </div>
+        <div class="demo-press-hint" id="te-hint">
+          <span class="demo-hint-pulse"></span>
+          Type <span class="demo-code" style="margin-left:2px;">;sig</span> anywhere to trigger
+        </div>
+
+      </div>
+
+      <!-- PANEL 2: Hotkey -->
+      <div class="demo-panel">
+        <div class="demo-panel-label"><span class="demo-panel-tag">Hotkey</span></div>
+        <div class="demo-panel-title">One combo.<br>Any action.</div>
+        <div class="demo-panel-sub">Press <span class="demo-code">Ctrl+E</span> and launch any app instantly — your image editor, terminal, or anything else, without touching the mouse.</div>
+        <div class="demo-screen">
+          <div class="demo-screen-bar">
+            <div class="demo-screen-dots"><span></span><span></span><span></span></div>
+            <div class="demo-screen-title">Trigr — Key Mapping</div>
+          </div>
+          <div class="demo-screen-body demo-hk-body">
+            <div class="demo-mini-kb">
+              <div class="demo-kb-row">
+                <div class="dmk" id="dmk-q">Q</div><div class="dmk" id="dmk-w">W</div><div class="dmk dmk-assigned" id="dmk-e">E</div><div class="dmk" id="dmk-r">R</div><div class="dmk" id="dmk-t">T</div><div class="dmk" id="dmk-y">Y</div><div class="dmk" id="dmk-u">U</div><div class="dmk" id="dmk-i">I</div><div class="dmk" id="dmk-o">O</div><div class="dmk" id="dmk-p">P</div>
+              </div>
+              <div class="demo-kb-row">
+                <div class="dmk" id="dmk-a">A</div><div class="dmk" id="dmk-s">S</div><div class="dmk" id="dmk-d">D</div><div class="dmk" id="dmk-f">F</div><div class="dmk" id="dmk-g">G</div><div class="dmk" id="dmk-h">H</div><div class="dmk" id="dmk-j">J</div><div class="dmk" id="dmk-k">K</div><div class="dmk" id="dmk-l">L</div>
+              </div>
+              <div class="demo-kb-row">
+                <div class="dmk dmk-mod" id="dmk-ctrl">Ctrl</div><div class="dmk dmk-spacer"></div><div class="dmk dmk-mod" id="dmk-alt">Alt</div>
+              </div>
+            </div>
+            <div class="demo-hk-result">
+              <div class="demo-hk-idle" id="demo-hk-idle">
+                <span class="demo-hk-combo"><span class="demo-hk-key" id="hk-ctrl-disp">Ctrl</span><span class="demo-hk-plus">+</span><span class="demo-hk-key" id="hk-e-disp">E</span></span>
+                <span class="demo-hk-arrow">→</span>
+                <span class="demo-hk-label">Open App</span>
+              </div>
+              <div class="demo-hk-fired" id="demo-hk-fired">
+                <div class="demo-hk-flash" id="demo-hk-flash"></div>
+                <div class="demo-snap-container" id="demo-snap-container">
+                  <!-- Terminal 1 window -->
+                  <div class="demo-snap-win" id="snap-editor">
+                    <div class="demo-snap-bar">
+                      <span class="demo-snap-dots"><i></i><i></i><i></i></span>
+                      <span class="demo-snap-title">Terminal 1</span>
+                    </div>
+                    <div class="demo-snap-body demo-snap-doc-body">
+                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> git status</div>
+                      <div class="snap-term-line snap-term-out">On branch <span style="color:#e8a020;">main</span></div>
+                      <div class="snap-term-line snap-term-out snap-term-green">nothing to commit</div>
+                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> git pull</div>
+                      <div class="snap-term-line snap-term-out">Already up to date.</div>
+                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> <span class="snap-term-cursor">█</span></div>
+                    </div>
+                  </div>
+                  <!-- Terminal 2 window -->
+                  <div class="demo-snap-win demo-snap-win-right" id="snap-brief">
+                    <div class="demo-snap-bar demo-snap-bar-alt">
+                      <span class="demo-snap-dots"><i></i><i></i><i></i></span>
+                      <span class="demo-snap-title">Terminal 2</span>
+                    </div>
+                    <div class="demo-snap-body demo-snap-doc-body">
+                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> npm run dev</div>
+                      <div class="snap-term-line snap-term-out">Starting dev server...</div>
+                      <div class="snap-term-line snap-term-out snap-term-green">✓ Ready on localhost:3000</div>
+                      <div class="snap-term-line snap-term-out" style="opacity:0.5;">watching for changes</div>
+                      <div class="snap-term-line"><span class="snap-term-prompt">~$</span> <span class="snap-term-cursor">█</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="demo-press-hint" id="demo-press-hint">
+          <span class="demo-hint-pulse"></span>
+          Press <span class="demo-code" style="margin-left:2px;">Ctrl+E</span> to trigger
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<style>
+.demo-sec { position:relative; padding:100px 40px; border-top:1px solid var(--border-subtle); overflow:hidden; }
+.demo-sec::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:900px; height:400px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.06) 0%,transparent 70%); pointer-events:none; }
+.demo-inner { max-width:1100px; margin:0 auto; }
+.demo-panels { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:stretch; }
+.demo-panel { background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:14px; transition:border-color 0.3s; min-height:620px; }
+.demo-panel:hover { border-color:rgba(232,160,32,0.2); }
+.demo-panel-tag { background:rgba(232,160,32,0.1); border:1px solid rgba(232,160,32,0.25); color:var(--gold-light); font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; padding:4px 12px; border-radius:100px; display:inline-block; }
+.demo-panel-title { font-family:'Syne',sans-serif; font-weight:700; font-size:22px; color:var(--text); line-height:1.15; }
+.demo-panel-sub { font-size:14px; color:var(--text-muted); font-weight:300; line-height:1.6; }
+.demo-code { background:rgba(232,160,32,0.1); border:1px solid rgba(232,160,32,0.25); color:var(--gold-light); font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:600; padding:1px 7px; border-radius:4px; letter-spacing:0.04em; }
+.demo-screen { background:#0d0d11; border:1px solid #262638; border-radius:12px; overflow:hidden; flex:1; }
+.demo-screen-bar { height:34px; background:#13131a; border-bottom:1px solid #262638; display:flex; align-items:center; padding:0 12px; gap:8px; }
+.demo-screen-dots { display:flex; gap:5px; }
+.demo-screen-dots span { width:10px; height:10px; border-radius:50%; }
+.demo-screen-dots span:nth-child(1){background:#ff5f57;}
+.demo-screen-dots span:nth-child(2){background:#febc2e;}
+.demo-screen-dots span:nth-child(3){background:#28c840;}
+.demo-screen-title { font-size:11px; color:#72708c; }
+.demo-screen-body { padding:16px; font-family:'DM Sans',sans-serif; font-size:12px; }
+.demo-field-label { font-size:10px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:#72708c; margin-bottom:3px; margin-top:10px; }
+.demo-field-label:first-child { margin-top:0; }
+.demo-field { background:#13131a; border:1px solid #262638; border-radius:5px; padding:6px 10px; font-size:12px; color:#a8a6c2; }
+.demo-field-body { height:185px; overflow:hidden; color:#f0ede8; line-height:1.65; }
+.demo-body-static { color:#a8a6c2; }
+.demo-typed { color:var(--gold); font-weight:600; font-family:'Rajdhani',sans-serif; font-size:13px; letter-spacing:0.04em; }
+.demo-expanded-inline { color:#f0ede8; font-size:12px; line-height:1.65; }
+.demo-cursor { color:var(--gold); animation:blink 1s step-end infinite; font-weight:300; }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+.demo-hk-body { display:flex; flex-direction:column; gap:12px; }
+.demo-mini-kb { display:flex; flex-direction:column; gap:4px; padding:12px; background:#13131a; border-radius:8px; border:1px solid #262638; }
+.demo-kb-row { display:flex; gap:3px; align-items:center; }
+.dmk { height:28px; min-width:28px; padding:0 6px; border-radius:4px; background:#1e1e2c; border:1px solid #353550; color:#72708c; font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center; transition:all 0.12s; flex-shrink:0; }
+.dmk-mod { min-width:46px; color:#a8a6c2; }
+.dmk-spacer { flex:1; background:transparent; border-color:transparent; }
+.dmk-assigned { background:#201f0c; border-color:rgba(232,160,32,0.5); color:#f0ede8; }
+.dmk.active { background:rgba(232,160,32,0.15); border-color:var(--gold); color:var(--gold); box-shadow:0 0 10px rgba(232,160,32,0.2); transform:translateY(-1px); }
+.demo-hk-result { background:#13131a; border:1px solid #262638; border-radius:8px; padding:13px 16px; min-height:160px; position:relative; overflow:hidden; }
+/* snap windows */
+.demo-snap-container { position:absolute; inset:0; display:flex; gap:2px; overflow:hidden; }
+.demo-snap-win { display:flex; flex-direction:column; overflow:hidden; border-radius:4px; transition:width 0.45s cubic-bezier(0.4,0,0.2,1), opacity 0.3s; opacity:0; width:0; }
+.demo-snap-win.snap-in { opacity:1; width:50%; }
+.demo-snap-win.snap-full { width:100% !important; }
+.demo-snap-bar { height:22px; background:#1a1a24; border-bottom:1px solid #353550; display:flex; align-items:center; padding:0 8px; gap:6px; flex-shrink:0; }
+.demo-snap-bar-alt { background:#141420; }
+.demo-snap-dots { display:flex; gap:3px; }
+.demo-snap-dots i { width:7px; height:7px; border-radius:50%; display:inline-block; }
+.demo-snap-dots i:nth-child(1){background:#ff5f57;}
+.demo-snap-dots i:nth-child(2){background:#febc2e;}
+.demo-snap-dots i:nth-child(3){background:#28c840;}
+.demo-snap-title { font-size:9px; color:#72708c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.demo-snap-body { flex:1; display:flex; overflow:hidden; }
+.demo-snap-sidebar { width:22px; background:#13131a; border-right:1px solid #262638; display:flex; flex-direction:column; align-items:center; padding:6px 0; gap:4px; flex-shrink:0; }
+.snap-tool { width:12px; height:12px; background:#262638; border-radius:2px; }
+.demo-snap-canvas { flex:1; background:repeating-linear-gradient(45deg,#111118 0,#111118 6px,#0d0d11 6px,#0d0d11 12px); display:flex; align-items:center; justify-content:center; }
+.demo-snap-checker { width:70%; height:70%; background:#1e1e2c; border:1px solid #353550; border-radius:2px; display:flex; align-items:center; justify-content:center; }
+.snap-canvas-rect { width:55%; height:55%; background:linear-gradient(135deg,#2a2a3e,#1a1a28); border:1px solid #484868; border-radius:2px; }
+.demo-snap-doc-body { flex:1; padding:8px 10px; display:flex; flex-direction:column; gap:3px; background:#0d0d11; overflow:hidden; }
+.snap-term-line { font-family:'Rajdhani',sans-serif; font-size:10px; color:#a8a6c2; display:flex; align-items:center; gap:5px; white-space:nowrap; }
+.snap-term-prompt { color:#e8a020; font-weight:700; }
+.snap-term-out { color:#72708c; padding-left:14px; }
+.snap-term-green { color:#50c878; }
+.snap-term-cursor { color:#e8a020; animation:blink 1s step-end infinite; }
+.demo-hk-idle { display:flex; align-items:center; gap:10px; transition:opacity 0.2s; }
+.demo-hk-combo { display:flex; align-items:center; gap:4px; }
+.demo-hk-key { background:#1e1e2c; border:1px solid #353550; border-bottom-width:2px; color:#f0ede8; font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:700; padding:2px 10px; border-radius:4px; letter-spacing:0.04em; transition:all 0.12s; }
+.demo-hk-plus,.demo-hk-arrow { color:#72708c; font-size:13px; }
+.demo-hk-label { font-size:12px; color:#a8a6c2; }
+.demo-hk-fired { position:absolute; inset:0; display:flex; align-items:center; padding:13px 16px; opacity:0; transition:opacity 0.25s; pointer-events:none; }
+.demo-hk-fired.show { opacity:1; }
+.demo-hk-flash { position:absolute; inset:0; background:rgba(232,160,32,0.14); opacity:0; transition:opacity 0.15s; }
+.demo-hk-flash.pop { opacity:1; }
+.demo-hk-output { font-size:12px; color:var(--gold-light); line-height:1.6; position:relative; z-index:1; }
+.demo-press-hint { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted); }
+.demo-hint-pulse { width:7px; height:7px; border-radius:50%; background:var(--gold); flex-shrink:0; box-shadow:0 0 0 0 rgba(232,160,32,0.4); animation:hpulse 2s infinite; }
+@keyframes hpulse{0%{box-shadow:0 0 0 0 rgba(232,160,32,0.4)}70%{box-shadow:0 0 0 8px rgba(232,160,32,0)}100%{box-shadow:0 0 0 0 rgba(232,160,32,0)}}
+@media(max-width:768px){.demo-panels{grid-template-columns:1fr;}.demo-sec{padding:60px 20px;}}
+</style>
+
+<script>
+(function(){
+  /* ════════════════════════════════
+     TEXT EXPANSION — user types ;sig
+     ════════════════════════════════ */
+  var typedEl  = document.getElementById('demo-typed');
+  var cursorEl = document.getElementById('demo-cursor');
+  var inlineEl = document.getElementById('demo-expanded-inline');
+  var teHint   = document.getElementById('te-hint');
+
+  var TRIGGER  = ';sig';
+  var EXPANDED = 'Kind regards,\nAlex Johnson\nSenior Account Manager\nalex@company.com';
+  var teBuffer = '';
+  var exIdx = 0, teT = null, teFired = false;
+
+  function teReset(){
+    teFired = false;
+    teBuffer = '';
+    typedEl.textContent = '';
+    inlineEl.innerHTML  = '';
+    cursorEl.style.display = 'inline';
+    if(teHint) teHint.style.opacity = '1';
+  }
+
+  function teExpand(){
+    teFired = true;
+    typedEl.textContent = '';
+    if(teHint) teHint.style.opacity = '0';
+    // Instant replacement — no letter by letter
+    inlineEl.innerHTML = EXPANDED.replace(/\n/g,'<br>');
+    teT = setTimeout(teReset, 4500);
+  }
+
+  // Remove teTypeExpansion — no longer needed
+
+  // Listen for real keypresses — mirror into demo
+  document.addEventListener('keydown', function(e){
+    if(teFired) return;
+    // Only printable single chars
+    if(e.key.length === 1 && !e.ctrlKey && !e.metaKey){
+      clearTimeout(teT);
+      teBuffer += e.key;
+      typedEl.textContent = teBuffer;
+      // Check if buffer ends with trigger
+      if(teBuffer.endsWith(TRIGGER)){
+        teT = setTimeout(teExpand, 300);
+      } else if(!TRIGGER.startsWith(teBuffer) && teBuffer.length >= TRIGGER.length){
+        // Wrong input — reset buffer silently
+        teBuffer = '';
+        typedEl.textContent = '';
+      }
+    } else if(e.key === 'Backspace'){
+      teBuffer = teBuffer.slice(0, -1);
+      typedEl.textContent = teBuffer;
+    }
+  });
+
+  /* ════════════════════════════════
+     HOTKEY — user presses Ctrl+E
+     ════════════════════════════════ */
+  var ctrlKey   = document.getElementById('dmk-ctrl');
+  var eKey      = document.getElementById('dmk-e');
+  var hkIdle    = document.getElementById('demo-hk-idle');
+  var hkFired   = document.getElementById('demo-hk-fired');
+  var hkFlash   = document.getElementById('demo-hk-flash');
+  var snapEditor = document.getElementById('snap-editor');
+  var snapBrief  = document.getElementById('snap-brief');
+  var hkT = null, hkDone = false;
+
+  function hkReset(){
+    hkDone = false;
+    ctrlKey.classList.remove('active');
+    eKey.classList.remove('active');
+    hkFired.classList.remove('show');
+    hkIdle.style.opacity = '1';
+    if(snapEditor){ snapEditor.classList.remove('snap-in'); snapEditor.classList.remove('snap-full'); }
+    if(snapBrief)  snapBrief.classList.remove('snap-in');
+  }
+
+  function hkDoFire(){
+    hkIdle.style.opacity = '0';
+    hkFlash.classList.add('pop');
+    hkFired.classList.add('show');
+    setTimeout(function(){ hkFlash.classList.remove('pop'); }, 220);
+    // Terminal 1 opens full width first
+    if(snapEditor){
+      snapEditor.classList.add('snap-in');
+      snapEditor.classList.add('snap-full');
+    }
+    // After 900ms Terminal 2 slides in, both go to 50%
+    hkT = setTimeout(function(){
+      if(snapEditor) snapEditor.classList.remove('snap-full');
+      if(snapBrief)  snapBrief.classList.add('snap-in');
+    }, 900);
+    hkT = setTimeout(hkReset, 5500);
+  }
+
+  document.addEventListener('keydown', function(e){
+    if(e.ctrlKey && (e.key === 'e' || e.key === 'E')){
+      e.preventDefault();
+      if(hkDone) return;
+      hkDone = true;
+      clearTimeout(hkT);
+      ctrlKey.classList.add('active');
+      eKey.classList.add('active');
+      hkT = setTimeout(function(){
+        ctrlKey.classList.remove('active');
+        eKey.classList.remove('active');
+        hkDoFire();
+      }, 180);
+    }
+  });
+
+  // Also mirror Ctrl key visual on keydown/up
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Control') ctrlKey.classList.add('active');
+  });
+  document.addEventListener('keyup', function(e){
+    if(e.key === 'Control' && !hkDone) ctrlKey.classList.remove('active');
+    if(e.key === 'e' || e.key === 'E') eKey.classList.remove('active');
+  });
+
+})();
+</script>
+
 <!-- WHO IT'S FOR -->
 <section id="who">
   <div class="sec-lbl">Who it's for</div>
@@ -827,12 +1143,20 @@ updateStatus();
 
 // Scale after a small delay to ensure fonts loaded
 window.addEventListener('resize', scaleMockup);
-document.fonts.ready.then(() => {
-  scaleMockup();
-  setTimeout(scaleMockup, 300);
-});
-setTimeout(scaleMockup, 100);
-setTimeout(scaleMockup, 500);
+document.fonts.ready.then(() => { scaleMockup(); });
+// Run immediately on DOM ready — set a min-height on viewport first to prevent collapse
+(function() {
+  var vp = document.getElementById('mockup-viewport');
+  var shell = document.getElementById('app-shell');
+  var outer = document.getElementById('mockup-outer');
+  if (!vp || !shell || !outer) return;
+  // Set an estimated height immediately so there's no collapse while fonts load
+  var naturalW = 1280;
+  var scale = (outer.offsetWidth || window.innerWidth) / naturalW;
+  var estimatedH = 596; // titlebar 48 + body 500 + statusbar 28 + border
+  vp.style.height = (estimatedH * scale) + 'px';
+})();
+setTimeout(scaleMockup, 50);
 </script>
 </body>
 </html>
