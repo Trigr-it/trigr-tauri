@@ -578,6 +578,7 @@ unsafe extern "system" fn mouse_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
+    HOOK_HEARTBEAT.fetch_add(1, Ordering::SeqCst);
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         match w_param as u32 {
             WM_LBUTTONDOWN => send_event(HookEvent::MouseDown {
@@ -1297,6 +1298,18 @@ fn spawn_hook_thread() {
                 MOUSE_HOOK.store(ms as isize, Ordering::SeqCst);
                 HOOKS_RUNNING.store(true, Ordering::SeqCst);
                 HOOK_HEARTBEAT.store(0, Ordering::SeqCst);
+
+                // Reset shared atomics to safe defaults on reinstall — stale values
+                // from a prior hook session can corrupt the new hook's behaviour.
+                INJECTION_IN_PROGRESS.store(false, Ordering::SeqCst);
+                SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                FILL_IN_ACTIVE.store(false, Ordering::SeqCst);
+                FILLIN_HWND.store(0, Ordering::SeqCst);
+                MOD_CTRL.store(false, Ordering::SeqCst);
+                MOD_ALT.store(false, Ordering::SeqCst);
+                MOD_SHIFT.store(false, Ordering::SeqCst);
+                MOD_META.store(false, Ordering::SeqCst);
+                info!("[Trigr] Hook reinstall: shared atomics reset to safe defaults");
 
                 println!("[HOOK] Input hooks installed (dedicated thread, high priority)");
 

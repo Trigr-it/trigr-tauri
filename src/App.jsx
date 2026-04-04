@@ -1198,6 +1198,8 @@ function App() {
                 hasAnyAssignments={hasAnyAssignments}
                 numpadOpen={numpadOpen}
                 onToggleNumpad={handleToggleNumpad}
+                assignments={assignments}
+                activeProfile={activeProfile}
               />
             </div>
           )}
