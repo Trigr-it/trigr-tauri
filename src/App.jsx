@@ -1147,6 +1147,14 @@ function App() {
             onSelectAssignment={handleSelectAssignment}
             onSelectCombo={handleSelectCombo}
             profileLinked={profileLinked}
+            profiles={profiles}
+            profileSettings={profileSettings}
+            onProfileChange={handleProfileChange}
+            onAddProfile={handleAddProfile}
+            onRenameProfile={handleRenameProfile}
+            onDeleteProfile={handleDeleteProfile}
+            onReorderProfiles={handleReorderProfiles}
+            onDuplicateProfile={handleDuplicateProfile}
           />
         )}
         <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}`}>
