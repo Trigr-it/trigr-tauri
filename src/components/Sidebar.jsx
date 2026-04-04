@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
@@ -20,7 +20,7 @@ const TYPE_NAMES = {
 
 // ── Sortable profile row ────────────────────────────────────────────────────
 
-function SortableProfileRow({ profile, isActive, hasLink, linkedAppName, onSelect, onDoubleClick }) {
+function SortableProfileRow({ profile, isActive, isFallback, hasLink, linkedAppName, onSelect, onDoubleClick, onContextMenu }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: profile });
   const style = {
     transform: DndCSS.Transform.toString(transform),
@@ -29,9 +29,19 @@ function SortableProfileRow({ profile, isActive, hasLink, linkedAppName, onSelec
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={`profile-row${isActive ? ' active' : ''}`} onClick={onSelect} onDoubleClick={onDoubleClick}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`profile-row${isActive ? ' active' : ''}`}
+      onClick={onSelect}
+      onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
+    >
       <div className="profile-drag-handle" {...attributes} {...listeners}>⠿</div>
-      <span className="profile-row-name">{profile}</span>
+      <span className="profile-row-name">
+        {isFallback && <span className="profile-fallback-dot" />}
+        {profile}
+      </span>
       {hasLink && <span className="profile-row-link" title={linkedAppName}>⊞</span>}
     </div>
   );
@@ -40,32 +50,45 @@ function SortableProfileRow({ profile, isActive, hasLink, linkedAppName, onSelec
 // ── Profile Accordion ───────────────────────────────────────────────────────
 
 function ProfileAccordion({
-  profiles, activeProfile, profileSettings,
-  onProfileChange, onAddProfile, onRenameProfile, onDeleteProfile, onReorderProfiles, onDuplicateProfile,
+  profiles, activeProfile, activeGlobalProfile, profileSettings,
+  onProfileChange, onAddProfile, onRenameProfile, onDeleteProfile,
+  onReorderProfiles, onDuplicateProfile, onSetActiveGlobalProfile,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState(null);
   const [renameValue, setRenameValue] = useState('');
-  const [menuFor, setMenuFor] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null); // { profile, x, y }
   const [activeDragId, setActiveDragId] = useState(null);
-  const menuRef = useRef(null);
+  const ctxRef = useRef(null);
   const addInputRef = useRef(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  // Close menu on outside click
+  // Split profiles into static and app-specific
+  const staticProfiles = profiles.filter(p => !profileSettings[p]?.linkedApp);
+  const appProfiles = profiles.filter(p => !!profileSettings[p]?.linkedApp);
+  // Non-Default for sortable (Default always first in static, not sortable)
+  const staticSortable = staticProfiles.filter(p => p !== 'Default');
+
+  // Close context menu on outside click or Escape
   useEffect(() => {
-    if (!menuFor) return;
+    if (!contextMenu) return;
     function onDown(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuFor(null);
+      if (ctxRef.current && !ctxRef.current.contains(e.target)) setContextMenu(null);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setContextMenu(null);
     }
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [menuFor]);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
-  // Focus add input when shown
   useEffect(() => {
     if (isAdding) addInputRef.current?.focus();
   }, [isAdding]);
@@ -73,7 +96,7 @@ function ProfileAccordion({
   function handleSelect(name) {
     onProfileChange(name);
     setIsExpanded(false);
-    setMenuFor(null);
+    setContextMenu(null);
   }
 
   function handleAdd(e) {
@@ -87,7 +110,7 @@ function ProfileAccordion({
   }
 
   function startRename(name) {
-    setMenuFor(null);
+    setContextMenu(null);
     setRenaming(name);
     setRenameValue(name);
   }
@@ -101,26 +124,112 @@ function ProfileAccordion({
     setRenameValue('');
   }
 
+  function handleContextMenu(e, name) {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ profile: name, x: e.clientX, y: e.clientY });
+  }
+
   function handleDragEnd(event) {
     setActiveDragId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const nonDefault = profiles.slice(1);
-    const oldIndex = nonDefault.indexOf(active.id);
-    const newIndex = nonDefault.indexOf(over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const reordered = arrayMove(nonDefault, oldIndex, newIndex);
-    onReorderProfiles?.([profiles[0], ...reordered]);
+
+    // Check both are in same group
+    const activeIsApp = !!profileSettings[active.id]?.linkedApp;
+    const overIsApp = !!profileSettings[over.id]?.linkedApp;
+    if (activeIsApp !== overIsApp) return; // cross-group drag — cancel
+
+    if (activeIsApp) {
+      const oldIdx = appProfiles.indexOf(active.id);
+      const newIdx = appProfiles.indexOf(over.id);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const reorderedApp = arrayMove(appProfiles, oldIdx, newIdx);
+      onReorderProfiles?.([...staticProfiles, ...reorderedApp]);
+    } else {
+      const oldIdx = staticSortable.indexOf(active.id);
+      const newIdx = staticSortable.indexOf(over.id);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const reorderedStatic = arrayMove(staticSortable, oldIdx, newIdx);
+      onReorderProfiles?.(['Default', ...reorderedStatic, ...appProfiles]);
+    }
   }
 
-  const nonDefault = profiles.slice(1);
+  function renderProfileRow(p, { sortable = true } = {}) {
+    const linkedApp = profileSettings[p]?.linkedApp;
+    const isFallback = p === activeGlobalProfile;
+
+    if (renaming === p) {
+      return (
+        <div key={p} className="profile-row">
+          <div className="profile-drag-handle profile-drag-placeholder" />
+          <input
+            autoFocus
+            className="profile-rename-input"
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') { setRenaming(null); setRenameValue(''); }
+            }}
+            onBlur={commitRename}
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      );
+    }
+
+    if (sortable) {
+      return (
+        <SortableProfileRow
+          key={p}
+          profile={p}
+          isActive={activeProfile === p}
+          isFallback={isFallback}
+          hasLink={!!linkedApp}
+          linkedAppName={linkedApp ? linkedApp.split(/[/\\]/).pop() : ''}
+          onSelect={() => handleSelect(p)}
+          onDoubleClick={() => startRename(p)}
+          onContextMenu={e => handleContextMenu(e, p)}
+        />
+      );
+    }
+
+    // Non-sortable (Default)
+    return (
+      <div
+        key={p}
+        className={`profile-row${activeProfile === p ? ' active' : ''}`}
+        onClick={() => handleSelect(p)}
+        onContextMenu={e => handleContextMenu(e, p)}
+      >
+        <div className="profile-drag-handle profile-drag-placeholder" />
+        <span className="profile-row-name">
+          {isFallback && <span className="profile-fallback-dot" />}
+          {p}
+        </span>
+      </div>
+    );
+  }
+
+  // Collapsed header display
+  const isSameProfile = activeProfile === activeGlobalProfile;
 
   return (
     <div className="profile-accordion">
       {/* Header — always visible */}
       <div className="profile-accordion-header" onClick={() => setIsExpanded(v => !v)}>
         <span className="profile-accordion-label">PROFILES</span>
-        <span className="profile-accordion-active">{activeProfile}</span>
+        <span className="profile-accordion-active">
+          <span className="profile-fallback-dot" />
+          {activeGlobalProfile}
+          {!isSameProfile && (
+            <>
+              <span className="profile-accordion-sep">|</span>
+              <span className="profile-accordion-editing">{activeProfile}</span>
+            </>
+          )}
+        </span>
         <span className="profile-accordion-chevron">{isExpanded ? '▴' : '▾'}</span>
       </div>
 
@@ -128,51 +237,23 @@ function ProfileAccordion({
       {isExpanded && (
         <div className="profile-accordion-list">
           <DndContext sensors={sensors} onDragStart={e => setActiveDragId(e.active.id)} onDragEnd={handleDragEnd}>
-            <SortableContext items={nonDefault} strategy={verticalListSortingStrategy}>
-              {/* Default profile — always first, no drag */}
-              <div
-                className={`profile-row${activeProfile === 'Default' ? ' active' : ''}`}
-                onClick={() => handleSelect('Default')}
-              >
-                <div className="profile-drag-handle profile-drag-placeholder" />
-                <span className="profile-row-name">Default</span>
-              </div>
-
-              {/* Non-default profiles — sortable */}
-              {nonDefault.map(p => {
-                const linkedApp = profileSettings[p]?.linkedApp;
-                if (renaming === p) {
-                  return (
-                    <div key={p} className="profile-row">
-                      <div className="profile-drag-handle profile-drag-placeholder" />
-                      <input
-                        autoFocus
-                        className="profile-rename-input"
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') commitRename();
-                          if (e.key === 'Escape') { setRenaming(null); setRenameValue(''); }
-                        }}
-                        onBlur={commitRename}
-                        onClick={e => e.stopPropagation()}
-                      />
-                    </div>
-                  );
-                }
-                return (
-                  <SortableProfileRow
-                    key={p}
-                    profile={p}
-                    isActive={activeProfile === p}
-                    hasLink={!!linkedApp}
-                    linkedAppName={linkedApp ? linkedApp.split(/[/\\]/).pop() : ''}
-                    onSelect={() => handleSelect(p)}
-                    onDoubleClick={() => startRename(p)}
-                  />
-                );
-              })}
+            {/* Static profiles group */}
+            <div className="profile-group-label">STATIC</div>
+            <SortableContext items={staticSortable} strategy={verticalListSortingStrategy}>
+              {renderProfileRow('Default', { sortable: false })}
+              {staticSortable.map(p => renderProfileRow(p))}
             </SortableContext>
+
+            {/* App-specific profiles group */}
+            {appProfiles.length > 0 && (
+              <>
+                <div className="profile-group-divider" />
+                <div className="profile-group-label">APP-SPECIFIC</div>
+                <SortableContext items={appProfiles} strategy={verticalListSortingStrategy}>
+                  {appProfiles.map(p => renderProfileRow(p))}
+                </SortableContext>
+              </>
+            )}
 
             <DragOverlay>
               {activeDragId ? (
@@ -204,6 +285,36 @@ function ProfileAccordion({
           )}
         </div>
       )}
+
+      {/* Context menu */}
+      {contextMenu && (() => {
+        const isDefault = contextMenu.profile === 'Default';
+        const isStatic = !profileSettings[contextMenu.profile]?.linkedApp;
+        const isFallback = contextMenu.profile === activeGlobalProfile;
+        return (
+          <div
+            ref={ctxRef}
+            className="profile-ctx-menu"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+          >
+            {!isDefault && (
+              <button className="profile-ctx-item" onClick={() => { startRename(contextMenu.profile); }}>Rename</button>
+            )}
+            <button className="profile-ctx-item" onClick={() => { onDuplicateProfile?.(contextMenu.profile); setContextMenu(null); }}>Duplicate</button>
+            {isStatic && !isFallback && (
+              <button className="profile-ctx-item" onClick={() => { onSetActiveGlobalProfile?.(contextMenu.profile); setContextMenu(null); }}>
+                Set as default fallback
+              </button>
+            )}
+            {!isDefault && (
+              <>
+                <div className="profile-ctx-divider" />
+                <button className="profile-ctx-item profile-ctx-delete" onClick={() => { onDeleteProfile?.(contextMenu.profile); setContextMenu(null); }}>Delete</button>
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -220,6 +331,7 @@ export default function Sidebar({
   profileLinked,
   // Profile management props
   profiles = ['Default'],
+  activeGlobalProfile = 'Default',
   profileSettings = {},
   onProfileChange,
   onAddProfile,
@@ -227,9 +339,8 @@ export default function Sidebar({
   onDeleteProfile,
   onReorderProfiles,
   onDuplicateProfile,
+  onSetActiveGlobalProfile,
 }) {
-  // All hotkey assignments for this profile, excluding text expansions and ::double
-  // variants (double-tap assignments are shown as a ×2 badge on the primary entry).
   const profileEntries = Object.entries(assignments)
     .filter(([k]) => {
       if (!k.startsWith(activeProfile + '::')) return false;
@@ -248,7 +359,6 @@ export default function Sidebar({
       };
     });
 
-  // Sorted distinct combos that have assignments
   const combos = [...new Set(profileEntries.map(e => e.combo))].sort((a, b) => {
     if (a.length !== b.length) return a.length - b.length;
     return a.localeCompare(b);
@@ -256,17 +366,14 @@ export default function Sidebar({
 
   const [activeTab, setActiveTab] = useState('All');
 
-  // Reset to All tab whenever the active profile changes
   useEffect(() => {
     setActiveTab('All');
   }, [activeProfile]);
 
-  // Sync active tab when the keyboard modifier layer changes
   useEffect(() => {
     setActiveTab(currentCombo || 'All');
   }, [currentCombo]);
 
-  // Always show BARE tab for app-linked profiles (even when no assignments yet)
   const allCombos = profileLinked && !combos.includes('BARE') ? [...combos, 'BARE'] : combos;
   const tabs = ['All', ...allCombos];
 
@@ -274,7 +381,6 @@ export default function Sidebar({
     ? profileEntries
     : profileEntries.filter(e => e.combo === activeTab);
 
-  // For the All tab, group by combo with headers; for specific tabs, flat list
   const grouped = {};
   if (activeTab === 'All') {
     filtered.forEach(e => {
@@ -330,6 +436,7 @@ export default function Sidebar({
       <ProfileAccordion
         profiles={profiles}
         activeProfile={activeProfile}
+        activeGlobalProfile={activeGlobalProfile}
         profileSettings={profileSettings}
         onProfileChange={onProfileChange}
         onAddProfile={onAddProfile}
@@ -337,6 +444,7 @@ export default function Sidebar({
         onDeleteProfile={onDeleteProfile}
         onReorderProfiles={onReorderProfiles}
         onDuplicateProfile={onDuplicateProfile}
+        onSetActiveGlobalProfile={onSetActiveGlobalProfile}
       />
 
       <div className="sidebar-header">
@@ -344,7 +452,6 @@ export default function Sidebar({
         <span className="sidebar-count">{profileEntries.length}</span>
       </div>
 
-      {/* Tab bar */}
       <div className="sidebar-tabs">
         {tabs.map(tab => (
           <button

@@ -1148,6 +1148,7 @@ function App() {
             onSelectCombo={handleSelectCombo}
             profileLinked={profileLinked}
             profiles={profiles}
+            activeGlobalProfile={activeGlobalProfile}
             profileSettings={profileSettings}
             onProfileChange={handleProfileChange}
             onAddProfile={handleAddProfile}
@@ -1155,6 +1156,7 @@ function App() {
             onDeleteProfile={handleDeleteProfile}
             onReorderProfiles={handleReorderProfiles}
             onDuplicateProfile={handleDuplicateProfile}
+            onSetActiveGlobalProfile={handleSetActiveGlobalProfile}
           />
         )}
         <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}`}>

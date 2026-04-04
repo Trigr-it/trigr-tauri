@@ -48,6 +48,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.profile-accordion-sep {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin: 0 2px;
+}
+
+.profile-accordion-editing {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .profile-accordion-chevron {
@@ -161,6 +177,86 @@
 
 .profile-add-btn:hover {
   color: var(--accent);
+}
+
+/* Group labels and divider */
+.profile-group-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 12px 2px 32px;
+}
+
+.profile-group-divider {
+  height: 0;
+  border-top: 0.5px solid var(--border);
+  margin: 4px 12px;
+}
+
+/* Green fallback dot */
+.profile-fallback-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.6);
+  margin-right: 5px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* Context menu */
+.profile-ctx-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 150px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.profile-ctx-item {
+  width: 100%;
+  text-align: left;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+
+.profile-ctx-item:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.profile-ctx-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+.profile-ctx-delete {
+  color: #ef4444;
+}
+
+.profile-ctx-delete:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
 }
 
 /* ── Sidebar Header ──────────────────────────────────────────────────── */
