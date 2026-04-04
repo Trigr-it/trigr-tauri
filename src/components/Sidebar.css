@@ -8,6 +8,163 @@
   overflow: hidden;
 }
 
+/* ── Profile Accordion ────────────────────────────────────────────────── */
+
+.profile-accordion {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.profile-accordion-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+  gap: 6px;
+}
+
+.profile-accordion-header:hover {
+  background: var(--bg-hover);
+}
+
+.profile-accordion-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.profile-accordion-active {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.profile-accordion-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.profile-accordion-list {
+  overflow-y: auto;
+  max-height: 280px;
+  padding-bottom: 4px;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  min-height: 30px;
+}
+
+.profile-row:hover {
+  background: var(--bg-hover);
+}
+
+.profile-row.active {
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+  background: var(--accent-glow);
+}
+
+.profile-row-ghost {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  opacity: 0.85;
+}
+
+.profile-drag-handle {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 10px;
+  touch-action: none;
+}
+
+.profile-drag-placeholder {
+  cursor: default;
+  visibility: hidden;
+}
+
+.profile-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-row.active .profile-row-name {
+  color: var(--accent);
+}
+
+.profile-row-link {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.profile-rename-input {
+  flex: 1;
+  height: 24px;
+  padding: 0 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.profile-add-row {
+  padding: 4px 12px 4px 32px;
+}
+
+.profile-add-btn {
+  display: block;
+  width: 100%;
+  padding: 6px 12px 6px 32px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s;
+}
+
+.profile-add-btn:hover {
+  color: var(--accent);
+}
+
+/* ── Sidebar Header ──────────────────────────────────────────────────── */
+
 .sidebar-header {
   display: flex;
   align-items: center;
