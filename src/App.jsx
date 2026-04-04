@@ -355,8 +355,10 @@ function App() {
   // ── Clear key ─────────────────────────────────────────────
   const handleClearKey = useCallback((keyId) => {
     const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
+    const doubleKey = key + '::double';
     const newAssignments = { ...assignments };
     delete newAssignments[key];
+    delete newAssignments[doubleKey];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Cleared ${currentCombo}+${keyId}`, 'info');
