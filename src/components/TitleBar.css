@@ -86,7 +86,10 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  overflow: visible; /* allow settings popover to escape */
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  position: relative;
 }
 
 /* Wrapper that groups a tab + its gear button side by side */
@@ -443,13 +446,86 @@
   color: #ff5555;
 }
 
-/* ── Drag-and-drop tab reordering ──────────────────────────── */
-.profile-tab-group.dragging {
-  opacity: 0.4;
+/* ── Drag-and-drop tab reordering (@dnd-kit) ─────────────── */
+.profile-tab-drag-ghost {
+  opacity: 0.85;
 }
 
-.profile-tab-group.drop-target {
-  box-shadow: -2px 0 0 0 var(--accent);
+/* Hidden measurement tabs for overflow calculation */
+.profile-tab-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+
+/* ── Overflow pill + dropdown ─────────────────────────────── */
+.profile-overflow-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profile-overflow-pill {
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.profile-overflow-pill:hover {
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+}
+
+.profile-overflow-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 160px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 200;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+
+.profile-overflow-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.profile-overflow-item.active {
+  color: var(--accent);
+  background: var(--accent-glow);
 }
 
 /* ── Right-click context menu ───────────────────────────────── */
