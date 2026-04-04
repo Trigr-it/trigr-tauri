@@ -16,7 +16,7 @@
         "title": "Trigr",
         "width": 1200,
         "height": 800,
-        "minWidth": 640,
+        "minWidth": 800,
         "minHeight": 500,
         "resizable": true,
         "decorations": false,
