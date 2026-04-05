@@ -295,6 +295,53 @@
   box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
+/* ── CAD template Pick App flow ────────────────────────────────────────── */
+
+.te-cad-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.te-cad-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.te-cad-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.te-cad-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.te-cad-cancel {
+  height: 26px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.te-cad-cancel:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
 /* ── Category bar ───────────────────────────────────────────────────────── */
 
 .te-cat-bar {

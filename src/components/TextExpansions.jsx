@@ -101,7 +101,8 @@ const TEMPLATE_PACKS = [
   {
     id: 'cad',
     name: 'CAD / Engineering',
-    desc: 'Revision notes, drawing annotations, and engineering shortcuts',
+    desc: 'Bare key CAD commands, revision notes, and drawing annotations — creates an app-specific profile',
+    requiresApp: true, // triggers Pick App flow
     expansions: [
       { trigger: ';rev', text: 'Rev {fillIn:Number} — {fillIn:Date} — {fillIn:Description}', displayName: 'Revision Note' },
       { trigger: ';nc', text: 'Not to scale', displayName: 'Not to Scale' },
@@ -109,9 +110,17 @@ const TEMPLATE_PACKS = [
       { trigger: ';na', text: 'Not applicable', displayName: 'N/A' },
       { trigger: ';sp', text: 'Specification reference: {fillIn:Reference}', displayName: 'Spec Reference' },
     ],
-    hotkeys: [
-      { combo: 'Ctrl+Alt', keyId: 'KeyD', type: 'app', label: 'Open BricsCAD', data: { path: 'C:\\Program Files\\Bricsys\\BricsCAD\\bricscad.exe', args: '' } },
+    bareKeys: [
+      { keyId: 'KeyF', text: 'FILLET ', label: 'Fillet' },
+      { keyId: 'KeyX', text: 'EXPLODE ', label: 'Explode' },
+      { keyId: 'KeyH', text: 'HATCH ', label: 'Hatch' },
+      { keyId: 'KeyZ', text: 'ZOOM E ', label: 'Zoom Extents' },
+      { keyId: 'KeyA', text: 'ARRAY ', label: 'Array' },
+      { keyId: 'KeyO', text: 'OFFSET ', label: 'Offset' },
+      { keyId: 'KeyT', text: 'TRIM ', label: 'Trim' },
+      { keyId: 'KeyD', text: 'DIMLINEAR ', label: 'Linear Dimension' },
     ],
+    hotkeys: [],
   },
   {
     id: 'sales',
@@ -535,11 +544,27 @@ export default function TextExpansions({
   // ── Templates
   activeProfile = 'Default',
   onImportTemplate,
+  onImportCadTemplate,
 }) {
   // ── Panel mode (expansions | autocorrect | globalvars) ──
   const [panelMode, setPanelMode] = useState('expansions');
   const [showTemplates, setShowTemplates] = useState(false);
-  const [templateResult, setTemplateResult] = useState(null); // { added, skipped }
+  const [templateResult, setTemplateResult] = useState(null); // { added, skipped } or string
+  const [cadPickState, setCadPickState] = useState(null); // null | 'picking' | 'loading'
+  const [cadWindowList, setCadWindowList] = useState([]);
+  const [cadSelectedExe, setCadSelectedExe] = useState(null);
+  const [cadDropdownOpen, setCadDropdownOpen] = useState(false);
+  const cadDropdownRef = useRef(null);
+
+  // Close CAD dropdown on outside click
+  useEffect(() => {
+    if (!cadDropdownOpen) return;
+    function onDown(e) {
+      if (cadDropdownRef.current && !cadDropdownRef.current.contains(e.target)) setCadDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [cadDropdownOpen]);
 
   // ── Expansion form state ──
   const [editing, setEditing]         = useState(null);
@@ -1018,7 +1043,10 @@ export default function TextExpansions({
           <p className="te-templates-note">Importing adds to your existing assignments — nothing will be overwritten</p>
           {templateResult && (
             <div className="te-templates-result">
-              {templateResult.added} added{templateResult.skipped > 0 ? `, ${templateResult.skipped} skipped (already assigned)` : ''}
+              {typeof templateResult === 'string'
+                ? templateResult
+                : `${templateResult.added} added${templateResult.skipped > 0 ? `, ${templateResult.skipped} skipped (already assigned)` : ''}`
+              }
             </div>
           )}
           <div className="te-templates-grid">
@@ -1028,19 +1056,135 @@ export default function TextExpansions({
                 <div className="te-template-card-desc">{pack.desc}</div>
                 <div className="te-template-card-counts">
                   {pack.expansions.length} expansion{pack.expansions.length !== 1 ? 's' : ''}
+                  {pack.bareKeys?.length > 0 && ` · ${pack.bareKeys.length} bare key${pack.bareKeys.length !== 1 ? 's' : ''}`}
                   {pack.hotkeys.length > 0 && ` · ${pack.hotkeys.length} hotkey${pack.hotkeys.length !== 1 ? 's' : ''}`}
                 </div>
-                <button
-                  className="te-template-import-btn"
-                  type="button"
-                  onClick={() => {
-                    const built = buildTemplatePack(pack.expansions, pack.hotkeys, activeProfile);
-                    const result = onImportTemplate?.(built);
-                    setTemplateResult(result || { added: 0, skipped: 0 });
-                  }}
-                >
-                  Import
-                </button>
+
+                {/* Standard packs — immediate import */}
+                {!pack.requiresApp && (
+                  <button
+                    className="te-template-import-btn"
+                    type="button"
+                    onClick={() => {
+                      const built = buildTemplatePack(pack.expansions, pack.hotkeys, activeProfile);
+                      const result = onImportTemplate?.(built);
+                      setTemplateResult(result || { added: 0, skipped: 0 });
+                    }}
+                  >
+                    Import
+                  </button>
+                )}
+
+                {/* CAD pack — Pick App flow */}
+                {pack.requiresApp && !cadPickState && (
+                  <button
+                    className="te-template-import-btn"
+                    type="button"
+                    onClick={() => { setCadPickState('picking'); setCadSelectedExe(null); setTemplateResult(null); }}
+                  >
+                    Import
+                  </button>
+                )}
+
+                {pack.requiresApp && cadPickState && (
+                  <div className="te-cad-flow">
+                    {!cadSelectedExe && (
+                      <p className="te-cad-hint">Open your CAD software first, then click Pick App to select it.</p>
+                    )}
+                    <div className="te-cad-pick-row" ref={cadDropdownRef}>
+                      {cadSelectedExe ? (
+                        <span className="pick-window-badge">
+                          {cadSelectedExe}
+                          <button className="pick-window-badge-clear" type="button" onClick={() => setCadSelectedExe(null)}>✕</button>
+                        </span>
+                      ) : (
+                        <button
+                          className="browse-btn"
+                          type="button"
+                          onClick={async () => {
+                            setCadDropdownOpen(true);
+                            setCadWindowList([]);
+                            try {
+                              const { invoke } = await import('@tauri-apps/api/core');
+                              const list = await invoke('list_open_windows');
+                              // Deduplicate by process name
+                              const seen = new Set();
+                              const unique = [];
+                              for (const w of (list || [])) {
+                                const lower = w.process.toLowerCase();
+                                if (!seen.has(lower)) { seen.add(lower); unique.push(w.process); }
+                              }
+                              unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                              setCadWindowList(unique);
+                            } catch (e) {
+                              console.error('[Trigr] list_open_windows failed:', e);
+                              setCadWindowList([]);
+                            }
+                          }}
+                        >
+                          ⊞ Pick App
+                        </button>
+                      )}
+                      {cadDropdownOpen && !cadSelectedExe && (
+                        <div className="pick-window-dropdown">
+                          {cadWindowList.length === 0 ? (
+                            <div className="pick-window-loading">Loading windows…</div>
+                          ) : (
+                            cadWindowList.map((exe, i) => (
+                              <div key={i} className="pick-window-item" onClick={() => { setCadSelectedExe(exe); setCadDropdownOpen(false); }}>
+                                <span className="pick-window-process">{exe}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="te-cad-actions">
+                      {cadSelectedExe && (
+                        <button
+                          className="te-template-import-btn"
+                          type="button"
+                          onClick={() => {
+                            // Build bare key assignments for CAD profile
+                            const profileName = `CAD — ${cadSelectedExe}`;
+                            const bareAssignments = {};
+                            for (const bk of pack.bareKeys) {
+                              bareAssignments[`${profileName}::BARE::${bk.keyId}`] = {
+                                type: 'text',
+                                label: bk.label,
+                                data: { text: bk.text },
+                              };
+                            }
+                            // Build expansion assignments (global)
+                            const expAssignments = {};
+                            for (const exp of pack.expansions) {
+                              expAssignments[`GLOBAL::EXPANSION::${exp.trigger}`] = {
+                                type: 'expansion',
+                                label: exp.displayName || `Expand: ${exp.trigger}`,
+                                data: { html: '', text: exp.text, category: null, triggerMode: 'space', displayName: exp.displayName || null },
+                              };
+                            }
+                            const result = onImportCadTemplate?.(cadSelectedExe, expAssignments, bareAssignments);
+                            if (result) {
+                              setTemplateResult(`Profile "${result.profileName}" created. ${result.bareAdded} bare key${result.bareAdded !== 1 ? 's' : ''} added, ${result.expAdded} expansion${result.expAdded !== 1 ? 's' : ''} added${result.skipped > 0 ? `, ${result.skipped} skipped` : ''}.`);
+                            }
+                            setCadPickState(null);
+                            setCadSelectedExe(null);
+                          }}
+                        >
+                          Confirm Import
+                        </button>
+                      )}
+                      <button
+                        className="te-cad-cancel"
+                        type="button"
+                        onClick={() => { setCadPickState(null); setCadSelectedExe(null); setCadDropdownOpen(false); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
