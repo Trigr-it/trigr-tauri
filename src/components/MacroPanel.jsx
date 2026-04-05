@@ -1290,7 +1290,24 @@ export default function MacroPanel({
         {/* Dynamic form */}
         <div className="form-body">
           {activeType === 'text'   && <TextForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} />}
-          {activeType === 'hotkey' && <HotkeyCaptureInput value={formValue} onChange={setFormValue} />}
+          {activeType === 'hotkey' && (
+            <>
+              <HotkeyCaptureInput value={formValue} onChange={setFormValue} />
+              <div className="hold-mode-row">
+                <span className="hold-mode-label">Hold mode</span>
+                <button
+                  type="button"
+                  className={`hold-mode-toggle${formValue.holdMode ? ' on' : ''}`}
+                  onClick={() => setFormValue(prev => ({ ...prev, holdMode: !prev.holdMode }))}
+                  role="switch"
+                  aria-checked={!!formValue.holdMode}
+                />
+              </div>
+              {formValue.holdMode && (
+                <p className="hold-mode-hint">Key stays held until hotkey is pressed again</p>
+              )}
+            </>
+          )}
           {activeType === 'app'    && <AppForm value={formValue} onChange={setFormValue} />}
           {activeType === 'folder' && <FolderForm value={formValue} onChange={setFormValue} />}
           {activeType === 'url'    && <UrlForm value={formValue} onChange={setFormValue} />}

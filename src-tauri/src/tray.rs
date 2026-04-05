@@ -12,9 +12,10 @@ use tauri::{
 
 static HAS_SHOWN_BALLOON: AtomicBool = AtomicBool::new(false);
 
-/// Pre-generated tray icons stored at startup — normal and alpha-dimmed paused variant.
+/// Pre-generated tray icons stored at startup — normal, paused, and held variants.
 static TRAY_ICON_NORMAL: OnceLock<Image<'static>> = OnceLock::new();
 static TRAY_ICON_PAUSED: OnceLock<Image<'static>> = OnceLock::new();
+static TRAY_ICON_HELD: OnceLock<Image<'static>> = OnceLock::new();
 
 // ── Autolaunch detection ────────────────────────────────────────────────────
 
@@ -38,6 +39,17 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     let paused = Image::new_owned(paused_rgba, width, height);
     let _ = TRAY_ICON_PAUSED.set(paused);
+
+    // Generate held icon with red tint (boost R, halve G and B)
+    let mut held_rgba = rgba.clone();
+    for i in (0..held_rgba.len()).step_by(4) {
+        held_rgba[i] = held_rgba[i].saturating_add(80).min(255); // R
+        held_rgba[i + 1] = held_rgba[i + 1] / 2;                 // G
+        held_rgba[i + 2] = held_rgba[i + 2] / 2;                 // B
+        // Alpha unchanged
+    }
+    let held = Image::new_owned(held_rgba, width, height);
+    let _ = TRAY_ICON_HELD.set(held);
 
     // Build tray with normal icon
     let tray_icon = Image::new_owned(rgba, width, height);
@@ -101,6 +113,27 @@ pub fn update_tray_icon(app: &AppHandle, macros_enabled: bool) {
         if let Some(tray) = app.tray_by_id("trigr-tray") {
             let _ = tray.set_icon(Some(img.clone()));
         }
+    }
+}
+
+/// Switch tray to held state — red-tinted icon + custom tooltip.
+pub fn update_tray_icon_held(app: &AppHandle, held_label: &str) {
+    if let Some(img) = TRAY_ICON_HELD.get() {
+        if let Some(tray) = app.tray_by_id("trigr-tray") {
+            let _ = tray.set_icon(Some(img.clone()));
+            let tip = format!("Trigr — Holding: {} — press again to release", held_label);
+            let _ = tray.set_tooltip(Some(&tip));
+        }
+    }
+}
+
+/// Restore tray to the correct non-held state (active or paused).
+pub fn update_tray_icon_normal(app: &AppHandle) {
+    let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst);
+    update_tray_icon(app, enabled);
+    let tooltip = if enabled { "Trigr — Active" } else { "Trigr — Paused" };
+    if let Some(tray) = app.tray_by_id("trigr-tray") {
+        let _ = tray.set_tooltip(Some(tooltip));
     }
 }
 
@@ -265,6 +298,10 @@ fn toggle_window_visibility(app: &AppHandle) {
 
 fn toggle_pause(app: &AppHandle) {
     let was_enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
+    // Release any held key before pausing
+    if was_enabled {
+        crate::actions::release_held_key();
+    }
     crate::hotkeys::MACROS_ENABLED.store(!was_enabled, Ordering::Relaxed);
     let now_enabled = !was_enabled;
 
