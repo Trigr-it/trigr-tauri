@@ -266,6 +266,104 @@
   color: #ef4444;
 }
 
+/* ── Profile Link to App picker ──────────────────────────────────────── */
+
+.profile-link-picker {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-link-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-link-picker-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-link-picker-close {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-link-picker-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.profile-link-picker-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.profile-link-picker-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-link-picker-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.profile-link-picker-confirm {
+  height: 26px;
+  padding: 0 12px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: 5px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.profile-link-picker-confirm:hover {
+  background: var(--accent-glow-strong, var(--accent-glow));
+}
+
+.profile-link-picker-cancel {
+  height: 26px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.profile-link-picker-cancel:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
 /* ── Sidebar Header ──────────────────────────────────────────────────── */
 
 .sidebar-header {

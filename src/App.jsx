@@ -1340,6 +1340,7 @@ function App() {
             onReorderProfiles={handleReorderProfiles}
             onDuplicateProfile={handleDuplicateProfile}
             onSetActiveGlobalProfile={handleSetActiveGlobalProfile}
+            onUpdateProfileSettings={handleUpdateProfileSettings}
             listViewActive={listViewActive}
             isRecording={isRecording}
             onStartRecord={handleStartRecord}
