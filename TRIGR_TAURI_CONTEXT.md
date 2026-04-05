@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-05 (post v0.1.17)
+> Last updated: 2026-04-05 (post v0.1.18)
 
 ---
 
@@ -298,7 +298,19 @@ Focus Window macro step uses `FocusWindowFields` component in MacroPanel.jsx. Pr
 Three packs defined in `TemplatesPanel.jsx`: General/Office (7 expansions + 1 hotkey), CAD/Engineering (5 expansions + 8 bare keys, requires Pick App flow), Sales/BD (7 expansions + 2 hotkeys). Import is additive only — `handleImportTemplate` in App.jsx skips existing keys. CAD pack uses `handleImportCadTemplate` which creates an app-specific profile (`CAD — exeName`) with `linkedApp` set, imports bare keys into that profile and expansions globally. TemplatesPanel is shared between TitleBar dropdown and SettingsPanel accordion. TitleBar pill button (`◈ Templates`) visible on mapping area, dismissible via right-click context menu ("Don't show this again") which sets `localStorage` key `trigr_templates_dismissed`. Settings accordion is permanent home (collapsed by default).
 
 ### Assignment Context Menu
-Right-click on assigned cards (list view) or assigned keys (keyboard view) shows a context menu with Rename, Duplicate, Clear. Handlers in App.jsx: `handleRenameAssignment(combo, keyId, newLabel)` updates label in-place; `handleClearAssignment(combo, keyId)` deletes single + double entries; `handleDuplicateFromContext(combo, keyId)` selects the key in MacroPanel and auto-triggers Record mode for the user to pick a new key. Sidebar.jsx owns context menu state + inline rename input + inline clear confirmation for both renderItem and renderCard. KeyboardCanvas.jsx has its own context menu state with fixed-position popovers for rename and clear. CSS classes (`.assign-ctx-menu`, `.assign-ctx-item`, `.sidebar-rename-input`, `.sidebar-confirm-*`) defined in Sidebar.css, shared by both views. Empty keys on keyboard canvas: right-click does nothing (onContextMenu only attached when `isAssigned && !isSystem && !noLayer`).
+Right-click on assigned cards (list view) or assigned keys (keyboard view) shows a context menu with Rename, Duplicate, Clear. Handlers in App.jsx: `handleRenameAssignment(combo, keyId, newLabel)` updates label in-place; `handleClearAssignment(combo, keyId)` deletes single + double entries; `handleDuplicateFromContext(combo, keyId)` deep clones single + double press into `pendingDuplicateRef` (`{ single, double }`) and auto-triggers Record. On key recorded: MacroPanel opens with `assignment={pendingDuplicateRef.current?.single}` and `doubleAssignment={pendingDuplicateRef.current?.double}`. On assign: `handleAssign` saves both single and double (if present) to the new key. On cancel/close: ref cleared, nothing saved. `handleDuplicateAssignment` (MacroPanel's built-in duplicate) also copies double press. Sidebar.jsx owns context menu state + inline rename input + inline clear confirmation for both renderItem and renderCard. KeyboardCanvas.jsx has its own context menu state with fixed-position popovers for rename and clear. CSS classes (`.assign-ctx-menu`, `.assign-ctx-item`, `.sidebar-rename-input`, `.sidebar-confirm-*`) defined in Sidebar.css, shared by both views. Empty keys on keyboard canvas: right-click does nothing (onContextMenu only attached when `isAssigned && !isSystem && !noLayer`).
+
+### Send Hotkey Hold Mode
+`holdMode` boolean field on Send Hotkey data: `{ modifiers, key, holdMode }`. Default false. When true: first press sends keydown only (no keyup), stores in `HELD_KEY` (static `Mutex<Option<HeldKeyState>>` in actions.rs with `target_vk`, `mod_vks`, `label`). Second press on same key sends keyup + clears. Different hold-mode key: releases previous, holds new. `release_held_key()` public function sends keyup and clears state. Called from: `toggle_macros` (lib.rs), `toggle_pause` (tray.rs), `quit_app` (lib.rs), and `handle_keydown` (hotkeys.rs — any non-modifier physical keypress releases held key). Three tray icon states: `TRAY_ICON_NORMAL`, `TRAY_ICON_PAUSED` (alpha/3), `TRAY_ICON_HELD` (R+80, G/2, B/2 red tint). Held tooltip: "Trigr — Holding: [key] — press again to release". `execute_action` signature includes `&AppHandle` for tray updates. MacroPanel UI: toggle switch row below hotkey capture input, hint text when enabled.
+
+### Profile Link/Unlink via Context Menu
+Profile right-click context menu includes "Link to App" (for static non-Default profiles) and "Unlink App" (for app-linked profiles). Link opens an inline Pick App picker inside the accordion with "⊞ Pick App" (calls `list_open_windows`) and "Browse…" (calls `browseForFile`, extracts filename). Uses `handleUpdateProfileSettings(profileName, { linkedApp: exeName })` — existing handler, no new Rust code. Unlink calls same handler with `{ linkedApp: null }`. Profile automatically moves between STATIC and APP-SPECIFIC groups on re-render.
+
+### Category Tab Reorder — dnd-kit
+Category tabs in TextExpansions.jsx use `@dnd-kit/sortable` with `horizontalListSortingStrategy`. `SortableCatTab` wrapper component. "All" and "Uncategorised" tabs are fixed (outside DndContext). `DragOverlay` shows a ghost tab. `handleCatDragEnd` uses `arrayMove` and calls `onReorderCategories`. Native HTML drag-and-drop was removed — all old `dragCat`/`dragOverCat`/`dragOverSide` state and handlers deleted.
+
+### Date Tokens
+Seven tokens in expansions.rs: `{date:DD/MM/YYYY}` (%d/%m/%Y), `{date:DD/MM/YY}` (%d/%m/%y), `{date:MM/DD/YYYY}` (%m/%d/%Y), `{date:YYYY-MM-DD}` (%Y-%m-%d), `{time:HH:MM:SS}` (%H:%M:%S), `{time:HH:MM}` (%H:%M), `{dayofweek}` (%A). All use `chrono::Local::now()` + `str::replace`. INSERT_MENU in TextExpansions.jsx lists all tokens for the editor dropdown.
 
 ### Input Method — Simplified
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
@@ -317,7 +329,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "app": {
     "windows": [{
       "title": "Trigr",
@@ -366,3 +378,5 @@ Record key decisions and findings here after each session.
 | 2026-04-05 | Release | v0.1.16 released | Patch release. Pick Window, auto list view, starter templates from this session. |
 | 2026-04-05 | Post-MVP | Assignment context menu + P0 fix | **Right-click context menu:** Rename (inline input), Duplicate (auto-triggers Record), Clear (inline Yes/No confirmation) on both list view cards (Sidebar.jsx) and keyboard canvas keys (KeyboardCanvas.jsx). Three new handlers in App.jsx: `handleRenameAssignment`, `handleClearAssignment`, `handleDuplicateFromContext`. Key component gains `onContextMenu` prop, only attached to assigned non-system keys. **P0 crash fix:** Restored `panelMode` useState declaration accidentally removed from TextExpansions.jsx during templates cleanup — clicking Text Expansion tab crashed the app. |
 | 2026-04-05 | Release | v0.1.17 released | Patch release. Assignment context menu + P0 crash fix. |
+| 2026-04-05 | Post-MVP | Hold mode + duplicate fix + profile linking + tokens + category dnd | **Send Hotkey hold mode:** `holdMode` bool on hotkey data, `HELD_KEY` Mutex in actions.rs, three tray icon states (normal/paused/red-held), `release_held_key()` auto-release on keypress/pause/exit, `execute_action` now takes `&AppHandle`. MacroPanel toggle switch UI. **Duplicate deep clone fix:** `handleDuplicateFromContext` now deep clones single + double press into `pendingDuplicateRef { single, double }`. `handleAssign` saves both. `handleDuplicateAssignment` also copies double press. MacroPanel receives pending duplicate via `assignment`/`doubleAssignment` props. **Profile link/unlink:** Context menu "Link to App" (Pick App picker + Browse button) and "Unlink App" in ProfileAccordion. Uses existing `handleUpdateProfileSettings`. **{date:DD/MM/YY}** short date token added to expansions.rs + INSERT_MENU. **Category tab dnd-kit:** Replaced broken native HTML drag with `@dnd-kit/sortable` + `horizontalListSortingStrategy`. SortableCatTab component, DragOverlay ghost. Old drag state removed. |
+| 2026-04-05 | Release | v0.1.18 released | Patch release. Hold mode, duplicate fix, profile linking, tokens, category dnd from this session. |
