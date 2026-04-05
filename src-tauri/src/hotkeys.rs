@@ -797,6 +797,12 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
         return;
     }
 
+    // ── Release any held key on physical keypress ───────────────────────
+    if crate::actions::is_key_held() {
+        crate::actions::release_held_key();
+        crate::tray::update_tray_icon_normal(app);
+    }
+
     // ── Recording mode: capture combo and send to frontend ──────────────
     // Must run BEFORE APP_INPUT_FOCUSED check — recording works while Trigr UI is focused.
     if IS_RECORDING_HOTKEY.load(Ordering::SeqCst) {
