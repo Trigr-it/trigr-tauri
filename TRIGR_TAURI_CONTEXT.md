@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-05 (post v0.1.16)
+> Last updated: 2026-04-05 (post v0.1.17)
 
 ---
 
@@ -297,6 +297,9 @@ Focus Window macro step uses `FocusWindowFields` component in MacroPanel.jsx. Pr
 ### Starter Templates
 Three packs defined in `TemplatesPanel.jsx`: General/Office (7 expansions + 1 hotkey), CAD/Engineering (5 expansions + 8 bare keys, requires Pick App flow), Sales/BD (7 expansions + 2 hotkeys). Import is additive only — `handleImportTemplate` in App.jsx skips existing keys. CAD pack uses `handleImportCadTemplate` which creates an app-specific profile (`CAD — exeName`) with `linkedApp` set, imports bare keys into that profile and expansions globally. TemplatesPanel is shared between TitleBar dropdown and SettingsPanel accordion. TitleBar pill button (`◈ Templates`) visible on mapping area, dismissible via right-click context menu ("Don't show this again") which sets `localStorage` key `trigr_templates_dismissed`. Settings accordion is permanent home (collapsed by default).
 
+### Assignment Context Menu
+Right-click on assigned cards (list view) or assigned keys (keyboard view) shows a context menu with Rename, Duplicate, Clear. Handlers in App.jsx: `handleRenameAssignment(combo, keyId, newLabel)` updates label in-place; `handleClearAssignment(combo, keyId)` deletes single + double entries; `handleDuplicateFromContext(combo, keyId)` selects the key in MacroPanel and auto-triggers Record mode for the user to pick a new key. Sidebar.jsx owns context menu state + inline rename input + inline clear confirmation for both renderItem and renderCard. KeyboardCanvas.jsx has its own context menu state with fixed-position popovers for rename and clear. CSS classes (`.assign-ctx-menu`, `.assign-ctx-item`, `.sidebar-rename-input`, `.sidebar-confirm-*`) defined in Sidebar.css, shared by both views. Empty keys on keyboard canvas: right-click does nothing (onContextMenu only attached when `isAssigned && !isSystem && !noLayer`).
+
 ### Input Method — Simplified
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
 
@@ -314,7 +317,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "app": {
     "windows": [{
       "title": "Trigr",
@@ -361,3 +364,5 @@ Record key decisions and findings here after each session.
 | 2026-04-05 | Release | v0.1.15 released | Patch release. List view refactor from this session. |
 | 2026-04-05 | Post-MVP | Pick Window + auto list view + templates | **Pick Window:** New `list_open_windows` Rust command (EnumWindows + IsIconic + QueryFullProcessImageNameW). FocusWindowFields component replaces manual process input with Pick Window button + inline dropdown. **Auto list view:** 800px breakpoint via window resize listener, `wasInKeyboardModeRef` for state memory — auto-restores keyboard mode when widened unless user manually toggled. **Starter Templates:** TemplatesPanel.jsx — 3 packs (General/Office, CAD/Engineering, Sales/BD). Additive import via `handleImportTemplate`/`handleImportCadTemplate` in App.jsx. CAD pack: 8 bare key Type Text commands (FILLET, EXPLODE, etc.), Pick App flow creates app-specific profile. Templates moved from TextExpansions to shared TemplatesPanel component. TitleBar pill button with right-click dismiss context menu + localStorage persistence. SettingsPanel accordion (collapsed by default) as permanent home. All template code removed from TextExpansions.jsx/css. Onboarding Step 5 hint updated to "Settings → Templates". |
 | 2026-04-05 | Release | v0.1.16 released | Patch release. Pick Window, auto list view, starter templates from this session. |
+| 2026-04-05 | Post-MVP | Assignment context menu + P0 fix | **Right-click context menu:** Rename (inline input), Duplicate (auto-triggers Record), Clear (inline Yes/No confirmation) on both list view cards (Sidebar.jsx) and keyboard canvas keys (KeyboardCanvas.jsx). Three new handlers in App.jsx: `handleRenameAssignment`, `handleClearAssignment`, `handleDuplicateFromContext`. Key component gains `onContextMenu` prop, only attached to assigned non-system keys. **P0 crash fix:** Restored `panelMode` useState declaration accidentally removed from TextExpansions.jsx during templates cleanup — clicking Text Expansion tab crashed the app. |
+| 2026-04-05 | Release | v0.1.17 released | Patch release. Assignment context menu + P0 crash fix. |
