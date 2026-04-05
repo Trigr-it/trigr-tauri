@@ -53,6 +53,7 @@ function ProfileAccordion({
   profiles, activeProfile, activeGlobalProfile, profileSettings,
   onProfileChange, onAddProfile, onRenameProfile, onDeleteProfile,
   onReorderProfiles, onDuplicateProfile, onSetActiveGlobalProfile,
+  onUpdateProfileSettings,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -63,6 +64,12 @@ function ProfileAccordion({
   const [activeDragId, setActiveDragId] = useState(null);
   const ctxRef = useRef(null);
   const addInputRef = useRef(null);
+  // Link to App picker state
+  const [linkPicker, setLinkPicker] = useState(null); // profileName or null
+  const [linkWindowList, setLinkWindowList] = useState([]);
+  const [linkSelectedExe, setLinkSelectedExe] = useState(null);
+  const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
+  const linkDropdownRef = useRef(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -88,6 +95,16 @@ function ProfileAccordion({
       document.removeEventListener('keydown', onKey);
     };
   }, [contextMenu]);
+
+  // Close link picker dropdown on outside click
+  useEffect(() => {
+    if (!linkDropdownOpen) return;
+    function onDown(e) {
+      if (linkDropdownRef.current && !linkDropdownRef.current.contains(e.target)) setLinkDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [linkDropdownOpen]);
 
   useEffect(() => {
     if (isAdding) addInputRef.current?.focus();
@@ -306,6 +323,23 @@ function ProfileAccordion({
                 Set as default fallback
               </button>
             )}
+            {!isDefault && isStatic && (
+              <button className="profile-ctx-item" onClick={() => {
+                setLinkPicker(contextMenu.profile);
+                setLinkSelectedExe(null);
+                setContextMenu(null);
+              }}>
+                Link to App
+              </button>
+            )}
+            {!isStatic && (
+              <button className="profile-ctx-item" onClick={() => {
+                onUpdateProfileSettings?.(contextMenu.profile, { linkedApp: null });
+                setContextMenu(null);
+              }}>
+                Unlink App
+              </button>
+            )}
             {!isDefault && (
               <>
                 <div className="profile-ctx-divider" />
@@ -315,6 +349,74 @@ function ProfileAccordion({
           </div>
         );
       })()}
+
+      {/* Link to App picker */}
+      {linkPicker && (
+        <div className="profile-link-picker">
+          <div className="profile-link-picker-header">
+            <span className="profile-link-picker-title">Link "{linkPicker}" to App</span>
+            <button className="profile-link-picker-close" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkDropdownOpen(false); }}>✕</button>
+          </div>
+          <p className="profile-link-picker-hint">Open the app first, then pick it below.</p>
+          <div className="profile-link-picker-row" ref={linkDropdownRef}>
+            {linkSelectedExe ? (
+              <span className="pick-window-badge">
+                {linkSelectedExe}
+                <button className="pick-window-badge-clear" type="button" onClick={() => setLinkSelectedExe(null)}>✕</button>
+              </span>
+            ) : (
+              <button className="browse-btn" type="button" onClick={async () => {
+                setLinkDropdownOpen(true);
+                setLinkWindowList([]);
+                try {
+                  const { invoke } = await import('@tauri-apps/api/core');
+                  const list = await invoke('list_open_windows');
+                  const seen = new Set();
+                  const unique = [];
+                  for (const w of (list || [])) {
+                    const lower = w.process.toLowerCase();
+                    if (!seen.has(lower)) { seen.add(lower); unique.push(w.process); }
+                  }
+                  unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                  setLinkWindowList(unique);
+                } catch (e) {
+                  console.error('[Trigr] list_open_windows failed:', e);
+                  setLinkWindowList([]);
+                }
+              }}>
+                ⊞ Pick App
+              </button>
+            )}
+            {linkDropdownOpen && !linkSelectedExe && (
+              <div className="pick-window-dropdown">
+                {linkWindowList.length === 0 ? (
+                  <div className="pick-window-loading">Loading windows…</div>
+                ) : (
+                  linkWindowList.map((exe, i) => (
+                    <div key={i} className="pick-window-item" onClick={() => { setLinkSelectedExe(exe); setLinkDropdownOpen(false); }}>
+                      <span className="pick-window-process">{exe}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <div className="profile-link-picker-actions">
+            {linkSelectedExe && (
+              <button className="profile-link-picker-confirm" type="button" onClick={() => {
+                onUpdateProfileSettings?.(linkPicker, { linkedApp: linkSelectedExe });
+                setLinkPicker(null);
+                setLinkSelectedExe(null);
+              }}>
+                Confirm
+              </button>
+            )}
+            <button className="profile-link-picker-cancel" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkDropdownOpen(false); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -347,6 +449,7 @@ export default function Sidebar({
   onReorderProfiles,
   onDuplicateProfile,
   onSetActiveGlobalProfile,
+  onUpdateProfileSettings,
   // List view props
   listViewActive = false,
   isRecording = false,
@@ -694,6 +797,7 @@ export default function Sidebar({
         onReorderProfiles={onReorderProfiles}
         onDuplicateProfile={onDuplicateProfile}
         onSetActiveGlobalProfile={onSetActiveGlobalProfile}
+        onUpdateProfileSettings={onUpdateProfileSettings}
       />
 
       <div className="sidebar-header">
