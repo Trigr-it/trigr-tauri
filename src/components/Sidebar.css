@@ -855,3 +855,117 @@
   padding: 48px 24px;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Assignment context menu + inline actions
+   ══════════════════════════════════════════════════════════════ */
+
+.assign-ctx-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.assign-ctx-item {
+  width: 100%;
+  text-align: left;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+
+.assign-ctx-item:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.assign-ctx-danger {
+  color: var(--status-error, #ef4444);
+}
+
+.assign-ctx-danger:hover {
+  background: color-mix(in srgb, var(--status-error, #ef4444) 12%, transparent);
+  color: var(--status-error, #ef4444);
+}
+
+.assign-ctx-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+/* Inline rename input */
+.sidebar-rename-input {
+  width: 100%;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+/* Inline clear confirmation */
+.sidebar-item-confirm,
+.grid-card-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.sidebar-confirm-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.sidebar-confirm-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-confirm-yes,
+.sidebar-confirm-no {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.sidebar-confirm-yes:hover {
+  background: color-mix(in srgb, var(--status-error, #ef4444) 12%, transparent);
+  border-color: var(--status-error, #ef4444);
+  color: var(--status-error, #ef4444);
+}
+
+.sidebar-confirm-no:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+

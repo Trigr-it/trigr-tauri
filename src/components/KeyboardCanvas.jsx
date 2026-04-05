@@ -124,7 +124,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
   );
 }
 
-function Key({ keyDef, isSelected, isAssigned, isDouble, isSystem, isFiring, noLayer, onClick }) {
+function Key({ keyDef, isSelected, isAssigned, isDouble, isSystem, isFiring, noLayer, onClick, onContextMenu }) {
   const width = keyDef.width * KEY_UNIT + (keyDef.width - 1) * KEY_GAP;
 
   const classNames = [
@@ -143,6 +143,7 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isSystem, isFiring, noL
       className={classNames}
       style={{ width, height: KEY_HEIGHT, flexShrink: 0 }}
       onClick={isSystem || noLayer ? undefined : onClick}
+      onContextMenu={isAssigned && !isSystem && !noLayer ? onContextMenu : undefined}
       title={
         isSystem  ? 'Modifier key — part of combos' :
         noLayer   ? 'Select a modifier layer above first' :
@@ -174,10 +175,31 @@ export default function KeyboardCanvas({
   hasAnyAssignments,
   numpadOpen = false,
   onToggleNumpad,
+  currentCombo,
+  onRenameAssignment,
+  onClearAssignment,
+  onDuplicateFromContext,
 }) {
   const [firingKeyId, setFiringKeyId] = useState(null);
   const [scale, setScale]             = useState(1);
   const containerRef                  = useRef(null);
+
+  // ── Assignment context menu ──
+  const [keyCtx, setKeyCtx] = useState(null); // { keyId, x, y }
+  const [keyRenaming, setKeyRenaming] = useState(null); // keyId
+  const [keyRenameVal, setKeyRenameVal] = useState('');
+  const [keyClearing, setKeyClearing] = useState(null); // keyId
+  const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 }); // saved from context menu
+  const keyCtxRef = useRef(null);
+
+  useEffect(() => {
+    if (!keyCtx) return;
+    function onDown(e) {
+      if (keyCtxRef.current && !keyCtxRef.current.contains(e.target)) setKeyCtx(null);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [keyCtx]);
 
   useEffect(() => {
     if (lastFired?.keyId) {
@@ -211,6 +233,14 @@ export default function KeyboardCanvas({
   const handleKeyClick = useCallback((keyId) => {
     onKeySelect(keyId);
   }, [onKeySelect]);
+
+  const handleKeyContextMenu = useCallback((e, keyId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setKeyCtx({ keyId, x: e.clientX, y: e.clientY });
+    setKeyRenaming(null);
+    setKeyClearing(null);
+  }, []);
 
   const noLayer = activeModifiers.length === 0;
   const isBare  = activeModifiers.includes('BARE');
@@ -302,6 +332,7 @@ export default function KeyboardCanvas({
                         isFiring={isFiring}
                         noLayer={noLayer}
                         onClick={() => handleKeyClick(keyDef.id)}
+                        onContextMenu={e => handleKeyContextMenu(e, keyDef.id)}
                       />
                     );
                   })}
@@ -336,6 +367,65 @@ export default function KeyboardCanvas({
         <div className="hint-chip"><span className="hint-dot selected-dot" /> Selected</div>
         <div className="hint-chip"><span className="hint-dot system-dot" /> Modifier key</div>
       </div>
+
+      {/* Assignment context menu */}
+      {keyCtx && (
+        <div
+          ref={keyCtxRef}
+          className="assign-ctx-menu"
+          style={{ top: keyCtx.y, left: keyCtx.x }}
+        >
+          <button className="assign-ctx-item" type="button" onClick={() => {
+            const assignment = getKeyAssignment(keyCtx.keyId);
+            setPopoverPos({ x: keyCtx.x, y: keyCtx.y });
+            setKeyRenaming(keyCtx.keyId);
+            setKeyRenameVal(assignment?.label || '');
+            setKeyCtx(null);
+          }}>Rename</button>
+          <button className="assign-ctx-item" type="button" onClick={() => {
+            onDuplicateFromContext?.(currentCombo, keyCtx.keyId);
+            setKeyCtx(null);
+          }}>Duplicate</button>
+          <div className="assign-ctx-divider" />
+          <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={() => {
+            setPopoverPos({ x: keyCtx.x, y: keyCtx.y });
+            setKeyClearing(keyCtx.keyId);
+            setKeyCtx(null);
+          }}>Clear</button>
+        </div>
+      )}
+
+      {/* Rename popover */}
+      {keyRenaming && (
+        <div className="key-popover" style={{ top: popoverPos.y, left: popoverPos.x }}>
+          <input
+            autoFocus
+            className="sidebar-rename-input"
+            value={keyRenameVal}
+            onChange={e => setKeyRenameVal(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && keyRenameVal.trim()) {
+                onRenameAssignment?.(currentCombo, keyRenaming, keyRenameVal.trim());
+                setKeyRenaming(null);
+              }
+              if (e.key === 'Escape') setKeyRenaming(null);
+            }}
+            onBlur={() => setKeyRenaming(null)}
+          />
+        </div>
+      )}
+
+      {/* Clear confirmation popover */}
+      {keyClearing && (
+        <div className="key-popover key-popover-clear">
+          <span className="sidebar-confirm-text">Clear this key?</span>
+          <button className="sidebar-confirm-yes" type="button" onClick={() => {
+            onClearAssignment?.(currentCombo, keyClearing);
+            setKeyClearing(null);
+          }}>Yes</button>
+          <button className="sidebar-confirm-no" type="button" onClick={() => setKeyClearing(null)}>No</button>
+        </div>
+      )}
     </div>
   );
 }

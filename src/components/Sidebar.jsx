@@ -355,6 +355,10 @@ export default function Sidebar({
   recordCapture,
   onToggleModifier,
   activeModifiers = [],
+  // Context menu handlers
+  onRenameAssignment,
+  onClearAssignment,
+  onDuplicateFromContext,
 }) {
   const profileEntries = Object.entries(assignments)
     .filter(([k]) => {
@@ -380,6 +384,22 @@ export default function Sidebar({
   });
 
   const [activeTab, setActiveTab] = useState('All');
+
+  // ── Assignment context menu + inline actions ──
+  const [assignCtx, setAssignCtx] = useState(null); // { combo, keyId, macro, x, y }
+  const [renaming, setRenaming] = useState(null); // { combo, keyId }
+  const [renameVal, setRenameVal] = useState('');
+  const [clearing, setClearing] = useState(null); // { combo, keyId }
+  const assignCtxRef = useRef(null);
+
+  useEffect(() => {
+    if (!assignCtx) return;
+    function onDown(e) {
+      if (assignCtxRef.current && !assignCtxRef.current.contains(e.target)) setAssignCtx(null);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [assignCtx]);
 
   useEffect(() => {
     setActiveTab('All');
@@ -416,6 +436,55 @@ export default function Sidebar({
     MOUSE_SIDE1: '🖱 Side1', MOUSE_SIDE2: '🖱 Side2',
   };
 
+  function handleAssignContextMenu(e, combo, keyId, macro) {
+    e.preventDefault();
+    e.stopPropagation();
+    setAssignCtx({ combo, keyId, macro, x: e.clientX, y: e.clientY });
+    setRenaming(null);
+    setClearing(null);
+  }
+
+  function handleCtxRename() {
+    if (!assignCtx) return;
+    const { combo, keyId, macro } = assignCtx;
+    setRenaming({ combo, keyId });
+    setRenameVal(macro.label || '');
+    setAssignCtx(null);
+  }
+
+  function commitRenameAssignment() {
+    if (renaming && renameVal.trim()) {
+      onRenameAssignment?.(renaming.combo, renaming.keyId, renameVal.trim());
+    }
+    setRenaming(null);
+    setRenameVal('');
+  }
+
+  function cancelRename() {
+    setRenaming(null);
+    setRenameVal('');
+  }
+
+  function handleCtxDuplicate() {
+    if (!assignCtx) return;
+    onDuplicateFromContext?.(assignCtx.combo, assignCtx.keyId);
+    setAssignCtx(null);
+  }
+
+  function handleCtxClear() {
+    if (!assignCtx) return;
+    setClearing({ combo: assignCtx.combo, keyId: assignCtx.keyId });
+    setAssignCtx(null);
+  }
+
+  function confirmClear() {
+    if (clearing) onClearAssignment?.(clearing.combo, clearing.keyId);
+    setClearing(null);
+  }
+
+  const isRenaming = (combo, keyId) => renaming?.combo === combo && renaming?.keyId === keyId;
+  const isClearing = (combo, keyId) => clearing?.combo === combo && clearing?.keyId === keyId;
+
   function renderItem({ combo, keyId, macro, hasDouble }) {
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
     const displayKey = MOUSE_KEY_LABELS[keyId] ||
@@ -424,11 +493,23 @@ export default function Sidebar({
     const isBareItem = combo === 'BARE';
     const typeName = TYPE_NAMES[macro.type] || macro.type;
     const displayLabel = macro.label || macro.data?.text || macro.data?.url || macro.data?.path || typeName;
+
+    if (isClearing(combo, keyId)) {
+      return (
+        <div key={`${combo}::${keyId}`} className="sidebar-item sidebar-item-confirm">
+          <span className="sidebar-confirm-text">Clear this key?</span>
+          <button className="sidebar-confirm-yes" type="button" onClick={confirmClear}>Yes</button>
+          <button className="sidebar-confirm-no" type="button" onClick={() => setClearing(null)}>No</button>
+        </div>
+      );
+    }
+
     return (
       <div
         key={`${combo}::${keyId}`}
         className={`sidebar-item type-${macro.type}${isSelected ? ' sidebar-item-active' : ''}${isBareItem ? ' bare-item' : ''}`}
         onClick={() => onSelectAssignment(keyId, combo)}
+        onContextMenu={e => handleAssignContextMenu(e, combo, keyId, macro)}
         title={`Edit ${isBareItem ? 'Bare' : combo}+${displayKey}`}
       >
         <span className="sidebar-key-badge" style={{ borderColor: meta.color + '55', color: meta.color }}>
@@ -436,8 +517,22 @@ export default function Sidebar({
         </span>
         <div className="sidebar-item-info">
           <div className="sidebar-item-label">
-            {displayLabel}
-            {hasDouble && <span className="sidebar-double-badge">×2</span>}
+            {isRenaming(combo, keyId) ? (
+              <input
+                autoFocus
+                className="sidebar-rename-input"
+                value={renameVal}
+                onChange={e => setRenameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitRenameAssignment(); if (e.key === 'Escape') cancelRename(); }}
+                onBlur={cancelRename}
+                onClick={e => e.stopPropagation()}
+              />
+            ) : (
+              <>
+                {displayLabel}
+                {hasDouble && <span className="sidebar-double-badge">×2</span>}
+              </>
+            )}
           </div>
           <div className="sidebar-item-type">
             <span className="type-dot" style={{ background: meta.color }} />
@@ -476,17 +571,42 @@ export default function Sidebar({
       preview = macro.data?.path || '';
     }
 
+    if (isClearing(combo, keyId)) {
+      return (
+        <div key={`${combo}::${keyId}`} className="grid-card grid-card-confirm">
+          <span className="sidebar-confirm-text">Clear this key?</span>
+          <div className="sidebar-confirm-btns">
+            <button className="sidebar-confirm-yes" type="button" onClick={confirmClear}>Yes</button>
+            <button className="sidebar-confirm-no" type="button" onClick={() => setClearing(null)}>No</button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         key={`${combo}::${keyId}`}
         className={`grid-card${isSelected ? ' grid-card--active' : ''}`}
         onClick={() => onSelectAssignment(keyId, combo)}
+        onContextMenu={e => handleAssignContextMenu(e, combo, keyId, macro)}
       >
         <div className="grid-card-combo">
           {comboLabel}
           {hasDouble && <span className="sidebar-double-badge">×2</span>}
         </div>
-        <div className="grid-card-label">{displayLabel}</div>
+        <div className="grid-card-label">
+          {isRenaming(combo, keyId) ? (
+            <input
+              autoFocus
+              className="sidebar-rename-input"
+              value={renameVal}
+              onChange={e => setRenameVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') commitRenameAssignment(); if (e.key === 'Escape') cancelRename(); }}
+              onBlur={cancelRename}
+              onClick={e => e.stopPropagation()}
+            />
+          ) : displayLabel}
+        </div>
         <div className="grid-card-bottom">
           <span className={`grid-card-type grid-card-type--${macro.type}`}>{typeName}</span>
           {preview && <span className="grid-card-preview" title={preview}>{preview}</span>}
@@ -695,6 +815,19 @@ export default function Sidebar({
             <div className="legend-item"><span className="legend-dot system-ld" />System Key</div>
           </div>
         </>
+      )}
+      {/* Assignment context menu */}
+      {assignCtx && (
+        <div
+          ref={assignCtxRef}
+          className="assign-ctx-menu"
+          style={{ top: assignCtx.y, left: assignCtx.x }}
+        >
+          <button className="assign-ctx-item" type="button" onClick={handleCtxRename}>Rename</button>
+          <button className="assign-ctx-item" type="button" onClick={handleCtxDuplicate}>Duplicate</button>
+          <div className="assign-ctx-divider" />
+          <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={handleCtxClear}>Clear</button>
+        </div>
       )}
     </aside>
   );
