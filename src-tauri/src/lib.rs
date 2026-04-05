@@ -251,6 +251,104 @@ async fn browse_for_folder(app: tauri::AppHandle) -> Value {
     }
 }
 
+// ── Window enumeration ─────────────────────────────────────────────────────
+
+#[tauri::command]
+fn list_open_windows() -> Vec<Value> {
+    use std::collections::HashSet;
+    use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    };
+
+    static EXCLUDED: &[&str] = &[
+        "explorer.exe",
+        "shellexperiencehost.exe",
+        "searchhost.exe",
+        "startmenuexperiencehost.exe",
+        "textinputhost.exe",
+        "applicationframehost.exe",
+    ];
+
+    struct ListState {
+        windows: Vec<(String, String)>,
+        excluded: HashSet<String>,
+    }
+
+    unsafe extern "system" fn enum_cb(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+        lparam: isize,
+    ) -> i32 {
+        let state = &mut *(lparam as *mut ListState);
+
+        // Must be visible and not minimized
+        if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 {
+            return 1;
+        }
+
+        // Get window title
+        let mut title_buf = [0u16; 512];
+        let title_len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), 512);
+        if title_len <= 0 {
+            return 1;
+        }
+        let title = String::from_utf16_lossy(&title_buf[..title_len as usize]);
+
+        // Get process name
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == 0 {
+            return 1;
+        }
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return 1;
+        }
+        let mut buf = [0u16; 260];
+        let mut size: u32 = 260;
+        let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
+        CloseHandleWin(handle);
+        if ok == 0 || size == 0 {
+            return 1;
+        }
+        let full_path = String::from_utf16_lossy(&buf[..size as usize]);
+        let process = std::path::Path::new(&full_path)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // Skip excluded system processes
+        if state.excluded.contains(&process.to_lowercase()) {
+            return 1;
+        }
+
+        state.windows.push((process, title));
+        1 // continue enumeration
+    }
+
+    let mut state = ListState {
+        windows: Vec::new(),
+        excluded: EXCLUDED.iter().map(|s| s.to_string()).collect(),
+    };
+
+    unsafe {
+        EnumWindows(Some(enum_cb), &mut state as *mut ListState as isize);
+    }
+
+    state.windows.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+
+    state
+        .windows
+        .into_iter()
+        .map(|(process, title)| {
+            serde_json::json!({ "process": process, "title": title })
+        })
+        .collect()
+}
+
 // ── Engine (Phase 4) ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -986,6 +1084,8 @@ pub fn run() {
             // File dialogs
             browse_for_file,
             browse_for_folder,
+            // Window enumeration
+            list_open_windows,
             // Startup
             get_startup_enabled,
             set_startup_enabled,

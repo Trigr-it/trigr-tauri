@@ -383,6 +383,85 @@ function KeyChips({ combo }) {
   );
 }
 
+function FocusWindowFields({ focusData, onChange }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [windowList, setWindowList] = useState(null); // null = not loaded, [] = empty
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function onDown(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [dropdownOpen]);
+
+  const handlePickClick = async () => {
+    if (dropdownOpen) { setDropdownOpen(false); return; }
+    setWindowList(null);
+    setDropdownOpen(true);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke('list_open_windows');
+      setWindowList(list || []);
+    } catch (e) {
+      console.error('[Trigr] list_open_windows failed:', e);
+      setWindowList([]);
+    }
+  };
+
+  const handleSelect = (win) => {
+    onChange({ process: win.process, title: win.title });
+    setDropdownOpen(false);
+  };
+
+  const handleClear = () => {
+    onChange({ ...focusData, process: '' });
+  };
+
+  return (
+    <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+      <div className="pick-window-row" ref={dropdownRef}>
+        {focusData.process ? (
+          <span className="pick-window-badge">
+            {focusData.process}
+            <button className="pick-window-badge-clear" type="button" onClick={handleClear}>✕</button>
+          </span>
+        ) : null}
+        <button className="browse-btn" type="button" onClick={handlePickClick}>
+          ⊞ Pick Window
+        </button>
+        {dropdownOpen && (
+          <div className="pick-window-dropdown">
+            {windowList === null ? (
+              <div className="pick-window-loading">Loading windows…</div>
+            ) : windowList.length === 0 ? (
+              <div className="pick-window-loading">No open windows found</div>
+            ) : (
+              windowList.map((win, i) => (
+                <div key={i} className="pick-window-item" onClick={() => handleSelect(win)}>
+                  <span className="pick-window-process">{win.process}</span>
+                  <span className="pick-window-title">{win.title}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+      <input
+        className="form-input"
+        placeholder="Window title match (optional)"
+        value={focusData.title}
+        onChange={e => onChange({ ...focusData, title: e.target.value })}
+      />
+    </div>
+  );
+}
+
 function KeyCaptureInput({ value, onChange }) {
   const [capturing, setCapturing] = useState(false);
   const [winBuilder, setWinBuilder] = useState(false);
@@ -639,22 +718,12 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
         </div>
       )}
 
-      {/* Sub-row: Focus Window — process + title */}
+      {/* Sub-row: Focus Window — pick process + title */}
       {step.type === 'Focus Window' && (
-        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-          <input
-            className="form-input"
-            placeholder="chrome.exe (optional)"
-            value={focusData.process}
-            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...focusData, process: e.target.value }) })}
-          />
-          <input
-            className="form-input"
-            placeholder="Partial title match (optional)"
-            value={focusData.title}
-            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...focusData, title: e.target.value }) })}
-          />
-        </div>
+        <FocusWindowFields
+          focusData={focusData}
+          onChange={next => updateStep({ ...step, value: JSON.stringify(next) })}
+        />
       )}
 
       {/* Sub-row: Wait for Input — labelled config dropdowns */}
