@@ -673,17 +673,8 @@ export default function Sidebar({
             ) : activeTab === 'All' ? (
               sortedGroupCombos.map(combo => (
                 <div key={combo} className={`sidebar-group${combo === currentCombo ? ' active-group' : ''}`}>
-                  <div className="sidebar-group-header">
-                    {combo === 'BARE' ? (
-                      <kbd className="sidebar-mod-key sidebar-mod-bare">Bare</kbd>
-                    ) : (
-                      combo.split('+').map((m, i, arr) => (
-                        <React.Fragment key={m}>
-                          <kbd className="sidebar-mod-key">{m}</kbd>
-                          {i < arr.length - 1 && <span className="sidebar-mod-plus">+</span>}
-                        </React.Fragment>
-                      ))
-                    )}
+                  <div className="sidebar-grid-group-header">
+                    {combo === 'BARE' ? 'BARE KEYS' : combo}
                     <span className="sidebar-group-count">{grouped[combo].length}</span>
                   </div>
                   {grouped[combo].map(renderItem)}
