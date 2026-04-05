@@ -137,6 +137,8 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 - `get_analytics` — returns aggregate usage stats (total, today, last 7 days, best day, best 7 days, breakdown)
 - `reset_analytics` — deletes all analytics data, returns `bool`
 - `list_open_windows` — EnumWindows to list visible non-minimized windows, returns `Vec<{ process, title }>`, filters system processes
+- `export_profile` — takes `filename_hint: String` + `content: String`, opens native save dialog (Desktop default, .json filter), writes content to chosen path, returns `{ ok: bool, error? }`
+- `import_profile` — opens native file picker (.json filter), reads file, returns `{ ok: bool, content?: String, error? }`. Frontend handles all validation and merging.
 
 ---
 
@@ -316,7 +318,10 @@ Seven tokens in expansions.rs: `{date:DD/MM/YYYY}` (%d/%m/%Y), `{date:DD/MM/YY}`
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
 
 ### Profile Accordion — Sidebar
-Profiles live in the sidebar (Sidebar.jsx ProfileAccordion), NOT the titlebar. TitleBar.jsx has no profile code. Profiles split into STATIC and APP-SPECIFIC groups with separate SortableContext instances. Cross-group drag is blocked. Default profile is always first in STATIC, not draggable. Green dot indicates activeGlobalProfile (fallback).
+Profiles live in the sidebar (Sidebar.jsx ProfileAccordion), NOT the titlebar. TitleBar.jsx has no profile code. Profiles split into STATIC and APP-SPECIFIC groups with separate SortableContext instances. Cross-group drag is blocked. Default profile is always first in STATIC, not draggable. Green dot indicates activeGlobalProfile (fallback). ProfileAccordion accepts `onExportProfile` and `onImportProfile` props (passed through from Sidebar's own props).
+
+### Profile Export/Import
+**Export:** Right-click context menu "Export Profile" on any profile row (including Default). `handleExportProfile` in App.jsx collects all assignments with `profileName::` prefix, builds `{ trigr_profile: "1.0", name, assignments, linkedApp: null }`. `linkedApp` is always `null` (machine-specific). Calls `export_profile` Rust command (save dialog, Desktop default, `<ProfileName>-trigr-profile.json`). **Import:** "↓ Import Profile" button in ProfileAccordion footer (always visible, below Add Profile). `handleImportProfile` in App.jsx calls `import_profile` Rust command (file picker), validates `trigr_profile` field. On name collision: shows inline Copy/Overwrite prompt in accordion footer (`importPrompt` state in App.jsx, `profile-import-prompt` UI in Sidebar.jsx). **Copy** deduplicates name with ` (1)` / ` (2)` suffix, creates new profile. **Overwrite** deletes all existing `profileName::` assignments, writes imported assignments with keys rewritten via split-on-`::`-replace-index-0-rejoin, preserves existing `linkedApp` and profile position unchanged. No collision: imports directly. Both paths call `saveConfig` + `syncEngine`, switch active profile, show toast. Props: `importPrompt`, `onImportProfileResolve(choice)`, `onImportPromptDismiss` passed from App.jsx through Sidebar to ProfileAccordion. Prompt dismisses on outside click or Escape.
 
 ### ResizeObserver Safety
 Any ResizeObserver that calls setState must guard against infinite loops. Store last measured width in a ref; skip callback if `Math.abs(newWidth - lastWidth) < 1`. The profile tab overflow attempt (now removed) proved this causes system freezes without the guard. Vite watch config excludes `**/src-tauri/target/**` to prevent scanning Rust build artifacts.

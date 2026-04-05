@@ -53,7 +53,8 @@ function ProfileAccordion({
   profiles, activeProfile, activeGlobalProfile, profileSettings,
   onProfileChange, onAddProfile, onRenameProfile, onDeleteProfile,
   onReorderProfiles, onDuplicateProfile, onSetActiveGlobalProfile,
-  onUpdateProfileSettings,
+  onUpdateProfileSettings, onExportProfile, onImportProfile,
+  importPrompt, onImportProfileResolve, onImportPromptDismiss,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -70,6 +71,7 @@ function ProfileAccordion({
   const [linkSelectedExe, setLinkSelectedExe] = useState(null);
   const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
   const linkDropdownRef = useRef(null);
+  const importPromptRef = useRef(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -105,6 +107,23 @@ function ProfileAccordion({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [linkDropdownOpen]);
+
+  // Dismiss import prompt on outside click or Escape
+  useEffect(() => {
+    if (!importPrompt) return;
+    function onDown(e) {
+      if (importPromptRef.current && !importPromptRef.current.contains(e.target)) onImportPromptDismiss?.();
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') onImportPromptDismiss?.();
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [importPrompt, onImportPromptDismiss]);
 
   useEffect(() => {
     if (isAdding) addInputRef.current?.focus();
@@ -300,6 +319,20 @@ function ProfileAccordion({
               + Add Profile
             </button>
           )}
+          <button className="profile-add-btn profile-import-btn" type="button" onClick={() => onImportProfile?.()}>
+            ↓ Import Profile
+          </button>
+          {importPrompt && (
+            <div className="profile-import-prompt" ref={importPromptRef}>
+              <div className="profile-import-prompt-msg">
+                A profile named "<strong>{importPrompt.name}</strong>" already exists.
+              </div>
+              <div className="profile-import-prompt-btns">
+                <button className="profile-import-prompt-btn" type="button" onClick={() => onImportProfileResolve?.('copy')}>Copy</button>
+                <button className="profile-import-prompt-btn profile-import-prompt-btn--overwrite" type="button" onClick={() => onImportProfileResolve?.('overwrite')}>Overwrite</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -318,6 +351,7 @@ function ProfileAccordion({
               <button className="profile-ctx-item" onClick={() => { startRename(contextMenu.profile); }}>Rename</button>
             )}
             <button className="profile-ctx-item" onClick={() => { onDuplicateProfile?.(contextMenu.profile); setContextMenu(null); }}>Duplicate</button>
+            <button className="profile-ctx-item" onClick={() => { onExportProfile?.(contextMenu.profile); setContextMenu(null); }}>Export Profile</button>
             {isStatic && !isFallback && (
               <button className="profile-ctx-item" onClick={() => { onSetActiveGlobalProfile?.(contextMenu.profile); setContextMenu(null); }}>
                 Set as default fallback
@@ -461,6 +495,11 @@ export default function Sidebar({
   onDuplicateProfile,
   onSetActiveGlobalProfile,
   onUpdateProfileSettings,
+  onExportProfile,
+  onImportProfile,
+  importPrompt,
+  onImportProfileResolve,
+  onImportPromptDismiss,
   // List view props
   listViewActive = false,
   isRecording = false,
@@ -809,6 +848,11 @@ export default function Sidebar({
         onDuplicateProfile={onDuplicateProfile}
         onSetActiveGlobalProfile={onSetActiveGlobalProfile}
         onUpdateProfileSettings={onUpdateProfileSettings}
+        onExportProfile={onExportProfile}
+        onImportProfile={onImportProfile}
+        importPrompt={importPrompt}
+        onImportProfileResolve={onImportProfileResolve}
+        onImportPromptDismiss={onImportPromptDismiss}
       />
 
       <div className="sidebar-header">

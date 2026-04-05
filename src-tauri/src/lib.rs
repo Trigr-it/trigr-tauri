@@ -209,6 +209,66 @@ fn restore_backup(filename: String) -> Value {
     config::restore_backup(&filename)
 }
 
+// ── Profile export/import ──────────────────────────────────────────────────
+
+#[tauri::command]
+async fn export_profile(app: tauri::AppHandle, filename_hint: String, content: String) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+
+    let desktop = app
+        .path()
+        .desktop_dir()
+        .unwrap_or_default()
+        .join(&filename_hint);
+
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title("Export Trigr Profile")
+        .set_file_name(&filename_hint)
+        .add_filter("JSON", &["json"])
+        .set_directory(desktop.parent().unwrap_or(std::path::Path::new("")))
+        .blocking_save_file();
+
+    let file_path = match file_path {
+        Some(p) => p.into_path().unwrap(),
+        None => return serde_json::json!({ "ok": false }),
+    };
+
+    match std::fs::write(&file_path, &content) {
+        Ok(()) => {
+            log::info!("[Trigr] Profile exported to: {}", file_path.display());
+            serde_json::json!({ "ok": true })
+        }
+        Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+#[tauri::command]
+async fn import_profile(app: tauri::AppHandle) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title("Import Trigr Profile")
+        .add_filter("JSON", &["json"])
+        .blocking_pick_file();
+
+    let file_path = match file_path {
+        Some(p) => p.into_path().unwrap(),
+        None => return serde_json::json!({ "ok": false }),
+    };
+
+    match std::fs::read_to_string(&file_path) {
+        Ok(raw) => {
+            log::info!("[Trigr] Profile file read from: {}", file_path.display());
+            serde_json::json!({ "ok": true, "content": raw })
+        }
+        Err(e) => serde_json::json!({ "ok": false, "error": format!("Could not read file: {}", e) }),
+    }
+}
+
 // ── File dialogs (Phase 2) ──────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1089,6 +1149,9 @@ pub fn run() {
             // File dialogs
             browse_for_file,
             browse_for_folder,
+            // Profile export/import
+            export_profile,
+            import_profile,
             // Window enumeration
             list_open_windows,
             // Startup
