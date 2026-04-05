@@ -365,27 +365,38 @@ function ProfileAccordion({
                 <button className="pick-window-badge-clear" type="button" onClick={() => setLinkSelectedExe(null)}>✕</button>
               </span>
             ) : (
-              <button className="browse-btn" type="button" onClick={async () => {
-                setLinkDropdownOpen(true);
-                setLinkWindowList([]);
-                try {
-                  const { invoke } = await import('@tauri-apps/api/core');
-                  const list = await invoke('list_open_windows');
-                  const seen = new Set();
-                  const unique = [];
-                  for (const w of (list || [])) {
-                    const lower = w.process.toLowerCase();
-                    if (!seen.has(lower)) { seen.add(lower); unique.push(w.process); }
-                  }
-                  unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-                  setLinkWindowList(unique);
-                } catch (e) {
-                  console.error('[Trigr] list_open_windows failed:', e);
+              <>
+                <button className="browse-btn" type="button" onClick={async () => {
+                  setLinkDropdownOpen(true);
                   setLinkWindowList([]);
-                }
-              }}>
-                ⊞ Pick App
-              </button>
+                  try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    const list = await invoke('list_open_windows');
+                    const seen = new Set();
+                    const unique = [];
+                    for (const w of (list || [])) {
+                      const lower = w.process.toLowerCase();
+                      if (!seen.has(lower)) { seen.add(lower); unique.push(w.process); }
+                    }
+                    unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                    setLinkWindowList(unique);
+                  } catch (e) {
+                    console.error('[Trigr] list_open_windows failed:', e);
+                    setLinkWindowList([]);
+                  }
+                }}>
+                  ⊞ Pick App
+                </button>
+                <button className="browse-btn" type="button" onClick={async () => {
+                  const path = await window.electronAPI?.browseForFile();
+                  if (path) {
+                    const filename = path.split(/[/\\]/).pop() || path;
+                    setLinkSelectedExe(filename);
+                  }
+                }}>
+                  Browse…
+                </button>
+              </>
             )}
             {linkDropdownOpen && !linkSelectedExe && (
               <div className="pick-window-dropdown">
