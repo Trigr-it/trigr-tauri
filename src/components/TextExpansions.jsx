@@ -459,6 +459,8 @@ export default function TextExpansions({
   globalVariables = {},
   onSaveGlobalVariables,
 }) {
+  // ── Panel mode (expansions | autocorrect | globalvars) ──
+  const [panelMode, setPanelMode] = useState('expansions');
 
   // ── Expansion form state ──
   const [editing, setEditing]         = useState(null);
