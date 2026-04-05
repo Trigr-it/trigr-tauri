@@ -383,27 +383,13 @@
 
 /* ── Category drag-and-drop ─────────────────────────────────────────────── */
 
-.te-cat-tab-group[draggable] {
-  cursor: grab;
-}
-
-.te-cat-tab-group[draggable]:active {
-  cursor: grabbing;
-}
-
-.te-cat-tab-group.te-cat-dragging {
-  opacity: 0.35;
-}
-
-/* Insertion line — shown on the side the item will be inserted */
-.te-cat-tab-group.te-cat-drop-before {
-  border-left: 2px solid var(--accent);
-  margin-left: -2px;
-}
-
-.te-cat-tab-group.te-cat-drop-after {
-  border-right: 2px solid var(--accent);
-  margin-right: -2px;
+/* dnd-kit drag ghost for category tabs */
+.te-cat-tab-ghost {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  opacity: 0.85;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* ── Sort select ────────────────────────────────────────────────────────── */

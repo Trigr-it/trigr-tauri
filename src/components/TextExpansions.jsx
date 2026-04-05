@@ -1,5 +1,8 @@
 import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './TextExpansions.css';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -438,6 +441,22 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
   );
 }
 
+// ── Sortable category tab wrapper ──────────────────────────────────────────
+
+function SortableCatTab({ id, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {children}
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function TextExpansions({
@@ -495,10 +514,9 @@ export default function TextExpansions({
   const renameCommitting                = useRef(false);
   const [deleteConfirm, setDeleteConfirm]       = useState(null); // trigger string awaiting confirmation
 
-  // ── Category drag-and-drop state ──
-  const [dragCat,     setDragCat]     = useState(null);
-  const [dragOverCat, setDragOverCat] = useState(null);
-  const [dragOverSide, setDragOverSide] = useState(null); // 'before' | 'after'
+  // ── Category dnd-kit reorder ──
+  const catDndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const [catDragId, setCatDragId] = useState(null);
 
   // ── Expansion sort state (persisted to localStorage) ──
   const [sortKey, setSortKey] = useState(() =>
@@ -695,39 +713,14 @@ export default function TextExpansions({
   }
 
   // ── Category drag-and-drop handlers ──
-  function handleCatDragStart(e, cat) {
-    e.dataTransfer.effectAllowed = 'move';
-    setDragCat(cat);
-  }
-
-  function handleCatDragOver(e, cat) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = e.currentTarget.getBoundingClientRect();
-    setDragOverCat(cat);
-    setDragOverSide(e.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
-  }
-
-  function handleCatDrop(e, cat) {
-    e.preventDefault();
-    if (!dragCat || dragCat === cat) {
-      setDragCat(null); setDragOverCat(null); setDragOverSide(null);
-      return;
-    }
-    const newCats = [...normCategories];
-    const fromIdx = newCats.findIndex(c => c.name === dragCat);
-    let toIdx = newCats.findIndex(c => c.name === cat);
-    if (dragOverSide === 'after') toIdx += 1;
-    // Account for the gap left when the dragged item is removed
-    const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
-    const [movedCat] = newCats.splice(fromIdx, 1);  // capture the object, not the name string
-    newCats.splice(Math.max(0, insertAt), 0, movedCat);
-    onReorderCategories?.(newCats);
-    setDragCat(null); setDragOverCat(null); setDragOverSide(null);
-  }
-
-  function handleCatDragEnd() {
-    setDragCat(null); setDragOverCat(null); setDragOverSide(null);
+  function handleCatDragEnd(event) {
+    setCatDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = normCategories.findIndex(c => c.name === active.id);
+    const newIdx = normCategories.findIndex(c => c.name === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    onReorderCategories?.(arrayMove([...normCategories], oldIdx, newIdx));
   }
 
   // ── Autocorrect handlers ──
@@ -933,71 +926,71 @@ export default function TextExpansions({
               <span className="te-cat-count">{expansions.length}</span>
             </button>
 
-            {normCategories.map(cat => {
-              const catColour   = cat.colour || null;
-              const isPending   = pendingDeleteCat === cat.name;
-              const count       = expansions.filter(e => e.category === cat.name).length;
-              const isDragging  = dragCat === cat.name;
-              const isDropTarget = dragOverCat === cat.name;
-              const dropClass   = isDropTarget
-                ? (dragOverSide === 'before' ? ' te-cat-drop-before' : ' te-cat-drop-after')
-                : '';
-              return (
-                <div
-                  key={cat.name}
-                  className={`te-cat-tab-group${isDragging ? ' te-cat-dragging' : ''}${dropClass}`}
-                  draggable={renamingCat !== cat.name}
-                  onDragStart={renamingCat !== cat.name ? e => handleCatDragStart(e, cat.name) : undefined}
-                  onDragOver={e => handleCatDragOver(e, cat.name)}
-                  onDrop={e => handleCatDrop(e, cat.name)}
-                  onDragEnd={handleCatDragEnd}
-                >
-                  {renamingCat === cat.name ? (
-                    <div
-                      className={`te-cat-tab te-cat-tab-active te-cat-rename-wrap`}
-                      style={catColour ? { '--cat-color': catColour } : {}}
-                    >
-                      <input
-                        ref={renameInputRef}
-                        className="te-cat-rename-input"
-                        value={renameValue}
-                        onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
-                          if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
-                          e.stopPropagation();
-                        }}
-                        onBlur={cancelCatRename}
-                      />
-                      {renameError && <span className="te-cat-rename-error">{renameError}</span>}
-                    </div>
-                  ) : (
-                    <button
-                      className={`te-cat-tab${activeCategory === cat.name ? ' te-cat-tab-active' : ''}`}
-                      style={catColour ? { '--cat-color': catColour } : {}}
-                      onClick={() => { setActiveCategory(cat.name); setPendingDeleteCat(null); }}
-                      onContextMenu={e => handleCatContextMenu(e, cat.name)}
-                    >
-                      <span
-                        className="te-cat-dot te-cat-dot-pick"
-                        style={catColour ? { background: catColour } : {}}
-                        onClick={e => openCatColourPopover(e, cat.name)}
-                        title="Change colour"
-                      />
-                      {cat.name}
-                      <span className="te-cat-count">{count}</span>
-                    </button>
-                  )}
-                  <button
-                    className={`te-cat-x${isPending ? ' te-cat-x-confirm' : ''}`}
-                    onMouseDown={e => handleDeleteCategoryConfirm(e, cat.name)}
-                    title={isPending ? 'Click to confirm delete' : `Delete "${cat.name}" category`}
-                  >
-                    {isPending ? 'Delete?' : '✕'}
-                  </button>
-                </div>
-              );
-            })}
+            <DndContext sensors={catDndSensors} onDragStart={e => setCatDragId(e.active.id)} onDragEnd={handleCatDragEnd}>
+              <SortableContext items={normCategories.map(c => c.name)} strategy={horizontalListSortingStrategy}>
+                {normCategories.map(cat => {
+                  const catColour   = cat.colour || null;
+                  const isPending   = pendingDeleteCat === cat.name;
+                  const count       = expansions.filter(e => e.category === cat.name).length;
+                  return (
+                    <SortableCatTab key={cat.name} id={cat.name}>
+                      <div className="te-cat-tab-group">
+                        {renamingCat === cat.name ? (
+                          <div
+                            className={`te-cat-tab te-cat-tab-active te-cat-rename-wrap`}
+                            style={catColour ? { '--cat-color': catColour } : {}}
+                          >
+                            <input
+                              ref={renameInputRef}
+                              className="te-cat-rename-input"
+                              value={renameValue}
+                              onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
+                                if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
+                                e.stopPropagation();
+                              }}
+                              onBlur={cancelCatRename}
+                            />
+                            {renameError && <span className="te-cat-rename-error">{renameError}</span>}
+                          </div>
+                        ) : (
+                          <button
+                            className={`te-cat-tab${activeCategory === cat.name ? ' te-cat-tab-active' : ''}`}
+                            style={catColour ? { '--cat-color': catColour } : {}}
+                            onClick={() => { setActiveCategory(cat.name); setPendingDeleteCat(null); }}
+                            onContextMenu={e => handleCatContextMenu(e, cat.name)}
+                          >
+                            <span
+                              className="te-cat-dot te-cat-dot-pick"
+                              style={catColour ? { background: catColour } : {}}
+                              onClick={e => openCatColourPopover(e, cat.name)}
+                              title="Change colour"
+                            />
+                            {cat.name}
+                            <span className="te-cat-count">{count}</span>
+                          </button>
+                        )}
+                        <button
+                          className={`te-cat-x${isPending ? ' te-cat-x-confirm' : ''}`}
+                          onMouseDown={e => handleDeleteCategoryConfirm(e, cat.name)}
+                          title={isPending ? 'Click to confirm delete' : `Delete "${cat.name}" category`}
+                        >
+                          {isPending ? 'Delete?' : '✕'}
+                        </button>
+                      </div>
+                    </SortableCatTab>
+                  );
+                })}
+              </SortableContext>
+              <DragOverlay>
+                {catDragId ? (
+                  <div className="te-cat-tab-group te-cat-tab-ghost">
+                    <button className="te-cat-tab te-cat-tab-active">{catDragId}</button>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
 
             {expansions.length > 0 && uncategorisedCount > 0 && (
               <button
