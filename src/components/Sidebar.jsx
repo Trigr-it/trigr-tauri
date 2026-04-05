@@ -319,6 +319,13 @@ function ProfileAccordion({
   );
 }
 
+const MODIFIERS = [
+  { id: 'Ctrl',  label: 'Ctrl',   color: '#64b4ff' },
+  { id: 'Alt',   label: 'Alt',    color: '#c864ff' },
+  { id: 'Shift', label: 'Shift',  color: '#50c878' },
+  { id: 'Win',   label: '⊞ Win', color: '#ffc832' },
+];
+
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 export default function Sidebar({
@@ -340,6 +347,14 @@ export default function Sidebar({
   onReorderProfiles,
   onDuplicateProfile,
   onSetActiveGlobalProfile,
+  // List view props
+  listViewActive = false,
+  isRecording = false,
+  onStartRecord,
+  onStopRecord,
+  recordCapture,
+  onToggleModifier,
+  activeModifiers = [],
 }) {
   const profileEntries = Object.entries(assignments)
     .filter(([k]) => {
@@ -431,8 +446,120 @@ export default function Sidebar({
     );
   }
 
+  // ── Card for list view grid ──────────────────────────────────
+  function renderCard({ combo, keyId, macro, hasDouble }) {
+    const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
+    const displayKey = MOUSE_KEY_LABELS[keyId] ||
+      keyId.replace('Key', '').replace('Digit', '').replace('Arrow', '');
+    const isSelected = selectedKey === keyId && combo === currentCombo;
+    const comboLabel = combo === 'BARE' ? displayKey + ' (bare)' : combo + '+' + displayKey;
+    const typeName = TYPE_NAMES[macro.type] || macro.type;
+    const displayLabel = macro.label || macro.data?.text || macro.data?.url || macro.data?.path || typeName;
+
+    // Preview line
+    let preview = '';
+    if (macro.type === 'text' || macro.type === 'expansion') {
+      const raw = macro.data?.text || '';
+      preview = raw.length > 40 ? raw.slice(0, 40) + '…' : raw;
+    } else if (macro.type === 'macro') {
+      const steps = macro.data?.steps || [];
+      preview = `${steps.length} step${steps.length !== 1 ? 's' : ''}`;
+    } else if (macro.type === 'hotkey') {
+      preview = macro.data?.target || macro.label || '';
+    } else if (macro.type === 'app') {
+      preview = (macro.data?.path || '').split(/[/\\]/).pop() || '';
+    } else if (macro.type === 'url') {
+      preview = macro.data?.url || '';
+    } else if (macro.type === 'folder') {
+      preview = macro.data?.path || '';
+    }
+
+    return (
+      <div
+        key={`${combo}::${keyId}`}
+        className={`grid-card${isSelected ? ' grid-card--active' : ''}`}
+        onClick={() => onSelectAssignment(keyId, combo)}
+      >
+        <div className="grid-card-combo">
+          {comboLabel}
+          {hasDouble && <span className="sidebar-double-badge">×2</span>}
+        </div>
+        <div className="grid-card-label">{displayLabel}</div>
+        <div className="grid-card-bottom">
+          <span className={`grid-card-type grid-card-type--${macro.type}`}>{typeName}</span>
+          {preview && <span className="grid-card-preview" title={preview}>{preview}</span>}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Modifier bar for list view ──────────────────────────────
+  const recordStartTime = useRef(0);
+
+  useEffect(() => {
+    if (isRecording) recordStartTime.current = Date.now();
+  }, [isRecording]);
+
+  function renderModifierBar() {
+    const isBare = activeModifiers.includes('BARE');
+    return (
+      <div className="sidebar-modifier-bar">
+        <div className="sidebar-modifier-keys">
+          {MODIFIERS.map(mod => {
+            const isActive = activeModifiers.includes(mod.id);
+            return (
+              <button
+                key={mod.id}
+                className={`sidebar-mod-btn${isActive ? ' active' : ''}`}
+                style={isActive ? { '--mod-color': mod.color } : {}}
+                onClick={isRecording ? undefined : () => onToggleModifier?.(mod.id)}
+                disabled={isRecording}
+                type="button"
+              >
+                {mod.label}
+              </button>
+            );
+          })}
+          <button
+            className={`sidebar-mod-btn sidebar-mod-btn--bare${isBare ? ' active' : ''}${!profileLinked ? ' sidebar-mod-btn--unavailable' : ''}`}
+            style={isBare ? { '--mod-color': '#ff9040' } : {}}
+            onClick={isRecording || !profileLinked ? undefined : () => onToggleModifier?.('BARE')}
+            disabled={isRecording || !profileLinked}
+            title={profileLinked ? 'Bare key assignments' : 'Only available in app-specific profiles'}
+            type="button"
+          >
+            Bare
+          </button>
+        </div>
+        <div className="sidebar-modifier-right">
+          {isRecording ? (
+            <button
+              className="sidebar-record-btn sidebar-record-btn--recording"
+              onClick={() => {
+                if (Date.now() - recordStartTime.current < 200) return;
+                onStopRecord?.();
+              }}
+              type="button"
+            >
+              <span className="sidebar-record-dot" />
+              Recording…
+            </button>
+          ) : (
+            <button
+              className="sidebar-record-btn"
+              onMouseDown={() => onStartRecord?.()}
+              type="button"
+            >
+              ⏺ Record
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${listViewActive ? ' sidebar--expanded' : ''}`}>
       <ProfileAccordion
         profiles={profiles}
         activeProfile={activeProfile}
@@ -452,6 +579,8 @@ export default function Sidebar({
         <span className="sidebar-count">{profileEntries.length}</span>
       </div>
 
+      {listViewActive && renderModifierBar()}
+
       <div className="sidebar-tabs">
         {tabs.map(tab => (
           <button
@@ -468,52 +597,96 @@ export default function Sidebar({
         ))}
       </div>
 
-      <div className="sidebar-list">
-        {profileEntries.length === 0 && activeTab !== 'BARE' ? (
-          <div className="sidebar-empty">
-            <div className="sidebar-empty-icon">⌨</div>
-            <p>Select modifiers above the keyboard, then click a key to assign a hotkey</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="sidebar-empty">
-            {activeTab === 'BARE' ? (
-              <>
-                <div className="sidebar-empty-icon">⚡</div>
-                <p>No bare key assignments yet. Select <strong>Bare Keys</strong> in the modifier bar, then click a key on the keyboard.</p>
-              </>
-            ) : (
+      {listViewActive ? (
+        /* ── Grid view ─────────────────────────────────────── */
+        <div className="sidebar-grid-wrap">
+          {profileEntries.length === 0 ? (
+            <div className="sidebar-empty sidebar-empty--grid">
+              <div className="sidebar-empty-icon">⌨</div>
+              <p>No assignments yet. Select a modifier above, then press <strong>Record</strong> to capture your first hotkey.</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="sidebar-empty sidebar-empty--grid">
               <p>No assignments on this layer yet</p>
+            </div>
+          ) : activeTab === 'All' ? (
+            <div className="sidebar-grid">
+              {sortedGroupCombos.map(combo => (
+                <React.Fragment key={combo}>
+                  <div className={`sidebar-grid-group-header${combo === currentCombo ? ' active-group' : ''}`}>
+                    {combo === 'BARE' ? (
+                      <kbd className="sidebar-mod-key sidebar-mod-bare">Bare</kbd>
+                    ) : (
+                      combo.split('+').map((m, i, arr) => (
+                        <React.Fragment key={m}>
+                          <kbd className="sidebar-mod-key">{m}</kbd>
+                          {i < arr.length - 1 && <span className="sidebar-mod-plus">+</span>}
+                        </React.Fragment>
+                      ))
+                    )}
+                    <span className="sidebar-group-count">{grouped[combo].length}</span>
+                  </div>
+                  {grouped[combo].map(renderCard)}
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            <div className="sidebar-grid">
+              {filtered.map(renderCard)}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── Classic list view ──────────────────────────────── */
+        <>
+          <div className="sidebar-list">
+            {profileEntries.length === 0 && activeTab !== 'BARE' ? (
+              <div className="sidebar-empty">
+                <div className="sidebar-empty-icon">⌨</div>
+                <p>Select modifiers above the keyboard, then click a key to assign a hotkey</p>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="sidebar-empty">
+                {activeTab === 'BARE' ? (
+                  <>
+                    <div className="sidebar-empty-icon">⚡</div>
+                    <p>No bare key assignments yet. Select <strong>Bare Keys</strong> in the modifier bar, then click a key on the keyboard.</p>
+                  </>
+                ) : (
+                  <p>No assignments on this layer yet</p>
+                )}
+              </div>
+            ) : activeTab === 'All' ? (
+              sortedGroupCombos.map(combo => (
+                <div key={combo} className={`sidebar-group${combo === currentCombo ? ' active-group' : ''}`}>
+                  <div className="sidebar-group-header">
+                    {combo === 'BARE' ? (
+                      <kbd className="sidebar-mod-key sidebar-mod-bare">Bare</kbd>
+                    ) : (
+                      combo.split('+').map((m, i, arr) => (
+                        <React.Fragment key={m}>
+                          <kbd className="sidebar-mod-key">{m}</kbd>
+                          {i < arr.length - 1 && <span className="sidebar-mod-plus">+</span>}
+                        </React.Fragment>
+                      ))
+                    )}
+                    <span className="sidebar-group-count">{grouped[combo].length}</span>
+                  </div>
+                  {grouped[combo].map(renderItem)}
+                </div>
+              ))
+            ) : (
+              filtered.map(renderItem)
             )}
           </div>
-        ) : activeTab === 'All' ? (
-          sortedGroupCombos.map(combo => (
-            <div key={combo} className={`sidebar-group${combo === currentCombo ? ' active-group' : ''}`}>
-              <div className="sidebar-group-header">
-                {combo === 'BARE' ? (
-                  <kbd className="sidebar-mod-key sidebar-mod-bare">Bare</kbd>
-                ) : (
-                  combo.split('+').map((m, i, arr) => (
-                    <React.Fragment key={m}>
-                      <kbd className="sidebar-mod-key">{m}</kbd>
-                      {i < arr.length - 1 && <span className="sidebar-mod-plus">+</span>}
-                    </React.Fragment>
-                  ))
-                )}
-                <span className="sidebar-group-count">{grouped[combo].length}</span>
-              </div>
-              {grouped[combo].map(renderItem)}
-            </div>
-          ))
-        ) : (
-          filtered.map(renderItem)
-        )}
-      </div>
 
-      <div className="sidebar-footer">
-        <div className="legend-item"><span className="legend-dot assigned" />Assigned</div>
-        <div className="legend-item"><span className="legend-dot selected" />Selected</div>
-        <div className="legend-item"><span className="legend-dot system-ld" />System Key</div>
-      </div>
+          <div className="sidebar-footer">
+            <div className="legend-item"><span className="legend-dot assigned" />Assigned</div>
+            <div className="legend-item"><span className="legend-dot selected" />Selected</div>
+            <div className="legend-item"><span className="legend-dot system-ld" />System Key</div>
+          </div>
+        </>
+      )}
     </aside>
   );
 }

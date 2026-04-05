@@ -53,6 +53,9 @@ function App() {
   const [updateInfo,     setUpdateInfo]     = useState(null);   // { version, percent, ready, dismissed }
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
+  const [listViewActive, setListViewActive]             = useState(() => {
+    try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
+  });
 
 
   // Current modifier combo string e.g. "Ctrl+Alt"
@@ -779,6 +782,15 @@ function App() {
     window.electronAPI?.stopHotkeyRecording();
   }, []);
 
+  // ── List view toggle ─────────────────────────────────────────
+  const handleToggleListView = useCallback(() => {
+    setListViewActive(prev => {
+      const next = !prev;
+      try { localStorage.setItem('trigr_list_view', String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   // ── Top-level area switching (Mapping ↔ Text Expansions) ──
   const handleSetArea = useCallback((area) => {
     setActiveArea(area);
@@ -1136,6 +1148,8 @@ function App() {
         settingsOpen={showSettings}
         activeArea={activeArea}
         onAreaChange={handleSetArea}
+        listViewActive={listViewActive}
+        onToggleListView={handleToggleListView}
       />
       <div className="app-body">
         {/* Sidebar only visible in Mapping area */}
@@ -1159,10 +1173,16 @@ function App() {
             onReorderProfiles={handleReorderProfiles}
             onDuplicateProfile={handleDuplicateProfile}
             onSetActiveGlobalProfile={handleSetActiveGlobalProfile}
+            listViewActive={listViewActive}
+            isRecording={isRecording}
+            onStartRecord={handleStartRecord}
+            onStopRecord={handleStopRecord}
+            recordCapture={recordCapture}
+            onToggleModifier={handleToggleModifier}
           />
         )}
-        <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}`}>
-          {activeArea === 'mapping' && (
+        <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}${listViewActive && activeArea === 'mapping' ? ' main-area--hidden' : ''}`}>
+          {activeArea === 'mapping' && !listViewActive && (
             <div className="view-switcher">
               <button
                 className={`view-tab${activeView === 'keyboard' ? ' active' : ''}`}
@@ -1180,7 +1200,7 @@ function App() {
               </button>
             </div>
           )}
-          {activeArea === 'mapping' && activeView === 'keyboard' && (
+          {activeArea === 'mapping' && activeView === 'keyboard' && !listViewActive && (
             <div className="keyboard-numpad-wrap">
               <KeyboardCanvas
                 selectedKey={selectedKey}
@@ -1198,8 +1218,6 @@ function App() {
                 hasAnyAssignments={hasAnyAssignments}
                 numpadOpen={numpadOpen}
                 onToggleNumpad={handleToggleNumpad}
-                assignments={assignments}
-                activeProfile={activeProfile}
               />
             </div>
           )}
