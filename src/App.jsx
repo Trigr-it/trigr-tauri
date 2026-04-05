@@ -1474,7 +1474,7 @@ function App() {
             activeModifiers={activeModifiers}
             currentCombo={currentCombo}
             assignment={pendingDuplicateRef.current?.single || (selectedKey ? getKeyAssignment(selectedKey) : null)}
-            doubleAssignment={selectedKey ? getDoubleAssignment(selectedKey) : null}
+            doubleAssignment={pendingDuplicateRef.current?.double || (selectedKey ? getDoubleAssignment(selectedKey) : null)}
             assignments={assignments}
             activeProfile={activeProfile}
             profiles={profiles}
