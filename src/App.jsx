@@ -1239,6 +1239,10 @@ function App() {
         onAreaChange={handleSetArea}
         listViewActive={listViewActive}
         onToggleListView={handleToggleListView}
+        activeProfile={activeProfile}
+        onImportTemplate={handleImportTemplate}
+        onImportCadTemplate={handleImportCadTemplate}
+        onShowNotification={showNotification}
       />
       <div className="app-body">
         {/* Sidebar only visible in Mapping area */}
@@ -1353,9 +1357,6 @@ function App() {
               onDeleteAutocorrect={handleDeleteAutocorrect}
               globalVariables={globalVariables}
               onSaveGlobalVariables={handleSaveGlobalVariables}
-              activeProfile={activeProfile}
-              onImportTemplate={handleImportTemplate}
-              onImportCadTemplate={handleImportCadTemplate}
             />
           )}
         </main>
@@ -1382,6 +1383,9 @@ function App() {
             onSetPauseKey={handleSetPauseKey}
             onClearPauseKey={handleClearPauseKey}
             onRestartOnboarding={handleRestartOnboarding}
+            activeProfile={activeProfile}
+            onImportTemplate={handleImportTemplate}
+            onImportCadTemplate={handleImportCadTemplate}
           />
         ) : activeArea === 'mapping' ? (
           <MacroPanel
