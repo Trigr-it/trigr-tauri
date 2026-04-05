@@ -452,7 +452,7 @@ export default function Sidebar({
     const displayKey = MOUSE_KEY_LABELS[keyId] ||
       keyId.replace('Key', '').replace('Digit', '').replace('Arrow', '');
     const isSelected = selectedKey === keyId && combo === currentCombo;
-    const comboLabel = combo === 'BARE' ? displayKey + ' (bare)' : combo + '+' + displayKey;
+    const comboLabel = combo === 'BARE' ? displayKey : combo + '+' + displayKey;
     const typeName = TYPE_NAMES[macro.type] || macro.type;
     const displayLabel = macro.label || macro.data?.text || macro.data?.url || macro.data?.path || typeName;
 
@@ -581,61 +581,75 @@ export default function Sidebar({
 
       {listViewActive && renderModifierBar()}
 
-      <div className="sidebar-tabs">
-        {tabs.map(tab => (
-          <button
-            key={tab}
-            className={`sidebar-tab${tab === 'BARE' ? ' bare-tab' : ''}${activeTab === tab ? ' sidebar-tab-active' : ''}`}
-            onClick={() => {
-              setActiveTab(tab);
-              onSelectCombo?.(tab);
-            }}
-            type="button"
-          >
-            {tab === 'BARE' ? 'Bare' : tab}
-          </button>
-        ))}
-      </div>
+      {/* Tabs only shown in classic (non-list) view */}
+      {!listViewActive && (
+        <div className="sidebar-tabs">
+          {tabs.map(tab => (
+            <button
+              key={tab}
+              className={`sidebar-tab${tab === 'BARE' ? ' bare-tab' : ''}${activeTab === tab ? ' sidebar-tab-active' : ''}`}
+              onClick={() => {
+                setActiveTab(tab);
+                onSelectCombo?.(tab);
+              }}
+              type="button"
+            >
+              {tab === 'BARE' ? 'Bare' : tab}
+            </button>
+          ))}
+        </div>
+      )}
 
       {listViewActive ? (
-        /* ── Grid view ─────────────────────────────────────── */
-        <div className="sidebar-grid-wrap">
-          {profileEntries.length === 0 ? (
-            <div className="sidebar-empty sidebar-empty--grid">
-              <div className="sidebar-empty-icon">⌨</div>
-              <p>No assignments yet. Select a modifier above, then press <strong>Record</strong> to capture your first hotkey.</p>
+        /* ── Grid view — filtered by activeModifiers (pills) ── */
+        (() => {
+          const gridCombo = activeModifiers.length > 0 ? currentCombo : null;
+          const gridFiltered = gridCombo
+            ? profileEntries.filter(e => e.combo === gridCombo)
+            : profileEntries;
+          const gridGrouped = {};
+          if (!gridCombo) {
+            gridFiltered.forEach(e => {
+              if (!gridGrouped[e.combo]) gridGrouped[e.combo] = [];
+              gridGrouped[e.combo].push(e);
+            });
+          }
+          const gridSortedCombos = Object.keys(gridGrouped).sort((a, b) => {
+            if (a.length !== b.length) return a.length - b.length;
+            return a.localeCompare(b);
+          });
+
+          return (
+            <div className="sidebar-grid-wrap">
+              {profileEntries.length === 0 ? (
+                <div className="sidebar-empty sidebar-empty--grid">
+                  <div className="sidebar-empty-icon">⌨</div>
+                  <p>No assignments yet. Select a modifier above, then press <strong>Record</strong> to capture your first hotkey.</p>
+                </div>
+              ) : gridFiltered.length === 0 ? (
+                <div className="sidebar-empty sidebar-empty--grid">
+                  <p>No assignments on this layer yet</p>
+                </div>
+              ) : !gridCombo ? (
+                <div className="sidebar-grid">
+                  {gridSortedCombos.map(combo => (
+                    <React.Fragment key={combo}>
+                      <div className="sidebar-grid-group-header">
+                        {combo === 'BARE' ? 'BARE KEYS' : combo}
+                        <span className="sidebar-group-count">{gridGrouped[combo].length}</span>
+                      </div>
+                      {gridGrouped[combo].map(renderCard)}
+                    </React.Fragment>
+                  ))}
+                </div>
+              ) : (
+                <div className="sidebar-grid">
+                  {gridFiltered.map(renderCard)}
+                </div>
+              )}
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="sidebar-empty sidebar-empty--grid">
-              <p>No assignments on this layer yet</p>
-            </div>
-          ) : activeTab === 'All' ? (
-            <div className="sidebar-grid">
-              {sortedGroupCombos.map(combo => (
-                <React.Fragment key={combo}>
-                  <div className={`sidebar-grid-group-header${combo === currentCombo ? ' active-group' : ''}`}>
-                    {combo === 'BARE' ? (
-                      <kbd className="sidebar-mod-key sidebar-mod-bare">Bare</kbd>
-                    ) : (
-                      combo.split('+').map((m, i, arr) => (
-                        <React.Fragment key={m}>
-                          <kbd className="sidebar-mod-key">{m}</kbd>
-                          {i < arr.length - 1 && <span className="sidebar-mod-plus">+</span>}
-                        </React.Fragment>
-                      ))
-                    )}
-                    <span className="sidebar-group-count">{grouped[combo].length}</span>
-                  </div>
-                  {grouped[combo].map(renderCard)}
-                </React.Fragment>
-              ))}
-            </div>
-          ) : (
-            <div className="sidebar-grid">
-              {filtered.map(renderCard)}
-            </div>
-          )}
-        </div>
+          );
+        })()
       ) : (
         /* ── Classic list view ──────────────────────────────── */
         <>
