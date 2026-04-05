@@ -53,6 +53,7 @@ function App() {
   const [updateInfo,     setUpdateInfo]     = useState(null);   // { version, percent, ready, dismissed }
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
+  const [importPrompt, setImportPrompt]                 = useState(null); // { name, assignments }
   const [listViewActive, setListViewActive]             = useState(() => {
     try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
   });
@@ -705,6 +706,128 @@ function App() {
     showNotification(`Duplicated as "${newName}"`);
   }, [profiles, assignments, saveConfig, showNotification]);
 
+  const handleExportProfile = useCallback(async (name) => {
+    // Collect all assignments for this profile
+    const prefix = name + '::';
+    const profileAssignments = {};
+    for (const [k, v] of Object.entries(assignments)) {
+      if (k.startsWith(prefix)) profileAssignments[k] = v;
+    }
+    const payload = {
+      trigr_profile: '1.0',
+      name,
+      assignments: profileAssignments,
+      linkedApp: null,
+    };
+    const content = JSON.stringify(payload, null, 2);
+    const filenameHint = `${name}-trigr-profile.json`;
+    try {
+      const result = await window.electronAPI?.exportProfile(filenameHint, content);
+      if (result?.ok) {
+        showNotification(`Profile "${name}" exported`);
+      } else if (result?.error) {
+        showNotification(result.error, 'info');
+      }
+    } catch (e) {
+      console.error('[Trigr] Export profile failed:', e);
+    }
+  }, [assignments, showNotification]);
+
+  const handleImportProfile = useCallback(async () => {
+    try {
+      const result = await window.electronAPI?.importProfile();
+      if (!result?.ok) {
+        if (result?.error) showNotification(result.error, 'info');
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(result.content);
+      } catch {
+        showNotification('Could not parse profile file', 'info');
+        return;
+      }
+      if (!parsed.trigr_profile) {
+        showNotification('Not a valid Trigr profile export', 'info');
+        return;
+      }
+      const importName = parsed.name || 'Imported';
+      if (profiles.includes(importName)) {
+        // Name collision — show Copy/Overwrite prompt
+        setImportPrompt({ name: importName, assignments: parsed.assignments || {} });
+        return;
+      }
+      // No collision — import directly
+      const importedAssignments = {};
+      const originalName = parsed.name || '';
+      for (const [k, v] of Object.entries(parsed.assignments || {})) {
+        const parts = k.split('::');
+        if (parts[0] === originalName) parts[0] = importName;
+        importedAssignments[parts.join('::')] = v;
+      }
+      const assignmentCount = Object.keys(importedAssignments).length;
+      const newAssignments = { ...assignments, ...importedAssignments };
+      const newProfiles = [...profiles, importName];
+      setAssignments(newAssignments);
+      setProfiles(newProfiles);
+      setActiveProfile(importName);
+      setSelectedKey(null);
+      saveConfig(newAssignments, newProfiles, importName);
+      showNotification(`Profile "${importName}" imported — ${assignmentCount} assignment${assignmentCount !== 1 ? 's' : ''} loaded`);
+    } catch (e) {
+      console.error('[Trigr] Import profile failed:', e);
+      showNotification('Profile import failed', 'info');
+    }
+  }, [profiles, assignments, saveConfig, showNotification]);
+
+  const handleImportProfileResolve = useCallback((choice) => {
+    if (!importPrompt) return;
+    const { name: importName, assignments: importedRaw } = importPrompt;
+    setImportPrompt(null);
+
+    if (choice === 'copy') {
+      // Deduplicate name
+      let newName = importName;
+      let counter = 1;
+      while (profiles.includes(newName)) {
+        newName = `${importName} (${counter++})`;
+      }
+      const importedAssignments = {};
+      for (const [k, v] of Object.entries(importedRaw)) {
+        const parts = k.split('::');
+        if (parts[0] === importName) parts[0] = newName;
+        importedAssignments[parts.join('::')] = v;
+      }
+      const assignmentCount = Object.keys(importedAssignments).length;
+      const newAssignments = { ...assignments, ...importedAssignments };
+      const newProfiles = [...profiles, newName];
+      setAssignments(newAssignments);
+      setProfiles(newProfiles);
+      setActiveProfile(newName);
+      setSelectedKey(null);
+      saveConfig(newAssignments, newProfiles, newName);
+      showNotification(`Profile "${newName}" imported — ${assignmentCount} assignment${assignmentCount !== 1 ? 's' : ''} loaded`);
+    } else if (choice === 'overwrite') {
+      // Remove existing assignments for this profile, then write imported ones
+      const prefix = importName + '::';
+      const newAssignments = {};
+      for (const [k, v] of Object.entries(assignments)) {
+        if (!k.startsWith(prefix)) newAssignments[k] = v;
+      }
+      for (const [k, v] of Object.entries(importedRaw)) {
+        const parts = k.split('::');
+        if (parts[0] === importName) parts[0] = importName; // no-op but consistent
+        newAssignments[parts.join('::')] = v;
+      }
+      const assignmentCount = Object.keys(importedRaw).length;
+      setAssignments(newAssignments);
+      setActiveProfile(importName);
+      setSelectedKey(null);
+      saveConfig(newAssignments, profiles, importName);
+      showNotification(`Profile "${importName}" updated — ${assignmentCount} assignment${assignmentCount !== 1 ? 's' : ''} replaced`);
+    }
+  }, [importPrompt, profiles, assignments, saveConfig, showNotification]);
+
   const handleDeleteProfile = useCallback((name) => {
     if (name === 'Default') return;
     const newProfiles = profiles.filter(p => p !== name);
@@ -1341,6 +1464,11 @@ function App() {
             onDuplicateProfile={handleDuplicateProfile}
             onSetActiveGlobalProfile={handleSetActiveGlobalProfile}
             onUpdateProfileSettings={handleUpdateProfileSettings}
+            onExportProfile={handleExportProfile}
+            onImportProfile={handleImportProfile}
+            importPrompt={importPrompt}
+            onImportProfileResolve={handleImportProfileResolve}
+            onImportPromptDismiss={() => setImportPrompt(null)}
             listViewActive={listViewActive}
             isRecording={isRecording}
             onStartRecord={handleStartRecord}

@@ -105,6 +105,10 @@ window.electronAPI = {
   // ── Backup & restore ────────────────────────────────────────────────────────
   exportConfig:   ()         => invoke('export_config'),
   importConfig:   ()         => invoke('import_config'),
+
+  // ── Profile export/import ──────────────────────────────────────────────────
+  exportProfile:  (filenameHint, content) => invoke('export_profile', { filenameHint, content }),
+  importProfile:  ()         => invoke('import_profile'),
   listBackups:    ()         => invoke('list_backups'),
   restoreBackup:  (filename) => invoke('restore_backup', { filename }),
 

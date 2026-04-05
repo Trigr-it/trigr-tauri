@@ -19,7 +19,11 @@
 
 .profile-accordion {
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .profile-accordion-header {
@@ -82,7 +86,7 @@
 
 .profile-accordion-list {
   overflow-y: auto;
-  max-height: 280px;
+  min-height: 0;
   padding-bottom: 4px;
 }
 
@@ -184,6 +188,56 @@
 
 .profile-add-btn:hover {
   color: var(--accent);
+}
+.profile-import-btn {
+  margin-top: 2px;
+  border-top: 1px solid var(--border-dim);
+  padding-top: 7px;
+}
+.profile-import-prompt {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-dim);
+  margin-top: 4px;
+}
+.profile-import-prompt-msg {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.profile-import-prompt-msg strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.profile-import-prompt-btns {
+  display: flex;
+  gap: 6px;
+}
+.profile-import-prompt-btn {
+  flex: 1;
+  padding: 5px 0;
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.profile-import-prompt-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.profile-import-prompt-btn--overwrite {
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.profile-import-prompt-btn--overwrite:hover {
+  border-color: var(--text-danger, #e54);
+  color: var(--text-danger, #e54);
+  background: var(--bg-hover);
 }
 
 /* Group labels and divider */
