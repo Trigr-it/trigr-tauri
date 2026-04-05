@@ -354,6 +354,11 @@ function App() {
   const handleAssign = useCallback((keyId, macro) => {
     const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
     const newAssignments = { ...assignments, [key]: macro };
+    // If pending duplicate has a double press, save it too
+    if (pendingDuplicateRef.current?.double) {
+      const doubleKey = `${activeProfile}::${currentCombo}::${keyId}::double`;
+      newAssignments[doubleKey] = pendingDuplicateRef.current.double;
+    }
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     pendingDuplicateRef.current = null;
@@ -403,12 +408,21 @@ function App() {
     const key = `${activeProfile}::${combo}::${keyId}`;
     const existing = assignments[key];
     if (!existing) return;
-    // Deep clone the assignment with " (copy)" suffix — do NOT save to config yet
-    pendingDuplicateRef.current = {
+    // Deep clone single press
+    const single = {
       ...existing,
       label: (existing.label || '') + ' (copy)',
       data: JSON.parse(JSON.stringify(existing.data || {})),
     };
+    // Deep clone double press if it exists
+    const doubleKey = `${activeProfile}::${combo}::${keyId}::double`;
+    const existingDouble = assignments[doubleKey];
+    const double = existingDouble ? {
+      ...existingDouble,
+      label: (existingDouble.label || '') + ' (copy)',
+      data: JSON.parse(JSON.stringify(existingDouble.data || {})),
+    } : null;
+    pendingDuplicateRef.current = { single, double };
     // Deselect any current key so MacroPanel shows the pending duplicate, not the original
     setSelectedKey(null);
     // Start recording so user picks a new key for the duplicate
@@ -794,6 +808,17 @@ function App() {
       data: JSON.parse(JSON.stringify(existing.data || {})),
     };
     const newAssignments = { ...assignments, [newKey]: duplicated };
+    // Copy double press if it exists
+    const oldDoubleKey = `${activeProfile}::${currentCombo}::${selectedKey}::double`;
+    const existingDouble = assignments[oldDoubleKey];
+    if (existingDouble) {
+      const newDoubleKey = `${activeProfile}::${newCombo}::${newKeyId}::double`;
+      newAssignments[newDoubleKey] = {
+        ...existingDouble,
+        label: (existingDouble.label || '') + ' (copy)',
+        data: JSON.parse(JSON.stringify(existingDouble.data || {})),
+      };
+    }
     setAssignments(newAssignments);
     const newMods = newCombo === 'BARE' ? ['BARE'] : (newCombo ? newCombo.split('+').filter(Boolean) : []);
     setActiveModifiers(newMods);
@@ -1448,7 +1473,7 @@ function App() {
             selectedKey={selectedKey}
             activeModifiers={activeModifiers}
             currentCombo={currentCombo}
-            assignment={pendingDuplicateRef.current || (selectedKey ? getKeyAssignment(selectedKey) : null)}
+            assignment={pendingDuplicateRef.current?.single || (selectedKey ? getKeyAssignment(selectedKey) : null)}
             doubleAssignment={selectedKey ? getDoubleAssignment(selectedKey) : null}
             assignments={assignments}
             activeProfile={activeProfile}
