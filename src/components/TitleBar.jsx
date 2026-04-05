@@ -27,19 +27,23 @@ export default function TitleBar({
     try { return localStorage.getItem('trigr_templates_dismissed') === 'true'; } catch { return false; }
   });
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [tplCtxMenu, setTplCtxMenu] = useState(null); // { x, y } or null
   const templatesRef = useRef(null);
+  const tplCtxRef = useRef(null);
 
   useEffect(() => {
-    if (!templatesOpen) return;
+    if (!templatesOpen && !tplCtxMenu) return;
     function onDown(e) {
-      if (templatesRef.current && !templatesRef.current.contains(e.target)) setTemplatesOpen(false);
+      if (templatesOpen && templatesRef.current && !templatesRef.current.contains(e.target)) setTemplatesOpen(false);
+      if (tplCtxMenu && tplCtxRef.current && !tplCtxRef.current.contains(e.target)) setTplCtxMenu(null);
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [templatesOpen]);
+  }, [templatesOpen, tplCtxMenu]);
 
   const handleDismissTemplates = () => {
     setTemplatesOpen(false);
+    setTplCtxMenu(null);
     setTemplatesDismissed(true);
     try { localStorage.setItem('trigr_templates_dismissed', 'true'); } catch {}
     onShowNotification?.('Templates can always be found in Settings', 'info');
@@ -86,7 +90,8 @@ export default function TitleBar({
             <button
               className={`tb-templates-btn${templatesOpen ? ' active' : ''}`}
               onClick={() => setTemplatesOpen(v => !v)}
-              title="Starter templates"
+              onContextMenu={e => { e.preventDefault(); setTplCtxMenu({ x: e.clientX, y: e.clientY }); }}
+              title="Starter templates — right-click to dismiss"
               type="button"
             >
               ◈ Templates
@@ -97,9 +102,18 @@ export default function TitleBar({
                   activeProfile={activeProfile}
                   onImportTemplate={onImportTemplate}
                   onImportCadTemplate={onImportCadTemplate}
-                  onDismiss={handleDismissTemplates}
-                  showDismiss
                 />
+              </div>
+            )}
+            {tplCtxMenu && (
+              <div
+                ref={tplCtxRef}
+                className="tb-tpl-ctx-menu"
+                style={{ top: tplCtxMenu.y, left: tplCtxMenu.x }}
+              >
+                <button className="tb-tpl-ctx-item" type="button" onClick={handleDismissTemplates}>
+                  Don't show this again
+                </button>
               </div>
             )}
           </div>
