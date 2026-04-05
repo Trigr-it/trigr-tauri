@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-04 (post v0.1.13)
+> Last updated: 2026-04-05 (post v0.1.15)
 
 ---
 
@@ -78,6 +78,7 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 | FillInWindow CSS | `src/components/FillInWindow.css` | Fill-in window styling (transparent bg, content-based auto-resize) |
 | AnalyticsPanel | `src/components/AnalyticsPanel.jsx` | Local usage analytics — today, last 7 days, records, breakdown |
 | AnalyticsPanel CSS | `src/components/AnalyticsPanel.css` | Analytics panel styling (CSS variables only) |
+| List View | `src/components/Sidebar.jsx` | Assignment list view — multi-column card grid in expanded sidebar (state owned by App.jsx, toggle in TitleBar) |
 
 ---
 
@@ -240,6 +241,21 @@ The LL hook runs on a dedicated high-priority thread with a `PeekMessageW` polli
 ### Analytics Writer Thread
 `analytics.rs` owns a dedicated background thread that holds the only `rusqlite::Connection`. All DB access goes through `AnalyticsMsg` enum sent via `mpsc::Sender`. `log_action()` is non-blocking (channel send only) — safe to call from any thread including the action executor and expansion threads. `get_stats()` and `reset_stats()` send a message and block on a reply channel (5s timeout). Never open a second connection or access the DB from any other thread. Time saved calculation: expansion = `char_count * 0.3s`, hotkey = `3.0s`, macro = `5.0s`. Character count excludes `\r` (CRLF correction).
 
+### Vite Dev Server — IPv4 Binding
+`vite.config.js` must have `server: { host: '127.0.0.1' }` and `tauri.conf.json` must have `"devUrl": "http://127.0.0.1:5173"`. WebView2 on ARM64 Windows cannot reach the Vite dev server when it binds to IPv6 (`::1`). Both must use `127.0.0.1`.
+
+### Atomic Ordering — SeqCst Only
+All `AtomicBool` and `AtomicIsize` shared across threads in `hotkeys.rs`, `expansions.rs`, and `actions.rs` must use `Ordering::SeqCst`. `Ordering::Relaxed` causes silent failures on ARM64. This was bulk-upgraded in v0.1.14 — do not reintroduce `Relaxed` on any cross-thread atomic.
+
+### Hook Heartbeat — Mouse Events
+`HOOK_HEARTBEAT` must be incremented in BOTH `keyboard_hook_proc` AND `mouse_hook_proc`. Missing the mouse increment caused false-positive watchdog reinstalls every 30s during mouse-only activity (browsing, scrolling, clicking) because the heartbeat flatlined.
+
+### Hook Reinstall — Atomic Reset
+When `spawn_hook_thread()` runs (initial install or watchdog reinstall), it must reset ALL shared atomics to safe defaults after setting `HOOKS_RUNNING = true`: `INJECTION_IN_PROGRESS → false`, `SUPPRESS_SIMULATED → false`, `FILL_IN_ACTIVE → false`, `FILLIN_HWND → 0`, `MOD_CTRL/ALT/SHIFT/META → false`. Without this, stale values from a dead hook session corrupt the new hook (e.g. `INJECTION_IN_PROGRESS` stuck true buffers all keystrokes forever).
+
+### Double Press Clear — Delete Both Entries
+`handleClearKey` in App.jsx must delete both the single-press key (`Profile::Combo::KeyId`) AND the double-press key (`Profile::Combo::KeyId::double`). Failing to delete the `::double` entry leaves an orphaned assignment that still fires, appears in Quick Search, and persists in config.
+
 ### Autocorrect — Disabled for Alpha
 Both custom (`GLOBAL::AUTOCORRECT::`) and built-in (`builtin_autocorrect()`) autocorrect checks are commented out in `check_space_trigger()`. The Autocorrect tab is hidden in TextExpansions.jsx. Space-triggered text expansions continue to work normally.
 
@@ -270,6 +286,9 @@ Win key combinations (Win+Left, Win+D, etc.) cannot be reliably captured as hotk
 ### Macro Step DnD — ID Stability
 `@dnd-kit/sortable` step IDs (idMapRef in MacroSequenceForm) must be keyed by step TYPE only, not value. Including value in the stability check causes a new ID on every keystroke → React remounts the component → input focus lost. The ID regenerates only when the step type changes or steps are added/removed/reordered.
 
+### List View Architecture
+`listViewActive` state is owned by `App.jsx`, persisted in `localStorage` key `trigr_list_view`. Toggle button lives in `TitleBar.jsx` (`.tb-list-toggle`), only visible in mapping area. When active: `main-area` gets `.main-area--hidden` (flex: 0, width: 0), KeyboardCanvas is not rendered, and Sidebar gets `.sidebar--expanded` (flex: 1) filling all space left of MacroPanel (300px). Sidebar renders a modifier pill bar (Ctrl/Alt/Shift/Win/Bare + Record button) as the filter — no tabs in list view. Assignments display as a CSS grid of cards (`repeat(auto-fill, minmax(200px, 1fr))`). Unfiltered view shows gold header bars (`var(--accent)` background, `var(--bg-base)` text) as group separators spanning full grid width. Bare keys group sorts first. Cards show: key combo, label, type pill, and preview line. Classic sidebar (non-list-view) is unchanged at 200px with its own tabs. KeyboardCanvas has no list view code — it was fully removed in v0.1.15.
+
 ### Input Method — Simplified
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
 
@@ -287,7 +306,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.13",
+  "version": "0.1.15",
   "app": {
     "windows": [{
       "title": "Trigr",
@@ -328,3 +347,7 @@ Record key decisions and findings here after each session.
 | 2026-04-04 | Post-MVP | Macro step types + UI overhaul | **New macro steps:** Open App (ShellExecuteW + args), Open Folder (opener::open), Focus Window (EnumWindows + process/title match + SetForegroundWindow with mutable target_hwnd), Open URL (already existed). `MACRO_STEP_TYPES` = 8 types. All sub-row step UIs (Type Text, Open App, Open Folder, Focus Window, Open URL) moved to full-width rows below the step type dropdown. **@dnd-kit/sortable** replaces HTML5 drag-and-drop: stable runtime IDs via idMapRef keyed by step type only (not value — prevents focus loss on keystroke), PointerSensor with 8px distance, DragOverlay ghost. **Win key manual builder:** Meta key during capture switches to dropdown builder (Win+key selection). Win builder blur guard refocuses field when OS steals focus. **ESC mappable:** Removed 4 `key_id == "Escape"` cancel branches from hotkeys.rs, cancel via UI buttons only. App.jsx ESC guard for capture mode. **Input method simplified:** 5 options → 3 (Global default, Direct, Clipboard). **Cargo.toml:** Added `Win32_UI_Shell` feature for ShellExecuteW. |
 | 2026-04-04 | Post-MVP | Profile accordion in sidebar | Profiles moved from titlebar to sidebar accordion. TitleBar stripped to logo + nav tabs + right controls only. ProfileAccordion: collapsed header shows fallback profile (green dot) + editing profile name. Expanded: two groups (STATIC / APP-SPECIFIC) with separate SortableContext instances, cross-group drag blocked. Right-click context menu (Rename, Duplicate, Set as default fallback, Delete). Green dot fallback indicator on activeGlobalProfile. @dnd-kit/sortable for profile reordering. Default profile always first, not draggable. minWidth increased to 800px. Vite watch excludes src-tauri/target. |
 | 2026-04-04 | Release | v0.1.13 released | Patch release. All post-MVP work from 2026-04-04 sessions included (macro step types, UI overhaul, profile accordion). |
+| 2026-04-04 | Post-MVP | Bugfixes + list view + hook hardening | **Vite IPv4:** `host: '127.0.0.1'` in vite.config.js + `devUrl` in tauri.conf.json — fixes ARM64 WebView2 dev mode. **Ordering::SeqCst:** All cross-thread atomics in hotkeys.rs/expansions.rs/actions.rs upgraded from Relaxed. **Double-press clear:** `handleClearKey` now deletes `::double` entry too. **Hook heartbeat:** `mouse_hook_proc` now increments `HOOK_HEARTBEAT` — fixes false-positive 30s watchdog reinstalls during mouse-only activity. **Hook reinstall atomic reset:** `spawn_hook_thread()` resets INJECTION_IN_PROGRESS, SUPPRESS_SIMULATED, FILL_IN_ACTIVE, FILLIN_HWND, modifier state after reinstall. **List view:** Toggle in KeyboardCanvas.jsx — flat assignment table, modifier-layer filtered, localStorage persisted, auto-switch at 850px, narrow-responsive (hides TYPE column). Toggle button absolutely positioned against keyboard-canvas-wrap to avoid shrinking keyboard. **Autocorrect log:** Clarified message (engine disabled for Alpha). |
+| 2026-04-04 | Release | v0.1.14 released | Patch release. All bugfixes + list view from this session. |
+| 2026-04-05 | Post-MVP | List view refactor | **State lifted:** `listViewActive` moved from KeyboardCanvas local state to App.jsx with localStorage persistence. Toggle button moved to TitleBar (`.tb-list-toggle`). **Layout:** When active, `main-area` collapses (`main-area--hidden`), Sidebar expands to `flex: 1` (`sidebar--expanded`), KeyboardCanvas not rendered. **Grid view in Sidebar:** Modifier pill buttons (Ctrl/Alt/Shift/Win/Bare) + Record button as filter bar. CSS grid cards (`repeat(auto-fill, minmax(200px, 1fr))`) with combo, label, type pill, preview. Tabs removed from list view — pills are sole filter. **Gold group headers:** `var(--accent)` background, `var(--bg-base)` text, uppercase, full-width bars in both grid and classic sidebar views. **Bare keys first:** Group sort comparator updated in both views. **Bare suffix stripped:** Cards show "Q" not "Q (bare)". **KeyboardCanvas cleanup:** Removed AssignmentList, buildAssignmentList, formatKeyId, userPref/narrow/wrapRef state, ResizeObserver, list-toggle-btn, all list-view CSS (~232 lines). Removed `assignments`/`activeProfile` props. ModifierBar `narrow` prop removed. |
+| 2026-04-05 | Release | v0.1.15 released | Patch release. List view refactor from this session. |
