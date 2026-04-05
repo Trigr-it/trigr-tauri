@@ -106,7 +106,7 @@
 }
 
 .settings-accordion-chevron {
-  font-size: 10px;
+  font-size: 14px;
   color: var(--text-muted);
   transition: transform 0.2s;
 }
