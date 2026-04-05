@@ -611,6 +611,7 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
     // {date:...} and {time:...} tokens
     let now = chrono::Local::now();
     result = result.replace("{date:DD/MM/YYYY}", &now.format("%d/%m/%Y").to_string());
+    result = result.replace("{date:DD/MM/YY}", &now.format("%d/%m/%y").to_string());
     result = result.replace("{date:MM/DD/YYYY}", &now.format("%m/%d/%Y").to_string());
     result = result.replace("{date:YYYY-MM-DD}", &now.format("%Y-%m-%d").to_string());
     result = result.replace("{time:HH:MM:SS}", &now.format("%H:%M:%S").to_string());

@@ -28,6 +28,7 @@ const INSERT_MENU = [
   { type: 'item', token: '{clipboard}',       label: 'Clipboard Contents',  display: 'Clipboard'  },
   { type: 'sep'  },
   { type: 'item', token: '{date:DD/MM/YYYY}', label: 'Date (DD/MM/YYYY)',   display: 'DD/MM/YYYY' },
+  { type: 'item', token: '{date:DD/MM/YY}',   label: 'Date (DD/MM/YY)',     display: 'DD/MM/YY'   },
   { type: 'item', token: '{date:MM/DD/YYYY}', label: 'Date (MM/DD/YYYY)',   display: 'MM/DD/YYYY' },
   { type: 'item', token: '{date:YYYY-MM-DD}', label: 'Date (YYYY-MM-DD)',   display: 'YYYY-MM-DD' },
   { type: 'item', token: '{time:HH:MM}',      label: 'Time (HH:MM)',        display: 'HH:MM'      },
