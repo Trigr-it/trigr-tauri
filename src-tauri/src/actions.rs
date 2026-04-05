@@ -25,7 +25,43 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 /// Future clipboard manager checks this flag and skips logging if set.
 pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
 
+/// Held key state for Send Hotkey hold mode.
+/// Stores (target_vk, Vec<modifier_vks>) so we can send the correct keyup later.
+use std::sync::Mutex;
+static HELD_KEY: Mutex<Option<HeldKeyState>> = Mutex::new(None);
+
+struct HeldKeyState {
+    target_vk: u16,
+    mod_vks: Vec<u16>,
+    label: String, // e.g. "Ctrl+W" for tray tooltip
+}
+
 const CF_UNICODETEXT: u32 = 13;
+
+/// Release the currently held key (if any). Safe to call from any thread.
+/// Returns the label of the released key (for logging) or None.
+pub fn release_held_key() -> Option<String> {
+    let mut held = HELD_KEY.lock().unwrap();
+    if let Some(state) = held.take() {
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+        // Release target key
+        send_vk_key(state.target_vk, true);
+        // Release modifiers in reverse
+        for &vk in state.mod_vks.iter().rev() {
+            send_vk_key(vk, true);
+        }
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+        info!("[Trigr] Released held key: {}", state.label);
+        Some(state.label)
+    } else {
+        None
+    }
+}
+
+/// Check if a key is currently being held.
+pub fn is_key_held() -> bool {
+    HELD_KEY.lock().unwrap().is_some()
+}
 
 // ── Timing constants (matching Electron defaults) ───────────────────────────
 
@@ -50,7 +86,7 @@ const VK_INSERT: u16 = 0x2D;
 /// Execute a macro action. Called from the hotkey processor thread.
 /// `target_hwnd` = the foreground window HWND captured at hotkey fire time.
 /// `is_altgr` = true if Ctrl+Alt (AltGr) was held — dead character may have leaked.
-pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_altgr: bool) {
+pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_altgr: bool, app: &tauri::AppHandle) {
     let macro_type = macro_val
         .get("type")
         .and_then(|v| v.as_str())
@@ -95,7 +131,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
         "hotkey" => {
             if let Some(d) = data {
                 thread::sleep(Duration::from_millis(HOTKEY_SETTLE_MS));
-                execute_send_hotkey(d);
+                execute_send_hotkey(d, app);
             }
         }
 
@@ -370,7 +406,7 @@ fn send_unicode_key(scan: u16, key_up: bool) {
 
 // ── Send Hotkey: VK-based key simulation ────────────────────────────────────
 
-fn execute_send_hotkey(data: &Value) {
+fn execute_send_hotkey(data: &Value, app: &tauri::AppHandle) {
     let key_name = match data.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
         None => return,
@@ -394,6 +430,80 @@ fn execute_send_hotkey(data: &Value) {
         }
     };
 
+    let hold_mode = data
+        .get("holdMode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let mod_vks: Vec<u16> = modifiers
+        .iter()
+        .filter_map(|m| match m.to_lowercase().as_str() {
+            "ctrl" => Some(VK_LCONTROL),
+            "alt" => Some(VK_LALT),
+            "shift" => Some(VK_LSHIFT),
+            "win" => Some(VK_LWIN),
+            _ => None,
+        })
+        .collect();
+
+    let combo_label = if modifiers.is_empty() {
+        key_name.to_string()
+    } else {
+        format!("{}+{}", modifiers.join("+"), key_name)
+    };
+
+    // ── Hold mode ──
+    if hold_mode {
+        let mut held = HELD_KEY.lock().unwrap();
+        if let Some(ref state) = *held {
+            if state.target_vk == target_vk && state.mod_vks == mod_vks {
+                // Same key — release it
+                crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                send_vk_key(state.target_vk, true);
+                for &vk in state.mod_vks.iter().rev() {
+                    send_vk_key(vk, true);
+                }
+                crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                info!("[Trigr] Hold released: {}", combo_label);
+                *held = None;
+                drop(held);
+                crate::tray::update_tray_icon_normal(app);
+                return;
+            } else {
+                // Different key held — release previous first
+                crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                send_vk_key(state.target_vk, true);
+                for &vk in state.mod_vks.iter().rev() {
+                    send_vk_key(vk, true);
+                }
+                crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                info!("[Trigr] Hold released (switching): {}", state.label);
+            }
+        }
+
+        // Hold the new key — keydown only, no keyup
+        println!("[ACTION] Send Hotkey HOLD: {}", combo_label);
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+        let physically_held = release_held_modifiers();
+        for &vk in &mod_vks {
+            send_vk_key(vk, false);
+        }
+        send_vk_key(target_vk, false);
+        // Do NOT send keyup — key stays held
+        restore_modifiers(&physically_held);
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+
+        *held = Some(HeldKeyState {
+            target_vk,
+            mod_vks: mod_vks.clone(),
+            label: combo_label.clone(),
+        });
+        drop(held);
+        crate::tray::update_tray_icon_held(app, &combo_label);
+        return;
+    }
+
+    // ── Normal mode (no hold) ──
     println!(
         "[ACTION] Send Hotkey: [{}] + {}",
         modifiers.join("+"),
@@ -406,17 +516,6 @@ fn execute_send_hotkey(data: &Value) {
     let held = release_held_modifiers();
 
     // Press target modifiers
-    let mod_vks: Vec<u16> = modifiers
-        .iter()
-        .filter_map(|m| match m.to_lowercase().as_str() {
-            "ctrl" => Some(VK_LCONTROL),
-            "alt" => Some(VK_LALT),
-            "shift" => Some(VK_LSHIFT),
-            "win" => Some(VK_LWIN),
-            _ => None,
-        })
-        .collect();
-
     for &vk in &mod_vks {
         send_vk_key(vk, false);
     }

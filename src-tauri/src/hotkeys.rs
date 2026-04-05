@@ -1218,7 +1218,7 @@ fn fire_macro(macro_val: Value, is_bare: bool, app: &AppHandle) {
     let macro_clone = macro_val.clone();
     let app_clone = app.clone();
     thread::spawn(move || {
-        crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr);
+        crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, &app_clone);
 
         // Log analytics
         let action_type = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");

@@ -395,6 +395,62 @@
   color: var(--text-muted);
 }
 
+/* ── Hold mode toggle ──────────────────────────────────── */
+.hold-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 2px;
+}
+
+.hold-mode-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.hold-mode-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--bg-active);
+  cursor: pointer;
+  transition: background 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.hold-mode-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.hold-mode-toggle.on {
+  background: var(--accent);
+}
+
+.hold-mode-toggle.on::after {
+  transform: translateX(16px);
+  background: var(--bg-base);
+}
+
+.hold-mode-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
 .form-input {
   height: 36px;
   padding: 0 12px;
