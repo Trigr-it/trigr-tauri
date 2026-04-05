@@ -90,6 +90,31 @@
   line-height: 1.4;
 }
 
+/* ── Accordion header ──────────────────────────────────────────────────── */
+
+.settings-accordion-header {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  transition: color 0.12s;
+}
+
+.settings-accordion-header:hover {
+  color: var(--text-primary);
+}
+
+.settings-accordion-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.settings-accordion-chevron.open {
+  transform: rotate(180deg);
+}
+
 /* ── Privacy block ──────────────────────────────────────────────────────── */
 
 .settings-privacy-block {

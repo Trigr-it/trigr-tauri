@@ -42,6 +42,7 @@ export default function SettingsPanel({
   const [backupList, setBackupList]           = useState(null);
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
+  const [templatesExpanded, setTemplatesExpanded] = useState(false);
 
   useEffect(() => {
     window.electronAPI?.getConfigPath().then(p  => setConfigPath(p || ''));
@@ -121,17 +122,27 @@ export default function SettingsPanel({
           </div>
         </section>
 
-        {/* ── STARTER TEMPLATES ──────────────────────────── */}
+        {/* ── STARTER TEMPLATES (accordion) ─────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">STARTER TEMPLATES</div>
-          <p className="settings-section-sub">Import pre-built hotkey and expansion packs</p>
-          <div className="settings-tpl-wrap">
-            <TemplatesPanel
-              activeProfile={activeProfile}
-              onImportTemplate={onImportTemplate}
-              onImportCadTemplate={onImportCadTemplate}
-            />
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => setTemplatesExpanded(v => !v)}
+          >
+            STARTER TEMPLATES
+            <span className={`settings-accordion-chevron${templatesExpanded ? ' open' : ''}`}>▾</span>
           </div>
+          {!templatesExpanded && (
+            <p className="settings-section-sub">Import pre-built hotkey and expansion packs</p>
+          )}
+          {templatesExpanded && (
+            <div className="settings-tpl-wrap">
+              <TemplatesPanel
+                activeProfile={activeProfile}
+                onImportTemplate={onImportTemplate}
+                onImportCadTemplate={onImportCadTemplate}
+              />
+            </div>
+          )}
         </section>
 
         {/* ── ABOUT ──────────────────────────────────────── */}
