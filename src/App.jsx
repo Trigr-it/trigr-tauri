@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import './styles/global.css';
 import './styles/app.css';
 import TitleBar from './components/TitleBar';
@@ -783,12 +783,47 @@ function App() {
   }, []);
 
   // ── List view toggle ─────────────────────────────────────────
+  const wasInKeyboardModeRef = useRef(false);
+
   const handleToggleListView = useCallback(() => {
+    wasInKeyboardModeRef.current = false; // manual toggle overrides auto-restore
     setListViewActive(prev => {
       const next = !prev;
       try { localStorage.setItem('trigr_list_view', String(next)); } catch {}
       return next;
     });
+  }, []);
+
+  // ── Auto list view below 800px with state memory ────────────
+  useEffect(() => {
+    const BREAKPOINT = 800;
+    let lastNarrow = window.innerWidth < BREAKPOINT;
+
+    function onResize() {
+      const narrow = window.innerWidth < BREAKPOINT;
+      if (narrow === lastNarrow) return;
+      lastNarrow = narrow;
+
+      if (narrow) {
+        // Going narrow — auto-switch to list view if currently in keyboard mode
+        setListViewActive(prev => {
+          if (prev) return prev; // already in list view
+          wasInKeyboardModeRef.current = true;
+          return true;
+        });
+      } else {
+        // Going wide — restore keyboard mode if auto-switched
+        if (wasInKeyboardModeRef.current) {
+          wasInKeyboardModeRef.current = false;
+          setListViewActive(false);
+        }
+      }
+    }
+
+    window.addEventListener('resize', onResize);
+    // Check on mount in case window is already narrow
+    onResize();
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   // ── Top-level area switching (Mapping ↔ Text Expansions) ──
