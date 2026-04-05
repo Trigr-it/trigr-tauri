@@ -196,7 +196,11 @@ function App() {
       });
       window.electronAPI.onHotkeyRecorded?.((data) => {
         setIsRecording(false);
-        if (!data) return; // Escape — cancelled
+        if (!data) {
+          // Escape — cancelled. Discard any pending duplicate.
+          pendingDuplicateRef.current = null;
+          return;
+        }
         const { modifiers, keyId } = data;
         // No modifiers → treat as BARE key layer
         const mods = modifiers.length === 0 ? ['BARE'] : modifiers;
@@ -352,6 +356,7 @@ function App() {
     const newAssignments = { ...assignments, [key]: macro };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
+    pendingDuplicateRef.current = null;
     showNotification(`Assigned to ${currentCombo}+${keyId}`);
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
@@ -392,16 +397,21 @@ function App() {
   }, [assignments, activeProfile, profiles, saveConfig, syncEngine, selectedKey, showNotification]);
 
   // ── Duplicate assignment to pending (context menu) ────────
+  const pendingDuplicateRef = useRef(null);
+
   const handleDuplicateFromContext = useCallback((combo, keyId) => {
     const key = `${activeProfile}::${combo}::${keyId}`;
     const existing = assignments[key];
     if (!existing) return;
-    // Set modifiers and select the key to open MacroPanel with this assignment
-    const mods = combo === 'BARE' ? ['BARE'] : combo.split('+').filter(Boolean);
-    setActiveModifiers(mods);
-    setSelectedKey(keyId);
-    if (!keyId.startsWith('MOUSE_')) setActiveView('keyboard');
-    // Start recording immediately so the user can pick a new key for the duplicate
+    // Deep clone the assignment with " (copy)" suffix — do NOT save to config yet
+    pendingDuplicateRef.current = {
+      ...existing,
+      label: (existing.label || '') + ' (copy)',
+      data: JSON.parse(JSON.stringify(existing.data || {})),
+    };
+    // Deselect any current key so MacroPanel shows the pending duplicate, not the original
+    setSelectedKey(null);
+    // Start recording so user picks a new key for the duplicate
     setIsRecording(true);
     window.electronAPI?.startHotkeyRecording();
   }, [assignments, activeProfile]);
@@ -1438,7 +1448,7 @@ function App() {
             selectedKey={selectedKey}
             activeModifiers={activeModifiers}
             currentCombo={currentCombo}
-            assignment={selectedKey ? getKeyAssignment(selectedKey) : null}
+            assignment={pendingDuplicateRef.current || (selectedKey ? getKeyAssignment(selectedKey) : null)}
             doubleAssignment={selectedKey ? getDoubleAssignment(selectedKey) : null}
             assignments={assignments}
             activeProfile={activeProfile}
@@ -1449,7 +1459,7 @@ function App() {
             onClear={handleClearKey}
             onAssignDouble={handleAssignDouble}
             onClearDouble={handleClearDouble}
-            onClose={() => setSelectedKey(null)}
+            onClose={() => { pendingDuplicateRef.current = null; setSelectedKey(null); }}
             onReassign={handleReassign}
             onDuplicate={handleDuplicateAssignment}
             onCopyToProfile={handleCopyToProfile}
