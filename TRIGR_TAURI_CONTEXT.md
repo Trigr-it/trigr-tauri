@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-05 (post v0.1.15)
+> Last updated: 2026-04-05 (post v0.1.16)
 
 ---
 
@@ -79,6 +79,7 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 | AnalyticsPanel | `src/components/AnalyticsPanel.jsx` | Local usage analytics — today, last 7 days, records, breakdown |
 | AnalyticsPanel CSS | `src/components/AnalyticsPanel.css` | Analytics panel styling (CSS variables only) |
 | List View | `src/components/Sidebar.jsx` | Assignment list view — multi-column card grid in expanded sidebar (state owned by App.jsx, toggle in TitleBar) |
+| TemplatesPanel | `src/components/TemplatesPanel.jsx` | Starter template packs — shared component used by TitleBar dropdown and Settings accordion |
 
 ---
 
@@ -135,6 +136,7 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 - `open_logs_folder` — opens the log directory in File Explorer
 - `get_analytics` — returns aggregate usage stats (total, today, last 7 days, best day, best 7 days, breakdown)
 - `reset_analytics` — deletes all analytics data, returns `bool`
+- `list_open_windows` — EnumWindows to list visible non-minimized windows, returns `Vec<{ process, title }>`, filters system processes
 
 ---
 
@@ -287,7 +289,13 @@ Win key combinations (Win+Left, Win+D, etc.) cannot be reliably captured as hotk
 `@dnd-kit/sortable` step IDs (idMapRef in MacroSequenceForm) must be keyed by step TYPE only, not value. Including value in the stability check causes a new ID on every keystroke → React remounts the component → input focus lost. The ID regenerates only when the step type changes or steps are added/removed/reordered.
 
 ### List View Architecture
-`listViewActive` state is owned by `App.jsx`, persisted in `localStorage` key `trigr_list_view`. Toggle button lives in `TitleBar.jsx` (`.tb-list-toggle`), only visible in mapping area. When active: `main-area` gets `.main-area--hidden` (flex: 0, width: 0), KeyboardCanvas is not rendered, and Sidebar gets `.sidebar--expanded` (flex: 1) filling all space left of MacroPanel (300px). Sidebar renders a modifier pill bar (Ctrl/Alt/Shift/Win/Bare + Record button) as the filter — no tabs in list view. Assignments display as a CSS grid of cards (`repeat(auto-fill, minmax(200px, 1fr))`). Unfiltered view shows gold header bars (`var(--accent)` background, `var(--bg-base)` text) as group separators spanning full grid width. Bare keys group sorts first. Cards show: key combo, label, type pill, and preview line. Classic sidebar (non-list-view) is unchanged at 200px with its own tabs. KeyboardCanvas has no list view code — it was fully removed in v0.1.15.
+`listViewActive` state is owned by `App.jsx`, persisted in `localStorage` key `trigr_list_view`. Toggle button lives in `TitleBar.jsx` (`.tb-list-toggle`), only visible in mapping area. When active: `main-area` gets `.main-area--hidden` (flex: 0, width: 0), KeyboardCanvas is not rendered, and Sidebar gets `.sidebar--expanded` (flex: 1) filling all space left of MacroPanel (300px). Sidebar renders a modifier pill bar (Ctrl/Alt/Shift/Win/Bare + Record button) as the filter — no tabs in list view. Assignments display as a CSS grid of cards (`repeat(auto-fill, minmax(200px, 1fr))`). Unfiltered view shows gold header bars (`var(--accent)` background, `var(--bg-base)` text) as group separators spanning full grid width. Bare keys group sorts first. Cards show: key combo, label, type pill, and preview line. Classic sidebar (non-list-view) is unchanged at 200px with its own tabs. KeyboardCanvas has no list view code — it was fully removed in v0.1.15. Auto-switches to list view below 800px via `window.resize` listener with `wasInKeyboardModeRef` state memory — auto-restores keyboard view when width goes back above 800px unless user manually toggled.
+
+### Focus Window — Pick Window
+Focus Window macro step uses `FocusWindowFields` component in MacroPanel.jsx. Process name field replaced with a Pick Window button that calls `list_open_windows` (Rust command in lib.rs using `EnumWindows` + `IsWindowVisible` + `IsIconic` + `QueryFullProcessImageNameW`). Inline dropdown shows running windows, clicking one sets both process and title fields. Window title input remains editable. Value format unchanged: `{"process":"...","title":"..."}`.
+
+### Starter Templates
+Three packs defined in `TemplatesPanel.jsx`: General/Office (7 expansions + 1 hotkey), CAD/Engineering (5 expansions + 8 bare keys, requires Pick App flow), Sales/BD (7 expansions + 2 hotkeys). Import is additive only — `handleImportTemplate` in App.jsx skips existing keys. CAD pack uses `handleImportCadTemplate` which creates an app-specific profile (`CAD — exeName`) with `linkedApp` set, imports bare keys into that profile and expansions globally. TemplatesPanel is shared between TitleBar dropdown and SettingsPanel accordion. TitleBar pill button (`◈ Templates`) visible on mapping area, dismissible via right-click context menu ("Don't show this again") which sets `localStorage` key `trigr_templates_dismissed`. Settings accordion is permanent home (collapsed by default).
 
 ### Input Method — Simplified
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
@@ -306,7 +314,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "app": {
     "windows": [{
       "title": "Trigr",
@@ -351,3 +359,5 @@ Record key decisions and findings here after each session.
 | 2026-04-04 | Release | v0.1.14 released | Patch release. All bugfixes + list view from this session. |
 | 2026-04-05 | Post-MVP | List view refactor | **State lifted:** `listViewActive` moved from KeyboardCanvas local state to App.jsx with localStorage persistence. Toggle button moved to TitleBar (`.tb-list-toggle`). **Layout:** When active, `main-area` collapses (`main-area--hidden`), Sidebar expands to `flex: 1` (`sidebar--expanded`), KeyboardCanvas not rendered. **Grid view in Sidebar:** Modifier pill buttons (Ctrl/Alt/Shift/Win/Bare) + Record button as filter bar. CSS grid cards (`repeat(auto-fill, minmax(200px, 1fr))`) with combo, label, type pill, preview. Tabs removed from list view — pills are sole filter. **Gold group headers:** `var(--accent)` background, `var(--bg-base)` text, uppercase, full-width bars in both grid and classic sidebar views. **Bare keys first:** Group sort comparator updated in both views. **Bare suffix stripped:** Cards show "Q" not "Q (bare)". **KeyboardCanvas cleanup:** Removed AssignmentList, buildAssignmentList, formatKeyId, userPref/narrow/wrapRef state, ResizeObserver, list-toggle-btn, all list-view CSS (~232 lines). Removed `assignments`/`activeProfile` props. ModifierBar `narrow` prop removed. |
 | 2026-04-05 | Release | v0.1.15 released | Patch release. List view refactor from this session. |
+| 2026-04-05 | Post-MVP | Pick Window + auto list view + templates | **Pick Window:** New `list_open_windows` Rust command (EnumWindows + IsIconic + QueryFullProcessImageNameW). FocusWindowFields component replaces manual process input with Pick Window button + inline dropdown. **Auto list view:** 800px breakpoint via window resize listener, `wasInKeyboardModeRef` for state memory — auto-restores keyboard mode when widened unless user manually toggled. **Starter Templates:** TemplatesPanel.jsx — 3 packs (General/Office, CAD/Engineering, Sales/BD). Additive import via `handleImportTemplate`/`handleImportCadTemplate` in App.jsx. CAD pack: 8 bare key Type Text commands (FILLET, EXPLODE, etc.), Pick App flow creates app-specific profile. Templates moved from TextExpansions to shared TemplatesPanel component. TitleBar pill button with right-click dismiss context menu + localStorage persistence. SettingsPanel accordion (collapsed by default) as permanent home. All template code removed from TextExpansions.jsx/css. Onboarding Step 5 hint updated to "Settings → Templates". |
+| 2026-04-05 | Release | v0.1.16 released | Patch release. Pick Window, auto list view, starter templates from this session. |
