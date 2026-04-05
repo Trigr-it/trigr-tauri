@@ -380,7 +380,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
             Click the app icon next to a profile name to link it to a specific application — Trigr will switch to that profile automatically when the app is in focus.
           </p>
           <p className="onboarding-hint">
-            Tip: find ready-made starter packs for office, CAD, and sales workflows in <strong>Text Expansion → Templates</strong>.
+            Tip: find ready-made starter packs for office, CAD, and sales workflows in <strong>Settings → Templates</strong>.
           </p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={finish}>Finish</button>

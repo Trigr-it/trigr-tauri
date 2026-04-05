@@ -1,0 +1,313 @@
+/* ── Templates panel (shared by TitleBar dropdown + Settings) ────────────── */
+
+.tpl-panel {
+  padding: 16px;
+}
+
+.tpl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.tpl-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tpl-close {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tpl-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tpl-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.tpl-result {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 6px 10px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  transition: border-color 0.12s;
+}
+
+.tpl-card:hover {
+  border-color: var(--border-accent);
+}
+
+.tpl-card-name {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tpl-card-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.tpl-card-counts {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.tpl-import-btn {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 14px;
+  margin-top: 4px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: 5px;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tpl-import-btn:hover {
+  background: var(--accent-glow-strong, var(--accent-glow));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* ── CAD Pick App flow ─────────────────────────────────────── */
+
+.tpl-cad-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.tpl-cad-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.tpl-cad-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.tpl-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: 5px;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tpl-badge-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.tpl-badge-clear:hover {
+  color: var(--text-primary);
+}
+
+.tpl-pick-btn {
+  height: 28px;
+  padding: 0 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.tpl-pick-btn:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.tpl-pick-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.tpl-pick-loading {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tpl-pick-item {
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--border);
+}
+
+.tpl-pick-item:last-child {
+  border-bottom: none;
+}
+
+.tpl-pick-item:hover {
+  background: var(--bg-hover);
+}
+
+.tpl-pick-process {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.tpl-cad-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tpl-cad-cancel {
+  height: 26px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.tpl-cad-cancel:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+/* ── TitleBar dropdown wrapper ─────────────────────────────── */
+
+.tb-templates-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  width: 560px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 200;
+}
+
+/* ── TitleBar templates button ─────────────────────────────── */
+
+.tb-templates-wrap {
+  position: relative;
+}
+
+.tb-templates-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.tb-templates-btn:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.tb-templates-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+/* ── Settings section wrapper ──────────────────────────────── */
+
+.settings-tpl-wrap .tpl-panel {
+  padding: 0;
+}

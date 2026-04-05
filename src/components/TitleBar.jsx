@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './TitleBar.css';
+import TemplatesPanel from './TemplatesPanel';
 
 export default function TitleBar({
   macrosEnabled,
@@ -12,10 +13,37 @@ export default function TitleBar({
   onAreaChange,
   listViewActive = false,
   onToggleListView,
+  activeProfile = 'Default',
+  onImportTemplate,
+  onImportCadTemplate,
+  onShowNotification,
 }) {
   const handleMinimize = () => window.electronAPI?.minimize();
   const handleMaximize = () => window.electronAPI?.maximize();
   const handleClose    = () => window.electronAPI?.close();
+
+  // Templates dropdown
+  const [templatesDismissed, setTemplatesDismissed] = useState(() => {
+    try { return localStorage.getItem('trigr_templates_dismissed') === 'true'; } catch { return false; }
+  });
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const templatesRef = useRef(null);
+
+  useEffect(() => {
+    if (!templatesOpen) return;
+    function onDown(e) {
+      if (templatesRef.current && !templatesRef.current.contains(e.target)) setTemplatesOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [templatesOpen]);
+
+  const handleDismissTemplates = () => {
+    setTemplatesOpen(false);
+    setTemplatesDismissed(true);
+    try { localStorage.setItem('trigr_templates_dismissed', 'true'); } catch {}
+    onShowNotification?.('Templates can always be found in Settings', 'info');
+  };
 
   return (
     <div className="titlebar" data-drag="true">
@@ -53,6 +81,29 @@ export default function TitleBar({
       </div>
 
       <div className="titlebar-right" data-drag="false">
+        {activeArea === 'mapping' && !templatesDismissed && (
+          <div className="tb-templates-wrap" ref={templatesRef} data-drag="false">
+            <button
+              className={`tb-templates-btn${templatesOpen ? ' active' : ''}`}
+              onClick={() => setTemplatesOpen(v => !v)}
+              title="Starter templates"
+              type="button"
+            >
+              ◈ Templates
+            </button>
+            {templatesOpen && (
+              <div className="tb-templates-dropdown">
+                <TemplatesPanel
+                  activeProfile={activeProfile}
+                  onImportTemplate={onImportTemplate}
+                  onImportCadTemplate={onImportCadTemplate}
+                  onDismiss={handleDismissTemplates}
+                  showDismiss
+                />
+              </div>
+            )}
+          </div>
+        )}
         {activeArea === 'mapping' && (
           <button
             className={`tb-list-toggle${listViewActive ? ' active' : ''}`}

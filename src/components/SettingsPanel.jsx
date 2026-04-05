@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './SettingsPanel.css';
+import TemplatesPanel from './TemplatesPanel';
 
 const GLOBAL_INPUT_METHODS = [
   { id: 'direct',       label: 'Direct',     hint: 'Simulates real keypresses — works in CAD, games, any app' },
@@ -27,6 +28,9 @@ export default function SettingsPanel({
   onSetPauseKey,
   onClearPauseKey,
   onRestartOnboarding,
+  activeProfile = 'Default',
+  onImportTemplate,
+  onImportCadTemplate,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -114,6 +118,19 @@ export default function SettingsPanel({
               </svg>
               Send Feedback
             </button>
+          </div>
+        </section>
+
+        {/* ── STARTER TEMPLATES ──────────────────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">STARTER TEMPLATES</div>
+          <p className="settings-section-sub">Import pre-built hotkey and expansion packs</p>
+          <div className="settings-tpl-wrap">
+            <TemplatesPanel
+              activeProfile={activeProfile}
+              onImportTemplate={onImportTemplate}
+              onImportCadTemplate={onImportCadTemplate}
+            />
           </div>
         </section>
 
