@@ -920,6 +920,25 @@ function App() {
     window.electronAPI?.saveConfig({ tipsHidden: true });
   }, []);
 
+  // ── Template import (additive) ─────────────────────────────
+  const handleImportTemplate = useCallback((templateAssignments) => {
+    const newAssignments = { ...assignments };
+    let added = 0;
+    let skipped = 0;
+    for (const [key, value] of Object.entries(templateAssignments)) {
+      if (newAssignments[key]) {
+        skipped++;
+      } else {
+        newAssignments[key] = value;
+        added++;
+      }
+    }
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    syncEngine(newAssignments, activeProfile);
+    return { added, skipped };
+  }, [assignments, profiles, activeProfile, saveConfig, syncEngine]);
+
   const handleExportConfig = useCallback(async () => {
     const result = await window.electronAPI?.exportConfig();
     if (result?.ok) {
@@ -1299,6 +1318,8 @@ function App() {
               onDeleteAutocorrect={handleDeleteAutocorrect}
               globalVariables={globalVariables}
               onSaveGlobalVariables={handleSaveGlobalVariables}
+              activeProfile={activeProfile}
+              onImportTemplate={handleImportTemplate}
             />
           )}
         </main>

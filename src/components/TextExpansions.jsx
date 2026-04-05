@@ -59,6 +59,80 @@ const GD_SUGGESTIONS = [
   'My Phone Number', 'My Company', 'My Job Title', 'My Website',
 ];
 
+// ── Starter template packs ────────────────────────────────────────────────
+
+function buildTemplatePack(expansions, hotkeys, profile) {
+  const out = {};
+  for (const exp of expansions) {
+    out[`GLOBAL::EXPANSION::${exp.trigger}`] = {
+      type: 'expansion',
+      label: exp.displayName || `Expand: ${exp.trigger}`,
+      data: { html: '', text: exp.text, category: exp.category || null, triggerMode: 'space', displayName: exp.displayName || null },
+    };
+  }
+  for (const hk of hotkeys) {
+    out[`${profile}::${hk.combo}::${hk.keyId}`] = {
+      type: hk.type,
+      label: hk.label,
+      data: hk.data,
+    };
+  }
+  return out;
+}
+
+const TEMPLATE_PACKS = [
+  {
+    id: 'general',
+    name: 'General / Office',
+    desc: 'Email signatures, dates, meeting requests, and quick replies',
+    expansions: [
+      { trigger: ';sig', text: 'Kind regards,\n{fillIn:Your Name}\n{fillIn:Your Title}\n{fillIn:Your Company}', displayName: 'Email Signature' },
+      { trigger: ';dt', text: '{date:DD/MM/YYYY}', displayName: "Today's Date" },
+      { trigger: ';ad', text: '{fillIn:Street}\n{fillIn:City}\n{fillIn:Postcode}', displayName: 'Address Block' },
+      { trigger: ';ty', text: "Thank you for your email. I'll get back to you shortly.", displayName: 'Quick Thank You' },
+      { trigger: ';ooo', text: "Thank you for your email. I'm currently out of the office until {fillIn:Return Date} with limited access to email. For urgent matters please contact {fillIn:Colleague Name} at {fillIn:Colleague Email}.", displayName: 'Out of Office' },
+      { trigger: ';mtg', text: 'Would any of the following times work for a call?\n\n- {fillIn:Option 1}\n- {fillIn:Option 2}\n- {fillIn:Option 3}\n\nLet me know what suits.', displayName: 'Meeting Request' },
+      { trigger: ';kr', text: 'Kind regards,', displayName: 'Kind Regards' },
+    ],
+    hotkeys: [
+      { combo: 'Ctrl+Alt', keyId: 'KeyN', type: 'app', label: 'Open Notepad', data: { path: 'notepad.exe', args: '' } },
+    ],
+  },
+  {
+    id: 'cad',
+    name: 'CAD / Engineering',
+    desc: 'Revision notes, drawing annotations, and engineering shortcuts',
+    expansions: [
+      { trigger: ';rev', text: 'Rev {fillIn:Number} — {fillIn:Date} — {fillIn:Description}', displayName: 'Revision Note' },
+      { trigger: ';nc', text: 'Not to scale', displayName: 'Not to Scale' },
+      { trigger: ';tbc', text: 'To be confirmed', displayName: 'TBC' },
+      { trigger: ';na', text: 'Not applicable', displayName: 'N/A' },
+      { trigger: ';sp', text: 'Specification reference: {fillIn:Reference}', displayName: 'Spec Reference' },
+    ],
+    hotkeys: [
+      { combo: 'Ctrl+Alt', keyId: 'KeyD', type: 'app', label: 'Open BricsCAD', data: { path: 'C:\\Program Files\\Bricsys\\BricsCAD\\bricscad.exe', args: '' } },
+    ],
+  },
+  {
+    id: 'sales',
+    name: 'Sales / Business Development',
+    desc: 'Follow-ups, proposals, LinkedIn outreach, and CRM notes',
+    expansions: [
+      { trigger: ';fu', text: "Just following up on my previous email regarding {fillIn:Topic} — wanted to make sure it didn't get buried.", displayName: 'Follow Up' },
+      { trigger: ';prop', text: "Please find attached our proposal for {fillIn:Project}. We'd welcome the opportunity to discuss further at your convenience.", displayName: 'Proposal Attached' },
+      { trigger: ';ci', text: 'I came across {fillIn:Company} and wanted to reach out — we work with similar businesses on {fillIn:Topic} and thought there might be a good fit.', displayName: 'Cold Intro' },
+      { trigger: ';li', text: "Hi {fillIn:Name}, I came across your profile and would love to connect — I work in {fillIn:Your Field} and think there's potential for a useful conversation.", displayName: 'LinkedIn Connect' },
+      { trigger: ';dk', text: 'Please find attached our credentials deck for your review.', displayName: 'Credentials Deck' },
+      { trigger: ';ns', text: 'What would be the best next step from your side?', displayName: 'Next Step' },
+      { trigger: ';crm', text: 'Call with {fillIn:Name} — {fillIn:Date} — Outcome: {fillIn:Outcome} — Next action: {fillIn:Next Action}', displayName: 'CRM Call Note' },
+    ],
+    hotkeys: [
+      { combo: 'Ctrl+Alt', keyId: 'KeyL', type: 'url', label: 'Open LinkedIn', data: { url: 'https://linkedin.com' } },
+      { combo: 'Ctrl+Alt', keyId: 'KeyR', type: 'url', label: 'Open CRM', data: { url: 'https://your-crm-url.com' } },
+    ],
+  },
+];
+
 // ── Category colour preset palette ─────────────────────────────────────────
 const CATEGORY_COLOURS = [
   { hex: null,      label: 'None'   },
@@ -458,9 +532,14 @@ export default function TextExpansions({
   // ── Global Variables
   globalVariables = {},
   onSaveGlobalVariables,
+  // ── Templates
+  activeProfile = 'Default',
+  onImportTemplate,
 }) {
   // ── Panel mode (expansions | autocorrect | globalvars) ──
   const [panelMode, setPanelMode] = useState('expansions');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateResult, setTemplateResult] = useState(null); // { added, skipped }
 
   // ── Expansion form state ──
   const [editing, setEditing]         = useState(null);
@@ -890,9 +969,19 @@ export default function TextExpansions({
             </span>
           )}
           {panelMode === 'expansions' && (
-            <button className="te-add-btn" onClick={openAdd} title="Add expansion" type="button">
-              + Add
-            </button>
+            <>
+              <button className="te-add-btn" onClick={openAdd} title="Add expansion" type="button">
+                + Add
+              </button>
+              <button
+                className={`te-templates-btn${showTemplates ? ' active' : ''}`}
+                onClick={() => { setShowTemplates(v => !v); setTemplateResult(null); }}
+                title="Starter templates"
+                type="button"
+              >
+                ◈ Templates
+              </button>
+            </>
           )}
           {panelMode === 'autocorrect' && (
             <button className="te-add-btn" onClick={openAcAdd} title="Add custom correction" type="button">
@@ -918,6 +1007,45 @@ export default function TextExpansions({
           </button>
         </div>
       </div>
+
+      {/* ════════════════════════════════════ TEMPLATES PANEL ══════════════════════════════════ */}
+      {showTemplates && panelMode === 'expansions' && (
+        <div className="te-templates-panel">
+          <div className="te-templates-header">
+            <span className="te-templates-title">Starter Templates</span>
+            <button className="te-templates-close" type="button" onClick={() => setShowTemplates(false)}>✕</button>
+          </div>
+          <p className="te-templates-note">Importing adds to your existing assignments — nothing will be overwritten</p>
+          {templateResult && (
+            <div className="te-templates-result">
+              {templateResult.added} added{templateResult.skipped > 0 ? `, ${templateResult.skipped} skipped (already assigned)` : ''}
+            </div>
+          )}
+          <div className="te-templates-grid">
+            {TEMPLATE_PACKS.map(pack => (
+              <div key={pack.id} className="te-template-card">
+                <div className="te-template-card-name">{pack.name}</div>
+                <div className="te-template-card-desc">{pack.desc}</div>
+                <div className="te-template-card-counts">
+                  {pack.expansions.length} expansion{pack.expansions.length !== 1 ? 's' : ''}
+                  {pack.hotkeys.length > 0 && ` · ${pack.hotkeys.length} hotkey${pack.hotkeys.length !== 1 ? 's' : ''}`}
+                </div>
+                <button
+                  className="te-template-import-btn"
+                  type="button"
+                  onClick={() => {
+                    const built = buildTemplatePack(pack.expansions, pack.hotkeys, activeProfile);
+                    const result = onImportTemplate?.(built);
+                    setTemplateResult(result || { added: 0, skipped: 0 });
+                  }}
+                >
+                  Import
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ════════════════════════════════════ EXPANSIONS VIEW ══════════════════════════════════ */}
       {panelMode === 'expansions' && (
