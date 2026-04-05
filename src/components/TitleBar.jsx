@@ -10,6 +10,8 @@ export default function TitleBar({
   settingsOpen = false,
   activeArea = 'mapping',
   onAreaChange,
+  listViewActive = false,
+  onToggleListView,
 }) {
   const handleMinimize = () => window.electronAPI?.minimize();
   const handleMaximize = () => window.electronAPI?.maximize();
@@ -51,6 +53,17 @@ export default function TitleBar({
       </div>
 
       <div className="titlebar-right" data-drag="false">
+        {activeArea === 'mapping' && (
+          <button
+            className={`tb-list-toggle${listViewActive ? ' active' : ''}`}
+            onClick={onToggleListView}
+            title={listViewActive ? 'Switch to keyboard view' : 'Switch to list view'}
+            data-drag="false"
+            type="button"
+          >
+            {listViewActive ? '⌨' : '☰'}
+          </button>
+        )}
         <button
           className={`macro-toggle ${macrosEnabled ? 'enabled' : 'disabled'}`}
           onClick={onToggleMacros}

@@ -70,6 +70,7 @@
   min-width: 0;
   position: relative;
   overflow-y: auto;
+  transition: flex 0.15s;
   background:
     radial-gradient(ellipse 60% 40% at 50% 60%, rgba(232, 160, 32, 0.04) 0%, transparent 70%),
     var(--bg-base);
@@ -85,6 +86,15 @@
     linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
   background-size: 32px 32px;
   pointer-events: none;
+}
+
+/* ── Main area hidden in list view ─────────────────────── */
+.main-area--hidden {
+  flex: 0 0 0;
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* ── VIEW SWITCHER (Keyboard / Mouse tabs) ────────────── */
