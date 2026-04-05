@@ -367,6 +367,45 @@ function App() {
     showNotification(`Cleared ${currentCombo}+${keyId}`, 'info');
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
+  // ── Rename assignment label ────────────────────────────────
+  const handleRenameAssignment = useCallback((combo, keyId, newLabel) => {
+    const key = `${activeProfile}::${combo}::${keyId}`;
+    const existing = assignments[key];
+    if (!existing) return;
+    const newAssignments = { ...assignments, [key]: { ...existing, label: newLabel } };
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+  }, [assignments, activeProfile, profiles, saveConfig]);
+
+  // ── Clear assignment by combo+keyId (context menu) ────────
+  const handleClearAssignment = useCallback((combo, keyId) => {
+    const key = `${activeProfile}::${combo}::${keyId}`;
+    const doubleKey = key + '::double';
+    const newAssignments = { ...assignments };
+    delete newAssignments[key];
+    delete newAssignments[doubleKey];
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    syncEngine(newAssignments, activeProfile);
+    if (selectedKey === keyId) setSelectedKey(null);
+    showNotification(`Cleared ${combo}+${keyId}`, 'info');
+  }, [assignments, activeProfile, profiles, saveConfig, syncEngine, selectedKey, showNotification]);
+
+  // ── Duplicate assignment to pending (context menu) ────────
+  const handleDuplicateFromContext = useCallback((combo, keyId) => {
+    const key = `${activeProfile}::${combo}::${keyId}`;
+    const existing = assignments[key];
+    if (!existing) return;
+    // Set modifiers and select the key to open MacroPanel with this assignment
+    const mods = combo === 'BARE' ? ['BARE'] : combo.split('+').filter(Boolean);
+    setActiveModifiers(mods);
+    setSelectedKey(keyId);
+    if (!keyId.startsWith('MOUSE_')) setActiveView('keyboard');
+    // Start recording immediately so the user can pick a new key for the duplicate
+    setIsRecording(true);
+    window.electronAPI?.startHotkeyRecording();
+  }, [assignments, activeProfile]);
+
   // ── Double-tap assignment helpers ────────────────────────
   const makeDoubleKey = useCallback((profile, combo, keyId) => {
     return `${profile}::${combo}::${keyId}::double`;
@@ -1272,6 +1311,9 @@ function App() {
             onStopRecord={handleStopRecord}
             recordCapture={recordCapture}
             onToggleModifier={handleToggleModifier}
+            onRenameAssignment={handleRenameAssignment}
+            onClearAssignment={handleClearAssignment}
+            onDuplicateFromContext={handleDuplicateFromContext}
           />
         )}
         <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}${listViewActive && activeArea === 'mapping' ? ' main-area--hidden' : ''}`}>
@@ -1311,6 +1353,10 @@ function App() {
                 hasAnyAssignments={hasAnyAssignments}
                 numpadOpen={numpadOpen}
                 onToggleNumpad={handleToggleNumpad}
+                currentCombo={currentCombo}
+                onRenameAssignment={handleRenameAssignment}
+                onClearAssignment={handleClearAssignment}
+                onDuplicateFromContext={handleDuplicateFromContext}
               />
             </div>
           )}

@@ -637,3 +637,22 @@
   pointer-events: none;
 }
 
+/* ── Key popover (rename / clear confirmation) ────────── */
+.key-popover {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translate(-50%, -100%);
+}
+
+.key-popover-clear {
+  gap: 8px;
+}
+
