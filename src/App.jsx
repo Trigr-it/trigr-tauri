@@ -939,6 +939,41 @@ function App() {
     return { added, skipped };
   }, [assignments, profiles, activeProfile, saveConfig, syncEngine]);
 
+  // ── CAD template import (creates app-specific profile) ─────
+  const handleImportCadTemplate = useCallback((exeName, expansionAssignments, bareKeyAssignments) => {
+    const profileName = `CAD — ${exeName}`;
+    // Create the profile if it doesn't exist
+    const newProfiles = profiles.includes(profileName) ? [...profiles] : [...profiles, profileName];
+    // Set up profile settings with linkedApp
+    const newProfileSettings = { ...profileSettings, [profileName]: { linkedApp: exeName } };
+    // Merge all assignments
+    const newAssignments = { ...assignments };
+    let added = 0;
+    let skipped = 0;
+    // Bare keys go into the CAD profile
+    for (const [key, value] of Object.entries(bareKeyAssignments)) {
+      if (newAssignments[key]) { skipped++; } else { newAssignments[key] = value; added++; }
+    }
+    const bareAdded = added;
+    // Expansions are global
+    for (const [key, value] of Object.entries(expansionAssignments)) {
+      if (newAssignments[key]) { skipped++; } else { newAssignments[key] = value; added++; }
+    }
+    const expAdded = added - bareAdded;
+    // Save everything
+    setProfiles(newProfiles);
+    setProfileSettings(newProfileSettings);
+    setAssignments(newAssignments);
+    window.electronAPI?.updateProfileSettings(newProfileSettings);
+    window.electronAPI?.saveConfig({
+      assignments: newAssignments, profiles: newProfiles, activeProfile, activeGlobalProfile,
+      profileSettings: newProfileSettings, theme, expansionCategories, autocorrectEnabled,
+      macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables,
+    });
+    syncEngine(newAssignments, activeProfile);
+    return { added, skipped, profileName, bareAdded, expAdded };
+  }, [assignments, profiles, profileSettings, activeProfile, activeGlobalProfile, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, syncEngine]);
+
   const handleExportConfig = useCallback(async () => {
     const result = await window.electronAPI?.exportConfig();
     if (result?.ok) {
@@ -1320,6 +1355,7 @@ function App() {
               onSaveGlobalVariables={handleSaveGlobalVariables}
               activeProfile={activeProfile}
               onImportTemplate={handleImportTemplate}
+              onImportCadTemplate={handleImportCadTemplate}
             />
           )}
         </main>
