@@ -404,6 +404,8 @@ export default function Sidebar({
     });
   }
   const sortedGroupCombos = Object.keys(grouped).sort((a, b) => {
+    if (a === 'BARE') return -1;
+    if (b === 'BARE') return 1;
     if (a.length !== b.length) return a.length - b.length;
     return a.localeCompare(b);
   });
@@ -615,6 +617,8 @@ export default function Sidebar({
             });
           }
           const gridSortedCombos = Object.keys(gridGrouped).sort((a, b) => {
+            if (a === 'BARE') return -1;
+            if (b === 'BARE') return 1;
             if (a.length !== b.length) return a.length - b.length;
             return a.localeCompare(b);
           });
