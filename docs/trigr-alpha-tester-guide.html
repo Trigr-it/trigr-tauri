@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trigr — Alpha Tester Guide</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --gold: #E8A020; --gold-dark: #C8860A; --gold-light: #F0B942; --gold-bg: #FFF8ED;
+      --navy: #1A1A2E; --navy-mid: #252540; --navy-light: #2E2E50;
+      --body: #4A4A6A; --muted: #9090B0; --border: #E0E0F0;
+      --light-bg: #F5F5FA; --white: #FFFFFF;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: var(--light-bg); color: var(--body); }
+    .page { max-width: 800px; margin: 40px auto; background: var(--white); border-radius: 12px; box-shadow: 0 2px 20px rgba(0,0,0,0.08); overflow: hidden; }
+
+    .doc-header { background: var(--navy); padding: 32px 40px; }
+    .doc-header-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; color: var(--gold); margin-bottom: 12px; }
+    .doc-header-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 30px; color: var(--white); margin-bottom: 6px; }
+    .doc-header-subtitle { font-size: 14px; color: var(--muted); }
+
+    .doc-body { padding: 36px 40px; }
+    h2 { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--navy); border-bottom: 2px solid var(--gold); padding-bottom: 6px; margin: 32px 0 14px; }
+    h3 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--gold-dark); margin: 20px 0 8px; }
+    p { font-size: 14px; line-height: 1.75; color: var(--body); margin-bottom: 14px; }
+    ul, ol { padding-left: 20px; margin-bottom: 14px; }
+    li { font-size: 14px; line-height: 1.75; color: var(--body); margin-bottom: 6px; }
+
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .pill-blue { background: #E8F4FD; color: #1A6FA8; }
+    .pill-yellow { background: #FFF8E1; color: #B8860B; }
+    .pill-green { background: #E8F5E9; color: #2E7D32; }
+    .pill-red { background: #FFEBEE; color: #C62828; }
+
+    .callout { background: var(--gold-bg); border: 1px solid var(--gold); border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }
+    .callout-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; color: var(--navy); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .callout p { margin-bottom: 0; font-size: 13px; }
+
+    .task-block { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+    .task-header { background: var(--navy); padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
+    .task-number { background: var(--gold); color: var(--navy); font-family: 'Syne', sans-serif; font-weight: 800; font-size: 13px; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .task-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; color: var(--white); }
+    .task-tag { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--gold); background: rgba(232,160,32,0.15); padding: 2px 8px; border-radius: 10px; }
+    .task-body { padding: 16px 18px; }
+    .task-body p { margin-bottom: 10px; }
+    .task-body p:last-child { margin-bottom: 0; }
+    .task-body ol { margin-bottom: 10px; }
+
+    .step-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+    .step-num { background: var(--navy-mid); color: var(--gold); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 11px; min-width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .step-text { font-size: 14px; line-height: 1.65; color: var(--body); }
+
+    .kbd { display: inline-block; background: var(--light-bg); border: 1px solid var(--border); border-bottom: 2px solid #C0C0D0; border-radius: 4px; padding: 1px 7px; font-family: monospace; font-size: 12px; color: var(--navy); font-weight: 700; }
+
+    .example-text { background: var(--gold-bg); border-left: 3px solid var(--gold); padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 10px 0 14px; font-size: 13px; color: var(--body); line-height: 1.6; font-style: italic; }
+
+    .feedback-box { background: var(--light-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+    .feedback-box h3 { margin-top: 0; }
+
+    .section-band { background: var(--navy); color: var(--gold); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding: 7px 14px; border-radius: 4px; margin: 28px 0 16px; }
+
+    .doc-footer { text-align: center; border-top: 1px solid var(--border); padding: 16px; font-size: 12px; color: var(--muted); font-style: italic; }
+
+    @media print {
+      body { background: white; }
+      .page { box-shadow: none; margin: 0; border-radius: 0; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="doc-header">
+    <div class="doc-header-logo">Trigr</div>
+    <div class="doc-header-title">Alpha Tester Guide</div>
+    <div class="doc-header-subtitle">Private Alpha — April 2026 &nbsp;·&nbsp; Thank you for being here early.</div>
+  </div>
+
+  <div class="doc-body">
+
+    <div class="callout">
+      <div class="callout-title">⚡ You're one of the first people to use Trigr</div>
+      <p>This is a closed alpha — that means rough edges are expected and your feedback is genuinely shaping what gets built next. There are no wrong answers. If something confuses you, that's a bug, not a user error.</p>
+    </div>
+
+    <h2>What is Trigr?</h2>
+    <p>Trigr lets you assign shortcuts to anything you type or do repeatedly on your computer. Instead of typing the same email sign-off, support response, or boilerplate phrase 50 times a week — you set it up once in Trigr, then trigger it instantly with a hotkey.</p>
+    <p>It lives quietly in your system tray (bottom-right of your taskbar) and works in every app — your browser, email client, CRM, wherever.</p>
+
+    <div class="section-band">01 &nbsp; Installation</div>
+
+    <h3>Step 1 — Install Trigr</h3>
+    <div class="step-row"><div class="step-num">1</div><div class="step-text">Open the installer link sent to you by Rory.</div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-text">Run the <strong>.exe</strong> file. Windows will show a security warning — this is expected for new apps. Click <strong>"More info"</strong>, then <strong>"Run anyway"</strong>.</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-text">Trigr will install and launch. You'll see the <strong>Trigr icon appear in your system tray</strong> (bottom-right, near the clock). That means it's running.</div></div>
+
+    <div class="callout">
+      <div class="callout-title">🛡️ About the Windows security warning</div>
+      <p>Windows shows this warning for any newly published app that doesn't yet have a full certificate. Trigr is safe — Rory built it. The warning will go away in a future release once the certificate is in place. If you're unsure, ask Rory directly before installing.</p>
+    </div>
+
+    <div class="section-band">02 &nbsp; Getting Started</div>
+
+    <h3>The basics in 60 seconds</h3>
+    <p>When Trigr opens, you'll see a keyboard layout in the centre of the screen. Each key on that keyboard can have a shortcut assigned to it. Click any key to assign something to it.</p>
+    <p>On the left side is your <strong>profile list</strong> — think of profiles like different sets of shortcuts for different contexts (work, personal, a specific app). You start with a Default profile.</p>
+    <p>In the top bar you can search, toggle settings, and switch between the keyboard view and a flat list view.</p>
+
+    <div class="section-band">03 &nbsp; Your Test Tasks</div>
+
+    <p>Work through these tasks in order. They get progressively more open-ended. <strong>Don't worry about doing them perfectly</strong> — the point is to see what feels natural and what doesn't.</p>
+
+    <!-- TASK 1 -->
+    <div class="task-block">
+      <div class="task-header">
+        <div class="task-number">1</div>
+        <div class="task-title">Set up a text expansion — type less, say more</div>
+        <div class="task-tag">Text Expansion</div>
+      </div>
+      <div class="task-body">
+        <p>A text expansion lets you type a short phrase and have Trigr automatically expand it into something longer. Think of it like autocorrect, but one you control completely.</p>
+        <p><strong>Do this:</strong></p>
+        <div class="step-row"><div class="step-num">1</div><div class="step-text">Click <strong>+ New</strong> (top bar) → choose <strong>Text Expansion</strong>.</div></div>
+        <div class="step-row"><div class="step-num">2</div><div class="step-text">In the <strong>Trigger</strong> field, type a short abbreviation. Something you'd never type accidentally — like <kbd class="kbd">/sig</kbd> or <kbd class="kbd">/ty</kbd>.</div></div>
+        <div class="step-row"><div class="step-num">3</div><div class="step-text">In the <strong>Expansion</strong> field, type what you want it to expand into.</div></div>
+        <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Save</strong>. Now open any text field (Notepad, your browser address bar, an email draft) and type your trigger exactly. Watch it expand.</div></div>
+
+        <p style="margin-top:14px;"><strong>Suggested expansions to try — pick ones that feel relevant to you:</strong></p>
+        <div class="example-text">
+          <strong>Trigger:</strong> /sig → <strong>Expands to:</strong> your full email sign-off (name, title, phone, company)<br><br>
+          <strong>Trigger:</strong> /ty → <strong>Expands to:</strong> "Thank you for reaching out — I'll get back to you within 24 hours."<br><br>
+          <strong>Trigger:</strong> /meet → <strong>Expands to:</strong> your standard meeting confirmation message<br><br>
+          <strong>Trigger:</strong> /addr → <strong>Expands to:</strong> your office or home address
+        </div>
+        <p>Or ignore those suggestions and set up something <em>you</em> actually type every day. That's more useful data for us.</p>
+      </div>
+    </div>
+
+    <!-- TASK 2 -->
+    <div class="task-block">
+      <div class="task-header">
+        <div class="task-number">2</div>
+        <div class="task-title">Set up a hotkey — launch something instantly</div>
+        <div class="task-tag">Hotkey</div>
+      </div>
+      <div class="task-body">
+        <p>A hotkey lets you trigger an action — open a website, type text, run a command — using a keyboard shortcut you define.</p>
+        <p><strong>Do this:</strong></p>
+        <div class="step-row"><div class="step-num">1</div><div class="step-text">Click any key on the keyboard canvas — or click <strong>+ New</strong> → <strong>Hotkey</strong>.</div></div>
+        <div class="step-row"><div class="step-num">2</div><div class="step-text">Choose a key combination (e.g. <kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Shift</kbd> + <kbd class="kbd">G</kbd>) and give it an action.</div></div>
+        <div class="step-row"><div class="step-num">3</div><div class="step-text">Try assigning it to <strong>Open URL</strong> — paste in a link you open every day (your CRM, your inbox, your calendar).</div></div>
+        <div class="step-row"><div class="step-num">4</div><div class="step-text">Save it. Press the key combination from anywhere on your computer. The page should open.</div></div>
+
+        <div class="example-text">
+          <strong>Ideas:</strong><br>
+          Open your CRM dashboard · Open your email · Open a frequently-used doc or form · Open your calendar
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK 3 -->
+    <div class="task-block">
+      <div class="task-header">
+        <div class="task-number">3</div>
+        <div class="task-title">Use Quick Search</div>
+        <div class="task-tag">Quick Search</div>
+      </div>
+      <div class="task-body">
+        <p>Quick Search is an overlay that lets you find and trigger any shortcut without remembering what key it's on.</p>
+        <div class="step-row"><div class="step-num">1</div><div class="step-text">Press <kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Space</kbd> anywhere on your computer.</div></div>
+        <div class="step-row"><div class="step-num">2</div><div class="step-text">A search bar will appear. Type the name of a shortcut you set up in Tasks 1 or 2.</div></div>
+        <div class="step-row"><div class="step-num">3</div><div class="step-text">Select it and press <kbd class="kbd">Enter</kbd> to trigger it.</div></div>
+        <p>This is useful when you have lots of shortcuts and don't want to remember every key combination.</p>
+      </div>
+    </div>
+
+    <!-- TASK 4 -->
+    <div class="task-block">
+      <div class="task-header">
+        <div class="task-number">4</div>
+        <div class="task-title">Free exploration — set up something genuinely useful to you</div>
+        <div class="task-tag">Open-ended</div>
+      </div>
+      <div class="task-body">
+        <p>Forget the instructions for a moment. Think about your actual work day — the things you type or click over and over. Try to set one of those up in Trigr from scratch, without any guidance.</p>
+        <p>This is the most valuable part of the test. We want to see what you reach for, what you try to do, and where you get stuck.</p>
+        <div class="example-text">
+          <strong>Prompts to get you thinking:</strong><br><br>
+          What phrase do you type more than five times a day?<br>
+          What website do you open every morning as part of your routine?<br>
+          Is there a reply you send to customers that's almost always the same?<br>
+          Is there a document, folder, or tool you navigate to constantly?
+        </div>
+        <p>There's no right answer here. Just try something real and see what happens.</p>
+      </div>
+    </div>
+
+    <div class="section-band">04 &nbsp; Feedback</div>
+
+    <p>Once you've worked through the tasks, please fill in the feedback form linked below. It takes about 5 minutes and every response makes the next version better.</p>
+
+    <div class="feedback-box">
+      <h3>What we most want to know</h3>
+      <ul>
+        <li>Did anything confuse you or feel unintuitive? Where did you get stuck?</li>
+        <li>Did anything not work as you expected?</li>
+        <li>Is there something you tried to do that Trigr couldn't do?</li>
+        <li>Would you actually use this day-to-day? What would make you more likely to?</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">📋 Submit your feedback</div>
+      <p>Feedback form: <strong><a href="https://docs.google.com/forms/d/e/1FAIpQLScFygiarZG2MGV_JJSaLZux1ZNYC0w-ne5QSZ-HyTNQk5XEWA/viewform" target="_blank" style="color:var(--gold-dark);">Click here to open the feedback form</a></strong><br>
+      Or email Rory directly: <strong><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="374558454e7759585352504558424719545819425c">[email&#160;protected]</a></strong><br><br>
+      If anything went wrong during install or testing, attach your log file if you can find it — Rory can help you locate it.</p>
+    </div>
+
+    <div class="section-band">05 &nbsp; Common Questions</div>
+
+    <h3>Is Trigr running right now?</h3>
+    <p>Check your system tray (bottom-right of the taskbar, near the clock). If you see the Trigr icon, it's running. If not, open it from the Start Menu.</p>
+
+    <h3>I triggered something by accident — how do I undo it?</h3>
+    <p>Use <kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Z</kbd> in whatever app you were in, just like normal. Trigr just simulates keypresses — it doesn't do anything that can't be undone.</p>
+
+    <h3>How do I pause Trigr temporarily?</h3>
+    <p>Right-click the Trigr icon in the system tray and click <strong>Pause</strong>. All shortcuts stop firing until you resume. Useful if you're in a meeting or doing something where you don't want shortcuts active.</p>
+
+    <h3>Something's wrong — what do I do?</h3>
+    <p>Message or email Rory directly. Don't suffer in silence — a broken experience is exactly what we're trying to find at this stage.</p>
+
+  </div>
+
+  <div class="doc-footer">
+    Trigr &nbsp;·&nbsp; Alpha Tester
