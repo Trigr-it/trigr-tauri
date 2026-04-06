@@ -927,6 +927,10 @@ export default function Sidebar({
                 </div>
               ) : (
                 <div className="sidebar-grid">
+                  <div className="sidebar-grid-group-header">
+                    {gridCombo === 'BARE' ? 'BARE KEYS' : gridCombo}
+                    <span className="sidebar-group-count">{gridFiltered.length}</span>
+                  </div>
                   {gridFiltered.map(renderCard)}
                 </div>
               )}
@@ -964,7 +968,13 @@ export default function Sidebar({
                 </div>
               ))
             ) : (
-              filtered.map(renderItem)
+              <>
+                <div className="sidebar-grid-group-header">
+                  {activeTab === 'BARE' ? 'BARE KEYS' : activeTab}
+                  <span className="sidebar-group-count">{filtered.length}</span>
+                </div>
+                {filtered.map(renderItem)}
+              </>
             )}
           </div>
 
