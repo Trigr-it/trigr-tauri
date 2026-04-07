@@ -2,17 +2,21 @@ use log::{error, info, warn};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 const MAX_BACKUPS: usize = 10;
+const LOCAL_SETTINGS_FILE: &str = "trigr-local-settings.json";
 
 // ── Path resolution ─────────────────────────────────────────────────────────
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+static SHARED_CONFIG_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
 
 /// Call once at startup with the resolved app data dir.
 pub fn init(app_data_dir: PathBuf) {
     let _ = APP_DATA_DIR.set(app_data_dir);
+    load_local_settings();
 }
 
 fn app_data_dir() -> &'static Path {
@@ -22,11 +26,325 @@ fn app_data_dir() -> &'static Path {
 }
 
 pub fn config_path() -> PathBuf {
+    // Check for shared config dir override first
+    if let Ok(guard) = SHARED_CONFIG_DIR.read() {
+        if let Some(ref shared_dir) = *guard {
+            let shared_path = shared_dir.join("keyforge-config.json");
+            // Only use the shared path if the directory actually exists
+            if shared_dir.exists() {
+                return shared_path;
+            }
+            warn!(
+                "[Trigr] Shared config dir not found: {} — falling back to local",
+                shared_dir.display()
+            );
+        }
+    }
     app_data_dir().join("keyforge-config.json")
 }
 
 fn backup_dir() -> PathBuf {
+    // Backups ALWAYS stay in local AppData — never follow shared path
     app_data_dir().join("backups")
+}
+
+// ── Local settings (machine-specific, never synced) ─────────────────────────
+
+fn local_settings_path() -> PathBuf {
+    app_data_dir().join(LOCAL_SETTINGS_FILE)
+}
+
+fn load_local_settings() {
+    let path = local_settings_path();
+    if !path.exists() {
+        return;
+    }
+    match fs::read_to_string(&path) {
+        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
+            Ok(val) => {
+                if let Some(shared) = val.get("shared_config_path").and_then(|v| v.as_str()) {
+                    if !shared.is_empty() {
+                        let shared_path = PathBuf::from(shared);
+                        info!("[Trigr] Shared config path from local settings: {}", shared_path.display());
+                        set_shared_config_dir(Some(shared_path));
+                    }
+                }
+            }
+            Err(e) => warn!("[Trigr] Failed to parse local settings: {}", e),
+        },
+        Err(e) => warn!("[Trigr] Failed to read local settings: {}", e),
+    }
+}
+
+pub fn save_local_settings(shared_path: Option<&Path>) -> bool {
+    let path = local_settings_path();
+    let val = match shared_path {
+        Some(p) => serde_json::json!({ "shared_config_path": p.to_string_lossy() }),
+        None => serde_json::json!({}),
+    };
+    match serde_json::to_string_pretty(&val) {
+        Ok(json) => match fs::write(&path, json) {
+            Ok(()) => {
+                info!("[Trigr] Local settings saved");
+                true
+            }
+            Err(e) => {
+                error!("[Trigr] Failed to write local settings: {}", e);
+                false
+            }
+        },
+        Err(e) => {
+            error!("[Trigr] Failed to serialize local settings: {}", e);
+            false
+        }
+    }
+}
+
+pub fn set_shared_config_dir(path: Option<PathBuf>) {
+    if let Ok(mut guard) = SHARED_CONFIG_DIR.write() {
+        match &path {
+            Some(p) => info!("[Trigr] Shared config dir set to: {}", p.display()),
+            None => info!("[Trigr] Shared config dir cleared — using local AppData"),
+        }
+        *guard = path;
+    }
+}
+
+pub fn get_shared_config_dir() -> Option<PathBuf> {
+    SHARED_CONFIG_DIR.read().ok().and_then(|g| g.clone())
+}
+
+// ── File watcher ────────────────────────────────────────────────────────────
+
+/// Set to true before Trigr writes config, cleared after. Prevents self-reload.
+pub static SELF_WRITE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// Hash of the last content we wrote, to detect our own writes after the flag clears.
+static LAST_WRITTEN_HASH: Mutex<Option<u64>> = Mutex::new(None);
+
+/// Handle to the active watcher — dropping it stops the watcher.
+static WATCHER_HANDLE: Mutex<Option<notify::RecommendedWatcher>> = Mutex::new(None);
+
+/// Signal to stop the watcher's debounce thread.
+static WATCHER_STOP: AtomicBool = AtomicBool::new(false);
+
+fn simple_hash(data: &[u8]) -> u64 {
+    // FNV-1a 64-bit hash — fast, no crate needed
+    let mut h: u64 = 0xcbf29ce484222325;
+    for &b in data {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+pub fn mark_self_write(content: &str) {
+    SELF_WRITE_IN_PROGRESS.store(true, Ordering::SeqCst);
+    if let Ok(mut guard) = LAST_WRITTEN_HASH.lock() {
+        *guard = Some(simple_hash(content.as_bytes()));
+    }
+}
+
+pub fn clear_self_write() {
+    SELF_WRITE_IN_PROGRESS.store(false, Ordering::SeqCst);
+}
+
+pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
+    use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+
+    // Stop any existing watcher first
+    stop_config_watcher();
+
+    WATCHER_STOP.store(false, Ordering::SeqCst);
+
+    let watched_dir = dir.clone();
+    let target_filename = "keyforge-config.json";
+
+    // Channel for notify events
+    let (tx, rx) = std::sync::mpsc::channel::<Event>();
+
+    let watcher = RecommendedWatcher::new(
+        move |res: Result<Event, notify::Error>| {
+            if let Ok(event) = res {
+                let _ = tx.send(event);
+            }
+        },
+        Config::default(),
+    );
+
+    let mut watcher = match watcher {
+        Ok(w) => w,
+        Err(e) => {
+            error!("[Trigr] Failed to create file watcher: {}", e);
+            return;
+        }
+    };
+
+    if let Err(e) = watcher.watch(&watched_dir, RecursiveMode::NonRecursive) {
+        error!("[Trigr] Failed to watch directory {}: {}", watched_dir.display(), e);
+        return;
+    }
+
+    info!("[Trigr] Config watcher started on: {}", watched_dir.display());
+
+    // Store watcher handle so it stays alive
+    if let Ok(mut guard) = WATCHER_HANDLE.lock() {
+        *guard = Some(watcher);
+    }
+
+    // Debounce thread — processes events with 2-second quiet window
+    let app_handle = app.clone();
+    std::thread::Builder::new()
+        .name("config-watcher".into())
+        .spawn(move || {
+            use std::time::{Duration, Instant};
+            use tauri::Emitter;
+
+            let debounce_duration = Duration::from_secs(2);
+            let mut last_event_time: Option<Instant> = None;
+            let mut pending = false;
+
+            loop {
+                if WATCHER_STOP.load(Ordering::SeqCst) {
+                    info!("[Trigr] Config watcher thread stopping");
+                    break;
+                }
+
+                // Non-blocking receive with 500ms timeout
+                match rx.recv_timeout(Duration::from_millis(500)) {
+                    Ok(event) => {
+                        // Filter: only care about modifications/creates to our config file
+                        let dominated = matches!(
+                            event.kind,
+                            EventKind::Modify(_) | EventKind::Create(_)
+                        );
+                        if !dominated {
+                            continue;
+                        }
+
+                        // Check if any path in the event matches our target file
+                        let is_target = event.paths.iter().any(|p| {
+                            p.file_name()
+                                .map(|f| f == target_filename)
+                                .unwrap_or(false)
+                        });
+
+                        // Skip temp files from sync clients
+                        let is_temp = event.paths.iter().any(|p| {
+                            if let Some(name) = p.file_name().and_then(|f| f.to_str()) {
+                                name.starts_with("~$")
+                                    || name.starts_with(".~")
+                                    || name.ends_with(".tmp")
+                                    || name.ends_with(".gstmp")
+                            } else {
+                                false
+                            }
+                        });
+
+                        if is_target && !is_temp {
+                            last_event_time = Some(Instant::now());
+                            pending = true;
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        info!("[Trigr] Config watcher channel disconnected");
+                        break;
+                    }
+                }
+
+                // Check if debounce window has passed
+                if pending {
+                    if let Some(last) = last_event_time {
+                        if last.elapsed() >= debounce_duration {
+                            pending = false;
+                            last_event_time = None;
+
+                            // Self-write suppression
+                            if SELF_WRITE_IN_PROGRESS.load(Ordering::SeqCst) {
+                                info!("[Trigr] Config watcher: ignoring self-write in progress");
+                                continue;
+                            }
+
+                            // Try to read the file (with retry for sync client locks)
+                            let file_content = read_with_retry(
+                                &config_path(),
+                                3,
+                                Duration::from_millis(500),
+                            );
+
+                            let content = match file_content {
+                                Some(c) => c,
+                                None => {
+                                    warn!("[Trigr] Config watcher: could not read file after retries");
+                                    continue;
+                                }
+                            };
+
+                            // Check content hash against our last write
+                            let content_hash = simple_hash(content.as_bytes());
+                            if let Ok(guard) = LAST_WRITTEN_HASH.lock() {
+                                if let Some(last_hash) = *guard {
+                                    if content_hash == last_hash {
+                                        info!("[Trigr] Config watcher: content matches last write — skipping");
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            // Validate the config
+                            match serde_json::from_str::<Value>(&content) {
+                                Ok(cfg) if is_valid_config(&cfg) => {
+                                    info!("[Trigr] Config watcher: valid config change detected — emitting reload event");
+                                    if let Err(e) = app_handle.emit("config-reloaded-from-sync", &cfg) {
+                                        error!("[Trigr] Failed to emit config reload event: {}", e);
+                                    }
+                                }
+                                Ok(_) => {
+                                    warn!("[Trigr] Config watcher: changed file has invalid structure — ignoring");
+                                }
+                                Err(e) => {
+                                    warn!("[Trigr] Config watcher: changed file is not valid JSON: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        .ok();
+}
+
+pub fn stop_config_watcher() {
+    WATCHER_STOP.store(true, Ordering::SeqCst);
+    if let Ok(mut guard) = WATCHER_HANDLE.lock() {
+        if guard.is_some() {
+            *guard = None;
+            info!("[Trigr] Config watcher stopped");
+        }
+    }
+}
+
+fn read_with_retry(path: &Path, retries: u32, delay: std::time::Duration) -> Option<String> {
+    for attempt in 0..retries {
+        match fs::read_to_string(path) {
+            Ok(content) => return Some(content),
+            Err(e) => {
+                if attempt < retries - 1 {
+                    warn!(
+                        "[Trigr] Config read attempt {} failed ({}), retrying in {}ms",
+                        attempt + 1,
+                        e,
+                        delay.as_millis()
+                    );
+                    std::thread::sleep(delay);
+                } else {
+                    error!("[Trigr] Config read failed after {} attempts: {}", retries, e);
+                }
+            }
+        }
+    }
+    None
 }
 
 // ── Validation ──────────────────────────────────────────────────────────────
@@ -139,6 +457,7 @@ pub fn load_config_safe() -> (Option<Value>, Option<String>) {
 }
 
 /// Atomic write: write to .tmp, then rename.
+/// Sets SELF_WRITE_IN_PROGRESS to suppress file watcher during our own writes.
 pub fn save_config(config: &Value) -> bool {
     let path = config_path();
     let tmp_path = path.with_extension("json.tmp");
@@ -151,7 +470,9 @@ pub fn save_config(config: &Value) -> bool {
 
     match serde_json::to_string_pretty(config) {
         Ok(json) => {
-            match fs::write(&tmp_path, &json) {
+            // Mark self-write before touching the file
+            mark_self_write(&json);
+            let result = match fs::write(&tmp_path, &json) {
                 Ok(()) => match fs::rename(&tmp_path, &path) {
                     Ok(()) => {
                         info!("[Trigr] Config saved ({} bytes)", json.len());
@@ -168,7 +489,9 @@ pub fn save_config(config: &Value) -> bool {
                     let _ = fs::remove_file(&tmp_path);
                     false
                 }
-            }
+            };
+            clear_self_write();
+            result
         }
         Err(e) => {
             error!("[Trigr] Failed to serialize config: {}", e);

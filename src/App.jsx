@@ -215,6 +215,47 @@ function App() {
         setRecordCapture(`${modsLabel}+${keyLabel}`);
         setTimeout(() => setRecordCapture(null), 2000);
       });
+
+      // Shared config — listen for sync reload events from file watcher
+      window.electronAPI.onConfigReloadedFromSync?.((config) => {
+        if (!config) return;
+        const raw = config.assignments || {};
+        setAssignments(raw);
+        setProfiles(config.profiles?.length ? config.profiles : ['Default']);
+        const globalProfile = config.activeGlobalProfile || 'Default';
+        setActiveProfile(globalProfile);
+        setActiveGlobalProfile(globalProfile);
+        setProfileSettings(config.profileSettings || {});
+        const savedTheme = config.theme || 'dark';
+        setTheme(savedTheme);
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        const rawCats = config.expansionCategories || [];
+        setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
+        setGlobalVariables(config.globalVariables || {});
+        setAutocorrectEnabled(config.autocorrectEnabled ?? false);
+        setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
+        setGlobalInputMethod(config.globalInputMethod   || 'direct');
+        setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
+        setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
+        setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
+        setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
+        setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
+        setOverlayShowAll(          config.overlayShowAll            ?? true);
+        setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
+        setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
+        // Re-sync engine with updated config
+        window.electronAPI?.updateAssignments(raw, globalProfile);
+        window.electronAPI?.updateProfileSettings(config.profileSettings || {});
+        window.electronAPI?.setActiveGlobalProfile(globalProfile);
+        window.electronAPI?.updateGlobalVariables(config.globalVariables || {});
+        window.electronAPI?.updateGlobalSettings({
+          globalInputMethod: config.globalInputMethod  || 'direct',
+          keystrokeDelay:    config.keystrokeDelay     ?? 30,
+          macroTriggerDelay: config.macroTriggerDelay  ?? 150,
+          doubleTapWindow:   config.doubleTapWindow    ?? 300,
+        });
+        showNotification('Config updated from sync', 'info');
+      });
     };
     init();
     return () => {

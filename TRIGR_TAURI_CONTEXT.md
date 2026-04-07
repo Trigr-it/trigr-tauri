@@ -100,6 +100,8 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 
 **suppressNextClipboardWrite:** Module-level bool in `actions.rs` or `expansions.rs`. Set to `true` immediately before any internal clipboard write (text expansion fire, image expansion fire, any Trigr-initiated clipboard write). The future clipboard manager will check this flag and skip logging if set, then clear it.
 
+**Local settings file:** `trigr-local-settings.json` in AppData dir. JSON format: `{ "shared_config_path": "C:\\path" }`. Machine-specific — never syncs. Read at startup by `config::init()` → `load_local_settings()`. Written by `save_local_settings()`. Controls where `config_path()` resolves to.
+
 ---
 
 ## 06 — IPC Pattern
@@ -139,6 +141,9 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 - `list_open_windows` — EnumWindows to list visible non-minimized windows, returns `Vec<{ process, title }>`, filters system processes
 - `export_profile` — takes `filename_hint: String` + `content: String`, opens native save dialog (Desktop default, .json filter), writes content to chosen path, returns `{ ok: bool, error? }`
 - `import_profile` — opens native file picker (.json filter), reads file, returns `{ ok: bool, content?: String, error? }`. Frontend handles all validation and merging.
+- `get_shared_config_path` — returns `Option<String>`, the current shared config directory path (or null if local)
+- `set_shared_config_path` — takes `path: String` + `mode: Option<String>` ("use_existing" | "replace" | null). Validates folder, handles migration, writes local settings, starts file watcher. Returns `{ ok, existed }` or `{ ok: false, needs_choice: true }` if file exists and no mode specified.
+- `clear_shared_config_path` — stops file watcher, clears override, writes local settings, returns `bool`
 
 ---
 
@@ -151,6 +156,7 @@ Known compatible:
 - `rusqlite` — ARM64 compatible (bundled feature)
 - `serde_json` — ARM64 compatible (pure Rust)
 - `tauri-plugin-updater` — ARM64 compatible
+- `notify` v8 — ARM64 compatible (uses ReadDirectoryChangesW on Windows, platform-agnostic)
 
 Note: `rdev` and `enigo` were evaluated and skipped — `windows-sys` SendInput/SetWindowsHookExW handles everything directly.
 
@@ -338,6 +344,21 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 ### Help Window — External Browser
 `open_help` in lib.rs uses `opener::open("https://trigr-it.github.io/trigr-tauri/trigr-help.html")` to open the user guide in the default browser. DO NOT create a Tauri WebviewWindow for help — a 3.2MB HTML file with inline base64 images freezes WebView2 and makes the entire app unresponsive (P0 bug in v0.1.20). The help page is hosted on GitHub Pages and no longer bundled in the app (`public/help.html` was deleted in v0.1.21).
 
+### Shared Config Path (Cloud Sync)
+**Local settings file:** `trigr-local-settings.json` in AppData dir (alongside `keyforge-config.json`). JSON format: `{ "shared_config_path": "C:\\path\\to\\folder" }`. This file is machine-specific — it MUST NOT be placed in the shared folder and MUST NOT sync between machines.
+
+**Config path resolution:** `config_path()` in config.rs checks `SHARED_CONFIG_DIR: RwLock<Option<PathBuf>>` first. If set and the directory exists, returns `shared_dir.join("keyforge-config.json")`. Otherwise falls back to `APP_DATA_DIR.join("keyforge-config.json")`. `backup_dir()` ALWAYS uses `APP_DATA_DIR` — backups never follow the shared path.
+
+**Load order at startup:** (1) `config::init()` reads `trigr-local-settings.json` from AppData. (2) If `shared_config_path` exists and is non-empty, sets `SHARED_CONFIG_DIR`. (3) lib.rs setup starts file watcher if shared dir exists, or spawns a 30-second reconnection poller if the dir doesn't exist yet (drive disconnected).
+
+**File watcher:** `notify` v8 crate (`ReadDirectoryChangesW` on Windows, ARM64 verified). Watches the shared directory (non-recursive). **Debounce:** 2-second quiet window — timer resets on each qualifying event, only fires after 2 seconds of no activity. **Filename filter:** Only reacts to `keyforge-config.json` events. Ignores temp files: `~$*`, `.~*`, `*.tmp`, `*.gstmp` (sync client artifacts). **Self-write suppression:** `SELF_WRITE_IN_PROGRESS` AtomicBool (SeqCst) set before `save_config` writes, cleared after. `LAST_WRITTEN_HASH` stores FNV-1a hash of last written content — skips reload if hash matches. **Lock retry:** 3 attempts × 500ms delay for sync-client-locked files. **On valid change:** emits `config-reloaded-from-sync` Tauri event with the parsed config JSON. Frontend re-applies all state and shows "Config updated from sync" info toast.
+
+**Migration:** When user sets a shared folder: (1) If `keyforge-config.json` doesn't exist there, copies current config to new location. (2) If file already exists, prompts "Use Existing" (loads the shared file) or "Replace with Mine" (overwrites with current config). Old AppData config preserved as implicit backup.
+
+**Revert:** "Use Local Config" button in Settings clears `SHARED_CONFIG_DIR`, stops file watcher, clears `trigr-local-settings.json`. Shared file is NOT deleted. Trigr returns to reading from AppData.
+
+**UI location:** Inside PRIVACY & SECURITY section of SettingsPanel.jsx, below the "Open logs folder" button. Shows "Shared" badge + path when active, "Set Shared Folder…" button when local.
+
 ---
 
 ## 11 — Tauri Config Reference
@@ -346,7 +367,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "build": { "devUrl": "http://localhost:5173" },
   "app": {
     "windows": [{
@@ -403,3 +424,4 @@ Record key decisions and findings here after each session.
 | 2026-04-07 | Post-MVP | Repeat mode + mouse hold mode | **Repeat mode:** `RepeatingKeyState` with `trigger_storage_key`, `stop: Arc<AtomicBool>` in `REPEATING_KEY` Mutex. Toggle: first press starts loop thread, second press of SAME trigger stops. Does NOT stop on other keypresses. `pending_trigger_key` field added to EngineState, threaded through `handle_keyup` → `dispatch_with_double_tap` → `fire_macro` → `execute_action` → `execute_send_hotkey`. Stop checks in both bare and modified key paths of `handle_keydown`. Auto-stop: `toggle_pause`, `toggle_macros`, `quit_app`, pause hotkey handler all call `stop_repeating_key()`. Loop thread also checks `MACROS_ENABLED`. Tray: `update_tray_icon_repeating()` reuses held red icon, custom tooltip. UI: mutually exclusive toggle with hold mode, interval input (min 50ms, default 100ms). **Mouse hold mode:** `HeldKeyState` now has `mouse_button: Option<String>`. `send_mouse_event(button, is_up)` helper for single down/up. Hold sends `MOUSEEVENTF_*DOWN` only, release sends `MOUSEEVENTF_*UP`. `release_held_key()` checks `mouse_button` field. Hold mode toggle now visible for all targets including mouse pills. |
 | 2026-04-07 | Post-MVP | Expansion injection refactor | Added `inject_via_sendinput()` (KEYEVENTF_UNICODE batched SendInput with surrogate pair support) and `should_use_clipboard()` branching in both `fire_expansion` and `fire_expansion_with_fillin`. Terminal process detection via `is_terminal_process()`. After testing, `should_use_clipboard()` set to always return `true` — clipboard injection more reliable across all app types. `inject_via_sendinput()` is dead code but retained for future use. `SUPPRESS_NEXT_CLIPBOARD_WRITE` cleanup now conditional on `used_clipboard` flag. |
 | 2026-04-07 | Release | v0.1.24 released | Patch release. Expansion injection refactor (clipboard-only for now). |
+| 2026-04-07 | Post-MVP | Shared config path (cloud sync) | **Local settings:** `trigr-local-settings.json` in AppData — stores `shared_config_path`, never syncs. **Config path override:** `SHARED_CONFIG_DIR: RwLock<Option<PathBuf>>` in config.rs, checked by `config_path()` before `APP_DATA_DIR` fallback. `backup_dir()` always uses AppData. **File watcher:** `notify` v8 crate (ReadDirectoryChangesW, ARM64 verified). Directory watch with 2s debounce, filename filter (only `keyforge-config.json`), temp file exclusion (`~$*`, `.~*`, `*.tmp`, `*.gstmp`), self-write suppression (`SELF_WRITE_IN_PROGRESS` AtomicBool SeqCst + FNV-1a content hash), 3×500ms lock retry. Emits `config-reloaded-from-sync` event on valid change. **IPC:** `get_shared_config_path`, `set_shared_config_path(path, mode)`, `clear_shared_config_path`. Mode: `use_existing` / `replace` / null (triggers `needs_choice` prompt). **Migration:** File exists at dest → prompt Use Existing vs Replace. No file → copies current config. **Reconnection:** 30s poll thread for disconnected drives at startup. **UI:** PRIVACY & SECURITY section in SettingsPanel — "Shared" badge with path when active, "Set Shared Folder…" button when local, inline "Use Existing / Replace" prompt, "Use Local Config" with confirmation. Frontend listens for `config-reloaded-from-sync`, re-applies all state, shows info toast. |

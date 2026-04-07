@@ -102,6 +102,14 @@ window.electronAPI = {
   openConfigFolder: () => invoke('open_config_folder'),
   openLogsFolder:   () => invoke('open_logs_folder'),
 
+  // ── Shared config ──────────────────────────────────────────────────────────
+  getSharedConfigPath:   ()     => invoke('get_shared_config_path'),
+  setSharedConfigPath:   (path, mode) => invoke('set_shared_config_path', { path, mode: mode || null }),
+  clearSharedConfigPath: ()     => invoke('clear_shared_config_path'),
+  onConfigReloadedFromSync: (callback) => {
+    listen('config-reloaded-from-sync', (event) => callback(event.payload)).then(u => { listeners['config-reloaded-from-sync'] = u; });
+  },
+
   // ── Backup & restore ────────────────────────────────────────────────────────
   exportConfig:   ()         => invoke('export_config'),
   importConfig:   ()         => invoke('import_config'),

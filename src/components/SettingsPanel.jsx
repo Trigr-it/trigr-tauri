@@ -43,11 +43,17 @@ export default function SettingsPanel({
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
   const [templatesExpanded, setTemplatesExpanded] = useState(false);
+  const [sharedConfigPath, setSharedConfigPath] = useState(null); // null = local, string = shared
+  const [sharedConfigBusy, setSharedConfigBusy] = useState(false);
+  const [sharedConfigError, setSharedConfigError] = useState(null);
+  const [confirmClearShared, setConfirmClearShared] = useState(false);
+  const [sharedExistsPrompt, setSharedExistsPrompt] = useState(null); // { path } when needs_choice
 
   useEffect(() => {
     window.electronAPI?.getConfigPath().then(p  => setConfigPath(p || ''));
     window.electronAPI?.getStartupEnabled().then(v => setStartWithWindows(!!v));
     window.electronAPI?.getAppVersion().then(v => setAppVersion(v || ''));
+    window.electronAPI?.getSharedConfigPath?.().then(p => setSharedConfigPath(p || null));
   }, []);
 
   function loadBackups() {
@@ -181,6 +187,140 @@ export default function SettingsPanel({
             >
               Open logs folder
             </button>
+          </div>
+
+          {/* ── Shared Config ─────────────────────────────── */}
+          <div className="settings-shared-config">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Shared config</span>
+              <span className="settings-toggle-sub">
+                Sync your config across machines via a cloud folder (Google Drive, OneDrive, Dropbox).
+                Trigr reads and writes <code>keyforge-config.json</code> from the folder you choose.
+              </span>
+            </div>
+
+            {sharedConfigPath ? (
+              <div className="settings-shared-active">
+                <div className="settings-shared-path-row">
+                  <span className="settings-shared-badge">Shared</span>
+                  <code className="settings-config-path" title={sharedConfigPath}>{sharedConfigPath}</code>
+                </div>
+                {confirmClearShared ? (
+                  <div className="settings-shared-confirm">
+                    <span>Revert to local config?</span>
+                    <button
+                      type="button"
+                      className="settings-action-btn"
+                      onClick={() => setConfirmClearShared(false)}
+                    >Cancel</button>
+                    <button
+                      type="button"
+                      className="settings-action-btn settings-danger-btn"
+                      onClick={async () => {
+                        setSharedConfigBusy(true);
+                        await window.electronAPI?.clearSharedConfigPath?.();
+                        setSharedConfigPath(null);
+                        setConfirmClearShared(false);
+                        setSharedConfigBusy(false);
+                        // Refresh displayed config path
+                        window.electronAPI?.getConfigPath().then(p => setConfigPath(p || ''));
+                      }}
+                    >Use Local Config</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    onClick={() => setConfirmClearShared(true)}
+                    disabled={sharedConfigBusy}
+                  >
+                    Use Local Config
+                  </button>
+                )}
+              </div>
+            ) : sharedExistsPrompt ? (
+              <div className="settings-shared-exists">
+                <p className="settings-shared-exists-msg">
+                  A config file already exists at this location.
+                </p>
+                <div className="settings-shared-exists-btns">
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    disabled={sharedConfigBusy}
+                    onClick={async () => {
+                      setSharedConfigBusy(true);
+                      const result = await window.electronAPI?.setSharedConfigPath?.(sharedExistsPrompt.path, 'use_existing');
+                      if (result?.ok) {
+                        setSharedConfigPath(sharedExistsPrompt.path);
+                        window.electronAPI?.getConfigPath().then(p => setConfigPath(p || ''));
+                        // Reload config from the existing shared file
+                        window.electronAPI?.loadConfig();
+                      } else {
+                        setSharedConfigError(result?.error || 'Failed to set shared config path.');
+                      }
+                      setSharedExistsPrompt(null);
+                      setSharedConfigBusy(false);
+                    }}
+                  >Use Existing</button>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    disabled={sharedConfigBusy}
+                    onClick={async () => {
+                      setSharedConfigBusy(true);
+                      const result = await window.electronAPI?.setSharedConfigPath?.(sharedExistsPrompt.path, 'replace');
+                      if (result?.ok) {
+                        setSharedConfigPath(sharedExistsPrompt.path);
+                        window.electronAPI?.getConfigPath().then(p => setConfigPath(p || ''));
+                      } else {
+                        setSharedConfigError(result?.error || 'Failed to set shared config path.');
+                      }
+                      setSharedExistsPrompt(null);
+                      setSharedConfigBusy(false);
+                    }}
+                  >Replace with Mine</button>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    onClick={() => setSharedExistsPrompt(null)}
+                  >Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="settings-action-btn"
+                disabled={sharedConfigBusy}
+                onClick={async () => {
+                  setSharedConfigError(null);
+                  const folder = await window.electronAPI?.browseForFolder();
+                  if (!folder) return;
+                  setSharedConfigBusy(true);
+                  try {
+                    const result = await window.electronAPI?.setSharedConfigPath?.(folder);
+                    if (result?.ok) {
+                      setSharedConfigPath(folder);
+                      window.electronAPI?.getConfigPath().then(p => setConfigPath(p || ''));
+                    } else if (result?.needs_choice) {
+                      // Config file already exists at destination — prompt user
+                      setSharedExistsPrompt({ path: folder });
+                    } else {
+                      setSharedConfigError(result?.error || 'Failed to set shared config path.');
+                    }
+                  } catch (e) {
+                    setSharedConfigError(String(e));
+                  }
+                  setSharedConfigBusy(false);
+                }}
+              >
+                Set Shared Folder…
+              </button>
+            )}
+
+            {sharedConfigError && (
+              <div className="settings-shared-error">{sharedConfigError}</div>
+            )}
           </div>
 
           <div className="settings-security-notice">
