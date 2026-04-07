@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
@@ -26,6 +26,7 @@ chrono = "0.4"
 regex-lite = "0.1"
 opener = "0.7"
 png = "0.17"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 notify = "8"
 

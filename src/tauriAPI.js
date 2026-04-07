@@ -35,6 +35,7 @@ window.electronAPI = {
     invoke('get_engine_status'),
 
   browseForFile:   () => invoke('browse_for_file'),
+  browseForImage:  () => invoke('browse_for_image'),
   browseForFolder: () => invoke('browse_for_folder'),
 
   // ── Profile settings ────────────────────────────────────────────────────────

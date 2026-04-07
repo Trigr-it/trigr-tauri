@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import './TextExpansions.css';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -483,12 +484,16 @@ export default function TextExpansions({
   const [panelMode, setPanelMode] = useState('expansions');
 
   // ── Expansion form state ──
-  const [editing, setEditing]         = useState(null);
-  const [trigger, setTrigger]         = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [editorValue, setEditorValue] = useState({ html: '', text: '' });
-  const [category, setCategory]       = useState(null);
-  const [triggerMode, setTriggerMode] = useState('space'); // 'space' | 'immediate'
+  const [editing, setEditing]             = useState(null);
+  const [trigger, setTrigger]             = useState('');
+  const [displayName, setDisplayName]     = useState('');
+  const [editorValue, setEditorValue]     = useState({ html: '', text: '' });
+  const [category, setCategory]           = useState(null);
+  const [triggerMode, setTriggerMode]     = useState('space'); // 'space' | 'immediate'
+  const [expansionType, setExpansionType] = useState('text'); // 'text' | 'image'
+  const [imagePath, setImagePath]         = useState('');
+  const [imageScale, setImageScale]       = useState(100);
+  const [imageExists, setImageExists]     = useState(true);
 
   // ── Trigger duplicate error ──
   const [triggerError, setTriggerError] = useState('');
@@ -517,6 +522,9 @@ export default function TextExpansions({
   // ── Category dnd-kit reorder ──
   const catDndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [catDragId, setCatDragId] = useState(null);
+
+  // ── Expansion type filter ──
+  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'text' | 'image'
 
   // ── Expansion sort state (persisted to localStorage) ──
   const [sortKey, setSortKey] = useState(() =>
@@ -590,6 +598,10 @@ export default function TextExpansions({
     setEditorValue({ html: '', text: '' });
     setCategory(activeCategory === 'All' ? null : activeCategory);
     setTriggerMode('space');
+    setExpansionType('text');
+    setImagePath('');
+    setImageScale(100);
+    setImageExists(true);
     setEditing({ isNew: true });
   }
 
@@ -597,17 +609,27 @@ export default function TextExpansions({
     setTrigger(exp.trigger);
     setDisplayName(exp.displayName || '');
     setTriggerError('');
-    setEditorValue({ html: exp.html, text: exp.text });
+    setEditorValue({ html: exp.html || '', text: exp.text || '' });
     setCategory(exp.category || null);
     setTriggerMode(exp.triggerMode || 'space');
+    const expType = exp.expansionType || 'text';
+    setExpansionType(expType);
+    setImagePath(exp.imagePath || '');
+    setImageScale(exp.imageScale ?? 100);
+    setImageExists(true); // Optimistic — <img> onError will set false if file missing
     setEditing({ isNew: false, originalTrigger: exp.trigger });
   }
 
   function handleSave() {
     const t = trigger.trim().toLowerCase().replace(/\s/g, '');
-    if (!t || !editorValue.text.trim()) return;
+    if (!t) return;
+    if (expansionType === 'image') {
+      if (!imagePath) return;
+    } else {
+      if (!editorValue.text.trim()) return;
+    }
     const originalTrigger = editing.isNew ? null : editing.originalTrigger;
-    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null);
+    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale);
     setEditing(null);
   }
 
@@ -749,7 +771,9 @@ export default function TextExpansions({
     setAcEditing(null);
   }
 
-  const canSave   = trigger.trim() && editorValue.text.trim() && !triggerError;
+  const canSave   = trigger.trim() && !triggerError && (
+    expansionType === 'image' ? !!imagePath : !!editorValue.text.trim()
+  );
   const canAcSave = acTypo.trim() && acCorrection.trim();
 
   // Normalise categories — guard against old string-array format surviving in
@@ -758,7 +782,14 @@ export default function TextExpansions({
     .map(c => typeof c === 'string' ? { name: c, colour: null } : c)
     .filter(c => c && c.name);
 
-  const uncategorisedCount = expansions.filter(e => !e.category).length;
+  // Apply type filter before category/sorting
+  const typeFiltered = typeFilter === 'all'
+    ? expansions
+    : typeFilter === 'image'
+      ? expansions.filter(e => e.expansionType === 'image')
+      : expansions.filter(e => !e.expansionType || e.expansionType === 'text');
+
+  const uncategorisedCount = typeFiltered.filter(e => !e.category).length;
 
   // Build flat list for the current expansion tab
   const listItems = (() => {
@@ -774,20 +805,20 @@ export default function TextExpansions({
 
     if (activeCategory !== 'All') {
       const pool = activeCategory === '__uncategorised__'
-        ? expansions.filter(e => !e.category)
-        : expansions.filter(e => e.category === activeCategory);
+        ? typeFiltered.filter(e => !e.category)
+        : typeFiltered.filter(e => e.category === activeCategory);
       return sortItems(pool).map(exp => ({ type: 'item', exp }));
     }
 
     // All tab — grouped: uncategorised first, then named categories in user-defined order
     const result = [];
-    const uncat = sortItems(expansions.filter(e => !e.category));
+    const uncat = sortItems(typeFiltered.filter(e => !e.category));
     if (uncat.length > 0) {
       result.push({ type: 'header', label: 'Uncategorised', color: null, count: uncat.length });
       uncat.forEach(exp => result.push({ type: 'item', exp }));
     }
     for (const cat of normCategories) {
-      const items = sortItems(expansions.filter(e => e.category === cat.name));
+      const items = sortItems(typeFiltered.filter(e => e.category === cat.name));
       if (items.length === 0) continue;
       result.push({ type: 'header', label: cat.name, color: cat.colour || null, count: items.length });
       items.forEach(exp => result.push({ type: 'item', exp }));
@@ -923,7 +954,7 @@ export default function TextExpansions({
               onClick={() => setActiveCategory('All')}
             >
               All
-              <span className="te-cat-count">{expansions.length}</span>
+              <span className="te-cat-count">{typeFiltered.length}</span>
             </button>
 
             <DndContext sensors={catDndSensors} onDragStart={e => setCatDragId(e.active.id)} onDragEnd={handleCatDragEnd}>
@@ -931,7 +962,7 @@ export default function TextExpansions({
                 {normCategories.map(cat => {
                   const catColour   = cat.colour || null;
                   const isPending   = pendingDeleteCat === cat.name;
-                  const count       = expansions.filter(e => e.category === cat.name).length;
+                  const count       = typeFiltered.filter(e => e.category === cat.name).length;
                   return (
                     <SortableCatTab key={cat.name} id={cat.name}>
                       <div className="te-cat-tab-group">
@@ -1045,6 +1076,25 @@ export default function TextExpansions({
             )}
           </div>
 
+          {/* ── Type filter pills ── */}
+          <div className="te-type-filter">
+            <button
+              type="button"
+              className={`te-type-filter-pill${typeFilter === 'all' ? ' active' : ''}`}
+              onClick={() => setTypeFilter('all')}
+            >All</button>
+            <button
+              type="button"
+              className={`te-type-filter-pill${typeFilter === 'text' ? ' active' : ''}`}
+              onClick={() => setTypeFilter('text')}
+            >Text</button>
+            <button
+              type="button"
+              className={`te-type-filter-pill${typeFilter === 'image' ? ' active' : ''}`}
+              onClick={() => setTypeFilter('image')}
+            >Image</button>
+          </div>
+
           {/* ── Body: list + edit panel side-by-side ── */}
           <div className="te-body">
 
@@ -1058,6 +1108,8 @@ export default function TextExpansions({
                     <span className="te-empty-sub">Click <strong>+ Add</strong> to create your first expansion. Type a short trigger word and it expands to full text instantly anywhere on your computer.</span>
                     <span className="te-empty-example">e.g. type <kbd className="te-empty-kbd">signoff</kbd> and press Space → <em>"Thanks for your message, speak soon!"</em></span>
                   </div>
+                ) : typeFilter !== 'all' && typeFiltered.length === 0 ? (
+                  <div className="te-empty-row">No {typeFilter} expansions</div>
                 ) : (
                   <div className="te-empty-row">No expansions in this category yet</div>
                 )
@@ -1089,12 +1141,18 @@ export default function TextExpansions({
                         {exp.triggerMode === 'immediate' && (
                           <span className="te-immediate-badge" title="Fires instantly (no Space needed)">⚡</span>
                         )}
+                        {exp.expansionType === 'image' && (
+                          <span className="te-img-badge" title="Image expansion">IMG</span>
+                        )}
                       </div>
                       {/* Col 2 — Name */}
                       <div className="te-col-name">{exp.displayName || exp.trigger}</div>
                       {/* Col 3 — Preview (plain text, truncated) */}
                       <div className="te-col-preview">
-                        {(exp.text || '').replace(/\s+/g, ' ').trim()}
+                        {exp.expansionType === 'image'
+                          ? (exp.imagePath ? exp.imagePath.split(/[/\\]/).pop() : 'No image')
+                          : (exp.text || '').replace(/\s+/g, ' ').trim()
+                        }
                       </div>
                       {/* Col 4 — Tag */}
                       <div className="te-col-tag">
@@ -1132,6 +1190,20 @@ export default function TextExpansions({
                       {editing.isNew ? 'New Expansion' : 'Edit Expansion'}
                     </span>
                     <button className="te-panel-close" onClick={handleCancel} type="button">✕</button>
+                  </div>
+
+                  {/* Expansion type selector */}
+                  <div className="te-type-selector">
+                    <button
+                      type="button"
+                      className={`te-trigger-mode-btn${expansionType === 'text' ? ' active' : ''}`}
+                      onClick={() => setExpansionType('text')}
+                    >Text</button>
+                    <button
+                      type="button"
+                      className={`te-trigger-mode-btn${expansionType === 'image' ? ' active' : ''}`}
+                      onClick={() => setExpansionType('image')}
+                    >Image</button>
                   </div>
 
                   {/* Fixed-height top fields: name + trigger + mode + category */}
@@ -1206,19 +1278,73 @@ export default function TextExpansions({
                     </div>
                   </div>
 
-                  {/* RTE fills remaining vertical space */}
-                  <div className="te-panel-rte">
-                    <label className="form-label">REPLACEMENT</label>
-                    <RichTextEditor
-                      key={editing.isNew ? '__new__' : editing.originalTrigger}
-                      initialHtml={editorValue.html}
-                      onChange={setEditorValue}
-                      globalVariables={globalVariables}
-                    />
-                  </div>
+                  {/* Content area — RTE for text, image picker for image */}
+                  {expansionType === 'text' ? (
+                    <div className="te-panel-rte">
+                      <label className="form-label">REPLACEMENT</label>
+                      <RichTextEditor
+                        key={editing.isNew ? '__new__' : editing.originalTrigger}
+                        initialHtml={editorValue.html}
+                        onChange={setEditorValue}
+                        globalVariables={globalVariables}
+                      />
+                    </div>
+                  ) : (
+                    <div className="te-panel-image">
+                      <label className="form-label">IMAGE</label>
+                      <button
+                        type="button"
+                        className="te-image-pick-btn"
+                        onClick={async () => {
+                          const path = await window.electronAPI?.browseForImage();
+                          if (path) {
+                            setImagePath(path);
+                            setImageExists(true);
+                          }
+                        }}
+                      >Choose Image…</button>
+                      {imagePath ? (
+                        <div className="te-image-preview-wrap">
+                          <img
+                            className="te-image-preview"
+                            src={convertFileSrc(imagePath)}
+                            alt="Preview"
+                            onError={() => setImageExists(false)}
+                            onLoad={() => setImageExists(true)}
+                          />
+                          {!imageExists && (
+                            <span className="te-image-missing">File not found</span>
+                          )}
+                          <span className="te-image-path" title={imagePath}>
+                            {imagePath.split(/[/\\]/).pop()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="te-image-none">No image selected</span>
+                      )}
+                      <div className="te-image-scale">
+                        <label className="form-label">SCALE</label>
+                        <div className="te-image-scale-row">
+                          <input
+                            type="number"
+                            className="form-input te-image-scale-input"
+                            min={10}
+                            max={100}
+                            value={imageScale}
+                            onChange={e => {
+                              let v = parseInt(e.target.value, 10);
+                              if (isNaN(v)) v = 100;
+                              setImageScale(Math.max(10, Math.min(100, v)));
+                            }}
+                          />
+                          <span className="te-image-scale-pct">%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="te-panel-footer">
-                    <span className="te-paste-note">Pastes as plain text</span>
+                    <span className="te-paste-note">{expansionType === 'image' ? 'Pastes as image via clipboard' : 'Pastes as plain text'}</span>
                     <div className="te-form-actions">
                       <button className="te-cancel-btn" onClick={handleCancel} type="button">Cancel</button>
                       <button className="te-save-btn" onClick={handleSave} disabled={!canSave} type="button">

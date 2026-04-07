@@ -386,6 +386,26 @@ async fn browse_for_file(app: tauri::AppHandle) -> Value {
 }
 
 #[tauri::command]
+async fn browse_for_image(app: tauri::AppHandle) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+
+    let file = app
+        .dialog()
+        .file()
+        .set_title("Select Image")
+        .add_filter("Images", &["png", "jpg", "jpeg"])
+        .blocking_pick_file();
+
+    match file {
+        Some(p) => {
+            let path_str = p.into_path().unwrap().to_string_lossy().to_string();
+            Value::String(path_str)
+        }
+        None => Value::Null,
+    }
+}
+
+#[tauri::command]
 async fn browse_for_folder(app: tauri::AppHandle) -> Value {
     use tauri_plugin_dialog::DialogExt;
 
@@ -1255,6 +1275,7 @@ pub fn run() {
             quit_app,
             // File dialogs
             browse_for_file,
+            browse_for_image,
             browse_for_folder,
             // Profile export/import
             export_profile,
