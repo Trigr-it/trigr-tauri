@@ -429,9 +429,10 @@ fn update_assignments(assignments: Value, profile: String) {
 
 #[tauri::command]
 fn toggle_macros(enabled: bool, app: tauri::AppHandle) {
-    // Release any held key before changing state
+    // Release any held/repeating key before changing state
     if !enabled {
         actions::release_held_key();
+        actions::stop_repeating_key();
     }
     hotkeys::set_macros_enabled(enabled);
     tray::rebuild_tray_menu(&app);
@@ -575,6 +576,7 @@ fn set_window_resizable(resizable: bool, app: tauri::AppHandle) {
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     actions::release_held_key();
+    actions::stop_repeating_key();
     app.exit(0);
 }
 
@@ -764,7 +766,7 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                     let state = hotkeys::engine_state().lock().unwrap();
                     if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
                         drop(state);
-                        actions::execute_action(&macro_val, false, target_hwnd, false, &app);
+                        actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), &app);
                         let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
                         let analytics_type = if at == "macro" { "macro" } else { "hotkey" };
                         analytics::log_action(analytics_type, 0);

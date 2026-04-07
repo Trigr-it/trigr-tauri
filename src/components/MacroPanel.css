@@ -1327,6 +1327,71 @@
   border-color: rgba(245, 158, 11, 0.8);
 }
 
+/* ── Repeat mode interval row ─────────────────────────────────────────── */
+.repeat-interval-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+
+.repeat-interval-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.repeat-interval-input {
+  width: 72px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.repeat-interval-suffix {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ── Mouse click pill buttons ──────────────────────────────────────────── */
+.mouse-click-pills {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.mouse-click-pill {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.mouse-click-pill:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.mouse-click-pill.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ── Input method global-default label ─────────────────────────────────── */
 .input-method-global-val {
   font-size: 10px;

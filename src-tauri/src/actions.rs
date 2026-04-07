@@ -1,6 +1,7 @@
 use log::{info, warn};
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -9,8 +10,10 @@ use windows_sys::Win32::System::DataExchange::{
 };
 use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-    KEYEVENTF_UNICODE, VIRTUAL_KEY,
+    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
+    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+    VIRTUAL_KEY,
 };
 use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
 use windows_sys::Win32::System::Threading::{
@@ -33,6 +36,7 @@ static HELD_KEY: Mutex<Option<HeldKeyState>> = Mutex::new(None);
 struct HeldKeyState {
     target_vk: u16,
     mod_vks: Vec<u16>,
+    mouse_button: Option<String>, // Some("LButton") for mouse hold, None for keyboard
     label: String, // e.g. "Ctrl+W" for tray tooltip
 }
 
@@ -44,11 +48,15 @@ pub fn release_held_key() -> Option<String> {
     let mut held = HELD_KEY.lock().unwrap();
     if let Some(state) = held.take() {
         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-        // Release target key
-        send_vk_key(state.target_vk, true);
-        // Release modifiers in reverse
-        for &vk in state.mod_vks.iter().rev() {
-            send_vk_key(vk, true);
+        if let Some(ref button) = state.mouse_button {
+            // Mouse button release — send the corresponding UP event
+            send_mouse_event(button, true);
+        } else {
+            // Keyboard release
+            send_vk_key(state.target_vk, true);
+            for &vk in state.mod_vks.iter().rev() {
+                send_vk_key(vk, true);
+            }
         }
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
         info!("[Trigr] Released held key: {}", state.label);
@@ -61,6 +69,40 @@ pub fn release_held_key() -> Option<String> {
 /// Check if a key is currently being held.
 pub fn is_key_held() -> bool {
     HELD_KEY.lock().unwrap().is_some()
+}
+
+// ── Repeat mode state ──────────────────────────────────────────────────────
+
+struct RepeatingKeyState {
+    trigger_storage_key: String,
+    label: String,
+    #[allow(dead_code)]
+    interval_ms: u64,
+    stop: Arc<AtomicBool>,
+}
+
+static REPEATING_KEY: Mutex<Option<RepeatingKeyState>> = Mutex::new(None);
+
+/// Stop the currently repeating key (if any). Safe to call from any thread.
+pub fn stop_repeating_key() -> Option<String> {
+    let mut rep = REPEATING_KEY.lock().unwrap();
+    if let Some(state) = rep.take() {
+        state.stop.store(true, Ordering::SeqCst);
+        info!("[Trigr] Stopped repeating: {}", state.label);
+        Some(state.label)
+    } else {
+        None
+    }
+}
+
+/// Check if a key is currently repeating.
+pub fn is_repeating() -> bool {
+    REPEATING_KEY.lock().unwrap().is_some()
+}
+
+/// Get the trigger storage key of the currently repeating key.
+pub fn get_repeating_trigger() -> Option<String> {
+    REPEATING_KEY.lock().unwrap().as_ref().map(|s| s.trigger_storage_key.clone())
 }
 
 // ── Timing constants (matching Electron defaults) ───────────────────────────
@@ -86,7 +128,7 @@ const VK_INSERT: u16 = 0x2D;
 /// Execute a macro action. Called from the hotkey processor thread.
 /// `target_hwnd` = the foreground window HWND captured at hotkey fire time.
 /// `is_altgr` = true if Ctrl+Alt (AltGr) was held — dead character may have leaked.
-pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_altgr: bool, app: &tauri::AppHandle) {
+pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_altgr: bool, trigger_key: Option<&str>, app: &tauri::AppHandle) {
     let macro_type = macro_val
         .get("type")
         .and_then(|v| v.as_str())
@@ -131,7 +173,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
         "hotkey" => {
             if let Some(d) = data {
                 thread::sleep(Duration::from_millis(HOTKEY_SETTLE_MS));
-                execute_send_hotkey(d, app);
+                execute_send_hotkey(d, trigger_key, app);
             }
         }
 
@@ -406,34 +448,39 @@ fn send_unicode_key(scan: u16, key_up: bool) {
 
 // ── Send Hotkey: VK-based key simulation ────────────────────────────────────
 
-fn execute_send_hotkey(data: &Value, app: &tauri::AppHandle) {
+fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::AppHandle) {
     let key_name = match data.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
         None => return,
     };
 
-    let modifiers = data
-        .get("modifiers")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let is_mouse = is_mouse_button(key_name);
 
-    let target_vk = match display_name_to_vk(key_name) {
-        Some(vk) => vk,
-        None => {
-            warn!("[Trigr] Unknown Send Hotkey key: {}", key_name);
-            return;
+    // Parse modifiers and VK (keyboard only)
+    let modifiers: Vec<String> = if is_mouse {
+        vec![]
+    } else {
+        data.get("modifiers")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default()
+    };
+
+    let target_vk: u16 = if is_mouse {
+        0
+    } else {
+        match display_name_to_vk(key_name) {
+            Some(vk) => vk,
+            None => {
+                warn!("[Trigr] Unknown Send Hotkey key: {}", key_name);
+                return;
+            }
         }
     };
 
-    let hold_mode = data
-        .get("holdMode")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let hold_mode = data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false);
+    let repeat_mode = data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false);
+    let repeat_interval = data.get("repeatInterval").and_then(|v| v.as_u64()).unwrap_or(100).max(50);
 
     let mod_vks: Vec<u16> = modifiers
         .iter()
@@ -452,50 +499,158 @@ fn execute_send_hotkey(data: &Value, app: &tauri::AppHandle) {
         format!("{}+{}", modifiers.join("+"), key_name)
     };
 
-    // ── Hold mode ──
-    if hold_mode {
-        let mut held = HELD_KEY.lock().unwrap();
-        if let Some(ref state) = *held {
-            if state.target_vk == target_vk && state.mod_vks == mod_vks {
-                // Same key — release it
-                crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                send_vk_key(state.target_vk, true);
-                for &vk in state.mod_vks.iter().rev() {
-                    send_vk_key(vk, true);
+    // ── Repeat mode ──
+    if repeat_mode {
+        let trigger_storage_key = trigger_key.unwrap_or("").to_string();
+
+        // Check if already repeating
+        {
+            let mut rep = REPEATING_KEY.lock().unwrap();
+            if let Some(ref state) = *rep {
+                if state.trigger_storage_key == trigger_storage_key {
+                    // Same trigger — stop (toggle off)
+                    state.stop.store(true, Ordering::SeqCst);
+                    info!("[Trigr] Repeat stopped (toggle): {}", combo_label);
+                    *rep = None;
+                    drop(rep);
+                    crate::tray::update_tray_icon_normal(app);
+                    return;
+                } else {
+                    // Different trigger — stop old, start new
+                    state.stop.store(true, Ordering::SeqCst);
+                    info!("[Trigr] Repeat stopped (switching): {}", state.label);
+                    *rep = None;
                 }
-                crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-                info!("[Trigr] Hold released: {}", combo_label);
-                *held = None;
-                drop(held);
-                crate::tray::update_tray_icon_normal(app);
-                return;
-            } else {
-                // Different key held — release previous first
-                crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                send_vk_key(state.target_vk, true);
-                for &vk in state.mod_vks.iter().rev() {
-                    send_vk_key(vk, true);
-                }
-                crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-                info!("[Trigr] Hold released (switching): {}", state.label);
             }
         }
 
-        // Hold the new key — keydown only, no keyup
+        // Start repeating
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop.clone();
+        let app_clone = app.clone();
+        let key_name_owned = key_name.to_string();
+        let mod_vks_clone = mod_vks.clone();
+        let is_mouse_copy = is_mouse;
+        let target_vk_copy = target_vk;
+
+        {
+            let mut rep = REPEATING_KEY.lock().unwrap();
+            *rep = Some(RepeatingKeyState {
+                trigger_storage_key,
+                label: combo_label.clone(),
+                interval_ms: repeat_interval,
+                stop: stop.clone(),
+            });
+        }
+
+        crate::tray::update_tray_icon_repeating(app, &combo_label, repeat_interval);
+        info!("[Trigr] Repeat started: {} ({}ms)", combo_label, repeat_interval);
+
+        thread::spawn(move || {
+            loop {
+                if stop_clone.load(Ordering::SeqCst) { break; }
+                if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) { break; }
+
+                if is_mouse_copy {
+                    send_mouse_click(&key_name_owned);
+                } else {
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                    for &vk in &mod_vks_clone {
+                        send_vk_key(vk, false);
+                    }
+                    send_vk_key(target_vk_copy, false);
+                    send_vk_key(target_vk_copy, true);
+                    for &vk in mod_vks_clone.iter().rev() {
+                        send_vk_key(vk, true);
+                    }
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                }
+
+                thread::sleep(Duration::from_millis(repeat_interval));
+            }
+            // Cleanup: clear state if this thread's stop flag is still the active one
+            {
+                let mut rep = REPEATING_KEY.lock().unwrap();
+                if let Some(ref state) = *rep {
+                    if Arc::ptr_eq(&state.stop, &stop_clone) {
+                        *rep = None;
+                    }
+                }
+            }
+            crate::tray::update_tray_icon_normal(&app_clone);
+        });
+        return;
+    }
+
+    // ── Hold mode ──
+    if hold_mode {
+        let mut held = HELD_KEY.lock().unwrap();
+
+        // Check if same key already held — toggle release
+        let same_held = if let Some(ref state) = *held {
+            if is_mouse {
+                state.mouse_button.as_deref() == Some(key_name)
+            } else {
+                state.target_vk == target_vk && state.mod_vks == mod_vks && state.mouse_button.is_none()
+            }
+        } else {
+            false
+        };
+
+        if same_held {
+            // Release it
+            let state = held.take().unwrap();
+            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+            if let Some(ref button) = state.mouse_button {
+                send_mouse_event(button, true);
+            } else {
+                send_vk_key(state.target_vk, true);
+                for &vk in state.mod_vks.iter().rev() {
+                    send_vk_key(vk, true);
+                }
+            }
+            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+            info!("[Trigr] Hold released: {}", combo_label);
+            drop(held);
+            crate::tray::update_tray_icon_normal(app);
+            return;
+        }
+
+        // Different key held — release previous first
+        if let Some(ref state) = *held {
+            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+            if let Some(ref button) = state.mouse_button {
+                send_mouse_event(button, true);
+            } else {
+                send_vk_key(state.target_vk, true);
+                for &vk in state.mod_vks.iter().rev() {
+                    send_vk_key(vk, true);
+                }
+            }
+            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+            info!("[Trigr] Hold released (switching): {}", state.label);
+        }
+
+        // Hold the new key/button
         println!("[ACTION] Send Hotkey HOLD: {}", combo_label);
         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-        let physically_held = release_held_modifiers();
-        for &vk in &mod_vks {
-            send_vk_key(vk, false);
+        if is_mouse {
+            send_mouse_event(key_name, false); // mousedown only
+        } else {
+            let physically_held = release_held_modifiers();
+            for &vk in &mod_vks {
+                send_vk_key(vk, false);
+            }
+            send_vk_key(target_vk, false);
+            // Do NOT send keyup — key stays held
+            restore_modifiers(&physically_held);
         }
-        send_vk_key(target_vk, false);
-        // Do NOT send keyup — key stays held
-        restore_modifiers(&physically_held);
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 
         *held = Some(HeldKeyState {
             target_vk,
             mod_vks: mod_vks.clone(),
+            mouse_button: if is_mouse { Some(key_name.to_string()) } else { None },
             label: combo_label.clone(),
         });
         drop(held);
@@ -503,34 +658,30 @@ fn execute_send_hotkey(data: &Value, app: &tauri::AppHandle) {
         return;
     }
 
-    // ── Normal mode (no hold) ──
-    println!(
-        "[ACTION] Send Hotkey: [{}] + {}",
-        modifiers.join("+"),
-        key_name
-    );
+    // ── Normal mode ──
+    if is_mouse {
+        info!("[Trigr] Send Hotkey → mouse click: {}", key_name);
+        send_mouse_click(key_name);
+    } else {
+        println!(
+            "[ACTION] Send Hotkey: [{}] + {}",
+            modifiers.join("+"),
+            key_name
+        );
 
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-
-    // Release physically held modifiers so they don't combine with the target combo
-    let held = release_held_modifiers();
-
-    // Press target modifiers
-    for &vk in &mod_vks {
-        send_vk_key(vk, false);
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+        let held = release_held_modifiers();
+        for &vk in &mod_vks {
+            send_vk_key(vk, false);
+        }
+        send_vk_key(target_vk, false);
+        send_vk_key(target_vk, true);
+        for &vk in mod_vks.iter().rev() {
+            send_vk_key(vk, true);
+        }
+        restore_modifiers(&held);
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
     }
-
-    // Press and release the target key
-    send_vk_key(target_vk, false);
-    send_vk_key(target_vk, true);
-
-    // Release modifiers
-    for &vk in mod_vks.iter().rev() {
-        send_vk_key(vk, true);
-    }
-
-    restore_modifiers(&held);
-    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 }
 
 // ── Focus Window — find a window by process name and/or title ──────────────
@@ -618,6 +769,93 @@ fn find_window_by_criteria(process_name: &str, title: &str) -> Option<isize> {
     }
 }
 
+// ── Mouse click simulation ─────────────────────────────────────────────────
+
+/// Returns true if the value is a mouse button name (LButton, RButton, MButton).
+fn is_mouse_button(name: &str) -> bool {
+    matches!(name, "LButton" | "RButton" | "MButton")
+}
+
+/// Send a single mouse event (down or up) at the current cursor position.
+fn send_mouse_event(button: &str, is_up: bool) {
+    let flag = match (button, is_up) {
+        ("LButton", false) => MOUSEEVENTF_LEFTDOWN,
+        ("LButton", true) => MOUSEEVENTF_LEFTUP,
+        ("RButton", false) => MOUSEEVENTF_RIGHTDOWN,
+        ("RButton", true) => MOUSEEVENTF_RIGHTUP,
+        ("MButton", false) => MOUSEEVENTF_MIDDLEDOWN,
+        ("MButton", true) => MOUSEEVENTF_MIDDLEUP,
+        _ => return,
+    };
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: 0,
+                dwFlags: flag,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe {
+        SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+/// Send a mouse click (down + up) at the current cursor position.
+/// `button` must be "LButton", "RButton", or "MButton".
+fn send_mouse_click(button: &str) {
+    let (down_flag, up_flag) = match button {
+        "LButton" => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+        "RButton" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+        "MButton" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+        _ => {
+            warn!("[Trigr] Unknown mouse button: {}", button);
+            return;
+        }
+    };
+
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+
+    let input_down = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: 0,
+                dwFlags: down_flag,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    let input_up = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: 0,
+                dwFlags: up_flag,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+
+    unsafe {
+        SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
+        SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
+    }
+
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+    info!("[Trigr] Mouse click: {}", button);
+}
+
 // ── Macro sequence step executor ────────────────────────────────────────────
 
 fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
@@ -634,6 +872,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
 
         "Press Key" => {
             if !step_value.is_empty() {
+                // Mouse click buttons — no keyboard path needed
+                if is_mouse_button(step_value) {
+                    send_mouse_click(step_value);
+                    return;
+                }
                 // Parse "Ctrl+Shift+N" style strings
                 let parts: Vec<&str> = step_value.split('+').map(|s| s.trim()).collect();
                 if let Some((&key_name, mod_parts)) = parts.split_last() {

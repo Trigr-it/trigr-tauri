@@ -127,6 +127,17 @@ pub fn update_tray_icon_held(app: &AppHandle, held_label: &str) {
     }
 }
 
+/// Update tray icon to indicate a key is being repeated.
+pub fn update_tray_icon_repeating(app: &AppHandle, label: &str, interval_ms: u64) {
+    if let Some(img) = TRAY_ICON_HELD.get() {
+        if let Some(tray) = app.tray_by_id("trigr-tray") {
+            let _ = tray.set_icon(Some(img.clone()));
+            let tip = format!("Trigr — Repeating: {} ({}ms) — press again to stop", label, interval_ms);
+            let _ = tray.set_tooltip(Some(&tip));
+        }
+    }
+}
+
 /// Restore tray to the correct non-held state (active or paused).
 pub fn update_tray_icon_normal(app: &AppHandle) {
     let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst);
@@ -298,9 +309,10 @@ fn toggle_window_visibility(app: &AppHandle) {
 
 fn toggle_pause(app: &AppHandle) {
     let was_enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
-    // Release any held key before pausing
+    // Release any held/repeating key before pausing
     if was_enabled {
         crate::actions::release_held_key();
+        crate::actions::stop_repeating_key();
     }
     crate::hotkeys::MACROS_ENABLED.store(!was_enabled, Ordering::Relaxed);
     let now_enabled = !was_enabled;
