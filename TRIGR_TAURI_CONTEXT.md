@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-07 (post v0.1.22)
+> Last updated: 2026-04-07 (post v0.1.24)
 
 ---
 
@@ -320,8 +320,8 @@ Category tabs in TextExpansions.jsx use `@dnd-kit/sortable` with `horizontalList
 ### Date Tokens
 Seven tokens in expansions.rs: `{date:DD/MM/YYYY}` (%d/%m/%Y), `{date:DD/MM/YY}` (%d/%m/%y), `{date:MM/DD/YYYY}` (%m/%d/%Y), `{date:YYYY-MM-DD}` (%Y-%m-%d), `{time:HH:MM:SS}` (%H:%M:%S), `{time:HH:MM}` (%H:%M), `{dayofweek}` (%A). All use `chrono::Local::now()` + `str::replace`. INSERT_MENU in TextExpansions.jsx lists all tokens for the editor dropdown.
 
-### Hybrid Expansion Injection
-Text expansions use two injection methods: `inject_via_sendinput()` (KEYEVENTF_UNICODE batched SendInput) for short text (<100 chars after token resolution) in non-terminal apps, and `inject_via_clipboard()` (clipboard paste) for long text (≥100 chars) or terminal processes (cmd, powershell, pwsh, windowsterminal, wt, mintty, conhost). Decision is made by `should_use_clipboard()` after `resolve_tokens()` — threshold applies to final expanded text, not the raw template. The SendInput path does NOT touch the clipboard at all — no save/restore, no `SUPPRESS_NEXT_CLIPBOARD_WRITE`. The `SUPPRESS_NEXT_CLIPBOARD_WRITE = false` cleanup after injection is conditional on which path was used. `inject_via_clipboard()` is completely unchanged. Both paths share the same `SUPPRESS_SIMULATED` guard and `InjectionGuard` pattern. VK_PACKET (0xE7) events from KEYEVENTF_UNICODE are safe: blocked by `SUPPRESS_SIMULATED` at the hook level, and passively filtered by `vk_to_key_id` / `vk_to_char` returning None.
+### Expansion Injection Architecture
+All text expansions use `inject_via_clipboard()` (clipboard paste). `should_use_clipboard()` unconditionally returns `true`. A `inject_via_sendinput()` function exists in expansions.rs (KEYEVENTF_UNICODE batched SendInput, surrogate pair support via `encode_utf16()`, single `SendInput` call) but is **dead code** — unreachable from both `fire_expansion()` and `fire_expansion_with_fillin()`. It was built and tested in v0.1.24 but disabled because clipboard injection is more reliable across all app types (terminals, admin apps, RDP, games). The `SUPPRESS_NEXT_CLIPBOARD_WRITE = false` cleanup after injection is conditional on the `used_clipboard` flag in both fire functions. Terminal process detection (`is_terminal_process()` with cmd/powershell/pwsh/windowsterminal/wt/mintty/conhost) also exists but is currently unused since clipboard is always chosen.
 
 ### Input Method — Simplified
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
@@ -346,7 +346,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.21",
+  "version": "0.1.24",
   "build": { "devUrl": "http://localhost:5173" },
   "app": {
     "windows": [{
@@ -401,4 +401,5 @@ Record key decisions and findings here after each session.
 | 2026-04-06 | Release | v0.1.21 released | Patch release. P0 help window fix (opener::open to GitHub Pages), public/help.html deleted. |
 | 2026-04-07 | Post-MVP | Mouse click in Press Key + Send Hotkey | `send_mouse_click()` in actions.rs: INPUT_MOUSE SendInput (down+up) at cursor, SUPPRESS_SIMULATED guarded. Wired into Press Key macro step (mouse button names bypass keyboard path) and Send Hotkey (mouse buttons fire directly, skip hold mode). UI: MOUSE_CLICK_OPTIONS pill buttons in both KeyCaptureInput and HotkeyCaptureInput. Hold mode toggle hidden when mouse button selected. CSS variables only. |
 | 2026-04-07 | Post-MVP | Repeat mode + mouse hold mode | **Repeat mode:** `RepeatingKeyState` with `trigger_storage_key`, `stop: Arc<AtomicBool>` in `REPEATING_KEY` Mutex. Toggle: first press starts loop thread, second press of SAME trigger stops. Does NOT stop on other keypresses. `pending_trigger_key` field added to EngineState, threaded through `handle_keyup` → `dispatch_with_double_tap` → `fire_macro` → `execute_action` → `execute_send_hotkey`. Stop checks in both bare and modified key paths of `handle_keydown`. Auto-stop: `toggle_pause`, `toggle_macros`, `quit_app`, pause hotkey handler all call `stop_repeating_key()`. Loop thread also checks `MACROS_ENABLED`. Tray: `update_tray_icon_repeating()` reuses held red icon, custom tooltip. UI: mutually exclusive toggle with hold mode, interval input (min 50ms, default 100ms). **Mouse hold mode:** `HeldKeyState` now has `mouse_button: Option<String>`. `send_mouse_event(button, is_up)` helper for single down/up. Hold sends `MOUSEEVENTF_*DOWN` only, release sends `MOUSEEVENTF_*UP`. `release_held_key()` checks `mouse_button` field. Hold mode toggle now visible for all targets including mouse pills. |
-| 2026-04-07 | Post-MVP | Hybrid text expansion injection | **KEYEVENTF_UNICODE SendInput** for short expansions (<100 chars post-resolution), **clipboard paste** retained for long expansions (≥100 chars) and terminal processes. `inject_via_sendinput()` in expansions.rs: builds full INPUT array (down+up per UTF-16 code unit, surrogate pairs handled by `encode_utf16()`), trailing VK_SPACE, single batched `SendInput` call. No clipboard touched on SendInput path — no save/restore, no `SUPPRESS_NEXT_CLIPBOARD_WRITE`. `should_use_clipboard()` checks `chars().count() >= 100` on resolved text + `is_terminal_process()` against cached foreground proc name. Terminal list: cmd, powershell, pwsh, windowsterminal, wt, mintty, conhost. Both `fire_expansion` and `fire_expansion_with_fillin` branch at injection point. `inject_via_clipboard()` completely unchanged. |
+| 2026-04-07 | Post-MVP | Expansion injection refactor | Added `inject_via_sendinput()` (KEYEVENTF_UNICODE batched SendInput with surrogate pair support) and `should_use_clipboard()` branching in both `fire_expansion` and `fire_expansion_with_fillin`. Terminal process detection via `is_terminal_process()`. After testing, `should_use_clipboard()` set to always return `true` — clipboard injection more reliable across all app types. `inject_via_sendinput()` is dead code but retained for future use. `SUPPRESS_NEXT_CLIPBOARD_WRITE` cleanup now conditional on `used_clipboard` flag. |
+| 2026-04-07 | Release | v0.1.24 released | Patch release. Expansion injection refactor (clipboard-only for now). |
