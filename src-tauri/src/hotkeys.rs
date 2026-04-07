@@ -216,6 +216,7 @@ pub(crate) struct EngineState {
     // Pending macro deferred until keyup (modifier release)
     pending_macro: Option<Value>,
     pending_storage_key: Option<String>,
+    pending_trigger_key: Option<String>,
     pending_is_bare: bool,
     // Capture state
     capture_sole_modifier: Option<String>,
@@ -241,6 +242,7 @@ impl Default for EngineState {
             pending_single_cancel: HashMap::new(),
             pending_macro: None,
             pending_storage_key: None,
+            pending_trigger_key: None,
             pending_is_bare: false,
             capture_sole_modifier: None,
             overlay_hotkey: Some((1, 0x20)), // Default: Ctrl+Space (bits=1=Ctrl, vk=0x20=Space)
@@ -799,6 +801,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
     // ── Release any held key on physical keypress ───────────────────────
     if crate::actions::is_key_held() {
+        println!("[DEBUG] HELD RELEASE: firing before pause check, key_id={}", key_id);
         crate::actions::release_held_key();
         crate::tray::update_tray_icon_normal(app);
     }
@@ -869,9 +872,14 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
         if let Some((mod_bits, vk)) = state.pause_hotkey {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
+            println!("[DEBUG] PAUSE CHECK: has_any_modifier=true, current_bits={}, mod_bits={}, key_vk={:?}, vk={}, key_id={}", current_bits, mod_bits, key_vk, vk, key_id);
             if current_bits == mod_bits && key_vk == Some(vk) {
+                println!("[DEBUG] PAUSE MATCH: firing pause");
                 drop(state);
                 let was_enabled = MACROS_ENABLED.load(Ordering::SeqCst);
+                if was_enabled {
+                    crate::actions::stop_repeating_key();
+                }
                 MACROS_ENABLED.store(!was_enabled, Ordering::SeqCst);
                 let now_enabled = !was_enabled;
                 println!("[PAUSE] Global pause toggled: macros={}", now_enabled);
@@ -917,10 +925,22 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
         if linked {
             let bare_key = format!("{}::BARE::{}", profile, key_id);
+            // Stop repeat if this key is the repeat trigger
+            if crate::actions::is_repeating() {
+                if let Some(trigger) = crate::actions::get_repeating_trigger() {
+                    println!("[DEBUG] REPEAT STOP CHECK (bare): incoming={}, trigger={}", bare_key, trigger);
+                    if trigger == bare_key {
+                        crate::actions::stop_repeating_key();
+                        crate::tray::update_tray_icon_normal(app);
+                        return;
+                    }
+                }
+            }
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 crate::expansions::buffer_clear();
                 state.pending_macro = Some(macro_val);
-                state.pending_storage_key = Some(bare_key);
+                state.pending_storage_key = Some(bare_key.clone());
+                state.pending_trigger_key = Some(bare_key);
                 state.pending_is_bare = true;
                 return;
             }
@@ -954,6 +974,19 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
     let combo = build_modifier_combo();
     let profile = state.active_profile.clone();
     let storage_key = format!("{}::{}::{}", profile, combo, key_id);
+
+    // Stop repeat if this key is the repeat trigger
+    if crate::actions::is_repeating() {
+        if let Some(trigger) = crate::actions::get_repeating_trigger() {
+            println!("[DEBUG] REPEAT STOP CHECK (modified): incoming={}, trigger={}", storage_key, trigger);
+            if trigger == storage_key {
+                crate::actions::stop_repeating_key();
+                crate::tray::update_tray_icon_normal(app);
+                return;
+            }
+        }
+    }
+
     if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
         crate::expansions::buffer_clear();
         // Check for double-tap variant
@@ -976,6 +1009,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                     info!("[Trigr] x2 Keydown double-tap: {}", storage_key);
                     state.pending_macro = double_macro;
                     state.pending_storage_key = None; // null → fire directly at keyup, no timer
+                    state.pending_trigger_key = Some(storage_key);
                     return;
                 }
             }
@@ -1009,7 +1043,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                     state.last_hotkey_time.remove(&sk);
                 }
                 info!("[Trigr] x1 Single confirmed: {}", sk);
-                fire_macro(macro_clone, false, &app_clone);
+                fire_macro(macro_clone, false, Some(sk), &app_clone);
             });
             // Don't set pending_macro — timer handles firing
             return;
@@ -1017,6 +1051,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
             // No double variant — fire directly at keyup
             state.pending_macro = Some(macro_val);
             state.pending_storage_key = None;
+            state.pending_trigger_key = Some(storage_key);
         }
         state.pending_is_bare = false;
     }
@@ -1044,6 +1079,7 @@ fn handle_keyup(vk: u32, app: &AppHandle) {
         let mut state = engine_state().lock().unwrap();
         if let Some(macro_val) = state.pending_macro.take() {
             let storage_key = state.pending_storage_key.take();
+            let trigger_key = state.pending_trigger_key.take();
             let is_bare = state.pending_is_bare;
             state.pending_is_bare = false;
 
@@ -1052,10 +1088,10 @@ fn handle_keyup(vk: u32, app: &AppHandle) {
 
             if let Some(sk) = storage_key {
                 // Has a storage key → go through double-tap dispatch
-                dispatch_with_double_tap(&sk, macro_val, app);
+                dispatch_with_double_tap(&sk, macro_val, trigger_key, app);
             } else {
                 // No storage key (double-tap already resolved at keydown, or no double variant)
-                fire_macro(macro_val, is_bare, app);
+                fire_macro(macro_val, is_bare, trigger_key, app);
             }
         }
     }
@@ -1090,7 +1126,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
             let bare_key = format!("{}::BARE::{}", profile, mouse_id);
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 drop(state);
-                dispatch_with_double_tap(&bare_key, macro_val, app);
+                dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
             }
         }
         return;
@@ -1105,7 +1141,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
         drop(state);
         // Mouse buttons fire immediately (no deferred-to-keyup)
-        dispatch_with_double_tap(&storage_key, macro_val, app);
+        dispatch_with_double_tap(&storage_key, macro_val, Some(storage_key.clone()), app);
     }
 }
 
@@ -1132,13 +1168,13 @@ fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
     if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
         drop(state);
         // Scroll fires immediately
-        fire_macro(macro_val, false, app);
+        fire_macro(macro_val, false, Some(storage_key), app);
     }
 }
 
 // ── Double-tap dispatch ─────────────────────────────────────────────────────
 
-fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, app: &AppHandle) {
+fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Option<String>, app: &AppHandle) {
     let mut state = engine_state().lock().unwrap();
     let double_key = format!("{}::double", storage_key);
     let double_macro = state.assignments.get(&double_key).cloned();
@@ -1146,7 +1182,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, app: &AppHandle
     if double_macro.is_none() {
         // No double-tap variant — fire immediately
         drop(state);
-        fire_macro(macro_val, false, app);
+        fire_macro(macro_val, false, trigger_key, app);
         return;
     }
 
@@ -1163,7 +1199,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, app: &AppHandle
             info!("[Trigr] x2 Double-tap: {}", storage_key);
             let dm = double_macro.unwrap();
             drop(state);
-            fire_macro(dm, false, app);
+            fire_macro(dm, false, trigger_key, app);
             return;
         }
     }
@@ -1200,13 +1236,13 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, app: &AppHandle
             state.last_hotkey_time.remove(&sk);
         }
         info!("[Trigr] x1 Single confirmed: {}", sk);
-        fire_macro(macro_clone, false, &app_clone);
+        fire_macro(macro_clone, false, Some(sk), &app_clone);
     });
 }
 
 // ── Fire macro — execute action + notify frontend ───────────────────────────
 
-fn fire_macro(macro_val: Value, is_bare: bool, app: &AppHandle) {
+fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app: &AppHandle) {
     // Capture the target window HWND NOW, before any async delay.
     let target_hwnd = unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
@@ -1224,7 +1260,7 @@ fn fire_macro(macro_val: Value, is_bare: bool, app: &AppHandle) {
     let macro_clone = macro_val.clone();
     let app_clone = app.clone();
     thread::spawn(move || {
-        crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, &app_clone);
+        crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, trigger_key.as_deref(), &app_clone);
 
         // Log analytics
         let action_type = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");

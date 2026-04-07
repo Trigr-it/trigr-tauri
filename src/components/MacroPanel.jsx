@@ -75,6 +75,12 @@ const WFI_TRIGGER_OPTIONS = [
   { value: 'pressRelease', label: 'Press and Release'     },
 ];
 
+const MOUSE_CLICK_OPTIONS = [
+  { value: 'LButton', label: 'Left Click' },
+  { value: 'RButton', label: 'Right Click' },
+  { value: 'MButton', label: 'Middle Click' },
+];
+
 const INPUT_METHOD_OPTS = [
   { id: 'global',       label: 'Global default',  hint: 'Use the method set in Settings → Compatibility' },
   { id: 'direct',       label: 'Direct',           hint: 'Simulates real keypresses — works in CAD, games, any app' },
@@ -223,6 +229,7 @@ function HotkeyCaptureInput({ value, onChange }) {
   }
 
   const currentCombo = hotkeyDataToString(value);
+  const isMouseValue = MOUSE_CLICK_OPTIONS.some(o => o.value === value.key && (!value.modifiers || value.modifiers.length === 0));
 
   return (
     <div className="form-section">
@@ -261,6 +268,8 @@ function HotkeyCaptureInput({ value, onChange }) {
             </div>
           ) : capturing ? (
             <span className="key-capture-prompt">Press your hotkey combination…</span>
+          ) : isMouseValue ? (
+            <span className="key-capture-value"><kbd>{MOUSE_CLICK_OPTIONS.find(o => o.value === value.key)?.label}</kbd></span>
           ) : currentCombo ? (
             <span className="key-capture-value"><KeyChips combo={currentCombo} /></span>
           ) : (
@@ -275,6 +284,16 @@ function HotkeyCaptureInput({ value, onChange }) {
             onMouseDown={e => { e.preventDefault(); cancelCapture(); }}
           >Cancel</button>
         )}
+      </div>
+      <div className="mouse-click-pills">
+        {MOUSE_CLICK_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            className={`mouse-click-pill${value.key === opt.value && (!value.modifiers || value.modifiers.length === 0) ? ' active' : ''}`}
+            onClick={() => onChange({ ...value, modifiers: [], key: opt.value })}
+          >{opt.label}</button>
+        ))}
       </div>
     </div>
   );
@@ -535,55 +554,71 @@ function KeyCaptureInput({ value, onChange }) {
     window.electronAPI?.startKeyCapture();
   }
 
+  const isMouseValue = MOUSE_CLICK_OPTIONS.some(o => o.value === value);
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
-      <div
-        ref={divRef}
-        className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
-        tabIndex={0}
-        onClick={!capturing ? startCapture : undefined}
-        onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
-        onBlur={handleBlur}
-        role="button"
-        aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
-        style={{ flex: 1 }}
-      >
-        {capturing && winBuilder ? (
-          <div className="win-builder">
-            <kbd className="win-builder-badge">Win</kbd>
-            <span className="win-builder-plus">+</span>
-            <select
-              className="win-builder-select"
-              value={winKey}
-              onChange={e => setWinKey(e.target.value)}
-              onClick={e => e.stopPropagation()}
-            >
-              {WIN_BUILDER_KEYS.map(g => (
-                <optgroup key={g.group} label={g.group}>
-                  {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
-                </optgroup>
-              ))}
-            </select>
-            <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
-            <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
-            <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
-          </div>
-        ) : capturing ? (
-          <span className="key-capture-prompt">Press a key…</span>
-        ) : value ? (
-          <span className="key-capture-value"><KeyChips combo={value} /></span>
-        ) : (
-          <span className="key-capture-placeholder">Click to capture…</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div
+          ref={divRef}
+          className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
+          tabIndex={0}
+          onClick={!capturing ? startCapture : undefined}
+          onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
+          onBlur={handleBlur}
+          role="button"
+          aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
+          style={{ flex: 1 }}
+        >
+          {capturing && winBuilder ? (
+            <div className="win-builder">
+              <kbd className="win-builder-badge">Win</kbd>
+              <span className="win-builder-plus">+</span>
+              <select
+                className="win-builder-select"
+                value={winKey}
+                onChange={e => setWinKey(e.target.value)}
+                onClick={e => e.stopPropagation()}
+              >
+                {WIN_BUILDER_KEYS.map(g => (
+                  <optgroup key={g.group} label={g.group}>
+                    {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
+              <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
+              <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
+            </div>
+          ) : capturing ? (
+            <span className="key-capture-prompt">Press a key…</span>
+          ) : isMouseValue ? (
+            <span className="key-capture-value"><kbd>{MOUSE_CLICK_OPTIONS.find(o => o.value === value)?.label}</kbd></span>
+          ) : value ? (
+            <span className="key-capture-value"><KeyChips combo={value} /></span>
+          ) : (
+            <span className="key-capture-placeholder">Click to capture…</span>
+          )}
+        </div>
+        {capturing && (
+          <button
+            className="macro-advanced-toggle"
+            type="button"
+            data-capture-cancel="true"
+            onMouseDown={e => { e.preventDefault(); cancelCapture(); }}
+          >Cancel</button>
         )}
       </div>
-      {capturing && (
-        <button
-          className="macro-advanced-toggle"
-          type="button"
-          data-capture-cancel="true"
-          onMouseDown={e => { e.preventDefault(); cancelCapture(); }}
-        >Cancel</button>
-      )}
+      <div className="mouse-click-pills">
+        {MOUSE_CLICK_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            className={`mouse-click-pill${value === opt.value ? ' active' : ''}`}
+            onClick={() => onChange(opt.value)}
+          >{opt.label}</button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1132,7 +1167,11 @@ export default function MacroPanel({
   const getAutoLabel = () => {
     switch (activeType) {
       case 'text':   return formValue.text?.substring(0, 30) || 'Text snippet';
-      case 'hotkey': return [...(formValue.modifiers || []), formValue.key].filter(Boolean).join('+') || 'Key combo';
+      case 'hotkey': {
+        const mouseOpt = MOUSE_CLICK_OPTIONS.find(o => o.value === formValue.key);
+        if (mouseOpt && (!formValue.modifiers || formValue.modifiers.length === 0)) return mouseOpt.label;
+        return [...(formValue.modifiers || []), formValue.key].filter(Boolean).join('+') || 'Key combo';
+      }
       case 'app':    return formValue.appName || formValue.path?.split('\\').pop() || 'Application';
       case 'folder': return formValue.folderName || formValue.path?.split('\\').pop() || 'Folder';
       case 'url':    return formValue.urlName || formValue.url || 'URL';
@@ -1298,13 +1337,49 @@ export default function MacroPanel({
                 <button
                   type="button"
                   className={`hold-mode-toggle${formValue.holdMode ? ' on' : ''}`}
-                  onClick={() => setFormValue(prev => ({ ...prev, holdMode: !prev.holdMode }))}
+                  onClick={() => setFormValue(prev => ({ ...prev, holdMode: !prev.holdMode, repeatMode: false }))}
                   role="switch"
                   aria-checked={!!formValue.holdMode}
                 />
               </div>
               {formValue.holdMode && (
                 <p className="hold-mode-hint">Key stays held until hotkey is pressed again</p>
+              )}
+              <div className="hold-mode-row">
+                <span className="hold-mode-label">Repeat mode</span>
+                <button
+                  type="button"
+                  className={`hold-mode-toggle${formValue.repeatMode ? ' on' : ''}`}
+                  onClick={() => setFormValue(prev => ({ ...prev, repeatMode: !prev.repeatMode, holdMode: false }))}
+                  role="switch"
+                  aria-checked={!!formValue.repeatMode}
+                />
+              </div>
+              {formValue.repeatMode && (
+                <>
+                  <p className="hold-mode-hint">Fires repeatedly until hotkey is pressed again</p>
+                  <div className="repeat-interval-row">
+                    <label className="repeat-interval-label">Interval</label>
+                    <input
+                      className="form-input repeat-interval-input"
+                      type="number"
+                      min={50}
+                      value={formValue.repeatInterval ?? 100}
+                      onChange={e => {
+                        const raw = e.target.value;
+                        setFormValue(prev => ({ ...prev, repeatInterval: raw === '' ? '' : (parseInt(raw) || '') }));
+                      }}
+                      onBlur={() => {
+                        setFormValue(prev => {
+                          const val = parseInt(prev.repeatInterval);
+                          return { ...prev, repeatInterval: (!val || val < 50) ? 50 : val };
+                        });
+                      }}
+                      onKeyDown={e => e.stopPropagation()}
+                    />
+                    <span className="repeat-interval-suffix">ms</span>
+                  </div>
+                </>
               )}
             </>
           )}
