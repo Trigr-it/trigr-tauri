@@ -13,7 +13,7 @@ use windows_sys::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
 };
 
 const MAX_BUFFER_LENGTH: usize = 50;
@@ -348,7 +348,12 @@ fn fire_expansion(
 
         thread::sleep(Duration::from_millis(10));
 
-        inject_via_clipboard(&resolved, target_hwnd);
+        let used_clipboard = should_use_clipboard(&resolved);
+        if used_clipboard {
+            inject_via_clipboard(&resolved, target_hwnd);
+        } else {
+            inject_via_sendinput(&resolved, target_hwnd);
+        }
 
         // Move cursor back if {cursor} was present
         if cursor_back > 0 {
@@ -361,8 +366,10 @@ fn fire_expansion(
 
         crate::hotkeys::SUPPRESS_SIMULATED
             .store(false, std::sync::atomic::Ordering::SeqCst);
-        crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-            .store(false, std::sync::atomic::Ordering::SeqCst);
+        if used_clipboard {
+            crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+        }
 
         // Replay any keystrokes that were buffered during injection
         let buffered: Vec<crate::hotkeys::BufferedKey> =
@@ -533,7 +540,12 @@ fn fire_expansion_with_fillin(
 
     thread::sleep(Duration::from_millis(10));
 
-    inject_via_clipboard(&resolved, target_hwnd);
+    let used_clipboard = should_use_clipboard(&resolved);
+    if used_clipboard {
+        inject_via_clipboard(&resolved, target_hwnd);
+    } else {
+        inject_via_sendinput(&resolved, target_hwnd);
+    }
 
     // Move cursor back if {cursor} was present
     if cursor_back > 0 {
@@ -546,8 +558,10 @@ fn fire_expansion_with_fillin(
 
     crate::hotkeys::SUPPRESS_SIMULATED
         .store(false, std::sync::atomic::Ordering::SeqCst);
-    crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-        .store(false, std::sync::atomic::Ordering::SeqCst);
+    if used_clipboard {
+        crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 
     // Replay any keystrokes that were buffered during injection
     let buffered: Vec<crate::hotkeys::BufferedKey> =
@@ -689,6 +703,103 @@ fn write_clipboard(text: &str) -> bool {
         CloseClipboard();
         true
     }
+}
+
+// ── Hybrid injection — SendInput for short text, clipboard for long/terminal ─
+
+const TERMINAL_PROCS: &[&str] = &[
+    "cmd", "powershell", "pwsh", "windowsterminal", "wt", "mintty", "conhost",
+];
+
+fn is_terminal_process(proc_name: &str) -> bool {
+    TERMINAL_PROCS.iter().any(|&t| proc_name == t)
+}
+
+fn should_use_clipboard(_resolved_text: &str) -> bool {
+    true
+}
+
+/// Inject text via batched KEYEVENTF_UNICODE SendInput (single call).
+fn inject_via_sendinput(text: &str, target_hwnd: isize) {
+    // Release physically held modifiers
+    let held = crate::actions::release_held_modifiers();
+
+    // Restore focus to target window
+    if target_hwnd != 0 {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(target_hwnd as _);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    // Build batched INPUT array — down+up per UTF-16 code unit
+    // Surrogate pairs are handled automatically by encode_utf16()
+    let utf16: Vec<u16> = text.encode_utf16().collect();
+    let mut inputs: Vec<INPUT> = Vec::with_capacity((utf16.len() * 2) + 2);
+    for &code_unit in &utf16 {
+        inputs.push(INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: 0,
+                    wScan: code_unit,
+                    dwFlags: KEYEVENTF_UNICODE,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        });
+        inputs.push(INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: 0,
+                    wScan: code_unit,
+                    dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        });
+    }
+
+    // Trailing space as VK_SPACE (not KEYEVENTF_UNICODE — some apps strip trailing whitespace)
+    inputs.push(INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VK_SPACE as _,
+                wScan: 0,
+                dwFlags: 0,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    });
+    inputs.push(INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VK_SPACE as _,
+                wScan: 0,
+                dwFlags: KEYEVENTF_KEYUP,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    });
+
+    // Single SendInput call — atomic delivery, no interleaving
+    unsafe {
+        SendInput(
+            inputs.len() as u32,
+            inputs.as_ptr(),
+            std::mem::size_of::<INPUT>() as i32,
+        );
+    }
+
+    // Re-press modifiers that were physically held
+    crate::actions::restore_modifiers(&held);
 }
 
 /// Inject text via clipboard paste, restoring clipboard afterwards.
