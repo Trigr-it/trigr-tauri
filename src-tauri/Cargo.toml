@@ -27,6 +27,7 @@ regex-lite = "0.1"
 opener = "0.7"
 png = "0.17"
 rusqlite = { version = "0.31", features = ["bundled"] }
+notify = "8"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

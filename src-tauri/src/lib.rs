@@ -85,6 +85,99 @@ fn get_config_path() -> String {
 }
 
 #[tauri::command]
+fn get_shared_config_path() -> Option<String> {
+    config::get_shared_config_dir().map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn set_shared_config_path(app: tauri::AppHandle, path: String, mode: Option<String>) -> Value {
+    let shared_dir = std::path::PathBuf::from(&path);
+
+    // Validate: directory must exist
+    if !shared_dir.exists() {
+        return serde_json::json!({ "ok": false, "error": "Folder does not exist." });
+    }
+    if !shared_dir.is_dir() {
+        return serde_json::json!({ "ok": false, "error": "Path is not a folder." });
+    }
+
+    // Check if target file already exists
+    let target_file = shared_dir.join("keyforge-config.json");
+    let existed = target_file.exists();
+    let mode = mode.unwrap_or_default();
+
+    if existed && mode.is_empty() {
+        // File exists and no mode specified — ask the frontend to prompt
+        return serde_json::json!({ "ok": false, "needs_choice": true, "existed": true });
+    }
+
+    if existed && mode == "replace" {
+        // User chose to replace — copy current config over the existing file
+        let current = config::config_path();
+        if current.exists() {
+            match std::fs::read_to_string(&current) {
+                Ok(content) => {
+                    if let Err(e) = std::fs::write(&target_file, &content) {
+                        return serde_json::json!({
+                            "ok": false,
+                            "error": format!("Cannot write to folder: {}", e)
+                        });
+                    }
+                    log::info!("[Trigr] Replaced shared config with current: {}", target_file.display());
+                }
+                Err(e) => {
+                    return serde_json::json!({
+                        "ok": false,
+                        "error": format!("Cannot read current config: {}", e)
+                    });
+                }
+            }
+        }
+    }
+    // mode == "use_existing" — just switch to using the file as-is
+
+    if !existed {
+        // Copy current config to shared location
+        let current = config::config_path();
+        if current.exists() {
+            match std::fs::read_to_string(&current) {
+                Ok(content) => {
+                    if let Err(e) = std::fs::write(&target_file, &content) {
+                        return serde_json::json!({
+                            "ok": false,
+                            "error": format!("Cannot write to folder: {}", e)
+                        });
+                    }
+                    log::info!("[Trigr] Copied config to shared location: {}", target_file.display());
+                }
+                Err(e) => {
+                    return serde_json::json!({
+                        "ok": false,
+                        "error": format!("Cannot read current config: {}", e)
+                    });
+                }
+            }
+        }
+    }
+
+    // Set the override and save local settings
+    config::set_shared_config_dir(Some(shared_dir.clone()));
+    config::save_local_settings(Some(&shared_dir));
+
+    // Start file watcher for sync detection
+    config::start_config_watcher(shared_dir, app);
+
+    serde_json::json!({ "ok": true, "existed": existed })
+}
+
+#[tauri::command]
+fn clear_shared_config_path() -> bool {
+    config::stop_config_watcher();
+    config::set_shared_config_dir(None);
+    config::save_local_settings(None)
+}
+
+#[tauri::command]
 async fn export_config(app: tauri::AppHandle) -> Value {
     use tauri_plugin_dialog::DialogExt;
 
@@ -948,6 +1041,29 @@ pub fn run() {
             config::init(app_data.clone());
             analytics::init(app_data);
 
+            // Start file watcher if shared config path is configured
+            if let Some(shared_dir) = config::get_shared_config_dir() {
+                if shared_dir.exists() {
+                    config::start_config_watcher(shared_dir.clone(), app.handle().clone());
+                } else {
+                    // Dir doesn't exist yet (drive disconnected?) — poll every 30s
+                    let app_handle = app.handle().clone();
+                    std::thread::Builder::new()
+                        .name("shared-config-reconnect".into())
+                        .spawn(move || {
+                            loop {
+                                std::thread::sleep(std::time::Duration::from_secs(30));
+                                if shared_dir.exists() {
+                                    log::info!("[Trigr] Shared config dir became available: {}", shared_dir.display());
+                                    config::start_config_watcher(shared_dir, app_handle);
+                                    break;
+                                }
+                            }
+                        })
+                        .ok();
+                }
+            }
+
             // Set up system tray
             if let Err(e) = tray::setup_tray(app) {
                 log::error!("[Trigr] Failed to create tray: {}", e);
@@ -1100,6 +1216,9 @@ pub fn run() {
             load_config,
             save_config,
             get_config_path,
+            get_shared_config_path,
+            set_shared_config_path,
+            clear_shared_config_path,
             export_config,
             import_config,
             list_backups,
