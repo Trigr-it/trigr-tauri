@@ -829,3 +829,22 @@
   font-size: 11px;
 }
 
+/* ── Clipboard retention ────────────────────────────────────────────────── */
+
+.settings-retention-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-retention-num {
+  width: 56px;
+  text-align: center;
+  padding: 4px 6px;
+}
+
+.settings-retention-unit {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+

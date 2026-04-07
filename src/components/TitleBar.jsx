@@ -75,6 +75,13 @@ export default function TitleBar({
             Text Expansion
           </button>
           <button
+            className={`area-tab${activeArea === 'clipboard' ? ' active' : ''}`}
+            onClick={() => onAreaChange?.('clipboard')}
+            type="button"
+          >
+            Clipboard
+          </button>
+          <button
             className={`area-tab${activeArea === 'analytics' ? ' active' : ''}`}
             onClick={() => onAreaChange?.('analytics')}
             type="button"

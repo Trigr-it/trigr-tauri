@@ -158,6 +158,15 @@ fn add_pause_to_suppress(pause: Option<(u8, u32)>) {
     }
 }
 
+/// Insert the clipboard paste hotkey into the suppress set.
+fn add_clipboard_paste_to_suppress(combo: Option<(u8, u32)>) {
+    if let Some(combo) = combo {
+        if let Ok(mut w) = suppress_keys().write() {
+            w.insert(combo);
+        }
+    }
+}
+
 /// Map Trigr key ID back to VK code (reverse of vk_to_key_id).
 fn key_id_to_vk(key_id: &str) -> Option<u32> {
     match key_id {
@@ -227,6 +236,8 @@ pub(crate) struct EngineState {
     pub(crate) pause_hotkey_str: Option<String>,
     // Global input method — resolved when per-assignment method is "global" or absent
     pub(crate) global_input_method: String,
+    // Clipboard quick-paste hotkey — parsed as (modifier_bits, vk_code)
+    clipboard_paste_hotkey: Option<(u8, u32)>,
 }
 
 use std::sync::Arc;
@@ -249,6 +260,7 @@ impl Default for EngineState {
             pause_hotkey: None, // Set via set_global_pause_key command
             pause_hotkey_str: None,
             global_input_method: "direct".to_string(),
+            clipboard_paste_hotkey: Some((3, 0x56)), // Default: Ctrl+Shift+V (bits=3, vk=0x56)
         }
     }
 }
@@ -860,6 +872,28 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
                 crate::actions::release_held_modifiers();
                 SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                 let _ = app.emit("toggle-overlay", Value::Null);
+                return;
+            }
+        }
+        drop(state);
+    }
+
+    // ── Clipboard quick-paste hotkey check ─────────────────────────────
+    if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
+        let state = engine_state().lock().unwrap();
+        if let Some((mod_bits, vk)) = state.clipboard_paste_hotkey {
+            let current_bits = modifier_bits();
+            let key_vk = key_id_to_vk(key_id);
+            if current_bits == mod_bits && key_vk == Some(vk) {
+                drop(state);
+                MOD_CTRL.store(false, Ordering::SeqCst);
+                MOD_SHIFT.store(false, Ordering::SeqCst);
+                MOD_ALT.store(false, Ordering::SeqCst);
+                MOD_META.store(false, Ordering::SeqCst);
+                SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                crate::actions::release_held_modifiers();
+                SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                let _ = app.emit("toggle-clipboard-overlay", Value::Null);
                 return;
             }
         }
@@ -1534,6 +1568,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
+    add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     println!("[ENGINE] Assignments stored: {} entries", state.assignments.len());
 }
 
@@ -1543,6 +1578,7 @@ pub fn set_active_profile(profile: String) {
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
+    add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     info!("[Trigr] Active profile: {}", profile);
 }
 
@@ -1598,6 +1634,7 @@ pub fn set_overlay_hotkey(combo: &str) {
         rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         add_overlay_to_suppress(Some(parsed));
         add_pause_to_suppress(state.pause_hotkey);
+        add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         println!("[HOOK] Overlay hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
@@ -1610,6 +1647,7 @@ pub fn set_pause_hotkey(combo: &str) {
         rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         add_overlay_to_suppress(state.overlay_hotkey);
         add_pause_to_suppress(Some(parsed));
+        add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         println!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
@@ -1620,6 +1658,7 @@ pub fn clear_pause_hotkey() {
     state.pause_hotkey_str = None;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
+    add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     println!("[HOOK] Pause hotkey cleared");
 }
 

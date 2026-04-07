@@ -13,6 +13,7 @@ import WelcomeModal from './components/WelcomeModal';
 import OnboardingTour from './components/OnboardingTour';
 import QuickTips from './components/QuickTips';
 import AnalyticsPanel from './components/AnalyticsPanel';
+import ClipboardPanel from './components/ClipboardPanel';
 
 function App() {
   const [assignments, setAssignments]       = useState({});
@@ -1599,6 +1600,9 @@ function App() {
           )}
           {activeArea === 'analytics' && (
             <AnalyticsPanel />
+          )}
+          {activeArea === 'clipboard' && (
+            <ClipboardPanel />
           )}
           {activeArea === 'expansions' && (
             // Phase 3: Text Expansions will eventually support its own profile bar

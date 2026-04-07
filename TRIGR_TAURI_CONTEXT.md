@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-07 (post v0.1.25)
+> Last updated: 2026-04-07 (post v0.1.26, clipboard manager added)
 
 ---
 
@@ -62,10 +62,11 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 | Config | `src-tauri/src/config.rs` | Load, save, backup keyforge-config.json |
 | Hotkeys | `src-tauri/src/hotkeys.rs` | Global input hook, modifier tracking, double-tap, mouse buttons |
 | Actions | `src-tauri/src/actions.rs` | Execute all action types (Type Text, Send Hotkey, Macro, Open App/URL/Folder, Focus Window) |
-| Expansions | `src-tauri/src/expansions.rs` | Keystroke buffer, trigger detection, text injection |
+| Expansions | `src-tauri/src/expansions.rs` | Keystroke buffer, trigger detection, text + image injection |
 | Foreground | `src-tauri/src/foreground.rs` | Foreground watcher, process name detection, profile auto-switching |
 | Tray | `src-tauri/src/tray.rs` | System tray icon, window show/hide, autolaunch, close-to-tray |
 | Analytics | `src-tauri/src/analytics.rs` | SQLite usage tracking — action counts, time saved, best day/week records |
+| Clipboard | `src-tauri/src/clipboard.rs` | Clipboard history — listener, SQLite storage, dedup, retention pruning |
 | Main | `src-tauri/src/main.rs` | App entry point, Tauri builder, module wiring |
 
 **React components added post-MVP:**
@@ -80,6 +81,8 @@ Each module owns a specific responsibility. CC must not duplicate logic across m
 | AnalyticsPanel CSS | `src/components/AnalyticsPanel.css` | Analytics panel styling (CSS variables only) |
 | List View | `src/components/Sidebar.jsx` | Assignment list view — multi-column card grid in expanded sidebar (state owned by App.jsx, toggle in TitleBar) |
 | TemplatesPanel | `src/components/TemplatesPanel.jsx` | Starter template packs — shared component used by TitleBar dropdown and Settings accordion |
+| ClipboardPanel | `src/components/ClipboardPanel.jsx` | Clipboard history panel — list, search, paste, pin, context menu |
+| ClipboardOverlay | `src/components/ClipboardOverlay.jsx` | Ctrl+Shift+V quick-paste popup — arrow key nav, Enter to paste |
 
 ---
 
@@ -144,6 +147,17 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 - `get_shared_config_path` — returns `Option<String>`, the current shared config directory path (or null if local)
 - `set_shared_config_path` — takes `path: String` + `mode: Option<String>` ("use_existing" | "replace" | null). Validates folder, handles migration, writes local settings, starts file watcher. Returns `{ ok, existed }` or `{ ok: false, needs_choice: true }` if file exists and no mode specified.
 - `clear_shared_config_path` — stops file watcher, clears override, writes local settings, returns `bool`
+- `browse_for_image` — file picker filtered to PNG/JPG/JPEG, returns `Value::String(path)` or `Value::Null`
+- `get_clipboard_history` — paginated: `{ page, per_page }` → `{ items, total }`
+- `paste_clipboard_item` — reads item by ID, writes to clipboard, fires Ctrl+V with full suppress
+- `delete_clipboard_item` — deletes single item by ID, returns `bool`
+- `clear_clipboard_history` — deletes all items, returns `bool`
+- `pin_clipboard_item` — toggles pin state `{ id, pinned }`, returns `bool`
+- `get_clipboard_settings` / `set_clipboard_settings` — retention days from config
+- `get_clipboard_image` — returns base64-encoded PNG blob for a single image item by ID
+- `get_distinct_source_apps` — returns `Vec<String>` of distinct source_app values from clipboard history
+- `close_clipboard_overlay` — hides clipboard overlay, restores focus
+- `clipboard_overlay_resize` — resizes overlay window height (60–500px)
 
 ---
 
@@ -157,6 +171,7 @@ Known compatible:
 - `serde_json` — ARM64 compatible (pure Rust)
 - `tauri-plugin-updater` — ARM64 compatible
 - `notify` v8 — ARM64 compatible (uses ReadDirectoryChangesW on Windows, platform-agnostic)
+- `image` v0.25 — ARM64 compatible (pure Rust PNG/JPEG decoders, no native deps)
 
 Note: `rdev` and `enigo` were evaluated and skipped — `windows-sys` SendInput/SetWindowsHookExW handles everything directly.
 
@@ -330,7 +345,24 @@ Seven tokens in expansions.rs: `{date:DD/MM/YYYY}` (%d/%m/%Y), `{date:DD/MM/YY}`
 All text expansions use `inject_via_clipboard()` (clipboard paste). `should_use_clipboard()` unconditionally returns `true`. A `inject_via_sendinput()` function exists in expansions.rs (KEYEVENTF_UNICODE batched SendInput, surrogate pair support via `encode_utf16()`, single `SendInput` call) but is **dead code** — unreachable from both `fire_expansion()` and `fire_expansion_with_fillin()`. It was built and tested in v0.1.24 but disabled because clipboard injection is more reliable across all app types (terminals, admin apps, RDP, games). The `SUPPRESS_NEXT_CLIPBOARD_WRITE = false` cleanup after injection is conditional on the `used_clipboard` flag in both fire functions. Terminal process detection (`is_terminal_process()` with cmd/powershell/pwsh/windowsterminal/wt/mintty/conhost) also exists but is currently unused since clipboard is always chosen.
 
 ### Image Expansion Type
-New expansion type: `expansionType: "image"`. Config data: `{ expansionType: "image", imagePath: "C:\\path\\to\\file.png", imageScale: 100, triggerMode, category, displayName }`. No `html`/`text` fields. Supported formats: PNG and JPG only. `image` crate (v0.25, `png`+`jpeg` features only, pure Rust decoders, ARM64 compatible) decodes the file. `imageScale` integer 10–100 (default 100) — if < 100, `image::resize_exact` with `Lanczos3` filter applied before clipboard write. `write_clipboard_image` in expansions.rs: builds `BITMAPINFOHEADER` (40 bytes) + BGRA bottom-up pixel data, writes to clipboard as `CF_DIB` (format 8). Also sets `CF_UNICODETEXT` with empty string in the same clipboard session for app compatibility. `SUPPRESS_NEXT_CLIPBOARD_WRITE` set `true` before clipboard write (SeqCst). `fire_image_expansion` follows the same pattern as `fire_expansion`: `InjectionGuard`, `SUPPRESS_SIMULATED`, modifier release, `Ctrl+V` or `Shift+Insert` paste. No trailing space after image paste. No clipboard restore — image left on clipboard. Silent failure: if file not found or decode fails, `log::warn!()` and return — no user-facing error. Dispatch fork in both `check_space_trigger()` and `check_immediate_triggers()`: checks `data.expansionType`, if `"image"` calls `fire_image_expansion()` instead of `fire_expansion()`. Analytics: `log_action("expansion", 0)` — char_count 0 for images. `browse_for_image` Tauri command in lib.rs (PNG/JPG filter). UI: Text/Image type selector pills in edit panel, "Choose Image…" button, thumbnail preview via `convertFileSrc()` (asset protocol enabled), scale input (10–100%), "File not found" state via `<img>` onError. IMG badge in expansion list. `protocol-asset` feature added to tauri Cargo.toml, CSP updated with `asset:` and `https://asset.localhost` for img-src. Quick Search shows `[IMG] filename` preview for image expansions.
+New expansion type: `expansionType: "image"`. Config data: `{ expansionType: "image", imagePath: "C:\\path\\to\\file.png", imageScale: 100, triggerMode, category, displayName }`. No `html`/`text` fields. Supported formats: PNG and JPG only. `image` crate (v0.25, `png`+`jpeg` features only, pure Rust decoders, ARM64 compatible) decodes the file. `imageScale` integer 10–100 (default 100) — if < 100, `image::resize_exact` with `Lanczos3` filter applied before clipboard write.
+
+**Clipboard format:** `write_clipboard_image` in expansions.rs writes three formats in a single `OpenClipboard` → `EmptyClipboard` → `CloseClipboard` session: (1) `CF_DIB` (format 8) — `BITMAPINFOHEADER` (40 bytes) + BGRA bottom-up pixel data; (2) PNG stream — `RegisterClipboardFormatW("PNG")` custom format with the raw PNG file bytes (Word, Outlook, and other Office apps prefer this over CF_DIB); (3) `CF_UNICODETEXT` — empty string for app compatibility. For PNG source files at 100% scale, the original file bytes are used directly for the PNG stream. For JPEG sources or resized images, the final image is re-encoded as PNG via `img.write_to(..., ImageFormat::Png)`. `SUPPRESS_NEXT_CLIPBOARD_WRITE` set `true` before clipboard write (SeqCst).
+
+**Execution:** `fire_image_expansion` follows the same pattern as `fire_expansion`: `InjectionGuard`, `SUPPRESS_SIMULATED`, modifier release, `Ctrl+V` or `Shift+Insert` paste. No trailing space after image paste. No clipboard restore — image left on clipboard. Silent failure: if file not found or decode fails, `log::warn!()` and return — no user-facing error. Dispatch fork in both `check_space_trigger()` and `check_immediate_triggers()`: checks `data.expansionType`, if `"image"` calls `fire_image_expansion()` instead of `fire_expansion()`. Analytics: `log_action("expansion", 0)` — char_count 0 for images.
+
+**UI:** `browse_for_image` Tauri command in lib.rs (PNG/JPG filter). Text/Image type selector pills in edit panel, "Choose Image…" button, thumbnail preview via `convertFileSrc()` (asset protocol enabled), scale input (10–100%), "File not found" state via `<img>` onError. IMG badge in expansion list. Quick Search shows `[IMG] filename` preview for image expansions. `protocol-asset` feature added to tauri Cargo.toml, CSP updated with `asset:` and `https://asset.localhost` for img-src. Type filter pills (All/Text/Image) above expansion list — client-side filter, works alongside category tabs. `typeFiltered` derived array applies type filter before category/sort logic.
+
+### Clipboard Manager Architecture
+**Listener:** Message-only HWND (`HWND_MESSAGE` parent) created via `CreateWindowExW` on a dedicated thread. Registered with `AddClipboardFormatListener`. Receives `WM_CLIPBOARDUPDATE` via `GetMessageW` loop. Checks `SUPPRESS_NEXT_CLIPBOARD_WRITE.load(SeqCst)` — if true, skips capture entirely (prevents capturing Trigr's own expansion/paste clipboard writes). Skips `CF_HDROP` (file copies). Captures `CF_UNICODETEXT` (text) and `CF_DIB` (images — supports BI_RGB compression=0 and BI_BITFIELDS compression=3, decoded to PNG via `image` crate). Deduplication via `DefaultHasher` hash of content.
+
+**Source app capture:** Before `OpenClipboard`, calls `GetForegroundWindow()` → `GetWindowThreadProcessId()` → `OpenProcess()` → `QueryFullProcessImageNameW()` to get the exe name (e.g. "chrome.exe"). Stored in `source_app` column. Implemented directly in clipboard.rs — does not use foreground.rs.
+
+**Auto-tagging:** At capture time, `auto_tag()` analyses text content and assigns `content_tag`. Priority order: `content_type == "image"` → "Image"; starts with `http://`/`https://` → "Link"; contains `@` with dot after → "Email"; matches `#hex`/`rgb(`/`rgba(` → "Colour"; purely numeric with optional `£$€%` → "Number"; everything else → "Text".
+
+**Storage:** `trigr-clipboard.db` in AppData, SQLite via `rusqlite` (same writer thread + `mpsc` channel pattern as `analytics.rs`). Table `clipboard_history`: id, timestamp, content_type, text_content, image_blob (BLOB, PNG bytes), image_width, image_height, preview, pinned, source_app, content_tag. Schema migration: `ALTER TABLE ADD COLUMN` for source_app and content_tag — silently ignored if columns already exist. Images stored as inline PNG BLOBs. Auto-prune on each insert: deletes unpinned entries older than retention_days.
+
+**Paste:** `paste_clipboard_item` uses `CLIPBOARD_OVERLAY_TARGET` (stored when overlay opened) for target HWND. Sets `SUPPRESS_NEXT_CLIPBOARD_WRITE = true` before writing item to clipboard, fires Ctrl+V, then clears. Text items restore previous clipboard; image items use CF_DIB + PNG stream + CF_UNICODETEXT (same triple-format as image expansion). **Hotkey:** Ctrl+Shift+V (mod_bits=3, vk=0x56) in `EngineState.clipboard_paste_hotkey`. Intercept in `handle_keydown` after overlay hotkey, before pause. Emits `"toggle-clipboard-overlay"` event. Added to `SUPPRESS_KEYS` via `add_clipboard_paste_to_suppress()`. **Overlay:** Pre-created hidden window `"clipboardoverlay"` (`index.html?clipboardoverlay=1`), transparent, always-on-top, master-detail two-pane layout. Left: search + compact row list with source_app labels. Right: full detail view with metadata + Pin/Delete/Paste buttons. Arrow key nav, Enter to paste, Escape to close. Auto-hide on blur. Hidden scrollbar on left pane. **Panel:** Masonry 3-column grid (`ClipboardPanel.jsx`). Tag filter pills (All/Text/Link/Email/Colour/Number/Image) + source app dropdown. Cards show tag pill, source_app badge, pin indicator. Colour cards show swatch. Image cards show lazy-loaded thumbnails via `get_clipboard_image` (base64 encoded in Rust without external crate). **Settings:** Retention days in SettingsPanel (free: 1–7, Pro: up to 30). `clipboardRetentionDays` field in config.
 
 ### Input Method — Simplified
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
@@ -370,7 +402,7 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "build": { "devUrl": "http://localhost:5173" },
   "app": {
     "windows": [{
@@ -378,7 +410,10 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
       "width": 1200, "height": 800,
       "minWidth": 800, "minHeight": 500,
       "resizable": true, "decorations": false, "visible": false
-    }]
+    }],
+    "security": {
+      "assetProtocol": { "enable": true, "scope": ["**"] }
+    }
   }
 }
 ```
@@ -428,4 +463,9 @@ Record key decisions and findings here after each session.
 | 2026-04-07 | Post-MVP | Expansion injection refactor | Added `inject_via_sendinput()` (KEYEVENTF_UNICODE batched SendInput with surrogate pair support) and `should_use_clipboard()` branching in both `fire_expansion` and `fire_expansion_with_fillin`. Terminal process detection via `is_terminal_process()`. After testing, `should_use_clipboard()` set to always return `true` — clipboard injection more reliable across all app types. `inject_via_sendinput()` is dead code but retained for future use. `SUPPRESS_NEXT_CLIPBOARD_WRITE` cleanup now conditional on `used_clipboard` flag. |
 | 2026-04-07 | Release | v0.1.24 released | Patch release. Expansion injection refactor (clipboard-only for now). |
 | 2026-04-07 | Post-MVP | Image expansion type | New expansion type: `expansionType: "image"` with `imagePath` and `imageScale` (10–100, default 100) config fields. `image` crate (v0.25, png+jpeg features, pure Rust, ARM64 compatible) for decoding. `write_clipboard_image` in expansions.rs: CF_DIB clipboard format (BITMAPINFOHEADER + BGRA bottom-up pixels) + CF_UNICODETEXT empty string for compatibility. `fire_image_expansion`: InjectionGuard, SUPPRESS_SIMULATED, Ctrl+V/Shift+Insert paste, no trailing space, no clipboard restore. Lanczos3 resize when scale < 100. Silent failure (log::warn + return) on missing/unreadable files. Dispatch fork in check_space_trigger + check_immediate_triggers. `browse_for_image` command (PNG/JPG filter). UI: Text/Image type pills, image picker, convertFileSrc thumbnail preview, scale input, IMG badge in list, [IMG] prefix in Quick Search. `protocol-asset` Tauri feature + CSP asset: protocol enabled. |
+| 2026-04-07 | Post-MVP | PNG stream clipboard fix | `write_clipboard_image` now writes PNG stream alongside CF_DIB — `RegisterClipboardFormatW("PNG")` custom format with raw PNG file bytes. Fixes Word/Outlook not pasting images (they prefer PNG over CF_DIB). Three formats in single clipboard session: CF_DIB + PNG stream + CF_UNICODETEXT. JPEG sources or resized images re-encoded as PNG via `img.write_to()`. Function signature updated to accept `raw_png_bytes: &[u8]`. |
+| 2026-04-07 | Post-MVP | Expansion type filter pills | All/Text/Image filter pills in TextExpansions.jsx above expansion list. `typeFilter` state (`'all'`/`'text'`/`'image'`). `typeFiltered` derived array applied before category/sort. Category tab counts updated to reflect type filter. Empty state shows "No text/image expansions" when filter active with zero results. CSS: `.te-type-filter` + `.te-type-filter-pill` styled consistently with category tabs. |
+| 2026-04-07 | Release | v0.1.26 released | Image expansion type, PNG stream clipboard, type filter pills. |
+| 2026-04-07 | Post-MVP | Clipboard Manager | Full clipboard history feature. `clipboard.rs`: message-only HWND listener (`AddClipboardFormatListener`), SQLite writer thread (same pattern as analytics.rs), `clipboard_history` table with text/image BLOB storage, dedup via hash, auto-prune by retention days. `SUPPRESS_NEXT_CLIPBOARD_WRITE` integration prevents capturing Trigr's own writes. CF_HDROP explicitly skipped. Ctrl+Shift+V hotkey intercept in hotkeys.rs (after overlay, before pause). Pre-created `clipboardoverlay` window (transparent, always-on-top). IPC: 9 new commands. Frontend: ClipboardPanel.jsx (4th nav tab — Clipboard), ClipboardOverlay.jsx (quick-paste popup with arrow nav), retention settings in SettingsPanel (free: 1–7 days, Pro label for 30). `clipboardoverlay` added to capabilities/default.json. |
+| 2026-04-07 | Post-MVP | Clipboard: source app + auto-tag + gallery | Schema migration: `source_app TEXT` and `content_tag TEXT` columns added via ALTER TABLE (backwards compatible). Source app capture: `GetForegroundWindow` → `QueryFullProcessImageNameW` in clipboard.rs. Auto-tagging: Image/Link/Email/Colour/Number/Text priority rules. `get_distinct_source_apps` IPC command. ClipboardPanel redesigned as masonry 3-column grid with tag filter pills + source app dropdown + colour swatches + lazy image thumbnails. ClipboardOverlay: hidden scrollbar, 2-line text preview, source_app labels on rows and detail meta. |
 | 2026-04-07 | Post-MVP | Shared config path (cloud sync) | **Local settings:** `trigr-local-settings.json` in AppData — stores `shared_config_path`, never syncs. **Config path override:** `SHARED_CONFIG_DIR: RwLock<Option<PathBuf>>` in config.rs, checked by `config_path()` before `APP_DATA_DIR` fallback. `backup_dir()` always uses AppData. **File watcher:** `notify` v8 crate (ReadDirectoryChangesW, ARM64 verified). Directory watch with 2s debounce, filename filter (only `keyforge-config.json`), temp file exclusion (`~$*`, `.~*`, `*.tmp`, `*.gstmp`), self-write suppression (`SELF_WRITE_IN_PROGRESS` AtomicBool SeqCst + FNV-1a content hash), 3×500ms lock retry. Emits `config-reloaded-from-sync` event on valid change. **IPC:** `get_shared_config_path`, `set_shared_config_path(path, mode)`, `clear_shared_config_path`. Mode: `use_existing` / `replace` / null (triggers `needs_choice` prompt). **Migration:** File exists at dest → prompt Use Existing vs Replace. No file → copies current config. **Reconnection:** 30s poll thread for disconnected drives at startup. **UI:** PRIVACY & SECURITY section in SettingsPanel — "Shared" badge with path when active, "Set Shared Folder…" button when local, inline "Use Existing / Replace" prompt, "Use Local Config" with confirmation. Frontend listens for `config-reloaded-from-sync`, re-applies all state, shows info toast. |

@@ -21,6 +21,13 @@ if (params.get('overlay') === '1') {
       <FillInWindow />
     </React.Suspense>
   );
+} else if (params.get('clipboardoverlay') === '1') {
+  const ClipboardOverlay = React.lazy(() => import('./components/ClipboardOverlay'));
+  root.render(
+    <React.Suspense fallback={null}>
+      <ClipboardOverlay />
+    </React.Suspense>
+  );
 } else {
   // Only import App (and its global.css/app.css) for the main window
   const App = React.lazy(() => import('./App'));
