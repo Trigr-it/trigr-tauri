@@ -156,7 +156,7 @@ function scoreMatch(text, query) {
 
 function searchItems(items, query, showAll) {
   if (!query) {
-    return showAll ? items.slice(0, 8) : [];
+    return [];
   }
 
   const scored = items

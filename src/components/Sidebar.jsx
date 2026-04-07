@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
@@ -71,6 +72,9 @@ function ProfileAccordion({
   const [linkSelectedExe, setLinkSelectedExe] = useState(null);
   const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
   const linkDropdownRef = useRef(null);
+  const linkDropdownPortalRef = useRef(null);
+  const pickAppBtnRef = useRef(null);
+  const [linkDropdownPos, setLinkDropdownPos] = useState(null);
   const importPromptRef = useRef(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -102,7 +106,9 @@ function ProfileAccordion({
   useEffect(() => {
     if (!linkDropdownOpen) return;
     function onDown(e) {
-      if (linkDropdownRef.current && !linkDropdownRef.current.contains(e.target)) setLinkDropdownOpen(false);
+      const inRow = linkDropdownRef.current && linkDropdownRef.current.contains(e.target);
+      const inPortal = linkDropdownPortalRef.current && linkDropdownPortalRef.current.contains(e.target);
+      if (!inRow && !inPortal) setLinkDropdownOpen(false);
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -400,7 +406,12 @@ function ProfileAccordion({
               </span>
             ) : (
               <>
-                <button className="browse-btn" type="button" onClick={async () => {
+                <button className="browse-btn" ref={pickAppBtnRef} type="button" onClick={async () => {
+                  const rowEl = linkDropdownRef.current;
+                  if (rowEl) {
+                    const rect = rowEl.getBoundingClientRect();
+                    setLinkDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+                  }
                   setLinkDropdownOpen(true);
                   setLinkWindowList([]);
                   try {
@@ -432,8 +443,8 @@ function ProfileAccordion({
                 </button>
               </>
             )}
-            {linkDropdownOpen && !linkSelectedExe && (
-              <div className="pick-window-dropdown">
+            {linkDropdownOpen && !linkSelectedExe && linkDropdownPos && ReactDOM.createPortal(
+              <div className="pick-window-dropdown pick-window-dropdown--portal" ref={linkDropdownPortalRef} style={{ top: linkDropdownPos.top, left: linkDropdownPos.left, width: linkDropdownPos.width }}>
                 {linkWindowList.length === 0 ? (
                   <div className="pick-window-loading">Loading windows…</div>
                 ) : (
@@ -443,7 +454,8 @@ function ProfileAccordion({
                     </div>
                   ))
                 )}
-              </div>
+              </div>,
+              document.body
             )}
           </div>
           <div className="profile-link-picker-actions">
