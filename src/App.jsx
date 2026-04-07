@@ -585,21 +585,33 @@ function App() {
       category: v.data?.category || null,
       triggerMode: v.data?.triggerMode || 'space',
       displayName: v.data?.displayName || null,
+      expansionType: v.data?.expansionType || 'text',
+      imagePath: v.data?.imagePath || '',
+      imageScale: v.data?.imageScale ?? 100,
     }))
     .sort((a, b) => a.trigger.localeCompare(b.trigger));
 
   // editorValue is { html, text } from the rich text editor.
   // originalTrigger is provided when editing an existing expansion; if it differs
   // from trigger the old key is removed in the same update (single atomic write).
-  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName) => {
+  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale) => {
     const newAssignments = { ...assignments };
     if (originalTrigger && originalTrigger !== trigger) {
       delete newAssignments[`GLOBAL::EXPANSION::${originalTrigger}`];
     }
+    const data = { category: category || null, triggerMode: triggerMode || 'space', displayName: displayName || null };
+    if (expansionType === 'image') {
+      data.expansionType = 'image';
+      data.imagePath = imagePath;
+      data.imageScale = imageScale ?? 100;
+    } else {
+      data.html = editorValue.html;
+      data.text = editorValue.text;
+    }
     newAssignments[`GLOBAL::EXPANSION::${trigger}`] = {
       type: 'expansion',
-      label: displayName || `Expand: ${trigger}`,
-      data: { html: editorValue.html, text: editorValue.text, category: category || null, triggerMode: triggerMode || 'space', displayName: displayName || null },
+      label: displayName || (expansionType === 'image' ? `Image: ${trigger}` : `Expand: ${trigger}`),
+      data,
     };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);

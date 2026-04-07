@@ -104,12 +104,15 @@ function buildItems(data) {
       });
     } else if (storageKey.startsWith('GLOBAL::EXPANSION::')) {
       const trigger = storageKey.slice('GLOBAL::EXPANSION::'.length);
+      const isImage = macro.data?.expansionType === 'image';
       items.push({
         type:    'expansion',
         storageKey,
         trigger,
         label:   macro.data?.displayName || trigger,
-        preview: (macro.data?.text || '').substring(0, 60),
+        preview: isImage
+          ? `[IMG] ${(macro.data?.imagePath || '').split(/[/\\]/).pop() || 'No image'}`
+          : (macro.data?.text || '').substring(0, 60),
         text:    macro.data?.text,
         html:    macro.data?.html,
       });
