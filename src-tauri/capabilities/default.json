@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for Trigr",
-  "windows": ["main", "overlay", "help", "fillin"],
+  "windows": ["main", "overlay", "help", "fillin", "clipboardoverlay"],
   "permissions": [
     "core:default",
     "shell:allow-open",

@@ -167,6 +167,26 @@ window.electronAPI = {
   getAnalytics:  () => invoke('get_analytics'),
   resetAnalytics: () => invoke('reset_analytics'),
 
+  // ── Clipboard Manager ──────────────────────────────────────────────────────
+  getClipboardHistory:    (page, perPage) => invoke('get_clipboard_history', { page, perPage }),
+  pasteClipboardItem:     (id)            => invoke('paste_clipboard_item', { id }),
+  deleteClipboardItem:    (id)            => invoke('delete_clipboard_item', { id }),
+  clearClipboardHistory:  ()              => invoke('clear_clipboard_history'),
+  pinClipboardItem:       (id, pinned)    => invoke('pin_clipboard_item', { id, pinned }),
+  getClipboardImage:      (id)            => invoke('get_clipboard_image', { id }),
+  getDistinctSourceApps:  ()              => invoke('get_distinct_source_apps'),
+  updateClipboardItem:    (id, newText)   => invoke('update_clipboard_item', { id, newText }),
+  getClipboardSettings:   ()              => invoke('get_clipboard_settings'),
+  setClipboardSettings:   (retentionDays) => invoke('set_clipboard_settings', { retentionDays }),
+  closeClipboardOverlay:     ()       => invoke('close_clipboard_overlay'),
+  resizeClipboardOverlay:    (height) => invoke('clipboard_overlay_resize', { height }),
+  onClipboardNewItem: (callback) => {
+    listen('clipboard-new-item', (event) => callback(event.payload)).then(u => { listeners['clipboard-new-item'] = u; });
+  },
+  onClipboardOverlayData: (callback) => {
+    listen('clipboard-overlay-data', (event) => callback(event.payload)).then(u => { listeners['clipboard-overlay-data'] = u; });
+  },
+
   // ── Global pause toggle ─────────────────────────────────────────────────────
   setPauseHotkey:      (combo) => invoke('set_global_pause_key', { combo }),
   clearPauseHotkey:    ()      => invoke('clear_global_pause_key'),

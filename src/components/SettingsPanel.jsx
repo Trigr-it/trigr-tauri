@@ -43,6 +43,7 @@ export default function SettingsPanel({
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
   const [templatesExpanded, setTemplatesExpanded] = useState(false);
+  const [clipboardRetention, setClipboardRetention] = useState(7);
   const [sharedConfigPath, setSharedConfigPath] = useState(null); // null = local, string = shared
   const [sharedConfigBusy, setSharedConfigBusy] = useState(false);
   const [sharedConfigError, setSharedConfigError] = useState(null);
@@ -54,6 +55,9 @@ export default function SettingsPanel({
     window.electronAPI?.getStartupEnabled().then(v => setStartWithWindows(!!v));
     window.electronAPI?.getAppVersion().then(v => setAppVersion(v || ''));
     window.electronAPI?.getSharedConfigPath?.().then(p => setSharedConfigPath(p || null));
+    window.electronAPI?.getClipboardSettings?.().then(s => {
+      if (s?.retention_days) setClipboardRetention(s.retention_days);
+    });
   }, []);
 
   function loadBackups() {
@@ -331,6 +335,49 @@ export default function SettingsPanel({
             </svg>
             <span>Avoid storing passwords or sensitive credentials as text expansions. Use a dedicated password manager like Bitwarden or 1Password for that purpose.</span>
           </div>
+        </section>
+
+        {/* ── CLIPBOARD ──────────────────────────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">CLIPBOARD</div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">History retention</span>
+              <span className="settings-toggle-sub">
+                Days to keep clipboard history. Free tier: up to 7 days. <em>(Pro — up to 30 days)</em>
+              </span>
+            </div>
+            <div className="settings-retention-input">
+              <input
+                type="number"
+                className="form-input settings-retention-num"
+                min={1}
+                max={7}
+                value={clipboardRetention}
+                onChange={e => {
+                  let v = parseInt(e.target.value, 10);
+                  if (isNaN(v)) v = 7;
+                  v = Math.max(1, Math.min(7, v));
+                  setClipboardRetention(v);
+                  window.electronAPI?.setClipboardSettings(v);
+                }}
+              />
+              <span className="settings-retention-unit">days</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="settings-action-btn"
+            onClick={async () => {
+              if (window.confirm('Clear all clipboard history? This cannot be undone.')) {
+                await window.electronAPI?.clearClipboardHistory();
+              }
+            }}
+          >
+            Clear Clipboard History
+          </button>
         </section>
 
         {/* ── GENERAL ────────────────────────────────────── */}

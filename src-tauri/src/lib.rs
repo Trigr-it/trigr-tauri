@@ -3,6 +3,7 @@ use tauri::{Emitter, Listener, Manager};
 
 mod actions;
 mod analytics;
+mod clipboard;
 mod config;
 mod expansions;
 mod foreground;
@@ -838,6 +839,86 @@ fn hide_overlay(app: &tauri::AppHandle) {
     }
 }
 
+// ── Clipboard overlay show/hide ──────────────────────────────────────────
+
+static CLIPBOARD_OVERLAY_TARGET: std::sync::atomic::AtomicIsize =
+    std::sync::atomic::AtomicIsize::new(0);
+
+fn show_clipboard_overlay(app: &tauri::AppHandle) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+
+    let target = unsafe { GetForegroundWindow() as isize };
+    CLIPBOARD_OVERLAY_TARGET.store(target, std::sync::atomic::Ordering::SeqCst);
+
+    let win = match app.get_webview_window("clipboardoverlay") {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Position: center of active monitor, 1/3 from top (same pattern as search overlay)
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    let (wa_left, wa_top, wa_right, wa_bottom) = unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut pt);
+        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            (
+                mi.rcWork.left,
+                mi.rcWork.top,
+                mi.rcWork.right,
+                mi.rcWork.bottom,
+            )
+        } else {
+            (0, 0, 1920, 1080)
+        }
+    };
+
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let log_left = wa_left as f64 / scale;
+    let log_top = wa_top as f64 / scale;
+    let log_w = (wa_right - wa_left) as f64 / scale;
+    let log_h = (wa_bottom - wa_top) as f64 / scale;
+
+    let win_w = 750.0;
+    let x = log_left + (log_w - win_w) / 2.0;
+    let y = log_top + log_h / 3.0;
+    let _ = win.set_position(tauri::LogicalPosition::new(x, y));
+    let _ = win.set_size(tauri::LogicalSize::new(750.0, 600.0));
+
+    // Send recent clipboard history + theme to the overlay
+    let history = clipboard::get_history(1, 15);
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+    let mut payload = history;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
+    }
+    use tauri::Emitter;
+    let _ = win.emit("clipboard-overlay-data", payload);
+
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+fn hide_clipboard_overlay(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("clipboardoverlay") {
+        let _ = win.hide();
+    }
+    let hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
+    if hwnd != 0 {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
+        }
+    }
+}
+
 fn restore_overlay_target() {
     let hwnd = OVERLAY_TARGET_HWND.load(AtomicOrdering::Relaxed);
     if hwnd != 0 {
@@ -976,6 +1057,266 @@ fn reset_analytics() -> bool {
     analytics::reset_stats()
 }
 
+// ── Clipboard Manager ──────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_clipboard_history(page: u32, per_page: u32) -> Value {
+    clipboard::get_history(page, per_page)
+}
+
+#[tauri::command]
+fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
+    let item = match clipboard::get_item_full(id) {
+        Some(i) => i,
+        None => return,
+    };
+
+    // Read stored target HWND — captured when the overlay was shown, before focus was stolen
+    let target_hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
+
+    std::thread::spawn(move || {
+        // Hide the overlay first so focus transfer is clean
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        hotkeys::SUPPRESS_SIMULATED
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let held = actions::release_held_modifiers();
+
+        // Restore focus to the original target app
+        if target_hwnd != 0 {
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
+                    target_hwnd as _,
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        match item.content_type.as_str() {
+            "text" => {
+                if let Some(text) = &item.text_content {
+                    let prev = actions::read_clipboard_pub().unwrap_or_default();
+                    actions::write_clipboard_pub(text);
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+
+                    // Ctrl+V
+                    actions::send_vk_key_pub(0xA2, false);
+                    actions::send_vk_key_pub(0x56, false);
+                    actions::send_vk_key_pub(0x56, true);
+                    actions::send_vk_key_pub(0xA2, true);
+
+                    actions::restore_modifiers(&held);
+
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    if !prev.is_empty() {
+                        actions::write_clipboard_pub(&prev);
+                    }
+                }
+            }
+            "image" => {
+                if let Some(png_bytes) = &item.image_blob {
+                    // Write PNG to clipboard using the expansion engine's image clipboard writer
+                    // We need to decode to get dimensions and BGRA pixels for CF_DIB
+                    if let Ok(img) = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png) {
+                        use image::GenericImageView;
+                        let (width, height) = img.dimensions();
+                        let rgba = img.to_rgba8();
+                        let row_stride = (width * 4) as usize;
+                        let mut bgra = vec![0u8; row_stride * height as usize];
+                        for y in 0..height as usize {
+                            let src_row = &rgba.as_raw()[y * row_stride..(y + 1) * row_stride];
+                            let dst_y = (height as usize - 1) - y;
+                            let dst_row = &mut bgra[dst_y * row_stride..(dst_y + 1) * row_stride];
+                            for x in 0..width as usize {
+                                let si = x * 4;
+                                dst_row[si] = src_row[si + 2];     // B
+                                dst_row[si + 1] = src_row[si + 1]; // G
+                                dst_row[si + 2] = src_row[si];     // R
+                                dst_row[si + 3] = src_row[si + 3]; // A
+                            }
+                        }
+
+                        // Write CF_DIB + PNG stream + CF_UNICODETEXT to clipboard
+                        // Reuse the clipboard write pattern from expansions
+                        write_image_to_clipboard(&bgra, width, height, png_bytes);
+
+                        // Ctrl+V
+                        actions::send_vk_key_pub(0xA2, false);
+                        actions::send_vk_key_pub(0x56, false);
+                        actions::send_vk_key_pub(0x56, true);
+                        actions::send_vk_key_pub(0xA2, true);
+
+                        actions::restore_modifiers(&held);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        hotkeys::SUPPRESS_SIMULATED
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
+/// Write image to clipboard as CF_DIB + PNG stream + CF_UNICODETEXT.
+/// Self-contained version for the clipboard paste path.
+fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_bytes: &[u8]) {
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+    };
+    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+
+    const CF_DIB_: u32 = 8;
+    const CF_UNICODETEXT_: u32 = 13;
+
+    let header_size: u32 = 40;
+    let pixel_data_size = bgra_pixels.len();
+    let total_size = header_size as usize + pixel_data_size;
+
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return;
+        }
+        EmptyClipboard();
+
+        // CF_DIB
+        let h_dib = GlobalAlloc(GMEM_MOVEABLE, total_size);
+        if !h_dib.is_null() {
+            let ptr = GlobalLock(h_dib) as *mut u8;
+            if !ptr.is_null() {
+                let hp = ptr as *mut u32;
+                *hp = header_size;
+                *hp.add(1) = width;
+                *hp.add(2) = height;
+                *hp.add(3) = 1 | (32 << 16);
+                *hp.add(4) = 0;
+                *hp.add(5) = pixel_data_size as u32;
+                *hp.add(6) = 0;
+                *hp.add(7) = 0;
+                *hp.add(8) = 0;
+                *hp.add(9) = 0;
+                std::ptr::copy_nonoverlapping(bgra_pixels.as_ptr(), ptr.add(header_size as usize), pixel_data_size);
+                GlobalUnlock(h_dib);
+                SetClipboardData(CF_DIB_, h_dib as _);
+            }
+        }
+
+        // PNG stream
+        if !png_bytes.is_empty() {
+            let fmt_name: Vec<u16> = "PNG\0".encode_utf16().collect();
+            let fmt_id = RegisterClipboardFormatW(fmt_name.as_ptr());
+            if fmt_id != 0 {
+                let h_png = GlobalAlloc(GMEM_MOVEABLE, png_bytes.len());
+                if !h_png.is_null() {
+                    let p = GlobalLock(h_png) as *mut u8;
+                    if !p.is_null() {
+                        std::ptr::copy_nonoverlapping(png_bytes.as_ptr(), p, png_bytes.len());
+                        GlobalUnlock(h_png);
+                        SetClipboardData(fmt_id, h_png as _);
+                    }
+                }
+            }
+        }
+
+        // CF_UNICODETEXT empty
+        let h_text = GlobalAlloc(GMEM_MOVEABLE, 2);
+        if !h_text.is_null() {
+            let tp = GlobalLock(h_text) as *mut u16;
+            if !tp.is_null() {
+                *tp = 0;
+                GlobalUnlock(h_text);
+                SetClipboardData(CF_UNICODETEXT_, h_text as _);
+            }
+        }
+
+        CloseClipboard();
+    }
+}
+
+#[tauri::command]
+fn close_clipboard_overlay(app: tauri::AppHandle) {
+    hide_clipboard_overlay(&app);
+}
+
+#[tauri::command]
+fn clipboard_overlay_resize(height: f64, app: tauri::AppHandle) {
+    let h = height.max(60.0).min(600.0);
+    if let Some(win) = app.get_webview_window("clipboardoverlay") {
+        let _ = win.set_size(tauri::LogicalSize::new(750.0, h));
+    }
+}
+
+#[tauri::command]
+fn delete_clipboard_item(id: i64) -> bool {
+    clipboard::delete_item(id)
+}
+
+#[tauri::command]
+fn clear_clipboard_history() -> bool {
+    clipboard::clear_all()
+}
+
+#[tauri::command]
+fn pin_clipboard_item(id: i64, pinned: bool) -> bool {
+    clipboard::pin_item(id, pinned)
+}
+
+#[tauri::command]
+fn get_clipboard_image(id: i64) -> Option<String> {
+    clipboard::get_image_blob(id).map(|bytes| {
+        // Base64 encode without external crate
+        const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut result = String::with_capacity((bytes.len() + 2) / 3 * 4);
+        for chunk in bytes.chunks(3) {
+            let b0 = chunk[0] as u32;
+            let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+            let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+            let triple = (b0 << 16) | (b1 << 8) | b2;
+            result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+            result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+            if chunk.len() > 1 {
+                result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+            } else {
+                result.push('=');
+            }
+            if chunk.len() > 2 {
+                result.push(CHARS[(triple & 0x3F) as usize] as char);
+            } else {
+                result.push('=');
+            }
+        }
+        result
+    })
+}
+
+#[tauri::command]
+fn get_distinct_source_apps() -> Vec<String> {
+    clipboard::get_distinct_source_apps()
+}
+
+#[tauri::command]
+fn update_clipboard_item(id: i64, new_text: String) -> Option<String> {
+    clipboard::update_item(id, new_text)
+}
+
+#[tauri::command]
+fn get_clipboard_settings() -> Value {
+    serde_json::json!({
+        "retention_days": clipboard::get_retention(),
+        "enabled": true,
+    })
+}
+
+#[tauri::command]
+fn set_clipboard_settings(retention_days: u32) {
+    clipboard::set_retention_days(retention_days);
+}
+
 // ── Auto-updater (Phase 10) ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1059,7 +1400,8 @@ pub fn run() {
             let app_data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data)?;
             config::init(app_data.clone());
-            analytics::init(app_data);
+            analytics::init(app_data.clone());
+            clipboard::init(app_data, app.handle().clone());
 
             // Start file watcher if shared config path is configured
             if let Some(shared_dir) = config::get_shared_config_dir() {
@@ -1162,6 +1504,40 @@ pub fn run() {
                 });
             }
 
+            // Pre-create clipboard overlay window hidden
+            let clipoverlay_url = tauri::WebviewUrl::App("index.html?clipboardoverlay=1".into());
+            let clipoverlay_win = tauri::WebviewWindowBuilder::new(app, "clipboardoverlay", clipoverlay_url)
+                .title("Trigr Clipboard")
+                .inner_size(400.0, 300.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build()?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let _ = clipoverlay_win.with_webview(|webview| {
+                    unsafe {
+                        use webview2_com::Microsoft::Web::WebView2::Win32::{
+                            ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+                        };
+                        use windows_core::Interface;
+                        let controller = webview.controller();
+                        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                            let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                                R: 0, G: 0, B: 0, A: 0,
+                            });
+                        }
+                    }
+                });
+            }
+            // Suppress unused variable warning
+            let _ = &clipoverlay_win;
+
             // Store app handle for fill-in IPC from the expansion engine
             expansions::init_app_handle(app.handle().clone());
 
@@ -1180,6 +1556,20 @@ pub fn run() {
                     restore_overlay_target();
                 } else {
                     show_overlay(&app_handle);
+                }
+            });
+
+            // Listen for clipboard overlay toggle from hotkey system
+            let app_handle_clip = app.handle().clone();
+            app.listen("toggle-clipboard-overlay", move |_| {
+                let visible = app_handle_clip
+                    .get_webview_window("clipboardoverlay")
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                if visible {
+                    hide_clipboard_overlay(&app_handle_clip);
+                } else {
+                    show_clipboard_overlay(&app_handle_clip);
                 }
             });
 
@@ -1215,6 +1605,16 @@ pub fn run() {
                         .unwrap_or(true);
                     if should_hide {
                         let _ = window.hide();
+                    }
+                }
+            } else if label == "clipboardoverlay" {
+                if let tauri::WindowEvent::Focused(false) = event {
+                    let _ = window.hide();
+                    let hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
+                    if hwnd != 0 {
+                        unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
+                        }
                     }
                 }
             } else if label == "fillin" {
@@ -1302,6 +1702,19 @@ pub fn run() {
             // Analytics
             get_analytics,
             reset_analytics,
+            // Clipboard
+            get_clipboard_history,
+            paste_clipboard_item,
+            delete_clipboard_item,
+            clear_clipboard_history,
+            pin_clipboard_item,
+            get_clipboard_image,
+            get_distinct_source_apps,
+            update_clipboard_item,
+            get_clipboard_settings,
+            set_clipboard_settings,
+            close_clipboard_overlay,
+            clipboard_overlay_resize,
             // Updater
             check_for_updates,
             install_update,
