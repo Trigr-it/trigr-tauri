@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-05 (post v0.1.18)
+> Last updated: 2026-04-06 (post v0.1.21)
 
 ---
 
@@ -291,7 +291,7 @@ Win key combinations (Win+Left, Win+D, etc.) cannot be reliably captured as hotk
 `@dnd-kit/sortable` step IDs (idMapRef in MacroSequenceForm) must be keyed by step TYPE only, not value. Including value in the stability check causes a new ID on every keystroke → React remounts the component → input focus lost. The ID regenerates only when the step type changes or steps are added/removed/reordered.
 
 ### List View Architecture
-`listViewActive` state is owned by `App.jsx`, persisted in `localStorage` key `trigr_list_view`. Toggle button lives in `TitleBar.jsx` (`.tb-list-toggle`), only visible in mapping area. When active: `main-area` gets `.main-area--hidden` (flex: 0, width: 0), KeyboardCanvas is not rendered, and Sidebar gets `.sidebar--expanded` (flex: 1) filling all space left of MacroPanel (300px). Sidebar renders a modifier pill bar (Ctrl/Alt/Shift/Win/Bare + Record button) as the filter — no tabs in list view. Assignments display as a CSS grid of cards (`repeat(auto-fill, minmax(200px, 1fr))`). Unfiltered view shows gold header bars (`var(--accent)` background, `var(--bg-base)` text) as group separators spanning full grid width. Bare keys group sorts first. Cards show: key combo, label, type pill, and preview line. Classic sidebar (non-list-view) is unchanged at 200px with its own tabs. KeyboardCanvas has no list view code — it was fully removed in v0.1.15. Auto-switches to list view below 800px via `window.resize` listener with `wasInKeyboardModeRef` state memory — auto-restores keyboard view when width goes back above 800px unless user manually toggled.
+`listViewActive` state is owned by `App.jsx`, persisted in `localStorage` key `trigr_list_view`. Toggle button lives in `TitleBar.jsx` (`.tb-list-toggle`), only visible in mapping area. When active: `main-area` gets `.main-area--hidden` (flex: 0, width: 0), KeyboardCanvas is not rendered, and Sidebar gets `.sidebar--expanded` (flex: 1) filling all space left of MacroPanel (300px). Sidebar renders a modifier pill bar (Ctrl/Alt/Shift/Win/Bare + Record button) as the filter — no tabs in list view. Assignments display as a CSS grid of cards (`repeat(auto-fill, minmax(200px, 1fr))`). Gold header bars (`var(--accent)` background, `var(--bg-base)` text) render as group separators: multiple bars in unfiltered "All" view, single bar with modifier label + count when a specific modifier tab/pill is selected. Bare keys group sorts first. Cards show: key combo, label, type pill, and preview line. Classic sidebar (non-list-view) is unchanged at 200px with its own tabs. KeyboardCanvas has no list view code — it was fully removed in v0.1.15. Auto-switches to list view below 800px via `window.resize` listener with `wasInKeyboardModeRef` state memory — auto-restores keyboard view when width goes back above 800px unless user manually toggled.
 
 ### Focus Window — Pick Window
 Focus Window macro step uses `FocusWindowFields` component in MacroPanel.jsx. Process name field replaced with a Pick Window button that calls `list_open_windows` (Rust command in lib.rs using `EnumWindows` + `IsWindowVisible` + `IsIconic` + `QueryFullProcessImageNameW`). Inline dropdown shows running windows, clicking one sets both process and title fields. Window title input remains editable. Value format unchanged: `{"process":"...","title":"..."}`.
@@ -318,13 +318,16 @@ Seven tokens in expansions.rs: `{date:DD/MM/YYYY}` (%d/%m/%Y), `{date:DD/MM/YY}`
 UI shows 3 options: Global default (`"global"`), Direct (`"direct"`), Clipboard (`"shift-insert"`). "SendInput API" and "Clipboard (Ctrl+V)" removed from UI — both were identical to existing options at the Rust level. Existing configs with `"ctrl-v"` or `"send-input"` still work at the Rust level.
 
 ### Profile Accordion — Sidebar
-Profiles live in the sidebar (Sidebar.jsx ProfileAccordion), NOT the titlebar. TitleBar.jsx has no profile code. Profiles split into STATIC and APP-SPECIFIC groups with separate SortableContext instances. Cross-group drag is blocked. Default profile is always first in STATIC, not draggable. Green dot indicates activeGlobalProfile (fallback). ProfileAccordion accepts `onExportProfile` and `onImportProfile` props (passed through from Sidebar's own props).
+Profiles live in the sidebar (Sidebar.jsx ProfileAccordion), NOT the titlebar. TitleBar.jsx has no profile code. Profiles split into STATIC and APP-SPECIFIC groups with separate SortableContext instances. Cross-group drag is blocked. Default profile is always first in STATIC, not draggable. Green dot indicates activeGlobalProfile (fallback). `.profile-accordion` is a flex column with `flex-shrink: 1` and `min-height: 0` — no max-height cap. It grows to fit all profiles and only scrolls when window height forces it. `.profile-accordion-list` has `overflow-y: auto` and `min-height: 0`. The assignments list below (`.sidebar-list` / `.sidebar-grid-wrap`, `flex: 1`) fills remaining space.
 
 ### Profile Export/Import
 **Export:** Right-click context menu "Export Profile" on any profile row (including Default). `handleExportProfile` in App.jsx collects all assignments with `profileName::` prefix, builds `{ trigr_profile: "1.0", name, assignments, linkedApp: null }`. `linkedApp` is always `null` (machine-specific). Calls `export_profile` Rust command (save dialog, Desktop default, `<ProfileName>-trigr-profile.json`). **Import:** "↓ Import Profile" button in ProfileAccordion footer (always visible, below Add Profile). `handleImportProfile` in App.jsx calls `import_profile` Rust command (file picker), validates `trigr_profile` field. On name collision: shows inline Copy/Overwrite prompt in accordion footer (`importPrompt` state in App.jsx, `profile-import-prompt` UI in Sidebar.jsx). **Copy** deduplicates name with ` (1)` / ` (2)` suffix, creates new profile. **Overwrite** deletes all existing `profileName::` assignments, writes imported assignments with keys rewritten via split-on-`::`-replace-index-0-rejoin, preserves existing `linkedApp` and profile position unchanged. No collision: imports directly. Both paths call `saveConfig` + `syncEngine`, switch active profile, show toast. Props: `importPrompt`, `onImportProfileResolve(choice)`, `onImportPromptDismiss` passed from App.jsx through Sidebar to ProfileAccordion. Prompt dismisses on outside click or Escape.
 
 ### ResizeObserver Safety
 Any ResizeObserver that calls setState must guard against infinite loops. Store last measured width in a ref; skip callback if `Math.abs(newWidth - lastWidth) < 1`. The profile tab overflow attempt (now removed) proved this causes system freezes without the guard. Vite watch config excludes `**/src-tauri/target/**` to prevent scanning Rust build artifacts.
+
+### Help Window — External Browser
+`open_help` in lib.rs uses `opener::open("https://trigr-it.github.io/trigr-tauri/trigr-help.html")` to open the user guide in the default browser. DO NOT create a Tauri WebviewWindow for help — a 3.2MB HTML file with inline base64 images freezes WebView2 and makes the entire app unresponsive (P0 bug in v0.1.20). The help page is hosted on GitHub Pages and no longer bundled in the app (`public/help.html` was deleted in v0.1.21).
 
 ---
 
@@ -334,17 +337,14 @@ Any ResizeObserver that calls setState must guard against infinite loops. Store 
 {
   "productName": "Trigr",
   "identifier": "com.nodescaffold.trigr",
-  "version": "0.1.18",
+  "version": "0.1.21",
+  "build": { "devUrl": "http://localhost:5173" },
   "app": {
     "windows": [{
       "title": "Trigr",
-      "width": 1200,
-      "height": 800,
-      "minWidth": 800,
-      "minHeight": 500,
-      "resizable": true,
-      "decorations": false,
-      "visible": false
+      "width": 1200, "height": 800,
+      "minWidth": 800, "minHeight": 500,
+      "resizable": true, "decorations": false, "visible": false
     }]
   }
 }
@@ -385,3 +385,8 @@ Record key decisions and findings here after each session.
 | 2026-04-05 | Release | v0.1.17 released | Patch release. Assignment context menu + P0 crash fix. |
 | 2026-04-05 | Post-MVP | Hold mode + duplicate fix + profile linking + tokens + category dnd | **Send Hotkey hold mode:** `holdMode` bool on hotkey data, `HELD_KEY` Mutex in actions.rs, three tray icon states (normal/paused/red-held), `release_held_key()` auto-release on keypress/pause/exit, `execute_action` now takes `&AppHandle`. MacroPanel toggle switch UI. **Duplicate deep clone fix:** `handleDuplicateFromContext` now deep clones single + double press into `pendingDuplicateRef { single, double }`. `handleAssign` saves both. `handleDuplicateAssignment` also copies double press. MacroPanel receives pending duplicate via `assignment`/`doubleAssignment` props. **Profile link/unlink:** Context menu "Link to App" (Pick App picker + Browse button) and "Unlink App" in ProfileAccordion. Uses existing `handleUpdateProfileSettings`. **{date:DD/MM/YY}** short date token added to expansions.rs + INSERT_MENU. **Category tab dnd-kit:** Replaced broken native HTML drag with `@dnd-kit/sortable` + `horizontalListSortingStrategy`. SortableCatTab component, DragOverlay ghost. Old drag state removed. |
 | 2026-04-05 | Release | v0.1.18 released | Patch release. Hold mode, duplicate fix, profile linking, tokens, category dnd from this session. |
+| 2026-04-05 | Post-MVP | Profile export/import + accordion fix | **Profile export:** Right-click "Export Profile" on any profile row. `export_profile` Rust command (save dialog + file write). Payload: `{ trigr_profile: "1.0", name, assignments, linkedApp: null }`. **Profile import:** "↓ Import Profile" button in accordion footer. `import_profile` Rust command (file picker + read). Validates `trigr_profile` field. Name collision shows inline Copy/Overwrite prompt (`importPrompt` state in App.jsx, `profile-import-prompt` UI in Sidebar.jsx). Copy = dedup with ` (1)` suffix. Overwrite = delete existing `profileName::` assignments, write imported, preserve linkedApp. Key rewriting via split-on-`::`-replace-index-0-rejoin. **Accordion height fix:** Removed `max-height: 280px` cap on `.profile-accordion-list`. `.profile-accordion` now `flex-shrink: 1` + `display: flex` + `flex-direction: column` + `min-height: 0`. Accordion grows to fit content, scrolls only when window forces it. |
+| 2026-04-05 | Release | v0.1.19 released | Patch release. Profile export/import with Copy/Overwrite, accordion height fix. |
+| 2026-04-06 | Post-MVP | Gold group headers on modifier tabs + help window fix | **Gold headers:** Added `sidebar-grid-group-header` to both classic sidebar (individual `activeTab`) and expanded list view (individual modifier pill) branches in Sidebar.jsx — previously only rendered in "All" tab. **P0 help window fix:** `open_help` changed from `WebviewWindowBuilder` (froze WebView2 on 3.2MB HTML) to `opener::open()` with GitHub Pages URL. `public/help.html` deleted — no longer bundled. Google Fonts `<link>` in help.html replaced with local `@font-face` (applies to hosted version). |
+| 2026-04-06 | Release | v0.1.20 released | Patch release. Gold group headers on modifier tabs. |
+| 2026-04-06 | Release | v0.1.21 released | Patch release. P0 help window fix (opener::open to GitHub Pages), public/help.html deleted. |

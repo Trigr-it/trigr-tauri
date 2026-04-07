@@ -418,6 +418,12 @@
   color: var(--text-primary);
 }
 
+.pick-window-dropdown--portal {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+}
+
 /* ── Sidebar Header ──────────────────────────────────────────────────── */
 
 .sidebar-header {
