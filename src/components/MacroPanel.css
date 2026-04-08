@@ -786,6 +786,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .step-drag-handle {
@@ -820,6 +821,7 @@
 
 .macro-step-value {
   flex: 1;
+  min-width: 0;
   font-size: 11px;
 }
 
@@ -829,8 +831,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 6px 30px 8px 48px; /* left = drag(16)+gap(6)+num(20)+gap(6), right = remove(24)+gap(6) */
-  border-top: 1px solid var(--border);
+  padding: 4px 30px 6px 48px; /* left = drag(16)+gap(6)+num(20)+gap(6), right = remove(24)+gap(6) */
 }
 
 .wfi-field {
@@ -1357,16 +1358,31 @@
   flex-shrink: 0;
 }
 
+/* ── Press Key sub-row (two-row grid) ─────────────────────────────────── */
+.press-key-sub-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 30px 6px 48px;
+}
+
+.press-key-pills {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
 /* ── Mouse click pill buttons ──────────────────────────────────────────── */
 .mouse-click-pills {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 2px;
 }
 
 .mouse-click-pill {
   height: 26px;
-  padding: 0 10px;
+  padding: 0 6px;
   border-radius: 5px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
@@ -1378,6 +1394,9 @@
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mouse-click-pill:hover {

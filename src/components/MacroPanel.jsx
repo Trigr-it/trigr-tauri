@@ -557,68 +557,56 @@ function KeyCaptureInput({ value, onChange }) {
   const isMouseValue = MOUSE_CLICK_OPTIONS.some(o => o.value === value);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <div
-          ref={divRef}
-          className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
-          tabIndex={0}
-          onClick={!capturing ? startCapture : undefined}
-          onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
-          onBlur={handleBlur}
-          role="button"
-          aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
-          style={{ flex: 1 }}
-        >
-          {capturing && winBuilder ? (
-            <div className="win-builder">
-              <kbd className="win-builder-badge">Win</kbd>
-              <span className="win-builder-plus">+</span>
-              <select
-                className="win-builder-select"
-                value={winKey}
-                onChange={e => setWinKey(e.target.value)}
-                onClick={e => e.stopPropagation()}
-              >
-                {WIN_BUILDER_KEYS.map(g => (
-                  <optgroup key={g.group} label={g.group}>
-                    {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-              <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
-              <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
-              <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
-            </div>
-          ) : capturing ? (
-            <span className="key-capture-prompt">Press a key…</span>
-          ) : isMouseValue ? (
-            <span className="key-capture-value"><kbd>{MOUSE_CLICK_OPTIONS.find(o => o.value === value)?.label}</kbd></span>
-          ) : value ? (
-            <span className="key-capture-value"><KeyChips combo={value} /></span>
-          ) : (
-            <span className="key-capture-placeholder">Click to capture…</span>
-          )}
-        </div>
-        {capturing && (
-          <button
-            className="macro-advanced-toggle"
-            type="button"
-            data-capture-cancel="true"
-            onMouseDown={e => { e.preventDefault(); cancelCapture(); }}
-          >Cancel</button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+      <div
+        ref={divRef}
+        className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
+        tabIndex={0}
+        onClick={!capturing ? startCapture : undefined}
+        onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
+        onBlur={handleBlur}
+        role="button"
+        aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
+        style={{ flex: 1 }}
+      >
+        {capturing && winBuilder ? (
+          <div className="win-builder">
+            <kbd className="win-builder-badge">Win</kbd>
+            <span className="win-builder-plus">+</span>
+            <select
+              className="win-builder-select"
+              value={winKey}
+              onChange={e => setWinKey(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            >
+              {WIN_BUILDER_KEYS.map(g => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
+            <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
+            <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
+          </div>
+        ) : capturing ? (
+          <span className="key-capture-prompt">Press a key…</span>
+        ) : isMouseValue ? (
+          <span className="key-capture-value"><kbd>{MOUSE_CLICK_OPTIONS.find(o => o.value === value)?.label}</kbd></span>
+        ) : value ? (
+          <span className="key-capture-value"><KeyChips combo={value} /></span>
+        ) : (
+          <span className="key-capture-placeholder">Click to capture…</span>
         )}
       </div>
-      <div className="mouse-click-pills">
-        {MOUSE_CLICK_OPTIONS.map(opt => (
-          <button
-            key={opt.value}
-            type="button"
-            className={`mouse-click-pill${value === opt.value ? ' active' : ''}`}
-            onClick={() => onChange(opt.value)}
-          >{opt.label}</button>
-        ))}
-      </div>
+      {capturing && (
+        <button
+          className="macro-advanced-toggle"
+          type="button"
+          data-capture-cancel="true"
+          onMouseDown={e => { e.preventDefault(); cancelCapture(); }}
+        >Cancel</button>
+      )}
     </div>
   );
 }
@@ -635,7 +623,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window'].includes(step.type);
+  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Press Key'].includes(step.type);
 
   // Parse JSON values for structured step types
   let appData = { path: '', args: '' };
@@ -661,7 +649,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
           {MACRO_STEP_TYPES.map(t => <option key={t}>{t}</option>)}
         </select>
 
-        {/* Inline value fields — only for types without sub-rows */}
+        {/* Inline value fields */}
         {step.type === 'Press Key' && (
           <KeyCaptureInput
             value={step.value || ''}
@@ -678,6 +666,22 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
         )}
         <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
       </div>
+
+      {/* Sub-row: Press Key — mouse pills */}
+      {step.type === 'Press Key' && (
+        <div className="press-key-sub-row">
+          <div className="press-key-pills">
+            {MOUSE_CLICK_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`mouse-click-pill${step.value === opt.value ? ' active' : ''}`}
+                onClick={() => updateStep({ ...step, value: opt.value })}
+              >{opt.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sub-row: Type Text — full-width input */}
       {step.type === 'Type Text' && (
