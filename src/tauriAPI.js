@@ -178,6 +178,7 @@ window.electronAPI = {
   updateClipboardItem:    (id, newText)   => invoke('update_clipboard_item', { id, newText }),
   getClipboardSettings:   ()              => invoke('get_clipboard_settings'),
   setClipboardSettings:   (retentionDays) => invoke('set_clipboard_settings', { retentionDays }),
+  getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
   closeClipboardOverlay:     ()       => invoke('close_clipboard_overlay'),
   resizeClipboardOverlay:    (height) => invoke('clipboard_overlay_resize', { height }),
   onClipboardNewItem: (callback) => {

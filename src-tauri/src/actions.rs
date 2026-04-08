@@ -105,14 +105,27 @@ pub fn get_repeating_trigger() -> Option<String> {
     REPEATING_KEY.lock().unwrap().as_ref().map(|s| s.trigger_storage_key.clone())
 }
 
-// ── Timing constants (matching Electron defaults) ───────────────────────────
+// ── Timing constants ────────────────────────────────────────────────────────
 
-const INITIAL_DELAY_MS: u64 = 10;
 const MODIFIER_SETTLE_MS: u64 = 30;
-const MACRO_TRIGGER_DELAY_MS: u64 = 10;
 const KEYSTROKE_DELAY_MS: u64 = 10;
-const HOTKEY_SETTLE_MS: u64 = 10;
-const CLIPBOARD_RESTORE_DELAY_MS: u64 = 50;
+
+/// Speed presets: (initial_delay, step_settle, foreground_settle, clipboard_restore)
+fn speed_delays() -> (u64, u64, u64, u64) {
+    let state = crate::hotkeys::engine_state().lock().unwrap();
+    match state.macro_speed.as_str() {
+        "fast"    => (5,  5,  5, 25),
+        "instant" => (0,  0,  5, 25),
+        "custom"  => {
+            let pre = state.custom_pre_execution_delay;
+            // Scale foreground settle and clipboard restore proportionally to pre-execution
+            let fg = if pre == 0 { 5 } else { (pre / 10).max(5) };
+            let clip = if pre == 0 { 25 } else { (pre / 3).max(25) };
+            (pre.min(10), pre.min(10), fg, clip)
+        }
+        _         => (10, 10, 10, 50), // "safe" (default)
+    }
+}
 
 // ── Modifier VK codes ───────────────────────────────────────────────────────
 
@@ -142,8 +155,10 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
     println!("[ACTION] Firing: [{}] {} altgr={}", macro_type, label, is_altgr);
     info!("[Trigr] Firing: [{}] {}", macro_type, label);
 
+    let (initial_ms, step_settle_ms, _fg_settle_ms, _clip_restore_ms) = speed_delays();
+
     // Initial delay — lets Windows finish delivering the trigger keydown
-    thread::sleep(Duration::from_millis(INITIAL_DELAY_MS));
+    if initial_ms > 0 { thread::sleep(Duration::from_millis(initial_ms)); }
 
     // Erase leaked character for bare keys or AltGr dead characters
     if is_bare || is_altgr {
@@ -164,7 +179,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
     match macro_type {
         "text" => {
             if let Some(text) = data.and_then(|d| d.get("text")).and_then(|v| v.as_str()) {
-                thread::sleep(Duration::from_millis(MACRO_TRIGGER_DELAY_MS));
+                if step_settle_ms > 0 { thread::sleep(Duration::from_millis(step_settle_ms)); }
                 let method = resolve_input_method(data);
                 output_text(text, &method, target_hwnd);
             }
@@ -172,7 +187,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
 
         "hotkey" => {
             if let Some(d) = data {
-                thread::sleep(Duration::from_millis(HOTKEY_SETTLE_MS));
+                if step_settle_ms > 0 { thread::sleep(Duration::from_millis(step_settle_ms)); }
                 execute_send_hotkey(d, trigger_key, app);
             }
         }
@@ -192,13 +207,41 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
         "macro" => {
             if let Some(steps) = data.and_then(|d| d.get("steps")).and_then(|v| v.as_array()) {
                 let method = resolve_input_method(data);
+                let uses_clipboard = method != "send-input" && method != "direct";
                 let mut current_hwnd = target_hwnd;
+                let (_, settle_ms, _, clip_restore_ms) = speed_delays();
                 info!("[Trigr] Macro sequence: {} step(s), method={}", steps.len(), method);
+
+                // For clipboard method: save once, batch pastes, restore once
+                let saved_clipboard = if uses_clipboard { read_clipboard() } else { None };
+                let mut clipboard_dirty = false;
+
                 for (i, step) in steps.iter().enumerate() {
                     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
                     info!("[Trigr]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
-                    execute_macro_step(step, &mut current_hwnd, &method);
+
+                    if step_type == "Type Text" && uses_clipboard && !step_value.is_empty() {
+                        if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
+                        clipboard_paste_core(step_value, current_hwnd);
+                        clipboard_dirty = true;
+                    } else {
+                        // Restore clipboard before non-Type-Text steps if we dirtied it
+                        if clipboard_dirty {
+                            thread::sleep(Duration::from_millis(clip_restore_ms));
+                            write_clipboard(&saved_clipboard.as_deref().unwrap_or(""));
+                            SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
+                            clipboard_dirty = false;
+                        }
+                        execute_macro_step(step, &mut current_hwnd, &method);
+                    }
+                }
+
+                // Final restore after all steps
+                if clipboard_dirty {
+                    thread::sleep(Duration::from_millis(clip_restore_ms));
+                    write_clipboard(&saved_clipboard.as_deref().unwrap_or(""));
+                    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
                 }
             }
         }
@@ -257,55 +300,48 @@ fn output_text(text: &str, method: &str, target_hwnd: isize) {
 // simulated keystrokes and/or log its own clipboard writes.
 
 fn inject_via_clipboard(text: &str, target_hwnd: isize) {
-    // Save current clipboard contents (suppress flag set BEFORE open)
     let prev = read_clipboard();
-    println!("[CLIP] prev clipboard: {:?}", prev.as_deref().map(|s| &s[..s.len().min(60)]));
+    let (_, _, _, clip_restore_ms) = speed_delays();
+    clipboard_paste_core(text, target_hwnd);
+    // Wait for paste to complete, then restore original clipboard
+    thread::sleep(Duration::from_millis(clip_restore_ms));
+    write_clipboard(&prev.unwrap_or_default());
+    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
+}
 
-    // Write replacement text to clipboard (suppress set inside write_clipboard)
+/// Core clipboard paste: write text to clipboard + send paste keystroke.
+/// Does NOT save/restore the clipboard — caller is responsible for that.
+fn clipboard_paste_core(text: &str, target_hwnd: isize) {
     let write_ok = write_clipboard(text);
     println!("[CLIP] write_clipboard({} chars) → {}", text.chars().count(), write_ok);
 
-    // Suppress the hook so our simulated keystrokes aren't intercepted
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+    let (_, _, fg_settle_ms, _) = speed_delays();
 
-    // Release physically held modifiers
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
     let held = release_held_modifiers();
 
-    // Restore focus to the target window captured at hotkey fire time
     if target_hwnd != 0 {
         unsafe {
-            let ok = SetForegroundWindow(target_hwnd as _);
-            println!("[CLIP] SetForegroundWindow({:?}) → {}", target_hwnd, ok);
+            SetForegroundWindow(target_hwnd as _);
         }
-        thread::sleep(Duration::from_millis(10));
+        if fg_settle_ms > 0 { thread::sleep(Duration::from_millis(fg_settle_ms)); }
     }
 
-    // Check if Ctrl+V is mapped as a hotkey — if so, use Shift+Insert instead
     let use_ctrl_v = !is_ctrl_v_mapped();
     if use_ctrl_v {
-        println!("[CLIP] Pasting with Ctrl+V");
         send_vk_key(VK_LCONTROL, false);
         send_vk_key(0x56, false); // V
         send_vk_key(0x56, true);
         send_vk_key(VK_LCONTROL, true);
     } else {
-        println!("[CLIP] Pasting with Shift+Insert (Ctrl+V is mapped)");
         send_vk_key(VK_LSHIFT, false);
         send_vk_key(VK_INSERT, false);
         send_vk_key(VK_INSERT, true);
         send_vk_key(VK_LSHIFT, true);
     }
 
-    // Re-press modifiers that were physically held
     restore_modifiers(&held);
-
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-
-    // Wait for paste to complete, then restore original clipboard
-    thread::sleep(Duration::from_millis(CLIPBOARD_RESTORE_DELAY_MS));
-    write_clipboard(&prev.unwrap_or_default());
-    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
-    println!("[CLIP] clipboard restored");
 }
 
 /// Check if Ctrl+V is mapped as a hotkey in the current assignments.
@@ -390,6 +426,7 @@ fn write_clipboard(text: &str) -> bool {
 // ── Type Text: character-by-character fallback ──────────────────────────────
 
 fn send_unicode_text(text: &str, target_hwnd: isize) {
+    let (_, _, fg_settle_ms, _) = speed_delays();
     crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
     let held = release_held_modifiers();
 
@@ -398,7 +435,7 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
         unsafe {
             SetForegroundWindow(target_hwnd as _);
         }
-        thread::sleep(Duration::from_millis(10));
+        if fg_settle_ms > 0 { thread::sleep(Duration::from_millis(fg_settle_ms)); }
     }
 
     for ch in text.chars() {
@@ -865,7 +902,8 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
     match step_type {
         "Type Text" => {
             if !step_value.is_empty() {
-                thread::sleep(Duration::from_millis(MACRO_TRIGGER_DELAY_MS));
+                let (_, settle_ms, _, _) = speed_delays();
+                if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
                 output_text(step_value, method, *target_hwnd);
             }
         }
@@ -995,8 +1033,10 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
             }
             match find_window_by_criteria(process, title) {
                 Some(hwnd) => {
+                    let (_, _, fg_settle_ms, _) = speed_delays();
                     unsafe { SetForegroundWindow(hwnd as _); }
-                    thread::sleep(Duration::from_millis(50));
+                    // Focus Window needs longer settle than normal foreground restore
+                    thread::sleep(Duration::from_millis(fg_settle_ms.max(10) * 2));
                     *target_hwnd = hwnd;
                     info!("[Trigr] Focus Window: found and focused HWND {} (process='{}' title='{}')", hwnd, process, title);
                 }

@@ -1317,6 +1317,11 @@ fn set_clipboard_settings(retention_days: u32) {
     clipboard::set_retention_days(retention_days);
 }
 
+#[tauri::command]
+fn get_clipboard_storage_size() -> u64 {
+    clipboard::get_storage_size()
+}
+
 // ── Auto-updater (Phase 10) ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1713,6 +1718,7 @@ pub fn run() {
             update_clipboard_item,
             get_clipboard_settings,
             set_clipboard_settings,
+            get_clipboard_storage_size,
             close_clipboard_overlay,
             clipboard_overlay_resize,
             // Updater

@@ -26,6 +26,30 @@ function ImageThumb({ id, className, fallbackClass }) {
   return <img className={className} src={src} alt="" />;
 }
 
+// ── Timeline grouping ───────────────────────────────────────────────────────
+
+function groupByTimeline(items) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(todayStart.getDate() - 1);
+  const weekStart = new Date(todayStart); weekStart.setDate(todayStart.getDate() - todayStart.getDay());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const groups = { Pinned: [], Today: [], Yesterday: [], 'This Week': [], 'This Month': [], Older: [] };
+
+  for (const item of items) {
+    if (item.pinned) { groups.Pinned.push(item); continue; }
+    const d = new Date(item.timestamp);
+    if (d >= todayStart) groups.Today.push(item);
+    else if (d >= yesterdayStart) groups.Yesterday.push(item);
+    else if (d >= weekStart) groups['This Week'].push(item);
+    else if (d >= monthStart) groups['This Month'].push(item);
+    else groups.Older.push(item);
+  }
+
+  return Object.entries(groups).filter(([, arr]) => arr.length > 0);
+}
+
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export default function ClipboardOverlay() {
@@ -34,6 +58,8 @@ export default function ClipboardOverlay() {
   const [theme, setTheme] = useState('dark');
   const [search, setSearch] = useState('');
   const [filterTag, setFilterTag] = useState('All');
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
   const rowRefs = useRef([]);
   const inputRef = useRef(null);
 
@@ -66,7 +92,23 @@ export default function ClipboardOverlay() {
     });
   }, [items, search, filterTag]);
 
-  useEffect(() => { setSelectedIndex(0); }, [filtered.length]);
+  const groupedFlat = useMemo(() => {
+    const groups = groupByTimeline(filtered);
+    const result = [];
+    let idx = 0;
+    for (const [label, groupItems] of groups) {
+      result.push({ type: 'header', label });
+      for (const item of groupItems) {
+        result.push({ type: 'item', item, flatIndex: idx++ });
+      }
+    }
+    return result;
+  }, [filtered]);
+
+  useEffect(() => { setSelectedIndex(0); setEditing(false); }, [filtered.length]);
+
+  // Cancel edit when selection changes
+  useEffect(() => { setEditing(false); setEditText(''); }, [selectedIndex]);
 
   const selected = filtered[selectedIndex] || null;
 
@@ -74,6 +116,11 @@ export default function ClipboardOverlay() {
 
   useEffect(() => {
     function handleKeyDown(e) {
+      // Don't intercept keys when editing text
+      if (editing) {
+        if (e.key === 'Escape') { e.preventDefault(); setEditing(false); setEditText(''); }
+        return;
+      }
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(i => Math.min(i + 1, filtered.length - 1));
@@ -93,7 +140,7 @@ export default function ClipboardOverlay() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filtered, selectedIndex, selected]);
+  }, [filtered, selectedIndex, selected, editing]);
 
   useLayoutEffect(() => {
     const el = rowRefs.current[selectedIndex];
@@ -151,6 +198,30 @@ export default function ClipboardOverlay() {
     return <span className="co-row-icon">📄</span>;
   };
 
+  // ── Inline edit ───────────────────────────────────────────────────────────
+
+  const isTextEditable = selected && selected.content_type === 'text'
+    && (selected.content_tag === 'Text' || selected.content_tag === 'Number');
+
+  const handleStartEdit = () => {
+    setEditing(true);
+    setEditText(selected.text_content || selected.preview || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selected) return;
+    const newTag = await window.electronAPI?.updateClipboardItem(selected.id, editText);
+    if (newTag) {
+      const newPreview = editText.length > 200 ? editText.slice(0, 200) + '…' : editText;
+      setItems(prev => prev.map(it =>
+        it.id === selected.id
+          ? { ...it, text_content: editText, preview: newPreview, content_tag: newTag }
+          : it
+      ));
+    }
+    setEditing(false);
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -184,7 +255,11 @@ export default function ClipboardOverlay() {
             {filtered.length === 0 ? (
               <div className="co-empty">{items.length === 0 ? 'No history' : 'No matches'}</div>
             ) : (
-              filtered.map((item, i) => {
+              groupedFlat.map((entry) => {
+                if (entry.type === 'header') {
+                  return <div key={`h-${entry.label}`} className="co-timeline-header">{entry.label === 'Pinned' ? '📌 Pinned' : entry.label}</div>;
+                }
+                const { item, flatIndex: i } = entry;
                 const isImage = item.content_type === 'image';
                 return (
                   <div
@@ -240,6 +315,14 @@ export default function ClipboardOverlay() {
                   <div className="co-detail-img-wrap">
                     <ImageThumb id={selected.id} className="co-detail-img" fallbackClass="co-detail-img-ph" />
                   </div>
+                ) : editing ? (
+                  <textarea
+                    className="co-detail-textarea"
+                    value={editText}
+                    onChange={e => setEditText(e.target.value)}
+                    autoFocus
+                    spellCheck={false}
+                  />
                 ) : (
                   <pre className="co-detail-text">{selected.text_content || selected.preview || ''}</pre>
                 )}
@@ -269,9 +352,20 @@ export default function ClipboardOverlay() {
                 )}
               </div>
               <div className="co-detail-actions">
-                <button className="co-btn co-btn-pin" type="button"
-                  onClick={e => { e.stopPropagation(); window.electronAPI?.pinClipboardItem(selected.id, !selected.pinned); setItems(prev => prev.map(it => it.id === selected.id ? { ...it, pinned: !it.pinned } : it)); }}
-                >{selected.pinned ? 'Unpin' : 'Pin'}</button>
+                <div className="co-detail-actions-l">
+                  <button className="co-btn co-btn-pin" type="button"
+                    onClick={e => { e.stopPropagation(); window.electronAPI?.pinClipboardItem(selected.id, !selected.pinned); setItems(prev => prev.map(it => it.id === selected.id ? { ...it, pinned: !it.pinned } : it)); }}
+                  >{selected.pinned ? 'Unpin' : 'Pin'}</button>
+                  {isTextEditable && !editing && (
+                    <button className="co-btn" type="button" onClick={e => { e.stopPropagation(); handleStartEdit(); }}>Edit</button>
+                  )}
+                  {editing && (
+                    <>
+                      <button className="co-btn co-btn-paste" type="button" onClick={e => { e.stopPropagation(); handleSaveEdit(); }}>Save</button>
+                      <button className="co-btn" type="button" onClick={e => { e.stopPropagation(); setEditing(false); setEditText(''); }}>Cancel</button>
+                    </>
+                  )}
+                </div>
                 <div className="co-detail-actions-r">
                   <button className="co-btn co-btn-del" type="button"
                     onClick={e => { e.stopPropagation(); window.electronAPI?.deleteClipboardItem(selected.id); setItems(prev => prev.filter(it => it.id !== selected.id)); }}

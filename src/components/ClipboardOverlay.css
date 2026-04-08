@@ -64,9 +64,8 @@ html, body {
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
-  border: 1px solid var(--border-bright);
+  border: 1px solid var(--border-accent, rgba(232, 160, 32, 0.4));
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   overflow: hidden;
   font-family: var(--font-body, 'DM Sans', sans-serif);
 }
@@ -97,15 +96,16 @@ html, body {
 .co-search {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid var(--border-bright);
+  border: 1px solid var(--border-accent, rgba(232, 160, 32, 0.4));
   border-radius: 6px;
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   color: var(--text-primary);
   font-family: var(--font-body, 'DM Sans', sans-serif);
   font-size: 0.88rem;
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.15s;
+  caret-color: var(--accent);
 }
 
 .co-search:focus {
@@ -136,8 +136,8 @@ html, body {
 }
 
 .co-tag-pill:hover {
-  border-color: var(--border-bright);
-  color: var(--text-secondary);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .co-tag-active {
@@ -168,6 +168,21 @@ html, body {
   font-size: 0.86rem;
 }
 
+/* ── Timeline headers ────────────────────────────────────────────────────── */
+
+.co-timeline-header {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 8px 2px;
+}
+
+.co-left-list .co-timeline-header:first-child {
+  padding-top: 2px;
+}
+
 /* ── List row ────────────────────────────────────────────────────────────── */
 
 .co-row {
@@ -184,7 +199,7 @@ html, body {
 }
 
 .co-row:hover {
-  background: var(--bg-hover);
+  background: var(--accent-glow, rgba(232, 160, 32, 0.08));
 }
 
 .co-row-sel {
@@ -347,6 +362,23 @@ html, body {
   word-break: break-word;
 }
 
+.co-detail-textarea {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
 .co-detail-img-wrap {
   display: flex;
   align-items: flex-start;
@@ -407,6 +439,7 @@ html, body {
   border-top: 1px solid var(--border);
 }
 
+.co-detail-actions-l,
 .co-detail-actions-r {
   display: flex;
   gap: 4px;
@@ -424,8 +457,8 @@ html, body {
 }
 
 .co-btn:hover {
-  border-color: var(--text-primary);
-  color: var(--text-primary);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .co-btn-paste {

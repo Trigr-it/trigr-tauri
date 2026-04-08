@@ -28,6 +28,37 @@ function ImageThumb({ id, className }) {
 
 const ALL_TAGS = ['All', 'Text', 'Image', 'Number', 'Link', 'Email', 'Colour'];
 
+// ── Timeline grouping ──────────────────────────────────────────────────────
+
+function groupByTimeline(items) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(todayStart.getDate() - 1);
+  const weekStart = new Date(todayStart); weekStart.setDate(todayStart.getDate() - todayStart.getDay());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const groups = { Pinned: [], Today: [], Yesterday: [], 'This Week': [], 'This Month': [], Older: [] };
+
+  for (const item of items) {
+    if (item.pinned) { groups.Pinned.push(item); continue; }
+    const d = new Date(item.timestamp);
+    if (d >= todayStart) groups.Today.push(item);
+    else if (d >= yesterdayStart) groups.Yesterday.push(item);
+    else if (d >= weekStart) groups['This Week'].push(item);
+    else if (d >= monthStart) groups['This Month'].push(item);
+    else groups.Older.push(item);
+  }
+
+  return Object.entries(groups).filter(([, arr]) => arr.length > 0);
+}
+
+function formatStorageSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 export default function ClipboardPanel() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -42,6 +73,7 @@ export default function ClipboardPanel() {
   const [selectedId, setSelectedId] = useState(null);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
+  const [storageSize, setStorageSize] = useState(null);
   const ctxRef = useRef(null);
   const gridRef = useRef(null);
 
@@ -64,6 +96,9 @@ export default function ClipboardPanel() {
     loadHistory(1);
     window.electronAPI?.getDistinctSourceApps?.().then(apps => {
       if (apps) setSourceApps(apps);
+    });
+    window.electronAPI?.getClipboardStorageSize?.().then(size => {
+      if (size != null) setStorageSize(size);
     });
   }, [loadHistory]);
 
@@ -171,6 +206,8 @@ export default function ClipboardPanel() {
     return true;
   });
 
+  const grouped = groupByTimeline(filtered);
+
   const selected = items.find(i => i.id === selectedId) || null;
 
   const formatTime = (ts) => {
@@ -215,6 +252,9 @@ export default function ClipboardPanel() {
             onChange={e => setSearch(e.target.value)}
             spellCheck={false}
           />
+          {storageSize != null && storageSize > 0 && (
+            <span className="cbg-storage-size">{formatStorageSize(storageSize)}</span>
+          )}
           {clearConfirm ? (
             <div className="cbg-clear-confirm">
               <span>Clear?</span>
@@ -247,60 +287,65 @@ export default function ClipboardPanel() {
               {items.length === 0 ? 'No clipboard history yet — copy something to get started' : 'No results'}
             </div>
           ) : (
-            <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`}>
-              {filtered.map(item => {
-                const isImage = item.content_type === 'image';
-                const tag = item.content_tag || 'Text';
-                const colourVal = tag === 'Colour' ? parseColour(item.text_content || item.preview) : null;
-                const isLink = tag === 'Link';
-                const isSel = item.id === selectedId;
+            grouped.map(([label, groupItems]) => (
+              <div key={label} className="cbg-timeline-group">
+                <div className="cbg-timeline-header">{label === 'Pinned' ? '📌 Pinned' : label}</div>
+                <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`}>
+                  {groupItems.map(item => {
+                    const isImage = item.content_type === 'image';
+                    const tag = item.content_tag || 'Text';
+                    const colourVal = tag === 'Colour' ? parseColour(item.text_content || item.preview) : null;
+                    const isLink = tag === 'Link';
+                    const isSel = item.id === selectedId;
 
-                return (
-                  <div
-                    key={item.id}
-                    className={`cbg-card${isImage ? ' cbg-card-img' : ' cbg-card-text'}${isSel ? ' cbg-card-sel' : ''}`}
-                    onClick={() => setSelectedId(isSel ? null : item.id)}
-                    onContextMenu={e => {
-                      e.preventDefault();
-                      setCtxMenu({ id: item.id, x: e.clientX, y: e.clientY, pinned: item.pinned });
-                    }}
-                  >
-                    <span className={`cbg-tag cbg-tag-${tag.toLowerCase()}`}>{tag}</span>
-                    {item.pinned && <span className="cbg-card-pin">📌</span>}
+                    return (
+                      <div
+                        key={item.id}
+                        className={`cbg-card${isImage ? ' cbg-card-img' : ' cbg-card-text'}${isSel ? ' cbg-card-sel' : ''}`}
+                        onClick={() => setSelectedId(isSel ? null : item.id)}
+                        onContextMenu={e => {
+                          e.preventDefault();
+                          setCtxMenu({ id: item.id, x: e.clientX, y: e.clientY, pinned: item.pinned });
+                        }}
+                      >
+                        <span className={`cbg-tag cbg-tag-${tag.toLowerCase()}`}>{tag}</span>
+                        {item.pinned && <span className="cbg-card-pin">📌</span>}
 
-                    {isImage ? (
-                      <>
-                        <ImageThumb id={item.id} className="cbg-card-image" />
-                        <div className="cbg-card-img-overlay">
-                          {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
-                          <span className="cbg-overlay-right">{item.image_width}×{item.image_height} · {formatTime(item.timestamp)}</span>
-                        </div>
-                      </>
-                    ) : colourVal ? (
-                      <>
-                        <div className="cbg-colour-swatch" style={{ background: colourVal }} />
-                        <div className="cbg-card-body cbg-colour-value">{item.text_content || item.preview || ''}</div>
-                        <div className="cbg-card-meta">
-                          {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
-                          <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="cbg-card-body">
-                          {isLink && <span className="cbg-link-icon">🔗 </span>}
-                          {(item.preview || item.text_content || '').slice(0, 400)}
-                        </div>
-                        <div className="cbg-card-meta">
-                          {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
-                          <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                        {isImage ? (
+                          <>
+                            <ImageThumb id={item.id} className="cbg-card-image" />
+                            <div className="cbg-card-img-overlay">
+                              {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                              <span className="cbg-overlay-right">{item.image_width}×{item.image_height} · {formatTime(item.timestamp)}</span>
+                            </div>
+                          </>
+                        ) : colourVal ? (
+                          <>
+                            <div className="cbg-colour-swatch" style={{ background: colourVal }} />
+                            <div className="cbg-card-body cbg-colour-value">{item.text_content || item.preview || ''}</div>
+                            <div className="cbg-card-meta">
+                              {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                              <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="cbg-card-body">
+                              {isLink && <span className="cbg-link-icon">🔗 </span>}
+                              {(item.preview || item.text_content || '').slice(0, 400)}
+                            </div>
+                            <div className="cbg-card-meta">
+                              {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                              <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
           )}
           {loading && <div className="cbg-loading">Loading…</div>}
         </div>

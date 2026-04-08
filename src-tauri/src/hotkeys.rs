@@ -236,6 +236,11 @@ pub(crate) struct EngineState {
     pub(crate) pause_hotkey_str: Option<String>,
     // Global input method — resolved when per-assignment method is "global" or absent
     pub(crate) global_input_method: String,
+    // Macro speed preset — "safe" | "fast" | "instant" | "custom"
+    pub(crate) macro_speed: String,
+    // Custom speed slider values (only used when macro_speed == "custom")
+    pub(crate) custom_keystroke_delay: u64,
+    pub(crate) custom_pre_execution_delay: u64,
     // Clipboard quick-paste hotkey — parsed as (modifier_bits, vk_code)
     clipboard_paste_hotkey: Option<(u8, u32)>,
 }
@@ -260,6 +265,9 @@ impl Default for EngineState {
             pause_hotkey: None, // Set via set_global_pause_key command
             pause_hotkey_str: None,
             global_input_method: "direct".to_string(),
+            macro_speed: "safe".to_string(),
+            custom_keystroke_delay: 30,
+            custom_pre_execution_delay: 150,
             clipboard_paste_hotkey: Some((3, 0x56)), // Default: Ctrl+Shift+V (bits=3, vk=0x56)
         }
     }
@@ -1598,6 +1606,15 @@ pub fn update_global_settings(settings: &Value) {
     }
     if let Some(m) = settings.get("globalInputMethod").and_then(|v| v.as_str()) {
         state.global_input_method = m.to_string();
+    }
+    if let Some(s) = settings.get("macroSpeed").and_then(|v| v.as_str()) {
+        state.macro_speed = s.to_string();
+    }
+    if let Some(v) = settings.get("keystrokeDelay").and_then(|v| v.as_u64()) {
+        state.custom_keystroke_delay = v;
+    }
+    if let Some(v) = settings.get("macroTriggerDelay").and_then(|v| v.as_u64()) {
+        state.custom_pre_execution_delay = v;
     }
 }
 
