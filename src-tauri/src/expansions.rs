@@ -910,7 +910,7 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
 
 // ── Image expansion ────────────────────────────────────────────────────────
 
-/// Write image to the clipboard in three formats: CF_DIB, PNG stream, and CF_UNICODETEXT.
+/// Write image to the clipboard as CF_DIB + PNG stream (no text formats).
 /// CF_DIB provides universal bitmap support. PNG stream is preferred by Word, Outlook, etc.
 /// `raw_png_bytes` is the original file bytes when the source is PNG, or re-encoded PNG bytes.
 fn write_clipboard_image(pixels: &[u8], width: u32, height: u32, raw_png_bytes: &[u8]) -> bool {
@@ -986,18 +986,6 @@ fn write_clipboard_image(pixels: &[u8], width: u32, height: u32, raw_png_bytes: 
                         SetClipboardData(png_format_id, h_png as _);
                     }
                 }
-            }
-        }
-
-        // ── CF_UNICODETEXT: empty string for app compatibility ──
-        let empty_wide: [u16; 1] = [0]; // null-terminated empty string
-        let h_text = GlobalAlloc(GMEM_MOVEABLE, 2);
-        if !h_text.is_null() {
-            let text_ptr = GlobalLock(h_text) as *mut u16;
-            if !text_ptr.is_null() {
-                std::ptr::copy_nonoverlapping(empty_wide.as_ptr(), text_ptr, 1);
-                GlobalUnlock(h_text);
-                SetClipboardData(CF_UNICODETEXT, h_text as _);
             }
         }
 

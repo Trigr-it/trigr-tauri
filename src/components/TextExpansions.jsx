@@ -1332,9 +1332,14 @@ export default function TextExpansions({
                             max={100}
                             value={imageScale}
                             onChange={e => {
-                              let v = parseInt(e.target.value, 10);
-                              if (isNaN(v)) v = 100;
-                              setImageScale(Math.max(10, Math.min(100, v)));
+                              const raw = e.target.value;
+                              if (raw === '') { setImageScale(''); return; }
+                              const v = parseInt(raw, 10);
+                              if (!isNaN(v)) setImageScale(Math.min(100, v));
+                            }}
+                            onBlur={() => {
+                              const v = parseInt(imageScale, 10);
+                              setImageScale(isNaN(v) || v < 10 ? 10 : Math.min(100, v));
                             }}
                           />
                           <span className="te-image-scale-pct">%</span>

@@ -153,8 +153,7 @@ html, body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px 6px 6px;
+  padding: 0;
 }
 
 .co-left-list::-webkit-scrollbar {
@@ -176,11 +175,12 @@ html, body {
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 6px 8px 2px;
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--border);
 }
 
 .co-left-list .co-timeline-header:first-child {
-  padding-top: 2px;
+  padding-top: 6px;
 }
 
 /* ── List row ────────────────────────────────────────────────────────────── */
@@ -188,31 +188,45 @@ html, body {
 .co-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  gap: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.08s, border-color 0.08s;
+  transition: background 0.08s;
   position: relative;
 }
 
 .co-row:hover {
-  background: var(--accent-glow, rgba(232, 160, 32, 0.08));
+  background: rgba(232, 160, 32, 0.06);
 }
 
 .co-row-sel {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+  background: rgba(232, 160, 32, 0.18);
+}
+
+.co-row-sel:hover {
+  background: rgba(232, 160, 32, 0.22);
+}
+
+.co-row-sel .co-row-text {
+  color: var(--accent);
+}
+
+[data-theme="light"] .co-row-sel {
+  background: rgba(232, 160, 32, 0.16);
+}
+
+[data-theme="light"] .co-row-sel:hover {
+  background: rgba(232, 160, 32, 0.22);
 }
 
 .co-row-pin {
-  background: color-mix(in srgb, var(--accent) 5%, var(--bg-surface));
+  background: rgba(232, 160, 32, 0.04);
 }
 
 .co-row-sel.co-row-pin {
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  background: rgba(232, 160, 32, 0.20);
 }
 
 .co-row-thumb {

@@ -893,7 +893,7 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let _ = win.set_size(tauri::LogicalSize::new(750.0, 600.0));
 
     // Send recent clipboard history + theme to the overlay
-    let history = clipboard::get_history(1, 15);
+    let history = clipboard::get_history(1, 500);
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
     let mut payload = history;
@@ -1172,7 +1172,6 @@ fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_byt
     use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 
     const CF_DIB_: u32 = 8;
-    const CF_UNICODETEXT_: u32 = 13;
 
     let header_size: u32 = 40;
     let pixel_data_size = bgra_pixels.len();
@@ -1220,17 +1219,6 @@ fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_byt
                         SetClipboardData(fmt_id, h_png as _);
                     }
                 }
-            }
-        }
-
-        // CF_UNICODETEXT empty
-        let h_text = GlobalAlloc(GMEM_MOVEABLE, 2);
-        if !h_text.is_null() {
-            let tp = GlobalLock(h_text) as *mut u16;
-            if !tp.is_null() {
-                *tp = 0;
-                GlobalUnlock(h_text);
-                SetClipboardData(CF_UNICODETEXT_, h_text as _);
             }
         }
 
