@@ -596,7 +596,7 @@ export default function TextExpansions({
     setDisplayName('');
     setTriggerError('');
     setEditorValue({ html: '', text: '' });
-    setCategory(activeCategory === 'All' ? null : activeCategory);
+    setCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
     setTriggerMode('space');
     setExpansionType('text');
     setImagePath('');
