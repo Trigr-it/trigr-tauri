@@ -47,6 +47,7 @@ struct ClipEntry {
 // ── Writer thread channel ────────────────────────────────────────────────────
 
 static CLIPBOARD_TX: OnceLock<Mutex<mpsc::Sender<ClipboardMsg>>> = OnceLock::new();
+static DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 enum ClipboardMsg {
     NewEntry(ClipEntry),
@@ -226,6 +227,7 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
     }
 
     let db_path = app_data_dir.join("trigr-clipboard.db");
+    let _ = DB_PATH.set(db_path.clone());
     let (tx, rx) = mpsc::channel::<ClipboardMsg>();
     let _ = CLIPBOARD_TX.set(Mutex::new(tx));
 
@@ -442,6 +444,20 @@ pub fn set_retention_days(days: u32) {
 
 pub fn get_retention() -> u32 {
     retention_days()
+}
+
+pub fn get_storage_size() -> u64 {
+    if let Some(path) = DB_PATH.get() {
+        // Include WAL and SHM files in total size
+        let mut total = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        let wal = path.with_extension("db-wal");
+        let shm = path.with_extension("db-shm");
+        total += std::fs::metadata(&wal).map(|m| m.len()).unwrap_or(0);
+        total += std::fs::metadata(&shm).map(|m| m.len()).unwrap_or(0);
+        total
+    } else {
+        0
+    }
 }
 
 // ── Writer thread handlers ───────────────────────────────────────────────────

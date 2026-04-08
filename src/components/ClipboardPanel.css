@@ -36,15 +36,16 @@
 .cbg-search {
   flex: 1;
   padding: 7px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-accent, rgba(232, 160, 32, 0.4));
   border-radius: 8px;
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: 0.82rem;
   outline: none;
   transition: border-color 0.15s;
   box-sizing: border-box;
+  caret-color: var(--accent);
 }
 
 .cbg-search:focus { border-color: var(--accent); }
@@ -63,7 +64,7 @@
   white-space: nowrap;
 }
 
-.cbg-clear-btn:hover:not(:disabled) { border-color: var(--text-primary); color: var(--text-primary); }
+.cbg-clear-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .cbg-clear-btn:disabled { opacity: 0.4; cursor: default; }
 
 .cbg-clear-confirm {
@@ -129,7 +130,7 @@
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
-.cbg-tag-pill:hover { border-color: var(--border-bright); color: var(--text-primary); }
+.cbg-tag-pill:hover { border-color: var(--accent); color: var(--accent); }
 .cbg-tag-active { background: var(--accent); border-color: var(--accent); color: var(--bg-base); }
 
 /* ── Grid ────────────────────────────────────────────────────────────────── */
@@ -138,6 +139,34 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* ── Storage size indicator ──────────────────────────────────────────────── */
+
+.cbg-storage-size {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Timeline groups ────────────────────────────────────────────────────── */
+
+.cbg-timeline-group {
+  margin-bottom: 4px;
+}
+
+.cbg-timeline-header {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 10px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cbg-timeline-group:first-child .cbg-timeline-header {
+  padding-top: 4px;
 }
 
 .cbg-grid {
@@ -169,12 +198,11 @@
   position: relative;
   border-radius: 8px;
   cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: border-color 0.12s;
 }
 
 .cbg-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px color-mix(in srgb, var(--bg-base) 60%, transparent);
+  border-color: var(--border-accent, rgba(232, 160, 32, 0.4));
 }
 
 /* ── Tag pill (top-right) ────────────────────────────────────────────────── */
@@ -333,10 +361,9 @@
   z-index: 9999;
   min-width: 100px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-accent, rgba(232, 160, 32, 0.4));
   border-radius: 8px;
   padding: 4px 0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .cbg-ctx-item {
@@ -357,8 +384,7 @@
 /* ── Card selection state ────────────────────────────────────────────────── */
 
 .cbg-card-sel {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  border-color: var(--accent);
 }
 
 /* ── 2-column grid when detail pane open ─────────────────────────────────── */
@@ -479,8 +505,8 @@
 }
 
 .cbg-dbtn:hover {
-  border-color: var(--text-primary);
-  color: var(--text-primary);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .cbg-dbtn-paste {

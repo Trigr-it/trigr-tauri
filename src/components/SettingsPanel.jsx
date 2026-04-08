@@ -7,6 +7,13 @@ const GLOBAL_INPUT_METHODS = [
   { id: 'shift-insert', label: 'Clipboard',  hint: 'Fast for long text — pastes via clipboard' },
 ];
 
+const MACRO_SPEED_PRESETS = [
+  { id: 'safe',    label: 'Safe',    hint: 'Maximum compatibility — works in all apps',  keystrokeDelay: 30, macroTriggerDelay: 150, doubleTapWindow: 300 },
+  { id: 'fast',    label: 'Fast',    hint: 'Reduced delays — good for most apps',        keystrokeDelay: 15, macroTriggerDelay: 75,  doubleTapWindow: 200 },
+  { id: 'instant', label: 'Instant', hint: 'Minimal delays — may skip in slow apps',     keystrokeDelay: 0,  macroTriggerDelay: 0,   doubleTapWindow: 100 },
+  { id: 'custom',  label: 'Custom',  hint: 'Manual slider control' },
+];
+
 export default function SettingsPanel({
   onClose,
   macrosEnabledOnStartup,
@@ -15,6 +22,7 @@ export default function SettingsPanel({
   onImportConfig,
   onRestoreBackup,
   globalInputMethod = 'direct',
+  macroSpeed        = 'safe',
   keystrokeDelay    = 30,
   macroTriggerDelay = 150,
   doubleTapWindow   = 300,
@@ -681,6 +689,34 @@ export default function SettingsPanel({
             ))}
           </div>
 
+          <label className="settings-field-label" style={{ marginTop: 12 }}>Macro speed</label>
+          <div className="settings-method-grid">
+            {MACRO_SPEED_PRESETS.map(m => (
+              <label
+                key={m.id}
+                className={`settings-method-opt${macroSpeed === m.id ? ' active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="macroSpeed"
+                  value={m.id}
+                  checked={macroSpeed === m.id}
+                  onChange={() => {
+                    const patch = { macroSpeed: m.id };
+                    if (m.keystrokeDelay != null) {
+                      patch.keystrokeDelay = m.keystrokeDelay;
+                      patch.macroTriggerDelay = m.macroTriggerDelay;
+                      patch.doubleTapWindow = m.doubleTapWindow;
+                    }
+                    onUpdateGlobalSettings?.(patch);
+                  }}
+                />
+                <span className="settings-method-label">{m.label}</span>
+                <span className="settings-method-hint">{m.hint}</span>
+              </label>
+            ))}
+          </div>
+
           {globalInputMethod === 'direct' && (
             <div className="settings-slider-row">
               <div className="settings-slider-info">
@@ -693,7 +729,7 @@ export default function SettingsPanel({
                   className="settings-slider"
                   min="0" max="200" step="5"
                   value={keystrokeDelay}
-                  onChange={e => onUpdateGlobalSettings?.({ keystrokeDelay: Number(e.target.value) })}
+                  onChange={e => onUpdateGlobalSettings?.({ keystrokeDelay: Number(e.target.value), macroSpeed: 'custom' })}
                 />
                 <span className="settings-slider-val">{keystrokeDelay}ms</span>
               </div>
@@ -711,7 +747,7 @@ export default function SettingsPanel({
                 className="settings-slider"
                 min="0" max="500" step="10"
                 value={macroTriggerDelay}
-                onChange={e => onUpdateGlobalSettings?.({ macroTriggerDelay: Number(e.target.value) })}
+                onChange={e => onUpdateGlobalSettings?.({ macroTriggerDelay: Number(e.target.value), macroSpeed: 'custom' })}
               />
               <span className="settings-slider-val">{macroTriggerDelay}ms</span>
             </div>
@@ -728,7 +764,7 @@ export default function SettingsPanel({
                 className="settings-slider"
                 min="150" max="500" step="10"
                 value={doubleTapWindow}
-                onChange={e => onUpdateGlobalSettings?.({ doubleTapWindow: Number(e.target.value) })}
+                onChange={e => onUpdateGlobalSettings?.({ doubleTapWindow: Number(e.target.value), macroSpeed: 'custom' })}
               />
               <span className="settings-slider-val">{doubleTapWindow}ms</span>
             </div>

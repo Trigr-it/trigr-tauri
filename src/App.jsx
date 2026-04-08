@@ -44,6 +44,7 @@ function App() {
   const [showOnboarding, setShowOnboarding]         = useState(false);
   const [macrosEnabledOnStartup, setMacrosEnabledOnStartup] = useState(true);
   const [globalInputMethod,  setGlobalInputMethod]  = useState('direct');
+  const [macroSpeed,         setMacroSpeed]         = useState('safe');
   const [keystrokeDelay,     setKeystrokeDelay]     = useState(30);
   const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(150);
   const [searchOverlayHotkey,       setSearchOverlayHotkey]       = useState('Ctrl+Space');
@@ -106,6 +107,7 @@ function App() {
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
         setGlobalInputMethod(config.globalInputMethod   || 'direct');
+        setMacroSpeed(       config.macroSpeed          || 'safe');
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
@@ -119,6 +121,7 @@ function App() {
         // Sync new settings to engine on load
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
+          macroSpeed:        config.macroSpeed         || 'safe',
           keystrokeDelay:    config.keystrokeDelay     ?? 30,
           macroTriggerDelay: config.macroTriggerDelay  ?? 150,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
@@ -236,6 +239,7 @@ function App() {
         setAutocorrectEnabled(config.autocorrectEnabled ?? false);
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
         setGlobalInputMethod(config.globalInputMethod   || 'direct');
+        setMacroSpeed(       config.macroSpeed          || 'safe');
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
@@ -251,6 +255,7 @@ function App() {
         window.electronAPI?.updateGlobalVariables(config.globalVariables || {});
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
+          macroSpeed:        config.macroSpeed         || 'safe',
           keystrokeDelay:    config.keystrokeDelay     ?? 30,
           macroTriggerDelay: config.macroTriggerDelay  ?? 150,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
@@ -1114,16 +1119,19 @@ function App() {
   const handleUpdateGlobalSettings = useCallback((patch) => {
     const next = {
       globalInputMethod:  patch.globalInputMethod  ?? globalInputMethod,
+      macroSpeed:         patch.macroSpeed         ?? macroSpeed,
       keystrokeDelay:     patch.keystrokeDelay     ?? keystrokeDelay,
       macroTriggerDelay:  patch.macroTriggerDelay  ?? macroTriggerDelay,
       doubleTapWindow:    patch.doubleTapWindow     ?? doubleTapWindow,
     };
     setGlobalInputMethod(next.globalInputMethod);
+    setMacroSpeed(next.macroSpeed);
     setKeystrokeDelay(next.keystrokeDelay);
     setMacroTriggerDelay(next.macroTriggerDelay);
     setDoubleTapWindow(next.doubleTapWindow);
     window.electronAPI?.updateGlobalSettings(next);
-  }, [globalInputMethod, keystrokeDelay, macroTriggerDelay, doubleTapWindow]);
+    window.electronAPI?.saveConfig(next);
+  }, [globalInputMethod, macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow]);
 
   // ── Global pause toggle ───────────────────────────────────
   const handleSetPauseKey = useCallback(async (combo) => {
@@ -1637,6 +1645,7 @@ function App() {
             onImportConfig={handleImportConfig}
             onRestoreBackup={handleRestoreBackup}
             globalInputMethod={globalInputMethod}
+            macroSpeed={macroSpeed}
             keystrokeDelay={keystrokeDelay}
             macroTriggerDelay={macroTriggerDelay}
             doubleTapWindow={doubleTapWindow}
