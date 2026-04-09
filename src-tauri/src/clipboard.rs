@@ -517,7 +517,7 @@ fn handle_get_history(conn: &Connection, page: u32, per_page: u32) -> Value {
     let mut stmt = conn
         .prepare(
             "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag
-             FROM clipboard_history ORDER BY id DESC LIMIT ?1 OFFSET ?2",
+             FROM clipboard_history ORDER BY pinned DESC, id DESC LIMIT ?1 OFFSET ?2",
         )
         .unwrap();
 
