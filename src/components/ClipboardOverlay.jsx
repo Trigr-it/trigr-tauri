@@ -110,7 +110,8 @@ export default function ClipboardOverlay() {
   // Cancel edit when selection changes
   useEffect(() => { setEditing(false); setEditText(''); }, [selectedIndex]);
 
-  const selected = filtered[selectedIndex] || null;
+  const selectedEntry = groupedFlat.find(e => e.type === 'item' && e.flatIndex === selectedIndex);
+  const selected = selectedEntry?.item || null;
 
   // ── Keyboard nav ──────────────────────────────────────────────────────────
 
