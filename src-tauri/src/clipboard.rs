@@ -595,7 +595,8 @@ fn handle_get_distinct_source_apps(conn: &Connection) -> Vec<String> {
 fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<String> {
     let new_tag = auto_tag("text", Some(new_text));
     let preview = if new_text.len() > 200 {
-        format!("{}…", &new_text[..200])
+        let end = new_text.char_indices().nth(200).map(|(i, _)| i).unwrap_or(new_text.len());
+        format!("{}…", &new_text[..end])
     } else {
         new_text.to_string()
     };
@@ -803,7 +804,8 @@ fn handle_clipboard_update() {
 
                     let tag = auto_tag("text", Some(&text));
                     let preview = if text.len() > 200 {
-                        format!("{}…", &text[..200])
+                        let end = text.char_indices().nth(200).map(|(i, _)| i).unwrap_or(text.len());
+                        format!("{}…", &text[..end])
                     } else {
                         text.clone()
                     };
