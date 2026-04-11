@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './ClipboardPanel.css';
+import ZoomableImage from './ZoomableImage';
+import './ZoomableImage.css';
 
 // ── Lazy image thumbnail ────────────────────────────────────────────────────
 
-function ImageThumb({ id, className }) {
+function ImageThumb({ id, className, zoomable }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -23,6 +25,7 @@ function ImageThumb({ id, className }) {
       </div>
     );
   }
+  if (zoomable) return <ZoomableImage src={src} className={className} />;
   return <img className={className} src={src} alt="" />;
 }
 
@@ -358,7 +361,7 @@ export default function ClipboardPanel() {
           <div className="cbg-detail">
             <div className="cbg-detail-content">
               {selected.content_type === 'image' ? (
-                <ImageThumb id={selected.id} className="cbg-detail-img" />
+                <ImageThumb id={selected.id} className="cbg-detail-img" zoomable />
               ) : editing ? (
                 <textarea
                   className="cbg-detail-textarea"

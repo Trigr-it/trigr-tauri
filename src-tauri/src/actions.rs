@@ -38,6 +38,7 @@ struct HeldKeyState {
     mod_vks: Vec<u16>,
     mouse_button: Option<String>, // Some("LButton") for mouse hold, None for keyboard
     label: String, // e.g. "Ctrl+W" for tray tooltip
+    trigger_mouse_id: Option<String>, // e.g. "MOUSE_RIGHT" — when set, release on mouse-up instead of toggle
 }
 
 const CF_UNICODETEXT: u32 = 13;
@@ -69,6 +70,32 @@ pub fn release_held_key() -> Option<String> {
 /// Check if a key is currently being held.
 pub fn is_key_held() -> bool {
     HELD_KEY.lock().unwrap().is_some()
+}
+
+/// Release the held key only if it was triggered by the given mouse button (e.g. "MOUSE_RIGHT").
+/// Used by handle_mouse_up for press-hold mouse remapping (hold while button is down, release on up).
+pub fn release_held_if_mouse_trigger(mouse_id: &str) -> Option<String> {
+    let mut held = HELD_KEY.lock().unwrap();
+    let matches = held.as_ref()
+        .and_then(|s| s.trigger_mouse_id.as_deref())
+        .map_or(false, |id| id == mouse_id);
+    if matches {
+        let state = held.take().unwrap();
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+        if let Some(ref button) = state.mouse_button {
+            send_mouse_event(button, true);
+        } else {
+            send_vk_key(state.target_vk, true);
+            for &vk in state.mod_vks.iter().rev() {
+                send_vk_key(vk, true);
+            }
+        }
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+        info!("[Trigr] Released held key on mouse-up: {}", state.label);
+        Some(state.label)
+    } else {
+        None
+    }
 }
 
 // ── Repeat mode state ──────────────────────────────────────────────────────
@@ -684,11 +711,18 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         }
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 
+        // Detect if the trigger was a mouse button (from the storage key)
+        let trigger_mouse = trigger_key
+            .and_then(|tk| tk.split("::").last())
+            .filter(|last| last.starts_with("MOUSE_"))
+            .map(|s| s.to_string());
+
         *held = Some(HeldKeyState {
             target_vk,
             mod_vks: mod_vks.clone(),
             mouse_button: if is_mouse { Some(key_name.to_string()) } else { None },
             label: combo_label.clone(),
+            trigger_mouse_id: trigger_mouse,
         });
         drop(held);
         crate::tray::update_tray_icon_held(app, &combo_label);

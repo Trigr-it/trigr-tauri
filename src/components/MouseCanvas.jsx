@@ -24,7 +24,8 @@ function isRiskyZone(combo, zoneId) {
 }
 
 const BARE_MOUSE_ALLOWED = new Set([
-  'MOUSE_MIDDLE', 'MOUSE_SIDE1', 'MOUSE_SIDE2',
+  'MOUSE_LEFT', 'MOUSE_RIGHT', 'MOUSE_MIDDLE',
+  'MOUSE_SIDE1', 'MOUSE_SIDE2',
   'MOUSE_SCROLL_UP', 'MOUSE_SCROLL_DOWN',
 ]);
 
@@ -152,7 +153,7 @@ export default function MouseCanvas({
   function zoneTitle(id) {
     const z   = zone(id);
     const lbl = MOUSE_ZONES.find(mz => mz.id === id)?.label || id;
-    if (z.bareBlocked) return 'Left and right click require a modifier key';
+    if (z.bareBlocked) return 'This button requires a modifier key';
     if (z.noLayer)     return 'Select a modifier layer above first';
     if (z.isRisky)     return `⚠ May conflict with system shortcuts — ${z.isAssigned ? 'click to edit' : 'click to assign'}`;
     if (z.isAssigned)  return `Click to edit: ${lbl}`;
@@ -190,7 +191,7 @@ export default function MouseCanvas({
             </span>
           ) : (
             <span className="label-muted">
-              Click <strong>Middle Click</strong>, <strong>Scroll</strong>, or <strong>Side Buttons</strong> to assign a bare macro
+              Click any mouse button to assign a bare macro
             </span>
           )
         ) : selectedKey?.startsWith('MOUSE_') ? (
@@ -217,7 +218,7 @@ export default function MouseCanvas({
             <div className="mouse-advisory-text">
               <strong>Global profile — potential conflicts.</strong>{' '}
               Mouse combos like Ctrl+Click and Middle Click are used by browsers and system shortcuts.
-              App-specific profiles only intercept when that app is focused, and also allow middle click, scroll, and side buttons to be assigned without a modifier.
+              App-specific profiles only intercept when that app is focused, and also allow all mouse buttons to be assigned without a modifier.
             </div>
           </div>
           {creatingProfile ? (

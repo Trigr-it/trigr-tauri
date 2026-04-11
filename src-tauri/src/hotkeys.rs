@@ -75,6 +75,36 @@ fn suppress_keys() -> &'static RwLock<HashSet<(u8, u32)>> {
     SUPPRESS_KEYS.get_or_init(|| RwLock::new(HashSet::new()))
 }
 
+/// Set of bare mouse button IDs that should be suppressed (swallowed) by the mouse hook.
+/// Only populated when the active profile is app-linked and has bare mouse assignments.
+/// 1=Left, 2=Right, 3=Middle, 4=Side1, 5=Side2, 6=ScrollUp, 7=ScrollDown
+static SUPPRESS_BARE_MOUSE: OnceLock<RwLock<HashSet<u8>>> = OnceLock::new();
+
+fn suppress_bare_mouse() -> &'static RwLock<HashSet<u8>> {
+    SUPPRESS_BARE_MOUSE.get_or_init(|| RwLock::new(HashSet::new()))
+}
+
+const SUPPRESS_MOUSE_LEFT: u8 = 1;
+const SUPPRESS_MOUSE_RIGHT: u8 = 2;
+const SUPPRESS_MOUSE_MIDDLE: u8 = 3;
+const SUPPRESS_MOUSE_SIDE1: u8 = 4;
+const SUPPRESS_MOUSE_SIDE2: u8 = 5;
+const SUPPRESS_MOUSE_SCROLL_UP: u8 = 6;
+const SUPPRESS_MOUSE_SCROLL_DOWN: u8 = 7;
+
+fn mouse_key_id_to_suppress(key_id: &str) -> Option<u8> {
+    match key_id {
+        "MOUSE_LEFT" => Some(SUPPRESS_MOUSE_LEFT),
+        "MOUSE_RIGHT" => Some(SUPPRESS_MOUSE_RIGHT),
+        "MOUSE_MIDDLE" => Some(SUPPRESS_MOUSE_MIDDLE),
+        "MOUSE_SIDE1" => Some(SUPPRESS_MOUSE_SIDE1),
+        "MOUSE_SIDE2" => Some(SUPPRESS_MOUSE_SIDE2),
+        "MOUSE_SCROLL_UP" => Some(SUPPRESS_MOUSE_SCROLL_UP),
+        "MOUSE_SCROLL_DOWN" => Some(SUPPRESS_MOUSE_SCROLL_DOWN),
+        _ => None,
+    }
+}
+
 fn modifier_bits() -> u8 {
     let mut bits = 0u8;
     if MOD_CTRL.load(Ordering::SeqCst) { bits |= 1; }
@@ -102,6 +132,7 @@ fn modifier_string_to_bits(combo: &str) -> u8 {
 /// Must be called while holding the engine_state lock — overlay_hotkey is read from the state.
 fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, profile_settings: &HashMap<String, Value>) {
     let mut set = HashSet::new();
+    let mut mouse_set = HashSet::new();
     let prefix = format!("{}::", profile);
     // Bare keys only suppress when the active profile is app-linked
     let is_linked = profile_settings.get(profile)
@@ -118,7 +149,10 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
         if combo_str == "BARE" {
             if is_linked {
                 let key_id = parts[2];
-                if let Some(vk) = key_id_to_vk(key_id) {
+                // Bare mouse buttons go to separate suppress set
+                if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
+                    mouse_set.insert(mouse_id);
+                } else if let Some(vk) = key_id_to_vk(key_id) {
                     set.insert((0u8, vk));
                 }
             }
@@ -132,9 +166,12 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
             }
         }
     }
-    println!("[HOOK] Rebuilt suppress set: {} combos (before overlay)", set.len());
+    println!("[HOOK] Rebuilt suppress set: {} key combos, {} bare mouse (before overlay)", set.len(), mouse_set.len());
     if let Ok(mut w) = suppress_keys().write() {
         *w = set;
+    }
+    if let Ok(mut w) = suppress_bare_mouse().write() {
+        *w = mouse_set;
     }
 }
 
@@ -602,51 +639,66 @@ unsafe extern "system" fn mouse_hook_proc(
 ) -> LRESULT {
     HOOK_HEARTBEAT.fetch_add(1, Ordering::SeqCst);
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
+        let mut suppress_id: Option<u8> = None;
         match w_param as u32 {
-            WM_LBUTTONDOWN => send_event(HookEvent::MouseDown {
-                button: MouseButton::Left,
-            }),
-            WM_LBUTTONUP => send_event(HookEvent::MouseUp {
-                button: MouseButton::Left,
-            }),
-            WM_RBUTTONDOWN => send_event(HookEvent::MouseDown {
-                button: MouseButton::Right,
-            }),
-            WM_RBUTTONUP => send_event(HookEvent::MouseUp {
-                button: MouseButton::Right,
-            }),
-            WM_MBUTTONDOWN => send_event(HookEvent::MouseDown {
-                button: MouseButton::Middle,
-            }),
-            WM_MBUTTONUP => send_event(HookEvent::MouseUp {
-                button: MouseButton::Middle,
-            }),
+            WM_LBUTTONDOWN => {
+                send_event(HookEvent::MouseDown { button: MouseButton::Left });
+                suppress_id = Some(SUPPRESS_MOUSE_LEFT);
+            }
+            WM_LBUTTONUP => {
+                send_event(HookEvent::MouseUp { button: MouseButton::Left });
+                suppress_id = Some(SUPPRESS_MOUSE_LEFT);
+            }
+            WM_RBUTTONDOWN => {
+                send_event(HookEvent::MouseDown { button: MouseButton::Right });
+                suppress_id = Some(SUPPRESS_MOUSE_RIGHT);
+            }
+            WM_RBUTTONUP => {
+                send_event(HookEvent::MouseUp { button: MouseButton::Right });
+                suppress_id = Some(SUPPRESS_MOUSE_RIGHT);
+            }
+            WM_MBUTTONDOWN => {
+                send_event(HookEvent::MouseDown { button: MouseButton::Middle });
+                suppress_id = Some(SUPPRESS_MOUSE_MIDDLE);
+            }
+            WM_MBUTTONUP => {
+                send_event(HookEvent::MouseUp { button: MouseButton::Middle });
+                suppress_id = Some(SUPPRESS_MOUSE_MIDDLE);
+            }
             WM_XBUTTONDOWN => {
                 let ms = &*(l_param as *const MSLLHOOKSTRUCT);
                 let xbutton = ((ms.mouseData >> 16) & 0xFFFF) as u16;
-                let button = if xbutton == 1 {
-                    MouseButton::Side1
-                } else {
-                    MouseButton::Side2
-                };
+                let button = if xbutton == 1 { MouseButton::Side1 } else { MouseButton::Side2 };
                 send_event(HookEvent::MouseDown { button });
+                suppress_id = Some(if xbutton == 1 { SUPPRESS_MOUSE_SIDE1 } else { SUPPRESS_MOUSE_SIDE2 });
             }
             WM_XBUTTONUP => {
                 let ms = &*(l_param as *const MSLLHOOKSTRUCT);
                 let xbutton = ((ms.mouseData >> 16) & 0xFFFF) as u16;
-                let button = if xbutton == 1 {
-                    MouseButton::Side1
-                } else {
-                    MouseButton::Side2
-                };
+                let button = if xbutton == 1 { MouseButton::Side1 } else { MouseButton::Side2 };
                 send_event(HookEvent::MouseUp { button });
+                suppress_id = Some(if xbutton == 1 { SUPPRESS_MOUSE_SIDE1 } else { SUPPRESS_MOUSE_SIDE2 });
             }
             WM_MOUSEWHEEL => {
                 let ms = &*(l_param as *const MSLLHOOKSTRUCT);
                 let delta = (ms.mouseData >> 16) as i16;
                 send_event(HookEvent::MouseWheel { delta });
+                suppress_id = Some(if delta > 0 { SUPPRESS_MOUSE_SCROLL_UP } else { SUPPRESS_MOUSE_SCROLL_DOWN });
             }
             _ => {}
+        }
+        // Suppress mouse events that have bare assignments in app-linked profiles.
+        // Checked regardless of modifier state — bare mouse remaps act as full button
+        // replacements, so Shift+RightClick should become Shift+MiddleClick (modifiers
+        // pass through naturally since they're physically held).
+        if let Some(btn_id) = suppress_id {
+            if MACROS_ENABLED.load(Ordering::SeqCst) {
+                if let Ok(set) = suppress_bare_mouse().try_read() {
+                    if set.contains(&btn_id) {
+                        return 1;
+                    }
+                }
+            }
         }
     }
     CallNextHookEx(
@@ -1149,12 +1201,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     let mouse_id = mouse_button_to_key_id(button);
 
     if !has_any_modifier() {
-        // Bare mouse — only middle, side1, side2 allowed bare
-        let bare_allowed = matches!(button, MouseButton::Middle | MouseButton::Side1 | MouseButton::Side2);
-        if !bare_allowed {
-            return;
-        }
-
+        // Bare mouse — all buttons allowed in app-linked profiles
         let state = engine_state().lock().unwrap();
         let profile = state.active_profile.clone();
         let linked = state
@@ -1174,7 +1221,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
         return;
     }
 
-    // Modified mouse button
+    // Modified mouse button — check for explicit modifier assignment first
     let combo = build_modifier_combo();
     let state = engine_state().lock().unwrap();
     let profile = state.active_profile.clone();
@@ -1184,15 +1231,40 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
         drop(state);
         // Mouse buttons fire immediately (no deferred-to-keyup)
         dispatch_with_double_tap(&storage_key, macro_val, Some(storage_key.clone()), app);
+        return;
+    }
+
+    // No modified assignment — fall through to bare assignment in app-linked profiles.
+    // Bare mouse remaps act as full button replacements: modifiers pass through
+    // naturally since they're physically held (e.g. Shift+RightClick → Shift+MiddleClick).
+    let linked = state
+        .profile_settings
+        .get(&profile)
+        .and_then(|s| s.get("linkedApp"))
+        .and_then(|v| v.as_str())
+        .is_some();
+
+    if linked {
+        let bare_key = format!("{}::BARE::{}", profile, mouse_id);
+        if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
+            drop(state);
+            dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
+            return;
+        }
     }
 }
 
-fn handle_mouse_up(_button: MouseButton, _app: &AppHandle) {
-    // Mouse up doesn't trigger actions — macros fire on mousedown
+fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
+    // Release held key if this mouse button was the trigger (press-hold mirroring)
+    let mouse_id = mouse_button_to_key_id(button);
+    if let Some(label) = crate::actions::release_held_if_mouse_trigger(mouse_id) {
+        crate::tray::update_tray_icon_normal(app);
+        info!("[Trigr] Mouse-up released hold: {}", label);
+    }
 }
 
 fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
-    if APP_INPUT_FOCUSED.load(Ordering::SeqCst) || !has_any_modifier() {
+    if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
         return;
     }
 
@@ -1201,6 +1273,27 @@ fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
     } else {
         "MOUSE_SCROLL_DOWN"
     };
+
+    if !has_any_modifier() {
+        // Bare scroll — only in app-linked profiles
+        let state = engine_state().lock().unwrap();
+        let profile = state.active_profile.clone();
+        let linked = state
+            .profile_settings
+            .get(&profile)
+            .and_then(|s| s.get("linkedApp"))
+            .and_then(|v| v.as_str())
+            .is_some();
+
+        if linked {
+            let bare_key = format!("{}::BARE::{}", profile, wheel_id);
+            if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
+                drop(state);
+                fire_macro(macro_val, false, Some(bare_key), app);
+            }
+        }
+        return;
+    }
 
     let combo = build_modifier_combo();
     let state = engine_state().lock().unwrap();
