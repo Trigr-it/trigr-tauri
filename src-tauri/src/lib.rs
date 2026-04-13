@@ -890,7 +890,7 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let x = log_left + (log_w - win_w) / 2.0;
     let y = log_top + log_h / 3.0;
     let _ = win.set_position(tauri::LogicalPosition::new(x, y));
-    let _ = win.set_size(tauri::LogicalSize::new(win_w, 600.0));
+    let _ = win.set_size(tauri::LogicalSize::new(win_w, 500.0));
 
     // Send recent clipboard history + theme to the overlay
     let history = clipboard::get_history(1, 500);

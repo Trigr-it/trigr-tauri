@@ -55,8 +55,6 @@ function groupByTimeline(items) {
 
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
-const OVERLAY_W = 750;
-
 export default function ClipboardOverlay() {
   const [items, setItems] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -154,10 +152,6 @@ export default function ClipboardOverlay() {
   }, [selectedIndex]);
 
   // ── Resize window to panel ────────────────────────────────────────────────
-
-  useEffect(() => {
-    window.electronAPI?.resizeClipboardOverlay(OVERLAY_W, 500);
-  }, [items]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
