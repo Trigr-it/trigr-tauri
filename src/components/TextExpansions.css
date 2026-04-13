@@ -20,6 +20,8 @@
   min-height: 0;
 }
 
+.main-area--expansions .te-content,
+.main-area--expansions .te-main,
 .main-area--expansions .te-body,
 .main-area--expansions .ac-view,
 .main-area--expansions .gd-view {
@@ -145,40 +147,49 @@
   box-shadow: 0 0 8px rgba(232, 160, 32, 0.15);
 }
 
-/* ── Category bar ───────────────────────────────────────────────────────── */
+/* ── Content wrapper: sidebar + main ──────────────────────────────────── */
 
-.te-cat-bar {
+.te-content {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--border);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Category sidebar (vertical) ─────────────────────────────────────── */
+
+.te-cat-sidebar {
+  width: 170px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
   background: var(--bg-elevated);
-  overflow-x: auto;
-  scrollbar-width: none;
-  flex-wrap: nowrap;
-  min-height: 34px;
-  flex-shrink: 0;
 }
 
-.te-cat-bar::-webkit-scrollbar { display: none; }
-
-.te-cat-tab-group {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  flex-shrink: 0;
+.te-cat-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+  min-height: 0;
 }
 
-.te-cat-tab {
+.te-cat-row-group {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 34px;
-  padding: 0 8px;
+  position: relative;
+}
+
+.te-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-left: 2px solid transparent;
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
@@ -186,32 +197,40 @@
   letter-spacing: 0.04em;
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
-  margin-bottom: -1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
 }
 
-.te-cat-tab:hover {
+.te-cat-row:hover {
   color: var(--text-secondary);
+  background: var(--bg-hover);
 }
 
-.te-cat-tab-active {
+.te-cat-row-active {
   color: var(--cat-color, var(--accent));
-  border-bottom-color: var(--cat-color, var(--accent));
+  border-left-color: var(--cat-color, var(--accent));
+  background: var(--accent-glow, rgba(232, 160, 32, 0.06));
 }
 
-.te-cat-tab-uncategorised {
+.te-cat-row-uncategorised {
   color: var(--text-muted);
+}
+
+.te-cat-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .te-cat-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--text-muted);  /* neutral default when no colour set */
+  background: var(--text-muted);
   flex-shrink: 0;
 }
 
-/* Make the dot a click target for colour picking */
 .te-cat-dot.te-cat-dot-pick {
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
@@ -230,67 +249,25 @@
   border-radius: 8px;
   font-family: var(--font-body);
   letter-spacing: 0;
+  flex-shrink: 0;
 }
 
-.te-cat-tab-active .te-cat-count {
+.te-cat-row-active .te-cat-count {
   background: color-mix(in srgb, var(--cat-color, var(--accent)) 15%, var(--bg-active));
   color: var(--cat-color, var(--accent));
 }
 
-.te-cat-x {
-  width: 18px;
-  height: 18px;
+.te-cat-new-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 3px;
+  border: none;
+  border-left: 2px solid transparent;
   color: var(--text-muted);
-  font-size: 8px;
-  cursor: pointer;
-  opacity: 0;
-  flex-shrink: 0;
-  padding: 0;
-  font-family: var(--font-body);
-}
-
-.te-cat-tab-group:hover .te-cat-x {
-  opacity: 1;
-}
-
-.te-cat-x:hover {
-  background: rgba(255, 80, 80, 0.1);
-  border-color: rgba(255, 80, 80, 0.3);
-  color: #ff5555;
-}
-
-.te-cat-x.te-cat-x-confirm {
-  opacity: 1;
-  width: auto;
-  padding: 0 5px;
-  font-size: 9px;
-  font-weight: 700;
-  background: rgba(255, 80, 80, 0.12);
-  border-color: rgba(255, 80, 80, 0.4);
-  color: #ff5555;
-  white-space: nowrap;
-}
-
-.te-cat-bar-spacer {
-  flex: 1;
-  min-width: 6px;
-}
-
-.te-cat-new-btn {
-  flex-shrink: 0;
-  height: 24px;
-  padding: 0 9px;
-  background: transparent;
-  border: 1px solid var(--border-bright);
-  border-radius: 5px;
-  color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   font-family: var(--font-display);
   letter-spacing: 0.04em;
@@ -299,12 +276,11 @@
 }
 
 .te-cat-new-btn:hover {
-  border-color: var(--border-accent);
   color: var(--accent);
   background: var(--accent-glow);
 }
 
-/* ── Category inline rename ────────────────────────────────────────────────── */
+/* ── Category inline rename ────────────────────────────────────────────── */
 
 .te-cat-rename-wrap {
   cursor: default;
@@ -313,7 +289,7 @@
   flex-direction: column;
   align-items: flex-start;
   height: auto;
-  min-height: 34px;
+  min-height: 30px;
 }
 
 .te-cat-rename-input {
@@ -326,9 +302,8 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--text-primary);
-  width: 90px;
+  width: 100%;
   min-width: 50px;
-  max-width: 160px;
   padding: 0 2px;
   line-height: 1;
 }
@@ -350,10 +325,9 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-shrink: 0;
+  padding: 4px 10px;
 }
 
-/* Small colour dot in the new-category form */
 .te-cat-add-colour-dot {
   width: 12px;
   height: 12px;
@@ -378,18 +352,39 @@
   color: var(--text-primary);
   font-size: 11px;
   font-family: var(--font-body);
-  width: 120px;
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── Category drag-and-drop ─────────────────────────────────────────────── */
 
-/* dnd-kit drag ghost for category tabs */
-.te-cat-tab-ghost {
+.te-cat-row-ghost {
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: 6px;
   opacity: 0.85;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Main area (right of sidebar) ──────────────────────────────────────── */
+
+.te-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── Toolbar: type filter + sort ─────────────────────────────────────── */
+
+.te-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 /* ── Sort select ────────────────────────────────────────────────────────── */
@@ -790,6 +785,9 @@
 
 /* Narrow window — stack list and editor vertically */
 @media (max-width: 700px) {
+  .te-cat-sidebar {
+    width: 120px;
+  }
   .te-body {
     flex-direction: column;
   }
@@ -1846,7 +1844,6 @@
 .te-type-filter {
   display: flex;
   gap: 4px;
-  padding: 4px 12px;
 }
 
 .te-type-filter-pill {

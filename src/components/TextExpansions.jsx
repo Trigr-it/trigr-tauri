@@ -1,7 +1,7 @@
 import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import './TextExpansions.css';
@@ -442,6 +442,17 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
   );
 }
 
+// ── Left-click-only PointerSensor (right-click must pass through for context menu) ──
+
+class LeftClickSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown',
+      handler: ({ nativeEvent }) => nativeEvent.button === 0,
+    },
+  ];
+}
+
 // ── Sortable category tab wrapper ──────────────────────────────────────────
 
 function SortableCatTab({ id, children }) {
@@ -503,12 +514,12 @@ export default function TextExpansions({
   const [addingCategory, setAddingCategory]     = useState(false);
   const [newCategoryName, setNewCategoryName]   = useState('');
   const [newCategoryColour, setNewCategoryColour] = useState(null);
-  const [pendingDeleteCat, setPendingDeleteCat] = useState(null);
   // ── Category colour picker popover ──
   const [catColourPopover, setCatColourPopover] = useState(null); // { forCat, x, y }
   const catColourPopoverRef = useRef(null);
   // ── Category context menu ──
   const [catContextMenu, setCatContextMenu] = useState(null); // { catName, x, y }
+  const [ctxDeleteConfirm, setCtxDeleteConfirm] = useState(false);
   const catContextMenuRef  = useRef(null);
   const catContextTabRef   = useRef(null); // DOM element of the right-clicked tab (for colour picker anchor)
   // ── Category inline rename ──
@@ -520,7 +531,7 @@ export default function TextExpansions({
   const [deleteConfirm, setDeleteConfirm]       = useState(null); // trigger string awaiting confirmation
 
   // ── Category dnd-kit reorder ──
-  const catDndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const catDndSensors = useSensors(useSensor(LeftClickSensor, { activationConstraint: { distance: 8 } }));
   const [catDragId, setCatDragId] = useState(null);
 
   // ── Expansion type filter ──
@@ -541,14 +552,6 @@ export default function TextExpansions({
   const [gdTitle,   setGdTitle]     = useState('');
   const [gdValue,   setGdValue]     = useState('');
   const [gdNameErr, setGdNameErr]   = useState('');
-
-  // Reset pending-delete when clicking elsewhere
-  useEffect(() => {
-    if (!pendingDeleteCat) return;
-    function onDown() { setPendingDeleteCat(null); }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [pendingDeleteCat]);
 
   // If the active category is deleted, fall back to All
   useEffect(() => {
@@ -666,9 +669,8 @@ export default function TextExpansions({
   // ── Category context menu handlers ──
   function handleCatContextMenu(e, catName) {
     e.preventDefault();
-    // Store the tab DOM element in a ref — DOMRect values are read fresh when needed,
-    // avoiding issues with storing non-plain DOMRect objects in React state.
     catContextTabRef.current = e.currentTarget;
+    setCtxDeleteConfirm(false);
     setCatContextMenu({ catName, x: e.clientX, y: e.clientY });
   }
 
@@ -696,8 +698,13 @@ export default function TextExpansions({
   }
 
   function ctxDelete() {
+    if (!ctxDeleteConfirm) {
+      setCtxDeleteConfirm(true);
+      return;
+    }
     onDeleteCategory(catContextMenu.catName);
     setCatContextMenu(null);
+    setCtxDeleteConfirm(false);
   }
 
   // ── Inline rename handlers ──
@@ -722,16 +729,6 @@ export default function TextExpansions({
     setRenamingCat(null);
     setRenameValue('');
     setRenameError('');
-  }
-
-  function handleDeleteCategoryConfirm(e, name) {
-    e.stopPropagation();
-    if (pendingDeleteCat === name) {
-      onDeleteCategory(name);
-      setPendingDeleteCat(null);
-    } else {
-      setPendingDeleteCat(name);
-    }
   }
 
   // ── Category drag-and-drop handlers ──
@@ -947,94 +944,136 @@ export default function TextExpansions({
       {/* ════════════════════════════════════ EXPANSIONS VIEW ══════════════════════════════════ */}
       {panelMode === 'expansions' && (
         <>
-          {/* ── Category bar ── */}
-          <div className="te-cat-bar">
-            <button
-              className={`te-cat-tab${activeCategory === 'All' ? ' te-cat-tab-active' : ''}`}
-              onClick={() => setActiveCategory('All')}
-            >
-              All
-              <span className="te-cat-count">{typeFiltered.length}</span>
-            </button>
+          {/* ── Content: category sidebar + main ── */}
+          <div className="te-content">
 
-            <DndContext sensors={catDndSensors} onDragStart={e => setCatDragId(e.active.id)} onDragEnd={handleCatDragEnd}>
-              <SortableContext items={normCategories.map(c => c.name)} strategy={horizontalListSortingStrategy}>
-                {normCategories.map(cat => {
-                  const catColour   = cat.colour || null;
-                  const isPending   = pendingDeleteCat === cat.name;
-                  const count       = typeFiltered.filter(e => e.category === cat.name).length;
-                  return (
-                    <SortableCatTab key={cat.name} id={cat.name}>
-                      <div className="te-cat-tab-group">
-                        {renamingCat === cat.name ? (
-                          <div
-                            className={`te-cat-tab te-cat-tab-active te-cat-rename-wrap`}
-                            style={catColour ? { '--cat-color': catColour } : {}}
-                          >
-                            <input
-                              ref={renameInputRef}
-                              className="te-cat-rename-input"
-                              value={renameValue}
-                              onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
-                                if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
-                                e.stopPropagation();
-                              }}
-                              onBlur={cancelCatRename}
-                            />
-                            {renameError && <span className="te-cat-rename-error">{renameError}</span>}
-                          </div>
-                        ) : (
-                          <button
-                            className={`te-cat-tab${activeCategory === cat.name ? ' te-cat-tab-active' : ''}`}
-                            style={catColour ? { '--cat-color': catColour } : {}}
-                            onClick={() => { setActiveCategory(cat.name); setPendingDeleteCat(null); }}
-                            onContextMenu={e => handleCatContextMenu(e, cat.name)}
-                          >
-                            <span
-                              className="te-cat-dot te-cat-dot-pick"
-                              style={catColour ? { background: catColour } : {}}
-                              onClick={e => openCatColourPopover(e, cat.name)}
-                              title="Change colour"
-                            />
-                            {cat.name}
-                            <span className="te-cat-count">{count}</span>
-                          </button>
-                        )}
-                        <button
-                          className={`te-cat-x${isPending ? ' te-cat-x-confirm' : ''}`}
-                          onMouseDown={e => handleDeleteCategoryConfirm(e, cat.name)}
-                          title={isPending ? 'Click to confirm delete' : `Delete "${cat.name}" category`}
-                        >
-                          {isPending ? 'Delete?' : '✕'}
-                        </button>
-                      </div>
-                    </SortableCatTab>
-                  );
-                })}
-              </SortableContext>
-              <DragOverlay>
-                {catDragId ? (
-                  <div className="te-cat-tab-group te-cat-tab-ghost">
-                    <button className="te-cat-tab te-cat-tab-active">{catDragId}</button>
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-
-            {expansions.length > 0 && uncategorisedCount > 0 && (
+          {/* ── Category sidebar ── */}
+          <div className="te-cat-sidebar">
+            <div className="te-cat-sidebar-list">
               <button
-                className={`te-cat-tab te-cat-tab-uncategorised${activeCategory === '__uncategorised__' ? ' te-cat-tab-active' : ''}`}
-                onClick={() => setActiveCategory('__uncategorised__')}
+                className={`te-cat-row${activeCategory === 'All' ? ' te-cat-row-active' : ''}`}
+                onClick={() => setActiveCategory('All')}
               >
-                Uncategorised
-                <span className="te-cat-count">{uncategorisedCount}</span>
+                <span className="te-cat-row-name">All</span>
+                <span className="te-cat-count">{typeFiltered.length}</span>
               </button>
-            )}
 
-            <div className="te-cat-bar-spacer" />
+              {expansions.length > 0 && uncategorisedCount > 0 && (
+                <button
+                  className={`te-cat-row te-cat-row-uncategorised${activeCategory === '__uncategorised__' ? ' te-cat-row-active' : ''}`}
+                  onClick={() => setActiveCategory('__uncategorised__')}
+                >
+                  <span className="te-cat-row-name">Uncategorised</span>
+                  <span className="te-cat-count">{uncategorisedCount}</span>
+                </button>
+              )}
 
+              <DndContext sensors={catDndSensors} onDragStart={e => setCatDragId(e.active.id)} onDragEnd={handleCatDragEnd}>
+                <SortableContext items={normCategories.map(c => c.name)} strategy={verticalListSortingStrategy}>
+                  {normCategories.map(cat => {
+                    const catColour   = cat.colour || null;
+                    const count       = typeFiltered.filter(e => e.category === cat.name).length;
+                    return (
+                      <SortableCatTab key={cat.name} id={cat.name}>
+                        <div className="te-cat-row-group" onContextMenu={e => handleCatContextMenu(e, cat.name)}>
+                          {renamingCat === cat.name ? (
+                            <div
+                              className="te-cat-row te-cat-row-active te-cat-rename-wrap"
+                              style={catColour ? { '--cat-color': catColour } : {}}
+                            >
+                              <input
+                                ref={renameInputRef}
+                                className="te-cat-rename-input"
+                                value={renameValue}
+                                onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
+                                  if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
+                                  e.stopPropagation();
+                                }}
+                                onBlur={cancelCatRename}
+                              />
+                              {renameError && <span className="te-cat-rename-error">{renameError}</span>}
+                            </div>
+                          ) : (
+                            <button
+                              className={`te-cat-row${activeCategory === cat.name ? ' te-cat-row-active' : ''}`}
+                              style={catColour ? { '--cat-color': catColour } : {}}
+                              onClick={() => setActiveCategory(cat.name)}
+                            >
+                              <span
+                                className="te-cat-dot te-cat-dot-pick"
+                                style={catColour ? { background: catColour } : {}}
+                                onClick={e => openCatColourPopover(e, cat.name)}
+                                title="Change colour"
+                              />
+                              <span className="te-cat-row-name">{cat.name}</span>
+                              <span className="te-cat-count">{count}</span>
+                            </button>
+                          )}
+                        </div>
+                      </SortableCatTab>
+                    );
+                  })}
+                </SortableContext>
+                <DragOverlay>
+                  {catDragId ? (
+                    <div className="te-cat-row-group te-cat-row-ghost">
+                      <button className="te-cat-row te-cat-row-active">{catDragId}</button>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
+
+              {addingCategory ? (
+                <form onSubmit={handleAddCategory} className="te-cat-add-form">
+                  <span
+                    className="te-cat-add-colour-dot"
+                    style={newCategoryColour ? { background: newCategoryColour } : {}}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={e => openCatColourPopover(e, '__new__')}
+                    title="Pick a colour (optional)"
+                  />
+                  <input
+                    autoFocus
+                    className="te-cat-add-input"
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    placeholder="Category name…"
+                    onBlur={handleAddCategory}
+                    onKeyDown={e => e.key === 'Escape' && setAddingCategory(false)}
+                  />
+                </form>
+              ) : (
+                <button className="te-cat-new-btn" onClick={() => { setAddingCategory(true); setNewCategoryColour(null); }}>
+                  + Add Category
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── Main area (toolbar + list + edit panel) ── */}
+          <div className="te-main">
+
+          {/* ── Toolbar: type filter + sort ── */}
+          <div className="te-toolbar">
+            <div className="te-type-filter">
+              <button
+                type="button"
+                className={`te-type-filter-pill${typeFilter === 'all' ? ' active' : ''}`}
+                onClick={() => setTypeFilter('all')}
+              >All</button>
+              <button
+                type="button"
+                className={`te-type-filter-pill${typeFilter === 'text' ? ' active' : ''}`}
+                onClick={() => setTypeFilter('text')}
+              >Text</button>
+              <button
+                type="button"
+                className={`te-type-filter-pill${typeFilter === 'image' ? ' active' : ''}`}
+                onClick={() => setTypeFilter('image')}
+              >Image</button>
+            </div>
             <select
               className="te-sort-select"
               value={sortKey}
@@ -1049,50 +1088,6 @@ export default function TextExpansions({
               <option value="name-asc">Name A→Z</option>
               <option value="name-desc">Name Z→A</option>
             </select>
-
-            {addingCategory ? (
-              <form onSubmit={handleAddCategory} className="te-cat-add-form">
-                <span
-                  className="te-cat-add-colour-dot"
-                  style={newCategoryColour ? { background: newCategoryColour } : {}}
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={e => openCatColourPopover(e, '__new__')}
-                  title="Pick a colour (optional)"
-                />
-                <input
-                  autoFocus
-                  className="te-cat-add-input"
-                  value={newCategoryName}
-                  onChange={e => setNewCategoryName(e.target.value)}
-                  placeholder="Category name…"
-                  onBlur={handleAddCategory}
-                  onKeyDown={e => e.key === 'Escape' && setAddingCategory(false)}
-                />
-              </form>
-            ) : (
-              <button className="te-cat-new-btn" onClick={() => { setAddingCategory(true); setNewCategoryColour(null); }}>
-                + Category
-              </button>
-            )}
-          </div>
-
-          {/* ── Type filter pills ── */}
-          <div className="te-type-filter">
-            <button
-              type="button"
-              className={`te-type-filter-pill${typeFilter === 'all' ? ' active' : ''}`}
-              onClick={() => setTypeFilter('all')}
-            >All</button>
-            <button
-              type="button"
-              className={`te-type-filter-pill${typeFilter === 'text' ? ' active' : ''}`}
-              onClick={() => setTypeFilter('text')}
-            >Text</button>
-            <button
-              type="button"
-              className={`te-type-filter-pill${typeFilter === 'image' ? ' active' : ''}`}
-              onClick={() => setTypeFilter('image')}
-            >Image</button>
           </div>
 
           {/* ── Body: list + edit panel side-by-side ── */}
@@ -1369,6 +1364,8 @@ export default function TextExpansions({
               )}
             </div>
           </div>
+          </div>
+          </div>
         </>
       )}
 
@@ -1554,13 +1551,15 @@ export default function TextExpansions({
       {catContextMenu && ReactDOM.createPortal(
         <div
           ref={catContextMenuRef}
-          className="profile-context-menu"
+          className="profile-ctx-menu"
           style={{ top: catContextMenu.y, left: catContextMenu.x }}
         >
-          <button className="pcm-item" onClick={ctxRename}>Rename</button>
-          <button className="pcm-item" onClick={ctxChangeColour}>Change Colour</button>
-          <div className="pcm-divider" />
-          <button className="pcm-item pcm-delete" onClick={ctxDelete}>Delete</button>
+          <button className="profile-ctx-item" onClick={ctxRename}>Rename</button>
+          <button className="profile-ctx-item" onClick={ctxChangeColour}>Change Colour</button>
+          <div className="profile-ctx-divider" />
+          <button className="profile-ctx-item profile-ctx-delete" onClick={ctxDelete}>
+            {ctxDeleteConfirm ? 'Confirm Delete?' : 'Delete'}
+          </button>
         </div>,
         document.body
       )}

@@ -892,16 +892,13 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let _ = win.set_position(tauri::LogicalPosition::new(x, y));
     let _ = win.set_size(tauri::LogicalSize::new(win_w, 600.0));
 
-    // Send recent clipboard history + theme + scratchpad to the overlay
+    // Send recent clipboard history + theme to the overlay
     let history = clipboard::get_history(1, 500);
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
-    let scratchpad_path = app.path().app_data_dir().unwrap_or_default().join("trigr-scratchpad.txt");
-    let scratchpad = std::fs::read_to_string(&scratchpad_path).unwrap_or_default();
     let mut payload = history;
     if let Some(obj) = payload.as_object_mut() {
         obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
-        obj.insert("scratchpad".to_string(), serde_json::Value::String(scratchpad));
     }
     use tauri::Emitter;
     let _ = win.emit("clipboard-overlay-data", payload);
@@ -1241,18 +1238,6 @@ fn clipboard_overlay_resize(width: f64, height: f64, app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("clipboardoverlay") {
         let _ = win.set_size(tauri::LogicalSize::new(w, h));
     }
-}
-
-#[tauri::command]
-fn get_scratchpad(app: tauri::AppHandle) -> String {
-    let path = app.path().app_data_dir().unwrap_or_default().join("trigr-scratchpad.txt");
-    std::fs::read_to_string(&path).unwrap_or_default()
-}
-
-#[tauri::command]
-fn save_scratchpad(text: String, app: tauri::AppHandle) -> bool {
-    let path = app.path().app_data_dir().unwrap_or_default().join("trigr-scratchpad.txt");
-    std::fs::write(&path, text).is_ok()
 }
 
 #[tauri::command]
@@ -1725,8 +1710,6 @@ pub fn run() {
             get_clipboard_storage_size,
             close_clipboard_overlay,
             clipboard_overlay_resize,
-            get_scratchpad,
-            save_scratchpad,
             // Updater
             check_for_updates,
             install_update,
