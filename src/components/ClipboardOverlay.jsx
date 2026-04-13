@@ -56,7 +56,6 @@ function groupByTimeline(items) {
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 const OVERLAY_W = 750;
-const OVERLAY_W_PAD = 1050; // 750 + ~300 scratchpad
 
 export default function ClipboardOverlay() {
   const [items, setItems] = useState([]);
@@ -66,9 +65,6 @@ export default function ClipboardOverlay() {
   const [filterTag, setFilterTag] = useState('All');
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
-  const [padOpen, setPadOpen] = useState(() => localStorage.getItem('trigr_scratchpad_open') === '1');
-  const [padText, setPadText] = useState('');
-  const padSaveTimer = useRef(null);
   const rowRefs = useRef([]);
   const inputRef = useRef(null);
 
@@ -82,7 +78,6 @@ export default function ClipboardOverlay() {
       setSearch('');
       setFilterTag('All');
       if (data?.theme) setTheme(data.theme);
-      if (data?.scratchpad != null) setPadText(data.scratchpad);
       setTimeout(() => inputRef.current?.focus(), 50);
     });
     return () => window.electronAPI?.removeAllListeners('clipboard-overlay-data');
@@ -127,13 +122,9 @@ export default function ClipboardOverlay() {
 
   useEffect(() => {
     function handleKeyDown(e) {
-      // Don't intercept keys when editing text or typing in scratchpad
+      // Don't intercept keys when editing text
       if (editing) {
         if (e.key === 'Escape') { e.preventDefault(); setEditing(false); setEditText(''); }
-        return;
-      }
-      if (e.target.classList.contains('co-pad-textarea')) {
-        if (e.key === 'Escape') { e.preventDefault(); inputRef.current?.focus(); }
         return;
       }
       if (e.key === 'ArrowDown') {
@@ -165,9 +156,8 @@ export default function ClipboardOverlay() {
   // ── Resize window to panel ────────────────────────────────────────────────
 
   useEffect(() => {
-    const w = padOpen ? OVERLAY_W_PAD : OVERLAY_W;
-    window.electronAPI?.resizeClipboardOverlay(w, 500);
-  }, [items, padOpen]);
+    window.electronAPI?.resizeClipboardOverlay(OVERLAY_W, 500);
+  }, [items]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -235,24 +225,6 @@ export default function ClipboardOverlay() {
       ));
     }
     setEditing(false);
-  };
-
-  // ── Scratchpad ─────────────────────────────────────────────────────────────
-
-  const togglePad = () => {
-    setPadOpen(prev => {
-      const next = !prev;
-      localStorage.setItem('trigr_scratchpad_open', next ? '1' : '0');
-      return next;
-    });
-  };
-
-  const handlePadChange = (val) => {
-    setPadText(val);
-    clearTimeout(padSaveTimer.current);
-    padSaveTimer.current = setTimeout(() => {
-      window.electronAPI?.saveScratchpad(val);
-    }, 400);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -420,31 +392,6 @@ export default function ClipboardOverlay() {
           <span>↑↓  Navigate</span>
           <span>↵  Paste</span>
           <span>Esc  Close</span>
-        </div>
-      </div>
-
-      {/* ── Scratchpad arrow + slide-out (outside .co-panel so panel size is untouched) ── */}
-      <button
-        className={`co-pad-arrow${padOpen ? ' open' : ''}`}
-        onClick={togglePad}
-        title={padOpen ? 'Hide scratchpad' : 'Show scratchpad'}
-        type="button"
-      >
-        {padOpen ? '▸' : '◂'}
-      </button>
-
-      <div className={`co-pad-slide${padOpen ? ' co-pad-slide--open' : ''}`}>
-        <div className="co-pad">
-          <div className="co-pad-header">
-            <span className="co-pad-title">Scratchpad</span>
-          </div>
-          <textarea
-            className="co-pad-textarea"
-            value={padText}
-            onChange={e => handlePadChange(e.target.value)}
-            placeholder="Jot quick notes here…"
-            spellCheck={false}
-          />
         </div>
       </div>
     </div>

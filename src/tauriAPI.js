@@ -181,8 +181,6 @@ window.electronAPI = {
   getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
   closeClipboardOverlay:     ()       => invoke('close_clipboard_overlay'),
   resizeClipboardOverlay:    (width, height) => invoke('clipboard_overlay_resize', { width, height }),
-  getScratchpad:             ()       => invoke('get_scratchpad'),
-  saveScratchpad:            (text)   => invoke('save_scratchpad', { text }),
   onClipboardNewItem: (callback) => {
     listen('clipboard-new-item', (event) => callback(event.payload)).then(u => { listeners['clipboard-new-item'] = u; });
   },
