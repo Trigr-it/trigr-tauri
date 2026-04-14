@@ -1,6 +1,7 @@
 use log::{info, warn};
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::Manager;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -28,9 +29,22 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 /// Future clipboard manager checks this flag and skips logging if set.
 pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
 
+// ── AHK Script Runner process tracking ─────────────────────────────────────
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::Child;
+use std::sync::{Mutex, LazyLock};
+
+struct AhkProcess {
+    child: Child,
+    script_path: PathBuf,
+}
+
+static AHK_PROCESSES: LazyLock<Mutex<HashMap<String, AhkProcess>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Held key state for Send Hotkey hold mode.
 /// Stores (target_vk, Vec<modifier_vks>) so we can send the correct keyup later.
-use std::sync::Mutex;
 static HELD_KEY: Mutex<Option<HeldKeyState>> = Mutex::new(None);
 
 struct HeldKeyState {
@@ -260,7 +274,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                             SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
                             clipboard_dirty = false;
                         }
-                        execute_macro_step(step, &mut current_hwnd, &method);
+                        execute_macro_step(step, &mut current_hwnd, &method, app);
                     }
                 }
 
@@ -269,6 +283,15 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     thread::sleep(Duration::from_millis(clip_restore_ms));
                     write_clipboard(&saved_clipboard.as_deref().unwrap_or(""));
                     SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
+                }
+            }
+        }
+
+        "ahk" => {
+            if let Some(script) = data.and_then(|d| d.get("script")).and_then(|v| v.as_str()) {
+                if !script.trim().is_empty() {
+                    let version = data.and_then(|d| d.get("ahkVersion")).and_then(|v| v.as_str()).unwrap_or("v1");
+                    execute_ahk_script(script, version, trigger_key, app);
                 }
             }
         }
@@ -929,7 +952,7 @@ fn send_mouse_click(button: &str) {
 
 // ── Macro sequence step executor ────────────────────────────────────────────
 
-fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
+fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: &tauri::AppHandle) {
     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -1082,6 +1105,21 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str) {
 
         "Wait for Input" => {
             wait_for_input(step_value);
+        }
+
+        "Run AHK Script" => {
+            if !step_value.is_empty() {
+                if let Ok(parsed) = serde_json::from_str::<Value>(step_value) {
+                    let script = parsed.get("script").and_then(|v| v.as_str()).unwrap_or("");
+                    let version = parsed.get("ahkVersion").and_then(|v| v.as_str()).unwrap_or("v1");
+                    if !script.is_empty() {
+                        // Macro step variant: wait for completion (synchronous)
+                        execute_ahk_script_sync(script, version, app);
+                    }
+                } else {
+                    warn!("[Trigr] Run AHK Script step: invalid JSON");
+                }
+            }
         }
 
         _ => {
@@ -1420,6 +1458,233 @@ fn display_name_to_vk(name: &str) -> Option<u16> {
         "SHIFT" => Some(VK_LSHIFT),
         "WIN" | "META" => Some(VK_LWIN),
         _ => None,
+    }
+}
+
+// ── AHK Script Runner ──────────────────────────────────────────────────────
+
+/// Resolve the path to the bundled AutoHotkey executable.
+/// `ahk_version`: "v1" (default) or "v2"
+fn resolve_ahk_exe(app: &tauri::AppHandle, ahk_version: &str) -> Option<PathBuf> {
+    let filename = if ahk_version == "v2" { "AutoHotkey32.exe" } else { "AutoHotkeyU32.exe" };
+    // Production: bundled resource
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let path = resource_dir.join("ahk").join(filename);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    // Dev fallback: assets directory relative to project root
+    let dev_paths = [
+        PathBuf::from(format!("assets/ahk/{}", filename)),
+        PathBuf::from(format!("../assets/ahk/{}", filename)),
+    ];
+    for p in &dev_paths {
+        if p.exists() {
+            return Some(p.clone());
+        }
+    }
+    warn!("[Trigr] {} not found — AHK scripts will not execute", filename);
+    None
+}
+
+/// Get the temp directory for AHK scripts.
+fn ahk_scripts_dir(app: &tauri::AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("ahk-scripts")
+}
+
+/// Execute an AHK script (fire-and-forget for standalone actions).
+/// If trigger_key is provided, previous AHK instance for that key is killed first.
+fn execute_ahk_script(script: &str, ahk_version: &str, trigger_key: Option<&str>, app: &tauri::AppHandle) {
+    let ahk_path = match resolve_ahk_exe(app, ahk_version) {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Kill previous instance for this trigger key (re-trigger)
+    if let Some(key) = trigger_key {
+        kill_ahk_for_key(key);
+    }
+
+    // Write temp .ahk file
+    let script_dir = ahk_scripts_dir(app);
+    let _ = std::fs::create_dir_all(&script_dir);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let script_path = script_dir.join(format!("trigr-ahk-{}.ahk", timestamp));
+
+    // UTF-8 BOM for AHK v1 Unicode support
+    let mut content = vec![0xEF, 0xBB, 0xBF];
+    content.extend_from_slice(script.as_bytes());
+    // Append ExitApp if not present (ensures one-shot scripts exit cleanly)
+    let lower = script.to_lowercase();
+    if !lower.contains("exitapp") {
+        content.extend_from_slice(b"\nExitApp\n");
+    }
+
+    if let Err(e) = std::fs::write(&script_path, &content) {
+        warn!("[Trigr] AHK: failed to write temp script: {}", e);
+        return;
+    }
+
+    // Spawn AHK process
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let child = std::process::Command::new(&ahk_path)
+        .arg(&script_path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+
+    match child {
+        Ok(child) => {
+            info!("[Trigr] AHK: spawned process (pid: {})", child.id());
+            if let Some(key) = trigger_key {
+                let key_str = key.to_string();
+                let path_clone = script_path.clone();
+                let pid = child.id();
+                AHK_PROCESSES.lock().unwrap().insert(
+                    key_str.clone(),
+                    AhkProcess {
+                        child,
+                        script_path: script_path,
+                    },
+                );
+                // Spawn cleanup thread: wait for process exit, then clean up
+                let key_for_cleanup = key_str;
+                thread::spawn(move || {
+                    // Wait up to 5 minutes for the process to finish
+                    thread::sleep(Duration::from_secs(300));
+                    let mut procs = AHK_PROCESSES.lock().unwrap();
+                    if let Some(mut entry) = procs.remove(&key_for_cleanup) {
+                        let _ = entry.child.kill();
+                        let _ = entry.child.wait();
+                        let _ = std::fs::remove_file(&path_clone);
+                        info!("[Trigr] AHK: cleaned up stale process (pid: {})", pid);
+                    }
+                });
+            } else {
+                // No trigger key (called from macro step context as fire-and-forget fallback)
+                let path_clone = script_path;
+                thread::spawn(move || {
+                    // Orphan cleanup after 5 minutes
+                    thread::sleep(Duration::from_secs(300));
+                    let _ = std::fs::remove_file(&path_clone);
+                });
+            }
+        }
+        Err(e) => {
+            warn!("[Trigr] AHK: failed to spawn process: {}", e);
+            let _ = std::fs::remove_file(&script_path);
+        }
+    }
+}
+
+/// Execute an AHK script synchronously (for macro steps — waits for completion).
+fn execute_ahk_script_sync(script: &str, ahk_version: &str, app: &tauri::AppHandle) {
+    let ahk_path = match resolve_ahk_exe(app, ahk_version) {
+        Some(p) => p,
+        None => return,
+    };
+
+    let script_dir = ahk_scripts_dir(app);
+    let _ = std::fs::create_dir_all(&script_dir);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let script_path = script_dir.join(format!("trigr-ahk-{}.ahk", timestamp));
+
+    let mut content = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
+    content.extend_from_slice(script.as_bytes());
+    let lower = script.to_lowercase();
+    if !lower.contains("exitapp") {
+        content.extend_from_slice(b"\nExitApp\n");
+    }
+
+    if let Err(e) = std::fs::write(&script_path, &content) {
+        warn!("[Trigr] AHK sync: failed to write temp script: {}", e);
+        return;
+    }
+
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    match std::process::Command::new(&ahk_path)
+        .arg(&script_path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+    {
+        Ok(mut child) => {
+            info!("[Trigr] AHK sync: waiting for process (pid: {})", child.id());
+            // Wait for process to finish (up to 60s for macro step context)
+            match child.wait() {
+                Ok(status) => {
+                    info!("[Trigr] AHK sync: process exited with {}", status);
+                }
+                Err(e) => {
+                    warn!("[Trigr] AHK sync: wait failed: {}", e);
+                    let _ = child.kill();
+                }
+            }
+            let _ = std::fs::remove_file(&script_path);
+        }
+        Err(e) => {
+            warn!("[Trigr] AHK sync: failed to spawn: {}", e);
+            let _ = std::fs::remove_file(&script_path);
+        }
+    }
+}
+
+/// Kill the AHK process associated with a trigger key (re-trigger support).
+fn kill_ahk_for_key(key: &str) {
+    let mut procs = AHK_PROCESSES.lock().unwrap();
+    if let Some(mut entry) = procs.remove(key) {
+        let _ = entry.child.kill();
+        let _ = entry.child.wait();
+        let _ = std::fs::remove_file(&entry.script_path);
+        info!("[Trigr] AHK: killed previous instance for key: {}", key);
+    }
+}
+
+/// Kill all running AHK processes and clean up temp files. Called on app quit.
+pub fn kill_all_ahk_processes() {
+    let mut procs = AHK_PROCESSES.lock().unwrap();
+    let count = procs.len();
+    for (key, mut entry) in procs.drain() {
+        let _ = entry.child.kill();
+        let _ = entry.child.wait();
+        let _ = std::fs::remove_file(&entry.script_path);
+        info!("[Trigr] AHK: killed process for key: {}", key);
+    }
+    if count > 0 {
+        info!("[Trigr] AHK: cleaned up {} process(es) on quit", count);
+    }
+}
+
+/// Delete leftover AHK temp script files from previous sessions. Called on startup.
+pub fn cleanup_stale_ahk_scripts(app_data_dir: PathBuf) {
+    let dir = app_data_dir.join("ahk-scripts");
+    if !dir.exists() {
+        return;
+    }
+    let mut cleaned = 0;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "ahk").unwrap_or(false) {
+                let _ = std::fs::remove_file(&path);
+                cleaned += 1;
+            }
+        }
+    }
+    if cleaned > 0 {
+        info!("[Trigr] AHK: cleaned up {} stale script(s) from previous session", cleaned);
     }
 }
 

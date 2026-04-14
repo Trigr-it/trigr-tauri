@@ -206,6 +206,12 @@ window.electronAPI = {
   installUpdate:      ()         => invoke('install_update'),
   startDownload:      (version)  => invoke('start_download', { version }),
   checkForUpdates:    ()         => invoke('check_for_updates'),
+
+  // ── Licence ──────────────────────────────────────────────────────────────
+  getLicenceStatus:          ()    => invoke('get_licence_status'),
+  activateLicence:           (key) => invoke('activate_licence', { key }),
+  deactivateLicence:         ()    => invoke('deactivate_licence'),
+  checkLicenceRevalidation:  ()    => invoke('check_licence_revalidation'),
 };
 
 // ── Suppress webview browser accelerators ──────────────────────────────────
