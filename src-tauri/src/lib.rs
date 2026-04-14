@@ -717,7 +717,7 @@ fn get_app_version(app: tauri::AppHandle) -> String {
 
 #[tauri::command]
 fn open_help() {
-    let _ = opener::open("https://trigr-it.github.io/trigr-tauri/trigr-help.html");
+    let _ = opener::open("https://usetrigr.com/trigr-help.html");
 }
 
 #[tauri::command]
