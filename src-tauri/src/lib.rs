@@ -965,7 +965,8 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                         actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), &app);
                         let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
                         let analytics_type = if at == "macro" { "macro" } else { "hotkey" };
-                        analytics::log_action(analytics_type, 0);
+                        let label = macro_val.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                        analytics::log_action(analytics_type, 0, storage_key, label);
                     }
                 }
             }
@@ -975,7 +976,8 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                     let global_vars = expansions::get_global_variables();
                     let (resolved, cursor_back) = expansions::resolve_tokens(raw_text, &global_vars);
 
-                    analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32);
+                    let trigger = result.get("trigger").and_then(|v| v.as_str()).unwrap_or("");
+                    analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, trigger, trigger);
 
                     actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
                         .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -1057,6 +1059,31 @@ fn get_analytics() -> Value {
 #[tauri::command]
 fn reset_analytics() -> bool {
     analytics::reset_stats()
+}
+
+#[tauri::command]
+fn get_daily_chart(days: u32) -> Value {
+    analytics::get_daily_chart(days)
+}
+
+#[tauri::command]
+fn get_assignment_breakdown() -> Value {
+    analytics::get_assignment_breakdown()
+}
+
+#[tauri::command]
+fn get_hourly_heatmap() -> Value {
+    analytics::get_hourly_heatmap()
+}
+
+#[tauri::command]
+fn get_streaks() -> Value {
+    analytics::get_streaks()
+}
+
+#[tauri::command]
+fn export_analytics_csv() -> String {
+    analytics::export_csv()
 }
 
 // ── Clipboard Manager ──────────────────────────────────────────────────────
@@ -1729,6 +1756,11 @@ pub fn run() {
             // Analytics
             get_analytics,
             reset_analytics,
+            get_daily_chart,
+            get_assignment_breakdown,
+            get_hourly_heatmap,
+            get_streaks,
+            export_analytics_csv,
             // Clipboard
             get_clipboard_history,
             paste_clipboard_item,

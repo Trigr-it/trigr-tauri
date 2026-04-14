@@ -199,8 +199,7 @@ export default function ClipboardOverlay() {
 
   // ── Inline edit ───────────────────────────────────────────────────────────
 
-  const isTextEditable = selected && selected.content_type === 'text'
-    && (selected.content_tag === 'Text' || selected.content_tag === 'Number');
+  const isTextEditable = selected && selected.content_type === 'text';
 
   const handleStartEdit = () => {
     setEditing(true);

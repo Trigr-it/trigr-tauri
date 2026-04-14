@@ -32,7 +32,7 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 40px; heigh
 .nav-cta:hover { background:var(--gold-dark)!important; }
 
 .hero-wrap { position:relative; overflow:hidden; }
-.hero-inner { position:relative; display:flex; flex-direction:column; align-items:center; padding:140px 40px 80px; text-align:center; }
+.hero-inner { position:relative; display:flex; flex-direction:column; align-items:center; padding:140px 40px 80px; text-align:center; max-width:1200px; margin:0 auto; }
 .hero-glow { position:absolute; top:-100px; left:50%; transform:translateX(-50%); width:800px; height:600px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.12) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
 .hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.1); border:1px solid rgba(232,160,32,0.3); border-radius:100px; padding:6px 16px; font-size:13px; font-weight:500; color:#f0b942; margin-bottom:32px; animation:fadeInUp 0.6s ease both; }
 .hero-badge-dot { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:pulse 2s infinite; }
@@ -197,6 +197,9 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 40px; heigh
 
 /* ACTION PANEL */
 .panel { width:300px; flex-shrink:0; background:var(--bg-surface); border-left:1px solid var(--border-bright); display:flex; flex-direction:column; overflow:hidden; }
+.p-tile { display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 6px; border-radius:6px; background:var(--bg-elevated); border:1px solid var(--border-bright); }
+.p-tile-icon { font-size:15px; line-height:1; color:var(--text-secondary); }
+.p-tile-label { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:0.02em; text-align:center; }
 .p-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px; padding:40px; text-align:center; }
 .p-empty-icon { font-size:32px; color:var(--text-muted); opacity:0.3; }
 .p-empty h3 { font-family:'Rajdhani',sans-serif; font-size:16px; font-weight:600; color:var(--text-secondary); letter-spacing:0.04em; }
@@ -262,6 +265,23 @@ section { position:relative; padding:100px 40px; max-width:1100px; margin:0 auto
 .feat-card h3 { font-family:'Syne',sans-serif; font-weight:600; font-size:17px; color:var(--text); margin-bottom:10px; }
 .feat-card p { font-size:14px; color:var(--text-muted); line-height:1.65; font-weight:300; }
 .feat-tag { display:inline-block; margin-top:16px; font-size:11px; font-weight:500; color:var(--gold); }
+/* AHK HIGHLIGHT */
+.ahk-highlight-sec { position:relative; padding:100px 40px; border-top:1px solid var(--border-subtle); }
+.ahk-highlight { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center; }
+.ahk-highlight-text { }
+.ahk-features { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:28px; }
+.ahk-feat { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted); font-weight:400; }
+.ahk-feat-icon { font-size:16px; flex-shrink:0; }
+.ahk-highlight-code { background:var(--bg-2); border:1px solid rgba(232,160,32,0.15); border-radius:14px; overflow:hidden; }
+.ahk-code-bar { display:flex; align-items:center; gap:10px; padding:12px 16px; background:rgba(232,160,32,0.06); border-bottom:1px solid rgba(232,160,32,0.1); }
+.ahk-code-dots { display:flex; gap:5px; }
+.ahk-code-dots i { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.15); display:block; }
+.ahk-code-title { font-size:12px; font-weight:500; color:var(--gold); letter-spacing:0.04em; }
+.ahk-code-body { padding:20px; font-family:'Consolas','Courier New',monospace; font-size:13px; line-height:1.8; color:var(--text); margin:0; white-space:pre; }
+.ahk-comment { color:var(--text-dim); font-style:italic; }
+.ahk-cmd { color:var(--gold); font-weight:500; }
+@media(max-width:768px){.ahk-highlight{grid-template-columns:1fr;}.ahk-features{grid-template-columns:1fr;}}
+
 .how-sec { border-top:1px solid var(--border-subtle); }
 .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:40px; margin-top:64px; position:relative; }
 .steps::before { content:''; position:absolute; top:28px; left:calc(16.66% + 28px); right:calc(16.66% + 28px); height:1px; background:linear-gradient(90deg,var(--gold),var(--gold-light)); opacity:0.3; }
@@ -418,32 +438,22 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
 
               <!-- Panel -->
               <div class="panel">
-                <div class="p-empty" id="p-empty">
-                  <div class="p-empty-icon">⌨</div>
-                  <h3>No key selected</h3>
-                  <p>Click a key on the keyboard to assign or view an action</p>
+                <div class="p-hdr" style="border-bottom:1px solid var(--border);">
+                  <div class="p-title">
+                    <span class="p-title-lbl">Actions</span>
+                  </div>
                 </div>
-                <div class="p-assigned" id="p-assigned">
-                  <div class="p-hdr">
-                    <div class="p-title">
-                      <span class="p-title-lbl">Action</span>
-                      <span class="p-badge" id="p-badge">Ctrl+E</span>
-                    </div>
-                    <div class="p-hdr-btns">
-                      <button class="p-reassign">Reassign</button>
-                      <button class="p-close" onclick="clearSel()">✕</button>
-                    </div>
-                  </div>
-                  <div class="p-press-tabs">
-                    <button class="p-ptab on">Single Press</button>
-                    <button class="p-ptab">Double Press</button>
-                  </div>
-                  <div class="p-type-row" id="p-type-row"></div>
-                  <div class="p-content" id="p-content"></div>
-                  <div class="p-footer">
-                    <button class="p-clear" onclick="clearAssign()">Clear</button>
-                    <button class="p-save" id="p-save" onclick="saveAssign()">Assign</button>
-                  </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:12px;">
+                  <div class="p-tile"><span class="p-tile-icon">✦</span><span class="p-tile-label">Type Text</span></div>
+                  <div class="p-tile"><span class="p-tile-icon">⌨</span><span class="p-tile-label">Send Hotkey</span></div>
+                  <div class="p-tile"><span class="p-tile-icon">⬡</span><span class="p-tile-label">Open App</span></div>
+                  <div class="p-tile"><span class="p-tile-icon">⊕</span><span class="p-tile-label">Open URL</span></div>
+                  <div class="p-tile"><span class="p-tile-icon">⬢</span><span class="p-tile-label">Open Folder</span></div>
+                  <div class="p-tile"><span class="p-tile-icon">◈</span><span class="p-tile-label">Macro Sequence</span></div>
+                  <div class="p-tile" style="grid-column:1/-1;"><span class="p-tile-icon">⟁</span><span class="p-tile-label">AHK Script</span></div>
+                </div>
+                <div style="padding:0 12px;">
+                  <div class="p-lbl">Select a key to assign an action</div>
                 </div>
               </div>
 
@@ -484,7 +494,7 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
       <div class="demo-panel">
         <div class="demo-panel-label"><span class="demo-panel-tag">Text Expansion</span></div>
         <div class="demo-panel-title">Type a shortcut.<br>Get the whole thing.</div>
-        <div class="demo-panel-sub">Assign <span class="demo-code">;sig</span> to your full email signature. Never type it again.</div>
+        <div class="demo-panel-sub">Assign <span class="demo-code">/sig</span> to your full email signature. Never type it again.</div>
         <div class="demo-screen">
           <div class="demo-screen-bar">
             <div class="demo-screen-dots"><span></span><span></span><span></span></div>
@@ -503,7 +513,7 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
         </div>
         <div class="demo-press-hint" id="te-hint">
           <span class="demo-hint-pulse"></span>
-          Type <span class="demo-code" style="margin-left:2px;">;sig</span> anywhere to trigger
+          Type <span class="demo-code" style="margin-left:2px;">/sig</span> anywhere to trigger
         </div>
 
       </div>
@@ -656,14 +666,14 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
 <script>
 (function(){
   /* ════════════════════════════════
-     TEXT EXPANSION — user types ;sig
+     TEXT EXPANSION — user types /sig
      ════════════════════════════════ */
   var typedEl  = document.getElementById('demo-typed');
   var cursorEl = document.getElementById('demo-cursor');
   var inlineEl = document.getElementById('demo-expanded-inline');
   var teHint   = document.getElementById('te-hint');
 
-  var TRIGGER  = ';sig';
+  var TRIGGER  = '/sig';
   var EXPANDED = 'Kind regards,\nAlex Johnson\nSenior Account Manager\nalex@company.com';
   var teBuffer = '';
   var exIdx = 0, teT = null, teFired = false;
@@ -867,7 +877,7 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
     <div class="feat-card">
       <div class="feat-icon">💼</div>
       <h3>Office &amp; admin</h3>
-      <p>Type <strong style="color:var(--gold);font-weight:500">;sig</strong> and get your full signature. Type <strong style="color:var(--gold);font-weight:500">;addr</strong> and get your address. Set it up once — works in every app, forever.</p>
+      <p>Type <strong style="color:var(--gold);font-weight:500">/sig</strong> and get your full signature. Type <strong style="color:var(--gold);font-weight:500">/addr</strong> and get your address. Set it up once — works in every app, forever.</p>
     </div>
     <div class="feat-card">
       <div class="feat-icon">🎧</div>
@@ -885,15 +895,41 @@ footer { border-top:1px solid var(--border-subtle); padding:40px; display:flex; 
 <!-- FEATURES -->
 <section id="features">
   <div class="sec-lbl">Features</div>
-  <h2 class="sec-title">Six ways to get time<br>back every day.</h2>
-  <p class="sec-sub">One app. Hotkeys, macros, text expansions, app profiles and more — all set up by clicking a visual keyboard.</p>
+  <h2 class="sec-title">Seven ways to get time<br>back every day.</h2>
+  <p class="sec-sub">One app. Hotkeys, macros, text expansions, AHK scripts, app profiles and more — all set up by clicking a visual keyboard.</p>
   <div class="feat-grid">
     <div class="feat-card"><div class="feat-icon">✦</div><h3>Type Text</h3><p>One key combo, instant text. Signatures, code snippets, boilerplate — fires in any app, every time, exactly as written.</p><span class="feat-tag">Text expansion</span></div>
     <div class="feat-card"><div class="feat-icon">⌨</div><h3>Remap Hotkeys</h3><p>Any combo, any action. Click to capture the shortcut you want — no dropdowns, no memorising key codes, no config files.</p><span class="feat-tag">Hotkey remapping</span></div>
     <div class="feat-card"><div class="feat-icon">◈</div><h3>Macro Sequences</h3><p>Chain keystrokes, text, waits and app launches into one trigger. Hit Record and Trigr captures the sequence live.</p><span class="feat-tag">Automation</span></div>
     <div class="feat-card"><div class="feat-icon">⬡</div><h3>App Profiles</h3><p>Ctrl+E does something different in Outlook than in VS Code. Trigr switches profiles automatically as you switch windows.</p><span class="feat-tag">Context switching</span></div>
     <div class="feat-card"><div class="feat-icon">⚡</div><h3>Quick Search</h3><p>Ctrl+Space from anywhere. Search every assignment, fire any action instantly — without lifting your hands from the keyboard.</p><span class="feat-tag">Command palette</span></div>
-    <div class="feat-card"><div class="feat-icon">∷</div><h3>Text Expansions</h3><p>Type <strong style="color:var(--gold);font-weight:500">;sig</strong>, get your signature. Type <strong style="color:var(--gold);font-weight:500">;meeting</strong>, get your Zoom link. Works in any app. No clipboard tricks.</p><span class="feat-tag">Abbreviation expansion</span></div>
+    <div class="feat-card"><div class="feat-icon">∷</div><h3>Text Expansions</h3><p>Type <strong style="color:var(--gold);font-weight:500">/sig</strong>, get your signature. Type <strong style="color:var(--gold);font-weight:500">/meeting</strong>, get your Zoom link. Works in any app. No clipboard tricks.</p><span class="feat-tag">Abbreviation expansion</span></div>
+  </div>
+</section>
+
+<!-- AHK SCRIPT RUNNER HIGHLIGHT -->
+<section class="ahk-highlight-sec">
+  <div class="ahk-highlight">
+    <div class="ahk-highlight-text">
+      <div class="sec-lbl">New — free for all users</div>
+      <h2 class="sec-title" style="margin-bottom:16px;">Already use AutoHotkey?<br>Bring your scripts.</h2>
+      <p class="sec-sub" style="max-width:none;">Trigr's built-in AHK Script Runner lets you fire AutoHotkey v1 and v2 scripts from any hotkey — no AHK install needed. Write the script body, assign it to a key, done. Your existing scripts work inside Trigr alongside visual hotkeys, macros and text expansions.</p>
+      <div class="ahk-features">
+        <div class="ahk-feat"><span class="ahk-feat-icon">⟁</span><span>v1 + v2 syntax support</span></div>
+        <div class="ahk-feat"><span class="ahk-feat-icon">📦</span><span>AutoHotkey bundled — zero install</span></div>
+        <div class="ahk-feat"><span class="ahk-feat-icon">🔁</span><span>Re-trigger kills previous instance</span></div>
+        <div class="ahk-feat"><span class="ahk-feat-icon">◈</span><span>Works as a macro step too</span></div>
+      </div>
+    </div>
+    <div class="ahk-highlight-code">
+      <div class="ahk-code-bar"><span class="ahk-code-dots"><i></i><i></i><i></i></span><span class="ahk-code-title">AHK Script — Ctrl+G</span></div>
+      <pre class="ahk-code-body"><span class="ahk-comment">; Open project in VS Code</span>
+<span class="ahk-cmd">Run</span>, code.exe "C:\Projects\Trigr"
+<span class="ahk-cmd">Sleep</span>, 1000
+<span class="ahk-cmd">Send</span>, ^`` <span class="ahk-comment">; open terminal</span>
+<span class="ahk-cmd">Sleep</span>, 500
+<span class="ahk-cmd">SendInput</span>, npm run dev{Enter}</pre>
+    </div>
   </div>
 </section>
 

@@ -29,7 +29,7 @@
 
 .fillin-icon {
   font-size: 16px;
-  color: #c864ff;
+  color: var(--accent);
 }
 
 .fillin-title {
@@ -38,7 +38,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #c864ff;
+  color: var(--accent);
 }
 
 .fillin-label {
@@ -64,8 +64,8 @@
 
 .fillin-input:focus {
   outline: none;
-  border-color: #c864ff;
-  box-shadow: 0 0 0 2px rgba(200, 100, 255, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(232, 160, 32, 0.15);
 }
 
 .fillin-actions {
@@ -88,14 +88,14 @@
 
 .fillin-cancel:hover {
   border-color: rgba(255, 80, 80, 0.4);
-  color: #ff5555;
+  color: var(--danger-hover);
   background: rgba(255, 80, 80, 0.06);
 }
 
 .fillin-ok {
   height: 30px;
   padding: 0 18px;
-  background: #c864ff;
+  background: var(--accent);
   border: none;
   border-radius: 6px;
   color: #fff;
@@ -107,6 +107,6 @@
 }
 
 .fillin-ok:hover {
-  background: #d478ff;
-  box-shadow: 0 2px 10px rgba(200, 100, 255, 0.35);
+  filter: brightness(1.1);
+  box-shadow: 0 2px 10px rgba(232, 160, 32, 0.35);
 }

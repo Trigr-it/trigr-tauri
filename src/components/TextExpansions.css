@@ -311,7 +311,7 @@
 .te-cat-rename-error {
   font-size: 9px;
   font-family: var(--font-display);
-  color: #ff5555;
+  color: var(--danger-hover);
   line-height: 1;
   padding-bottom: 3px;
   white-space: nowrap;
@@ -768,7 +768,7 @@
 .te-item-delete:hover {
   background: rgba(255, 80, 80, 0.1);
   border-color: rgba(255, 80, 80, 0.3);
-  color: #ff5555;
+  color: var(--danger-hover);
 }
 
 /* ── Right edit panel ────────────────────────────────────────────────────── */
@@ -866,7 +866,7 @@
 
 .te-panel-close:hover {
   background: rgba(255, 80, 80, 0.1);
-  color: #ff5555;
+  color: var(--danger-hover);
 }
 
 /* "(OPTIONAL)" suffix in field labels */
@@ -943,7 +943,7 @@
 
 .te-trigger-error {
   font-size: 10px;
-  color: #e05050;
+  color: var(--danger);
   line-height: 1.35;
   margin-top: 1px;
 }
@@ -1001,7 +1001,7 @@
 
 .te-cancel-btn:hover {
   border-color: rgba(255, 80, 80, 0.4);
-  color: #ff5555;
+  color: var(--danger-hover);
   background: rgba(255, 80, 80, 0.06);
 }
 
@@ -1021,7 +1021,7 @@
 }
 
 .te-save-btn:hover:not(:disabled) {
-  background: #f0b030;
+  background: var(--accent-hover);
   box-shadow: 0 2px 10px rgba(232, 160, 32, 0.3);
 }
 
@@ -1560,7 +1560,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #ff5555;
+  color: var(--danger-hover);
 }
 
 .te-delete-body {
@@ -1587,7 +1587,7 @@
   background: rgba(255, 80, 80, 0.12);
   border: 1px solid rgba(255, 80, 80, 0.35);
   border-radius: 6px;
-  color: #ff5555;
+  color: var(--danger-hover);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;

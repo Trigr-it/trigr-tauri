@@ -354,8 +354,9 @@ fn fire_expansion(
         let text = text.to_string();
         let global_vars = global_vars.clone();
         let trigger_len = trigger_len;
+        let trigger_str = _trigger.to_string();
         thread::spawn(move || {
-            fire_expansion_with_fillin(fill_in_fields, &text, trigger_len, delete_extra, &global_vars);
+            fire_expansion_with_fillin(fill_in_fields, &text, trigger_len, delete_extra, &global_vars, &trigger_str);
         });
         return;
     }
@@ -367,7 +368,7 @@ fn fire_expansion(
         return;
     }
 
-    crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32);
+    crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, _trigger, _trigger);
 
     // Capture target HWND NOW before spawning the thread
     let target_hwnd = unsafe {
@@ -480,6 +481,7 @@ fn fire_expansion_with_fillin(
     trigger_len: usize,
     delete_extra: bool,
     global_vars: &HashMap<String, String>,
+    trigger_str: &str,
 ) {
     crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -572,7 +574,7 @@ fn fire_expansion_with_fillin(
         return;
     }
 
-    crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32);
+    crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, trigger_str, trigger_str);
 
     // Wait for any prior injection to finish
     while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1087,7 +1089,7 @@ fn fire_image_expansion(
         }
     };
 
-    crate::analytics::log_action("expansion", 0);
+    crate::analytics::log_action("expansion", 0, _trigger, _trigger);
 
     // Capture target HWND
     let target_hwnd = unsafe {
