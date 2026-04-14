@@ -518,7 +518,7 @@
 }
 
 .record-btn.recording {
-  color: #e05050;
+  color: var(--danger);
   border-color: rgba(224, 80, 80, 0.5);
   background: rgba(224, 80, 80, 0.08);
   cursor: pointer;
@@ -532,7 +532,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #e05050;
+  background: var(--danger);
   flex-shrink: 0;
   animation: record-pulse 0.9s ease-in-out infinite;
 }

@@ -24,6 +24,10 @@
   --border-bright: #3e3e56;
   --border-accent: rgba(232, 160, 32, 0.4);
 
+  --danger: #e05050;
+  --danger-hover: #ff5555;
+  --accent-hover: #f0b030;
+
   --key-bg: #1e1e2c;
   --key-bg-hover: #252538;
   --key-bg-assigned: #201f0c;
@@ -119,6 +123,16 @@ button {
 input, textarea, select {
   font-family: var(--font-body);
   outline: none;
+  caret-color: var(--accent);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+  font-size: inherit;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--border-accent);
 }
 
 /* ── Pro badge (used across multiple components) ─────────────────────────── */

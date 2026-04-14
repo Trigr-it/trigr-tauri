@@ -871,7 +871,7 @@
 }
 
 .sidebar-record-btn--recording {
-  color: var(--status-error, #e05050);
+  color: var(--danger);
   border-color: var(--status-error, rgba(224, 80, 80, 0.5));
   background: var(--bg-elevated);
 }
@@ -884,7 +884,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--status-error, #e05050);
+  background: var(--danger);
   flex-shrink: 0;
   animation: sidebar-record-pulse 0.9s ease-in-out infinite;
 }

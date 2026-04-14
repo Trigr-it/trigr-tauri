@@ -166,6 +166,11 @@ window.electronAPI = {
   // ── Analytics ───────────────────────────────────────────────────────────────
   getAnalytics:  () => invoke('get_analytics'),
   resetAnalytics: () => invoke('reset_analytics'),
+  getDailyChart:          (days) => invoke('get_daily_chart', { days: days || 14 }),
+  getAssignmentBreakdown: ()     => invoke('get_assignment_breakdown'),
+  getHourlyHeatmap:       ()     => invoke('get_hourly_heatmap'),
+  getStreaks:              ()     => invoke('get_streaks'),
+  exportAnalyticsCsv:     ()     => invoke('export_analytics_csv'),
 
   // ── Clipboard Manager ──────────────────────────────────────────────────────
   getClipboardHistory:    (page, perPage) => invoke('get_clipboard_history', { page, perPage }),

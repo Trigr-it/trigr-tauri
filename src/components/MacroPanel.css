@@ -282,7 +282,7 @@
 
 .reassign-cancel:hover {
   border-color: rgba(255, 80, 80, 0.4);
-  color: #ff5555;
+  color: var(--danger-hover);
   background: rgba(255, 80, 80, 0.06);
 }
 
@@ -298,11 +298,11 @@
   font-family: var(--font-display);
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: filter 0.15s;
 }
 
 .reassign-ok:hover {
-  opacity: 0.85;
+  filter: brightness(1.1);
 }
 
 .reassign-replace {
@@ -891,7 +891,7 @@
 .step-remove:hover {
   background: rgba(255, 80, 80, 0.1);
   border-color: rgba(255, 80, 80, 0.3);
-  color: #ff5555;
+  color: var(--danger-hover);
 }
 
 .add-step-btn {
@@ -1048,7 +1048,7 @@
 .win-builder-cancel:hover {
   background: rgba(255, 80, 80, 0.15);
   border-color: rgba(255, 80, 80, 0.3);
-  color: #ff5555;
+  color: var(--danger-hover);
 }
 
 .win-builder-warn {
@@ -1170,7 +1170,7 @@
 
 .btn-clear:hover {
   border-color: rgba(255, 80, 80, 0.4);
-  color: #ff5555;
+  color: var(--danger-hover);
   background: rgba(255, 80, 80, 0.06);
 }
 
@@ -1210,7 +1210,7 @@
 }
 
 .btn-save:hover:not(:disabled) {
-  background: #f0b030;
+  background: var(--accent-hover);
   box-shadow: 0 4px 16px rgba(232, 160, 32, 0.3);
 }
 

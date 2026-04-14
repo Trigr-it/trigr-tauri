@@ -236,7 +236,7 @@
 
 .wc-btn.close:hover {
   background: rgba(255, 80, 80, 0.15);
-  color: #ff5555;
+  color: var(--danger-hover);
 }
 
 /* ── Templates right-click context menu ──────────────────── */

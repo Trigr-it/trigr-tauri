@@ -241,7 +241,7 @@ export default function ClipboardPanel() {
     return null;
   };
 
-  const isTextOnly = selected && selected.content_type === 'text' && (selected.content_tag === 'Text' || selected.content_tag === 'Number');
+  const isTextOnly = selected && selected.content_type === 'text';
 
   return (
     <div className={`cbg-panel${selected ? ' cbg-panel-split' : ''}`}>

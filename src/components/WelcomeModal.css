@@ -132,7 +132,7 @@
 }
 
 .welcome-cta-btn:hover {
-  background: #f0b030;
+  background: var(--accent-hover);
   transform: translateY(-1px);
   box-shadow: 0 6px 24px rgba(232, 160, 32, 0.4);
 }

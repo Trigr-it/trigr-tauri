@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './AnalyticsPanel.css';
 
 function formatTimeLong(seconds) {
@@ -16,19 +16,41 @@ function formatTimeShort(seconds) {
   return `${m}m ${s}s`;
 }
 
-export default function AnalyticsPanel() {
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export default function AnalyticsPanel({ isPro = false }) {
   const [stats, setStats] = useState(null);
+  const [dailyChart, setDailyChart] = useState([]);
+  const [breakdown, setBreakdown] = useState([]);
+  const [heatmap, setHeatmap] = useState([]);
+  const [streaks, setStreaks] = useState({ current: 0, longest: 0 });
+  const [breakdownSort, setBreakdownSort] = useState('count');
 
   const fetchStats = useCallback(async () => {
     const data = await window.electronAPI?.getAnalytics();
     if (data) setStats(data);
   }, []);
 
+  const fetchProData = useCallback(async () => {
+    if (!isPro) return;
+    const [chart, bd, hm, st] = await Promise.all([
+      window.electronAPI?.getDailyChart(14),
+      window.electronAPI?.getAssignmentBreakdown(),
+      window.electronAPI?.getHourlyHeatmap(),
+      window.electronAPI?.getStreaks(),
+    ]);
+    if (chart) setDailyChart(chart);
+    if (bd) setBreakdown(bd);
+    if (hm) setHeatmap(hm);
+    if (st) setStreaks(st);
+  }, [isPro]);
+
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 30000);
+    fetchProData();
+    const interval = setInterval(() => { fetchStats(); fetchProData(); }, 30000);
     return () => clearInterval(interval);
-  }, [fetchStats]);
+  }, [fetchStats, fetchProData]);
 
   const [confirmReset, setConfirmReset] = useState(false);
   const confirmTimer = React.useRef(null);
@@ -37,16 +59,71 @@ export default function AnalyticsPanel() {
     if (confirmReset) {
       clearTimeout(confirmTimer.current);
       setConfirmReset(false);
-      window.electronAPI?.resetAnalytics().then(() => fetchStats());
+      window.electronAPI?.resetAnalytics().then(() => { fetchStats(); fetchProData(); });
     } else {
       setConfirmReset(true);
       confirmTimer.current = setTimeout(() => setConfirmReset(false), 3000);
     }
   }
 
+  async function handleExportCsv() {
+    const csv = await window.electronAPI?.exportAnalyticsCsv();
+    if (!csv) return;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trigr-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   useEffect(() => {
     return () => clearTimeout(confirmTimer.current);
   }, []);
+
+  // ── Chart helpers ──────────────────────────────────────────────────────────
+
+  const chartMax = useMemo(() => {
+    if (!dailyChart.length) return 1;
+    return Math.max(1, ...dailyChart.map(d => d.actions));
+  }, [dailyChart]);
+
+  // Fill in missing days for the chart
+  const chartDays = useMemo(() => {
+    const map = {};
+    dailyChart.forEach(d => { map[d.date] = d; });
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      days.push(map[key] || { date: key, actions: 0, time_saved: 0 });
+    }
+    return days;
+  }, [dailyChart]);
+
+  // ── Heatmap helpers ────────────────────────────────────────────────────────
+
+  const heatmapGrid = useMemo(() => {
+    const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+    let max = 1;
+    heatmap.forEach(({ dow, hour, count }) => {
+      grid[dow][hour] = count;
+      if (count > max) max = count;
+    });
+    return { grid, max };
+  }, [heatmap]);
+
+  // ── Sorted breakdown ──────────────────────────────────────────────────────
+
+  const sortedBreakdown = useMemo(() => {
+    const arr = [...breakdown];
+    if (breakdownSort === 'count') arr.sort((a, b) => b.count - a.count);
+    else if (breakdownSort === 'time') arr.sort((a, b) => b.time_saved - a.time_saved);
+    else if (breakdownSort === 'label') arr.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+    return arr;
+  }, [breakdown, breakdownSort]);
 
   if (!stats) return null;
 
@@ -63,6 +140,11 @@ export default function AnalyticsPanel() {
     <div className="analytics-panel">
       <div className="analytics-header">
         <span className="analytics-title">Analytics</span>
+        {isPro && (
+          <button type="button" className="analytics-export-btn" onClick={handleExportCsv}>
+            Export CSV
+          </button>
+        )}
       </div>
 
       <div className="analytics-body">
@@ -158,7 +240,119 @@ export default function AnalyticsPanel() {
           )}
         </section>
 
-        {/* ── Section 4: Reset ─────────────────────────────── */}
+        {/* ── PRO SECTIONS ─────────────────────────────────── */}
+
+        {!isPro ? (
+          <section className="analytics-section analytics-pro-gate">
+            <div className="analytics-pro-gate-content">
+              <span className="pro-badge">PRO</span>
+              <div className="analytics-pro-gate-title">Detailed Analytics</div>
+              <div className="analytics-pro-gate-desc">
+                Activity chart, per-assignment breakdown, productivity heatmap, streaks, and CSV export.
+              </div>
+            </div>
+          </section>
+        ) : (
+          <>
+            {/* ── Streaks ────────────────────────────────────── */}
+            <section className="analytics-section">
+              <div className="analytics-section-title">STREAKS</div>
+              <div className="analytics-streaks">
+                <div className="analytics-streak-card">
+                  <span className="analytics-streak-value">{streaks.current}</span>
+                  <span className="analytics-streak-label">current streak (days)</span>
+                </div>
+                <div className="analytics-streak-card">
+                  <span className="analytics-streak-value accent">{streaks.longest}</span>
+                  <span className="analytics-streak-label">longest streak (days)</span>
+                </div>
+              </div>
+            </section>
+
+            {/* ── 14-Day Activity Chart ──────────────────────── */}
+            <section className="analytics-section">
+              <div className="analytics-section-title">LAST 14 DAYS</div>
+              <div className="analytics-chart">
+                {chartDays.map((day, i) => (
+                  <div key={day.date} className="analytics-chart-bar-col" title={`${day.date}\n${day.actions} actions\n${formatTimeShort(day.time_saved)} saved`}>
+                    <div className="analytics-chart-bar-wrap">
+                      <div
+                        className="analytics-chart-bar"
+                        style={{ height: `${Math.max(2, (day.actions / chartMax) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="analytics-chart-label">
+                      {new Date(day.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'narrow' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* ── Hourly Heatmap ──────────────────────────────── */}
+            <section className="analytics-section">
+              <div className="analytics-section-title">ACTIVITY HEATMAP (7 DAYS)</div>
+              <div className="analytics-heatmap">
+                <div className="analytics-heatmap-corner" />
+                {Array.from({ length: 24 }, (_, h) => (
+                  <div key={h} className="analytics-heatmap-hour-label">{h}</div>
+                ))}
+                {DOW_LABELS.map((label, dow) => (
+                  <React.Fragment key={dow}>
+                    <div className="analytics-heatmap-dow-label">{label}</div>
+                    {Array.from({ length: 24 }, (_, h) => {
+                      const count = heatmapGrid.grid[dow][h];
+                      const intensity = count > 0 ? Math.max(0.15, count / heatmapGrid.max) : 0;
+                      return (
+                        <div
+                          key={h}
+                          className="analytics-heatmap-cell"
+                          style={{ opacity: intensity > 0 ? 1 : 0.3, background: intensity > 0 ? `rgba(232, 160, 32, ${intensity})` : 'var(--bg-elevated)' }}
+                          title={`${label} ${h}:00 — ${count} action${count !== 1 ? 's' : ''}`}
+                        />
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+            </section>
+
+            {/* ── Per-Assignment Breakdown ────────────────────── */}
+            {sortedBreakdown.length > 0 && (
+              <section className="analytics-section">
+                <div className="analytics-section-title">
+                  TOP ASSIGNMENTS
+                  <div className="analytics-sort-pills">
+                    {[{ id: 'count', label: 'Most used' }, { id: 'time', label: 'Most saved' }, { id: 'label', label: 'A–Z' }].map(s => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={`analytics-sort-pill ${breakdownSort === s.id ? 'active' : ''}`}
+                        onClick={() => setBreakdownSort(s.id)}
+                      >{s.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="analytics-assignment-list">
+                  {sortedBreakdown.map((item, i) => (
+                    <div key={item.trigger || i} className="analytics-assignment-row">
+                      <span className="analytics-assignment-rank">{i + 1}</span>
+                      <div className="analytics-assignment-info">
+                        <span className="analytics-assignment-label">{item.label || item.trigger || '(unnamed)'}</span>
+                        <span className="analytics-assignment-trigger">{item.trigger}</span>
+                      </div>
+                      <span className={`analytics-assignment-type ${item.type}`}>{item.type}</span>
+                      <span className="analytics-assignment-count">{item.count}x</span>
+                      <span className="analytics-assignment-saved">{formatTimeShort(item.time_saved)}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        {/* ── Section: Reset ──────────────────────────────── */}
         {total > 0 && (
           <div className="analytics-reset-row">
             <button

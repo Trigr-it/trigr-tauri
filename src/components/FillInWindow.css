@@ -113,7 +113,7 @@ html, body {
 
 .fillin-win-close:hover {
   background: rgba(255, 80, 80, 0.15);
-  color: #ff5555;
+  color: var(--text-primary);
 }
 
 /* ── Field rows ──────────────────────────────────────────────────────────── */
@@ -208,6 +208,5 @@ html, body {
 }
 
 .fillin-win-ok:hover {
-  background: #f0b030;
-  border-color: #f0b030;
+  filter: brightness(1.1);
 }

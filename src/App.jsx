@@ -1625,7 +1625,7 @@ function App() {
             />
           )}
           {activeArea === 'analytics' && (
-            <AnalyticsPanel />
+            <AnalyticsPanel isPro={isPro} />
           )}
           {activeArea === 'clipboard' && (
             <ClipboardPanel />

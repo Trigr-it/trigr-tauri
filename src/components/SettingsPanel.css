@@ -529,7 +529,7 @@
 
 .settings-backup-item-invalid-label {
   font-size: 10px;
-  color: #e05050;
+  color: var(--danger);
 }
 
 .settings-backup-restore-btn {
@@ -586,7 +586,7 @@
 .settings-restore-confirm-btn {
   background: rgba(224, 80, 80, 0.1) !important;
   border-color: rgba(224, 80, 80, 0.4) !important;
-  color: #e05050 !important;
+  color: var(--danger) !important;
 }
 
 .settings-restore-confirm-btn:hover {
