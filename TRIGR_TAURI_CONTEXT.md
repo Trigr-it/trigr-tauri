@@ -432,7 +432,7 @@ Profiles live in the sidebar (Sidebar.jsx ProfileAccordion), NOT the titlebar. T
 Any ResizeObserver that calls setState must guard against infinite loops. Store last measured width in a ref; skip callback if `Math.abs(newWidth - lastWidth) < 1`. The profile tab overflow attempt (now removed) proved this causes system freezes without the guard.
 
 ### Help Window — External Browser
-`open_help` in lib.rs uses `opener::open("https://trigr-it.github.io/trigr-tauri/trigr-help.html")` to open the user guide in the default browser. DO NOT create a Tauri WebviewWindow for help — a 3.2MB HTML file with inline base64 images freezes WebView2 and makes the entire app unresponsive (P0 bug in v0.1.20). The help page is hosted on GitHub Pages and no longer bundled in the app (`public/help.html` was deleted in v0.1.21).
+`open_help` in lib.rs uses `opener::open("https://usetrigr.com/trigr-help.html")` to open the user guide in the default browser. DO NOT create a Tauri WebviewWindow for help — a 3.2MB HTML file with inline base64 images freezes WebView2 and makes the entire app unresponsive (P0 bug in v0.1.20). The help page is hosted on Netlify (usetrigr.com) and no longer bundled in the app (`public/help.html` was deleted in v0.1.21).
 
 ### Shared Config Path (Cloud Sync)
 **Local settings file:** `trigr-local-settings.json` in AppData dir (alongside `keyforge-config.json`). JSON format: `{ "shared_config_path": "C:\\path\\to\\folder" }`. This file is machine-specific — it MUST NOT be placed in the shared folder and MUST NOT sync between machines.

@@ -98,6 +98,7 @@
   <a class="nav-item nav-sub" onclick="show('hk-sendkey')" href="#">↳ Send Hotkey</a>
   <a class="nav-item nav-sub" onclick="show('hk-app')" href="#">↳ Open App / URL / Folder</a>
   <a class="nav-item nav-sub" onclick="show('hk-doublepress')" href="#">↳ Double Press</a>
+  <a class="nav-item nav-sub" onclick="show('hk-ahk')" href="#">↳ AHK Script Runner</a>
   <a class="nav-item" onclick="show('expansions')" href="#">✍️ Text Expansions</a>
   <a class="nav-item nav-sub" onclick="show('exp-tokens')" href="#">↳ Dynamic Tokens</a>
   <a class="nav-item" onclick="show('mouse')" href="#">🖱️ Mouse Hotkeys</a>
@@ -105,10 +106,13 @@
   <a class="nav-item" onclick="show('templates')" href="#">📦 Templates</a>
   <a class="nav-item" onclick="show('quick-search')" href="#">🔍 Quick Search</a>
   <a class="nav-item" onclick="show('list-view')" href="#">📋 List View</a>
+  <a class="nav-item" onclick="show('clipboard')" href="#">📋 Clipboard Manager</a>
+  <a class="nav-item" onclick="show('analytics')" href="#">📊 Analytics</a>
 
   <div class="sidebar-section-label">Reference</div>
   <a class="nav-item" onclick="show('global-pause')" href="#">⏸️ Pause &amp; Resume</a>
   <a class="nav-item" onclick="show('settings')" href="#">⚙️ Settings</a>
+  <a class="nav-item" onclick="show('licence')" href="#">🔑 Licence</a>
   <a class="nav-item" onclick="show('troubleshooting')" href="#">🔧 Troubleshooting</a>
 </nav>
 
@@ -140,7 +144,7 @@
     <p>Head to <strong>Quick Start</strong> in the sidebar to set up your first shortcut in under two minutes.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- INTERFACE -->
@@ -173,7 +177,7 @@
   <h2>Status Bar</h2>
   <p>Bottom of the window. Shows macros enabled/paused state, assignment count, and the Listener and Executor engine indicators — both should be green when Trigr is running normally.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- QUICK START -->
@@ -205,7 +209,7 @@
   <h2>Option 3 — Use a template pack</h2>
   <p>Click the <strong>Templates</strong> pill in the title bar (or go to Settings → Templates) to import a pre-built set of shortcuts. Templates are additive — they never overwrite your existing assignments.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- HOTKEYS -->
@@ -237,7 +241,7 @@
     <p>Trigr overrides key combinations when it captures them. Avoid assigning combinations that Windows uses globally, such as <kbd>Win</kbd>+<kbd>D</kbd>. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Del</kbd> cannot be overridden by any application.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- MACROS -->
@@ -263,6 +267,7 @@
     <tr><td><strong>Open URL</strong></td><td>Opens a URL in the default browser.</td></tr>
     <tr><td><strong>Open Folder</strong></td><td>Opens a folder in Windows Explorer.</td></tr>
     <tr><td><strong>Focus Window</strong></td><td>Brings a specific open application window to the foreground.</td></tr>
+    <tr><td><strong>Run AHK Script</strong></td><td>Executes an AutoHotkey v1 or v2 script. Waits for completion before the next step.</td></tr>
   </table>
 
   <h2>Building a macro</h2>
@@ -283,7 +288,7 @@
     <p>If a macro types text before an app has finished loading, the characters get dropped. Add a <strong>Wait (ms)</strong> step of 500–1000ms after an Open App step to give it time to settle.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- TYPE TEXT -->
@@ -307,7 +312,7 @@
     <p>Type Text supports full Unicode. If a character isn't typing correctly in a specific app, switch that assignment to the <strong>Clipboard</strong> method.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- SEND HOTKEY -->
@@ -339,7 +344,25 @@
     <p>Held keys via SendInput do not produce repeated characters. Windows only repeats hardware keypresses. Use hold mode for games and CAD tools that poll key state, not for generating repeated text.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <h2>Repeat Mode</h2>
+  <p><strong>Repeat Mode</strong> sends the target key or mouse click repeatedly at a configurable interval. First press starts repeating, second press of the <strong>same trigger</strong> stops it. Unlike Hold Mode, other keypresses do not stop it — only the original trigger hotkey toggles it off.</p>
+
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Interval</td><td>Milliseconds between each repeat. Minimum 50ms, default 100ms.</td></tr>
+  </table>
+
+  <p>While repeating, the tray icon turns <strong>red</strong> and the tooltip shows the repeating key and interval. Repeating auto-stops when you pause Trigr or quit the app.</p>
+
+  <div class="callout tip">
+    <div class="ct">💡 Hold vs Repeat</div>
+    <p>Hold Mode and Repeat Mode are mutually exclusive — enabling one disables the other. Both work with keyboard keys and mouse buttons.</p>
+  </div>
+
+  <h2>Mouse button targets</h2>
+  <p>Send Hotkey supports mouse buttons (Left Click, Right Click, Middle Click) as targets in all three modes — normal, hold, and repeat. Select a mouse button from the pill buttons below the capture field.</p>
+
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- OPEN APP / URL / FOLDER -->
@@ -361,7 +384,7 @@
     <p>Need to open an app and immediately do something in it? Use a Macro — chain Open App → Wait (500ms) → Type Text or Press Key to give the app time to load before sending input.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- DOUBLE PRESS -->
@@ -382,7 +405,48 @@
     <p>When you right-click and duplicate an assignment, the full double-press configuration is copied over, including all step data in each action.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+</div>
+
+<!-- AHK SCRIPT RUNNER -->
+<div class="section-page" id="page-hk-ahk">
+  <div class="section-title">AHK Script Runner</div>
+  <div class="section-subtitle">Run AutoHotkey v1 and v2 scripts from any hotkey — no AHK install needed.</div>
+
+  <p>Trigr bundles AutoHotkey executables for both v1 and v2, so your users don't need to install AutoHotkey separately. Write a script body, assign it to a key, and Trigr handles execution.</p>
+
+  <h2>How it works</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Click a key on the canvas, then choose <strong>AHK Script</strong> as the action type.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Select <strong>v1</strong> or <strong>v2</strong> using the version toggle at the top of the form.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Write your script body in the textarea. No hotkey labels or <code>Return</code> needed — Trigr handles the trigger.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Assign</strong>.</div></div>
+
+  <h2>Execution</h2>
+  <p>When the hotkey fires, Trigr writes a temporary <code>.ahk</code> file, spawns the bundled AutoHotkey process, and cleans up after it exits. Scripts run with <code>ExitApp</code> appended automatically (unless your script already contains it).</p>
+
+  <table>
+    <tr><th>Behaviour</th><th>Description</th></tr>
+    <tr><td><strong>Re-trigger</strong></td><td>Pressing the same hotkey again kills the previous AHK instance and starts a fresh one.</td></tr>
+    <tr><td><strong>Macro step</strong></td><td>AHK scripts can also be used as a step inside a Macro Sequence. In this mode, Trigr waits for the script to finish before proceeding to the next step.</td></tr>
+    <tr><td><strong>Cleanup</strong></td><td>All running AHK processes are killed on app quit. Leftover temp files from crashes are cleaned up on next startup.</td></tr>
+  </table>
+
+  <h2>v1 vs v2 syntax</h2>
+  <p>AutoHotkey v1 and v2 have different syntax. The version toggle in the form switches which engine runs the script. The placeholder text updates to show the correct syntax for each version.</p>
+
+  <table>
+    <tr><th>Action</th><th>v1 syntax</th><th>v2 syntax</th></tr>
+    <tr><td>Message box</td><td><code>MsgBox, Hello!</code></td><td><code>MsgBox "Hello!"</code></td></tr>
+    <tr><td>Send keys</td><td><code>Send, {Enter}</code></td><td><code>Send "{Enter}"</code></td></tr>
+    <tr><td>Run app</td><td><code>Run, notepad.exe</code></td><td><code>Run "notepad.exe"</code></td></tr>
+  </table>
+
+  <div class="callout tip">
+    <div class="ct">💡 Existing AHK users</div>
+    <p>If you already have AHK scripts, paste the body directly into Trigr. Your scripts work alongside visual hotkeys, macros, and text expansions — all managed from one app.</p>
+  </div>
+
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- TEXT EXPANSIONS -->
@@ -417,7 +481,22 @@
   <h2>Global variables</h2>
   <p>Define a reusable text value once and reference it across multiple expansions using <code>{var:name}</code>. Update the variable once and it updates everywhere instantly. Useful for your company name, phone number, address, or any shared piece of text.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <h2>Image expansions</h2>
+  <p>Expansions can paste images as well as text. Toggle the <strong>Image</strong> type selector at the top of the expansion editor, then click <strong>Choose Image</strong> to select a PNG or JPEG file.</p>
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Image path</td><td>Full path to a PNG or JPEG file on your machine.</td></tr>
+    <tr><td>Scale</td><td>10–100%. Resizes the image before pasting. 100% uses the original size.</td></tr>
+    <tr><td>Trigger mode</td><td>Space (type trigger + space) or Immediate (fires as you finish typing).</td></tr>
+  </table>
+  <p>When the trigger fires, Trigr writes the image to the clipboard and sends a paste command. The image is left on the clipboard after pasting. Works in Word, Outlook, Google Docs, and any app that accepts pasted images.</p>
+
+  <div class="callout tip">
+    <div class="ct">💡 Type filter</div>
+    <p>Use the All / Text / Image filter pills above the expansion list to quickly find text or image expansions.</p>
+  </div>
+
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- DYNAMIC TOKENS -->
@@ -448,7 +527,7 @@
   <h2>Global variable references</h2>
   <div class="token-row"><span class="token">{var:VariableName}</span><span class="token-desc">→ Inserts the value of a defined global variable</span></div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- MOUSE HOTKEYS -->
@@ -469,7 +548,8 @@
     <tr><td>Left Click</td><td>Standard left mouse button</td></tr>
     <tr><td>Right Click</td><td>Standard right mouse button</td></tr>
     <tr><td>Middle Click</td><td>Scroll wheel press</td></tr>
-    <tr><td>Mouse 4 / 5</td><td>Side buttons (if your mouse has them)</td></tr>
+    <tr><td>Side 1 / Side 2</td><td>Side buttons (Mouse 4 and 5, if your mouse has them)</td></tr>
+    <tr><td>Scroll Up / Scroll Down</td><td>Scroll wheel direction — fires once per scroll tick</td></tr>
   </table>
 
   <h2>Setting up a mouse hotkey</h2>
@@ -482,7 +562,7 @@
     <p>Assigning mouse buttons without a modifier is only supported in app-linked profiles — for the same reason bare keyboard keys are. You don't want left click triggering a macro everywhere.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- PROFILES -->
@@ -533,7 +613,7 @@
     <p>Profiles are saved as <code>.json</code> for now. The extension will migrate to <code>.trigr</code> post-Beta. Existing files will remain importable.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- TEMPLATES -->
@@ -576,7 +656,7 @@
     <p>Before importing the CAD pack, open your CAD software so it appears in the running processes list. The import flow will prompt you to pick it for the new app-linked profile.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- QUICK SEARCH -->
@@ -607,7 +687,7 @@
     <p>The Quick Search shortcut is fixed to <kbd>Ctrl</kbd>+<kbd>Space</kbd> and cannot be reassigned to a hotkey within Trigr. If your application uses this combination, Trigr's overlay takes priority.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- LIST VIEW -->
@@ -631,7 +711,7 @@
   <h2>Cards</h2>
   <p>Each card shows the key combination, action type badge, and assignment name. Right-click any card for Rename, Duplicate, and Clear options — same as right-clicking on the keyboard canvas.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- GLOBAL PAUSE -->
@@ -658,7 +738,7 @@
   <h2>Configuring the pause hotkey</h2>
   <p>Go to <strong>Settings → Global Pause Hotkey</strong>. Click the capture field and press your chosen key combination. This hotkey fires regardless of profile, app focus, or whether that combination is assigned to something else in Trigr.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- SETTINGS -->
@@ -668,36 +748,175 @@
 
   <p>Open Settings with the cog icon in the title bar.</p>
 
-  <h2>General</h2>
-  <table>
-    <tr><th>Setting</th><th>Description</th></tr>
-    <tr><td>Launch at startup</td><td>Start Trigr automatically when Windows starts. Recommended.</td></tr>
-    <tr><td>Start minimised</td><td>Open to the tray on startup instead of showing the window.</td></tr>
-    <tr><td>Theme</td><td>Switch between light and dark mode.</td></tr>
-  </table>
+  <h2>Licence</h2>
+  <p>Enter and activate a Pro licence key, or deactivate an existing one. See the <strong>Licence</strong> page for full details.</p>
 
-  <h2>Global Pause Hotkey</h2>
-  <p>Click the capture field and press any key combination to set it as the global pause/resume toggle.</p>
-
-  <h2>Default input method</h2>
-  <p>Sets the default for all Type Text actions. Individual assignments can override this per-assignment in the action panel.</p>
-
-  <h2>Analytics</h2>
-  <p>Trigr tracks time saved and usage by action type, stored locally in a SQLite database. This data never leaves your machine. View it in the Analytics section of Settings.</p>
+  <h2>Help &amp; Documentation</h2>
+  <p>Open the user guide, restart the onboarding tour, or send feedback.</p>
 
   <h2>Templates</h2>
   <p>Permanent access to the starter template packs — available here after you dismiss the title bar pill button.</p>
 
-  <h2>Open Logs Folder</h2>
-  <p>Opens the folder containing <code>trigr.log</code> in Windows Explorer. Attach this file to any bug report — it captures what Trigr was doing at the time of any issue.</p>
+  <h2>About</h2>
+  <p>Shows the app version and credits, including the GPL v2 licence notice for the bundled AutoHotkey executables.</p>
 
-  <h2>Feedback</h2>
-  <p>Opens the feedback form in your browser. Use it to report bugs, request features, or share anything that feels off.</p>
+  <h2>Privacy &amp; Security</h2>
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Config folder</td><td>Open the folder containing your config and log files.</td></tr>
+    <tr><td>Open logs folder</td><td>Open the <code>trigr.log</code> file location. Attach to bug reports.</td></tr>
+    <tr><td>Shared Config</td><td>Point Trigr at a cloud folder (OneDrive, Google Drive, Dropbox) to sync your config across multiple machines. Trigr watches for file changes and reloads live.</td></tr>
+  </table>
 
-  <h2>Help &amp; Documentation</h2>
-  <p>Opens this user guide in your browser.</p>
+  <h2>Clipboard</h2>
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>History retention</td><td>Days to keep clipboard history. Free: up to 7 days. Pro: up to 30 days.</td></tr>
+    <tr><td>Clear Clipboard History</td><td>Deletes all stored clipboard items. Cannot be undone.</td></tr>
+  </table>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <h2>General</h2>
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Start with Windows</td><td>Start Trigr automatically when Windows starts. Launches to the system tray.</td></tr>
+    <tr><td>Enable macros on startup</td><td>Whether hotkeys are active immediately on launch or start paused.</td></tr>
+  </table>
+
+  <h2>Global Pause Hotkey</h2>
+  <p>Click the capture field and press any key combination to set it as the global pause/resume toggle. Must include at least one modifier — bare keys cannot be used as the pause hotkey.</p>
+
+  <h2>Quick Search</h2>
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Search overlay hotkey</td><td>The hotkey to toggle Quick Search. Default: Ctrl+Space.</td></tr>
+    <tr><td>Show all items when empty</td><td>Whether to show all assignments when the search field is blank.</td></tr>
+    <tr><td>Close after firing</td><td>Automatically close the overlay after executing a search result.</td></tr>
+    <tr><td>Include autocorrect</td><td>Whether autocorrect entries appear in search results.</td></tr>
+  </table>
+
+  <h2>Compatibility</h2>
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Default input method</td><td>Global default for Type Text actions. Direct (simulated keypresses) or Clipboard (paste via clipboard). Individual assignments can override.</td></tr>
+    <tr><td>Macro speed</td><td>Preset timing for macro execution. <strong>Safe</strong> (maximum compatibility), <strong>Fast</strong> (reduced delays), <strong>Instant</strong> (minimal delays), or <strong>Custom</strong> (manual slider control).</td></tr>
+    <tr><td>Keystroke delay</td><td>Milliseconds between simulated keystrokes. Lower = faster but may drop characters in slow apps.</td></tr>
+    <tr><td>Pre-execution delay</td><td>Milliseconds before the first keystroke of an action. Gives the target app time to receive focus.</td></tr>
+    <tr><td>Double-tap window</td><td>Milliseconds to wait for a second press before firing the single-press action. Default 300ms.</td></tr>
+  </table>
+
+  <h2>Backup &amp; Restore</h2>
+  <p>Trigr automatically creates timestamped backups of your config and maintains a last-known-good copy. If the main config becomes corrupted, Trigr restores from the best available backup on startup.</p>
+  <table>
+    <tr><th>Action</th><th>Description</th></tr>
+    <tr><td>Export Config</td><td>Save your full config as a .json file via a file dialog.</td></tr>
+    <tr><td>Import Config</td><td>Load a previously exported config, replacing the current one.</td></tr>
+    <tr><td>View Backups</td><td>Expand the accordion to see all automatic backups with date, profile count, and assignment count. Click Restore to revert to any backup.</td></tr>
+  </table>
+
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+</div>
+
+<!-- CLIPBOARD MANAGER -->
+<div class="section-page" id="page-clipboard">
+  <div class="section-title">Clipboard Manager</div>
+  <div class="section-subtitle">Capture, search, and reuse everything you copy.</div>
+
+  <p>Trigr automatically captures everything you copy to the clipboard — text, links, code, and images. All data is stored locally in a SQLite database on your machine. Nothing is transmitted.</p>
+
+  <h2>Clipboard Panel</h2>
+  <p>Open the <strong>Clipboard</strong> tab in the title bar to see your full clipboard history. Items are displayed as a masonry grid sorted by most recent, with pinned items always at the top.</p>
+
+  <h2>Features</h2>
+  <table>
+    <tr><th>Feature</th><th>Description</th></tr>
+    <tr><td><strong>Auto-tagging</strong></td><td>Each item is automatically tagged as Text, Link, Email, Colour, Number, or Image based on its content.</td></tr>
+    <tr><td><strong>Source app</strong></td><td>Shows which app you copied from (Chrome, VS Code, Outlook, etc.).</td></tr>
+    <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age.</td></tr>
+    <tr><td><strong>Search</strong></td><td>Filter items by text content. Combine with tag filter pills and source app dropdown.</td></tr>
+    <tr><td><strong>Inline editing</strong></td><td>Edit any text-based clipboard item directly — click Edit in the detail pane.</td></tr>
+    <tr><td><strong>Image support</strong></td><td>Screenshots and copied images are captured as PNG with full preview and zoom support.</td></tr>
+    <tr><td><strong>Timeline grouping</strong></td><td>Items are grouped by Pinned, Today, Yesterday, This Week, This Month, Older.</td></tr>
+    <tr><td><strong>Storage indicator</strong></td><td>Shows the total size of your clipboard database in the panel toolbar.</td></tr>
+  </table>
+
+  <h2>Quick Paste Overlay (Ctrl+Shift+V)</h2>
+  <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay — a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
+  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit).</p>
+
+  <h2>Scratchpad</h2>
+  <p>The clipboard overlay includes a slide-out scratchpad on the right side. Toggle it with the arrow button on the panel edge. Use it to jot notes, stage text, or keep references handy. Content auto-saves and persists across app restarts.</p>
+
+  <h2>Retention</h2>
+  <p>Clipboard history is retained for <strong>7 days</strong> on the Free plan and up to <strong>30 days</strong> on Pro. Pinned items are never automatically deleted. Adjust the retention period in Settings &gt; Clipboard. You can clear all history manually from the panel toolbar.</p>
+
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+</div>
+
+<!-- ANALYTICS -->
+<div class="section-page" id="page-analytics">
+  <div class="section-title">Analytics</div>
+  <div class="section-subtitle">Track how much time Trigr saves you.</div>
+
+  <p>Trigr logs every hotkey, expansion, and macro fired — entirely locally in a SQLite database. No data leaves your machine. View your stats in the <strong>Analytics</strong> tab in the title bar.</p>
+
+  <h2>Free analytics</h2>
+  <p>Available to all users:</p>
+  <table>
+    <tr><th>Metric</th><th>Description</th></tr>
+    <tr><td><strong>Today</strong></td><td>Actions fired and time saved today.</td></tr>
+    <tr><td><strong>Last 7 Days</strong></td><td>Actions fired and time saved in the last week.</td></tr>
+    <tr><td><strong>All Time</strong></td><td>Total actions and total time saved since install.</td></tr>
+    <tr><td><strong>Best Day / Best 7 Days</strong></td><td>Your highest single-day and rolling 7-day records.</td></tr>
+    <tr><td><strong>Breakdown</strong></td><td>Percentage split between Expansions, Hotkeys, and Macros with visual bars.</td></tr>
+  </table>
+
+  <h2>Pro analytics</h2>
+  <p>Pro users get additional detailed analytics:</p>
+  <table>
+    <tr><th>Feature</th><th>Description</th></tr>
+    <tr><td><strong>14-Day Activity Chart</strong></td><td>Daily bar chart showing actions fired per day over the last two weeks. Hover for exact numbers.</td></tr>
+    <tr><td><strong>Hourly Heatmap</strong></td><td>7-day grid showing your most active hours. Gold intensity = more activity. Helps you understand your productivity patterns.</td></tr>
+    <tr><td><strong>Per-Assignment Breakdown</strong></td><td>Ranked table of your top 50 most-used assignments. Sort by most used, most time saved, or A–Z. Shows trigger, label, type, fire count, and time saved.</td></tr>
+    <tr><td><strong>Streaks</strong></td><td>Current consecutive-day streak and longest streak ever. A day counts if at least one action was fired.</td></tr>
+    <tr><td><strong>CSV Export</strong></td><td>Download your full action log as a CSV file for analysis in Excel or other tools.</td></tr>
+  </table>
+
+  <h2>Time saved calculation</h2>
+  <p>Trigr estimates time saved per action type: expansions = character count x 0.3 seconds, hotkeys = 3 seconds, macros and AHK scripts = 5 seconds. These are conservative estimates of the time each action saves versus doing it manually.</p>
+
+  <h2>Reset</h2>
+  <p>Click <strong>Reset Statistics</strong> at the bottom of the analytics panel to delete all data and start fresh. This cannot be undone.</p>
+
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+</div>
+
+<!-- LICENCE -->
+<div class="section-page" id="page-licence">
+  <div class="section-title">Licence</div>
+  <div class="section-subtitle">Activate Pro features with a licence key.</div>
+
+  <p>Trigr is free to use with all core features included. A Pro licence unlocks additional capabilities including extended clipboard retention, detailed analytics, and future Pro-only features.</p>
+
+  <h2>Activating a licence</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Open Settings (cog icon in the title bar).</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Find the <strong>Licence</strong> section at the top of the Settings panel.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Enter your licence key and click <strong>Activate</strong>.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">On success, a <strong>PRO</strong> badge appears with your licence status.</div></div>
+
+  <h2>Deactivating</h2>
+  <p>Click <strong>Deactivate Licence</strong> in the Licence section to remove the Pro licence from this machine. This frees up the activation slot for use on another device. Each licence key can be activated on up to 3 machines.</p>
+
+  <h2>Offline use</h2>
+  <p>Trigr validates your licence online every 24 hours. If you're offline, Pro features continue working for up to 7 days using the cached validation. After 7 days offline, features revert to Free until the next successful validation.</p>
+
+  <h2>What Pro unlocks</h2>
+  <table>
+    <tr><th>Feature</th><th>Free</th><th>Pro</th></tr>
+    <tr><td>Clipboard retention</td><td>Up to 7 days</td><td>Up to 30 days</td></tr>
+    <tr><td>Analytics</td><td>Basic (today, 7 days, records, breakdown)</td><td>Full dashboard (chart, heatmap, breakdown, streaks, CSV export)</td></tr>
+  </table>
+
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 <!-- TROUBLESHOOTING -->
@@ -753,7 +972,7 @@
   <h2>Shortcuts stopped working globally</h2>
   <p>Trigr uses a Windows keyboard hook to capture global keypresses. In rare cases Windows can disable hooks under high system load. The heartbeat monitor should detect this and reinstall the hook automatically. If shortcuts stop working, right-click the tray icon and restart Trigr.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; trigr.it</div>
+  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
 </main>

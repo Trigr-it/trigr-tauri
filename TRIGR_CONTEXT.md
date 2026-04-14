@@ -12,7 +12,7 @@
 **GitHub:** `Trigr-it/trigr` (public repo)  
 **Working directory:** `E:\Development\Trigr`
 **Dev command:** `npm run electron-dev`  
-**Landing page:** `https://trigr-it.github.io/trigr`  
+**Landing page:** `https://usetrigr.com`  
 **Company:** Node Scaffold Design Ltd (trading as Trigr)  
 **Developer:** Rory Brady — solo developer and civil engineer, London UK  
 **Business partner:** Has a partner with a sales background — may formalise as co-founder  
@@ -395,7 +395,7 @@ All 6 core documents are stored in Google Drive (Trigr folder) as Google Docs AN
 ## 16 — Branding
 
 **Tagline:** Set it. Trigr it.  
-**Website:** trigr.it  
+**Website:** usetrigr.com  
 **Colours:**
 - Gold (primary): #E8A020
 - Gold dark: #C8860A
@@ -403,7 +403,7 @@ All 6 core documents are stored in Google Drive (Trigr folder) as Google Docs AN
 - Body: #4A4A6A
 
 **Font:** Arial throughout  
-**Footer pattern:** `Trigr • [Document Title] • Set it. Trigr it. • trigr.it`
+**Footer pattern:** `Trigr • [Document Title] • Set it. Trigr it. • usetrigr.com`
 
 ---
 
