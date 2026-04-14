@@ -321,17 +321,16 @@ fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
     };
 
     let offset = format!("-{} days", days);
-    let rows: Vec<serde_json::Value> = stmt
-        .query_map(rusqlite::params![offset], |row| {
-            Ok(serde_json::json!({
-                "date": row.get::<_, String>(0).unwrap_or_default(),
-                "actions": row.get::<_, i64>(1).unwrap_or(0),
-                "time_saved": row.get::<_, f64>(2).unwrap_or(0.0),
-            }))
-        })
-        .unwrap_or_else(|_| Box::new(std::iter::empty()))
-        .flatten()
-        .collect();
+    let rows: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![offset], |row| {
+        Ok(serde_json::json!({
+            "date": row.get::<_, String>(0).unwrap_or_default(),
+            "actions": row.get::<_, i64>(1).unwrap_or(0),
+            "time_saved": row.get::<_, f64>(2).unwrap_or(0.0),
+        }))
+    }) {
+        Ok(mapped) => mapped.flatten().collect(),
+        Err(_) => Vec::new(),
+    };
 
     serde_json::json!(rows)
 }
@@ -352,20 +351,19 @@ fn handle_assignment_breakdown(conn: &Connection) -> serde_json::Value {
         }
     };
 
-    let rows: Vec<serde_json::Value> = stmt
-        .query_map([], |row| {
-            Ok(serde_json::json!({
-                "trigger": row.get::<_, String>(0).unwrap_or_default(),
-                "label": row.get::<_, String>(1).unwrap_or_default(),
-                "type": row.get::<_, String>(2).unwrap_or_default(),
-                "count": row.get::<_, i64>(3).unwrap_or(0),
-                "time_saved": row.get::<_, f64>(4).unwrap_or(0.0),
-                "last_fired": row.get::<_, String>(5).unwrap_or_default(),
-            }))
-        })
-        .unwrap_or_else(|_| Box::new(std::iter::empty()))
-        .flatten()
-        .collect();
+    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
+        Ok(serde_json::json!({
+            "trigger": row.get::<_, String>(0).unwrap_or_default(),
+            "label": row.get::<_, String>(1).unwrap_or_default(),
+            "type": row.get::<_, String>(2).unwrap_or_default(),
+            "count": row.get::<_, i64>(3).unwrap_or(0),
+            "time_saved": row.get::<_, f64>(4).unwrap_or(0.0),
+            "last_fired": row.get::<_, String>(5).unwrap_or_default(),
+        }))
+    }) {
+        Ok(mapped) => mapped.flatten().collect(),
+        Err(_) => Vec::new(),
+    };
 
     serde_json::json!(rows)
 }
@@ -388,17 +386,16 @@ fn handle_hourly_heatmap(conn: &Connection) -> serde_json::Value {
         }
     };
 
-    let rows: Vec<serde_json::Value> = stmt
-        .query_map([], |row| {
-            Ok(serde_json::json!({
-                "dow": row.get::<_, i64>(0).unwrap_or(0),
-                "hour": row.get::<_, i64>(1).unwrap_or(0),
-                "count": row.get::<_, i64>(2).unwrap_or(0),
-            }))
-        })
-        .unwrap_or_else(|_| Box::new(std::iter::empty()))
-        .flatten()
-        .collect();
+    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
+        Ok(serde_json::json!({
+            "dow": row.get::<_, i64>(0).unwrap_or(0),
+            "hour": row.get::<_, i64>(1).unwrap_or(0),
+            "count": row.get::<_, i64>(2).unwrap_or(0),
+        }))
+    }) {
+        Ok(mapped) => mapped.flatten().collect(),
+        Err(_) => Vec::new(),
+    };
 
     serde_json::json!(rows)
 }
@@ -415,11 +412,10 @@ fn handle_streaks(conn: &Connection) -> serde_json::Value {
         }
     };
 
-    let dates: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .unwrap_or_else(|_| Box::new(std::iter::empty()))
-        .flatten()
-        .collect();
+    let dates: Vec<String> = match stmt.query_map([], |row| row.get::<_, String>(0)) {
+        Ok(mapped) => mapped.flatten().collect(),
+        Err(_) => Vec::new(),
+    };
 
     if dates.is_empty() {
         return serde_json::json!({"current": 0, "longest": 0});
