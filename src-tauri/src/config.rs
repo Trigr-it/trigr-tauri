@@ -50,39 +50,37 @@ fn backup_dir() -> PathBuf {
 
 // ── Local settings (machine-specific, never synced) ─────────────────────────
 
+/// Serializes all reads/writes to trigr-local-settings.json across modules.
+static LOCAL_SETTINGS_LOCK: Mutex<()> = Mutex::new(());
+
 fn local_settings_path() -> PathBuf {
     app_data_dir().join(LOCAL_SETTINGS_FILE)
 }
 
-fn load_local_settings() {
+/// Read the full local settings JSON. Returns empty object if file missing or invalid.
+pub fn load_local_settings_json() -> Value {
+    let _guard = LOCAL_SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = local_settings_path();
     if !path.exists() {
-        return;
+        return serde_json::json!({});
     }
     match fs::read_to_string(&path) {
-        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-            Ok(val) => {
-                if let Some(shared) = val.get("shared_config_path").and_then(|v| v.as_str()) {
-                    if !shared.is_empty() {
-                        let shared_path = PathBuf::from(shared);
-                        info!("[Trigr] Shared config path from local settings: {}", shared_path.display());
-                        set_shared_config_dir(Some(shared_path));
-                    }
-                }
-            }
-            Err(e) => warn!("[Trigr] Failed to parse local settings: {}", e),
-        },
-        Err(e) => warn!("[Trigr] Failed to read local settings: {}", e),
+        Ok(raw) => serde_json::from_str::<Value>(&raw).unwrap_or_else(|e| {
+            warn!("[Trigr] Failed to parse local settings: {}", e);
+            serde_json::json!({})
+        }),
+        Err(e) => {
+            warn!("[Trigr] Failed to read local settings: {}", e);
+            serde_json::json!({})
+        }
     }
 }
 
-pub fn save_local_settings(shared_path: Option<&Path>) -> bool {
+/// Write the full local settings JSON to disk.
+pub fn save_local_settings_json(val: &Value) -> bool {
+    let _guard = LOCAL_SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = local_settings_path();
-    let val = match shared_path {
-        Some(p) => serde_json::json!({ "shared_config_path": p.to_string_lossy() }),
-        None => serde_json::json!({}),
-    };
-    match serde_json::to_string_pretty(&val) {
+    match serde_json::to_string_pretty(val) {
         Ok(json) => match fs::write(&path, json) {
             Ok(()) => {
                 info!("[Trigr] Local settings saved");
@@ -98,6 +96,32 @@ pub fn save_local_settings(shared_path: Option<&Path>) -> bool {
             false
         }
     }
+}
+
+fn load_local_settings() {
+    let val = load_local_settings_json();
+    if let Some(shared) = val.get("shared_config_path").and_then(|v| v.as_str()) {
+        if !shared.is_empty() {
+            let shared_path = PathBuf::from(shared);
+            info!("[Trigr] Shared config path from local settings: {}", shared_path.display());
+            set_shared_config_dir(Some(shared_path));
+        }
+    }
+}
+
+/// Save shared config path to local settings (merge-based — preserves other keys like licence).
+pub fn save_local_settings(shared_path: Option<&Path>) -> bool {
+    let mut val = load_local_settings_json();
+    let obj = val.as_object_mut().unwrap();
+    match shared_path {
+        Some(p) => {
+            obj.insert("shared_config_path".to_string(), Value::String(p.to_string_lossy().to_string()));
+        }
+        None => {
+            obj.remove("shared_config_path");
+        }
+    }
+    save_local_settings_json(&val)
 }
 
 pub fn set_shared_config_dir(path: Option<PathBuf>) {

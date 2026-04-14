@@ -47,6 +47,13 @@ const ACTION_TYPES = [
     desc: 'Run a sequence of actions one after another',
     color: '#ff783c',
   },
+  {
+    id: 'ahk',
+    icon: '⟁',
+    label: 'AHK Script',
+    desc: 'Run an AutoHotkey v1 script',
+    color: '#4ecdc4',
+  },
 ];
 
 const MODIFIER_KEYS = ['Ctrl', 'Alt', 'Shift', 'Win'];
@@ -59,7 +66,7 @@ const TRIGGER_KEYS = [
   'Up','Down','Left','Right',
 ];
 
-const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Open App', 'Open URL', 'Open Folder', 'Focus Window', 'Wait (ms)', 'Wait for Input'];
+const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Open App', 'Open URL', 'Open Folder', 'Focus Window', 'Wait (ms)', 'Wait for Input', 'Run AHK Script'];
 
 const WFI_INPUT_OPTIONS = [
   { value: 'LButton',     label: 'Left Click'   },
@@ -378,6 +385,41 @@ function UrlForm({ value, onChange }) {
   );
 }
 
+function AhkForm({ value, onChange }) {
+  const version = value.ahkVersion || 'v1';
+  const isV2 = version === 'v2';
+  return (
+    <div className="form-section">
+      <div className="ahk-version-row">
+        <button
+          type="button"
+          className={`ahk-version-pill ${!isV2 ? 'active' : ''}`}
+          onClick={() => onChange({ ...value, ahkVersion: 'v1' })}
+        >v1</button>
+        <button
+          type="button"
+          className={`ahk-version-pill ${isV2 ? 'active' : ''}`}
+          onClick={() => onChange({ ...value, ahkVersion: 'v2' })}
+        >v2</button>
+      </div>
+      <label className="form-label">AHK {version} Script</label>
+      <textarea
+        className="form-textarea"
+        placeholder={isV2
+          ? "; Write your AutoHotkey v2 script here\nMsgBox \"Hello from Trigr!\"\nSend \"{Enter}\""
+          : "; Write your AutoHotkey v1 script here\nMsgBox, Hello from Trigr!\nSend, {Enter}"}
+        value={value.script || ''}
+        onChange={e => onChange({ ...value, script: e.target.value })}
+        rows={8}
+        onKeyDown={e => e.stopPropagation()}
+      />
+      <div className="form-hint">
+        Write the script body only — no hotkey labels needed. Trigr handles the trigger.
+      </div>
+    </div>
+  );
+}
+
 const KEY_DISPLAY_MAP = {
   ' ': 'Space', 'ArrowUp': 'Up', 'ArrowDown': 'Down',
   'ArrowLeft': 'Left', 'ArrowRight': 'Right',
@@ -623,7 +665,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Press Key'].includes(step.type);
+  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Press Key', 'Run AHK Script'].includes(step.type);
 
   // Parse JSON values for structured step types
   let appData = { path: '', args: '' };
@@ -794,6 +836,22 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
                 <KeyCaptureInput value={wfi.specificKey || ''} onChange={v => updateWfi({ specificKey: v })} />
               </div>
             )}
+          </div>
+        );
+      })()}
+      {step.type === 'Run AHK Script' && (() => {
+        let ahk = { script: '', scriptName: '' };
+        try { ahk = { ...ahk, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+        return (
+          <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+            <textarea
+              className="form-textarea"
+              placeholder={"; AHK v1 script body..."}
+              value={ahk.script}
+              onChange={e => updateStep({ ...step, value: JSON.stringify({ ...ahk, script: e.target.value }) })}
+              rows={4}
+              onKeyDown={e => e.stopPropagation()}
+            />
           </div>
         );
       })()}
@@ -1073,6 +1131,7 @@ export default function MacroPanel({
   onCopyToProfile,
   onMoveToProfile,
   onDuplicate,
+  isPro = false,
 }) {
   const [activeType, setActiveType] = useState('text');
   const [formValue, setFormValue] = useState({});
@@ -1180,6 +1239,7 @@ export default function MacroPanel({
       case 'folder': return formValue.folderName || formValue.path?.split('\\').pop() || 'Folder';
       case 'url':    return formValue.urlName || formValue.url || 'URL';
       case 'macro':  return `Macro (${(formValue.steps || []).length} steps)`;
+      case 'ahk':    return 'AHK Script';
       default:       return 'Action';
     }
   };
@@ -1192,6 +1252,7 @@ export default function MacroPanel({
       case 'folder': return !!formValue.path?.trim();
       case 'url':    return !!formValue.url?.trim();
       case 'macro':  return (formValue.steps || []).length > 0;
+      case 'ahk':    return !!formValue.script?.trim();
       default:       return false;
     }
   };
@@ -1314,7 +1375,7 @@ export default function MacroPanel({
           {ACTION_TYPES.map(type => (
             <button
               key={type.id}
-              className={`type-btn ${activeType === type.id ? 'active' : ''}`}
+              className={`type-btn ${activeType === type.id ? 'active' : ''}${type.id === 'ahk' ? ' type-btn-wide' : ''}`}
               style={{ '--type-color': type.color }}
               onClick={() => { setActiveType(type.id); setFormValue({}); }}
               type="button"
@@ -1391,6 +1452,7 @@ export default function MacroPanel({
           {activeType === 'folder' && <FolderForm value={formValue} onChange={setFormValue} />}
           {activeType === 'url'    && <UrlForm value={formValue} onChange={setFormValue} />}
           {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} />}
+          {activeType === 'ahk'   && <AhkForm value={formValue} onChange={setFormValue} />}
         </div>
 
         {/* Display label */}

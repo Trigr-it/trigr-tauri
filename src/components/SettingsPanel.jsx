@@ -39,6 +39,9 @@ export default function SettingsPanel({
   activeProfile = 'Default',
   onImportTemplate,
   onImportCadTemplate,
+  isPro = false,
+  licenceStatus = {},
+  onLicenceStatusChange,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -52,6 +55,10 @@ export default function SettingsPanel({
   const [appVersion, setAppVersion]           = useState('');
   const [templatesExpanded, setTemplatesExpanded] = useState(false);
   const [clipboardRetention, setClipboardRetention] = useState(7);
+  const [licenceKey, setLicenceKey]             = useState('');
+  const [licenceActivating, setLicenceActivating] = useState(false);
+  const [licenceError, setLicenceError]         = useState(null);
+  const [licenceDeactivating, setLicenceDeactivating] = useState(false);
   const [sharedConfigPath, setSharedConfigPath] = useState(null); // null = local, string = shared
   const [sharedConfigBusy, setSharedConfigBusy] = useState(false);
   const [sharedConfigError, setSharedConfigError] = useState(null);
@@ -96,6 +103,79 @@ export default function SettingsPanel({
       </div>
 
       <div className="settings-body">
+
+        {/* ── LICENCE ───────────────────────────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">LICENCE</div>
+          {licenceStatus.key_entered ? (
+            <div className="settings-licence-active">
+              <div className="settings-licence-status-row">
+                <span className={`settings-licence-badge ${licenceStatus.is_pro ? 'pro' : 'free'}`}>
+                  {licenceStatus.is_pro ? 'PRO' : 'FREE'}
+                </span>
+                {licenceStatus.product_name && (
+                  <span className="settings-licence-product">{licenceStatus.product_name}</span>
+                )}
+              </div>
+              <div className="settings-licence-detail">
+                Status: {licenceStatus.status || 'unknown'}
+                {licenceStatus.expires_at && ` \u00b7 Expires: ${new Date(licenceStatus.expires_at).toLocaleDateString()}`}
+              </div>
+              <button
+                type="button"
+                className="settings-action-btn settings-danger-btn"
+                onClick={async () => {
+                  setLicenceDeactivating(true);
+                  const result = await window.electronAPI?.deactivateLicence();
+                  setLicenceDeactivating(false);
+                  if (result?.ok && result.status) {
+                    onLicenceStatusChange?.(result.status);
+                  } else {
+                    setLicenceError(result?.error || 'Deactivation failed');
+                  }
+                }}
+                disabled={licenceDeactivating}
+              >
+                {licenceDeactivating ? 'Deactivating...' : 'Deactivate Licence'}
+              </button>
+              {licenceError && <div className="settings-shared-error">{licenceError}</div>}
+            </div>
+          ) : (
+            <div className="settings-licence-entry">
+              <p className="settings-toggle-sub">Enter your licence key to unlock Pro features.</p>
+              <div className="settings-licence-input-row">
+                <input
+                  type="text"
+                  className="form-input settings-licence-input"
+                  placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+                  value={licenceKey}
+                  onChange={e => { setLicenceKey(e.target.value.trim()); setLicenceError(null); }}
+                />
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={async () => {
+                    if (!licenceKey) return;
+                    setLicenceActivating(true);
+                    setLicenceError(null);
+                    const result = await window.electronAPI?.activateLicence(licenceKey);
+                    setLicenceActivating(false);
+                    if (result?.ok && result.status) {
+                      onLicenceStatusChange?.(result.status);
+                      setLicenceKey('');
+                    } else {
+                      setLicenceError(result?.error || 'Activation failed');
+                    }
+                  }}
+                  disabled={licenceActivating || !licenceKey}
+                >
+                  {licenceActivating ? 'Activating...' : 'Activate'}
+                </button>
+              </div>
+              {licenceError && <div className="settings-shared-error">{licenceError}</div>}
+            </div>
+          )}
+        </section>
 
         {/* ── HELP & DOCUMENTATION ───────────────────────── */}
         <section className="settings-section">
@@ -172,6 +252,7 @@ export default function SettingsPanel({
               <span className="settings-about-version">{appVersion ? `v${appVersion}` : ''}</span>
             </div>
             <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect — all stored locally on your device.</p>
+            <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 (GPL v2).</p>
           </div>
         </section>
 
@@ -351,9 +432,9 @@ export default function SettingsPanel({
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
-              <span className="settings-toggle-label">History retention</span>
+              <span className="settings-toggle-label">History retention {!isPro && <span className="pro-badge">PRO</span>}</span>
               <span className="settings-toggle-sub">
-                Days to keep clipboard history. Free tier: up to 7 days. <em>(Pro — up to 30 days)</em>
+                Days to keep clipboard history.{isPro ? ' Up to 30 days.' : ' Free tier: up to 7 days.'}
               </span>
             </div>
             <div className="settings-retention-input">
@@ -361,12 +442,13 @@ export default function SettingsPanel({
                 type="number"
                 className="form-input settings-retention-num"
                 min={1}
-                max={7}
+                max={isPro ? 30 : 7}
                 value={clipboardRetention}
                 onChange={e => {
+                  const maxDays = isPro ? 30 : 7;
                   let v = parseInt(e.target.value, 10);
                   if (isNaN(v)) v = 7;
-                  v = Math.max(1, Math.min(7, v));
+                  v = Math.max(1, Math.min(maxDays, v));
                   setClipboardRetention(v);
                   window.electronAPI?.setClipboardSettings(v);
                 }}

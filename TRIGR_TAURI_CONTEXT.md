@@ -1,7 +1,7 @@
 # TRIGR TAURI — Migration Context
 > Read this file at the start of every CC session before touching any code.
 > Update the Completed Phases section after every session.
-> Last updated: 2026-04-11 (post v0.1.34)
+> Last updated: 2026-04-12 (post v0.1.34)
 
 ---
 
@@ -158,9 +158,11 @@ Note: Tauri command names use snake_case. Channel names map as: `get-config` →
 - `get_clipboard_image` — returns base64-encoded PNG blob for a single image item by ID
 - `get_distinct_source_apps` — returns `Vec<String>` of distinct source_app values from clipboard history
 - `close_clipboard_overlay` — hides clipboard overlay, restores focus
-- `clipboard_overlay_resize` — resizes overlay window height (60–500px)
+- `clipboard_overlay_resize` — resizes overlay window: `{ width, height }` (width 500–1200, height 60–600)
 - `update_clipboard_item` — updates text content + auto-retags, returns new `content_tag`
 - `get_clipboard_storage_size` — returns total bytes of clipboard DB (main + WAL + SHM files)
+- `get_scratchpad` — reads `trigr-scratchpad.txt` from AppData, returns `String`
+- `save_scratchpad` — writes text to `trigr-scratchpad.txt` in AppData, returns `bool`
 
 ---
 
@@ -405,6 +407,15 @@ All mouse buttons (Left, Right, Middle, Side1, Side2, Scroll Up/Down) can be ass
 
 **Frontend:** `BARE_MOUSE_ALLOWED` in MouseCanvas.jsx includes all 7 zones. All zones are clickable in Bare mode. Advisory text says "all mouse buttons".
 
+### Clipboard Overlay Scratchpad
+Slide-out scratchpad pane on the right side of the clipboard overlay (Ctrl+Shift+V). Toggle via slim arrow button (numpad-style `◂`/`▸`) attached to the right edge of `.co-panel`. Arrow + scratchpad sit OUTSIDE `.co-panel` in the `.co-root` flex container so the main panel (list + detail) never changes size.
+
+**Persistence:** `trigr-scratchpad.txt` plain text file in AppData dir. Read by `get_scratchpad` command and sent in `show_clipboard_overlay` payload alongside clipboard data. Written by `save_scratchpad` command. Auto-saves 400ms after typing stops (debounced in React). Persists through restarts/reboots.
+
+**Layout:** `.co-panel` has `flex: 0 0 auto; width: 730px` (fixed). `.co-pad-slide` uses `max-width: 0` → `max-width: 300px` CSS transition (200ms ease). `.co-pad` inside is 280px wide with gold accent border, rounded right corners. Window resizes from 750px (collapsed) to 1050px (open) via `clipboard_overlay_resize(width, height)`.
+
+**State:** `padOpen` boolean persisted in `localStorage` key `trigr_scratchpad_open`. `padText` string loaded from overlay data event. Keyboard nav pauses when textarea focused (`.co-pad-textarea` class check in keydown handler), Escape refocuses main search input.
+
 ### Uncategorised Expansion Category
 The "Uncategorised" tab uses internal value `'__uncategorised__'` for `activeCategory` state. The `openAdd()` function in TextExpansions.jsx must treat this the same as `'All'` — set `category: null`, NOT `category: '__uncategorised__'`. The filter at render time checks `e.category == null` for uncategorised items. Writing `"__uncategorised__"` to config makes the expansion invisible in the UI.
 
@@ -525,3 +536,5 @@ Record key decisions and findings here after each session.
 | 2026-04-09 | Post-MVP | Pinned items query + preview crash + zoomable images | **Pinned query:** `handle_get_history` SQL changed from `ORDER BY id DESC` to `ORDER BY pinned DESC, id DESC` — pinned items always appear on page 1 regardless of age. **Preview crash fix:** `&text[..200]` byte slice replaced with `char_indices().nth(200)` in both capture and update paths — multi-byte characters (box-drawing `─`, emoji) caused panic in clipboard listener thread. **Zoomable image preview:** New `ZoomableImage.jsx` component — scroll to zoom (1x–5x), drag to pan when zoomed, percentage badge, resets on image change. Used in both ClipboardPanel and ClipboardOverlay detail panes via `zoomable` prop on `ImageThumb`. |
 | 2026-04-09 | Release | v0.1.33 released | Pinned items query fix, preview crash fix. |
 | 2026-04-11 | Post-MVP | Bare mouse button remapping | All mouse buttons (Left/Right/Middle/Side1/Side2/Scroll) now assignable as bare in app-linked profiles. `SUPPRESS_BARE_MOUSE` RwLock HashSet in hotkeys.rs — populated by `rebuild_suppress_keys`, checked in `mouse_hook_proc` regardless of modifier state. Hook swallows original click, fires action only. Modified fallthrough: if no `Profile::Shift::MOUSE_RIGHT` exists, falls through to `Profile::BARE::MOUSE_RIGHT` — modifiers pass through naturally (Shift+RightClick→Shift+MiddleClick). Press-hold mirroring: `trigger_mouse_id` field on `HeldKeyState`, `release_held_if_mouse_trigger()` in actions.rs called from `handle_mouse_up` — button DOWN→target DOWN, button UP→target UP (not toggle). Bare scroll wheel support added to `handle_mouse_wheel`. Frontend: `BARE_MOUSE_ALLOWED` expanded to all 7 zones, advisory text updated. |
+| 2026-04-11 | Post-MVP | Clipboard overlay scratchpad | Slide-out scratchpad pane on clipboard overlay. Numpad-style arrow toggle (`◂`/`▸`) on right edge, `max-width` CSS transition. Panel sits outside `.co-panel` (fixed 730px) so main layout untouched. `trigr-scratchpad.txt` in AppData, `get_scratchpad`/`save_scratchpad` IPC commands. Debounced auto-save (400ms). `clipboard_overlay_resize` updated to accept `(width, height)`. `show_clipboard_overlay` sends scratchpad text in payload. Window: 750px collapsed, 1050px expanded. |
+| 2026-04-11 | Release | v0.1.34 released | Bare mouse remapping, press-hold mirroring, modifier passthrough, clipboard scratchpad. |

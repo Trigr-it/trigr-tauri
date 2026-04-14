@@ -848,3 +848,90 @@
   color: var(--text-secondary);
 }
 
+/* ── Licence section ─────────────────────────────────────────────────────── */
+.settings-licence-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.settings-licence-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 4px;
+}
+
+.settings-licence-badge.pro {
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+}
+
+.settings-licence-badge.free {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.settings-licence-product {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.settings-licence-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.settings-licence-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-licence-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-licence-input {
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.settings-danger-btn {
+  color: var(--danger) !important;
+  border-color: var(--danger) !important;
+}
+
+.settings-danger-btn:hover {
+  background: rgba(232, 64, 64, 0.1) !important;
+}
+
+.settings-about-credits {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.settings-about-credits a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.settings-about-credits a:hover {
+  text-decoration: underline;
+}
+

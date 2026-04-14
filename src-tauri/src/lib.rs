@@ -8,6 +8,7 @@ mod config;
 mod expansions;
 mod foreground;
 mod hotkeys;
+mod licence;
 mod tray;
 
 // ── Config (Phase 2) ────────────────────────────────────────────────────────
@@ -691,6 +692,7 @@ fn set_window_resizable(resizable: bool, app: tauri::AppHandle) {
 fn quit_app(app: tauri::AppHandle) {
     actions::release_held_key();
     actions::stop_repeating_key();
+    actions::kill_all_ahk_processes();
     app.exit(0);
 }
 
@@ -1303,7 +1305,8 @@ fn get_clipboard_settings() -> Value {
 
 #[tauri::command]
 fn set_clipboard_settings(retention_days: u32) {
-    clipboard::set_retention_days(retention_days);
+    let max_days = if licence::is_pro() { 30 } else { 7 };
+    clipboard::set_retention_days(retention_days.min(max_days));
 }
 
 #[tauri::command]
@@ -1366,6 +1369,34 @@ fn fill_in_submit(values: Value) {
     }
 }
 
+// ── Licence ─────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_licence_status() -> Value {
+    serde_json::to_value(licence::get_licence_status()).unwrap_or(serde_json::json!({}))
+}
+
+#[tauri::command]
+async fn activate_licence(key: String) -> Value {
+    match licence::activate_licence(key).await {
+        Ok(status) => serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    }
+}
+
+#[tauri::command]
+async fn deactivate_licence() -> Value {
+    match licence::deactivate_licence().await {
+        Ok(status) => serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    }
+}
+
+#[tauri::command]
+async fn check_licence_revalidation() -> Value {
+    serde_json::to_value(licence::check_and_revalidate().await).unwrap_or(serde_json::json!({}))
+}
+
 // ── App builder ──────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1394,8 +1425,10 @@ pub fn run() {
             let app_data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data)?;
             config::init(app_data.clone());
+            licence::init();
             analytics::init(app_data.clone());
-            clipboard::init(app_data, app.handle().clone());
+            clipboard::init(app_data.clone(), app.handle().clone());
+            actions::cleanup_stale_ahk_scripts(app_data);
 
             // Start file watcher if shared config path is configured
             if let Some(shared_dir) = config::get_shared_config_dir() {
@@ -1718,6 +1751,11 @@ pub fn run() {
             fill_in_ready,
             fillin_resize,
             fill_in_submit,
+            // Licence
+            get_licence_status,
+            activate_licence,
+            deactivate_licence,
+            check_licence_revalidation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

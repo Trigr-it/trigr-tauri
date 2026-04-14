@@ -56,6 +56,7 @@ function App() {
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
   const [importPrompt, setImportPrompt]                 = useState(null); // { name, assignments }
+  const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null });
   const [listViewActive, setListViewActive]             = useState(() => {
     try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
   });
@@ -63,6 +64,7 @@ function App() {
 
   // Current modifier combo string e.g. "Ctrl+Alt"
   const currentCombo = comboString(activeModifiers);
+  const isPro = licenceStatus.is_pro;
 
   // ── Load config on mount ──────────────────────────────────
   useEffect(() => {
@@ -179,6 +181,11 @@ function App() {
       const status = await window.electronAPI.getEngineStatus();
       setEngineStatus(status);
 
+      // Check licence status (revalidates if >24h since last check)
+      window.electronAPI.checkLicenceRevalidation?.().then(ls => {
+        if (ls) setLicenceStatus(ls);
+      });
+
       window.electronAPI.onEngineStatus((status) => {
         setEngineStatus(status);
         setMacrosEnabled(status.macrosEnabled);
@@ -271,6 +278,17 @@ function App() {
       window.electronAPI?.removeAllListeners('overlay-fired');
       window.electronAPI?.removeAllListeners('hotkey-recorded');
     };
+  }, []);
+
+  // ── Licence re-validation on window focus ──
+  useEffect(() => {
+    const handleFocus = () => {
+      window.electronAPI?.checkLicenceRevalidation?.().then(ls => {
+        if (ls) setLicenceStatus(ls);
+      });
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   // ── UPDATER — DO NOT MODIFY WITHOUT EXPLICIT INSTRUCTION ──
@@ -1662,6 +1680,9 @@ function App() {
             activeProfile={activeProfile}
             onImportTemplate={handleImportTemplate}
             onImportCadTemplate={handleImportCadTemplate}
+            isPro={isPro}
+            licenceStatus={licenceStatus}
+            onLicenceStatusChange={setLicenceStatus}
           />
         ) : activeArea === 'mapping' ? (
           <MacroPanel
@@ -1684,6 +1705,7 @@ function App() {
             onDuplicate={handleDuplicateAssignment}
             onCopyToProfile={handleCopyToProfile}
             onMoveToProfile={handleMoveToProfile}
+            isPro={isPro}
           />
         ) : null}
       </div>

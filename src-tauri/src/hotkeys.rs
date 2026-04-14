@@ -1399,7 +1399,7 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
 
         // Log analytics
         let action_type = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
-        let analytics_type = if action_type == "macro" { "macro" } else { "hotkey" };
+        let analytics_type = match action_type { "macro" | "ahk" => "macro", _ => "hotkey" };
         crate::analytics::log_action(analytics_type, 0);
 
         // Notify frontend for visual feedback
