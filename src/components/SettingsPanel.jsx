@@ -252,7 +252,7 @@ export default function SettingsPanel({
               <span className="settings-about-version">{appVersion ? `v${appVersion}` : ''}</span>
             </div>
             <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect — all stored locally on your device.</p>
-            <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 (GPL v2).</p>
+            <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 + v2 (<a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://github.com/AutoHotkey/AutoHotkey'); }}>GPL v2 — source code</a>).</p>
           </div>
         </section>
 
