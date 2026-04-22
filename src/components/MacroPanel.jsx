@@ -3,6 +3,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './MacroPanel.css';
+import { friendlyKeyName } from './keyboardLayout';
 
 const ACTION_TYPES = [
   {
@@ -66,7 +67,7 @@ const TRIGGER_KEYS = [
   'Up','Down','Left','Right',
 ];
 
-const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Open App', 'Open URL', 'Open Folder', 'Focus Window', 'Wait (ms)', 'Wait for Input', 'Run AHK Script'];
+const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Open App', 'Open URL', 'Open Folder', 'Focus Window', 'Wait (ms)', 'Wait for Input', 'Run AHK Script', 'Click at Position'];
 
 const WFI_INPUT_OPTIONS = [
   { value: 'LButton',     label: 'Left Click'   },
@@ -420,6 +421,67 @@ function AhkForm({ value, onChange }) {
   );
 }
 
+// Inline pick button for Click at Position (sits on the step row beside dropdown)
+function ClickPositionPickBtn({ step, updateStep }) {
+  let cp = { x: 0, y: 0, button: 'left', mode: 'absolute' };
+  try { cp = { ...cp, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  const [picking, setPicking] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  const pickPosition = async () => {
+    setPicking(true);
+    for (let i = 3; i > 0; i--) {
+      setCountdown(i);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    setCountdown(0);
+    const pos = await window.electronAPI?.getCursorPosition();
+    setPicking(false);
+    if (pos) {
+      updateStep({ ...step, value: JSON.stringify({ ...cp, x: pos.x, y: pos.y }) });
+    }
+  };
+
+  return (
+    <button type="button" className="browse-btn" onClick={pickPosition} disabled={picking} style={{ flexShrink: 0 }}>
+      {picking ? `${countdown}...` : 'Pick Position'}
+    </button>
+  );
+}
+
+// Sub-row fields for Click at Position (X, Y, button selector)
+function ClickPositionFields({ step, updateStep }) {
+  let cp = { x: 0, y: 0, button: 'left', mode: 'absolute' };
+  try { cp = { ...cp, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  const update = (patch) => updateStep({ ...step, value: JSON.stringify({ ...cp, ...patch }) });
+
+  return (
+    <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>X</label>
+        <input className="form-input" type="number" style={{ width: 70 }} value={cp.x}
+          onChange={e => update({ x: parseInt(e.target.value) || 0 })}
+          onKeyDown={e => e.stopPropagation()} />
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>Y</label>
+        <input className="form-input" type="number" style={{ width: 70 }} value={cp.y}
+          onChange={e => update({ y: parseInt(e.target.value) || 0 })}
+          onKeyDown={e => e.stopPropagation()} />
+        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+          {cp.x || cp.y ? `(${cp.x}, ${cp.y})` : ''}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <select className="form-select" value={cp.button} style={{ flex: 1 }}
+          onChange={e => update({ button: e.target.value })}>
+          <option value="left">Left Click</option>
+          <option value="right">Right Click</option>
+          <option value="middle">Middle Click</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 const KEY_DISPLAY_MAP = {
   ' ': 'Space', 'ArrowUp': 'Up', 'ArrowDown': 'Down',
   'ArrowLeft': 'Left', 'ArrowRight': 'Right',
@@ -436,7 +498,7 @@ function KeyChips({ combo }) {
     <>
       {keys.map((k, i) => (
         <Fragment key={i}>
-          <kbd>{k}</kbd>
+          <kbd>{friendlyKeyName(k)}</kbd>
           {i < keys.length - 1 && <span className="key-capture-plus">+</span>}
         </Fragment>
       ))}
@@ -665,7 +727,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Press Key', 'Run AHK Script'].includes(step.type);
+  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Press Key', 'Run AHK Script', 'Click at Position'].includes(step.type);
 
   // Parse JSON values for structured step types
   let appData = { path: '', args: '' };
@@ -705,6 +767,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
             value={step.value || ''}
             onChange={e => updateStep({ ...step, value: e.target.value })}
           />
+        )}
+        {step.type === 'Click at Position' && (
+          <ClickPositionPickBtn step={step} updateStep={updateStep} />
         )}
         <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
       </div>
@@ -855,6 +920,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
           </div>
         );
       })()}
+      {step.type === 'Click at Position' && (
+        <ClickPositionFields step={step} updateStep={updateStep} />
+      )}
     </div>
   );
 }
@@ -981,10 +1049,7 @@ function MacroSequenceForm({ value, onChange, globalInputMethod }) {
 const MOD_ORDER = ['Ctrl', 'Shift', 'Alt', 'Win'];
 
 function keyIdToLabel(keyId) {
-  if (!keyId) return '';
-  if (keyId.startsWith('Key'))   return keyId.slice(3);
-  if (keyId.startsWith('Digit')) return keyId.slice(5);
-  return keyId;
+  return friendlyKeyName(keyId);
 }
 
 // ── Reassign hotkey overlay ────────────────────────────────────────────────────
@@ -1128,8 +1193,6 @@ export default function MacroPanel({
   onClearDouble,
   onClose,
   onReassign,
-  onCopyToProfile,
-  onMoveToProfile,
   onDuplicate,
   isPro = false,
 }) {
@@ -1139,26 +1202,11 @@ export default function MacroPanel({
   const [pressMode, setPressMode] = useState('single'); // 'single' | 'double'
   const [reassigning, setReassigning] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
-  const [profilePopover, setProfilePopover] = useState(null); // null | 'copy' | 'move'
   const [pendingMouseSave, setPendingMouseSave] = useState(null); // macro pending global-mouse confirmation
-  const popoverRef = useRef(null);
-
-  const otherProfiles = (profiles || []).filter(p => p !== activeProfile);
-
-  // Close profile popover on outside click
-  useEffect(() => {
-    if (!profilePopover) return;
-    function onDown(e) {
-      if (!popoverRef.current?.contains(e.target)) setProfilePopover(null);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [profilePopover]);
 
   useEffect(() => {
     setReassigning(false);
     setDuplicating(false);
-    setProfilePopover(null);
     setPendingMouseSave(null);
     setPressMode('single');
     if (assignment) {
@@ -1330,7 +1378,7 @@ export default function MacroPanel({
               ? ({ MOUSE_LEFT: 'Left Click', MOUSE_RIGHT: 'Right Click', MOUSE_MIDDLE: 'Middle Click',
                    MOUSE_SCROLL_UP: 'Scroll ↑', MOUSE_SCROLL_DOWN: 'Scroll ↓',
                    MOUSE_SIDE1: 'Side 1', MOUSE_SIDE2: 'Side 2' })[selectedKey] ?? selectedKey
-              : selectedKey}
+              : friendlyKeyName(selectedKey)}
           </kbd>
         </div>
         <div className="macro-panel-header-actions">
@@ -1487,47 +1535,6 @@ export default function MacroPanel({
               <button className="btn-duplicate" onClick={() => setDuplicating(true)} type="button" title="Duplicate this macro to a different hotkey">
                 Duplicate
               </button>
-              {otherProfiles.length > 0 && (
-                <div className="profile-action-group" ref={popoverRef}>
-                  <button
-                    className={`btn-profile${profilePopover === 'copy' ? ' active' : ''}`}
-                    onClick={() => setProfilePopover(v => v === 'copy' ? null : 'copy')}
-                    type="button"
-                    title="Duplicate this macro to another profile"
-                  >
-                    Copy ▾
-                  </button>
-                  <button
-                    className={`btn-profile btn-profile-move${profilePopover === 'move' ? ' active' : ''}`}
-                    onClick={() => setProfilePopover(v => v === 'move' ? null : 'move')}
-                    type="button"
-                    title="Move this macro to another profile"
-                  >
-                    Move ▾
-                  </button>
-                  {profilePopover && (
-                    <div className="profile-popover">
-                      <div className="profile-popover-label">
-                        {profilePopover === 'copy' ? 'Copy to:' : 'Move to:'}
-                      </div>
-                      {otherProfiles.map(p => (
-                        <button
-                          key={p}
-                          className="profile-popover-item"
-                          onClick={() => {
-                            if (profilePopover === 'copy') onCopyToProfile?.(p);
-                            else onMoveToProfile?.(p);
-                            setProfilePopover(null);
-                          }}
-                          type="button"
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )
         )}

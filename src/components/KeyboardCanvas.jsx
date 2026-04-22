@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect, useRef } from 'react';
 import './KeyboardCanvas.css';
 import {
   KEYBOARD_ROWS, SYSTEM_KEYS, KEY_UNIT, KEY_GAP, KEY_HEIGHT,
-  KEYBOARD_NATURAL_WIDTH, KEYBOARD_NATURAL_HEIGHT,
+  KEYBOARD_NATURAL_WIDTH, KEYBOARD_NATURAL_HEIGHT, friendlyKeyName,
 } from './keyboardLayout';
 import NumpadCanvas from './NumpadCanvas';
 
@@ -275,7 +275,7 @@ export default function KeyboardCanvas({
         ) : isBare ? (
           selectedKey ? (
             <span className="label-assigning">
-              Assigning: <strong>Bare</strong> + <strong>{selectedKey}</strong>
+              Assigning: <strong>Bare</strong> + <strong>{friendlyKeyName(selectedKey)}</strong>
             </span>
           ) : (
             <span className="label-muted">
@@ -288,7 +288,7 @@ export default function KeyboardCanvas({
               <React.Fragment key={m}>
                 <strong>{m}</strong>{i < arr.length - 1 ? ' + ' : ''}
               </React.Fragment>
-            ))} + <strong>{selectedKey}</strong>
+            ))} + <strong>{friendlyKeyName(selectedKey)}</strong>
           </span>
         ) : (
           <span className="label-muted">

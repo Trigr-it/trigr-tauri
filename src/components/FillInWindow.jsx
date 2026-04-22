@@ -21,39 +21,53 @@
  * the panel.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './FillInWindow.css';
 
 export default function FillInWindow() {
+  const [mode, setMode] = useState(null); // 'fillin' | 'variant'
   const [fields, setFields] = useState([]);
   const [values, setValues] = useState({});
+  const [options, setOptions] = useState([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRefs = useRef([]);
   const panelRef = useRef(null);
 
   useEffect(() => {
-    // Tell main process this renderer is mounted and ready to receive fill-in data.
     window.electronAPI?.fillInReady?.();
 
-    // Listen for ready requests on subsequent shows (window is not remounted after first use)
     window.electronAPI?.onFillInRequestReady?.(() => {
       window.electronAPI?.fillInReady?.();
     });
 
     if (!window.electronAPI?.onFillInShow) return;
-    window.electronAPI.onFillInShow(({ fields: flds, theme }) => {
-      document.documentElement.setAttribute('data-theme', theme || 'dark');
-      console.log('[FillInWindow] fill-in-show received, fields:', flds);
-      setFields(flds);
-      const init = {};
-      flds.forEach(f => { init[f] = ''; });
-      setValues(init);
-      setTimeout(() => inputRefs.current[0]?.focus(), 60);
+    window.electronAPI.onFillInShow((data) => {
+      document.documentElement.setAttribute('data-theme', data.theme || 'dark');
+
+      if (data.mode === 'variant') {
+        // Variant selection mode
+        setMode('variant');
+        setOptions(data.options || []);
+        setSelectedIdx(0);
+        setFields([]);
+        setValues({});
+      } else {
+        // Fill-in fields mode (default)
+        setMode('fillin');
+        setFields(data.fields || []);
+        const init = {};
+        (data.fields || []).forEach(f => { init[f] = ''; });
+        setValues(init);
+        setOptions([]);
+        setSelectedIdx(0);
+        setTimeout(() => inputRefs.current[0]?.focus(), 60);
+      }
     });
   }, []);
 
   // Auto-resize window to match panel content height
   useEffect(() => {
-    if (!fields.length) return;
+    if (!mode) return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const el = panelRef.current;
@@ -62,19 +76,21 @@ export default function FillInWindow() {
         window.electronAPI?.resizeFillin(windowH);
       });
     });
-  }, [fields]);
+  }, [mode, fields, options]);
 
   function submit() {
-    console.log('[FillInWindow] submit called, values:', JSON.stringify(values));
     window.electronAPI?.submitFillIn(values);
   }
 
   function cancel() {
-    console.log('[FillInWindow] cancel called');
     window.electronAPI?.submitFillIn(null);
   }
 
-  function onKeyDown(e, idx) {
+  function selectVariant(idx) {
+    window.electronAPI?.submitFillIn({ __variant_index: String(idx) });
+  }
+
+  function onFieldKeyDown(e, idx) {
     if (e.key === 'Enter') {
       if (idx < fields.length - 1) {
         inputRefs.current[idx + 1]?.focus();
@@ -85,8 +101,60 @@ export default function FillInWindow() {
     if (e.key === 'Escape') cancel();
   }
 
-  if (!fields.length) return <div className="fillin-win-empty" />;
+  const onVariantKeyDown = useCallback((e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.min(i + 1, options.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      selectVariant(selectedIdx);
+    } else if (e.key === 'Escape') {
+      cancel();
+    }
+  }, [selectedIdx, options.length]);
 
+  // Keyboard handler for variant mode
+  useEffect(() => {
+    if (mode !== 'variant') return;
+    window.addEventListener('keydown', onVariantKeyDown);
+    return () => window.removeEventListener('keydown', onVariantKeyDown);
+  }, [mode, onVariantKeyDown]);
+
+  if (!mode) return <div className="fillin-win-empty" />;
+
+  // ── Variant selection mode ──
+  if (mode === 'variant') {
+    return (
+      <div className="fillin-win" ref={panelRef}>
+        <div className="fillin-win-header">
+          <span className="fillin-win-icon">◇</span>
+          <span className="fillin-win-title">Select Variant</span>
+          <button className="fillin-win-close" onClick={cancel} tabIndex={-1}>✕</button>
+        </div>
+        <div className="fillin-variant-list">
+          {options.map((label, i) => (
+            <div
+              key={i}
+              className={`fillin-variant-row${i === selectedIdx ? ' selected' : ''}`}
+              onClick={() => selectVariant(i)}
+              onMouseEnter={() => setSelectedIdx(i)}
+            >
+              <span className="fillin-variant-num">{i + 1}</span>
+              <span className="fillin-variant-label">{label}</span>
+            </div>
+          ))}
+        </div>
+        <div className="fillin-variant-hint">
+          <kbd>↑↓</kbd> navigate &nbsp; <kbd>Enter</kbd> select &nbsp; <kbd>Esc</kbd> cancel
+        </div>
+      </div>
+    );
+  }
+
+  // ── Fill-in fields mode ──
   return (
     <div className="fillin-win" ref={panelRef}>
       <div className="fillin-win-header">
@@ -103,7 +171,7 @@ export default function FillInWindow() {
               className="fillin-win-input"
               value={values[label] || ''}
               onChange={e => setValues(v => ({ ...v, [label]: e.target.value }))}
-              onKeyDown={e => onKeyDown(e, i)}
+              onKeyDown={e => onFieldKeyDown(e, i)}
               placeholder={`Enter ${label}…`}
               spellCheck={false}
             />

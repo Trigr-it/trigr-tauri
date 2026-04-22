@@ -105,6 +105,33 @@ export const KEYBOARD_ROWS = [
   ],
 ];
 
+// Friendly display names for key IDs that aren't self-explanatory
+export function friendlyKeyName(keyId) {
+  if (!keyId) return '';
+  switch (keyId) {
+    case 'Backquote':    return '`';
+    case 'Quote':        return "'";
+    case 'Semicolon':    return ';';
+    case 'BracketLeft':  return '[';
+    case 'BracketRight': return ']';
+    case 'Backslash':    return '\\';
+    case 'Comma':        return ',';
+    case 'Period':       return '.';
+    case 'Slash':        return '/';
+    case 'Minus':        return '-';
+    case 'Equal':        return '=';
+    case 'Backspace':    return '⌫';
+    case 'CapsLock':     return 'Caps';
+    case 'ContextMenu':  return 'Menu';
+    default: break;
+  }
+  if (keyId.startsWith('Key') && keyId.length === 4) return keyId.slice(3);
+  if (keyId.startsWith('Digit') && keyId.length === 6) return keyId.slice(5);
+  if (keyId.startsWith('Arrow')) return keyId.slice(5);
+  if (keyId.startsWith('Numpad')) return keyId.replace('Numpad', 'Num');
+  return keyId;
+}
+
 // Keys that can't be reassigned (modifiers used in combos)
 export const SYSTEM_KEYS = new Set([
   'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',

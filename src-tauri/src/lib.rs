@@ -429,6 +429,15 @@ async fn browse_for_folder(app: tauri::AppHandle) -> Value {
 // ── Window enumeration ─────────────────────────────────────────────────────
 
 #[tauri::command]
+fn get_cursor_position() -> Value {
+    let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point);
+    }
+    serde_json::json!({ "x": point.x, "y": point.y })
+}
+
+#[tauri::command]
 fn list_open_windows() -> Vec<Value> {
     use std::collections::HashSet;
     use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
@@ -1736,6 +1745,7 @@ pub fn run() {
             import_profile,
             // Window enumeration
             list_open_windows,
+            get_cursor_position,
             // Startup
             get_startup_enabled,
             set_startup_enabled,

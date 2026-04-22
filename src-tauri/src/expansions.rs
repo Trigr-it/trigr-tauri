@@ -236,6 +236,32 @@ pub fn check_space_trigger() -> bool {
             return true;
         }
 
+        // Check for variant options
+        let options = entry
+            .get("data")
+            .and_then(|d| d.get("options"))
+            .and_then(|v| v.as_array())
+            .cloned();
+
+        if let Some(opts) = options {
+            if !opts.is_empty() {
+                let trigger_len = s.buffer.len();
+                let global_vars = s.global_variables.clone();
+                let trigger_str = buffer_lower.clone();
+                s.buffer.clear();
+                drop(s);
+
+                info!("[Trigr] Variant expansion: \"{}\" with {} options", trigger_str, opts.len());
+                if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+                    return true;
+                }
+                thread::spawn(move || {
+                    fire_variant_expansion(&trigger_str, trigger_len, true, &opts, &global_vars);
+                });
+                return true;
+            }
+        }
+
         let text = entry
             .get("data")
             .and_then(|d| d.get("text"))
@@ -267,8 +293,15 @@ pub fn check_immediate_triggers() -> bool {
     let buf_lower = s.buffer.to_lowercase();
 
     // Collect immediate triggers sorted by length (longest first)
-    // Each entry: (trigger, expansion_type, text, image_path, image_scale)
-    let mut immediate_triggers: Vec<(String, String, String, String, u32)> = s
+    struct ImmTrigger {
+        trigger: String,
+        exp_type: String,
+        text: String,
+        image_path: String,
+        image_scale: u32,
+        options: Option<Vec<serde_json::Value>>,
+    }
+    let mut immediate_triggers: Vec<ImmTrigger> = s
         .assignments
         .iter()
         .filter(|(k, v)| {
@@ -279,54 +312,61 @@ pub fn check_immediate_triggers() -> bool {
                     == Some("immediate")
         })
         .map(|(k, v)| {
-            let trigger = k["GLOBAL::EXPANSION::".len()..].to_string();
-            let exp_type = v.get("data")
-                .and_then(|d| d.get("expansionType"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("text")
-                .to_string();
-            let text = v
-                .get("data")
-                .and_then(|d| d.get("text"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let image_path = v.get("data")
-                .and_then(|d| d.get("imagePath"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let image_scale = v.get("data")
-                .and_then(|d| d.get("imageScale"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(100) as u32;
-            (trigger, exp_type, text, image_path, image_scale)
+            let data = v.get("data");
+            ImmTrigger {
+                trigger: k["GLOBAL::EXPANSION::".len()..].to_string(),
+                exp_type: data.and_then(|d| d.get("expansionType")).and_then(|v| v.as_str()).unwrap_or("text").to_string(),
+                text: data.and_then(|d| d.get("text")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                image_path: data.and_then(|d| d.get("imagePath")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                image_scale: data.and_then(|d| d.get("imageScale")).and_then(|v| v.as_u64()).unwrap_or(100) as u32,
+                options: data.and_then(|d| d.get("options")).and_then(|v| v.as_array()).cloned(),
+            }
         })
         .collect();
-    immediate_triggers.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    immediate_triggers.sort_by(|a, b| b.trigger.len().cmp(&a.trigger.len()));
 
-    for (trigger, exp_type, text, image_path, image_scale) in &immediate_triggers {
-        if buf_lower.ends_with(trigger) {
-            let trigger_len = trigger.len();
+    for imm in &immediate_triggers {
+        if buf_lower.ends_with(&imm.trigger) {
+            let trigger_len = imm.trigger.len();
 
-            if exp_type == "image" {
-                let image_path = image_path.clone();
-                let image_scale = *image_scale;
+            // Variant expansion
+            if let Some(ref opts) = imm.options {
+                if !opts.is_empty() {
+                    let opts = opts.clone();
+                    let trigger_str = imm.trigger.clone();
+                    let global_vars = s.global_variables.clone();
+                    s.buffer.clear();
+                    drop(s);
+
+                    info!("[Trigr] Variant expansion (immediate): \"{}\" with {} options", trigger_str, opts.len());
+                    if !crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+                        thread::spawn(move || {
+                            fire_variant_expansion(&trigger_str, trigger_len, false, &opts, &global_vars);
+                        });
+                    }
+                    return true;
+                }
+            }
+
+            if imm.exp_type == "image" {
+                let image_path = imm.image_path.clone();
+                let image_scale = imm.image_scale;
                 s.buffer.clear();
                 drop(s);
 
-                info!("[Trigr] Image expansion (immediate): \"{}\" → \"{}\"", trigger, image_path);
-                fire_image_expansion(trigger, trigger_len, false, &image_path, image_scale);
+                info!("[Trigr] Image expansion (immediate): \"{}\" → \"{}\"", imm.trigger, image_path);
+                fire_image_expansion(&imm.trigger, trigger_len, false, &image_path, image_scale);
                 return true;
             }
 
             let global_vars = s.global_variables.clone();
+            let text = imm.text.clone();
+            let trigger = imm.trigger.clone();
             s.buffer.clear();
             drop(s);
 
             info!("[Trigr] Expansion (immediate): \"{}\" → \"{}\"", trigger, text);
-            // deleteExtra=false for immediate (no trailing space to delete)
-            fire_expansion(trigger, trigger_len, false, text, &global_vars);
+            fire_expansion(&trigger, trigger_len, false, &text, &global_vars);
             return true;
         }
     }
@@ -455,7 +495,7 @@ fn fire_expansion(
                     break;
                 }
                 if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
-                if let Some(ch) = crate::hotkeys::vk_to_char(key.vk_code) {
+                if let Some(ch) = crate::hotkeys::resolve_char(key.vk_code, key.scan_code) {
                     buffer_push(ch);
                     check_immediate_triggers();
                 }
@@ -646,7 +686,7 @@ fn fire_expansion_with_fillin(
                 break;
             }
             if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
-            if let Some(ch) = crate::hotkeys::vk_to_char(key.vk_code) {
+            if let Some(ch) = crate::hotkeys::resolve_char(key.vk_code, key.scan_code) {
                 buffer_push(ch);
                 check_immediate_triggers();
             }
@@ -996,6 +1036,160 @@ fn write_clipboard_image(pixels: &[u8], width: u32, height: u32, raw_png_bytes: 
     }
 }
 
+/// Fire a variant expansion: show selection popup, wait for user choice, inject selected text.
+fn fire_variant_expansion(
+    trigger: &str,
+    trigger_len: usize,
+    delete_extra: bool,
+    options: &[serde_json::Value],
+    global_vars: &HashMap<String, String>,
+) {
+    crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    let app = match APP_HANDLE.get() {
+        Some(a) => a.clone(),
+        None => {
+            crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+            return;
+        }
+    };
+
+    // Capture target HWND before showing popup
+    let target_hwnd = unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
+    };
+
+    // Erase the trigger text
+    {
+        let _guard = InjectionGuard::new();
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, std::sync::atomic::Ordering::SeqCst);
+        let erase_count = trigger_len + if delete_extra { 1 } else { 0 };
+        for _ in 0..erase_count {
+            crate::actions::send_vk_key_pub(0x08, false); // VK_BACKSPACE down
+            crate::actions::send_vk_key_pub(0x08, true);  // VK_BACKSPACE up
+            thread::sleep(Duration::from_millis(2));
+        }
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    // Build options list for the popup
+    let option_labels: Vec<String> = options.iter().map(|opt| {
+        opt.get("label").and_then(|v| v.as_str()).unwrap_or("Option").to_string()
+    }).collect();
+
+    // Create response channel — reuse fill_in_tx
+    let (tx, rx) = mpsc::channel();
+    *fill_in_tx().lock().unwrap() = Some(tx);
+
+    let theme = crate::config::load_config()
+        .and_then(|c| c.get("theme").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| "dark".to_string());
+
+    // Show fill-in window in variant selection mode
+    if let Some(win) = app.get_webview_window("fillin") {
+        use tauri::Emitter;
+
+        if let Ok(hwnd) = win.hwnd() {
+            crate::hotkeys::FILLIN_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        let _ = win.show();
+        let _ = win.set_focus();
+
+        let _ = win.emit("fill-in-request-ready", serde_json::json!({}));
+        let (ready_tx, ready_rx) = mpsc::channel();
+        *fill_in_ready_tx().lock().unwrap() = Some(ready_tx);
+        let _ = ready_rx.recv_timeout(Duration::from_secs(5));
+        *fill_in_ready_tx().lock().unwrap() = None;
+
+        // Emit variant-select mode with options
+        let _ = win.emit("fill-in-show", serde_json::json!({
+            "mode": "variant",
+            "options": option_labels,
+            "theme": theme,
+        }));
+    }
+
+    // Wait for selection (60s timeout)
+    let response = rx.recv_timeout(Duration::from_secs(60));
+    *fill_in_tx().lock().unwrap() = None;
+
+    // Clean up
+    crate::hotkeys::FILLIN_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("fillin") {
+        let _ = win.hide();
+    }
+    if target_hwnd != 0 {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(target_hwnd as _);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    // Process selection
+    let selected_text = match response {
+        Ok(Some(values)) => {
+            // The fill-in window sends back {"__variant_index": "0"} for variant mode
+            if let Some(idx_str) = values.get("__variant_index") {
+                if let Ok(idx) = idx_str.parse::<usize>() {
+                    if idx < options.len() {
+                        options[idx]
+                            .get("text")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string()
+                    } else {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
+        _ => return,
+    };
+
+    if selected_text.is_empty() {
+        return;
+    }
+
+    let (resolved, cursor_back) = resolve_tokens(&selected_text, global_vars);
+    if resolved.is_empty() {
+        return;
+    }
+
+    crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, trigger, trigger);
+
+    // Inject the selected text
+    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    let guard = InjectionGuard::new();
+    let _guard = guard;
+
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, std::sync::atomic::Ordering::SeqCst);
+    inject_via_clipboard(&resolved, target_hwnd);
+
+    if cursor_back > 0 {
+        thread::sleep(Duration::from_millis(10));
+        for _ in 0..cursor_back {
+            send_vk_tap(VK_LEFT);
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    // Send trailing space
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, std::sync::atomic::Ordering::SeqCst);
+    send_vk_tap(VK_SPACE);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Fire an image expansion: read image from disk, optionally resize, write to clipboard, paste.
 fn fire_image_expansion(
     _trigger: &str,
@@ -1188,7 +1382,7 @@ fn fire_image_expansion(
                     break;
                 }
                 if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
-                if let Some(ch) = crate::hotkeys::vk_to_char(key.vk_code) {
+                if let Some(ch) = crate::hotkeys::resolve_char(key.vk_code, key.scan_code) {
                     buffer_push(ch);
                     check_immediate_triggers();
                 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import './SearchOverlay.css';
+import { friendlyKeyName } from './keyboardLayout';
 
 // ── Type metadata ──────────────────────────────────────────────────────────────
 
@@ -24,16 +25,7 @@ const GROUP_LABELS = {
 // ── comboLabel builder ─────────────────────────────────────────────────────────
 
 function buildComboLabel(combo, keyId) {
-  // combo examples: "Ctrl+Alt", "BARE", ""
-  // keyId examples: "KeyE", "DigitN", "Space", "F5"
-  let keyPart = keyId;
-  if (/^Key([A-Z])$/.test(keyId)) {
-    keyPart = keyId.slice(3); // "KeyE" → "E"
-  } else if (/^Digit(\d)$/.test(keyId)) {
-    keyPart = keyId.slice(5); // "Digit3" → "3"
-  }
-  // otherwise use as-is
-
+  const keyPart = friendlyKeyName(keyId);
   if (combo === 'BARE' || combo === '') {
     return `${keyPart} (bare)`;
   }

@@ -276,6 +276,17 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         }
                         execute_macro_step(step, &mut current_hwnd, &method, app);
                     }
+
+                    // After steps that may change focus, re-capture foreground HWND
+                    // so subsequent Type Text / Press Key targets the correct window
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Click at Position") {
+                        let new_hwnd = unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
+                        };
+                        if new_hwnd != 0 {
+                            current_hwnd = new_hwnd;
+                        }
+                    }
                 }
 
                 // Final restore after all steps
@@ -1118,6 +1129,62 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     }
                 } else {
                     warn!("[Trigr] Run AHK Script step: invalid JSON");
+                }
+            }
+        }
+
+        "Click at Position" => {
+            if !step_value.is_empty() {
+                if let Ok(parsed) = serde_json::from_str::<Value>(step_value) {
+                    let x = parsed.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let y = parsed.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let button = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+                    let mode = parsed.get("mode").and_then(|v| v.as_str()).unwrap_or("absolute");
+
+                    let (abs_x, abs_y) = if mode == "relative" {
+                        // Relative to target window
+                        let mut rect = windows_sys::Win32::Foundation::RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                        unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect(*target_hwnd as _, &mut rect);
+                        }
+                        (rect.left + x, rect.top + y)
+                    } else {
+                        (x, y)
+                    };
+
+                    info!("[Trigr] Click at Position: ({}, {}) mode={} button={}", abs_x, abs_y, mode, button);
+
+                    // Save original cursor position
+                    let mut original_pos = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+                    unsafe {
+                        windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut original_pos);
+                    }
+
+                    // Move cursor to target
+                    unsafe {
+                        windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(abs_x, abs_y);
+                    }
+                    thread::sleep(Duration::from_millis(20));
+
+                    // Map button name to SendInput format
+                    let click_button = match button {
+                        "right" => "RButton",
+                        "middle" => "MButton",
+                        _ => "LButton",
+                    };
+
+                    // Click
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                    send_mouse_click(click_button);
+                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+
+                    // Restore cursor to original position
+                    thread::sleep(Duration::from_millis(20));
+                    unsafe {
+                        windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(original_pos.x, original_pos.y);
+                    }
+                } else {
+                    warn!("[Trigr] Click at Position: invalid JSON");
                 }
             }
         }
