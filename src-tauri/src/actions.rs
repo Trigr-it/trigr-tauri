@@ -29,6 +29,27 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 /// Future clipboard manager checks this flag and skips logging if set.
 pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
 
+// ── Suppression guard — ensures SUPPRESS_SIMULATED is always cleared ──────
+// Without this guard, a panic between store(true) and store(false) would
+// leave SUPPRESS_SIMULATED stuck true, silently disabling all Trigr hotkeys.
+
+pub(crate) struct SuppressionGuard;
+
+impl SuppressionGuard {
+    pub(crate) fn new() -> Self {
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(true, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for SuppressionGuard {
+    fn drop(&mut self) {
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(false, Ordering::SeqCst);
+    }
+}
+
 // ── AHK Script Runner process tracking ─────────────────────────────────────
 
 use std::collections::HashMap;
@@ -378,7 +399,7 @@ fn clipboard_paste_core(text: &str, target_hwnd: isize) {
 
     let (_, _, fg_settle_ms, _) = speed_delays();
 
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+    let _suppress = SuppressionGuard::new();
     let held = release_held_modifiers();
 
     if target_hwnd != 0 {
@@ -402,7 +423,7 @@ fn clipboard_paste_core(text: &str, target_hwnd: isize) {
     }
 
     restore_modifiers(&held);
-    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+    // _suppress drops here → SUPPRESS_SIMULATED = false (even on panic)
 }
 
 /// Check if Ctrl+V is mapped as a hotkey in the current assignments.
@@ -488,7 +509,7 @@ fn write_clipboard(text: &str) -> bool {
 
 fn send_unicode_text(text: &str, target_hwnd: isize) {
     let (_, _, fg_settle_ms, _) = speed_delays();
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+    let _suppress = SuppressionGuard::new();
     let held = release_held_modifiers();
 
     // Restore focus to target window
@@ -519,7 +540,6 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
     }
 
     restore_modifiers(&held);
-    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 }
 
 fn send_unicode_key(scan: u16, key_up: bool) {

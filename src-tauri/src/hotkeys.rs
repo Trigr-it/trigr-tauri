@@ -33,6 +33,24 @@ pub static SUPPRESS_SIMULATED: AtomicBool = AtomicBool::new(false);
 /// When true, real user keystrokes are swallowed by the hook and buffered for replay.
 pub static INJECTION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+/// Timestamp (ms since UNIX epoch) when INJECTION_IN_PROGRESS was last set to true.
+/// Used by the watchdog to detect stuck injections and force-clear the flag.
+static INJECTION_STARTED_MS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// Record that injection started (called by InjectionGuard in expansions.rs).
+pub fn mark_injection_start() {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    INJECTION_STARTED_MS.store(now, Ordering::SeqCst);
+}
+
+/// Clear injection start timestamp.
+pub fn clear_injection_start() {
+    INJECTION_STARTED_MS.store(0, Ordering::SeqCst);
+}
+
 /// HWND of the fill-in window while it is visible. Set by expansions.rs, read by hook callback.
 /// When the fill-in window is foreground, keystrokes pass through without buffering.
 pub static FILLIN_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -1678,13 +1696,43 @@ pub fn start_hooks(app: AppHandle) {
                         }
                         thread::sleep(Duration::from_millis(500));
                         spawn_hook_thread();
-                        println!("[HOOK] Hooks reinstalled");
+                        // Rebuild suppress set so the new hook has correct state
+                        {
+                            let state = engine_state().lock().unwrap();
+                            rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+                            add_overlay_to_suppress(state.overlay_hotkey);
+                            add_pause_to_suppress(state.pause_hotkey);
+                            add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+                        }
+                        println!("[HOOK] Hooks reinstalled, suppress set rebuilt");
                         thread::sleep(Duration::from_secs(5));
                         last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                         continue;
                     }
                 }
                 last_heartbeat = current;
+
+                // ── Injection safety timeout ────────────────────────────
+                // If INJECTION_IN_PROGRESS has been true for >5 seconds,
+                // the injection thread is probably stuck (e.g. clipboard
+                // blocked by another app).  Force-clear to unfreeze the
+                // keyboard — the injection may produce garbled output but
+                // that's better than a frozen keyboard.
+                if INJECTION_IN_PROGRESS.load(Ordering::SeqCst) {
+                    let started = INJECTION_STARTED_MS.load(Ordering::SeqCst);
+                    if started > 0 {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64;
+                        if now - started > 5000 {
+                            error!("[Trigr] INJECTION_IN_PROGRESS stuck for >5s — force-clearing to unfreeze keyboard");
+                            INJECTION_IN_PROGRESS.store(false, Ordering::SeqCst);
+                            INJECTION_STARTED_MS.store(0, Ordering::SeqCst);
+                            SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                        }
+                    }
+                }
             }
         })
         .expect("Failed to spawn hook monitor thread");

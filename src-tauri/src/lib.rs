@@ -990,8 +990,7 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
 
                     actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
                         .store(true, std::sync::atomic::Ordering::Relaxed);
-                    hotkeys::SUPPRESS_SIMULATED
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    let _suppress = actions::SuppressionGuard::new();
 
                     let held = actions::release_held_modifiers();
                     if target_hwnd != 0 {
@@ -1025,8 +1024,7 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                     }
 
                     actions::restore_modifiers(&held);
-                    hotkeys::SUPPRESS_SIMULATED
-                        .store(false, std::sync::atomic::Ordering::Relaxed);
+                    drop(_suppress); // SUPPRESS_SIMULATED = false (even on panic)
 
                     std::thread::sleep(std::time::Duration::from_millis(50));
                     actions::write_clipboard_pub(&prev);
@@ -1118,8 +1116,7 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
 
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(true, std::sync::atomic::Ordering::SeqCst);
-        hotkeys::SUPPRESS_SIMULATED
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let _suppress = actions::SuppressionGuard::new();
 
         let held = actions::release_held_modifiers();
 
@@ -1156,8 +1153,6 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
             }
             "image" => {
                 if let Some(png_bytes) = &item.image_blob {
-                    // Write PNG to clipboard using the expansion engine's image clipboard writer
-                    // We need to decode to get dimensions and BGRA pixels for CF_DIB
                     if let Ok(img) = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png) {
                         use image::GenericImageView;
                         let (width, height) = img.dimensions();
@@ -1177,8 +1172,6 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
                             }
                         }
 
-                        // Write CF_DIB + PNG stream + CF_UNICODETEXT to clipboard
-                        // Reuse the clipboard write pattern from expansions
                         write_image_to_clipboard(&bgra, width, height, png_bytes);
 
                         // Ctrl+V
@@ -1194,8 +1187,7 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
             _ => {}
         }
 
-        hotkeys::SUPPRESS_SIMULATED
-            .store(false, std::sync::atomic::Ordering::SeqCst);
+        drop(_suppress); // SUPPRESS_SIMULATED = false (even if image decode panicked)
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(false, std::sync::atomic::Ordering::SeqCst);
     });
