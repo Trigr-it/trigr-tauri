@@ -210,6 +210,7 @@ window.electronAPI = {
   },
   installUpdate:      ()         => invoke('install_update'),
   startDownload:      (version)  => invoke('start_download', { version }),
+  getCursorPosition:  ()         => invoke('get_cursor_position'),
   checkForUpdates:    ()         => invoke('check_for_updates'),
 
   // ── Licence ──────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './Sidebar.css';
+import { friendlyKeyName } from './keyboardLayout';
 
 const TYPE_META = {
   text:   { color: '#64b4ff' },
@@ -524,6 +525,8 @@ export default function Sidebar({
   onRenameAssignment,
   onClearAssignment,
   onDuplicateFromContext,
+  onCopyToProfile,
+  onMoveToProfile,
 }) {
   const profileEntries = Object.entries(assignments)
     .filter(([k]) => {
@@ -542,6 +545,8 @@ export default function Sidebar({
         hasDouble: !!assignments[k + '::double'],
       };
     });
+
+  const otherProfiles = (profiles || []).filter(p => p !== activeProfile);
 
   const combos = [...new Set(profileEntries.map(e => e.combo))].sort((a, b) => {
     if (a.length !== b.length) return a.length - b.length;
@@ -652,8 +657,7 @@ export default function Sidebar({
 
   function renderItem({ combo, keyId, macro, hasDouble }) {
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
-    const displayKey = MOUSE_KEY_LABELS[keyId] ||
-      keyId.replace('Key', '').replace('Digit', '').replace('Arrow', '');
+    const displayKey = MOUSE_KEY_LABELS[keyId] || friendlyKeyName(keyId);
     const isSelected = selectedKey === keyId && combo === currentCombo;
     const isBareItem = combo === 'BARE';
     const typeName = TYPE_NAMES[macro.type] || macro.type;
@@ -711,8 +715,7 @@ export default function Sidebar({
   // ── Card for list view grid ──────────────────────────────────
   function renderCard({ combo, keyId, macro, hasDouble }) {
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
-    const displayKey = MOUSE_KEY_LABELS[keyId] ||
-      keyId.replace('Key', '').replace('Digit', '').replace('Arrow', '');
+    const displayKey = MOUSE_KEY_LABELS[keyId] || friendlyKeyName(keyId);
     const isSelected = selectedKey === keyId && combo === currentCombo;
     const comboLabel = combo === 'BARE' ? displayKey : combo + '+' + displayKey;
     const typeName = TYPE_NAMES[macro.type] || macro.type;
@@ -1006,6 +1009,47 @@ export default function Sidebar({
         >
           <button className="assign-ctx-item" type="button" onClick={handleCtxRename}>Rename</button>
           <button className="assign-ctx-item" type="button" onClick={handleCtxDuplicate}>Duplicate</button>
+          {otherProfiles.length > 0 && (
+            <>
+              <div className="assign-ctx-divider" />
+              <div className="assign-ctx-sub">
+                <button className="assign-ctx-item" type="button">Copy to ▸</button>
+                <div className="assign-ctx-submenu">
+                  {otherProfiles.map(p => (
+                    <button
+                      key={p}
+                      className="assign-ctx-item"
+                      type="button"
+                      onClick={() => {
+                        onCopyToProfile?.(p, assignCtx.combo, assignCtx.keyId);
+                        setAssignCtx(null);
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="assign-ctx-sub">
+                <button className="assign-ctx-item" type="button">Move to ▸</button>
+                <div className="assign-ctx-submenu">
+                  {otherProfiles.map(p => (
+                    <button
+                      key={p}
+                      className="assign-ctx-item"
+                      type="button"
+                      onClick={() => {
+                        onMoveToProfile?.(p, assignCtx.combo, assignCtx.keyId);
+                        setAssignCtx(null);
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
           <div className="assign-ctx-divider" />
           <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={handleCtxClear}>Clear</button>
         </div>

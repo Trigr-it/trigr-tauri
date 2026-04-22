@@ -43,6 +43,7 @@ pub static FILL_IN_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Keystroke captured during injection for later replay.
 pub struct BufferedKey {
     pub vk_code: u32,
+    pub scan_code: u32,
     pub is_keydown: bool,
 }
 
@@ -128,6 +129,21 @@ fn modifier_string_to_bits(combo: &str) -> u8 {
     bits
 }
 
+/// Get the VK code to suppress for a given key ID.
+/// For OEM keys (symbols), uses MapVirtualKeyW to find the layout-correct VK code
+/// so suppression works regardless of US/UK/other keyboard layouts.
+fn suppress_vk_for_key_id(key_id: &str) -> Option<u32> {
+    // For OEM keys, use scan code → MapVirtualKeyW for layout-correct VK
+    if let Some(scan) = key_id_to_scan(key_id) {
+        let vk = vk_for_scan(scan);
+        if vk != 0 {
+            return Some(vk);
+        }
+    }
+    // Non-OEM keys have stable VK codes across layouts
+    key_id_to_vk(key_id)
+}
+
 /// Rebuild the suppress key set from current assignments.
 /// Must be called while holding the engine_state lock — overlay_hotkey is read from the state.
 fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, profile_settings: &HashMap<String, Value>) {
@@ -152,14 +168,14 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
                 // Bare mouse buttons go to separate suppress set
                 if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
                     mouse_set.insert(mouse_id);
-                } else if let Some(vk) = key_id_to_vk(key_id) {
+                } else if let Some(vk) = suppress_vk_for_key_id(key_id) {
                     set.insert((0u8, vk));
                 }
             }
             continue;
         }
         let key_id = parts[2];
-        if let Some(vk) = key_id_to_vk(key_id) {
+        if let Some(vk) = suppress_vk_for_key_id(key_id) {
             let bits = modifier_string_to_bits(combo_str);
             if bits != 0 {
                 set.insert((bits, vk));
@@ -234,7 +250,8 @@ fn key_id_to_vk(key_id: &str) -> Option<u32> {
         "Minus" => Some(0xBD), "Equal" => Some(0xBB),
         "BracketLeft" => Some(0xDB), "BracketRight" => Some(0xDD),
         "Semicolon" => Some(0xBA), "Quote" => Some(0xDE),
-        "Backquote" => Some(0xC0), "Backslash" => Some(0xDC),
+        "Backquote" => Some(0xC0),
+        "Backslash" => Some(0xDC),
         "Comma" => Some(0xBC), "Period" => Some(0xBE), "Slash" => Some(0xBF),
         "Numpad0" => Some(0x60), "Numpad1" => Some(0x61), "Numpad2" => Some(0x62),
         "Numpad3" => Some(0x63), "Numpad4" => Some(0x64), "Numpad5" => Some(0x65),
@@ -513,7 +530,98 @@ pub(crate) fn is_modifier_vk(vk: u32) -> bool {
     matches!(vk, 0xA0..=0xA5 | 0x5B | 0x5C)
 }
 
+/// Is this VK in the OEM range where codes are layout-dependent?
+fn is_oem_vk(vk: u32) -> bool {
+    matches!(vk, 0xBA..=0xDF | 0xE2)
+}
+
+// ── Scan-code-based key identification (layout-independent) ─────────────────
+// OEM symbol keys (`;`, `'`, `` ` ``, `[`, `]`, etc.) have VK codes that
+// differ between keyboard layouts — e.g. VK 0xC0 is backtick on US but `'`
+// on UK keyboards.  Scan codes identify physical key positions regardless of
+// layout, so we use them as the authoritative source for OEM keys.
+
+/// Map a scan code to a key ID.  Only covers OEM symbol keys — letters, digits,
+/// function keys and navigation keys have stable VK codes and don't need this.
+fn scan_to_key_id(scan: u32) -> Option<&'static str> {
+    match scan {
+        0x29 => Some("Backquote"),    // Key below ESC (`` ` ¬ `` UK / `` ` ~ `` US)
+        0x0C => Some("Minus"),        // Key right of 0
+        0x0D => Some("Equal"),        // Key right of -
+        0x1A => Some("BracketLeft"),  // Key right of P
+        0x1B => Some("BracketRight"), // Key right of [
+        0x27 => Some("Semicolon"),    // Key right of L
+        0x28 => Some("Quote"),        // Key right of ; (`'` on US, `'` on UK)
+        0x2B => Some("Backslash"),    // Key right of ' (ANSI) / left of Enter (ISO)
+        0x33 => Some("Comma"),        // Key right of M
+        0x34 => Some("Period"),       // Key right of ,
+        0x35 => Some("Slash"),        // Key right of .
+        0x56 => Some("IntlBackslash"), // ISO key between left-Shift and Z
+        _ => None,
+    }
+}
+
+/// Reverse: key ID → scan code (for OEM keys only).
+fn key_id_to_scan(key_id: &str) -> Option<u32> {
+    match key_id {
+        "Backquote"    => Some(0x29),
+        "Minus"        => Some(0x0C),
+        "Equal"        => Some(0x0D),
+        "BracketLeft"  => Some(0x1A),
+        "BracketRight" => Some(0x1B),
+        "Semicolon"    => Some(0x27),
+        "Quote"        => Some(0x28),
+        "Backslash"    => Some(0x2B),
+        "Comma"        => Some(0x33),
+        "Period"       => Some(0x34),
+        "Slash"        => Some(0x35),
+        "IntlBackslash" => Some(0x56),
+        _ => None,
+    }
+}
+
+/// Get the VK code that the current keyboard layout produces for a given scan code.
+/// Uses MapVirtualKeyW so we always suppress the correct VK on any layout.
+fn vk_for_scan(scan: u32) -> u32 {
+    unsafe {
+        windows_sys::Win32::UI::Input::KeyboardAndMouse::MapVirtualKeyW(scan, 1) // MAPVK_VSC_TO_VK = 1
+    }
+}
+
+/// Resolve key ID using scan code for OEM keys, VK code for everything else.
+fn resolve_key_id(vk: u32, scan: u32) -> Option<&'static str> {
+    if is_oem_vk(vk) {
+        // For OEM keys, prefer scan-code-based identification
+        if let Some(id) = scan_to_key_id(scan) {
+            return Some(id);
+        }
+    }
+    vk_to_key_id(vk)
+}
+
+/// Resolve character for expansion buffer using scan code for OEM keys.
+pub(crate) fn resolve_char(vk: u32, scan: u32) -> Option<char> {
+    if is_oem_vk(vk) {
+        return match scan_to_key_id(scan)? {
+            "Backquote"    => Some('`'),
+            "Quote"        => Some('\''),
+            "Semicolon"    => Some(';'),
+            "BracketLeft"  => Some('['),
+            "BracketRight" => Some(']'),
+            "Backslash"    => Some('\\'),
+            "Comma"        => Some(','),
+            "Period"       => Some('.'),
+            "Slash"        => Some('/'),
+            "Minus"        => Some('-'),
+            "Equal"        => Some('='),
+            _ => None,
+        };
+    }
+    vk_to_char(vk)
+}
+
 // ── Character map for text expansion buffer ─────────────────────────────────
+// Used as fallback for non-OEM keys.  OEM keys use resolve_char() above.
 
 pub(crate) fn vk_to_char(vk: u32) -> Option<char> {
     match vk {
@@ -595,7 +703,7 @@ unsafe extern "system" fn keyboard_hook_proc(
             let is_keyup = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
             if is_keydown || is_keyup {
                 if let Ok(mut buf) = injection_buffer().try_lock() {
-                    buf.push(BufferedKey { vk_code: kb.vkCode, is_keydown });
+                    buf.push(BufferedKey { vk_code: kb.vkCode, scan_code: kb.scanCode, is_keydown });
                     return 1;
                 }
             }
@@ -735,11 +843,14 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                         update_modifier_state(*vk_code, matches!(event, HookEvent::KeyDown { .. }));
                     }
                     // Pause hotkey must fire even when paused — it's the only way to unpause
-                    if let HookEvent::KeyDown { vk_code, .. } = &event {
+                    if let HookEvent::KeyDown { vk_code, scan_code } = &event {
                         if !is_modifier_vk(*vk_code) && has_any_modifier() {
                             if let Ok(state) = engine_state().try_lock() {
                                 if let Some((mod_bits, vk)) = state.pause_hotkey {
-                                    if modifier_bits() == mod_bits && key_id_to_vk(vk_to_key_id(*vk_code).unwrap_or("")).map(|v| v as u32) == Some(vk) {
+                                    // Use scan-code-aware resolution, then map back to VK
+                                    let resolved_id = resolve_key_id(*vk_code, *scan_code).unwrap_or("");
+                                    let resolved_vk = key_id_to_vk(resolved_id).unwrap_or(0);
+                                    if modifier_bits() == mod_bits && resolved_vk == vk {
                                         let pause_str = state.pause_hotkey_str.clone();
                                         let profile = state.active_profile.clone();
                                         drop(state);
@@ -765,17 +876,17 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                 // Forward to Wait for Input waiter before normal handling
                 // (waiter gets the event regardless of recording/capture mode)
                 match &event {
-                    HookEvent::KeyDown { vk_code, .. } => {
+                    HookEvent::KeyDown { vk_code, scan_code } => {
                         if !is_modifier_vk(*vk_code) {
-                            if let Some(id) = vk_to_key_id(*vk_code) {
+                            if let Some(id) = resolve_key_id(*vk_code, *scan_code) {
                                 let display = key_id_to_display(id).to_string();
                                 forward_to_waiter(&WaitEvent::KeyDown { key_id: display });
                             }
                         }
                     }
-                    HookEvent::KeyUp { vk_code, .. } => {
+                    HookEvent::KeyUp { vk_code, scan_code } => {
                         if !is_modifier_vk(*vk_code) {
-                            if let Some(id) = vk_to_key_id(*vk_code) {
+                            if let Some(id) = resolve_key_id(*vk_code, *scan_code) {
                                 let display = key_id_to_display(id).to_string();
                                 forward_to_waiter(&WaitEvent::KeyUp { key_id: display });
                             }
@@ -796,8 +907,8 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
 
                 // Normal event handling
                 match event {
-                    HookEvent::KeyDown { vk_code, .. } => handle_keydown(vk_code, &app),
-                    HookEvent::KeyUp { vk_code, .. } => handle_keyup(vk_code, &app),
+                    HookEvent::KeyDown { vk_code, scan_code } => handle_keydown(vk_code, scan_code, &app),
+                    HookEvent::KeyUp { vk_code, scan_code } => handle_keyup(vk_code, scan_code, &app),
                     HookEvent::MouseDown { button } => handle_mouse_down(button, &app),
                     HookEvent::MouseUp { button } => handle_mouse_up(button, &app),
                     HookEvent::MouseWheel { delta } => handle_mouse_wheel(delta, &app),
@@ -832,8 +943,8 @@ pub fn sync_modifier_state_from_os() {
 
 // ── Keydown handler ─────────────────────────────────────────────────────────
 
-fn handle_keydown(vk: u32, app: &AppHandle) {
-    let key_id = match vk_to_key_id(vk) {
+fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
+    let key_id = match resolve_key_id(vk, scan) {
         Some(id) => id,
         None => {
             return;
@@ -870,6 +981,10 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
         }
         return;
     }
+
+    // ── Verify modifier state against physical key state ────────────────
+    // Prevents stuck modifiers (e.g. Alt+Tab where keyup was missed by hook)
+    sync_modifier_state_from_os();
 
     // ── Release any held key on physical keypress ───────────────────────
     if crate::actions::is_key_held() {
@@ -1056,7 +1171,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
             crate::expansions::buffer_clear();
         } else if key_id == "Enter" || key_id == "Escape" || key_id == "Tab" {
             crate::expansions::buffer_clear();
-        } else if let Some(ch) = vk_to_char(vk) {
+        } else if let Some(ch) = resolve_char(vk, scan) {
             crate::expansions::buffer_push(ch);
             // Check for immediate-mode triggers after each character
             crate::expansions::check_immediate_triggers();
@@ -1153,7 +1268,7 @@ fn handle_keydown(vk: u32, app: &AppHandle) {
 
 // ── Keyup handler ───────────────────────────────────────────────────────────
 
-fn handle_keyup(vk: u32, app: &AppHandle) {
+fn handle_keyup(vk: u32, _scan: u32, app: &AppHandle) {
     // Update modifier state
     if is_modifier_vk(vk) {
         update_modifier_state(vk, false);
@@ -1423,6 +1538,19 @@ fn key_id_to_display(key_id: &str) -> &str {
         "ArrowDown" => "Down",
         "ArrowLeft" => "Left",
         "ArrowRight" => "Right",
+        "Backquote" => "`",
+        "Quote" => "'",
+        "Semicolon" => ";",
+        "BracketLeft" => "[",
+        "BracketRight" => "]",
+        "Backslash" => "\\",
+        "Comma" => ",",
+        "Period" => ".",
+        "Slash" => "/",
+        "Minus" => "-",
+        "Equal" => "=",
+        "CapsLock" => "Caps",
+        "ContextMenu" => "Menu",
         k if k.starts_with("Key") && k.len() == 4 => &k[3..],
         k if k.starts_with("Digit") && k.len() == 6 => &k[5..],
         k => k,

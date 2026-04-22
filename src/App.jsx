@@ -14,6 +14,7 @@ import OnboardingTour from './components/OnboardingTour';
 import QuickTips from './components/QuickTips';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import ClipboardPanel from './components/ClipboardPanel';
+import { friendlyKeyName } from './components/keyboardLayout';
 
 function App() {
   const [assignments, setAssignments]       = useState({});
@@ -221,9 +222,7 @@ function App() {
         if (keyId.startsWith('MOUSE_')) setActiveView('mouse');
         else setActiveView('keyboard');
         const modsLabel = modifiers.length === 0 ? 'Bare' : modifiers.join('+');
-        const keyLabel  = keyId.startsWith('Key') ? keyId.slice(3)
-          : keyId.startsWith('Digit') ? keyId.slice(5) : keyId;
-        setRecordCapture(`${modsLabel}+${keyLabel}`);
+        setRecordCapture(`${modsLabel}+${friendlyKeyName(keyId)}`);
         setTimeout(() => setRecordCapture(null), 2000);
       });
 
@@ -618,7 +617,7 @@ function App() {
   // editorValue is { html, text } from the rich text editor.
   // originalTrigger is provided when editing an existing expansion; if it differs
   // from trigger the old key is removed in the same update (single atomic write).
-  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale) => {
+  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale, variantOptions) => {
     const newAssignments = { ...assignments };
     if (originalTrigger && originalTrigger !== trigger) {
       delete newAssignments[`GLOBAL::EXPANSION::${originalTrigger}`];
@@ -631,6 +630,9 @@ function App() {
     } else {
       data.html = editorValue.html;
       data.text = editorValue.text;
+    }
+    if (variantOptions && variantOptions.length > 0) {
+      data.options = variantOptions;
     }
     newAssignments[`GLOBAL::EXPANSION::${trigger}`] = {
       type: 'expansion',
@@ -951,18 +953,22 @@ function App() {
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, syncEngine, showNotification]);
 
   // ── Copy / Move assignment to another profile ─────────────
-  const handleCopyToProfile = useCallback((targetProfile) => {
-    const oldKey = makeAssignmentKey(activeProfile, currentCombo, selectedKey);
-    const newKey = makeAssignmentKey(targetProfile, currentCombo, selectedKey);
+  const handleCopyToProfile = useCallback((targetProfile, combo, keyId) => {
+    const srcCombo = combo || currentCombo;
+    const srcKey   = keyId || selectedKey;
+    const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
+    const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
     const newAssignments = { ...assignments, [newKey]: assignments[oldKey] };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Copied to "${targetProfile}" profile`);
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
-  const handleMoveToProfile = useCallback((targetProfile) => {
-    const oldKey = makeAssignmentKey(activeProfile, currentCombo, selectedKey);
-    const newKey = makeAssignmentKey(targetProfile, currentCombo, selectedKey);
+  const handleMoveToProfile = useCallback((targetProfile, combo, keyId) => {
+    const srcCombo = combo || currentCombo;
+    const srcKey   = keyId || selectedKey;
+    const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
+    const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
     const newAssignments = { ...assignments, [newKey]: assignments[oldKey] };
     delete newAssignments[oldKey];
     setAssignments(newAssignments);
@@ -978,22 +984,40 @@ function App() {
     const newKey       = makeAssignmentKey(activeProfile, newCombo, newKeyId);
     const newDoubleKey = newKey + '::double';
     const newAssignments = { ...assignments };
-    // Move single assignment
-    newAssignments[newKey] = newAssignments[oldKey];
-    delete newAssignments[oldKey];
-    // Move double assignment if it exists
-    if (newAssignments[oldDoubleKey]) {
-      newAssignments[newDoubleKey] = newAssignments[oldDoubleKey];
+
+    // If the target key already has an assignment, save it to the old key
+    // so the user doesn't lose their existing macro/action
+    if (newAssignments[newKey]) {
+      newAssignments[oldKey] = newAssignments[newKey];
+    }
+    if (newAssignments[newDoubleKey]) {
+      newAssignments[oldDoubleKey] = newAssignments[newDoubleKey];
+    } else {
       delete newAssignments[oldDoubleKey];
     }
+
+    // Move the original assignment to the new key
+    newAssignments[newKey] = assignments[oldKey];
+    if (assignments[oldDoubleKey]) {
+      newAssignments[newDoubleKey] = assignments[oldDoubleKey];
+    }
+
+    // If target had no assignment, clean up old key
+    if (!assignments[newKey]) {
+      delete newAssignments[oldKey];
+    }
+    if (!assignments[newDoubleKey]) {
+      delete newAssignments[oldDoubleKey];
+    }
+
     setAssignments(newAssignments);
     const newMods = newCombo ? newCombo.split('+').filter(Boolean) : [];
     setActiveModifiers(newMods);
     setSelectedKey(newKeyId);
-    // Always show keyboard view after reassigning a keyboard key
     if (!newKeyId.startsWith('MOUSE_')) setActiveView('keyboard');
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification('Hotkey reassigned');
+    const swapped = assignments[newKey];
+    showNotification(swapped ? 'Hotkeys swapped' : 'Hotkey reassigned');
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
   // ── Duplicate assignment to a new hotkey ─────────────────
@@ -1025,9 +1049,7 @@ function App() {
     setSelectedKey(newKeyId);
     if (!newKeyId.startsWith('MOUSE_')) setActiveView('keyboard');
     saveConfig(newAssignments, profiles, activeProfile);
-    const keyLabel = newKeyId.startsWith('Key') ? newKeyId.slice(3)
-      : newKeyId.startsWith('Digit') ? newKeyId.slice(5)
-      : newKeyId;
+    const keyLabel = friendlyKeyName(newKeyId);
     const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
     showNotification(`Duplicated to ${comboLabel}`);
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
@@ -1558,6 +1580,8 @@ function App() {
             onRenameAssignment={handleRenameAssignment}
             onClearAssignment={handleClearAssignment}
             onDuplicateFromContext={handleDuplicateFromContext}
+            onCopyToProfile={handleCopyToProfile}
+            onMoveToProfile={handleMoveToProfile}
           />
         )}
         <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}${listViewActive && activeArea === 'mapping' ? ' main-area--hidden' : ''}`}>
@@ -1703,8 +1727,6 @@ function App() {
             onClose={() => { pendingDuplicateRef.current = null; setSelectedKey(null); }}
             onReassign={handleReassign}
             onDuplicate={handleDuplicateAssignment}
-            onCopyToProfile={handleCopyToProfile}
-            onMoveToProfile={handleMoveToProfile}
             isPro={isPro}
           />
         ) : null}

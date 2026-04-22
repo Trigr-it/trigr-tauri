@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
+import { friendlyKeyName } from './keyboardLayout';
 
 const GLOBAL_INPUT_METHODS = [
   { id: 'direct',       label: 'Direct',     hint: 'Simulates real keypresses — works in CAD, games, any app' },
@@ -10,7 +11,6 @@ const GLOBAL_INPUT_METHODS = [
 const MACRO_SPEED_PRESETS = [
   { id: 'safe',    label: 'Safe',    hint: 'Maximum compatibility — works in all apps',  keystrokeDelay: 30, macroTriggerDelay: 150, doubleTapWindow: 300 },
   { id: 'fast',    label: 'Fast',    hint: 'Reduced delays — good for most apps',        keystrokeDelay: 15, macroTriggerDelay: 75,  doubleTapWindow: 200 },
-  { id: 'instant', label: 'Instant', hint: 'Minimal delays — may skip in slow apps',     keystrokeDelay: 0,  macroTriggerDelay: 0,   doubleTapWindow: 100 },
   { id: 'custom',  label: 'Custom',  hint: 'Manual slider control' },
 ];
 
@@ -572,15 +572,12 @@ export default function SettingsPanel({
               ) : globalPauseToggleKey ? (
                 <>
                   <span className="settings-qs-hotkey-badge">
-                    {globalPauseToggleKey.split('+').map((p, i, arr) => {
-                      const display = p.startsWith('Key') ? p.slice(3) : p.startsWith('Digit') ? p.slice(5) : p;
-                      return (
+                    {globalPauseToggleKey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{display}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
-                      );
-                    })}
+                    ))}
                   </span>
                   <button
                     className="settings-action-btn"
@@ -678,15 +675,12 @@ export default function SettingsPanel({
               ) : (
                 <>
                   <span className="settings-qs-hotkey-badge">
-                    {searchOverlayHotkey.split('+').map((p, i, arr) => {
-                      const display = p.startsWith('Key') ? p.slice(3) : p.startsWith('Digit') ? p.slice(5) : p;
-                      return (
+                    {searchOverlayHotkey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{display}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
-                      );
-                    })}
+                    ))}
                   </span>
                   <button
                     className="settings-action-btn"

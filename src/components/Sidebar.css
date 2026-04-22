@@ -1066,6 +1066,31 @@
   margin: 3px 0;
 }
 
+/* Sub-menu container — hover to reveal */
+.assign-ctx-sub {
+  position: relative;
+}
+
+.assign-ctx-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  min-width: 120px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  flex-direction: column;
+  gap: 1px;
+  z-index: 1001;
+}
+
+.assign-ctx-sub:hover > .assign-ctx-submenu {
+  display: flex;
+}
+
 /* Inline rename input */
 .sidebar-rename-input {
   width: 100%;

@@ -423,7 +423,6 @@ fn handle_streaks(conn: &Connection) -> serde_json::Value {
 
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let mut longest = 1u32;
-    let mut current_streak = 1u32;
     let mut streak = 1u32;
 
     for i in 1..dates.len() {
@@ -443,7 +442,7 @@ fn handle_streaks(conn: &Connection) -> serde_json::Value {
     }
 
     // Current streak: only counts if the last date is today or yesterday
-    current_streak = 0;
+    let mut current_streak: u32 = 0;
     if let Some(last) = dates.last() {
         if last == &today || is_yesterday(last) {
             current_streak = 1;

@@ -505,6 +505,7 @@ export default function TextExpansions({
   const [imagePath, setImagePath]         = useState('');
   const [imageScale, setImageScale]       = useState(100);
   const [imageExists, setImageExists]     = useState(true);
+  const [variantOptions, setVariantOptions] = useState([]); // [{label, text}]
 
   // ── Trigger duplicate error ──
   const [triggerError, setTriggerError] = useState('');
@@ -605,6 +606,7 @@ export default function TextExpansions({
     setImagePath('');
     setImageScale(100);
     setImageExists(true);
+    setVariantOptions([]);
     setEditing({ isNew: true });
   }
 
@@ -619,20 +621,23 @@ export default function TextExpansions({
     setExpansionType(expType);
     setImagePath(exp.imagePath || '');
     setImageScale(exp.imageScale ?? 100);
-    setImageExists(true); // Optimistic — <img> onError will set false if file missing
+    setImageExists(true);
+    setVariantOptions(exp.options || []);
     setEditing({ isNew: false, originalTrigger: exp.trigger });
   }
 
   function handleSave() {
     const t = trigger.trim().toLowerCase().replace(/\s/g, '');
     if (!t) return;
+    const hasVariants = variantOptions.length > 0 && variantOptions.some(o => o.text?.trim());
     if (expansionType === 'image') {
       if (!imagePath) return;
-    } else {
+    } else if (!hasVariants) {
       if (!editorValue.text.trim()) return;
     }
     const originalTrigger = editing.isNew ? null : editing.originalTrigger;
-    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale);
+    const cleanedVariants = hasVariants ? variantOptions.filter(o => o.text?.trim()) : [];
+    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants);
     setEditing(null);
   }
 
@@ -768,8 +773,9 @@ export default function TextExpansions({
     setAcEditing(null);
   }
 
+  const hasVariants = variantOptions.length > 0 && variantOptions.some(o => o.text?.trim());
   const canSave   = trigger.trim() && !triggerError && (
-    expansionType === 'image' ? !!imagePath : !!editorValue.text.trim()
+    expansionType === 'image' ? !!imagePath : (hasVariants || !!editorValue.text.trim())
   );
   const canAcSave = acTypo.trim() && acCorrection.trim();
 
@@ -1276,13 +1282,75 @@ export default function TextExpansions({
                   {/* Content area — RTE for text, image picker for image */}
                   {expansionType === 'text' ? (
                     <div className="te-panel-rte">
-                      <label className="form-label">REPLACEMENT</label>
-                      <RichTextEditor
-                        key={editing.isNew ? '__new__' : editing.originalTrigger}
-                        initialHtml={editorValue.html}
-                        onChange={setEditorValue}
-                        globalVariables={globalVariables}
-                      />
+                      {variantOptions.length === 0 ? (
+                        <>
+                          <div className="te-variant-header">
+                            <label className="form-label">REPLACEMENT</label>
+                            <button type="button" className="te-variant-toggle-btn" onClick={() => setVariantOptions([{ label: 'Option 1', text: editorValue.text || '' }, { label: 'Option 2', text: '' }])}>
+                              + Add Variants
+                            </button>
+                          </div>
+                          <RichTextEditor
+                            key={editing.isNew ? '__new__' : editing.originalTrigger}
+                            initialHtml={editorValue.html}
+                            onChange={setEditorValue}
+                            globalVariables={globalVariables}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div className="te-variant-header">
+                            <label className="form-label">VARIANTS</label>
+                            <button type="button" className="te-variant-toggle-btn te-variant-remove" onClick={() => {
+                              if (variantOptions.length > 0 && variantOptions[0].text) {
+                                setEditorValue({ html: variantOptions[0].text, text: variantOptions[0].text });
+                              }
+                              setVariantOptions([]);
+                            }}>
+                              Remove Variants
+                            </button>
+                          </div>
+                          <p className="te-variant-hint">When triggered, a popup lets the user pick which variant to insert.</p>
+                          <div className="te-variant-list">
+                            {variantOptions.map((opt, i) => (
+                              <div key={i} className="te-variant-item">
+                                <div className="te-variant-item-header">
+                                  <input
+                                    className="form-input te-variant-label-input"
+                                    value={opt.label}
+                                    onChange={e => {
+                                      const next = [...variantOptions];
+                                      next[i] = { ...next[i], label: e.target.value };
+                                      setVariantOptions(next);
+                                    }}
+                                    placeholder={`Option ${i + 1}`}
+                                    onKeyDown={e => e.stopPropagation()}
+                                  />
+                                  <button type="button" className="te-variant-remove-btn" onClick={() => {
+                                    const next = variantOptions.filter((_, j) => j !== i);
+                                    setVariantOptions(next);
+                                  }}>✕</button>
+                                </div>
+                                <textarea
+                                  className="form-textarea te-variant-text"
+                                  value={opt.text}
+                                  onChange={e => {
+                                    const next = [...variantOptions];
+                                    next[i] = { ...next[i], text: e.target.value };
+                                    setVariantOptions(next);
+                                  }}
+                                  placeholder="Replacement text for this variant…"
+                                  rows={2}
+                                  onKeyDown={e => e.stopPropagation()}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <button type="button" className="te-variant-add-btn" onClick={() => setVariantOptions([...variantOptions, { label: `Option ${variantOptions.length + 1}`, text: '' }])}>
+                            + Add Variant
+                          </button>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className="te-panel-image">
@@ -1344,7 +1412,7 @@ export default function TextExpansions({
                   )}
 
                   <div className="te-panel-footer">
-                    <span className="te-paste-note">{expansionType === 'image' ? 'Pastes as image via clipboard' : 'Pastes as plain text'}</span>
+                    <span className="te-paste-note">{expansionType === 'image' ? 'Pastes as image via clipboard' : hasVariants ? 'Shows variant picker on trigger' : 'Pastes as plain text'}</span>
                     <div className="te-form-actions">
                       <button className="te-cancel-btn" onClick={handleCancel} type="button">Cancel</button>
                       <button className="te-save-btn" onClick={handleSave} disabled={!canSave} type="button">
