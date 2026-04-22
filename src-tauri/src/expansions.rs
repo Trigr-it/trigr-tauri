@@ -32,6 +32,7 @@ struct InjectionGuard;
 
 impl InjectionGuard {
     fn new() -> Self {
+        crate::hotkeys::mark_injection_start();
         crate::hotkeys::INJECTION_IN_PROGRESS
             .store(true, std::sync::atomic::Ordering::SeqCst);
         Self
@@ -42,6 +43,7 @@ impl Drop for InjectionGuard {
     fn drop(&mut self) {
         crate::hotkeys::INJECTION_IN_PROGRESS
             .store(false, std::sync::atomic::Ordering::SeqCst);
+        crate::hotkeys::clear_injection_start();
     }
 }
 
