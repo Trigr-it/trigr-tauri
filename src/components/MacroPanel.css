@@ -1073,6 +1073,13 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+}
+
+.footer-assignment-actions .btn-clear,
+.footer-assignment-actions .btn-duplicate {
+  flex: 1;
+  min-width: 0;
 }
 
 .profile-action-group {

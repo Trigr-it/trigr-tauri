@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import './OnboardingTour.css';
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 8;
 
 export default function OnboardingTour({ assignments, onComplete, onSkip }) {
   const [step, setStep] = useState(1);
@@ -66,18 +66,19 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
   }, []);
 
   // ── Step-specific target selectors ──────────────────────────
-  // Note: Step 2 subStep 'b' is handled by its own deferred effect below.
   useEffect(() => {
     if (step === 2) {
       if (subStep === 'a') measureTarget('.keyboard-numpad-wrap');
-      // subStep 'b' — skip here, handled by the deferred effect
       return;
     }
     const selectors = {
       1: null,
       3: null,
-      4: '.area-tab:nth-child(2)',
-      5: '.profile-tabs',
+      4: null,
+      5: '.area-tab:nth-child(2)',
+      6: '.area-tab:nth-child(3)',
+      7: '.sidebar',
+      8: null,
     };
     measureTarget(selectors[step] || null);
   }, [step, subStep, measureTarget]);
@@ -91,7 +92,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
       if (panel && !empty) { setSubStep('b'); return true; }
       return false;
     };
-    // If panel is already open (e.g. tour restarted with key selected), advance immediately
     if (check()) return;
     const mo = new MutationObserver(check);
     mo.observe(document.body, { childList: true, subtree: true });
@@ -102,7 +102,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
   useEffect(() => {
     if (step !== 2 || subStep !== 'b') return;
     setTargetRect(null);
-    // Retry until .macro-panel is in the DOM and has a non-zero rect
     let attempts = 0;
     const tryMeasure = () => {
       const el = document.querySelector('.macro-panel:not(.macro-panel-empty)');
@@ -135,7 +134,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
     if (step !== 2 || subStep !== 'b') return;
     const keys = Object.keys(assignments);
     const baseline = assignmentCountAtStep2.current ?? 0;
-    // Advance when a new assignment appears (count increased)
     if (keys.length > baseline) {
       setStep(3);
       setSubStep('a');
@@ -169,7 +167,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
       const tooltipHeight = tooltipRef.current?.offsetHeight || 200;
       const tooltipWidth = tooltipRef.current?.offsetWidth || 380;
 
-      // For elements on the right side of the window, position tooltip to the left
       const leftFits = targetRect.left - pad - tooltipWidth >= 0;
       const rightHalf = targetRect.left > window.innerWidth / 2;
 
@@ -206,7 +203,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
   // ── Render overlay with cutout ──────────────────────────────
   const renderOverlay = () => {
     if (!targetRect) {
-      // Full backdrop, no cutout
       return <div className="onboarding-backdrop" />;
     }
     const pad = 8;
@@ -239,7 +235,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
     );
   };
 
-  // ── Drag region — matches titlebar height so window stays draggable ──
   const dragRegion = (
     <div className="onboarding-drag-region" data-tauri-drag-region="true" />
   );
@@ -276,7 +271,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
 
   // ── Step 2: Create a hotkey (progressive sub-stages) ────────
   if (step === 2) {
-    // Sub-stage 2a: tooltip inside the keyboard highlight (bottom-aligned)
     if (subStep === 'a') {
       const step2aStyle = targetRect ? {
         position: 'fixed',
@@ -299,7 +293,6 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
         </div>
       );
     }
-    // Sub-stage 2b: tooltip on the assignment panel
     return (
       <div className="onboarding-overlay">
         {renderOverlay()}
@@ -346,16 +339,25 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
     );
   }
 
-  // ── Step 4: Expansions ──────────────────────────────────────
+  // ── Step 4: More Than Text — action types overview ──────────
   if (step === 4) {
     return (
       <div className="onboarding-overlay">
-        {renderOverlay()}
+        <div className="onboarding-backdrop" />
         {dragRegion}
-        <div className="onboarding-tooltip" style={getTooltipStyle()} ref={tooltipRef}>
+        <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 4 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            Text expansions let you type a short trigger — like <strong>;hello</strong> — and Trigr replaces it with anything you want. No hotkey needed.
+            Hotkeys can do a lot more than type text. Each key can trigger:
+          </p>
+          <div className="onboarding-feature-list">
+            <div className="onboarding-feature-item"><strong>Send Hotkey</strong> — simulate key combos (hold/repeat modes too)</div>
+            <div className="onboarding-feature-item"><strong>Open App / URL / Folder</strong> — launch anything instantly</div>
+            <div className="onboarding-feature-item"><strong>Macro Sequence</strong> — chain multiple steps together</div>
+            <div className="onboarding-feature-item"><strong>Run AHK Script</strong> — execute AutoHotkey scripts</div>
+          </div>
+          <p className="onboarding-hint">
+            Double-tap a key for a second action on the same hotkey.
           </p>
           {stepDots}
           <button className="onboarding-btn-secondary" onClick={() => setStep(5)}>Next</button>
@@ -365,7 +367,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
     );
   }
 
-  // ── Step 5: Profiles ────────────────────────────────────────
+  // ── Step 5: Text Expansions ─────────────────────────────────
   if (step === 5) {
     return (
       <div className="onboarding-overlay">
@@ -374,17 +376,100 @@ export default function OnboardingTour({ assignments, onComplete, onSkip }) {
         <div className="onboarding-tooltip" style={getTooltipStyle()} ref={tooltipRef}>
           <div className="onboarding-step-label">Step 5 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            Profiles let you set different hotkeys for different apps. Trigr switches automatically when you change focus.
+            <strong>Text Expansions</strong> replace short triggers with full text — no hotkey needed. Type <strong>;sig</strong> and your email signature appears.
           </p>
           <p className="onboarding-hint">
-            Click the app icon next to a profile name to link it to a specific application — Trigr will switch to that profile automatically when the app is in focus.
+            Use dynamic fields like dates, clipboard contents, cursor position, and fill-in prompts. Organise with categories, or paste images instead of text.
+          </p>
+          {stepDots}
+          <button className="onboarding-btn-secondary" onClick={() => setStep(6)}>Next</button>
+          {skipLink}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 6: Clipboard History ───────────────────────────────
+  if (step === 6) {
+    return (
+      <div className="onboarding-overlay">
+        {renderOverlay()}
+        {dragRegion}
+        <div className="onboarding-tooltip" style={getTooltipStyle()} ref={tooltipRef}>
+          <div className="onboarding-step-label">Step 6 of {TOTAL_STEPS}</div>
+          <p className="onboarding-tooltip-text">
+            <strong>Clipboard History</strong> saves everything you copy — text and images. Browse, search, pin favourites, and re-paste from any app.
+          </p>
+          <div className="onboarding-shortcut-row">
+            <kbd className="onboarding-kbd">Ctrl</kbd>
+            <span className="onboarding-kbd-plus">+</span>
+            <kbd className="onboarding-kbd">Shift</kbd>
+            <span className="onboarding-kbd-plus">+</span>
+            <kbd className="onboarding-kbd">V</kbd>
+            <span className="onboarding-shortcut-label">Clipboard popup — paste from history anywhere</span>
+          </div>
+          {stepDots}
+          <button className="onboarding-btn-secondary" onClick={() => setStep(7)}>Next</button>
+          {skipLink}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 7: Profiles ────────────────────────────────────────
+  if (step === 7) {
+    // Position tooltip to the right of the sidebar, vertically centred
+    const step7Style = targetRect ? {
+      position: 'fixed',
+      top: targetRect.top + targetRect.height / 2,
+      left: targetRect.left + targetRect.width + 20,
+      transform: 'translateY(-50%)',
+    } : {};
+    return (
+      <div className="onboarding-overlay">
+        <div className="onboarding-backdrop" />
+        {dragRegion}
+        <div className="onboarding-tooltip" style={step7Style} ref={tooltipRef}>
+          <div className="onboarding-step-label">Step 7 of {TOTAL_STEPS}</div>
+          <p className="onboarding-tooltip-text">
+            <strong>Profiles</strong> give each app its own hotkeys. Link a profile to an application and Trigr switches automatically when you change focus.
           </p>
           <p className="onboarding-hint">
-            Tip: find ready-made starter packs for office, CAD, and sales workflows in <strong>Settings → Templates</strong>.
+            Check the <strong>Analytics</strong> tab to see your usage stats and time saved. Import ready-made starter packs from <strong>Settings</strong>.
+          </p>
+          <p className="onboarding-hint">
+            Explore <strong>Settings</strong> for macro speed tuning, global pause hotkey, input method, and shared config sync across machines.
+          </p>
+          {stepDots}
+          <button className="onboarding-btn-secondary" onClick={() => setStep(8)}>Next</button>
+          {skipLink}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 8: Quick Search ────────────────────────────────────
+  if (step === 8) {
+    return (
+      <div className="onboarding-overlay">
+        <div className="onboarding-backdrop" />
+        {dragRegion}
+        <div className="onboarding-modal">
+          <div className="onboarding-step-label">Step 8 of {TOTAL_STEPS}</div>
+          <p className="onboarding-tooltip-text">
+            One last thing — <strong>Quick Search</strong> lets you find and fire any macro or expansion instantly, from any app.
+          </p>
+          <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
+            <kbd className="onboarding-kbd">Ctrl</kbd>
+            <span className="onboarding-kbd-plus">+</span>
+            <kbd className="onboarding-kbd">Space</kbd>
+            <span className="onboarding-shortcut-label">Quick Search</span>
+          </div>
+          <p className="onboarding-hint">
+            You're all set. Explore, experiment, and make Trigr your own.
           </p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={finish}>Finish</button>
-          {skipLink}
         </div>
       </div>
     );
