@@ -396,6 +396,10 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
 fn clipboard_paste_core(text: &str, target_hwnd: isize) {
     let write_ok = write_clipboard(text);
     println!("[CLIP] write_clipboard({} chars) → {}", text.chars().count(), write_ok);
+    if !write_ok {
+        println!("[CLIP] Skipping paste — clipboard write failed, would paste wrong content");
+        return;
+    }
 
     let (_, _, fg_settle_ms, _) = speed_delays();
 
@@ -437,29 +441,34 @@ fn is_ctrl_v_mapped() -> bool {
 // ── Win32 clipboard operations ──────────────────────────────────────────────
 
 fn read_clipboard() -> Option<String> {
-    unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
-            return None;
-        }
-        let handle = GetClipboardData(CF_UNICODETEXT);
-        if handle.is_null() {
+    // Retry up to 5 times — clipboard may be briefly held by another process
+    for attempt in 0..5 {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                if attempt < 4 { thread::sleep(Duration::from_millis(3)); continue; }
+                return None;
+            }
+            let handle = GetClipboardData(CF_UNICODETEXT);
+            if handle.is_null() {
+                CloseClipboard();
+                return None;
+            }
+            let ptr = GlobalLock(handle) as *const u16;
+            if ptr.is_null() {
+                CloseClipboard();
+                return None;
+            }
+            let mut len = 0;
+            while *ptr.add(len) != 0 {
+                len += 1;
+            }
+            let text = String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len));
+            GlobalUnlock(handle);
             CloseClipboard();
-            return None;
+            return Some(text);
         }
-        let ptr = GlobalLock(handle) as *const u16;
-        if ptr.is_null() {
-            CloseClipboard();
-            return None;
-        }
-        let mut len = 0;
-        while *ptr.add(len) != 0 {
-            len += 1;
-        }
-        let text = String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len));
-        GlobalUnlock(handle);
-        CloseClipboard();
-        Some(text)
     }
+    None
 }
 
 fn write_clipboard(text: &str) -> bool {
@@ -467,42 +476,47 @@ fn write_clipboard(text: &str) -> bool {
     let byte_len = wide.len() * 2;
     // Set suppress BEFORE touching the clipboard so any clipboard listener skips this write
     SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::SeqCst);
-    unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
-            let err = windows_sys::Win32::Foundation::GetLastError();
-            println!("[CLIP] OpenClipboard failed, GetLastError={}", err);
-            return false;
-        }
-        if EmptyClipboard() == 0 {
-            let err = windows_sys::Win32::Foundation::GetLastError();
-            println!("[CLIP] EmptyClipboard failed, GetLastError={}", err);
+    // Retry up to 10 times — clipboard may be briefly held by the clipboard listener
+    for attempt in 0..10 {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                if attempt < 9 { thread::sleep(Duration::from_millis(3)); continue; }
+                let err = windows_sys::Win32::Foundation::GetLastError();
+                println!("[CLIP] OpenClipboard failed after retries, GetLastError={}", err);
+                return false;
+            }
+            if EmptyClipboard() == 0 {
+                let err = windows_sys::Win32::Foundation::GetLastError();
+                println!("[CLIP] EmptyClipboard failed, GetLastError={}", err);
+                CloseClipboard();
+                return false;
+            }
+            let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
+            if h_mem.is_null() {
+                println!("[CLIP] GlobalAlloc failed for {} bytes", byte_len);
+                CloseClipboard();
+                return false;
+            }
+            let ptr = GlobalLock(h_mem) as *mut u16;
+            if ptr.is_null() {
+                println!("[CLIP] GlobalLock failed");
+                CloseClipboard();
+                return false;
+            }
+            std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+            GlobalUnlock(h_mem);
+            let result = SetClipboardData(CF_UNICODETEXT, h_mem);
+            if result.is_null() {
+                let err = windows_sys::Win32::Foundation::GetLastError();
+                println!("[CLIP] SetClipboardData failed, GetLastError={}", err);
+                CloseClipboard();
+                return false;
+            }
             CloseClipboard();
-            return false;
+            return true;
         }
-        let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
-        if h_mem.is_null() {
-            println!("[CLIP] GlobalAlloc failed for {} bytes", byte_len);
-            CloseClipboard();
-            return false;
-        }
-        let ptr = GlobalLock(h_mem) as *mut u16;
-        if ptr.is_null() {
-            println!("[CLIP] GlobalLock failed");
-            CloseClipboard();
-            return false;
-        }
-        std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
-        GlobalUnlock(h_mem);
-        let result = SetClipboardData(CF_UNICODETEXT, h_mem);
-        if result.is_null() {
-            let err = windows_sys::Win32::Foundation::GetLastError();
-            println!("[CLIP] SetClipboardData failed, GetLastError={}", err);
-            CloseClipboard();
-            return false;
-        }
-        CloseClipboard();
-        true
     }
+    false
 }
 
 // ── Type Text: character-by-character fallback ──────────────────────────────

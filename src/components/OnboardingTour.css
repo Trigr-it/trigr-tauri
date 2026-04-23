@@ -202,3 +202,76 @@
 .onboarding-dot.done {
   background: var(--accent-dim);
 }
+
+/* ── Feature list (Step 4) ─────────────────────────────────────────────── */
+
+.onboarding-feature-list {
+  text-align: left;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.onboarding-feature-item {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  padding-left: 12px;
+  position: relative;
+}
+
+.onboarding-feature-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.onboarding-feature-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Keyboard shortcut badges (Step 6) ─────────────────────────────────── */
+
+.onboarding-shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.onboarding-shortcut-row--centred {
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.onboarding-kbd {
+  display: inline-block;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Rajdhani', sans-serif;
+  color: var(--accent);
+  line-height: 1.4;
+}
+
+.onboarding-kbd-plus {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.onboarding-shortcut-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 8px;
+  line-height: 1.4;
+}

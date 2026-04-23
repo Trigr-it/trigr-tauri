@@ -111,15 +111,6 @@ fn handle_foreground_change(proc_name: &str, app: &AppHandle) {
         return;
     }
 
-    // Visibility guard: suppress auto-switching when Trigr window is visible and not minimised
-    if let Some(window) = app.get_webview_window("main") {
-        let visible = window.is_visible().unwrap_or(false);
-        let minimized = window.is_minimized().unwrap_or(false);
-        if visible && !minimized {
-            return;
-        }
-    }
-
     // Find linked profiles
     let linked: Vec<(String, String)> = state
         .profile_settings
@@ -161,6 +152,11 @@ fn handle_foreground_change(proc_name: &str, app: &AppHandle) {
             "[Trigr] Auto-switched to profile \"{}\" (foreground: {})",
             target, proc_name
         );
+
+        // Release any held/repeating key before switching — a simulated mouse
+        // button held in an app-linked profile must not persist into Default.
+        crate::actions::release_held_key();
+        crate::actions::stop_repeating_key();
 
         // Update hotkeys module with new profile
         crate::hotkeys::set_active_profile(target.clone());

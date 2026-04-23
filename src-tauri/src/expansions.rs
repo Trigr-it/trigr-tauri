@@ -745,33 +745,38 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
 // ── Clipboard operations (Win32) ────────────────────────────────────────────
 
 fn read_clipboard() -> Option<String> {
-    unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
-            return None;
-        }
-        let handle = GetClipboardData(CF_UNICODETEXT);
-        if handle.is_null() {
-            CloseClipboard();
-            return None;
-        }
-        let ptr = GlobalLock(handle) as *const u16;
-        if ptr.is_null() {
-            CloseClipboard();
-            return None;
-        }
+    // Retry up to 5 times — clipboard may be briefly held by another process
+    for attempt in 0..5 {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                if attempt < 4 { thread::sleep(Duration::from_millis(3)); continue; }
+                return None;
+            }
+            let handle = GetClipboardData(CF_UNICODETEXT);
+            if handle.is_null() {
+                CloseClipboard();
+                return None;
+            }
+            let ptr = GlobalLock(handle) as *const u16;
+            if ptr.is_null() {
+                CloseClipboard();
+                return None;
+            }
 
-        // Find null terminator
-        let mut len = 0;
-        while *ptr.add(len) != 0 {
-            len += 1;
-        }
-        let slice = std::slice::from_raw_parts(ptr, len);
-        let text = String::from_utf16_lossy(slice);
+            // Find null terminator
+            let mut len = 0;
+            while *ptr.add(len) != 0 {
+                len += 1;
+            }
+            let slice = std::slice::from_raw_parts(ptr, len);
+            let text = String::from_utf16_lossy(slice);
 
-        GlobalUnlock(handle);
-        CloseClipboard();
-        Some(text)
+            GlobalUnlock(handle);
+            CloseClipboard();
+            return Some(text);
+        }
     }
+    None
 }
 
 fn write_clipboard(text: &str) -> bool {
@@ -780,29 +785,37 @@ fn write_clipboard(text: &str) -> bool {
     // Set suppress BEFORE touching clipboard so any listener skips this write
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
-            return false;
-        }
-        EmptyClipboard();
+    // Retry up to 10 times — clipboard may be briefly held by the clipboard listener
+    // or another process.  Without retry, the write silently fails and Ctrl+V pastes
+    // whatever was already on the clipboard (the bug that makes expansions fire
+    // clipboard content instead of the expansion text).
+    for attempt in 0..10 {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                if attempt < 9 { thread::sleep(Duration::from_millis(3)); continue; }
+                return false;
+            }
+            EmptyClipboard();
 
-        let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
-        if h_mem.is_null() {
-            CloseClipboard();
-            return false;
-        }
-        let ptr = GlobalLock(h_mem) as *mut u16;
-        if ptr.is_null() {
-            CloseClipboard();
-            return false;
-        }
-        std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
-        GlobalUnlock(h_mem);
+            let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
+            if h_mem.is_null() {
+                CloseClipboard();
+                return false;
+            }
+            let ptr = GlobalLock(h_mem) as *mut u16;
+            if ptr.is_null() {
+                CloseClipboard();
+                return false;
+            }
+            std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+            GlobalUnlock(h_mem);
 
-        SetClipboardData(CF_UNICODETEXT, h_mem);
-        CloseClipboard();
-        true
+            SetClipboardData(CF_UNICODETEXT, h_mem);
+            CloseClipboard();
+            return true;
+        }
     }
+    false
 }
 
 // ── Hybrid injection — SendInput for short text, clipboard for long/terminal ─
@@ -907,8 +920,11 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     // Save current clipboard
     let prev = read_clipboard().unwrap_or_default();
 
-    // Write replacement to clipboard (suppress set inside write_clipboard)
-    write_clipboard(text);
+    // Write replacement to clipboard — if this fails, do NOT paste (would paste old clipboard content)
+    if !write_clipboard(text) {
+        println!("[EXPANSION] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
+        return;
+    }
 
     // Release physically held modifiers
     let held = crate::actions::release_held_modifiers();

@@ -548,6 +548,34 @@ pub(crate) fn is_modifier_vk(vk: u32) -> bool {
     matches!(vk, 0xA0..=0xA5 | 0x5B | 0x5C)
 }
 
+/// Check if the foreground window is a dialog or popup where bare keys should
+/// pass through as normal input (e.g. TAB to cycle fields, Enter to confirm).
+/// Only called for bare-key checks — modified combos (Ctrl+X etc.) always fire.
+/// SAFETY: safe to call from any thread; GetForegroundWindow + GetClassNameW are
+/// fast kernel calls (<1ms) and will not stall the LL hook.
+fn is_foreground_dialog() -> bool {
+    unsafe {
+        let fg = windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
+        if fg.is_null() { return false; }
+
+        // Check window class name — #32770 is the standard Windows dialog class
+        let mut class_buf = [0u16; 32];
+        let len = windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW(
+            fg, class_buf.as_mut_ptr(), 32,
+        );
+        if len > 0 {
+            let class = String::from_utf16_lossy(&class_buf[..len as usize]);
+            if class == "#32770" { return true; }
+        }
+
+        // Check extended style — WS_EX_DLGMODALFRAME indicates a dialog frame
+        let ex_style = windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongW(fg, -20) as u32; // GWL_EXSTYLE = -20
+        if ex_style & 0x0001 != 0 { return true; } // WS_EX_DLGMODALFRAME = 0x0001
+
+        false
+    }
+}
+
 /// Is this VK in the OEM range where codes are layout-dependent?
 fn is_oem_vk(vk: u32) -> bool {
     matches!(vk, 0xBA..=0xDF | 0xE2)
@@ -740,7 +768,14 @@ unsafe extern "system" fn keyboard_hook_proc(
                     let bits = modifier_bits();
                     if let Ok(set) = suppress_keys().try_read() {
                         if set.contains(&(bits, kb.vkCode)) {
-                            return 1;
+                            // Bare keys (bits=0): skip suppression in dialog/popup
+                            // windows so TAB, Enter, etc. work for form navigation.
+                            // Modified combos (Ctrl+X etc.) always fire.
+                            if bits == 0 && is_foreground_dialog() {
+                                // pass through
+                            } else {
+                                return 1;
+                            }
                         }
                     }
                 }
@@ -821,7 +856,10 @@ unsafe extern "system" fn mouse_hook_proc(
             if MACROS_ENABLED.load(Ordering::SeqCst) {
                 if let Ok(set) = suppress_bare_mouse().try_read() {
                     if set.contains(&btn_id) {
-                        return 1;
+                        // Skip suppression in dialog/popup windows
+                        if !is_foreground_dialog() {
+                            return 1;
+                        }
                     }
                 }
             }
@@ -1150,7 +1188,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             .and_then(|v| v.as_str())
             .is_some();
 
-        if linked {
+        if linked && !is_foreground_dialog() {
             let bare_key = format!("{}::BARE::{}", profile, key_id);
             // Stop repeat if this key is the repeat trigger
             if crate::actions::is_repeating() {
@@ -1333,6 +1371,9 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 
     let mouse_id = mouse_button_to_key_id(button);
 
+    // Skip bare mouse processing in dialog/popup windows
+    let in_dialog = is_foreground_dialog();
+
     if !has_any_modifier() {
         // Bare mouse — all buttons allowed in app-linked profiles
         let state = engine_state().lock().unwrap();
@@ -1344,7 +1385,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
             .and_then(|v| v.as_str())
             .is_some();
 
-        if linked {
+        if linked && !in_dialog {
             let bare_key = format!("{}::BARE::{}", profile, mouse_id);
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 drop(state);
@@ -1377,7 +1418,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
         .and_then(|v| v.as_str())
         .is_some();
 
-    if linked {
+    if linked && !in_dialog {
         let bare_key = format!("{}::BARE::{}", profile, mouse_id);
         if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
             drop(state);
