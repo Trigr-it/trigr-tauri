@@ -426,6 +426,39 @@ async fn browse_for_folder(app: tauri::AppHandle) -> Value {
     }
 }
 
+// ── Image preview ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn read_image_base64(path: String) -> Option<String> {
+    let data = std::fs::read(&path).ok()?;
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        _ => "image/png",
+    };
+    Some(format!("data:{};base64,{}", mime, base64_encode(&data)))
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 { out.push(CHARS[((triple >> 6) & 0x3F) as usize] as char); } else { out.push('='); }
+        if chunk.len() > 2 { out.push(CHARS[(triple & 0x3F) as usize] as char); } else { out.push('='); }
+    }
+    out
+}
+
 // ── Window enumeration ─────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1732,6 +1765,7 @@ pub fn run() {
             browse_for_file,
             browse_for_image,
             browse_for_folder,
+            read_image_base64,
             // Profile export/import
             export_profile,
             import_profile,

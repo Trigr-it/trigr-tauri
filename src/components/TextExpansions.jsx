@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import './TextExpansions.css';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -505,7 +504,20 @@ export default function TextExpansions({
   const [imagePath, setImagePath]         = useState('');
   const [imageScale, setImageScale]       = useState(100);
   const [imageExists, setImageExists]     = useState(true);
+  const [imageDataUri, setImageDataUri]   = useState(null); // base64 data URI for preview
   const [variantOptions, setVariantOptions] = useState([]); // [{label, text}]
+
+  // Load image preview via Rust when imagePath changes
+  useEffect(() => {
+    if (!imagePath) { setImageDataUri(null); return; }
+    let cancelled = false;
+    window.electronAPI?.readImageBase64(imagePath).then(uri => {
+      if (cancelled) return;
+      if (uri) { setImageDataUri(uri); setImageExists(true); }
+      else     { setImageDataUri(null); setImageExists(false); }
+    });
+    return () => { cancelled = true; };
+  }, [imagePath]);
 
   // ── Trigger duplicate error ──
   const [triggerError, setTriggerError] = useState('');
@@ -1368,16 +1380,15 @@ export default function TextExpansions({
                       >Choose Image…</button>
                       {imagePath ? (
                         <div className="te-image-preview-wrap">
-                          <img
-                            className="te-image-preview"
-                            src={convertFileSrc(imagePath)}
-                            alt="Preview"
-                            onError={() => setImageExists(false)}
-                            onLoad={() => setImageExists(true)}
-                          />
-                          {!imageExists && (
+                          {imageDataUri ? (
+                            <img
+                              className="te-image-preview"
+                              src={imageDataUri}
+                              alt="Preview"
+                            />
+                          ) : !imageExists ? (
                             <span className="te-image-missing">File not found</span>
-                          )}
+                          ) : null}
                           <span className="te-image-path" title={imagePath}>
                             {imagePath.split(/[/\\]/).pop()}
                           </span>
