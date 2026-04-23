@@ -66,7 +66,24 @@ static AHK_PROCESSES: LazyLock<Mutex<HashMap<String, AhkProcess>>> = LazyLock::n
 
 /// Held key state for Send Hotkey hold mode.
 /// Stores (target_vk, Vec<modifier_vks>) so we can send the correct keyup later.
-static HELD_KEY: Mutex<Option<HeldKeyState>> = Mutex::new(None);
+///
+/// `pending_mouse_release` handles the race where handle_mouse_up fires before
+/// fire_macro's spawned thread has stored the held state.  Instead of retrying
+/// in a sleep loop, we record that the mouse button was already released.  When
+/// the hold action finally stores its state it checks the pending flag under the
+/// same lock and immediately releases — no timing assumptions needed.
+static HELD_KEY: Mutex<HeldKeyManager> = Mutex::new(HeldKeyManager {
+    key: None,
+    pending_mouse_release: None,
+});
+
+struct HeldKeyManager {
+    key: Option<HeldKeyState>,
+    /// Mouse ID (e.g. "MOUSE_RIGHT") that was released before the hold was stored.
+    /// Consumed by the hold setup code — if it matches `trigger_mouse_id`, the hold
+    /// is immediately released so the simulated button never stays stuck DOWN.
+    pending_mouse_release: Option<String>,
+}
 
 struct HeldKeyState {
     target_vk: u16,
@@ -81,8 +98,9 @@ const CF_UNICODETEXT: u32 = 13;
 /// Release the currently held key (if any). Safe to call from any thread.
 /// Returns the label of the released key (for logging) or None.
 pub fn release_held_key() -> Option<String> {
-    let mut held = HELD_KEY.lock().unwrap();
-    if let Some(state) = held.take() {
+    let mut mgr = HELD_KEY.lock().unwrap();
+    if let Some(state) = mgr.key.take() {
+        mgr.pending_mouse_release = None; // no longer relevant
         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
         if let Some(ref button) = state.mouse_button {
             // Mouse button release — send the corresponding UP event
@@ -104,18 +122,23 @@ pub fn release_held_key() -> Option<String> {
 
 /// Check if a key is currently being held.
 pub fn is_key_held() -> bool {
-    HELD_KEY.lock().unwrap().is_some()
+    HELD_KEY.lock().unwrap().key.is_some()
 }
 
 /// Release the held key only if it was triggered by the given mouse button (e.g. "MOUSE_RIGHT").
 /// Used by handle_mouse_up for press-hold mouse remapping (hold while button is down, release on up).
+///
+/// If the hold action hasn't stored its state yet (race with fire_macro's spawned
+/// thread), we set `pending_mouse_release` so the hold action can release
+/// immediately when it finishes — no sleep/retry needed.
 pub fn release_held_if_mouse_trigger(mouse_id: &str) -> Option<String> {
-    let mut held = HELD_KEY.lock().unwrap();
-    let matches = held.as_ref()
+    let mut mgr = HELD_KEY.lock().unwrap();
+    let matches = mgr.key.as_ref()
         .and_then(|s| s.trigger_mouse_id.as_deref())
         .map_or(false, |id| id == mouse_id);
     if matches {
-        let state = held.take().unwrap();
+        let state = mgr.key.take().unwrap();
+        mgr.pending_mouse_release = None;
         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
         if let Some(ref button) = state.mouse_button {
             send_mouse_event(button, true);
@@ -129,7 +152,21 @@ pub fn release_held_if_mouse_trigger(mouse_id: &str) -> Option<String> {
         info!("[Trigr] Released held key on mouse-up: {}", state.label);
         Some(state.label)
     } else {
+        // Hold not stored yet — record that the button was released so the hold
+        // action can release immediately when it finishes setting up.
+        info!("[Trigr] Mouse-up for {} but no held key yet — setting pending release", mouse_id);
+        mgr.pending_mouse_release = Some(mouse_id.to_string());
         None
+    }
+}
+
+/// Clear any pending mouse release for the given button.
+/// Called from handle_mouse_down to prevent stale pending flags from a previous
+/// click cycle being consumed by a new hold action.
+pub fn clear_pending_mouse_release(mouse_id: &str) {
+    let mut mgr = HELD_KEY.lock().unwrap();
+    if mgr.pending_mouse_release.as_deref() == Some(mouse_id) {
+        mgr.pending_mouse_release = None;
     }
 }
 
@@ -716,10 +753,10 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
 
     // ── Hold mode ──
     if hold_mode {
-        let mut held = HELD_KEY.lock().unwrap();
+        let mut mgr = HELD_KEY.lock().unwrap();
 
         // Check if same key already held — toggle release
-        let same_held = if let Some(ref state) = *held {
+        let same_held = if let Some(ref state) = mgr.key {
             if is_mouse {
                 state.mouse_button.as_deref() == Some(key_name)
             } else {
@@ -731,7 +768,8 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
 
         if same_held {
             // Release it
-            let state = held.take().unwrap();
+            let state = mgr.key.take().unwrap();
+            mgr.pending_mouse_release = None;
             crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
             if let Some(ref button) = state.mouse_button {
                 send_mouse_event(button, true);
@@ -743,13 +781,13 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             }
             crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
             info!("[Trigr] Hold released: {}", combo_label);
-            drop(held);
+            drop(mgr);
             crate::tray::update_tray_icon_normal(app);
             return;
         }
 
         // Different key held — release previous first
-        if let Some(ref state) = *held {
+        if let Some(ref state) = mgr.key {
             crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
             if let Some(ref button) = state.mouse_button {
                 send_mouse_event(button, true);
@@ -785,14 +823,42 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             .filter(|last| last.starts_with("MOUSE_"))
             .map(|s| s.to_string());
 
-        *held = Some(HeldKeyState {
+        mgr.key = Some(HeldKeyState {
             target_vk,
             mod_vks: mod_vks.clone(),
             mouse_button: if is_mouse { Some(key_name.to_string()) } else { None },
             label: combo_label.clone(),
-            trigger_mouse_id: trigger_mouse,
+            trigger_mouse_id: trigger_mouse.clone(),
         });
-        drop(held);
+
+        // Check if the mouse button was already released before we stored the hold.
+        // This happens when the user clicks and releases quickly — handle_mouse_up
+        // ran before this thread and set pending_mouse_release.
+        let already_released = trigger_mouse.as_deref()
+            .and_then(|tm| mgr.pending_mouse_release.as_deref().filter(|&p| p == tm))
+            .is_some();
+
+        if already_released {
+            // Immediately release — the button UP event already fired
+            let state = mgr.key.take().unwrap();
+            mgr.pending_mouse_release = None;
+            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+            if let Some(ref button) = state.mouse_button {
+                send_mouse_event(button, true);
+            } else {
+                send_vk_key(state.target_vk, true);
+                for &vk in state.mod_vks.iter().rev() {
+                    send_vk_key(vk, true);
+                }
+            }
+            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+            info!("[Trigr] Hold immediately released — mouse was already up: {}", combo_label);
+            drop(mgr);
+            crate::tray::update_tray_icon_normal(app);
+            return;
+        }
+
+        drop(mgr);
         crate::tray::update_tray_icon_held(app, &combo_label);
         return;
     }

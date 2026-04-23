@@ -1371,6 +1371,10 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 
     let mouse_id = mouse_button_to_key_id(button);
 
+    // Clear any stale pending-release from a previous click cycle so it
+    // can't be falsely consumed by a new hold action for this button.
+    crate::actions::clear_pending_mouse_release(mouse_id);
+
     // Skip bare mouse processing in dialog/popup windows
     let in_dialog = is_foreground_dialog();
 
