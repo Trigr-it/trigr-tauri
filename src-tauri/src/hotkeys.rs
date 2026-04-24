@@ -1,7 +1,7 @@
 use log::{error, info};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -110,6 +110,17 @@ const SUPPRESS_MOUSE_SIDE1: u8 = 4;
 const SUPPRESS_MOUSE_SIDE2: u8 = 5;
 const SUPPRESS_MOUSE_SCROLL_UP: u8 = 6;
 const SUPPRESS_MOUSE_SCROLL_DOWN: u8 = 7;
+
+/// Tracks which mouse buttons had their DOWN event suppressed by the hook.
+/// Only the corresponding UP is suppressed — prevents mismatched down/up when
+/// the suppress set changes mid-click (e.g., profile switch during a hold).
+/// Bits: 0=left, 1=right, 2=middle, 3=side1, 4=side2.
+static MOUSE_DOWN_SUPPRESSED: AtomicU8 = AtomicU8::new(0);
+
+/// Map button suppress ID (1..5) to a bitmask. Returns None for scroll events.
+fn suppress_btn_bit(id: u8) -> Option<u8> {
+    if id >= 1 && id <= 5 { Some(1u8 << (id - 1)) } else { None }
+}
 
 fn mouse_key_id_to_suppress(key_id: &str) -> Option<u8> {
     match key_id {
@@ -576,6 +587,39 @@ fn is_foreground_dialog() -> bool {
     }
 }
 
+/// Check if the cursor is over a window belonging to the foreground process AND
+/// the foreground HWND matches the watcher's last poll (i.e. the linked app is
+/// focused).  Used by bare mouse suppression/dispatch to prevent remaps from
+/// firing when the cursor has moved outside the linked app's window.
+///
+/// SAFETY: fast kernel calls (GetCursorPos, WindowFromPoint, GetWindowThreadProcessId)
+/// — safe from the LL hook thread.
+fn is_cursor_over_linked_app() -> bool {
+    unsafe {
+        let fg = windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
+        if fg.is_null() { return false; }
+
+        // Foreground must match the watcher's last confirmed HWND (linked app)
+        let fg_isize = fg as isize;
+        if fg_isize != crate::foreground::last_fg_hwnd() { return false; }
+
+        // Cursor must be over a window belonging to the foreground process
+        let mut pt = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+        windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt);
+        let cursor_wnd = windows_sys::Win32::UI::WindowsAndMessaging::WindowFromPoint(pt);
+        if cursor_wnd.is_null() { return false; }
+        if cursor_wnd == fg { return true; }
+
+        // Different window — check if same process (child window, toolbar, popup, etc.)
+        let mut fg_pid: u32 = 0;
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(fg, &mut fg_pid);
+        let mut cursor_pid: u32 = 0;
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(cursor_wnd, &mut cursor_pid);
+
+        fg_pid != 0 && fg_pid == cursor_pid
+    }
+}
+
 /// Is this VK in the OEM range where codes are layout-dependent?
 fn is_oem_vk(vk: u32) -> bool {
     matches!(vk, 0xBA..=0xDF | 0xE2)
@@ -801,10 +845,12 @@ unsafe extern "system" fn mouse_hook_proc(
     HOOK_HEARTBEAT.fetch_add(1, Ordering::SeqCst);
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         let mut suppress_id: Option<u8> = None;
+        let mut is_button_down = false;
         match w_param as u32 {
             WM_LBUTTONDOWN => {
                 send_event(HookEvent::MouseDown { button: MouseButton::Left });
                 suppress_id = Some(SUPPRESS_MOUSE_LEFT);
+                is_button_down = true;
             }
             WM_LBUTTONUP => {
                 send_event(HookEvent::MouseUp { button: MouseButton::Left });
@@ -813,6 +859,7 @@ unsafe extern "system" fn mouse_hook_proc(
             WM_RBUTTONDOWN => {
                 send_event(HookEvent::MouseDown { button: MouseButton::Right });
                 suppress_id = Some(SUPPRESS_MOUSE_RIGHT);
+                is_button_down = true;
             }
             WM_RBUTTONUP => {
                 send_event(HookEvent::MouseUp { button: MouseButton::Right });
@@ -821,6 +868,7 @@ unsafe extern "system" fn mouse_hook_proc(
             WM_MBUTTONDOWN => {
                 send_event(HookEvent::MouseDown { button: MouseButton::Middle });
                 suppress_id = Some(SUPPRESS_MOUSE_MIDDLE);
+                is_button_down = true;
             }
             WM_MBUTTONUP => {
                 send_event(HookEvent::MouseUp { button: MouseButton::Middle });
@@ -832,6 +880,7 @@ unsafe extern "system" fn mouse_hook_proc(
                 let button = if xbutton == 1 { MouseButton::Side1 } else { MouseButton::Side2 };
                 send_event(HookEvent::MouseDown { button });
                 suppress_id = Some(if xbutton == 1 { SUPPRESS_MOUSE_SIDE1 } else { SUPPRESS_MOUSE_SIDE2 });
+                is_button_down = true;
             }
             WM_XBUTTONUP => {
                 let ms = &*(l_param as *const MSLLHOOKSTRUCT);
@@ -848,17 +897,39 @@ unsafe extern "system" fn mouse_hook_proc(
             }
             _ => {}
         }
-        // Suppress mouse events that have bare assignments in app-linked profiles.
-        // Checked regardless of modifier state — bare mouse remaps act as full button
-        // replacements, so Shift+RightClick should become Shift+MiddleClick (modifiers
-        // pass through naturally since they're physically held).
+        // Suppress bare mouse events that have assignments in app-linked profiles.
+        // DOWN/UP events are paired: we only suppress an UP if we suppressed the
+        // matching DOWN. This prevents mismatched events when the suppress set
+        // changes mid-click (e.g., profile switches while a button is held).
         if let Some(btn_id) = suppress_id {
             if MACROS_ENABLED.load(Ordering::SeqCst) {
-                if let Ok(set) = suppress_bare_mouse().try_read() {
-                    if set.contains(&btn_id) {
-                        // Skip suppression in dialog/popup windows
-                        if !is_foreground_dialog() {
+                if let Some(bit) = suppress_btn_bit(btn_id) {
+                    // Paired button event
+                    if is_button_down {
+                        if let Ok(set) = suppress_bare_mouse().try_read() {
+                            if set.contains(&btn_id) {
+                                if is_cursor_over_linked_app() && !is_foreground_dialog() {
+                                    MOUSE_DOWN_SUPPRESSED.fetch_or(bit, Ordering::SeqCst);
+                                    return 1;
+                                }
+                            }
+                        }
+                        // Not suppressed — clear flag so the UP passes through too
+                        MOUSE_DOWN_SUPPRESSED.fetch_and(!bit, Ordering::SeqCst);
+                    } else {
+                        // Button-up: only suppress if the corresponding down was suppressed
+                        if MOUSE_DOWN_SUPPRESSED.load(Ordering::SeqCst) & bit != 0 {
+                            MOUSE_DOWN_SUPPRESSED.fetch_and(!bit, Ordering::SeqCst);
                             return 1;
+                        }
+                    }
+                } else {
+                    // Scroll event — no pairing needed, standalone check
+                    if let Ok(set) = suppress_bare_mouse().try_read() {
+                        if set.contains(&btn_id) {
+                            if is_cursor_over_linked_app() && !is_foreground_dialog() {
+                                return 1;
+                            }
                         }
                     }
                 }
@@ -1378,6 +1449,11 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // Skip bare mouse processing in dialog/popup windows
     let in_dialog = is_foreground_dialog();
 
+    // Verify the cursor is actually over the linked app — if the user moved the
+    // cursor outside the app, bare mouse remaps must not fire even though the
+    // linked profile is still active.
+    let cursor_over_app = is_cursor_over_linked_app();
+
     if !has_any_modifier() {
         // Bare mouse — all buttons allowed in app-linked profiles
         let state = engine_state().lock().unwrap();
@@ -1389,7 +1465,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
             .and_then(|v| v.as_str())
             .is_some();
 
-        if linked && !in_dialog {
+        if linked && !in_dialog && cursor_over_app {
             let bare_key = format!("{}::BARE::{}", profile, mouse_id);
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 drop(state);
@@ -1422,7 +1498,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
         .and_then(|v| v.as_str())
         .is_some();
 
-    if linked && !in_dialog {
+    if linked && !in_dialog && cursor_over_app {
         let bare_key = format!("{}::BARE::{}", profile, mouse_id);
         if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
             drop(state);
@@ -1679,6 +1755,7 @@ fn spawn_hook_thread() {
                 MOD_ALT.store(false, Ordering::SeqCst);
                 MOD_SHIFT.store(false, Ordering::SeqCst);
                 MOD_META.store(false, Ordering::SeqCst);
+                MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
                 info!("[Trigr] Hook reinstall: shared atomics reset to safe defaults");
 
                 println!("[HOOK] Input hooks installed (dedicated thread, high priority)");

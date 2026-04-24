@@ -218,6 +218,13 @@ pub fn get_current_fg_proc() -> String {
     fg_state().lock().unwrap().current_fg_proc.clone()
 }
 
+/// The HWND the foreground watcher last confirmed as foreground.
+/// Used by the hook to verify the linked app is still focused before
+/// suppressing bare mouse buttons (avoids the 1500ms poll lag).
+pub fn last_fg_hwnd() -> isize {
+    LAST_FG_HWND.load(Ordering::Relaxed)
+}
+
 pub fn set_active_global_profile(profile: String) {
     let mut state = fg_state().lock().unwrap();
     state.active_global_profile = profile;
