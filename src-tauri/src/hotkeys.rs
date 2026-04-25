@@ -190,11 +190,13 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
         if parts.len() < 3 { continue; }
         let combo_str = parts[1];
         if combo_str == "GLOBAL" { continue; }
+        // Skip ::double entries from the suppress set — double-only keys should
+        // let the single press pass through to the app. When both single+double
+        // exist, the single entry already adds the key to the suppress set.
         if parts.last() == Some(&"double") { continue; }
         if combo_str == "BARE" {
             if is_linked {
                 let key_id = parts[2];
-                // Bare mouse buttons go to separate suppress set
                 if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
                     mouse_set.insert(mouse_id);
                 } else if let Some(vk) = suppress_vk_for_key_id(key_id) {
@@ -1280,6 +1282,27 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 state.pending_is_bare = true;
                 return;
             }
+
+            // No single-press — check for double-only bare key
+            let double_key = format!("{}::double", bare_key);
+            if state.assignments.contains_key(&double_key) {
+                crate::expansions::buffer_clear();
+                let now = Instant::now();
+                let dtw = state.double_tap_window_ms;
+                if let Some(last) = state.last_hotkey_time.get(&bare_key) {
+                    if now.duration_since(*last).as_millis() < dtw as u128 {
+                        state.last_hotkey_time.remove(&bare_key);
+                        info!("[Trigr] x2 Double-only bare: {}", bare_key);
+                        state.pending_macro = state.assignments.get(&double_key).cloned();
+                        state.pending_storage_key = None;
+                        state.pending_trigger_key = Some(bare_key);
+                        state.pending_is_bare = true;
+                        return;
+                    }
+                }
+                state.last_hotkey_time.insert(bare_key, now);
+                return; // first tap — suppress but no action
+            }
         }
 
         // No bare key match — handle text expansion buffer
@@ -1390,6 +1413,26 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             state.pending_trigger_key = Some(storage_key);
         }
         state.pending_is_bare = false;
+    } else {
+        // No single-press — check for double-only
+        let double_key = format!("{}::double", storage_key);
+        if state.assignments.contains_key(&double_key) {
+            crate::expansions::buffer_clear();
+            let now = Instant::now();
+            let dtw = state.double_tap_window_ms;
+            if let Some(last) = state.last_hotkey_time.get(&storage_key) {
+                if now.duration_since(*last).as_millis() < dtw as u128 {
+                    state.last_hotkey_time.remove(&storage_key);
+                    info!("[Trigr] x2 Double-only: {}", storage_key);
+                    state.pending_macro = state.assignments.get(&double_key).cloned();
+                    state.pending_storage_key = None;
+                    state.pending_trigger_key = Some(storage_key);
+                    state.pending_is_bare = false;
+                    return;
+                }
+            }
+            state.last_hotkey_time.insert(storage_key, now);
+        }
     }
 }
 
@@ -1470,6 +1513,14 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 drop(state);
                 dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
+            } else {
+                // No single — check for double-only bare mouse
+                let double_key = format!("{}::double", bare_key);
+                if state.assignments.contains_key(&double_key) {
+                    let dm = state.assignments.get(&double_key).cloned();
+                    drop(state);
+                    dispatch_double_only(&bare_key, dm, app);
+                }
             }
         }
         return;
@@ -1488,7 +1539,16 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
         return;
     }
 
-    // No modified assignment — fall through to bare assignment in app-linked profiles.
+    // No modified assignment — check for double-only modified mouse
+    let double_key = format!("{}::double", storage_key);
+    if state.assignments.contains_key(&double_key) {
+        let dm = state.assignments.get(&double_key).cloned();
+        drop(state);
+        dispatch_double_only(&storage_key, dm, app);
+        return;
+    }
+
+    // Fall through to bare assignment in app-linked profiles.
     // Bare mouse remaps act as full button replacements: modifiers pass through
     // naturally since they're physically held (e.g. Shift+RightClick → Shift+MiddleClick).
     let linked = state
@@ -1504,6 +1564,13 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
             drop(state);
             dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
             return;
+        }
+        // No single bare — check double-only bare (modifier fallback)
+        let double_key = format!("{}::double", bare_key);
+        if state.assignments.contains_key(&double_key) {
+            let dm = state.assignments.get(&double_key).cloned();
+            drop(state);
+            dispatch_double_only(&bare_key, dm, app);
         }
     }
 }
@@ -1562,6 +1629,27 @@ fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
 }
 
 // ── Double-tap dispatch ─────────────────────────────────────────────────────
+
+/// Double-only dispatch for mouse: no single-press action exists.
+/// First click records time, second click within the window fires.
+fn dispatch_double_only(storage_key: &str, double_macro: Option<Value>, app: &AppHandle) {
+    let mut state = engine_state().lock().unwrap();
+    let now = Instant::now();
+    let dtw = state.double_tap_window_ms;
+
+    if let Some(last) = state.last_hotkey_time.get(storage_key) {
+        if now.duration_since(*last).as_millis() < dtw as u128 {
+            state.last_hotkey_time.remove(storage_key);
+            info!("[Trigr] x2 Double-only: {}", storage_key);
+            if let Some(dm) = double_macro {
+                drop(state);
+                fire_macro(dm, false, Some(storage_key.to_string()), app);
+            }
+            return;
+        }
+    }
+    state.last_hotkey_time.insert(storage_key.to_string(), now);
+}
 
 fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Option<String>, app: &AppHandle) {
     let mut state = engine_state().lock().unwrap();

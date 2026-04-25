@@ -1208,17 +1208,25 @@ export default function MacroPanel({
     setReassigning(false);
     setDuplicating(false);
     setPendingMouseSave(null);
-    setPressMode('single');
-    if (assignment) {
-      setActiveType(assignment.type || 'text');
-      setFormValue(assignment.data || {});
-      setLabel(assignment.label || '');
+    // Auto-switch to double mode when only a double assignment exists
+    if (!assignment && doubleAssignment) {
+      setPressMode('double');
+      setActiveType(doubleAssignment.type || 'text');
+      setFormValue(doubleAssignment.data || {});
+      setLabel(doubleAssignment.label || '');
     } else {
-      setActiveType('text');
-      setFormValue({});
-      setLabel('');
+      setPressMode('single');
+      if (assignment) {
+        setActiveType(assignment.type || 'text');
+        setFormValue(assignment.data || {});
+        setLabel(assignment.label || '');
+      } else {
+        setActiveType('text');
+        setFormValue({});
+        setLabel('');
+      }
     }
-  }, [selectedKey, assignment]);
+  }, [selectedKey, assignment, doubleAssignment]);
 
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {

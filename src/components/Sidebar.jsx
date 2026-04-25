@@ -528,23 +528,44 @@ export default function Sidebar({
   onCopyToProfile,
   onMoveToProfile,
 }) {
-  const profileEntries = Object.entries(assignments)
-    .filter(([k]) => {
-      if (!k.startsWith(activeProfile + '::')) return false;
-      if (k.includes('::EXPANSION::')) return false;
+  const profileEntries = (() => {
+    const entries = [];
+    const seen = new Set();
+    // First pass: collect single-press entries
+    for (const [k, v] of Object.entries(assignments)) {
+      if (!v) continue; // skip null/undefined (corrupted entry)
+      if (!k.startsWith(activeProfile + '::')) continue;
+      if (k.includes('::EXPANSION::')) continue;
       const parts = k.split('::');
-      if (parts[parts.length - 1] === 'double') return false;
-      return true;
-    })
-    .map(([k, v]) => {
+      if (parts[parts.length - 1] === 'double') continue;
+      const baseKey = k;
+      seen.add(baseKey);
+      entries.push({
+        combo:      parts[1] || '',
+        keyId:      parts[2] || '',
+        macro:      v,
+        hasDouble:  !!assignments[baseKey + '::double'],
+        doubleOnly: false,
+      });
+    }
+    // Second pass: collect double-only entries (no matching single)
+    for (const [k, v] of Object.entries(assignments)) {
+      if (!k.startsWith(activeProfile + '::')) continue;
+      if (k.includes('::EXPANSION::')) continue;
       const parts = k.split('::');
-      return {
-        combo:     parts[1] || '',
-        keyId:     parts[2] || '',
-        macro:     v,
-        hasDouble: !!assignments[k + '::double'],
-      };
-    });
+      if (parts[parts.length - 1] !== 'double') continue;
+      const baseKey = parts.slice(0, -1).join('::');
+      if (seen.has(baseKey)) continue; // already listed via single entry
+      entries.push({
+        combo:      parts[1] || '',
+        keyId:      parts[2] || '',
+        macro:      v,
+        hasDouble:  true,
+        doubleOnly: true,
+      });
+    }
+    return entries;
+  })();
 
   const otherProfiles = (profiles || []).filter(p => p !== activeProfile);
 
@@ -655,7 +676,7 @@ export default function Sidebar({
   const isRenaming = (combo, keyId) => renaming?.combo === combo && renaming?.keyId === keyId;
   const isClearing = (combo, keyId) => clearing?.combo === combo && clearing?.keyId === keyId;
 
-  function renderItem({ combo, keyId, macro, hasDouble }) {
+  function renderItem({ combo, keyId, macro, hasDouble, doubleOnly }) {
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
     const displayKey = MOUSE_KEY_LABELS[keyId] || friendlyKeyName(keyId);
     const isSelected = selectedKey === keyId && combo === currentCombo;
@@ -699,7 +720,10 @@ export default function Sidebar({
             ) : (
               <>
                 {displayLabel}
-                {hasDouble && <span className="sidebar-double-badge">×2</span>}
+                {doubleOnly
+                  ? <span className="sidebar-double-badge">×2 only</span>
+                  : hasDouble && <span className="sidebar-double-badge">×2</span>
+                }
               </>
             )}
           </div>
@@ -713,7 +737,7 @@ export default function Sidebar({
   }
 
   // ── Card for list view grid ──────────────────────────────────
-  function renderCard({ combo, keyId, macro, hasDouble }) {
+  function renderCard({ combo, keyId, macro, hasDouble, doubleOnly }) {
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
     const displayKey = MOUSE_KEY_LABELS[keyId] || friendlyKeyName(keyId);
     const isSelected = selectedKey === keyId && combo === currentCombo;
@@ -760,7 +784,10 @@ export default function Sidebar({
       >
         <div className="grid-card-combo">
           {comboLabel}
-          {hasDouble && <span className="sidebar-double-badge">×2</span>}
+          {doubleOnly
+            ? <span className="sidebar-double-badge">×2 only</span>
+            : hasDouble && <span className="sidebar-double-badge">×2</span>
+          }
         </div>
         <div className="grid-card-label">
           {isRenaming(combo, keyId) ? (

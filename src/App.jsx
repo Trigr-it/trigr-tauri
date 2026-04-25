@@ -958,7 +958,11 @@ function App() {
     const srcKey   = keyId || selectedKey;
     const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
     const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
-    const newAssignments = { ...assignments, [newKey]: assignments[oldKey] };
+    const oldDouble = oldKey + '::double';
+    const newDouble = newKey + '::double';
+    const newAssignments = { ...assignments };
+    if (assignments[oldKey]) newAssignments[newKey] = assignments[oldKey];
+    if (assignments[oldDouble]) newAssignments[newDouble] = assignments[oldDouble];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Copied to "${targetProfile}" profile`);
@@ -969,8 +973,19 @@ function App() {
     const srcKey   = keyId || selectedKey;
     const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
     const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
-    const newAssignments = { ...assignments, [newKey]: assignments[oldKey] };
-    delete newAssignments[oldKey];
+    const oldDouble = oldKey + '::double';
+    const newDouble = newKey + '::double';
+    const newAssignments = { ...assignments };
+    // Move single-press (if exists)
+    if (newAssignments[oldKey]) {
+      newAssignments[newKey] = newAssignments[oldKey];
+      delete newAssignments[oldKey];
+    }
+    // Move double-press (if exists)
+    if (newAssignments[oldDouble]) {
+      newAssignments[newDouble] = newAssignments[oldDouble];
+      delete newAssignments[oldDouble];
+    }
     setAssignments(newAssignments);
     setSelectedKey(null);
     saveConfig(newAssignments, profiles, activeProfile);
