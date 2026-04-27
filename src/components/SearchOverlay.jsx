@@ -165,9 +165,11 @@ function searchItems(items, query, showAll) {
     })
     .filter(({ bestScore }) => bestScore > 0)
     .sort((a, b) => {
-      if (b.bestScore !== a.bestScore) return b.bestScore - a.bestScore;
-      // type order: assignment=0, expansion=1, autocorrect=2
-      return GROUP_ORDER.indexOf(a.item.type) - GROUP_ORDER.indexOf(b.item.type);
+      // Primary: group order (matches renderGroups visual layout)
+      const groupDiff = GROUP_ORDER.indexOf(a.item.type) - GROUP_ORDER.indexOf(b.item.type);
+      if (groupDiff !== 0) return groupDiff;
+      // Secondary: best score within group
+      return b.bestScore - a.bestScore;
     });
 
   return scored.slice(0, 8).map(({ item }) => item);
