@@ -103,14 +103,18 @@ export default function NumpadCanvas({
 
   return (
     <div className="numpad-canvas">
-      <div className="numpad-label">Nav</div>
-      <div className="nav-grid">
-        {NAV_KEYS.map(renderKey)}
+      <div className="numpad-section">
+        <div className="numpad-label">Nav</div>
+        <div className="nav-grid">
+          {NAV_KEYS.map(renderKey)}
+        </div>
       </div>
       <div className="numpad-section-divider" />
-      <div className="numpad-label">Numpad</div>
-      <div className="numpad-grid">
-        {NUMPAD_KEYS.map(renderKey)}
+      <div className="numpad-section">
+        <div className="numpad-label">Numpad</div>
+        <div className="numpad-grid">
+          {NUMPAD_KEYS.map(renderKey)}
+        </div>
       </div>
     </div>
   );

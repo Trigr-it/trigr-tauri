@@ -144,49 +144,6 @@
   width: 100%;
 }
 
-/* Slide container — zero-width when closed, expands on open */
-.numpad-slide {
-  max-width: 0;
-  overflow: hidden;
-  transition: max-width 200ms ease;
-  flex-shrink: 0;
-}
-
-.numpad-slide--open {
-  max-width: 220px; /* 4×42px keys + 3×4px gaps + 2×12px padding = 204px */
-}
-
-/* Toggle arrow button */
-.numpad-toggle-btn {
-  align-self: center;
-  width: 18px;
-  height: 52px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-bright);
-  border-radius: 0 6px 6px 0;
-  color: var(--text-muted);
-  font-size: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, background 0.15s;
-  margin-left: -1px;
-  flex-shrink: 0;
-  padding: 0;
-  outline: none;
-}
-
-.numpad-toggle-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-
-.numpad-toggle-btn.open {
-  border-radius: 6px 0 0 6px;
-  margin-left: 0;
-  margin-right: -1px;
-}
 
 /* ── Text Expansions full-view layout ──────────────────────── */
 .main-area--expansions {

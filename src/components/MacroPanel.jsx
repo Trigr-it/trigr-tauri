@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './MacroPanel.css';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
 
 const ACTION_TYPES = [
   {
@@ -1074,8 +1074,8 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
     if (e.altKey)   mods.push('Alt');
     if (e.metaKey)  mods.push('Win');
 
-    // Bare key (no modifiers held) — only valid in app-linked profiles
-    if (mods.length === 0 && !profileLinked) return;
+    // Bare key (no modifiers held) — app-linked: all keys; static: only non-character keys
+    if (mods.length === 0 && !profileLinked && !STATIC_BARE_ALLOWED.has(e.code)) return;
 
     mods.sort((a, b) => MOD_ORDER.indexOf(a) - MOD_ORDER.indexOf(b));
     const newCombo = mods.length === 0 ? 'BARE' : mods.join('+');
@@ -1121,7 +1121,7 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
             <div className="reassign-instruction">
               {instruction}
               {!profileLinked && (
-                <span className="reassign-bare-note">Bare keys only available in app-linked profiles</span>
+                <span className="reassign-bare-note">Bare keys in static profiles: F-keys, numpad, and nav keys only</span>
               )}
             </div>
             <div

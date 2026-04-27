@@ -204,6 +204,7 @@ fn handle_log(conn: &Connection, event: AnalyticsEvent) {
     let time_saved = match event.action_type.as_str() {
         "expansion" => event.char_count as f64 * 0.3,
         "macro" => 5.0,
+        "search_template" => 5.0,
         _ => 3.0, // hotkey and any other type
     };
 
@@ -273,6 +274,7 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let mut expansions: i64 = 0;
     let mut hotkeys: i64 = 0;
     let mut macros: i64 = 0;
+    let mut search_templates: i64 = 0;
     if let Ok(rows) = stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(0).unwrap_or_default(),
@@ -283,6 +285,7 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
             match row.0.as_str() {
                 "expansion" => expansions = row.1,
                 "macro" => macros = row.1,
+                "search_template" => search_templates = row.1,
                 _ => hotkeys += row.1,
             }
         }
@@ -300,6 +303,7 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
         "expansions": expansions,
         "hotkeys": hotkeys,
         "macros": macros,
+        "search_templates": search_templates,
     })
 }
 

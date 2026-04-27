@@ -14,6 +14,7 @@ import OnboardingTour from './components/OnboardingTour';
 import QuickTips from './components/QuickTips';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import ClipboardPanel from './components/ClipboardPanel';
+import SearchTemplatesPanel from './components/SearchTemplatesPanel';
 import { friendlyKeyName } from './components/keyboardLayout';
 
 function App() {
@@ -32,7 +33,6 @@ function App() {
   const [globalVariables, setGlobalVariables]         = useState({});   // { 'my.name': 'Rory Brady', … }
   const [activeView, setActiveView]                 = useState('keyboard'); // 'keyboard' | 'mouse'
   const [activeArea, setActiveArea]                 = useState('mapping');  // 'mapping' | 'expansions' | 'analytics'
-  const [numpadOpen, setNumpadOpen]                 = useState(false);
   const [isRecording, setIsRecording]               = useState(false);
   const [recordCapture, setRecordCapture]           = useState(null);
   const [tipsHidden, setTipsHidden]                 = useState(false);
@@ -61,6 +61,7 @@ function App() {
   const [listViewActive, setListViewActive]             = useState(() => {
     try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
   });
+  const [searchTemplates, setSearchTemplates]           = useState([]);
 
 
   // Current modifier combo string e.g. "Ctrl+Alt"
@@ -115,12 +116,12 @@ function App() {
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         // Always start on the Mapping view — do not restore last-used view/area
-        setNumpadOpen(              config.numpadOpen               ?? false);
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
         setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
+        setSearchTemplates(config.searchTemplates || []);
         // Sync new settings to engine on load
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
@@ -197,12 +198,9 @@ function App() {
         setTimeout(() => setLastFired(null), 1500);
       });
       // Engine auto-switched profile (foreground app matched a linked profile)
-      window.electronAPI.onProfileSwitched(({ profile, profileSettings: ps }) => {
+      window.electronAPI.onProfileSwitched(({ profile }) => {
         setActiveProfile(profile);
         setSelectedKey(null);
-        setActiveModifiers(prev =>
-          prev.includes('BARE') && !(ps || {})[profile]?.linkedApp ? [] : prev
-        );
       });
       window.electronAPI.onOverlayFired?.((data) => {
         showNotification(`⚡ ${data.label || 'Macro fired'}`);
@@ -254,6 +252,7 @@ function App() {
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
+        setSearchTemplates(config.searchTemplates || []);
         // Re-sync engine with updated config
         window.electronAPI?.updateAssignments(raw, globalProfile);
         window.electronAPI?.updateProfileSettings(config.profileSettings || {});
@@ -366,21 +365,40 @@ function App() {
   }, []);
 
   const saveConfig = useCallback((newAssignments, newProfiles, newProfile) => {
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates });
     syncEngine(newAssignments, newProfile);
-  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables]);
+  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates]);
 
   const handleSaveGlobalVariables = useCallback((newVars) => {
     setGlobalVariables(newVars);
     window.electronAPI?.updateGlobalVariables(newVars);
-    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars });
-  }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars, searchTemplates });
+  }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, searchTemplates]);
 
   // ── Notifications ─────────────────────────────────────────
   const showNotification = useCallback((msg, type = 'success') => {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 2500);
   }, []);
+
+  // ── Search Template CRUD ──────────────────────────────────
+  const handleAddSearchTemplate = useCallback((template) => {
+    const next = [...searchTemplates, template];
+    setSearchTemplates(next);
+    window.electronAPI?.saveConfig({ searchTemplates: next });
+  }, [searchTemplates]);
+
+  const handleUpdateSearchTemplate = useCallback((id, updates) => {
+    const next = searchTemplates.map(t => t.id === id ? { ...t, ...updates } : t);
+    setSearchTemplates(next);
+    window.electronAPI?.saveConfig({ searchTemplates: next });
+  }, [searchTemplates]);
+
+  const handleDeleteSearchTemplate = useCallback((id) => {
+    const next = searchTemplates.filter(t => t.id !== id);
+    setSearchTemplates(next);
+    window.electronAPI?.saveConfig({ searchTemplates: next });
+  }, [searchTemplates]);
 
   // ── Modifier toggling ─────────────────────────────────────
   const handleToggleModifier = useCallback((modId) => {
@@ -531,10 +549,6 @@ function App() {
   const handleProfileChange = useCallback((profile) => {
     setActiveProfile(profile);
     setSelectedKey(null);
-    // Clear BARE layer if the new profile has no linked app
-    setActiveModifiers(prev =>
-      prev.includes('BARE') && !profileSettings[profile]?.linkedApp ? [] : prev
-    );
     saveConfig(assignments, profiles, profile);
     showNotification(`Profile: ${profile}`, 'info');
   }, [assignments, profiles, profileSettings, saveConfig, showNotification]);
@@ -1074,13 +1088,6 @@ function App() {
     setActiveView(view);
     setSelectedKey(null);
   }, []);
-
-  // ── Numpad slide-out toggle ───────────────────────────────
-  const handleToggleNumpad = useCallback(() => {
-    const next = !numpadOpen;
-    setNumpadOpen(next);
-    window.electronAPI?.saveConfig({ numpadOpen: next });
-  }, [numpadOpen]);
 
   // ── Hotkey recording ──────────────────────────────────────
   const handleStartRecord = useCallback(() => {
@@ -1634,8 +1641,6 @@ function App() {
                 onStopRecord={handleStopRecord}
                 recordCapture={recordCapture}
                 hasAnyAssignments={hasAnyAssignments}
-                numpadOpen={numpadOpen}
-                onToggleNumpad={handleToggleNumpad}
                 currentCombo={currentCombo}
                 onRenameAssignment={handleRenameAssignment}
                 onClearAssignment={handleClearAssignment}
@@ -1668,6 +1673,16 @@ function App() {
           )}
           {activeArea === 'clipboard' && (
             <ClipboardPanel />
+          )}
+          {activeArea === 'templates' && (
+            <SearchTemplatesPanel
+              searchTemplates={searchTemplates}
+              isPro={isPro}
+              onAdd={handleAddSearchTemplate}
+              onUpdate={handleUpdateSearchTemplate}
+              onDelete={handleDeleteSearchTemplate}
+              onShowNotification={showNotification}
+            />
           )}
           {activeArea === 'expansions' && (
             // Phase 3: Text Expansions will eventually support its own profile bar

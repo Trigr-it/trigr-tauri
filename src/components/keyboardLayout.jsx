@@ -138,6 +138,24 @@ export const SYSTEM_KEYS = new Set([
   'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'CapsLock'
 ]);
 
+// Keys allowed for bare mapping in static (non-app-linked) profiles.
+// Excludes character/number/punctuation keys to prevent users from
+// accidentally making letters untypable system-wide.
+export const STATIC_BARE_ALLOWED = new Set([
+  // Function keys
+  'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+  // Nav keys
+  'Insert', 'Home', 'End', 'Delete', 'PageUp', 'PageDown',
+  'PrintScreen', 'ScrollLock', 'Pause',
+  // Numpad
+  'NumLock', 'NumpadDivide', 'NumpadMultiply', 'NumpadSubtract', 'NumpadAdd',
+  'Numpad0', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4',
+  'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8', 'Numpad9',
+  'NumpadEnter', 'NumpadDecimal',
+  // Misc non-character
+  'Escape', 'ContextMenu',
+]);
+
 export const KEY_UNIT   = 42; // px per keyboard unit
 export const KEY_GAP    = 4;  // px gap between keys (also used as row gap)
 export const KEY_HEIGHT = 42; // px height of each key
