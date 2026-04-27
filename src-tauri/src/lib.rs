@@ -862,6 +862,7 @@ fn show_overlay(app: &tauri::AppHandle) {
             "activeProfile": state.active_profile,
             "globalInputMethod": cfg.get("globalInputMethod").and_then(|v| v.as_str()).unwrap_or("direct"),
             "theme": cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"),
+            "searchTemplates": cfg.get("searchTemplates").cloned().unwrap_or_else(|| serde_json::json!([])),
             "settings": {
                 "showAll": cfg.get("overlayShowAll").and_then(|v| v.as_bool()).unwrap_or(true),
                 "closeAfterFiring": cfg.get("overlayCloseAfterFiring").and_then(|v| v.as_bool()).unwrap_or(true),
@@ -1065,9 +1066,50 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                         .store(false, std::sync::atomic::Ordering::Relaxed);
                 }
             }
+            "search_template" => {
+                let url_template = result.get("url_template").and_then(|v| v.as_str()).unwrap_or("");
+                let query = result.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                let encode_query = result.get("encode_query").and_then(|v| v.as_bool()).unwrap_or(true);
+                let label = result.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                let trigger = result.get("trigger").and_then(|v| v.as_str()).unwrap_or("");
+
+                if !url_template.is_empty() && !query.is_empty() {
+                    let encoded_query = if encode_query {
+                        percent_encode_query(query)
+                    } else {
+                        query.to_string()
+                    };
+                    let final_url = url_template.replace("{query}", &encoded_query);
+                    let _ = opener::open(&final_url);
+                    analytics::log_action("search_template", 0, trigger, label);
+                }
+            }
             _ => {}
         }
     });
+}
+
+/// Percent-encode a query string for URL substitution.
+/// Encodes everything except unreserved characters (RFC 3986: A-Z a-z 0-9 - _ . ~).
+fn percent_encode_query(input: &str) -> String {
+    let mut encoded = String::with_capacity(input.len() * 3);
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            b' ' => {
+                // Use + for spaces (standard query encoding)
+                encoded.push('+');
+            }
+            _ => {
+                encoded.push('%');
+                encoded.push(char::from(b"0123456789ABCDEF"[(byte >> 4) as usize]));
+                encoded.push(char::from(b"0123456789ABCDEF"[(byte & 0x0F) as usize]));
+            }
+        }
+    }
+    encoded
 }
 
 #[tauri::command]

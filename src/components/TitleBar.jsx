@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
+
+const AREA_TABS = [
+  { key: 'mapping',    label: 'Key Mapping' },
+  { key: 'expansions', label: 'Text Expansion' },
+  { key: 'templates',  label: 'Quick Search' },
+  { key: 'clipboard',  label: 'Clipboard' },
+  { key: 'analytics',  label: 'Analytics' },
+];
 
 export default function TitleBar({
   macrosEnabled,
@@ -49,6 +57,58 @@ export default function TitleBar({
     onShowNotification?.('Templates can always be found in Settings', 'info');
   };
 
+  // ── Responsive tabs → dropdown ──────────────────────────────────────────
+  const [tabsCollapsed, setTabsCollapsed] = useState(false);
+  const [navDropdownOpen, setNavDropdownOpen] = useState(false);
+  const tabsRef = useRef(null);
+  const tabsInnerRef = useRef(null);
+  const tabsNaturalWidthRef = useRef(0);
+  const lastContainerWidthRef = useRef(0);
+  const navDropRef = useRef(null);
+
+  // Measure the inner tabs element's actual content width, then compare the
+  // wrapper's available width on resize. The inner element is inline-flex so
+  // its offsetWidth reflects the true content width, not the flex-stretched
+  // container width.
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const containerW = el.clientWidth;
+      if (Math.abs(containerW - lastContainerWidthRef.current) < 1) return;
+      lastContainerWidthRef.current = containerW;
+
+      // Re-measure the inner tabs content width whenever tabs are visible
+      if (!tabsCollapsed && tabsInnerRef.current) {
+        const measured = tabsInnerRef.current.offsetWidth;
+        if (measured > 0) tabsNaturalWidthRef.current = measured;
+      }
+
+      if (tabsNaturalWidthRef.current > 0) {
+        setTabsCollapsed(containerW < tabsNaturalWidthRef.current);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tabsCollapsed]);
+
+  // Close nav dropdown on outside click
+  useEffect(() => {
+    if (!navDropdownOpen) return;
+    function onDown(e) {
+      if (navDropRef.current && !navDropRef.current.contains(e.target)) setNavDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [navDropdownOpen]);
+
+  const handleNavSelect = useCallback((key) => {
+    onAreaChange?.(key);
+    setNavDropdownOpen(false);
+  }, [onAreaChange]);
+
+  const activeLabel = AREA_TABS.find(t => t.key === activeArea)?.label || 'Key Mapping';
+
   return (
     <div className="titlebar" data-drag="true">
       <div className="titlebar-left">
@@ -58,36 +118,47 @@ export default function TitleBar({
 
         <div className="titlebar-divider" />
 
-        {/* Area tabs — top-level navigation between Mapping, Text Expansion, and Analytics */}
-        <div className="area-tabs" data-drag="false">
-          <button
-            className={`area-tab${activeArea === 'mapping' ? ' active' : ''}`}
-            onClick={() => onAreaChange?.('mapping')}
-            type="button"
-          >
-            Key Mapping
-          </button>
-          <button
-            className={`area-tab${activeArea === 'expansions' ? ' active' : ''}`}
-            onClick={() => onAreaChange?.('expansions')}
-            type="button"
-          >
-            Text Expansion
-          </button>
-          <button
-            className={`area-tab${activeArea === 'clipboard' ? ' active' : ''}`}
-            onClick={() => onAreaChange?.('clipboard')}
-            type="button"
-          >
-            Clipboard
-          </button>
-          <button
-            className={`area-tab${activeArea === 'analytics' ? ' active' : ''}`}
-            onClick={() => onAreaChange?.('analytics')}
-            type="button"
-          >
-            Analytics
-          </button>
+        {/* Area tabs — collapse to dropdown when space runs out */}
+        <div className={`area-tabs-wrap${tabsCollapsed ? ' collapsed' : ''}`} ref={tabsRef}>
+          {tabsCollapsed ? (
+            <div className="area-nav-dropdown" ref={navDropRef} data-drag="false">
+              <button
+                className="area-nav-btn"
+                onClick={() => setNavDropdownOpen(v => !v)}
+                type="button"
+              >
+                {activeLabel}
+                <span className="area-nav-chevron">{navDropdownOpen ? '▴' : '▾'}</span>
+              </button>
+              {navDropdownOpen && (
+                <div className="area-nav-menu">
+                  {AREA_TABS.map(t => (
+                    <button
+                      key={t.key}
+                      className={`area-nav-item${t.key === activeArea ? ' active' : ''}`}
+                      onClick={() => handleNavSelect(t.key)}
+                      type="button"
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="area-tabs" data-drag="false" ref={tabsInnerRef}>
+              {AREA_TABS.map(t => (
+                <button
+                  key={t.key}
+                  className={`area-tab${t.key === activeArea ? ' active' : ''}`}
+                  onClick={() => onAreaChange?.(t.key)}
+                  type="button"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

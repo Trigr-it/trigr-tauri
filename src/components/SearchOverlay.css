@@ -261,3 +261,32 @@ html, body {
   text-align: center;
   font-family: var(--font-body, 'DM Sans', sans-serif);
 }
+
+/* ── Search Template query mode ──────────────────────────────────────────── */
+
+.search-template-bar {
+  display: flex;
+  align-items: center;
+  padding: 5px 14px;
+  background: var(--accent-glow, rgba(232, 160, 32, 0.15));
+  border-bottom: 1px solid var(--border-accent);
+}
+
+.search-template-label {
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.search-back-hint {
+  color: var(--text-muted);
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  line-height: 1;
+  opacity: 0.6;
+}

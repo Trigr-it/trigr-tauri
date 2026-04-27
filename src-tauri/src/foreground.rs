@@ -111,6 +111,17 @@ fn handle_foreground_change(proc_name: &str, app: &AppHandle) {
         return;
     }
 
+    // Suppress auto-switching while Trigr's main window is visible and not minimized —
+    // user may be editing a profile and clicking between apps to test.
+    // Only resume auto-switching when the window is hidden to tray or minimized.
+    if let Some(win) = app.get_webview_window("main") {
+        let visible = win.is_visible().unwrap_or(false);
+        let minimized = win.is_minimized().unwrap_or(false);
+        if visible && !minimized {
+            return;
+        }
+    }
+
     // Find linked profiles
     let linked: Vec<(String, String)> = state
         .profile_settings

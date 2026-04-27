@@ -575,6 +575,7 @@ export default function Sidebar({
   });
 
   const [activeTab, setActiveTab] = useState('All');
+  const [assignFilter, setAssignFilter] = useState('');
 
   // ── Assignment context menu + inline actions ──
   const [assignCtx, setAssignCtx] = useState(null); // { combo, keyId, macro, x, y }
@@ -600,12 +601,24 @@ export default function Sidebar({
     setActiveTab(currentCombo || 'All');
   }, [currentCombo]);
 
-  const allCombos = profileLinked && !combos.includes('BARE') ? [...combos, 'BARE'] : combos;
+  const allCombos = !combos.includes('BARE') ? [...combos, 'BARE'] : combos;
   const tabs = ['All', ...allCombos];
 
-  const filtered = activeTab === 'All'
+  // Text search filter — matches label, key name, combo, and action type
+  const filterQ = assignFilter.trim().toLowerCase();
+  function matchesFilter(e) {
+    if (!filterQ) return true;
+    const label = (e.macro?.label || e.macro?.data?.text || e.macro?.data?.url || e.macro?.data?.path || '').toLowerCase();
+    const keyName = friendlyKeyName(e.keyId).toLowerCase();
+    const typeName = (TYPE_NAMES[e.macro?.type] || '').toLowerCase();
+    const combo = e.combo.toLowerCase();
+    return label.includes(filterQ) || keyName.includes(filterQ) || typeName.includes(filterQ) || combo.includes(filterQ);
+  }
+
+  const filtered = (activeTab === 'All'
     ? profileEntries
-    : profileEntries.filter(e => e.combo === activeTab);
+    : profileEntries.filter(e => e.combo === activeTab)
+  ).filter(matchesFilter);
 
   const grouped = {};
   if (activeTab === 'All') {
@@ -838,11 +851,11 @@ export default function Sidebar({
             );
           })}
           <button
-            className={`sidebar-mod-btn sidebar-mod-btn--bare${isBare ? ' active' : ''}${!profileLinked ? ' sidebar-mod-btn--unavailable' : ''}`}
+            className={`sidebar-mod-btn sidebar-mod-btn--bare${isBare ? ' active' : ''}`}
             style={isBare ? { '--mod-color': '#ff9040' } : {}}
-            onClick={isRecording || !profileLinked ? undefined : () => onToggleModifier?.('BARE')}
-            disabled={isRecording || !profileLinked}
-            title={profileLinked ? 'Bare key assignments' : 'Only available in app-specific profiles'}
+            onClick={isRecording ? undefined : () => onToggleModifier?.('BARE')}
+            disabled={isRecording}
+            title={profileLinked ? 'Bare key assignments' : 'Bare key assignments (F-keys, numpad, nav keys)'}
             type="button"
           >
             Bare
@@ -902,6 +915,20 @@ export default function Sidebar({
         <span className="sidebar-count">{profileEntries.length}</span>
       </div>
 
+      <div className="sidebar-filter-wrap">
+        <input
+          className="sidebar-filter-input"
+          type="text"
+          placeholder="Filter assignments…"
+          value={assignFilter}
+          onChange={e => setAssignFilter(e.target.value)}
+          spellCheck={false}
+        />
+        {assignFilter && (
+          <button className="sidebar-filter-clear" onClick={() => setAssignFilter('')} type="button">✕</button>
+        )}
+      </div>
+
       {listViewActive && renderModifierBar()}
 
       {/* Tabs only shown in classic (non-list) view */}
@@ -927,9 +954,10 @@ export default function Sidebar({
         /* ── Grid view — filtered by activeModifiers (pills) ── */
         (() => {
           const gridCombo = activeModifiers.length > 0 ? currentCombo : null;
-          const gridFiltered = gridCombo
+          const gridFiltered = (gridCombo
             ? profileEntries.filter(e => e.combo === gridCombo)
-            : profileEntries;
+            : profileEntries
+          ).filter(matchesFilter);
           const gridGrouped = {};
           if (!gridCombo) {
             gridFiltered.forEach(e => {

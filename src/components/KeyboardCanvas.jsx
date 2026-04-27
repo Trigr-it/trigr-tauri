@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import './KeyboardCanvas.css';
 import {
-  KEYBOARD_ROWS, SYSTEM_KEYS, KEY_UNIT, KEY_GAP, KEY_HEIGHT,
+  KEYBOARD_ROWS, SYSTEM_KEYS, STATIC_BARE_ALLOWED, KEY_UNIT, KEY_GAP, KEY_HEIGHT,
   KEYBOARD_NATURAL_WIDTH, KEYBOARD_NATURAL_HEIGHT, friendlyKeyName,
 } from './keyboardLayout';
 import NumpadCanvas from './NumpadCanvas';
@@ -59,13 +59,13 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
 
         <span className="modifier-bar-sep" />
         <button
-          className={`mod-layer-btn bare-key-btn${isBare ? ' active' : ''}${!profileLinked ? ' bare-key-unavailable' : ''}`}
+          className={`mod-layer-btn bare-key-btn${isBare ? ' active' : ''}`}
           style={isBare ? { '--mod-color': '#ff9040' } : {}}
-          onClick={isRecording || !profileLinked ? undefined : () => onToggle('BARE')}
-          disabled={isRecording || !profileLinked}
+          onClick={isRecording ? undefined : () => onToggle('BARE')}
+          disabled={isRecording}
           title={profileLinked
             ? "Bare key assignments — fire with no modifier held, only when this profile's linked app is focused"
-            : "Bare keys are only available in app-specific profiles. Create a profile linked to an app to use bare key assignments."}
+            : "Bare key assignments — F-keys, numpad, and nav keys only in static profiles"}
         >
           Bare Keys
         </button>
@@ -173,8 +173,6 @@ export default function KeyboardCanvas({
   onStopRecord,
   recordCapture,
   hasAnyAssignments,
-  numpadOpen = false,
-  onToggleNumpad,
   currentCombo,
   onRenameAssignment,
   onClearAssignment,
@@ -244,6 +242,8 @@ export default function KeyboardCanvas({
 
   const noLayer = activeModifiers.length === 0;
   const isBare  = activeModifiers.includes('BARE');
+  // In static (non-linked) profiles, bare keys are restricted to non-character keys
+  const bareStaticMode = isBare && !profileLinked;
   const combo   = comboString(activeModifiers);
 
   return (
@@ -279,7 +279,10 @@ export default function KeyboardCanvas({
             </span>
           ) : (
             <span className="label-muted">
-              Click any key to assign a <strong className="label-combo">bare key</strong> macro — fires only when linked app is focused
+              {profileLinked
+                ? <>Click any key to assign a <strong className="label-combo">bare key</strong> macro — fires only when linked app is focused</>
+                : <>Click an <strong className="label-combo">F-key, numpad, or nav key</strong> to assign a bare macro — fires globally</>
+              }
             </span>
           )
         ) : selectedKey ? (
@@ -297,7 +300,6 @@ export default function KeyboardCanvas({
         )}
       </div>
 
-      {/* keyboard-body-row: flex row so numpad sits flush beside the keyboard body */}
       <div className="keyboard-body-row">
         <div
           ref={containerRef}
@@ -320,6 +322,8 @@ export default function KeyboardCanvas({
                     const isDouble   = hasDoubleAssignment ? hasDoubleAssignment(keyDef.id) : false;
                     const isSystem   = SYSTEM_KEYS.has(keyDef.id);
                     const isFiring   = firingKeyId === keyDef.id;
+                    // Block character keys in bare mode on static profiles
+                    const blocked    = bareStaticMode && !STATIC_BARE_ALLOWED.has(keyDef.id);
 
                     return (
                       <Key
@@ -330,7 +334,7 @@ export default function KeyboardCanvas({
                         isDouble={isDouble}
                         isSystem={isSystem}
                         isFiring={isFiring}
-                        noLayer={noLayer}
+                        noLayer={noLayer || blocked}
                         onClick={() => handleKeyClick(keyDef.id)}
                         onContextMenu={e => handleKeyContextMenu(e, keyDef.id)}
                       />
@@ -341,25 +345,16 @@ export default function KeyboardCanvas({
             </div>
           </div>
         </div>
+      </div>
 
-        <button
-          className={`numpad-toggle-btn${numpadOpen ? ' open' : ''}`}
-          onClick={onToggleNumpad}
-          title={numpadOpen ? 'Hide Numpad' : 'Show Numpad'}
-          type="button"
-        >
-          {numpadOpen ? '◂' : '▸'}
-        </button>
-
-        <div className={`numpad-slide${numpadOpen ? ' numpad-slide--open' : ''}`}>
-          <NumpadCanvas
-            selectedKey={selectedKey}
-            onKeySelect={onKeySelect}
-            getKeyAssignment={getKeyAssignment}
-            lastFired={lastFired}
-            activeModifiers={activeModifiers}
-          />
-        </div>
+      <div className="keyboard-extras-row">
+        <NumpadCanvas
+          selectedKey={selectedKey}
+          onKeySelect={onKeySelect}
+          getKeyAssignment={getKeyAssignment}
+          lastFired={lastFired}
+          activeModifiers={activeModifiers}
+        />
       </div>
 
       <div className="keyboard-hint-row">

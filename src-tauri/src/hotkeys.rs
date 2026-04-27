@@ -175,11 +175,25 @@ fn suppress_vk_for_key_id(key_id: &str) -> Option<u32> {
 
 /// Rebuild the suppress key set from current assignments.
 /// Must be called while holding the engine_state lock — overlay_hotkey is read from the state.
+/// Keys allowed for bare mapping in static (non-app-linked) profiles.
+/// Matches STATIC_BARE_ALLOWED in keyboardLayout.jsx.
+fn is_static_bare_allowed(key_id: &str) -> bool {
+    matches!(key_id,
+        "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12"
+        | "Insert" | "Home" | "End" | "Delete" | "PageUp" | "PageDown"
+        | "PrintScreen" | "ScrollLock" | "Pause"
+        | "NumLock" | "NumpadDivide" | "NumpadMultiply" | "NumpadSubtract" | "NumpadAdd"
+        | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4"
+        | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9"
+        | "NumpadEnter" | "NumpadDecimal"
+        | "Escape" | "ContextMenu"
+    )
+}
+
 fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, profile_settings: &HashMap<String, Value>) {
     let mut set = HashSet::new();
     let mut mouse_set = HashSet::new();
     let prefix = format!("{}::", profile);
-    // Bare keys only suppress when the active profile is app-linked
     let is_linked = profile_settings.get(profile)
         .and_then(|s| s.get("linkedApp"))
         .and_then(|v| v.as_str())
@@ -195,8 +209,10 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
         // exist, the single entry already adds the key to the suppress set.
         if parts.last() == Some(&"double") { continue; }
         if combo_str == "BARE" {
-            if is_linked {
-                let key_id = parts[2];
+            let key_id = parts[2];
+            // App-linked profiles: all bare keys allowed
+            // Static profiles: only non-character keys (F-keys, numpad, nav)
+            if is_linked || is_static_bare_allowed(key_id) {
                 if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
                     mouse_set.insert(mouse_id);
                 } else if let Some(vk) = suppress_vk_for_key_id(key_id) {
@@ -1252,7 +1268,9 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     let mut state = engine_state().lock().unwrap();
 
     if !has_any_modifier() {
-        // Bare key — check app-linked profile assignments first
+        // Bare key — check profile assignments
+        // App-linked profiles: all bare keys fire when linked app is focused
+        // Static profiles: only non-character keys (F-keys, numpad, nav) fire globally
         let profile = state.active_profile.clone();
         let linked = state
             .profile_settings
@@ -1261,7 +1279,13 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             .and_then(|v| v.as_str())
             .is_some();
 
-        if linked && !is_foreground_dialog() {
+        let bare_allowed = if linked {
+            !is_foreground_dialog()
+        } else {
+            is_static_bare_allowed(&key_id) && !is_foreground_dialog()
+        };
+
+        if bare_allowed {
             let bare_key = format!("{}::BARE::{}", profile, key_id);
             // Stop repeat if this key is the repeat trigger
             if crate::actions::is_repeating() {

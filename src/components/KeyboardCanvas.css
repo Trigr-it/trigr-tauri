@@ -18,6 +18,12 @@
   width: 100%;
 }
 
+.keyboard-extras-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
 .modifier-bar-sep {
   width: 1px;
   height: 18px;

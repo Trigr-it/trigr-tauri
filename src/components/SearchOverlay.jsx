@@ -212,29 +212,6 @@ function HighlightMatch({ text, query }) {
   return <>{text}</>;
 }
 
-// ── Height calculation ─────────────────────────────────────────────────────────
-
-function calcHeight(displayItems) {
-  const inputRowHeight   = 72;
-  const perItemHeight    = 52;
-  const groupHeaderHeight = 28;
-  const bottomPadding    = 12;
-
-  if (displayItems.length === 0) return inputRowHeight;
-
-  // Count distinct groups present
-  const groupsSeen = new Set(displayItems.map(i => i.type));
-  const numHeaders = groupsSeen.size;
-  const numItems   = displayItems.length;
-
-  const total = inputRowHeight
-    + numHeaders * groupHeaderHeight
-    + numItems   * perItemHeight
-    + bottomPadding;
-
-  return Math.min(480, Math.max(72, total));
-}
-
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function SearchOverlay() {
@@ -246,6 +223,13 @@ export default function SearchOverlay() {
     showAll: false, closeAfterFiring: true, includeAutocorrect: false,
   });
   const [ready, setReady] = useState(false);
+
+  // ── Search Template state machine ──
+  // mode: 'main' (normal search) | 'query' (typing a search template query)
+  const [mode, setMode]                     = useState('main');
+  const [activeTemplate, setActiveTemplate] = useState(null);
+  const [triggerToken, setTriggerToken]     = useState('');
+  const [searchTemplates, setSearchTemplates] = useState([]);
 
   const inputRef   = useRef(null);
   const resultsRef = useRef(null);
@@ -262,8 +246,12 @@ export default function SearchOverlay() {
       setSettings(newSettings || { showAll: false, closeAfterFiring: true, includeAutocorrect: false });
       const items = buildItems(data);
       setAllItems(items);
+      setSearchTemplates(data.searchTemplates || []);
       setQuery('');
       setSelectedIndex(0);
+      setMode('main');
+      setActiveTemplate(null);
+      setTriggerToken('');
       setReady(true);
       // Focus the input each time the overlay opens (data arrives on every show)
       setTimeout(() => inputRef.current?.focus(), 0);
@@ -273,6 +261,8 @@ export default function SearchOverlay() {
   // ── Arrow-key handler on window ──
   useEffect(() => {
     function handleKeyDown(e) {
+      // In query mode, suppress arrow keys (no result list)
+      if (mode === 'query') return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(i => Math.min(i + 1, displayItems.length - 1));
@@ -283,16 +273,20 @@ export default function SearchOverlay() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayItems.length]);
+  }, [displayItems.length, mode]);
 
-  // ── Update displayItems when query/allItems/settings change ──
+  // ── Update displayItems when query/allItems/settings change (Main mode only) ──
   useEffect(() => {
+    if (mode === 'query') {
+      setDisplayItems([]);
+      return;
+    }
     const results = searchItems(allItems, query, settings.showAll);
     setDisplayItems(results);
     setSelectedIndex(0);
-  }, [query, allItems, settings.showAll]);
+  }, [query, allItems, settings.showAll, mode]);
 
-  // ── Resize overlay window whenever displayItems change ──
+  // ── Resize overlay window whenever displayItems or mode change ──
   const panelRef = useRef(null);
   useEffect(() => {
     // Double-rAF ensures React has committed the DOM update before we measure.
@@ -311,7 +305,7 @@ export default function SearchOverlay() {
         window.electronAPI?.resizeOverlay(windowH);
       });
     });
-  }, [displayItems]);
+  }, [displayItems, mode]);
 
   // ── Scroll selected row into view ──
   useLayoutEffect(() => {
@@ -337,14 +331,78 @@ export default function SearchOverlay() {
     }
   }
 
+  // ── Fire search template ──
+  function fireSearchTemplate() {
+    if (!activeTemplate || !query.trim()) return;
+    const payload = {
+      type: 'search_template',
+      url_template: activeTemplate.url_template,
+      query: query.trim(),
+      encode_query: activeTemplate.encode_query ?? true,
+      label: activeTemplate.label,
+      trigger: triggerToken,
+    };
+    window.electronAPI?.closeOverlay();
+    window.electronAPI?.executeSearchResult(payload);
+  }
+
+  // ── Input change handler — trigger detection ──
+  function handleInputChange(e) {
+    const value = e.target.value;
+
+    if (mode === 'query') {
+      // Backspace-to-Main: if user clears the entire query, restore trigger in main mode
+      if (value === '') {
+        setMode('main');
+        setQuery(triggerToken);
+        setActiveTemplate(null);
+        setTriggerToken('');
+        return;
+      }
+      setQuery(value);
+      return;
+    }
+
+    // Main mode — check for trigger + space
+    if (value.endsWith(' ') && searchTemplates.length > 0) {
+      const candidate = value.slice(0, -1).trim().toLowerCase();
+      if (candidate) {
+        const match = searchTemplates.find(t => t.trigger.toLowerCase() === candidate);
+        if (match) {
+          // Transition to query mode
+          setMode('query');
+          setActiveTemplate(match);
+          setTriggerToken(candidate);
+          setQuery('');
+          return;
+        }
+      }
+    }
+
+    setQuery(value);
+  }
+
   // ── Input keydown ──
   function handleInputKeyDown(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      fireItem(displayItems[selectedIndex]);
+      if (mode === 'query') {
+        fireSearchTemplate();
+      } else {
+        fireItem(displayItems[selectedIndex]);
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      window.electronAPI?.closeOverlay();
+      if (mode === 'query') {
+        // First Escape: return to Main mode, don't close
+        setMode('main');
+        setQuery('');
+        setActiveTemplate(null);
+        setTriggerToken('');
+        setTimeout(() => inputRef.current?.focus(), 0);
+      } else {
+        window.electronAPI?.closeOverlay();
+      }
     }
     // ArrowUp/Down handled by window listener
   }
@@ -421,15 +479,30 @@ export default function SearchOverlay() {
   return (
     <div className="search-overlay">
       <div className="search-panel" ref={panelRef}>
+        {/* Query mode: template label bar */}
+        {mode === 'query' && activeTemplate && (
+          <div className="search-template-bar">
+            <span className="search-template-label">{activeTemplate.label}</span>
+          </div>
+        )}
+
         <div className="search-input-row">
-          <span className="search-icon">⌕</span>
+          {mode === 'query' ? (
+            <span className="search-back-hint" title="Esc to go back">←</span>
+          ) : (
+            <span className="search-icon">⌕</span>
+          )}
           <input
             ref={inputRef}
             className="search-input"
             type="text"
-            placeholder="Search macros, hotkeys, expansions…"
+            placeholder={
+              mode === 'query' && activeTemplate
+                ? `Search ${activeTemplate.label}…`
+                : 'Search macros, hotkeys, expansions…'
+            }
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleInputKeyDown}
             spellCheck={false}
             autoComplete="off"
@@ -438,13 +511,13 @@ export default function SearchOverlay() {
           <span className="search-esc-hint">Esc</span>
         </div>
 
-        {displayItems.length > 0 && (
+        {mode === 'main' && displayItems.length > 0 && (
           <div className="search-results" ref={resultsRef}>
             {renderGroups()}
           </div>
         )}
 
-        {query && displayItems.length === 0 && ready && (
+        {mode === 'main' && query && displayItems.length === 0 && ready && (
           <div className="search-empty">No results for "{query}"</div>
         )}
       </div>
