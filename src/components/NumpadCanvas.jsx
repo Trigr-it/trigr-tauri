@@ -13,6 +13,11 @@ const NAV_KEYS = [
   { id: 'Delete',      label: 'Del',    col: 1, row: 3, colSpan: 1, rowSpan: 1 },
   { id: 'End',         label: 'End',    col: 2, row: 3, colSpan: 1, rowSpan: 1 },
   { id: 'PageDown',    label: 'Pg\nDn', col: 3, row: 3, colSpan: 1, rowSpan: 1 },
+  // Arrow keys — inverted-T layout
+  { id: 'ArrowUp',     label: '↑',      col: 2, row: 4, colSpan: 1, rowSpan: 1 },
+  { id: 'ArrowLeft',   label: '←',      col: 1, row: 5, colSpan: 1, rowSpan: 1 },
+  { id: 'ArrowDown',   label: '↓',      col: 2, row: 5, colSpan: 1, rowSpan: 1 },
+  { id: 'ArrowRight',  label: '→',      col: 3, row: 5, colSpan: 1, rowSpan: 1 },
 ];
 
 // ── Numpad key grid (4 cols × 5 rows) ───────────────────────────────────────

@@ -52,12 +52,12 @@
   color: var(--text-muted);
 }
 
-/* ── Nav key grid: 3 cols × 3 rows, 42×42 px cells with 4 px gaps ────────── */
+/* ── Nav key grid: 3 cols × 5 rows + gap row for arrow keys ──────────────── */
 
 .nav-grid {
   display: grid;
   grid-template-columns: repeat(3, 42px);
-  grid-template-rows: repeat(3, 42px);
+  grid-template-rows: repeat(5, 42px);
   gap: 4px;
 }
 

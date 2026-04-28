@@ -1066,21 +1066,38 @@ fn send_mouse_click(button: &str) {
 fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: &tauri::AppHandle) {
     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
+    let repeat_count = step.get("repeat").and_then(|v| v.as_u64()).unwrap_or(1).max(1).min(99) as u32;
+    let (_, settle_ms, _, _) = speed_delays();
 
     match step_type {
         "Type Text" => {
             if !step_value.is_empty() {
-                let (_, settle_ms, _, _) = speed_delays();
                 if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
                 output_text(step_value, method, *target_hwnd);
             }
         }
 
+        "Click Mouse" => {
+            if !step_value.is_empty() && is_mouse_button(step_value) {
+                for i in 0..repeat_count {
+                    send_mouse_click(step_value);
+                    if i + 1 < repeat_count && settle_ms > 0 {
+                        thread::sleep(Duration::from_millis(settle_ms));
+                    }
+                }
+            }
+        }
+
         "Press Key" => {
             if !step_value.is_empty() {
-                // Mouse click buttons — no keyboard path needed
+                // Legacy: mouse click buttons stored under Press Key — still supported
                 if is_mouse_button(step_value) {
-                    send_mouse_click(step_value);
+                    for i in 0..repeat_count {
+                        send_mouse_click(step_value);
+                        if i + 1 < repeat_count && settle_ms > 0 {
+                            thread::sleep(Duration::from_millis(settle_ms));
+                        }
+                    }
                     return;
                 }
                 // Parse "Ctrl+Shift+N" style strings
@@ -1105,16 +1122,21 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         })
                         .collect();
 
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                    for &vk in &mod_vks {
-                        send_vk_key(vk, false);
+                    for i in 0..repeat_count {
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        for &vk in &mod_vks {
+                            send_vk_key(vk, false);
+                        }
+                        send_vk_key(target_vk, false);
+                        send_vk_key(target_vk, true);
+                        for &vk in mod_vks.iter().rev() {
+                            send_vk_key(vk, true);
+                        }
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                        if i + 1 < repeat_count && settle_ms > 0 {
+                            thread::sleep(Duration::from_millis(settle_ms));
+                        }
                     }
-                    send_vk_key(target_vk, false);
-                    send_vk_key(target_vk, true);
-                    for &vk in mod_vks.iter().rev() {
-                        send_vk_key(vk, true);
-                    }
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                 }
             }
         }

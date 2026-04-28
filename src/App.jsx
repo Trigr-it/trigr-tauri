@@ -62,6 +62,7 @@ function App() {
     try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
   });
   const [searchTemplates, setSearchTemplates]           = useState([]);
+  const [searchTemplateCategories, setSearchTemplateCategories] = useState([]);
 
 
   // Current modifier combo string e.g. "Ctrl+Alt"
@@ -122,6 +123,7 @@ function App() {
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
         setSearchTemplates(config.searchTemplates || []);
+        setSearchTemplateCategories(config.searchTemplateCategories || []);
         // Sync new settings to engine on load
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
@@ -253,6 +255,7 @@ function App() {
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
         setSearchTemplates(config.searchTemplates || []);
+        setSearchTemplateCategories(config.searchTemplateCategories || []);
         // Re-sync engine with updated config
         window.electronAPI?.updateAssignments(raw, globalProfile);
         window.electronAPI?.updateProfileSettings(config.profileSettings || {});
@@ -365,15 +368,15 @@ function App() {
   }, []);
 
   const saveConfig = useCallback((newAssignments, newProfiles, newProfile) => {
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates, searchTemplateCategories });
     syncEngine(newAssignments, newProfile);
-  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates]);
+  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates, searchTemplateCategories]);
 
   const handleSaveGlobalVariables = useCallback((newVars) => {
     setGlobalVariables(newVars);
     window.electronAPI?.updateGlobalVariables(newVars);
-    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars, searchTemplates });
-  }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, searchTemplates]);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars, searchTemplates, searchTemplateCategories });
+  }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, searchTemplates, searchTemplateCategories]);
 
   // ── Notifications ─────────────────────────────────────────
   const showNotification = useCallback((msg, type = 'success') => {
@@ -399,6 +402,40 @@ function App() {
     setSearchTemplates(next);
     window.electronAPI?.saveConfig({ searchTemplates: next });
   }, [searchTemplates]);
+
+  // ── Search Template Category CRUD ────────────────────────
+  const handleAddSearchTemplateCategory = useCallback((name, colour = null) => {
+    const next = [...searchTemplateCategories, { name, colour: colour || null }];
+    setSearchTemplateCategories(next);
+    window.electronAPI?.saveConfig({ searchTemplateCategories: next });
+  }, [searchTemplateCategories]);
+
+  const handleRenameSearchTemplateCategory = useCallback((oldName, newName) => {
+    const nextCats = searchTemplateCategories.map(c => c.name === oldName ? { ...c, name: newName } : c);
+    const nextTemplates = searchTemplates.map(t => t.category === oldName ? { ...t, category: newName } : t);
+    setSearchTemplateCategories(nextCats);
+    setSearchTemplates(nextTemplates);
+    window.electronAPI?.saveConfig({ searchTemplateCategories: nextCats, searchTemplates: nextTemplates });
+  }, [searchTemplateCategories, searchTemplates]);
+
+  const handleDeleteSearchTemplateCategory = useCallback((name) => {
+    const nextCats = searchTemplateCategories.filter(c => c.name !== name);
+    const nextTemplates = searchTemplates.map(t => t.category === name ? { ...t, category: null } : t);
+    setSearchTemplateCategories(nextCats);
+    setSearchTemplates(nextTemplates);
+    window.electronAPI?.saveConfig({ searchTemplateCategories: nextCats, searchTemplates: nextTemplates });
+  }, [searchTemplateCategories, searchTemplates]);
+
+  const handleUpdateSearchTemplateCategoryColour = useCallback((name, colour) => {
+    const next = searchTemplateCategories.map(c => c.name === name ? { ...c, colour } : c);
+    setSearchTemplateCategories(next);
+    window.electronAPI?.saveConfig({ searchTemplateCategories: next });
+  }, [searchTemplateCategories]);
+
+  const handleReorderSearchTemplateCategories = useCallback((newOrder) => {
+    setSearchTemplateCategories(newOrder);
+    window.electronAPI?.saveConfig({ searchTemplateCategories: newOrder });
+  }, []);
 
   // ── Modifier toggling ─────────────────────────────────────
   const handleToggleModifier = useCallback((modId) => {
@@ -1677,10 +1714,16 @@ function App() {
           {activeArea === 'templates' && (
             <SearchTemplatesPanel
               searchTemplates={searchTemplates}
+              categories={searchTemplateCategories}
               isPro={isPro}
               onAdd={handleAddSearchTemplate}
               onUpdate={handleUpdateSearchTemplate}
               onDelete={handleDeleteSearchTemplate}
+              onAddCategory={handleAddSearchTemplateCategory}
+              onRenameCategory={handleRenameSearchTemplateCategory}
+              onDeleteCategory={handleDeleteSearchTemplateCategory}
+              onUpdateCategoryColour={handleUpdateSearchTemplateCategoryColour}
+              onReorderCategories={handleReorderSearchTemplateCategories}
               onShowNotification={showNotification}
             />
           )}

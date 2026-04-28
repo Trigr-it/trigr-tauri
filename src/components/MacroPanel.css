@@ -1,5 +1,5 @@
 .macro-panel {
-  width: 300px;
+  width: 450px;
   flex-shrink: 0;
   background: var(--bg-surface);
   border-left: 1px solid var(--border-bright);
@@ -818,7 +818,7 @@
 }
 
 .macro-step-type {
-  width: 100px;
+  width: 130px;
   flex-shrink: 0;
   font-size: 11px;
 }
@@ -843,7 +843,7 @@
   align-items: center;
   gap: 6px;
   flex: 1;
-  min-width: 200px;
+  min-width: 150px;
 }
 
 .wfi-label {
@@ -855,7 +855,7 @@
 
 .wfi-select {
   flex: 1;
-  min-width: 160px;
+  min-width: 100px;
   font-size: 11px;
 }
 
@@ -870,6 +870,57 @@
 
 .macro-advanced-toggle:hover {
   color: var(--text-secondary);
+}
+
+.step-repeat {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.step-repeat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.step-repeat-input {
+  width: 36px;
+  padding: 2px 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+/* Hide number input spinners */
+.step-repeat-input::-webkit-inner-spin-button,
+.step-repeat-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.step-duplicate {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.step-duplicate:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+  background: var(--accent-glow);
 }
 
 .step-remove {
@@ -1369,21 +1420,7 @@
   flex-shrink: 0;
 }
 
-/* ── Press Key sub-row (two-row grid) ─────────────────────────────────── */
-.press-key-sub-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px 30px 6px 48px;
-}
-
-.press-key-pills {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-}
-
-/* ── Mouse click pill buttons ──────────────────────────────────────────── */
+/* ── Mouse click pill buttons (used by HotkeyCaptureInput for single-action Send Hotkey) */
 .mouse-click-pills {
   display: flex;
   flex-wrap: wrap;

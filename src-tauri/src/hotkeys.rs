@@ -182,6 +182,7 @@ fn is_static_bare_allowed(key_id: &str) -> bool {
         "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12"
         | "Insert" | "Home" | "End" | "Delete" | "PageUp" | "PageDown"
         | "PrintScreen" | "ScrollLock" | "Pause"
+        | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight"
         | "NumLock" | "NumpadDivide" | "NumpadMultiply" | "NumpadSubtract" | "NumpadAdd"
         | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4"
         | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9"
