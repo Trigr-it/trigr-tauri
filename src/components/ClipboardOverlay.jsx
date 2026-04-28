@@ -53,6 +53,15 @@ function groupByTimeline(items) {
   return Object.entries(groups).filter(([, arr]) => arr.length > 0);
 }
 
+// ── Type icons (matches SearchOverlay's TYPE_META pattern) ──────────────────
+
+const TYPE_ICONS = {
+  Text:   { icon: '✦', color: '#64b4ff' },
+  Link:   { icon: '⊕', color: '#ffc832' },
+  Email:  { icon: '✉', color: '#c864ff' },
+  Number: { icon: '#', color: '#8a8799' },
+};
+
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export default function ClipboardOverlay() {
@@ -187,14 +196,16 @@ export default function ClipboardOverlay() {
 
   const rowIcon = (item) => {
     const tag = item.content_tag || 'Text';
-    if (tag === 'Link') return <span className="co-row-icon">🔗</span>;
-    if (tag === 'Email') return <span className="co-row-icon">✉️</span>;
-    if (tag === 'Number') return <span className="co-row-icon co-row-icon-hash">#</span>;
     if (tag === 'Colour') {
       const c = parseColour(item.text_content || item.preview);
-      return <span className="co-row-icon co-row-icon-dot" style={{ background: c || 'var(--text-muted)' }} />;
+      return <span className="co-row-icon"><span className="co-row-icon-dot" style={{ background: c || 'var(--text-muted)' }} /></span>;
     }
-    return <span className="co-row-icon">📄</span>;
+    const meta = TYPE_ICONS[tag] || TYPE_ICONS.Text;
+    return (
+      <span className="co-row-icon" style={{ color: meta.color }}>
+        {meta.icon}
+      </span>
+    );
   };
 
   // ── Inline edit ───────────────────────────────────────────────────────────
@@ -229,25 +240,27 @@ export default function ClipboardOverlay() {
 
         {/* ── LEFT: list pane ── */}
         <div className="co-left">
-          <div className="co-left-search">
+          <div className="co-input-row">
+            <span className="co-search-icon">⌕</span>
             <input
               ref={inputRef}
               className="co-search"
-              placeholder="Search…"
+              placeholder="Search clipboard…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               spellCheck={false}
             />
-            <div className="co-tag-pills">
-              {['All', 'Text', 'Link', 'Email', 'Colour', 'Number', 'Image'].map(tag => (
-                <button
-                  key={tag}
-                  className={`co-tag-pill${filterTag === tag ? ' co-tag-active' : ''}`}
-                  onClick={() => setFilterTag(tag)}
-                  type="button"
-                >{tag}</button>
-              ))}
-            </div>
+            <span className="co-esc-hint">Esc</span>
+          </div>
+          <div className="co-tag-pills">
+            {['All', 'Text', 'Link', 'Email', 'Colour', 'Number', 'Image'].map(tag => (
+              <button
+                key={tag}
+                className={`co-tag-pill${filterTag === tag ? ' co-tag-active' : ''}`}
+                onClick={() => setFilterTag(tag)}
+                type="button"
+              >{tag}</button>
+            ))}
           </div>
           <div className="co-left-list">
             {filtered.length === 0 ? (
@@ -255,7 +268,7 @@ export default function ClipboardOverlay() {
             ) : (
               groupedFlat.map((entry) => {
                 if (entry.type === 'header') {
-                  return <div key={`h-${entry.label}`} className="co-timeline-header">{entry.label === 'Pinned' ? '📌 Pinned' : entry.label}</div>;
+                  return <div key={`h-${entry.label}`} className="co-timeline-header">{entry.label}</div>;
                 }
                 const { item, flatIndex: i } = entry;
                 const isImage = item.content_type === 'image';
@@ -293,7 +306,7 @@ export default function ClipboardOverlay() {
                         </div>
                       </>
                     )}
-                    {item.pinned && <span className="co-row-pin-badge">📌</span>}
+                    {item.pinned && <span className="co-row-pin-badge">★</span>}
                   </div>
                 );
               })
@@ -379,12 +392,6 @@ export default function ClipboardOverlay() {
           )}
         </div>
 
-        </div>
-        {/* ── Keyboard hints bar ── */}
-        <div className="co-hints">
-          <span>↑↓  Navigate</span>
-          <span>↵  Paste</span>
-          <span>Esc  Close</span>
         </div>
       </div>
     </div>

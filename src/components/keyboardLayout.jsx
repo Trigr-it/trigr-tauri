@@ -152,6 +152,8 @@ export const STATIC_BARE_ALLOWED = new Set([
   'Numpad0', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4',
   'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8', 'Numpad9',
   'NumpadEnter', 'NumpadDecimal',
+  // Arrow keys
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   // Misc non-character
   'Escape', 'ContextMenu',
 ]);

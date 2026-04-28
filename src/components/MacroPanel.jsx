@@ -67,7 +67,7 @@ const TRIGGER_KEYS = [
   'Up','Down','Left','Right',
 ];
 
-const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Open App', 'Open URL', 'Open Folder', 'Focus Window', 'Wait (ms)', 'Wait for Input', 'Run AHK Script', 'Click at Position'];
+const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Click Mouse', 'Click at Position', 'Open App', 'Open URL', 'Open Folder', 'Wait (ms)', 'Wait for Input', 'Focus Window', 'Run AHK Script'];
 
 const WFI_INPUT_OPTIONS = [
   { value: 'LButton',     label: 'Left Click'   },
@@ -719,7 +719,7 @@ function KeyCaptureInput({ value, onChange }) {
 
 let _nextStepId = 1;
 
-function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, toggleAdvanced }) {
+function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep, advancedOpen, toggleAdvanced }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step._id });
   const style = {
     transform: DndCSS.Transform.toString(transform),
@@ -727,7 +727,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const hasSubRow = ['Type Text', 'Open URL', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Press Key', 'Run AHK Script', 'Click at Position'].includes(step.type);
+  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Run AHK Script', 'Click at Position'].includes(step.type);
 
   // Parse JSON values for structured step types
   let appData = { path: '', args: '' };
@@ -760,6 +760,23 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
             onChange={v => updateStep({ ...step, value: v })}
           />
         )}
+        {step.type === 'Click Mouse' && (
+          <select
+            className="form-select macro-step-value"
+            value={step.value || 'LButton'}
+            onChange={e => updateStep({ ...step, value: e.target.value })}
+          >
+            {MOUSE_CLICK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )}
+        {step.type === 'Type Text' && (
+          <input
+            className="form-input macro-step-value"
+            placeholder="Text to type..."
+            value={step.value || ''}
+            onChange={e => updateStep({ ...step, value: e.target.value })}
+          />
+        )}
         {step.type === 'Wait (ms)' && (
           <input
             className="form-input macro-step-value"
@@ -768,53 +785,59 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
             onChange={e => updateStep({ ...step, value: e.target.value })}
           />
         )}
-        {step.type === 'Click at Position' && (
-          <ClickPositionPickBtn step={step} updateStep={updateStep} />
-        )}
-        <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
-      </div>
-
-      {/* Sub-row: Press Key — mouse pills */}
-      {step.type === 'Press Key' && (
-        <div className="press-key-sub-row">
-          <div className="press-key-pills">
-            {MOUSE_CLICK_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`mouse-click-pill${step.value === opt.value ? ' active' : ''}`}
-                onClick={() => updateStep({ ...step, value: opt.value })}
-              >{opt.label}</button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sub-row: Type Text — full-width input */}
-      {step.type === 'Type Text' && (
-        <div className="wfi-config-row">
+        {step.type === 'Open URL' && (
           <input
-            className="form-input"
-            style={{ flex: 1 }}
-            placeholder="Text to type..."
-            value={step.value || ''}
-            onChange={e => updateStep({ ...step, value: e.target.value })}
-          />
-        </div>
-      )}
-
-      {/* Sub-row: Open URL — full-width input */}
-      {step.type === 'Open URL' && (
-        <div className="wfi-config-row">
-          <input
-            className="form-input"
-            style={{ flex: 1 }}
+            className="form-input macro-step-value"
             placeholder="https://example.com"
             value={step.value || ''}
             onChange={e => updateStep({ ...step, value: e.target.value })}
           />
-        </div>
-      )}
+        )}
+        {step.type === 'Wait for Input' && (() => {
+          let wfi = { inputType: 'LButton', trigger: 'press', specificKey: '' };
+          try { wfi = { ...wfi, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+          return (
+            <select
+              className="form-select macro-step-value"
+              value={wfi.inputType}
+              onChange={e => {
+                const next = { ...wfi, inputType: e.target.value };
+                if (e.target.value !== 'SpecificKey') next.specificKey = '';
+                updateStep({ ...step, value: JSON.stringify(next) });
+              }}
+            >
+              {WFI_INPUT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          );
+        })()}
+        {step.type === 'Click at Position' && (
+          <ClickPositionPickBtn step={step} updateStep={updateStep} />
+        )}
+        {(step.type === 'Press Key' || step.type === 'Click Mouse') && (
+          <div className="step-repeat">
+            <span className="step-repeat-label">×</span>
+            <input
+              className="form-input step-repeat-input"
+              type="number"
+              min="1"
+              max="99"
+              value={step.repeat ?? 1}
+              onChange={e => {
+                const raw = e.target.value;
+                if (raw === '') { updateStep({ ...step, repeat: '' }); return; }
+                const v = Math.min(99, parseInt(raw) || 1);
+                updateStep({ ...step, repeat: v });
+              }}
+              onBlur={() => {
+                const v = Math.max(1, Math.min(99, parseInt(step.repeat) || 1));
+                updateStep({ ...step, repeat: v });
+              }}
+            />
+          </div>
+        )}
+        <button className="step-duplicate" onClick={() => duplicateStep(step._id)} type="button" title="Duplicate step">⧉</button>
+        <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
+      </div>
 
       {/* Sub-row: Open App — path + browse, optional args */}
       {step.type === 'Open App' && (
@@ -872,7 +895,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
         />
       )}
 
-      {/* Sub-row: Wait for Input — labelled config dropdowns */}
+      {/* Sub-row: Wait for Input — trigger + optional specific key */}
       {step.type === 'Wait for Input' && (() => {
         let wfi = { inputType: 'LButton', trigger: 'press', specificKey: '' };
         try { wfi = { ...wfi, ...JSON.parse(step.value || '{}') }; } catch (_) {}
@@ -883,12 +906,6 @@ function SortableMacroStep({ step, index, updateStep, removeStep, advancedOpen, 
         };
         return (
           <div className="wfi-config-row">
-            <div className="wfi-field">
-              <span className="wfi-label">Wait for:</span>
-              <select className="form-select wfi-select" value={wfi.inputType} onChange={e => updateWfi({ inputType: e.target.value })}>
-                {WFI_INPUT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
             <div className="wfi-field">
               <span className="wfi-label">Trigger:</span>
               <select className="form-select wfi-select" value={wfi.trigger} onChange={e => updateWfi({ trigger: e.target.value })}>
@@ -973,6 +990,16 @@ function MacroSequenceForm({ value, onChange, globalInputMethod }) {
     setAdvancedOpen(prev => { const n = { ...prev }; delete n[id]; return n; });
   }, [stepsWithIds, value, onChange]);
 
+  const duplicateStep = useCallback((id) => {
+    const idx = stepsWithIds.findIndex(s => s._id === id);
+    if (idx === -1) return;
+    const original = value.steps[idx];
+    const clone = { ...original };
+    const newSteps = [...(value.steps || [])];
+    newSteps.splice(idx + 1, 0, clone);
+    onChange({ ...value, steps: newSteps });
+  }, [stepsWithIds, value, onChange]);
+
   function handleDragStart(event) {
     setActiveId(event.active.id);
   }
@@ -1019,6 +1046,7 @@ function MacroSequenceForm({ value, onChange, globalInputMethod }) {
                 index={i}
                 updateStep={updateStep}
                 removeStep={removeStep}
+                duplicateStep={duplicateStep}
                 advancedOpen={!!advancedOpen[step._id]}
                 toggleAdvanced={() => setAdvancedOpen(prev => ({ ...prev, [step._id]: !prev[step._id] }))}
               />
