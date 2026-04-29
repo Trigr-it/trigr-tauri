@@ -944,7 +944,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   );
 }
 
-function MacroSequenceForm({ value, onChange, globalInputMethod }) {
+export function MacroSequenceForm({ value, onChange, globalInputMethod }) {
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
   const [advancedOpen, setAdvancedOpen] = useState({});

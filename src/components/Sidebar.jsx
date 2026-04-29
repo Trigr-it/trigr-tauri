@@ -521,6 +521,7 @@ export default function Sidebar({
   recordCapture,
   onToggleModifier,
   activeModifiers = [],
+  sidebarComboFilter = null,
   // Context menu handlers
   onRenameAssignment,
   onClearAssignment,
@@ -598,8 +599,8 @@ export default function Sidebar({
   }, [activeProfile]);
 
   useEffect(() => {
-    setActiveTab(currentCombo || 'All');
-  }, [currentCombo]);
+    setActiveTab(sidebarComboFilter || 'All');
+  }, [sidebarComboFilter]);
 
   const allCombos = !combos.includes('BARE') ? [...combos, 'BARE'] : combos;
   const tabs = ['All', ...allCombos];
@@ -951,9 +952,9 @@ export default function Sidebar({
       )}
 
       {listViewActive ? (
-        /* ── Grid view — filtered by activeModifiers (pills) ── */
+        /* ── Grid view — filtered by sidebarComboFilter (modifier bar clicks only) ── */
         (() => {
-          const gridCombo = activeModifiers.length > 0 ? currentCombo : null;
+          const gridCombo = sidebarComboFilter || null;
           const gridFiltered = (gridCombo
             ? profileEntries.filter(e => e.combo === gridCombo)
             : profileEntries

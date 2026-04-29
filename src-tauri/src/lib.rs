@@ -1013,6 +1013,17 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                     }
                 }
             }
+            "quickaction" => {
+                if let Some(storage_key) = result.get("storageKey").and_then(|v| v.as_str()) {
+                    let state = hotkeys::engine_state().lock().unwrap();
+                    if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
+                        drop(state);
+                        actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), &app);
+                        let label = macro_val.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                        analytics::log_action("hotkey", 0, storage_key, label);
+                    }
+                }
+            }
             "expansion" | "autocorrect" => {
                 if let Some(raw_text) = result.get("text").and_then(|v| v.as_str()) {
                     // Resolve dynamic tokens ({date:...}, {time:...}, {clipboard}, {cursor}, etc.)
