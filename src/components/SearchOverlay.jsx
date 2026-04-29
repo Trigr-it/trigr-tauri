@@ -15,9 +15,10 @@ const TYPE_META = {
   autocorrect:{ icon: '✏', color: '#aaaaaa' },
 };
 
-const GROUP_ORDER = ['assignment', 'expansion', 'autocorrect'];
+const GROUP_ORDER = ['assignment', 'quickaction', 'expansion', 'autocorrect'];
 const GROUP_LABELS = {
   assignment:  'MACROS & HOTKEYS',
+  quickaction: 'QUICK ACTIONS',
   expansion:   'TEXT EXPANSIONS',
   autocorrect: 'AUTOCORRECT',
 };
@@ -108,6 +109,14 @@ function buildItems(data) {
         text:    macro.data?.text,
         html:    macro.data?.html,
       });
+    } else if (storageKey.startsWith('GLOBAL::QUICKACTION::')) {
+      items.push({
+        type:       'quickaction',
+        storageKey,
+        assignType: macro.type,
+        label:      macro.label || '',
+        preview:    buildPreview(macro),
+      });
     } else if (storageKey.startsWith('GLOBAL::AUTOCORRECT::')) {
       if (!includeAutocorrect) continue;
       const typo = storageKey.slice('GLOBAL::AUTOCORRECT::'.length);
@@ -134,15 +143,6 @@ function scoreMatch(text, query) {
   if (t === q) return 5;
   if (t.startsWith(q)) return 4;
   if (t.includes(q)) return 3;
-
-  // subsequence check
-  let ti = 0;
-  let qi = 0;
-  while (ti < t.length && qi < q.length) {
-    if (t[ti] === q[qi]) qi++;
-    ti++;
-  }
-  if (qi === q.length) return 1;
 
   return 0;
 }
@@ -195,20 +195,6 @@ function HighlightMatch({ text, query }) {
     );
   }
 
-  // Subsequence match — wrap each matched character
-  const result = [];
-  let qi = 0;
-  for (let ti = 0; ti < text.length; ti++) {
-    if (qi < q.length && text[ti].toLowerCase() === q[qi]) {
-      result.push(<span className="hl" key={ti}>{text[ti]}</span>);
-      qi++;
-    } else {
-      result.push(text[ti]);
-    }
-  }
-  if (qi === q.length) return <>{result}</>;
-
-  // Fallback
   return <>{text}</>;
 }
 

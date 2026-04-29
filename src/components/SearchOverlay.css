@@ -171,8 +171,10 @@ html, body {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--accent);
   padding: 8px 14px 3px;
+  border-bottom: 1px solid var(--border-bright);
+  margin-bottom: 2px;
 }
 
 /* ── Result row ───────────────────────────────────────────────────────────── */

@@ -4,6 +4,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './SearchTemplatesPanel.css';
+import { MacroSequenceForm } from './MacroPanel';
 
 // ── Colour palette (matches TextExpansions) ────────────────────────────────
 
@@ -91,6 +92,15 @@ const PRESETS = [
 
 const PRESET_CATEGORIES = [...new Set(PRESETS.map(p => p.category))];
 
+// ── Quick Action types (subset of MacroPanel ACTION_TYPES) ─────────────────
+
+const QA_ACTION_TYPES = [
+  { id: 'app',    icon: '⬡', label: 'Open App',          desc: 'Launch an application or file',            color: '#50c878' },
+  { id: 'url',    icon: '⊕', label: 'Open URL',          desc: 'Open a website in your browser',           color: '#ffc832' },
+  { id: 'folder', icon: '⬢', label: 'Open Folder',       desc: 'Open a folder in File Explorer',           color: '#40c8a0' },
+  { id: 'macro',  icon: '◈', label: 'Macro Sequence',    desc: 'Run a sequence of actions one after another', color: '#ff783c' },
+];
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function buildPreviewUrl(urlTemplate, sampleQuery) {
@@ -118,13 +128,27 @@ export default function SearchTemplatesPanel({
   onDeleteCategory,
   onUpdateCategoryColour,
   onReorderCategories,
+  quickActions = [],
+  onAddQuickAction,
+  onUpdateQuickAction,
+  onDeleteQuickAction,
+  qaCategories = [],
+  onAddQaCategory,
+  onRenameQaCategory,
+  onDeleteQaCategory,
+  onUpdateQaCategoryColour,
+  onReorderQaCategories,
+  globalInputMethod,
   onShowNotification,
 }) {
+  // Panel mode: 'quickactions' | 'templates'
+  const [panelMode, setPanelMode]           = useState('quickactions');
+
   const [selectedId, setSelectedId]         = useState(null);
   const [showPresets, setShowPresets]        = useState(false);
   const [presetFilter, setPresetFilter]     = useState('');
 
-  // Form state
+  // Template form state
   const [formLabel, setFormLabel]           = useState('');
   const [formTrigger, setFormTrigger]       = useState('');
   const [formUrl, setFormUrl]               = useState('');
@@ -133,6 +157,14 @@ export default function SearchTemplatesPanel({
   const [formCategory, setFormCategory]     = useState(null);
   const [triggerError, setTriggerError]     = useState('');
   const [isNew, setIsNew]                   = useState(false);
+
+  // Quick action form state
+  const [qaSelectedId, setQaSelectedId]     = useState(null);
+  const [qaIsNew, setQaIsNew]              = useState(false);
+  const [qaLabel, setQaLabel]              = useState('');
+  const [qaType, setQaType]                = useState('url');
+  const [qaFormValue, setQaFormValue]      = useState({});
+  const [qaCategory, setQaCategory]        = useState(null);
 
   // Test state
   const [testQuery, setTestQuery]           = useState('');
@@ -161,6 +193,12 @@ export default function SearchTemplatesPanel({
   // Drag reorder
   const catDndSensors = useSensors(useSensor(LeftClickSensor, { activationConstraint: { distance: 8 } }));
   const [catDragId, setCatDragId] = useState(null);
+
+  // ── Active categories depend on mode (must be before effects/functions) ──
+  const activeCats = panelMode === 'quickactions' ? qaCategories : categories;
+  const activeCatHandlers = panelMode === 'quickactions'
+    ? { onAdd: onAddQaCategory, onRename: onRenameQaCategory, onDelete: onDeleteQaCategory, onColour: onUpdateQaCategoryColour, onReorder: onReorderQaCategories }
+    : { onAdd: onAddCategory, onRename: onRenameCategory, onDelete: onDeleteCategory, onColour: onUpdateCategoryColour, onReorder: onReorderCategories };
 
   // Close help popover on outside click
   useEffect(() => {
@@ -202,10 +240,10 @@ export default function SearchTemplatesPanel({
   // If active category deleted externally, fall back to All
   useEffect(() => {
     if (activeCategory !== 'All' && activeCategory !== '__uncategorised__' &&
-        !categories.some(c => c.name === activeCategory)) {
+        !activeCats.some(c => c.name === activeCategory)) {
       setActiveCategory('All');
     }
-  }, [categories, activeCategory]);
+  }, [activeCats, activeCategory]);
 
   // ── Trigger validation ──────────────────────────────────────────────────
 
@@ -334,13 +372,59 @@ export default function SearchTemplatesPanel({
     setShowPresets(true);
   }
 
+  // ── Quick Action CRUD ──────────────────────────────────────────────────
+
+  function selectQuickAction(qa) {
+    setQaSelectedId(qa.id);
+    setQaLabel(qa.label || '');
+    setQaType(qa.type || 'app');
+    setQaFormValue(qa.data || {});
+    setQaCategory(qa.data?.category || null);
+    setQaIsNew(false);
+  }
+
+  function openNewQuickAction() {
+    setQaSelectedId(null);
+    setQaLabel('');
+    setQaType('app');
+    setQaFormValue({});
+    setQaCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
+    setQaIsNew(true);
+  }
+
+  function closeQaPanel() {
+    setQaSelectedId(null);
+    setQaIsNew(false);
+  }
+
+  function handleQaSave() {
+    if (!qaLabel.trim()) return;
+    const data = { ...qaFormValue, category: qaCategory || null };
+    if (qaIsNew) {
+      const newId = crypto.randomUUID();
+      onAddQuickAction?.({ id: newId, type: qaType, label: qaLabel.trim(), data });
+      setQaSelectedId(newId);
+      setQaIsNew(false);
+      onShowNotification?.('Quick action added', 'success');
+    } else {
+      onUpdateQuickAction?.(qaSelectedId, { type: qaType, label: qaLabel.trim(), data });
+      onShowNotification?.('Quick action updated', 'success');
+    }
+  }
+
+  function handleQaDelete(id) {
+    onDeleteQuickAction?.(id);
+    if (qaSelectedId === id) closeQaPanel();
+    onShowNotification?.('Quick action deleted', 'success');
+  }
+
   // ── Category CRUD (matches TextExpansions exactly) ────────────────────
 
   function handleAddCategory(e) {
     e?.preventDefault?.();
     const name = newCategoryName.trim();
-    if (name && !categories.some(c => c.name === name)) {
-      onAddCategory?.(name, newCategoryColour);
+    if (name && !activeCats.some(c => c.name === name)) {
+      activeCatHandlers.onAdd?.(name, newCategoryColour);
     }
     setNewCategoryName('');
     setNewCategoryColour(null);
@@ -357,7 +441,7 @@ export default function SearchTemplatesPanel({
     if (catColourPopover?.forCat === '__new__') {
       setNewCategoryColour(colour);
     } else if (catColourPopover?.forCat) {
-      onUpdateCategoryColour?.(catColourPopover.forCat, colour);
+      activeCatHandlers.onColour?.(catColourPopover.forCat, colour);
     }
     setCatColourPopover(null);
   }
@@ -395,7 +479,7 @@ export default function SearchTemplatesPanel({
       setCtxDeleteConfirm(true);
       return;
     }
-    onDeleteCategory?.(catContextMenu.catName);
+    activeCatHandlers.onDelete?.(catContextMenu.catName);
     if (activeCategory === catContextMenu.catName) setActiveCategory('All');
     setCatContextMenu(null);
     setCtxDeleteConfirm(false);
@@ -404,12 +488,12 @@ export default function SearchTemplatesPanel({
   function commitCatRename() {
     const trimmed = renameValue.trim();
     if (!trimmed) { setRenameError('Name cannot be empty'); return; }
-    if (trimmed !== renamingCat && categories.some(c => c.name === trimmed)) {
+    if (trimmed !== renamingCat && activeCats.some(c => c.name === trimmed)) {
       setRenameError('Already exists'); return;
     }
     renameCommitting.current = true;
     if (trimmed !== renamingCat) {
-      onRenameCategory?.(renamingCat, trimmed);
+      activeCatHandlers.onRename?.(renamingCat, trimmed);
       if (activeCategory === renamingCat) setActiveCategory(trimmed);
     }
     setRenamingCat(null);
@@ -428,10 +512,10 @@ export default function SearchTemplatesPanel({
     setCatDragId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIdx = categories.findIndex(c => c.name === active.id);
-    const newIdx = categories.findIndex(c => c.name === over.id);
+    const oldIdx = activeCats.findIndex(c => c.name === active.id);
+    const newIdx = activeCats.findIndex(c => c.name === over.id);
     if (oldIdx === -1 || newIdx === -1) return;
-    onReorderCategories?.(arrayMove([...categories], oldIdx, newIdx));
+    activeCatHandlers.onReorder?.(arrayMove([...activeCats], oldIdx, newIdx));
   }
 
   // ── Filtered + grouped template list ──────────────────────────────────
@@ -482,9 +566,45 @@ export default function SearchTemplatesPanel({
     return result;
   }, [filteredPresets, presetFilter]);
 
+  // Quick action filtered/grouped list
+  const qaUncategorisedCount = quickActions.filter(a => !a.data?.category).length;
+
+  const qaFilteredList = useMemo(() => {
+    if (activeCategory === 'All') return quickActions;
+    if (activeCategory === '__uncategorised__') return quickActions.filter(a => !a.data?.category);
+    return quickActions.filter(a => a.data?.category === activeCategory);
+  }, [quickActions, activeCategory]);
+
+  const qaGroupedList = useMemo(() => {
+    if (activeCategory !== 'All') {
+      return qaFilteredList.map(a => ({ type: 'item', action: a }));
+    }
+    const result = [];
+    const uncat = quickActions.filter(a => !a.data?.category);
+    if (uncat.length > 0) {
+      result.push({ type: 'header', label: 'Uncategorised', count: uncat.length });
+      uncat.forEach(a => result.push({ type: 'item', action: a }));
+    }
+    for (const cat of qaCategories) {
+      const items = quickActions.filter(a => a.data?.category === cat.name);
+      if (items.length > 0) {
+        result.push({ type: 'header', label: cat.name, count: items.length, colour: cat.colour });
+        items.forEach(a => result.push({ type: 'item', action: a }));
+      }
+    }
+    return result;
+  }, [quickActions, qaCategories, activeCategory, qaFilteredList]);
+
   const atCap = !isPro && searchTemplates.length >= 5;
   const editOpen = selectedId !== null || isNew;
   const canSave = formLabel.trim() && formTrigger && !triggerError && formUrl.includes('{query}');
+  const qaEditOpen = qaSelectedId !== null || qaIsNew;
+  const qaCanSave = !!qaLabel.trim() && (
+    (qaType === 'url' && qaFormValue.url?.trim()) ||
+    (qaType === 'app' && qaFormValue.path?.trim()) ||
+    (qaType === 'folder' && qaFormValue.path?.trim()) ||
+    (qaType === 'macro' && qaFormValue.steps?.length > 0)
+  );
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -493,19 +613,26 @@ export default function SearchTemplatesPanel({
       {/* Header */}
       <div className="stp-header">
         <div className="stp-mode-tabs">
-          <button className="stp-mode-tab active" type="button">
-            ⌕ Quick Search Templates
-          </button>
+          <button
+            className={`stp-mode-tab${panelMode === 'quickactions' ? ' active' : ''}`}
+            onClick={() => { setPanelMode('quickactions'); closePanel(); setActiveCategory('All'); }}
+            type="button"
+          >⚡ Quick Actions</button>
+          <button
+            className={`stp-mode-tab${panelMode === 'templates' ? ' active' : ''}`}
+            onClick={() => { setPanelMode('templates'); closeQaPanel(); setActiveCategory('All'); }}
+            type="button"
+          >⌕ Search Templates</button>
         </div>
         <div className="stp-header-right">
-          {atCap ? (
-            <span className="stp-cap-nudge" title="Upgrade to Pro for unlimited templates">
-              5/5 — Upgrade for more
-            </span>
+          {panelMode === 'templates' ? (
+            atCap ? (
+              <span className="stp-cap-nudge" title="Upgrade to Pro for unlimited templates">5/5 — Upgrade for more</span>
+            ) : (
+              <button className="stp-add-btn" onClick={handleNewClick} type="button">+ New Template</button>
+            )
           ) : (
-            <button className="stp-add-btn" onClick={handleNewClick} type="button">
-              + New Template
-            </button>
+            <button className="stp-add-btn" onClick={openNewQuickAction} type="button">+ New Action</button>
           )}
         </div>
       </div>
@@ -551,7 +678,7 @@ export default function SearchTemplatesPanel({
 
       {/* Body: sidebar + list + edit panel */}
       <div className="stp-body">
-        {/* Category sidebar */}
+        {/* Category sidebar — switches between template and quick action categories based on mode */}
         <div className="stp-cat-sidebar">
           <div className="stp-cat-sidebar-list">
             <button
@@ -560,25 +687,27 @@ export default function SearchTemplatesPanel({
               type="button"
             >
               <span className="stp-cat-row-name">All</span>
-              <span className="stp-cat-count">{searchTemplates.length}</span>
+              <span className="stp-cat-count">{panelMode === 'quickactions' ? quickActions.length : searchTemplates.length}</span>
             </button>
 
-            {searchTemplates.length > 0 && uncategorisedCount > 0 && (
+            {((panelMode === 'quickactions' ? qaUncategorisedCount : uncategorisedCount) > 0) && (
               <button
                 className={`stp-cat-row stp-cat-row-uncategorised${activeCategory === '__uncategorised__' ? ' stp-cat-row-active' : ''}`}
                 onClick={() => setActiveCategory('__uncategorised__')}
                 type="button"
               >
                 <span className="stp-cat-row-name">Uncategorised</span>
-                <span className="stp-cat-count">{uncategorisedCount}</span>
+                <span className="stp-cat-count">{panelMode === 'quickactions' ? qaUncategorisedCount : uncategorisedCount}</span>
               </button>
             )}
 
             <DndContext sensors={catDndSensors} onDragStart={e => setCatDragId(e.active.id)} onDragEnd={handleCatDragEnd}>
-              <SortableContext items={categories.map(c => c.name)} strategy={verticalListSortingStrategy}>
-                {categories.map(cat => {
+              <SortableContext items={activeCats.map(c => c.name)} strategy={verticalListSortingStrategy}>
+                {activeCats.map(cat => {
                   const catColour = cat.colour || null;
-                  const count = searchTemplates.filter(t => t.category === cat.name).length;
+                  const count = panelMode === 'quickactions'
+                    ? quickActions.filter(a => a.data?.category === cat.name).length
+                    : searchTemplates.filter(t => t.category === cat.name).length;
                   return (
                     <SortableCatRow key={cat.name} id={cat.name}>
                       <div className="stp-cat-row-group" onContextMenu={e => handleCatContextMenu(e, cat.name)}>
@@ -659,18 +788,15 @@ export default function SearchTemplatesPanel({
           </div>
         </div>
 
-        {/* Template list */}
+        {/* ═══ TEMPLATES MODE ═══ */}
+        {panelMode === 'templates' && (<>
         <div className="stp-list">
           {searchTemplates.length === 0 && !isNew ? (
             <div className="stp-empty-state">
               <div className="stp-empty-icon">⌕</div>
               <div className="stp-empty-heading">No search templates yet</div>
-              <div className="stp-empty-sub">
-                Add one to search Google, GitHub, or your own URLs from Quick Search.
-              </div>
-              <button className="stp-add-btn stp-empty-cta" onClick={handleNewClick} type="button">
-                + New Template
-              </button>
+              <div className="stp-empty-sub">Add one to search Google, GitHub, or your own URLs from Quick Search.</div>
+              <button className="stp-add-btn stp-empty-cta" onClick={handleNewClick} type="button">+ New Template</button>
             </div>
           ) : (
             groupedList.map((entry) => {
@@ -686,54 +812,37 @@ export default function SearchTemplatesPanel({
               }
               const t = entry.template;
               return (
-                <div
-                  key={t.id}
-                  className={`stp-item${selectedId === t.id ? ' active' : ''}`}
-                  onClick={() => selectTemplate(t)}
-                >
+                <div key={t.id} className={`stp-item${selectedId === t.id ? ' active' : ''}`} onClick={() => selectTemplate(t)}>
                   <span className="stp-item-trigger">{t.trigger}</span>
                   <span className="stp-item-label">{t.label}</span>
                   <span className="stp-item-url">{truncateUrl(t.url_template, 40)}</span>
                   <div className="stp-item-actions">
-                    <button
-                      className="stp-item-del"
-                      onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
-                      title="Delete"
-                      type="button"
-                    >✕</button>
+                    <button className="stp-item-del" onClick={e => { e.stopPropagation(); handleDelete(t.id); }} title="Delete" type="button">✕</button>
                   </div>
                 </div>
               );
             })
           )}
         </div>
-
-        {/* Edit panel */}
         {editOpen ? (
           <div className="stp-edit-panel">
             <div className="stp-ep-header">
               <span className="stp-ep-title">{isNew ? 'New Template' : 'Edit Template'}</span>
               <button className="stp-ep-close" onClick={closePanel} type="button">✕</button>
             </div>
-
             <div className="stp-ep-fields">
               <div className="stp-field">
                 <label className="stp-label">Label</label>
                 <input className="stp-input" type="text" value={formLabel} onChange={e => setFormLabel(e.target.value)} placeholder="e.g. Google" spellCheck={false} />
               </div>
-
               <div className="stp-field">
                 <label className="stp-label">Trigger</label>
-                <input
-                  className={`stp-input stp-trigger-input${triggerError ? ' error' : ''}`}
-                  type="text" value={formTrigger}
+                <input className={`stp-input stp-trigger-input${triggerError ? ' error' : ''}`} type="text" value={formTrigger}
                   onChange={e => { const v = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10); setFormTrigger(v); setTriggerError(validateTrigger(v, isNew ? null : selectedId)); }}
-                  placeholder="e.g. g" spellCheck={false} maxLength={10}
-                />
+                  placeholder="e.g. g" spellCheck={false} maxLength={10} />
                 {triggerError && <div className="stp-trigger-error">{triggerError}</div>}
                 <div className="stp-field-hint">Type this in Quick Search + Space to activate</div>
               </div>
-
               <div className="stp-field">
                 <label className="stp-label">Category</label>
                 <select className="stp-input stp-cat-select" value={formCategory || ''} onChange={e => setFormCategory(e.target.value || null)}>
@@ -741,7 +850,6 @@ export default function SearchTemplatesPanel({
                   {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
-
               <div className="stp-field">
                 <div className="stp-label-row">
                   <label className="stp-label">URL Template</label>
@@ -760,7 +868,6 @@ export default function SearchTemplatesPanel({
                 {formUrl && !formUrl.includes('{query}') && <div className="stp-trigger-error">URL must contain {'{query}'} placeholder</div>}
                 {formUrl && formUrl.includes('{query}') && <div className="stp-preview-line">Example: typing "tauri" would open {truncateUrl(buildPreviewUrl(formUrl, 'tauri'), 80)}</div>}
               </div>
-
               <div className="stp-field">
                 <label className="stp-toggle-label">
                   <input type="checkbox" checked={formEncode} onChange={e => setFormEncode(e.target.checked)} />
@@ -768,16 +875,12 @@ export default function SearchTemplatesPanel({
                 </label>
               </div>
             </div>
-
             <div className="stp-ep-test">
               <input className="stp-input stp-test-input" type="text" value={testQuery} onChange={e => setTestQuery(e.target.value)} placeholder="Test query…" spellCheck={false} onKeyDown={e => { if (e.key === 'Enter') handleTest(); }} />
               <button className="stp-test-btn" onClick={handleTest} disabled={!testQuery.trim() || !formUrl.includes('{query}')} type="button">Test</button>
             </div>
-
             <div className="stp-ep-footer">
-              <button className="stp-save-btn" onClick={handleSave} disabled={!canSave} type="button">
-                {isNew ? 'Add Template' : 'Save Changes'}
-              </button>
+              <button className="stp-save-btn" onClick={handleSave} disabled={!canSave} type="button">{isNew ? 'Add Template' : 'Save Changes'}</button>
               {!isNew && <button className="stp-delete-btn" onClick={() => handleDelete(selectedId)} type="button">Delete</button>}
             </div>
           </div>
@@ -786,6 +889,166 @@ export default function SearchTemplatesPanel({
             <span className="stp-idle-text">Select a template to edit, or add a new one</span>
           </div>
         )}
+        </>)}
+
+        {/* ═══ QUICK ACTIONS MODE ═══ */}
+        {panelMode === 'quickactions' && (<>
+        <div className="stp-list">
+          {quickActions.length === 0 && !qaIsNew ? (
+            <div className="stp-empty-state">
+              <div className="stp-empty-icon">⚡</div>
+              <div className="stp-empty-heading">No quick actions yet</div>
+              <div className="stp-empty-sub">Add actions accessible via Quick Search without assigning a hotkey. Open folders, URLs, apps, or type text.</div>
+              <button className="stp-add-btn stp-empty-cta" onClick={openNewQuickAction} type="button">+ New Action</button>
+            </div>
+          ) : (
+            qaGroupedList.map((entry) => {
+              if (entry.type === 'header') {
+                return (
+                  <div key={`qh-${entry.label}`} className="stp-group-header">
+                    {entry.colour && <span className="stp-cat-dot" style={{ background: entry.colour }} />}
+                    <span className="stp-group-name">{entry.label.toUpperCase()}</span>
+                    <span className="stp-group-count">{entry.count}</span>
+                    <span className="stp-group-rule" />
+                  </div>
+                );
+              }
+              const a = entry.action;
+              const typeIcons = { url: '⊕', app: '⬡', folder: '⬢', text: '✦', hotkey: '⌨', macro: '◈' };
+              const typeColors = { url: '#ffc832', app: '#50c878', folder: '#40c8a0', text: '#64b4ff', hotkey: '#c864ff', macro: '#ff783c' };
+              const preview = a.type === 'macro'
+                ? `Sequence (${a.data?.steps?.length || 0} step${(a.data?.steps?.length || 0) !== 1 ? 's' : ''})`
+                : (a.data?.url || a.data?.path || a.data?.folderPath || a.data?.urlName || a.data?.appName || '');
+              return (
+                <div key={a.id} className={`stp-item${qaSelectedId === a.id ? ' active' : ''}`} onClick={() => selectQuickAction(a)}>
+                  <span className="stp-item-type-icon" style={{ color: typeColors[a.type] || '#8a8799' }}>{typeIcons[a.type] || '◈'}</span>
+                  <span className="stp-item-label">{a.label}</span>
+                  <span className="stp-item-url">{truncateUrl(preview, 40)}</span>
+                  <div className="stp-item-actions">
+                    <button className="stp-item-del" onClick={e => { e.stopPropagation(); handleQaDelete(a.id); }} title="Delete" type="button">✕</button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        {qaEditOpen ? (
+          <div className="stp-edit-panel stp-qa-edit">
+            <div className="stp-ep-header">
+              <span className="stp-ep-title">{qaIsNew ? 'New Quick Action' : 'Edit Quick Action'}</span>
+              <button className="stp-ep-close" onClick={closeQaPanel} type="button">✕</button>
+            </div>
+            <div className="stp-qa-body">
+              {/* Action type selector — matches MacroPanel type-selector */}
+              <div className="type-selector">
+                {QA_ACTION_TYPES.map(t => (
+                  <button
+                    key={t.id}
+                    className={`type-btn${qaType === t.id ? ' active' : ''}`}
+                    style={{ '--type-color': t.color }}
+                    onClick={() => { setQaType(t.id); setQaFormValue({}); }}
+                    type="button"
+                  >
+                    <span className="type-btn-icon">{t.icon}</span>
+                    <span className="type-btn-label">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Type description */}
+              <div className="type-desc">
+                {QA_ACTION_TYPES.find(t => t.id === qaType)?.desc}
+              </div>
+
+              {/* Dynamic form per type */}
+              <div className="form-body">
+                {qaType === 'url' && (
+                  <div className="form-section">
+                    <label className="form-label">URL to open</label>
+                    <input
+                      className="form-input"
+                      placeholder="https://example.com"
+                      value={qaFormValue.url || ''}
+                      onChange={e => setQaFormValue(prev => ({ ...prev, url: e.target.value }))}
+                    />
+                  </div>
+                )}
+                {qaType === 'app' && (
+                  <div className="form-section">
+                    <label className="form-label">Application path</label>
+                    <div className="file-input-row">
+                      <input
+                        className="form-input"
+                        placeholder="C:\Program Files\App\app.exe"
+                        value={qaFormValue.path || ''}
+                        readOnly
+                      />
+                      <button className="browse-btn" type="button" onClick={async () => {
+                        const path = await window.electronAPI?.browseForFile();
+                        if (path) setQaFormValue(prev => ({ ...prev, path }));
+                      }}>Browse</button>
+                    </div>
+                  </div>
+                )}
+                {qaType === 'folder' && (
+                  <div className="form-section">
+                    <label className="form-label">Folder path</label>
+                    <div className="file-input-row">
+                      <input
+                        className="form-input"
+                        placeholder="C:\Users\Me\Documents"
+                        value={qaFormValue.path || ''}
+                        readOnly
+                      />
+                      <button className="browse-btn" type="button" onClick={async () => {
+                        const path = await window.electronAPI?.browseForFolder();
+                        if (path) setQaFormValue(prev => ({ ...prev, path }));
+                      }}>Browse</button>
+                    </div>
+                  </div>
+                )}
+                {qaType === 'macro' && (
+                  <MacroSequenceForm value={qaFormValue} onChange={setQaFormValue} globalInputMethod={globalInputMethod} />
+                )}
+
+                {/* Display label */}
+                <div className="form-section" style={{ marginTop: 4 }}>
+                  <label className="form-label">Display label</label>
+                  <input
+                    className="form-input"
+                    placeholder="Short label for Quick Search..."
+                    value={qaLabel}
+                    onChange={e => setQaLabel(e.target.value)}
+                  />
+                </div>
+
+                {/* Category */}
+                <div className="form-section" style={{ marginTop: 4 }}>
+                  <label className="form-label">Category</label>
+                  <select className="form-select" style={{ width: 'auto', minWidth: 140 }} value={qaCategory || ''} onChange={e => setQaCategory(e.target.value || null)}>
+                    <option value="">Uncategorised</option>
+                    {qaCategories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="macro-panel-footer">
+              {!qaIsNew && (
+                <div className="footer-assignment-actions">
+                  <button className="btn-clear" onClick={() => handleQaDelete(qaSelectedId)} type="button">Delete</button>
+                </div>
+              )}
+              <button className="btn-save" onClick={handleQaSave} disabled={!qaCanSave} type="button">
+                {qaIsNew ? 'Add Action' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="stp-edit-panel stp-panel-idle">
+            <span className="stp-idle-text">Select an action to edit, or add a new one</span>
+          </div>
+        )}
+        </>)}
       </div>
 
       {/* Category right-click context menu (portal) */}
@@ -816,7 +1079,7 @@ export default function SearchTemplatesPanel({
             value={
               catColourPopover.forCat === '__new__'
                 ? newCategoryColour
-                : categories.find(c => c.name === catColourPopover.forCat)?.colour || null
+                : activeCats.find(c => c.name === catColourPopover.forCat)?.colour || null
             }
             onChange={handleCatColourSelect}
           />

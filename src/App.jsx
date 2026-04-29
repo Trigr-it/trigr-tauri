@@ -26,6 +26,7 @@ function App() {
   const [macrosEnabled, setMacrosEnabled]   = useState(true);
   const [notification, setNotification]     = useState(null);
   const [activeModifiers, setActiveModifiers] = useState([]);  // e.g. ['Ctrl', 'Alt']
+  const [sidebarComboFilter, setSidebarComboFilter] = useState(null); // null = show all, string = filter by combo
   const [engineStatus, setEngineStatus]     = useState({ uiohookAvailable: false, nutjsAvailable: false });
   const [lastFired, setLastFired]           = useState(null);
   const [theme, setTheme]                   = useState('dark');
@@ -63,6 +64,7 @@ function App() {
   });
   const [searchTemplates, setSearchTemplates]           = useState([]);
   const [searchTemplateCategories, setSearchTemplateCategories] = useState([]);
+  const [quickActionCategories, setQuickActionCategories] = useState([]);
 
 
   // Current modifier combo string e.g. "Ctrl+Alt"
@@ -124,6 +126,7 @@ function App() {
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
+        setQuickActionCategories(config.quickActionCategories || []);
         // Sync new settings to engine on load
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
@@ -256,6 +259,7 @@ function App() {
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
+        setQuickActionCategories(config.quickActionCategories || []);
         // Re-sync engine with updated config
         window.electronAPI?.updateAssignments(raw, globalProfile);
         window.electronAPI?.updateProfileSettings(config.profileSettings || {});
@@ -357,6 +361,7 @@ function App() {
       if (activeModifiers.length === 0) return; // nothing to clear
       e.preventDefault();
       setActiveModifiers([]);
+      setSidebarComboFilter(null);
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -368,15 +373,15 @@ function App() {
   }, []);
 
   const saveConfig = useCallback((newAssignments, newProfiles, newProfile) => {
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates, searchTemplateCategories });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories });
     syncEngine(newAssignments, newProfile);
-  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates, searchTemplateCategories]);
+  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories]);
 
   const handleSaveGlobalVariables = useCallback((newVars) => {
     setGlobalVariables(newVars);
     window.electronAPI?.updateGlobalVariables(newVars);
-    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars, searchTemplates, searchTemplateCategories });
-  }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, searchTemplates, searchTemplateCategories]);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars, searchTemplates, searchTemplateCategories, quickActionCategories });
+  }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, searchTemplates, searchTemplateCategories, quickActionCategories]);
 
   // ── Notifications ─────────────────────────────────────────
   const showNotification = useCallback((msg, type = 'success') => {
@@ -437,18 +442,102 @@ function App() {
     window.electronAPI?.saveConfig({ searchTemplateCategories: newOrder });
   }, []);
 
+  // ── Quick Action CRUD (stored in assignments as GLOBAL::QUICKACTION::uuid) ──
+  const handleAddQuickAction = useCallback((action) => {
+    const key = `GLOBAL::QUICKACTION::${action.id}`;
+    const newAssignments = { ...assignments, [key]: { type: action.type, label: action.label, data: action.data } };
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+  }, [assignments, profiles, activeProfile, saveConfig]);
+
+  const handleUpdateQuickAction = useCallback((id, updates) => {
+    const key = `GLOBAL::QUICKACTION::${id}`;
+    const existing = assignments[key];
+    if (!existing) return;
+    const newAssignments = { ...assignments, [key]: { ...existing, ...updates } };
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+  }, [assignments, profiles, activeProfile, saveConfig]);
+
+  const handleDeleteQuickAction = useCallback((id) => {
+    const key = `GLOBAL::QUICKACTION::${id}`;
+    const newAssignments = { ...assignments };
+    delete newAssignments[key];
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+  }, [assignments, profiles, activeProfile, saveConfig]);
+
+  // ── Quick Action Category CRUD ───────────────────────────
+  const handleAddQaCategory = useCallback((name, colour = null) => {
+    const next = [...quickActionCategories, { name, colour: colour || null }];
+    setQuickActionCategories(next);
+    window.electronAPI?.saveConfig({ quickActionCategories: next });
+  }, [quickActionCategories]);
+
+  const handleRenameQaCategory = useCallback((oldName, newName) => {
+    const nextCats = quickActionCategories.map(c => c.name === oldName ? { ...c, name: newName } : c);
+    setQuickActionCategories(nextCats);
+    // Update category on all quick actions that use the old name
+    const newAssignments = { ...assignments };
+    let changed = false;
+    for (const [k, v] of Object.entries(newAssignments)) {
+      if (k.startsWith('GLOBAL::QUICKACTION::') && v.data?.category === oldName) {
+        newAssignments[k] = { ...v, data: { ...v.data, category: newName } };
+        changed = true;
+      }
+    }
+    if (changed) { setAssignments(newAssignments); saveConfig(newAssignments, profiles, activeProfile); }
+    window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
+  }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
+
+  const handleDeleteQaCategory = useCallback((name) => {
+    const nextCats = quickActionCategories.filter(c => c.name !== name);
+    setQuickActionCategories(nextCats);
+    // Move quick actions in deleted category to uncategorised
+    const newAssignments = { ...assignments };
+    let changed = false;
+    for (const [k, v] of Object.entries(newAssignments)) {
+      if (k.startsWith('GLOBAL::QUICKACTION::') && v.data?.category === name) {
+        newAssignments[k] = { ...v, data: { ...v.data, category: null } };
+        changed = true;
+      }
+    }
+    if (changed) { setAssignments(newAssignments); saveConfig(newAssignments, profiles, activeProfile); }
+    window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
+  }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
+
+  const handleUpdateQaCategoryColour = useCallback((name, colour) => {
+    const next = quickActionCategories.map(c => c.name === name ? { ...c, colour } : c);
+    setQuickActionCategories(next);
+    window.electronAPI?.saveConfig({ quickActionCategories: next });
+  }, [quickActionCategories]);
+
+  const handleReorderQaCategories = useCallback((newOrder) => {
+    setQuickActionCategories(newOrder);
+    window.electronAPI?.saveConfig({ quickActionCategories: newOrder });
+  }, []);
+
   // ── Modifier toggling ─────────────────────────────────────
   const handleToggleModifier = useCallback((modId) => {
     setActiveModifiers(prev => {
+      let next;
       if (modId === 'BARE') {
-        // BARE is exclusive — toggle on/off, can't combine with regular modifiers
-        return prev.includes('BARE') ? [] : ['BARE'];
+        next = prev.includes('BARE') ? [] : ['BARE'];
+      } else {
+        const base = prev.filter(m => m !== 'BARE');
+        if (base.includes(modId)) next = base.filter(m => m !== modId);
+        else if (base.length >= 3) next = base;
+        else next = [...base, modId];
       }
-      // Regular modifier — strip BARE first if active, then toggle
-      const base = prev.filter(m => m !== 'BARE');
-      if (base.includes(modId)) return base.filter(m => m !== modId);
-      if (base.length >= 3) return base;
-      return [...base, modId];
+      // Update sidebar filter to match keyboard modifier selection
+      if (next.length === 0) {
+        setSidebarComboFilter(null);
+      } else if (next.includes('BARE')) {
+        setSidebarComboFilter('BARE');
+      } else {
+        setSidebarComboFilter([...next].sort().join('+'));
+      }
+      return next;
     });
     // Deselect key when modifier layer changes
     setSelectedKey(null);
@@ -1609,6 +1698,7 @@ function App() {
             activeProfile={activeProfile}
             assignments={assignments}
             activeModifiers={activeModifiers}
+            sidebarComboFilter={sidebarComboFilter}
             currentCombo={currentCombo}
             selectedKey={selectedKey}
             onSelectAssignment={handleSelectAssignment}
@@ -1724,6 +1814,17 @@ function App() {
               onDeleteCategory={handleDeleteSearchTemplateCategory}
               onUpdateCategoryColour={handleUpdateSearchTemplateCategoryColour}
               onReorderCategories={handleReorderSearchTemplateCategories}
+              quickActions={Object.entries(assignments).filter(([k]) => k.startsWith('GLOBAL::QUICKACTION::')).map(([k, v]) => ({ id: k.slice('GLOBAL::QUICKACTION::'.length), ...v }))}
+              onAddQuickAction={handleAddQuickAction}
+              onUpdateQuickAction={handleUpdateQuickAction}
+              onDeleteQuickAction={handleDeleteQuickAction}
+              qaCategories={quickActionCategories}
+              onAddQaCategory={handleAddQaCategory}
+              onRenameQaCategory={handleRenameQaCategory}
+              onDeleteQaCategory={handleDeleteQaCategory}
+              onUpdateQaCategoryColour={handleUpdateQaCategoryColour}
+              onReorderQaCategories={handleReorderQaCategories}
+              globalInputMethod={globalInputMethod}
               onShowNotification={showNotification}
             />
           )}
