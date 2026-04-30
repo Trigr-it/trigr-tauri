@@ -1588,6 +1588,7 @@ function App() {
           assignments={assignments}
           onComplete={handleOnboardingComplete}
           onSkip={handleOnboardingComplete}
+          onAreaChange={handleSetArea}
         />
       )}
       {showWelcome && !showOnboarding && (
