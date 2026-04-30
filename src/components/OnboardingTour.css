@@ -124,6 +124,22 @@
   margin: 0 0 28px;
 }
 
+.onboarding-test-area {
+  width: 100%;
+  height: 60px;
+  padding: 10px 12px;
+  margin: 8px 0 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: var(--font-body);
+  caret-color: var(--accent);
+  outline: none;
+  resize: none;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 .onboarding-btn-primary {
