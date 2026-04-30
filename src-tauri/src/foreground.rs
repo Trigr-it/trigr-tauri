@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -22,6 +22,16 @@ const POLL_INTERVAL_MS: u64 = 1500;
 
 static WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
 static LAST_FG_HWND: AtomicIsize = AtomicIsize::new(0);
+
+/// Cache of linked-app PIDs → profile name.  Populated when the foreground
+/// watcher detects a linked app.  The hook reads this (via try_read) to check
+/// if the cursor is over a linked app that isn't currently the foreground —
+/// fixing the "click to refocus" missed-remap issue.
+static LINKED_APP_PIDS: OnceLock<RwLock<HashMap<u32, String>>> = OnceLock::new();
+
+fn linked_app_pids() -> &'static RwLock<HashMap<u32, String>> {
+    LINKED_APP_PIDS.get_or_init(|| RwLock::new(HashMap::new()))
+}
 
 static FG_STATE: OnceLock<Mutex<FgState>> = OnceLock::new();
 
@@ -194,6 +204,8 @@ pub fn start_watcher(app: AppHandle) {
         .spawn(move || {
             info!("[Trigr] Foreground watcher started ({}ms poll)", POLL_INTERVAL_MS);
 
+            let mut prune_counter: u32 = 0;
+
             while WATCHER_RUNNING.load(Ordering::Relaxed) {
                 unsafe {
                     let hwnd = GetForegroundWindow();
@@ -205,9 +217,19 @@ pub fn start_watcher(app: AppHandle) {
                     {
                         LAST_FG_HWND.store(hwnd_val, Ordering::Relaxed);
                         if let Some(name) = get_fg_proc_name(hwnd_val) {
+                            // Cache PID for linked-app detection from the hook
+                            cache_linked_pid_if_match(hwnd_val, &name);
                             handle_foreground_change(&name, &app);
                         }
                     }
+                }
+
+                // Prune stale PID cache entries every ~20 polls (~30s).
+                // Validates each cached PID still maps to the expected linked app.
+                prune_counter += 1;
+                if prune_counter >= 20 {
+                    prune_counter = 0;
+                    prune_stale_pids();
                 }
 
                 thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
@@ -223,6 +245,93 @@ pub fn stop_watcher() {
     LAST_FG_HWND.store(0, Ordering::Relaxed);
 }
 
+/// Resolve a PID to process base name (lowercase, no .exe).
+/// Returns None if the process no longer exists or access is denied.
+fn get_proc_name_by_pid(pid: u32) -> Option<String> {
+    unsafe {
+        let h_proc: HANDLE = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h_proc.is_null() { return None; }
+        let mut buf = [0u16; 260];
+        let mut size: u32 = 260;
+        let ok: BOOL = QueryFullProcessImageNameW(h_proc, 0, buf.as_mut_ptr(), &mut size);
+        CloseHandle(h_proc);
+        if ok == 0 || size == 0 { return None; }
+        let full_path = String::from_utf16_lossy(&buf[..size as usize]);
+        Path::new(&full_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+    }
+}
+
+// ── Linked-app PID cache ───────────────────────────────────────────────────
+
+/// If the foreground process name matches a linked app, cache its PID so the
+/// mouse hook can detect "cursor over linked app" even when the app isn't the
+/// current foreground (click-to-refocus scenario).
+fn cache_linked_pid_if_match(hwnd_val: isize, proc_name: &str) {
+    let name = proc_name.to_lowercase();
+    let state = fg_state().lock().unwrap();
+    let matched_profile = state
+        .profile_settings
+        .iter()
+        .find_map(|(profile, settings)| {
+            settings
+                .get("linkedApp")
+                .and_then(|v| v.as_str())
+                .and_then(|app_path| {
+                    let app_name = Path::new(app_path)
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+                    if app_name == name { Some(profile.clone()) } else { None }
+                })
+        });
+    drop(state);
+
+    if let Some(profile) = matched_profile {
+        unsafe {
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd_val as _, &mut pid);
+            if pid != 0 {
+                if let Ok(mut cache) = linked_app_pids().write() {
+                    cache.insert(pid, profile);
+                }
+            }
+        }
+    }
+}
+
+/// Evict PID cache entries whose process has exited or been replaced by a
+/// different executable (PID reuse).  Called periodically from the watcher loop.
+fn prune_stale_pids() {
+    let state = fg_state().lock().unwrap();
+    let settings = &state.profile_settings;
+    // Build a map: profile → expected lowercase process name
+    let expected: HashMap<String, String> = settings
+        .iter()
+        .filter_map(|(profile, s)| {
+            s.get("linkedApp")
+                .and_then(|v| v.as_str())
+                .and_then(|app_path| {
+                    Path::new(app_path)
+                        .file_stem()
+                        .map(|s| (profile.clone(), s.to_string_lossy().to_lowercase()))
+                })
+        })
+        .collect();
+    drop(state);
+
+    if let Ok(mut cache) = linked_app_pids().write() {
+        cache.retain(|&pid, profile| {
+            let Some(expected_name) = expected.get(profile) else { return false; };
+            match get_proc_name_by_pid(pid) {
+                Some(name) => &name == expected_name,
+                None => false, // process exited
+            }
+        });
+    }
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 pub fn get_current_fg_proc() -> String {
@@ -236,6 +345,15 @@ pub fn last_fg_hwnd() -> isize {
     LAST_FG_HWND.load(Ordering::Relaxed)
 }
 
+/// Check if a PID belongs to a known linked app.  Returns the profile name.
+/// Called from the mouse hook — must be non-blocking (try_read).
+pub fn linked_profile_for_pid(pid: u32) -> Option<String> {
+    linked_app_pids()
+        .try_read()
+        .ok()
+        .and_then(|cache| cache.get(&pid).cloned())
+}
+
 pub fn set_active_global_profile(profile: String) {
     let mut state = fg_state().lock().unwrap();
     state.active_global_profile = profile;
@@ -244,4 +362,14 @@ pub fn set_active_global_profile(profile: String) {
 pub fn update_profile_settings(settings: HashMap<String, Value>) {
     let mut state = fg_state().lock().unwrap();
     state.profile_settings = settings;
+    // Prune PID cache: remove entries whose profile is no longer linked
+    if let Ok(mut cache) = linked_app_pids().write() {
+        cache.retain(|_, profile| {
+            state.profile_settings
+                .get(profile)
+                .and_then(|s| s.get("linkedApp"))
+                .and_then(|v| v.as_str())
+                .is_some()
+        });
+    }
 }

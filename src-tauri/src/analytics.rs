@@ -12,6 +12,10 @@ struct AnalyticsEvent {
     char_count: u32,
     trigger: String,
     label: String,
+    /// For macro sequences: JSON array of step types, e.g. ["Type Text","Open App","Press Key"]
+    macro_step_types: Option<Vec<String>>,
+    /// Foreground app when the action fired (e.g. "revit", "chrome")
+    target_app: String,
 }
 
 // ── Writer thread channel ──────────────────────────────────────────────────
@@ -22,11 +26,16 @@ enum AnalyticsMsg {
     Log(AnalyticsEvent),
     GetStats(mpsc::Sender<serde_json::Value>),
     GetDailyChart(u32, mpsc::Sender<serde_json::Value>),
-    GetAssignmentBreakdown(mpsc::Sender<serde_json::Value>),
-    GetHourlyHeatmap(mpsc::Sender<serde_json::Value>),
+    GetAssignmentBreakdown(u32, mpsc::Sender<serde_json::Value>), // days (0 = all time)
+    GetTypeBreakdown(u32, mpsc::Sender<serde_json::Value>),       // days (0 = all time)
+    GetHourlyHeatmap(u32, mpsc::Sender<serde_json::Value>),
+    GetTopApps(u32, mpsc::Sender<serde_json::Value>),              // days (0 = all time)
+    GetExpansionEfficiency(mpsc::Sender<serde_json::Value>),
     GetStreaks(mpsc::Sender<serde_json::Value>),
     ExportCsv(mpsc::Sender<String>),
     Reset(mpsc::Sender<bool>),
+    /// One-time migration: recalculate time_saved for old entries using current assignments.
+    MigrateTimeSaved(std::collections::HashMap<String, serde_json::Value>),
 }
 
 // ── Initialise ─────────────────────────────────────────────────────────────
@@ -63,9 +72,15 @@ pub fn init(app_data_dir: PathBuf) {
                 return;
             }
 
-            // Schema migration: add trigger and label columns if missing
+            // Schema migrations: add columns if missing
             let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN trigger_key TEXT NOT NULL DEFAULT '';");
             let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN label TEXT NOT NULL DEFAULT '';");
+            let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN target_app TEXT NOT NULL DEFAULT '';");
+
+            // Version tracking for one-time migrations
+            let _ = conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS analytics_meta (key TEXT PRIMARY KEY, value TEXT);"
+            );
 
             info!("[Trigr] Analytics DB ready: {}", db_path.display());
 
@@ -82,12 +97,24 @@ pub fn init(app_data_dir: PathBuf) {
                         let data = handle_daily_chart(&conn, days);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::GetAssignmentBreakdown(reply) => {
-                        let data = handle_assignment_breakdown(&conn);
+                    AnalyticsMsg::GetAssignmentBreakdown(days, reply) => {
+                        let data = handle_assignment_breakdown(&conn, days);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::GetHourlyHeatmap(reply) => {
-                        let data = handle_hourly_heatmap(&conn);
+                    AnalyticsMsg::GetTypeBreakdown(days, reply) => {
+                        let data = handle_type_breakdown(&conn, days);
+                        let _ = reply.send(data);
+                    }
+                    AnalyticsMsg::GetHourlyHeatmap(days, reply) => {
+                        let data = handle_hourly_heatmap(&conn, days);
+                        let _ = reply.send(data);
+                    }
+                    AnalyticsMsg::GetTopApps(days, reply) => {
+                        let data = handle_top_apps(&conn, days);
+                        let _ = reply.send(data);
+                    }
+                    AnalyticsMsg::GetExpansionEfficiency(reply) => {
+                        let data = handle_expansion_efficiency(&conn);
                         let _ = reply.send(data);
                     }
                     AnalyticsMsg::GetStreaks(reply) => {
@@ -102,6 +129,9 @@ pub fn init(app_data_dir: PathBuf) {
                         let ok = handle_reset(&conn);
                         let _ = reply.send(ok);
                     }
+                    AnalyticsMsg::MigrateTimeSaved(assignments) => {
+                        handle_migrate_time_saved(&conn, &assignments);
+                    }
                 }
             }
         })
@@ -112,6 +142,12 @@ pub fn init(app_data_dir: PathBuf) {
 
 /// Log an action. Non-blocking — sends to writer thread via channel.
 pub fn log_action(action_type: &str, char_count: u32, trigger: &str, label: &str) {
+    log_action_ext(action_type, char_count, trigger, label, None);
+}
+
+/// Log an action with optional macro step types for accurate time calculation.
+pub fn log_action_ext(action_type: &str, char_count: u32, trigger: &str, label: &str, macro_step_types: Option<Vec<String>>) {
+    let target_app = crate::foreground::get_current_fg_proc();
     if let Some(tx) = ANALYTICS_TX.get() {
         if let Ok(tx) = tx.lock() {
             let _ = tx.send(AnalyticsMsg::Log(AnalyticsEvent {
@@ -119,6 +155,8 @@ pub fn log_action(action_type: &str, char_count: u32, trigger: &str, label: &str
                 char_count,
                 trigger: trigger.to_string(),
                 label: label.to_string(),
+                macro_step_types,
+                target_app,
             }));
         }
     }
@@ -134,14 +172,29 @@ pub fn get_daily_chart(days: u32) -> serde_json::Value {
     send_and_recv(|reply| AnalyticsMsg::GetDailyChart(days, reply), serde_json::json!([]))
 }
 
-/// Get per-assignment breakdown (top 50 by usage).
-pub fn get_assignment_breakdown() -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetAssignmentBreakdown(reply), serde_json::json!([]))
+/// Get type breakdown (expansions/hotkeys/macros) for a time range. days=0 means all time.
+pub fn get_type_breakdown(days: u32) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetTypeBreakdown(days, reply), serde_json::json!({}))
 }
 
-/// Get hourly heatmap (7 days x 24 hours).
-pub fn get_hourly_heatmap() -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetHourlyHeatmap(reply), serde_json::json!([]))
+/// Get per-assignment breakdown (top 50 by usage). days=0 means all time.
+pub fn get_assignment_breakdown(days: u32) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetAssignmentBreakdown(days, reply), serde_json::json!([]))
+}
+
+/// Get hourly heatmap for the given number of days x 24 hours.
+pub fn get_hourly_heatmap(days: u32) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetHourlyHeatmap(days, reply), serde_json::json!([]))
+}
+
+/// Get top apps by action count. days=0 means all time.
+pub fn get_top_apps(days: u32) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetTopApps(days, reply), serde_json::json!([]))
+}
+
+/// Get expansion efficiency stats (chars typed vs chars expanded).
+pub fn get_expansion_efficiency() -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetExpansionEfficiency(reply), serde_json::json!({}))
 }
 
 /// Get current and longest streaks.
@@ -162,6 +215,16 @@ pub fn export_csv() -> String {
         }
     }
     String::new()
+}
+
+/// Retroactively recalculate time_saved for old entries using current assignments.
+/// Fire-and-forget — does not block.
+pub fn migrate_time_saved(assignments: std::collections::HashMap<String, serde_json::Value>) {
+    if let Some(tx) = ANALYTICS_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(AnalyticsMsg::MigrateTimeSaved(assignments));
+        }
+    }
 }
 
 /// Delete all analytics data. Returns true on success.
@@ -200,19 +263,41 @@ fn send_and_recv<T: Send + 'static>(
 
 // ── Writer thread handlers ─────────────────────────────────────────────────
 
+/// Compute time saved (seconds) for a single macro step type.
+fn step_time_saved(step_type: &str) -> f64 {
+    match step_type {
+        "Open App" | "Open URL" | "Open Folder" => 3.0,
+        // Type Text, Press Key, Click Mouse, Click at Position, Focus Window, etc.
+        _ => 1.0,
+    }
+}
+
 fn handle_log(conn: &Connection, event: AnalyticsEvent) {
     let time_saved = match event.action_type.as_str() {
         "expansion" => event.char_count as f64 * 0.3,
-        "macro" => 5.0,
-        "search_template" => 5.0,
-        _ => 3.0, // hotkey and any other type
+        "macro" => {
+            // Sum time for each step in the macro sequence
+            match &event.macro_step_types {
+                Some(steps) if !steps.is_empty() => {
+                    steps.iter().map(|s| step_time_saved(s)).sum()
+                }
+                _ => 3.0, // fallback for legacy entries without step info
+            }
+        }
+        "hotkey" => 0.0,  // key-for-key remap, no time saved
+        "text" => 3.0,    // type text action
+        "app" => 3.0,     // open app
+        "url" => 3.0,     // open URL
+        "folder" => 3.0,  // open folder
+        "search_template" => 3.0,
+        _ => 0.0,
     };
 
     let now = chrono::Utc::now().to_rfc3339();
 
     if let Err(e) = conn.execute(
-        "INSERT INTO action_log (timestamp, action_type, char_count, time_saved, trigger_key, label) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![now, event.action_type, event.char_count, time_saved, event.trigger, event.label],
+        "INSERT INTO action_log (timestamp, action_type, char_count, time_saved, trigger_key, label, target_app) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![now, event.action_type, event.char_count, time_saved, event.trigger, event.label, event.target_app],
     ) {
         error!("[Trigr] Failed to log analytics event: {}", e);
     }
@@ -240,6 +325,22 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let (actions_last_7_days, time_saved_last_7_days) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-7 days')",
+            [],
+            |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
+        )
+        .unwrap_or((0, 0.0));
+
+    let (actions_last_14_days, time_saved_last_14_days) = conn
+        .query_row(
+            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-14 days')",
+            [],
+            |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
+        )
+        .unwrap_or((0, 0.0));
+
+    let (actions_last_30_days, time_saved_last_30_days) = conn
+        .query_row(
+            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-30 days')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
@@ -298,6 +399,10 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
         "time_saved_today_seconds": time_saved_today,
         "actions_last_7_days": actions_last_7_days,
         "time_saved_last_7_days_seconds": time_saved_last_7_days,
+        "actions_last_14_days": actions_last_14_days,
+        "time_saved_last_14_days_seconds": time_saved_last_14_days,
+        "actions_last_30_days": actions_last_30_days,
+        "time_saved_last_30_days_seconds": time_saved_last_30_days,
         "best_day_time_saved_seconds": best_day,
         "best_7_days_time_saved_seconds": best_7_days,
         "expansions": expansions,
@@ -339,15 +444,67 @@ fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
     serde_json::json!(rows)
 }
 
-fn handle_assignment_breakdown(conn: &Connection) -> serde_json::Value {
-    let mut stmt = match conn.prepare(
-        "SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
-         FROM action_log
-         WHERE trigger_key != ''
-         GROUP BY trigger_key
-         ORDER BY count DESC
-         LIMIT 50"
-    ) {
+fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
+    let query = if days == 0 {
+        "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log GROUP BY action_type".to_string()
+    } else {
+        format!(
+            "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-{} days') GROUP BY action_type",
+            days
+        )
+    };
+
+    let mut stmt = match conn.prepare(&query) {
+        Ok(s) => s,
+        Err(e) => { warn!("[Trigr] Type breakdown query failed: {}", e); return serde_json::json!({}); }
+    };
+
+    let mut expansions: i64 = 0;
+    let mut hotkeys: i64 = 0;
+    let mut macros: i64 = 0;
+    let mut total: i64 = 0;
+    let mut time_saved: f64 = 0.0;
+    if let Ok(rows) = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0).unwrap_or_default(),
+            row.get::<_, i64>(1).unwrap_or(0),
+            row.get::<_, f64>(2).unwrap_or(0.0),
+        ))
+    }) {
+        for row in rows.flatten() {
+            total += row.1;
+            time_saved += row.2;
+            match row.0.as_str() {
+                "expansion" => expansions += row.1,
+                "macro" => macros += row.1,
+                _ => hotkeys += row.1,
+            }
+        }
+    }
+
+    serde_json::json!({
+        "total": total,
+        "expansions": expansions,
+        "hotkeys": hotkeys,
+        "macros": macros,
+        "time_saved": time_saved,
+    })
+}
+
+fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
+    let (query, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = if days == 0 {
+        ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
+          FROM action_log WHERE trigger_key != ''
+          GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
+         vec![])
+    } else {
+        ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
+          FROM action_log WHERE trigger_key != '' AND timestamp >= datetime('now', ?1)
+          GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
+         vec![Box::new(format!("-{} days", days)) as Box<dyn rusqlite::types::ToSql>])
+    };
+
+    let mut stmt = match conn.prepare(query) {
         Ok(s) => s,
         Err(e) => {
             warn!("[Trigr] Assignment breakdown query failed: {}", e);
@@ -355,7 +512,8 @@ fn handle_assignment_breakdown(conn: &Connection) -> serde_json::Value {
         }
     };
 
-    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let rows: Vec<serde_json::Value> = match stmt.query_map(param_refs.as_slice(), |row| {
         Ok(serde_json::json!({
             "trigger": row.get::<_, String>(0).unwrap_or_default(),
             "label": row.get::<_, String>(1).unwrap_or_default(),
@@ -372,17 +530,96 @@ fn handle_assignment_breakdown(conn: &Connection) -> serde_json::Value {
     serde_json::json!(rows)
 }
 
-fn handle_hourly_heatmap(conn: &Connection) -> serde_json::Value {
-    // Returns array of { dow (0=Sun..6=Sat), hour (0-23), count }
-    let mut stmt = match conn.prepare(
+fn handle_top_apps(conn: &Connection, days: u32) -> serde_json::Value {
+    let query = if days == 0 {
+        "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
+         FROM action_log WHERE target_app != ''
+         GROUP BY target_app ORDER BY count DESC LIMIT 20".to_string()
+    } else {
+        format!(
+            "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
+             FROM action_log WHERE target_app != '' AND timestamp >= datetime('now', '-{} days')
+             GROUP BY target_app ORDER BY count DESC LIMIT 20", days
+        )
+    };
+
+    let mut stmt = match conn.prepare(&query) {
+        Ok(s) => s,
+        Err(e) => { warn!("[Trigr] Top apps query failed: {}", e); return serde_json::json!([]); }
+    };
+
+    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
+        Ok(serde_json::json!({
+            "app": row.get::<_, String>(0).unwrap_or_default(),
+            "count": row.get::<_, i64>(1).unwrap_or(0),
+            "time_saved": row.get::<_, f64>(2).unwrap_or(0.0),
+        }))
+    }) {
+        Ok(mapped) => mapped.flatten().collect(),
+        Err(_) => Vec::new(),
+    };
+
+    serde_json::json!(rows)
+}
+
+fn compute_efficiency(conn: &Connection, where_clause: &str) -> serde_json::Value {
+    let count_query = format!(
+        "SELECT COUNT(*), COALESCE(SUM(char_count), 0) FROM action_log WHERE action_type = 'expansion'{}",
+        where_clause
+    );
+    let (total_exp, chars_expanded) = conn.query_row(&count_query, [], |row| {
+        Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, i64>(1).unwrap_or(0)))
+    }).unwrap_or((0, 0));
+
+    let trigger_query = format!(
+        "SELECT trigger_key, COUNT(*) FROM action_log WHERE action_type = 'expansion' AND trigger_key != ''{} GROUP BY trigger_key",
+        where_clause
+    );
+    let mut trigger_chars: i64 = 0;
+    if let Ok(mut stmt) = conn.prepare(&trigger_query) {
+        if let Ok(rows) = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0).unwrap_or_default(), row.get::<_, i64>(1).unwrap_or(0)))
+        }) {
+            for row in rows.flatten() {
+                let trigger = row.0.strip_prefix("GLOBAL::EXPANSION::").unwrap_or(&row.0);
+                trigger_chars += (trigger.len() as i64 + 1) * row.1;
+            }
+        }
+    }
+
+    serde_json::json!({
+        "total_expansions": total_exp,
+        "chars_expanded": chars_expanded,
+        "chars_typed": trigger_chars,
+        "ratio": if trigger_chars > 0 { chars_expanded as f64 / trigger_chars as f64 } else { 0.0 },
+    })
+}
+
+fn handle_expansion_efficiency(conn: &Connection) -> serde_json::Value {
+    let week = compute_efficiency(conn, " AND timestamp >= datetime('now', '-7 days')");
+    let month = compute_efficiency(conn, " AND timestamp >= datetime('now', '-30 days')");
+    let all = compute_efficiency(conn, "");
+
+    serde_json::json!({
+        "week": week,
+        "month": month,
+        "all": all,
+    })
+}
+
+fn handle_hourly_heatmap(conn: &Connection, days: u32) -> serde_json::Value {
+    // Returns array of { dow (0=Sun..6=Sat), hour (0-23), count, time_saved }
+    let query = format!(
         "SELECT CAST(strftime('%w', timestamp) AS INTEGER) AS dow,
                 CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) AS hour,
-                COUNT(*) AS count
+                COUNT(*) AS count,
+                COALESCE(SUM(time_saved), 0.0) AS saved
          FROM action_log
-         WHERE timestamp >= datetime('now', '-7 days')
+         WHERE timestamp >= datetime('now', '-{} days')
          GROUP BY dow, hour
-         ORDER BY dow, hour"
-    ) {
+         ORDER BY dow, hour", days
+    );
+    let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
         Err(e) => {
             warn!("[Trigr] Heatmap query failed: {}", e);
@@ -395,6 +632,7 @@ fn handle_hourly_heatmap(conn: &Connection) -> serde_json::Value {
             "dow": row.get::<_, i64>(0).unwrap_or(0),
             "hour": row.get::<_, i64>(1).unwrap_or(0),
             "count": row.get::<_, i64>(2).unwrap_or(0),
+            "time_saved": row.get::<_, f64>(3).unwrap_or(0.0),
         }))
     }) {
         Ok(mapped) => mapped.flatten().collect(),
@@ -534,6 +772,92 @@ fn handle_reset(conn: &Connection) -> bool {
     }
 }
 
+/// Retroactively recalculate time_saved for old "hotkey" and "macro" entries
+/// using the current assignment map.  Runs once, updates in-place.
+fn handle_migrate_time_saved(conn: &Connection, assignments: &std::collections::HashMap<String, serde_json::Value>) {
+    // Check if already migrated
+    let already_done: bool = conn
+        .query_row(
+            "SELECT value FROM analytics_meta WHERE key = 'time_saved_v2'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map(|v| v == "done")
+        .unwrap_or(false);
+
+    if already_done {
+        return;
+    }
+
+    // Collect rows that need updating: old "hotkey" or "macro" entries
+    let mut stmt = match conn.prepare("SELECT id, action_type, trigger_key, char_count FROM action_log WHERE action_type IN ('hotkey', 'macro')") {
+        Ok(s) => s,
+        Err(e) => { error!("[Trigr] Migration query failed: {}", e); return; }
+    };
+
+    let rows: Vec<(i64, String, String, u32)> = stmt
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get::<_, u32>(3).unwrap_or(0)))
+        })
+        .unwrap_or_else(|_| panic!("query_map"))
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if rows.is_empty() {
+        info!("[Trigr] Analytics migration: no old entries to update");
+        return;
+    }
+
+    let mut updated = 0u32;
+    for (id, old_type, trigger_key, _char_count) in &rows {
+        // Look up the current assignment to determine actual type
+        let (new_type, new_time) = if let Some(macro_val) = assignments.get(trigger_key.as_str()) {
+            let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
+            match at {
+                "macro" => {
+                    // Compute from steps
+                    let time: f64 = macro_val.get("data")
+                        .and_then(|d| d.get("steps"))
+                        .and_then(|s| s.as_array())
+                        .map(|arr| arr.iter().map(|s| {
+                            let st = s.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                            step_time_saved(st)
+                        }).sum())
+                        .unwrap_or(3.0);
+                    ("macro".to_string(), time)
+                }
+                "hotkey" => (at.to_string(), 0.0),
+                "text" => (at.to_string(), 3.0),
+                "app" | "url" | "folder" => (at.to_string(), 3.0),
+                _ => (at.to_string(), 0.0),
+            }
+        } else {
+            // Assignment no longer exists — use old type with new rules
+            if old_type == "macro" {
+                ("macro".to_string(), 3.0) // can't resolve steps, keep a reasonable default
+            } else {
+                ("hotkey".to_string(), 0.0) // assume key-for-key
+            }
+        };
+
+        if let Err(e) = conn.execute(
+            "UPDATE action_log SET action_type = ?1, time_saved = ?2 WHERE id = ?3",
+            rusqlite::params![new_type, new_time, id],
+        ) {
+            error!("[Trigr] Migration update failed for id {}: {}", id, e);
+        } else {
+            updated += 1;
+        }
+    }
+    info!("[Trigr] Analytics migration: updated {}/{} entries", updated, rows.len());
+
+    // Mark migration as done
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO analytics_meta (key, value) VALUES ('time_saved_v2', 'done')",
+        [],
+    );
+}
+
 fn empty_stats() -> serde_json::Value {
     serde_json::json!({
         "total_actions": 0,
@@ -542,6 +866,10 @@ fn empty_stats() -> serde_json::Value {
         "time_saved_today_seconds": 0.0,
         "actions_last_7_days": 0,
         "time_saved_last_7_days_seconds": 0.0,
+        "actions_last_14_days": 0,
+        "time_saved_last_14_days_seconds": 0.0,
+        "actions_last_30_days": 0,
+        "time_saved_last_30_days_seconds": 0.0,
         "best_day_time_saved_seconds": 0.0,
         "best_7_days_time_saved_seconds": 0.0,
         "expansions": 0,

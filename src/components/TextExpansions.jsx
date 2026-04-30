@@ -1073,7 +1073,7 @@ export default function TextExpansions({
           {/* ── Main area (toolbar + list + edit panel) ── */}
           <div className="te-main">
 
-          {/* ── Toolbar: type filter + sort ── */}
+          {/* ── Toolbar: type filter ── */}
           <div className="te-toolbar">
             <div className="te-type-filter">
               <button
@@ -1092,20 +1092,7 @@ export default function TextExpansions({
                 onClick={() => setTypeFilter('image')}
               >Image</button>
             </div>
-            <select
-              className="te-sort-select"
-              value={sortKey}
-              onChange={e => {
-                setSortKey(e.target.value);
-                localStorage.setItem('trigr.expansionSort', e.target.value);
-              }}
-              title="Sort expansions"
-            >
-              <option value="default">Trigger A→Z</option>
-              <option value="trigger-desc">Trigger Z→A</option>
-              <option value="name-asc">Name A→Z</option>
-              <option value="name-desc">Name Z→A</option>
-            </select>
+            <span className="te-toolbar-count">{itemCount} expansion{itemCount !== 1 ? 's' : ''}</span>
           </div>
 
           {/* ── Body: list + edit panel side-by-side ── */}
@@ -1113,6 +1100,37 @@ export default function TextExpansions({
 
             {/* Scrollable list */}
             <div className="te-list">
+
+              {/* ── Column headers (sticky, clickable sort) ── */}
+              <div className="te-col-headers">
+                <button
+                  type="button"
+                  className={`te-col-header${sortKey === 'default' || sortKey === 'trigger-desc' ? ' active' : ''}`}
+                  onClick={() => {
+                    const next = sortKey === 'default' ? 'trigger-desc' : 'default';
+                    setSortKey(next);
+                    localStorage.setItem('trigr.expansionSort', next);
+                  }}
+                >
+                  Trigger
+                  <span className="te-sort-arrow">{sortKey === 'default' ? ' ▲' : sortKey === 'trigger-desc' ? ' ▼' : ''}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`te-col-header${sortKey === 'name-asc' || sortKey === 'name-desc' ? ' active' : ''}`}
+                  onClick={() => {
+                    const next = sortKey === 'name-asc' ? 'name-desc' : 'name-asc';
+                    setSortKey(next);
+                    localStorage.setItem('trigr.expansionSort', next);
+                  }}
+                >
+                  Name
+                  <span className="te-sort-arrow">{sortKey === 'name-asc' ? ' ▲' : sortKey === 'name-desc' ? ' ▼' : ''}</span>
+                </button>
+                <div className="te-col-header te-col-header--static">Preview</div>
+                <div className="te-col-header te-col-header--static">Tag</div>
+                <div className="te-col-header-spacer" />
+              </div>
               {itemCount === 0 ? (
                 expansions.length === 0 ? (
                   <div className="te-empty-state">

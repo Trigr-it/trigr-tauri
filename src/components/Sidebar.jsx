@@ -577,6 +577,9 @@ export default function Sidebar({
 
   const [activeTab, setActiveTab] = useState('All');
   const [assignFilter, setAssignFilter] = useState('');
+  const [assignSort, setAssignSort] = useState(() =>
+    localStorage.getItem('trigr.assignmentSort') || 'key-asc'
+  );
 
   // ── Assignment context menu + inline actions ──
   const [assignCtx, setAssignCtx] = useState(null); // { combo, keyId, macro, x, y }
@@ -616,10 +619,10 @@ export default function Sidebar({
     return label.includes(filterQ) || keyName.includes(filterQ) || typeName.includes(filterQ) || combo.includes(filterQ);
   }
 
-  const filtered = (activeTab === 'All'
+  const filtered = sortEntries((activeTab === 'All'
     ? profileEntries
     : profileEntries.filter(e => e.combo === activeTab)
-  ).filter(matchesFilter);
+  ).filter(matchesFilter));
 
   const grouped = {};
   if (activeTab === 'All') {
@@ -640,6 +643,17 @@ export default function Sidebar({
     MOUSE_SCROLL_UP: '🖱 Scroll↑', MOUSE_SCROLL_DOWN: '🖱 Scroll↓',
     MOUSE_SIDE1: '🖱 Side1', MOUSE_SIDE2: '🖱 Side2',
   };
+
+  function sortEntries(arr) {
+    const a = [...arr];
+    switch (assignSort) {
+      case 'key-desc':  return a.sort((x, y) => friendlyKeyName(y.keyId).localeCompare(friendlyKeyName(x.keyId)));
+      case 'name-asc':  return a.sort((x, y) => (x.macro?.label || x.macro?.data?.text || x.macro?.data?.url || x.macro?.data?.path || '').localeCompare(y.macro?.label || y.macro?.data?.text || y.macro?.data?.url || y.macro?.data?.path || ''));
+      case 'name-desc': return a.sort((x, y) => (y.macro?.label || y.macro?.data?.text || y.macro?.data?.url || y.macro?.data?.path || '').localeCompare(x.macro?.label || x.macro?.data?.text || x.macro?.data?.url || x.macro?.data?.path || ''));
+      case 'type':      return a.sort((x, y) => (x.macro?.type || '').localeCompare(y.macro?.type || ''));
+      default:          return a.sort((x, y) => friendlyKeyName(x.keyId).localeCompare(friendlyKeyName(y.keyId))); // key-asc
+    }
+  }
 
   function handleAssignContextMenu(e, combo, keyId, macro) {
     e.preventDefault();
@@ -735,8 +749,8 @@ export default function Sidebar({
               <>
                 {displayLabel}
                 {doubleOnly
-                  ? <span className="sidebar-double-badge">×2 only</span>
-                  : hasDouble && <span className="sidebar-double-badge">×2</span>
+                  ? <span className="sidebar-double-badge">×2 only <span className="pro-badge">PRO</span></span>
+                  : hasDouble && <span className="sidebar-double-badge">×2 <span className="pro-badge">PRO</span></span>
                 }
               </>
             )}
@@ -799,8 +813,8 @@ export default function Sidebar({
         <div className="grid-card-combo">
           {comboLabel}
           {doubleOnly
-            ? <span className="sidebar-double-badge">×2 only</span>
-            : hasDouble && <span className="sidebar-double-badge">×2</span>
+            ? <span className="sidebar-double-badge">×2 only <span className="pro-badge">PRO</span></span>
+            : hasDouble && <span className="sidebar-double-badge">×2 <span className="pro-badge">PRO</span></span>
           }
         </div>
         <div className="grid-card-label">
@@ -917,17 +931,34 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-filter-wrap">
-        <input
-          className="sidebar-filter-input"
-          type="text"
-          placeholder="Filter assignments…"
-          value={assignFilter}
-          onChange={e => setAssignFilter(e.target.value)}
-          spellCheck={false}
-        />
-        {assignFilter && (
-          <button className="sidebar-filter-clear" onClick={() => setAssignFilter('')} type="button">✕</button>
-        )}
+        <div className="sidebar-filter-input-wrap">
+          <input
+            className="sidebar-filter-input"
+            type="text"
+            placeholder="Filter assignments…"
+            value={assignFilter}
+            onChange={e => setAssignFilter(e.target.value)}
+            spellCheck={false}
+          />
+          {assignFilter && (
+            <button className="sidebar-filter-clear" onClick={() => setAssignFilter('')} type="button">✕</button>
+          )}
+        </div>
+        <select
+          className="sidebar-sort-select"
+          value={assignSort}
+          onChange={e => {
+            setAssignSort(e.target.value);
+            localStorage.setItem('trigr.assignmentSort', e.target.value);
+          }}
+          title="Sort assignments"
+        >
+          <option value="key-asc">Key A→Z</option>
+          <option value="key-desc">Key Z→A</option>
+          <option value="name-asc">Name A→Z</option>
+          <option value="name-desc">Name Z→A</option>
+          <option value="type">Type</option>
+        </select>
       </div>
 
       {listViewActive && renderModifierBar()}
@@ -955,10 +986,10 @@ export default function Sidebar({
         /* ── Grid view — filtered by sidebarComboFilter (modifier bar clicks only) ── */
         (() => {
           const gridCombo = sidebarComboFilter || null;
-          const gridFiltered = (gridCombo
+          const gridFiltered = sortEntries((gridCombo
             ? profileEntries.filter(e => e.combo === gridCombo)
             : profileEntries
-          ).filter(matchesFilter);
+          ).filter(matchesFilter));
           const gridGrouped = {};
           if (!gridCombo) {
             gridFiltered.forEach(e => {

@@ -376,7 +376,7 @@
   min-height: 0;
 }
 
-/* ── Toolbar: type filter + sort ─────────────────────────────────────── */
+/* ── Toolbar: type filter ────────────────────────────────────────────── */
 
 .te-toolbar {
   display: flex;
@@ -387,35 +387,71 @@
   flex-shrink: 0;
 }
 
-/* ── Sort select ────────────────────────────────────────────────────────── */
-
-.te-sort-select {
-  flex-shrink: 0;
-  height: 22px;
-  padding: 0 20px 0 7px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-bright);
-  border-radius: 4px;
-  color: var(--text-muted);
+.te-toolbar-count {
   font-size: 10px;
+  color: var(--text-muted);
   font-family: var(--font-body);
+}
+
+/* ── Column headers (clickable sort) ────────────────────────────────── */
+
+.te-col-headers {
+  display: grid;
+  grid-template-columns: 120px 180px 1fr 100px 28px;
+  align-items: center;
+  height: 28px;
+  padding: 0 4px 0 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-bright);
+  flex-shrink: 0;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.te-col-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+  white-space: nowrap;
+  transition: color 0.12s;
+}
+
+button.te-col-header {
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
 }
 
-.te-sort-select:hover {
-  border-color: var(--border-accent);
-  color: var(--text-secondary);
-}
-
-.te-sort-select:focus {
-  outline: none;
-  border-color: var(--accent);
+button.te-col-header:hover {
   color: var(--text-primary);
+}
+
+.te-col-header.active {
+  color: var(--accent);
+}
+
+.te-col-header--static {
+  cursor: default;
+}
+
+.te-sort-arrow {
+  font-size: 8px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.te-col-header-spacer {
+  width: 28px;
 }
 
 /* ── Body: list + edit panel ────────────────────────────────────────────── */

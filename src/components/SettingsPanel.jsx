@@ -432,9 +432,9 @@ export default function SettingsPanel({
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
-              <span className="settings-toggle-label">History retention {!isPro && <span className="pro-badge">PRO</span>}</span>
+              <span className="settings-toggle-label">History retention <span className="pro-badge">PRO</span></span>
               <span className="settings-toggle-sub">
-                Days to keep clipboard history.{isPro ? ' Up to 30 days.' : ' Free tier: up to 7 days.'}
+                Days to keep clipboard history. Up to 30 days.
               </span>
             </div>
             <div className="settings-retention-input">

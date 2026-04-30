@@ -1447,7 +1447,7 @@ export default function MacroPanel({
             onClick={() => setPressMode('double')}
             type="button"
           >
-            ×2 Double Press
+            ×2 Double Press <span className="pro-badge">PRO</span>
             {doubleAssignment && <span className="press-mode-dot" />}
           </button>
         </div>

@@ -111,6 +111,16 @@ const SUPPRESS_MOUSE_SIDE2: u8 = 5;
 const SUPPRESS_MOUSE_SCROLL_UP: u8 = 6;
 const SUPPRESS_MOUSE_SCROLL_DOWN: u8 = 7;
 
+/// Global map: mouse button suppress ID → set of linked profile names that have
+/// a bare assignment for that button.  Built across ALL linked profiles (not just
+/// the active one) so the hook can suppress mouse events during click-to-refocus
+/// before the profile has switched.
+static ALL_LINKED_MOUSE: OnceLock<RwLock<HashMap<u8, HashSet<String>>>> = OnceLock::new();
+
+fn all_linked_mouse() -> &'static RwLock<HashMap<u8, HashSet<String>>> {
+    ALL_LINKED_MOUSE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
 /// Tracks which mouse buttons had their DOWN event suppressed by the hook.
 /// Only the corresponding UP is suppressed — prevents mismatched down/up when
 /// the suppress set changes mid-click (e.g., profile switch during a hold).
@@ -236,6 +246,33 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
     }
     if let Ok(mut w) = suppress_bare_mouse().write() {
         *w = mouse_set;
+    }
+}
+
+/// Rebuild the global map of mouse buttons → linked profiles.  Scans ALL linked
+/// profiles (not just the active one) so the hook can suppress during refocus.
+/// Called while engine_state is held — must NOT re-lock it.
+fn rebuild_all_linked_mouse(assignments: &HashMap<String, Value>, profile_settings: &HashMap<String, Value>) {
+    let mut map: HashMap<u8, HashSet<String>> = HashMap::new();
+    for (profile, settings) in profile_settings.iter() {
+        let is_linked = settings
+            .get("linkedApp")
+            .and_then(|v| v.as_str())
+            .is_some();
+        if !is_linked { continue; }
+        let prefix = format!("{}::BARE::", profile);
+        for key in assignments.keys() {
+            if !key.starts_with(&prefix) { continue; }
+            // Skip double entries
+            if key.ends_with("::double") { continue; }
+            let key_id = key[prefix.len()..].split("::").next().unwrap_or("");
+            if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
+                map.entry(mouse_id).or_default().insert(profile.clone());
+            }
+        }
+    }
+    if let Ok(mut w) = all_linked_mouse().write() {
+        *w = map;
     }
 }
 
@@ -639,6 +676,26 @@ fn is_cursor_over_linked_app() -> bool {
     }
 }
 
+/// Fallback check for the "click to refocus" case: the linked app is NOT the
+/// foreground, but the cursor IS over one of its windows.  Uses the PID cache
+/// built by the foreground watcher.  Returns the matched profile name so the
+/// caller can switch profiles inline.
+///
+/// SAFETY: only fast kernel calls (GetCursorPos, WindowFromPoint,
+/// GetWindowThreadProcessId) — safe from the LL hook thread.
+fn cursor_over_unfocused_linked_app() -> Option<String> {
+    unsafe {
+        let mut pt = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+        windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt);
+        let cursor_wnd = windows_sys::Win32::UI::WindowsAndMessaging::WindowFromPoint(pt);
+        if cursor_wnd.is_null() { return None; }
+        let mut cursor_pid: u32 = 0;
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(cursor_wnd, &mut cursor_pid);
+        if cursor_pid == 0 { return None; }
+        crate::foreground::linked_profile_for_pid(cursor_pid)
+    }
+}
+
 /// Is this VK in the OEM range where codes are layout-dependent?
 fn is_oem_vk(vk: u32) -> bool {
     matches!(vk, 0xBA..=0xDF | 0xE2)
@@ -925,13 +982,32 @@ unsafe extern "system" fn mouse_hook_proc(
                 if let Some(bit) = suppress_btn_bit(btn_id) {
                     // Paired button event
                     if is_button_down {
+                        let mut suppressed = false;
+                        // Primary path: active profile suppress set + linked app is foreground
                         if let Ok(set) = suppress_bare_mouse().try_read() {
                             if set.contains(&btn_id) {
                                 if is_cursor_over_linked_app() && !is_foreground_dialog() {
-                                    MOUSE_DOWN_SUPPRESSED.fetch_or(bit, Ordering::SeqCst);
-                                    return 1;
+                                    suppressed = true;
                                 }
                             }
+                        }
+                        // Fallback: linked app is NOT foreground but cursor IS over it
+                        // (click-to-refocus scenario). Check the global linked-mouse map,
+                        // verifying the specific profile under cursor has this button assigned.
+                        if !suppressed {
+                            if let Ok(map) = all_linked_mouse().try_read() {
+                                if let Some(profiles) = map.get(&btn_id) {
+                                    if let Some(profile_name) = cursor_over_unfocused_linked_app() {
+                                        if profiles.contains(&profile_name) {
+                                            suppressed = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if suppressed {
+                            MOUSE_DOWN_SUPPRESSED.fetch_or(bit, Ordering::SeqCst);
+                            return 1;
                         }
                         // Not suppressed — clear flag so the UP passes through too
                         MOUSE_DOWN_SUPPRESSED.fetch_and(!bit, Ordering::SeqCst);
@@ -1522,9 +1598,47 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // linked profile is still active.
     let cursor_over_app = is_cursor_over_linked_app();
 
+    // Refocus fallback: if the linked app is NOT foreground but the cursor IS
+    // over it, detect the profile so we can still fire the remap.
+    let refocus_profile = if !cursor_over_app && !in_dialog {
+        cursor_over_unfocused_linked_app()
+    } else {
+        None
+    };
+
     if !has_any_modifier() {
         // Bare mouse — all buttons allowed in app-linked profiles
-        let state = engine_state().lock().unwrap();
+
+        // If we're in a refocus scenario, release any held keys from the
+        // previous profile before switching (matches foreground watcher behavior).
+        if refocus_profile.is_some() {
+            crate::actions::release_held_key();
+            crate::actions::stop_repeating_key();
+        }
+
+        let mut state = engine_state().lock().unwrap();
+
+        // If we're in a refocus scenario, switch to the linked profile now
+        // so the assignment lookup uses the correct profile.
+        if let Some(ref rp) = refocus_profile {
+            if state.active_profile != *rp {
+                state.active_profile = rp.clone();
+                rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+                rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
+                add_overlay_to_suppress(state.overlay_hotkey);
+                add_pause_to_suppress(state.pause_hotkey);
+                add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+                MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
+                info!("[Trigr] Refocus-switched to profile \"{}\"", rp);
+                let profile_name = rp.clone();
+                let app2 = app.clone();
+                // Notify frontend asynchronously (we hold state lock)
+                std::thread::spawn(move || {
+                    let _ = app2.emit("profile-switched", serde_json::json!({ "profile": profile_name }));
+                });
+            }
+        }
+
         let profile = state.active_profile.clone();
         let linked = state
             .profile_settings
@@ -1533,7 +1647,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
             .and_then(|v| v.as_str())
             .is_some();
 
-        if linked && !in_dialog && cursor_over_app {
+        if linked && !in_dialog && (cursor_over_app || refocus_profile.is_some()) {
             let bare_key = format!("{}::BARE::{}", profile, mouse_id);
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 drop(state);
@@ -1764,12 +1878,17 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
     thread::spawn(move || {
         crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, trigger_key.as_deref(), &app_clone);
 
-        // Log analytics
+        // Log analytics — pass actual action type and macro step types for time calculation
         let action_type = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
-        let analytics_type = match action_type { "macro" | "ahk" => "macro", _ => "hotkey" };
         let label = macro_clone.get("label").and_then(|v| v.as_str()).unwrap_or("");
         let trigger = trigger_key.as_deref().unwrap_or("");
-        crate::analytics::log_action(analytics_type, 0, trigger, label);
+        let macro_steps = if action_type == "macro" {
+            macro_clone.get("data")
+                .and_then(|d| d.get("steps"))
+                .and_then(|s| s.as_array())
+                .map(|arr| arr.iter().filter_map(|s| s.get("type").and_then(|v| v.as_str()).map(String::from)).collect())
+        } else { None };
+        crate::analytics::log_action_ext(action_type, 0, trigger, label, macro_steps);
 
         // Notify frontend for visual feedback
         let _ = app_clone.emit(
@@ -1935,6 +2054,7 @@ pub fn start_hooks(app: AppHandle) {
                         {
                             let state = engine_state().lock().unwrap();
                             rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+                            rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
                             add_overlay_to_suppress(state.overlay_hotkey);
                             add_pause_to_suppress(state.pause_hotkey);
                             add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
@@ -2080,6 +2200,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     state.assignments = assignments;
     state.active_profile = profile;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+    rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
@@ -2090,9 +2211,12 @@ pub fn set_active_profile(profile: String) {
     let mut state = engine_state().lock().unwrap();
     state.active_profile = profile.clone();
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+    rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    // Clear down-suppressed flags so stale button-ups aren't eaten after switch
+    MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
     info!("[Trigr] Active profile: {}", profile);
 }
 
@@ -2103,6 +2227,11 @@ pub fn get_active_profile() -> String {
 pub fn update_profile_settings(settings: HashMap<String, Value>) {
     let mut state = engine_state().lock().unwrap();
     state.profile_settings = settings;
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+    rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
+    add_overlay_to_suppress(state.overlay_hotkey);
+    add_pause_to_suppress(state.pause_hotkey);
+    add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
 }
 
 pub fn update_global_settings(settings: &Value) {

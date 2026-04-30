@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './AnalyticsPanel.css';
 
 function formatTimeLong(seconds) {
@@ -23,36 +23,115 @@ const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export default function AnalyticsPanel({ isPro = false }) {
   const [stats, setStats] = useState(null);
   const [dailyChart, setDailyChart] = useState([]);
-  const [breakdown, setBreakdown] = useState([]);
+  const [keysBreakdown, setKeysBreakdown] = useState([]);
+  const [expBreakdown, setExpBreakdown] = useState([]);
   const [heatmap, setHeatmap] = useState([]);
   const [streaks, setStreaks] = useState({ current: 0, longest: 0 });
-  const [breakdownSort, setBreakdownSort] = useState('count');
+  const [keysSort, setKeysSort] = useState('count');         // 'count' | 'time'
+  const [expSort, setExpSort] = useState('count');            // 'count' | 'time'
+  const [keysRange, setKeysRange] = useState(0);             // 0=all, 7, 14, 30
+  const [expRange, setExpRange] = useState(0);               // 0=all, 7, 14, 30
+  const [typeRange, setTypeRange] = useState(0);             // 0=all, 7, 14, 30
+  const [recordsRange, setRecordsRange] = useState(0);       // 0=all, 14, 30
+  const [chartRange, setChartRange] = useState(7);            // 7 or 14
+  const [typeBreakdown, setTypeBreakdown] = useState(null);  // { total, expansions, hotkeys, macros, time_saved }
+  const [recordsBreakdown, setRecordsBreakdown] = useState(null);
+  const [topApps, setTopApps] = useState([]);
+  const [appsRange, setAppsRange] = useState(0);              // 0=all, 7, 14, 30
+  const [appsSort, setAppsSort] = useState('count');           // 'count' | 'time'
+  const [expEfficiency, setExpEfficiency] = useState(null);    // { total_expansions, chars_expanded, chars_typed, ratio }
+  const [hourlyRate, setHourlyRate] = useState(() => {
+    try { return parseFloat(localStorage.getItem('trigr.hourlyRate')) || 0; } catch { return 0; }
+  });
+
+  // ── Custom tooltip state ──
+  const [tooltip, setTooltip] = useState(null); // { x, y, lines: [{ label, value, accent? }] }
+  const tooltipTimer = useRef(null);
+
+  function showTooltip(e, lines) {
+    clearTimeout(tooltipTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const panelRect = e.currentTarget.closest('.analytics-panel')?.getBoundingClientRect();
+    setTooltip({
+      x: rect.left + rect.width / 2 - (panelRect?.left || 0),
+      y: rect.top - (panelRect?.top || 0) - 4,
+      lines,
+    });
+  }
+
+  function hideTooltip() {
+    tooltipTimer.current = setTimeout(() => setTooltip(null), 80);
+  }
 
   const fetchStats = useCallback(async () => {
     const data = await window.electronAPI?.getAnalytics();
     if (data) setStats(data);
   }, []);
 
-  const fetchProData = useCallback(async () => {
-    if (!isPro) return;
-    const [chart, bd, hm, st] = await Promise.all([
-      window.electronAPI?.getDailyChart(14),
-      window.electronAPI?.getAssignmentBreakdown(),
-      window.electronAPI?.getHourlyHeatmap(),
-      window.electronAPI?.getStreaks(),
+  const fetchChartData = useCallback(async () => {
+    const [chart, hm] = await Promise.all([
+      window.electronAPI?.getDailyChart(chartRange),
+      window.electronAPI?.getHourlyHeatmap(chartRange),
     ]);
     if (chart) setDailyChart(chart);
-    if (bd) setBreakdown(bd);
     if (hm) setHeatmap(hm);
-    if (st) setStreaks(st);
+    if (isPro) {
+      const st = await window.electronAPI?.getStreaks();
+      if (st) setStreaks(st);
+    }
+  }, [isPro, chartRange]);
+
+  // Fetch breakdown for each leaderboard independently
+  const fetchBreakdown = useCallback(async () => {
+    if (!isPro) return;
+    // If both ranges match, one fetch covers both tables
+    if (keysRange === expRange) {
+      const bd = await window.electronAPI?.getAssignmentBreakdown(keysRange || null);
+      if (bd) { setKeysBreakdown(bd); setExpBreakdown(bd); }
+    } else {
+      const [kbd, ebd] = await Promise.all([
+        window.electronAPI?.getAssignmentBreakdown(keysRange || null),
+        window.electronAPI?.getAssignmentBreakdown(expRange || null),
+      ]);
+      if (kbd) setKeysBreakdown(kbd);
+      if (ebd) setExpBreakdown(ebd);
+    }
+  }, [isPro, keysRange, expRange]);
+
+  const fetchTypeBreakdown = useCallback(async () => {
+    const tb = await window.electronAPI?.getTypeBreakdown(typeRange || null);
+    if (tb) setTypeBreakdown(tb);
+  }, [typeRange]);
+
+  const fetchRecordsBreakdown = useCallback(async () => {
+    if (recordsRange === 0) { setRecordsBreakdown(null); return; }
+    const rb = await window.electronAPI?.getTypeBreakdown(recordsRange);
+    if (rb) setRecordsBreakdown(rb);
+  }, [recordsRange]);
+
+  const fetchTopApps = useCallback(async () => {
+    if (!isPro) return;
+    const data = await window.electronAPI?.getTopApps(appsRange || null);
+    if (data) setTopApps(data);
+  }, [isPro, appsRange]);
+
+  const fetchExpEfficiency = useCallback(async () => {
+    if (!isPro) return;
+    const data = await window.electronAPI?.getExpansionEfficiency();
+    if (data) setExpEfficiency(data);
   }, [isPro]);
 
   useEffect(() => {
     fetchStats();
-    fetchProData();
-    const interval = setInterval(() => { fetchStats(); fetchProData(); }, 30000);
+    fetchChartData();
+    fetchBreakdown();
+    fetchTypeBreakdown();
+    fetchRecordsBreakdown();
+    fetchTopApps();
+    fetchExpEfficiency();
+    const interval = setInterval(() => { fetchStats(); fetchChartData(); fetchBreakdown(); fetchTypeBreakdown(); fetchRecordsBreakdown(); fetchTopApps(); fetchExpEfficiency(); }, 30000);
     return () => clearInterval(interval);
-  }, [fetchStats, fetchProData]);
+  }, [fetchStats, fetchChartData, fetchBreakdown, fetchTypeBreakdown, fetchRecordsBreakdown, fetchTopApps, fetchExpEfficiency]);
 
   const [confirmReset, setConfirmReset] = useState(false);
   const confirmTimer = React.useRef(null);
@@ -61,7 +140,7 @@ export default function AnalyticsPanel({ isPro = false }) {
     if (confirmReset) {
       clearTimeout(confirmTimer.current);
       setConfirmReset(false);
-      window.electronAPI?.resetAnalytics().then(() => { fetchStats(); fetchProData(); });
+      window.electronAPI?.resetAnalytics().then(() => { fetchStats(); fetchChartData(); fetchBreakdown(); fetchTypeBreakdown(); fetchRecordsBreakdown(); fetchTopApps(); fetchExpEfficiency(); });
     } else {
       setConfirmReset(true);
       confirmTimer.current = setTimeout(() => setConfirmReset(false), 3000);
@@ -91,27 +170,33 @@ export default function AnalyticsPanel({ isPro = false }) {
     return Math.max(1, ...dailyChart.map(d => d.actions));
   }, [dailyChart]);
 
+  const chartTimeSavedMax = useMemo(() => {
+    if (!dailyChart.length) return 1;
+    return Math.max(1, ...dailyChart.map(d => d.time_saved));
+  }, [dailyChart]);
+
   // Fill in missing days for the chart
+  const chartDayCount = chartRange;
   const chartDays = useMemo(() => {
     const map = {};
     dailyChart.forEach(d => { map[d.date] = d; });
     const days = [];
-    for (let i = 13; i >= 0; i--) {
+    for (let i = chartDayCount - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
       days.push(map[key] || { date: key, actions: 0, time_saved: 0 });
     }
     return days;
-  }, [dailyChart]);
+  }, [dailyChart, chartDayCount]);
 
   // ── Heatmap helpers ────────────────────────────────────────────────────────
 
   const heatmapGrid = useMemo(() => {
-    const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+    const grid = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ count: 0, time_saved: 0 })));
     let max = 1;
-    heatmap.forEach(({ dow, hour, count }) => {
-      grid[dow][hour] = count;
+    heatmap.forEach(({ dow, hour, count, time_saved }) => {
+      grid[dow][hour] = { count, time_saved: time_saved || 0 };
       if (count > max) max = count;
     });
     return { grid, max };
@@ -119,13 +204,62 @@ export default function AnalyticsPanel({ isPro = false }) {
 
   // ── Sorted breakdown ──────────────────────────────────────────────────────
 
-  const sortedBreakdown = useMemo(() => {
-    const arr = [...breakdown];
-    if (breakdownSort === 'count') arr.sort((a, b) => b.count - a.count);
-    else if (breakdownSort === 'time') arr.sort((a, b) => b.time_saved - a.time_saved);
-    else if (breakdownSort === 'label') arr.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
-    return arr;
-  }, [breakdown, breakdownSort]);
+  const KEY_MAPPING_TYPES = new Set(['hotkey', 'text', 'app', 'url', 'folder', 'macro', 'search_template']);
+
+  const keysLeaderboard = useMemo(() => {
+    const arr = keysBreakdown.filter(item => KEY_MAPPING_TYPES.has(item.type) && item.time_saved > 0);
+    return keysSort === 'time'
+      ? arr.sort((a, b) => b.time_saved - a.time_saved)
+      : arr.sort((a, b) => b.count - a.count);
+  }, [keysBreakdown, keysSort]);
+
+  const expLeaderboard = useMemo(() => {
+    const arr = expBreakdown.filter(item => item.type === 'expansion');
+    return expSort === 'time'
+      ? arr.sort((a, b) => b.time_saved - a.time_saved)
+      : arr.sort((a, b) => b.count - a.count);
+  }, [expBreakdown, expSort]);
+
+  const sortedApps = useMemo(() => {
+    const arr = [...topApps];
+    return appsSort === 'time'
+      ? arr.sort((a, b) => b.time_saved - a.time_saved)
+      : arr.sort((a, b) => b.count - a.count);
+  }, [topApps, appsSort]);
+
+  // ── Shared breakdown renderer ──
+  function renderBreakdown() {
+    const tb = typeBreakdown || { total: 0, expansions: 0, hotkeys: 0, macros: 0 };
+    const tbTotal = tb.total || 0;
+    const tbExp = tb.expansions || 0;
+    const tbHot = tb.hotkeys || 0;
+    const tbMac = tb.macros || 0;
+    const pExp = tbTotal > 0 ? Math.round((tbExp / tbTotal) * 100) : 0;
+    const pHot = tbTotal > 0 ? Math.round((tbHot / tbTotal) * 100) : 0;
+    const pMac = tbTotal > 0 ? Math.round((tbMac / tbTotal) * 100) : 0;
+    if (tbTotal === 0) {
+      return <div className="analytics-empty"><div className="analytics-empty-title">No data yet</div>Fire a hotkey, expansion, or macro to start tracking.</div>;
+    }
+    return (
+      <div className="analytics-breakdown">
+        {[
+          { cls: 'expansion', label: 'Expansions', count: tbExp, pct: pExp },
+          { cls: 'hotkey',    label: 'Hotkeys',    count: tbHot, pct: pHot },
+          { cls: 'macro',     label: 'Macros',     count: tbMac, pct: pMac },
+        ].map(r => (
+          <div key={r.cls} className="analytics-breakdown-row">
+            <span className={`analytics-breakdown-dot ${r.cls}`} />
+            <span className="analytics-breakdown-label">{r.label}</span>
+            <span className="analytics-breakdown-count">{r.count.toLocaleString()}</span>
+            <div className="analytics-breakdown-bar-wrap">
+              <div className={`analytics-breakdown-bar ${r.cls}`} style={{ width: `${r.pct}%` }} />
+            </div>
+            <span className="analytics-breakdown-pct">{r.pct}%</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (!stats) return null;
 
@@ -144,156 +278,287 @@ export default function AnalyticsPanel({ isPro = false }) {
         <span className="analytics-title">Analytics</span>
         {isPro && (
           <button type="button" className="analytics-export-btn" onClick={handleExportCsv}>
-            Export CSV
+            Export CSV <span className="pro-badge">PRO</span>
           </button>
         )}
       </div>
 
       <div className="analytics-body">
-        {/* ── Section 1: Today + Last 7 Days ──────────────── */}
+        {/* ── Section 1: Period summary cards ──────────────── */}
         <section className="analytics-section">
-          <div className="analytics-cards-highlight">
-            <div className="analytics-card-compound">
-              <div className="analytics-card-compound-title">TODAY</div>
-              <div className="analytics-card-compound-stat">
-                <span className="analytics-card-compound-value">{(stats.actions_today || 0).toLocaleString()}</span>
-                <span className="analytics-card-compound-label">actions</span>
-              </div>
-              <div className="analytics-card-compound-stat">
-                <span className="analytics-card-compound-value accent">{formatTimeShort(stats.time_saved_today_seconds || 0)}</span>
-                <span className="analytics-card-compound-label">saved</span>
-              </div>
-            </div>
-            <div className="analytics-card-compound">
-              <div className="analytics-card-compound-title">LAST 7 DAYS</div>
-              <div className="analytics-card-compound-stat">
-                <span className="analytics-card-compound-value">{(stats.actions_last_7_days || 0).toLocaleString()}</span>
-                <span className="analytics-card-compound-label">actions</span>
-              </div>
-              <div className="analytics-card-compound-stat">
-                <span className="analytics-card-compound-value accent">{formatTimeLong(stats.time_saved_last_7_days_seconds || 0)}</span>
-                <span className="analytics-card-compound-label">saved</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Section 2: All Time + Records ───────────────── */}
-        <section className="analytics-section">
-          <div className="analytics-section-title">RECORDS</div>
           <div className="analytics-cards-4">
-            <div className="analytics-card-sm">
-              <span className="analytics-card-sm-value">{total.toLocaleString()}</span>
-              <span className="analytics-card-sm-label">all time actions</span>
-            </div>
-            <div className="analytics-card-sm">
-              <span className="analytics-card-sm-value accent">{formatTimeLong(stats.total_time_saved_seconds || 0)}</span>
-              <span className="analytics-card-sm-label">all time saved</span>
-            </div>
-            <div className="analytics-card-sm">
-              <span className="analytics-card-sm-value accent">{formatTimeLong(stats.best_day_time_saved_seconds || 0)}</span>
-              <span className="analytics-card-sm-label">best day</span>
-            </div>
-            <div className="analytics-card-sm">
-              <span className="analytics-card-sm-value accent">{formatTimeLong(stats.best_7_days_time_saved_seconds || 0)}</span>
-              <span className="analytics-card-sm-label">best 7 days</span>
-            </div>
+            {[
+              { title: 'TODAY',        actions: stats.actions_today || 0,          saved: stats.time_saved_today_seconds || 0 },
+              { title: 'LAST 7 DAYS',  actions: stats.actions_last_7_days || 0,   saved: stats.time_saved_last_7_days_seconds || 0 },
+              { title: 'LAST 14 DAYS', actions: stats.actions_last_14_days || 0,  saved: stats.time_saved_last_14_days_seconds || 0 },
+              { title: 'LAST 30 DAYS', actions: stats.actions_last_30_days || 0,  saved: stats.time_saved_last_30_days_seconds || 0 },
+            ].map(p => (
+              <div key={p.title} className="analytics-card-compound">
+                <div className="analytics-card-compound-title">{p.title}</div>
+                <div className="analytics-card-compound-stat">
+                  <span className="analytics-card-compound-value">{p.actions.toLocaleString()}</span>
+                  <span className="analytics-card-compound-label">actions</span>
+                </div>
+                <div className="analytics-card-compound-stat">
+                  <span className="analytics-card-compound-value accent">{formatTimeLong(p.saved)}</span>
+                  <span className="analytics-card-compound-label">saved</span>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* ── Section 3: Breakdown ─────────────────────────── */}
-        <section className="analytics-section">
-          <div className="analytics-section-title">BREAKDOWN</div>
-          {total === 0 ? (
-            <div className="analytics-empty">
-              <div className="analytics-empty-title">No data yet</div>
-              Fire a hotkey, expansion, or macro to start tracking.
-            </div>
-          ) : (
-            <div className="analytics-breakdown">
-              <div className="analytics-breakdown-row">
-                <span className="analytics-breakdown-dot expansion" />
-                <span className="analytics-breakdown-label">Expansions</span>
-                <span className="analytics-breakdown-count">{expansions.toLocaleString()}</span>
-                <div className="analytics-breakdown-bar-wrap">
-                  <div className="analytics-breakdown-bar expansion" style={{ width: `${pctExp}%` }} />
-                </div>
-                <span className="analytics-breakdown-pct">{pctExp}%</span>
+        {/* ── Records + Breakdown layout (differs for free vs pro) ── */}
+        {isPro ? (
+          <>
+            {/* Pro: Records full row with 4 cards */}
+            <section className="analytics-section">
+              <div className="analytics-section-title">
+                RECORDS
+                <select className="analytics-range-select" value={recordsRange} onChange={e => setRecordsRange(Number(e.target.value))}>
+                  <option value={0}>All time</option>
+                  <option value={14}>Last 14 days</option>
+                  <option value={30}>Last 30 days</option>
+                </select>
               </div>
-              <div className="analytics-breakdown-row">
-                <span className="analytics-breakdown-dot hotkey" />
-                <span className="analytics-breakdown-label">Hotkeys</span>
-                <span className="analytics-breakdown-count">{hotkeys.toLocaleString()}</span>
-                <div className="analytics-breakdown-bar-wrap">
-                  <div className="analytics-breakdown-bar hotkey" style={{ width: `${pctHot}%` }} />
-                </div>
-                <span className="analytics-breakdown-pct">{pctHot}%</span>
-              </div>
-              <div className="analytics-breakdown-row">
-                <span className="analytics-breakdown-dot macro" />
-                <span className="analytics-breakdown-label">Macros</span>
-                <span className="analytics-breakdown-count">{macros.toLocaleString()}</span>
-                <div className="analytics-breakdown-bar-wrap">
-                  <div className="analytics-breakdown-bar macro" style={{ width: `${pctMac}%` }} />
-                </div>
-                <span className="analytics-breakdown-pct">{pctMac}%</span>
-              </div>
-            </div>
-          )}
-        </section>
+              {(() => {
+                const rb = recordsBreakdown;
+                const recActions = rb ? (rb.total || 0) : total;
+                const recSaved = rb ? (rb.time_saved || 0) : (stats.total_time_saved_seconds || 0);
+                const rangeLabel = recordsRange === 0 ? 'all time' : `last ${recordsRange} days`;
+                return (
+                  <div className="analytics-cards-4">
+                    <div className="analytics-card-sm">
+                      <span className="analytics-card-sm-value">{recActions.toLocaleString()}</span>
+                      <span className="analytics-card-sm-label">{rangeLabel} actions</span>
+                    </div>
+                    <div className="analytics-card-sm">
+                      <span className="analytics-card-sm-value accent">{formatTimeLong(recSaved)}</span>
+                      <span className="analytics-card-sm-label">{rangeLabel} saved</span>
+                    </div>
+                    <div className="analytics-card-sm">
+                      <span className="analytics-card-sm-value accent">{formatTimeLong(stats.best_day_time_saved_seconds || 0)}</span>
+                      <span className="analytics-card-sm-label">best day</span>
+                    </div>
+                    <div className="analytics-card-sm">
+                      <span className="analytics-card-sm-value accent">{formatTimeLong(stats.best_7_days_time_saved_seconds || 0)}</span>
+                      <span className="analytics-card-sm-label">best 7 days</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </section>
 
-        {/* ── PRO SECTIONS ─────────────────────────────────── */}
+            {/* Pro: Breakdown + Streaks + ROI + Efficiency four-col */}
+            <div className="analytics-four-col">
+              <section className="analytics-section">
+                <div className="analytics-section-title">
+                  BREAKDOWN
+                  <select className="analytics-range-select" value={typeRange} onChange={e => setTypeRange(Number(e.target.value))}>
+                    <option value={0}>All time</option>
+                    <option value={7}>Last 7 days</option>
+                    <option value={14}>Last 14 days</option>
+                    <option value={30}>Last 30 days</option>
+                  </select>
+                </div>
+                {renderBreakdown()}
+              </section>
 
-        {!isPro ? (
-          <section className="analytics-section analytics-pro-gate">
-            <div className="analytics-pro-gate-content">
-              <span className="pro-badge">PRO</span>
-              <div className="analytics-pro-gate-title">Detailed Analytics</div>
-              <div className="analytics-pro-gate-desc">
-                Activity chart, per-assignment breakdown, productivity heatmap, streaks, and CSV export.
-              </div>
+              <section className="analytics-section">
+                <div className="analytics-section-title">STREAKS <span className="pro-badge">PRO</span></div>
+                <div className="analytics-streaks">
+                  <div className="analytics-streak-card">
+                    <span className="analytics-streak-value">{streaks.current}</span>
+                    <span className="analytics-streak-label">current streak (days)</span>
+                  </div>
+                  <div className="analytics-streak-card">
+                    <span className="analytics-streak-value accent">{streaks.longest}</span>
+                    <span className="analytics-streak-label">longest streak (days)</span>
+                  </div>
+                </div>
+              </section>
+
+              <section className="analytics-section">
+                <div className="analytics-section-title">ROI CALCULATOR <span className="pro-badge">PRO</span></div>
+                <div className="analytics-roi-body">
+                  <div className="analytics-roi-input-row">
+                    <label className="analytics-roi-label">Hourly rate</label>
+                    <div className="analytics-roi-input-wrap">
+                      <span className="analytics-roi-currency">£</span>
+                      <input
+                        type="number"
+                        className="analytics-roi-input"
+                        value={hourlyRate || ''}
+                        placeholder="0"
+                        min="0"
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setHourlyRate(val);
+                          localStorage.setItem('trigr.hourlyRate', String(val));
+                        }}
+                      />
+                      <span className="analytics-roi-per">/hr</span>
+                    </div>
+                  </div>
+                  {hourlyRate > 0 && (
+                    <div className="analytics-roi-result analytics-roi-result--3">
+                      <div className="analytics-roi-stat">
+                        <span className="analytics-roi-stat-value accent">{((stats.time_saved_last_7_days_seconds || 0) / 3600 * hourlyRate).toLocaleString(undefined, { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 })}</span>
+                        <span className="analytics-roi-stat-label">this week</span>
+                      </div>
+                      <div className="analytics-roi-stat">
+                        <span className="analytics-roi-stat-value accent">{((stats.time_saved_last_30_days_seconds || 0) / 3600 * hourlyRate).toLocaleString(undefined, { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 })}</span>
+                        <span className="analytics-roi-stat-label">this month</span>
+                      </div>
+                      <div className="analytics-roi-stat">
+                        <span className="analytics-roi-stat-value accent">{((stats.total_time_saved_seconds || 0) / 3600 * hourlyRate).toLocaleString(undefined, { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 })}</span>
+                        <span className="analytics-roi-stat-label">total</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="analytics-section">
+                <div className="analytics-section-title">EXPANSION EFFICIENCY <span className="pro-badge">PRO</span></div>
+                {expEfficiency && expEfficiency.all?.total_expansions > 0 ? (
+                  <div className="analytics-efficiency-body-cols">
+                    {[
+                      { label: 'This Week', data: expEfficiency.week },
+                      { label: 'This Month', data: expEfficiency.month },
+                      { label: 'All Time', data: expEfficiency.all },
+                    ].map(col => (
+                      <div key={col.label} className="analytics-efficiency-col-wrap">
+                        <div className="analytics-efficiency-multiplier">
+                          <span className="analytics-efficiency-ratio-value accent">{Math.round(col.data?.ratio || 0)}x</span>
+                          <span className="analytics-efficiency-col-header">{col.label}</span>
+                        </div>
+                        <div className="analytics-efficiency-col">
+                          <div className="analytics-efficiency-col-stats">
+                            <div className="analytics-efficiency-stat">
+                              <span className="analytics-efficiency-stat-value">{(col.data?.total_expansions || 0).toLocaleString()}</span>
+                              <span className="analytics-efficiency-stat-label">fired</span>
+                            </div>
+                            <div className="analytics-efficiency-stat">
+                              <span className="analytics-efficiency-stat-value">{(col.data?.chars_typed || 0).toLocaleString()}</span>
+                              <span className="analytics-efficiency-stat-label">typed</span>
+                            </div>
+                            <div className="analytics-efficiency-stat">
+                              <span className="analytics-efficiency-stat-value accent">{(col.data?.chars_expanded || 0).toLocaleString()}</span>
+                              <span className="analytics-efficiency-stat-label">expanded</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="analytics-empty-tab">Use expansions to see your efficiency ratio</div>
+                )}
+              </section>
             </div>
-          </section>
+          </>
         ) : (
           <>
-            {/* ── Streaks ────────────────────────────────────── */}
-            <section className="analytics-section">
-              <div className="analytics-section-title">STREAKS</div>
-              <div className="analytics-streaks">
-                <div className="analytics-streak-card">
-                  <span className="analytics-streak-value">{streaks.current}</span>
-                  <span className="analytics-streak-label">current streak (days)</span>
-                </div>
-                <div className="analytics-streak-card">
-                  <span className="analytics-streak-value accent">{streaks.longest}</span>
-                  <span className="analytics-streak-label">longest streak (days)</span>
-                </div>
-              </div>
-            </section>
-
-            {/* ── 14-Day Activity Chart ──────────────────────── */}
-            <section className="analytics-section">
-              <div className="analytics-section-title">LAST 14 DAYS</div>
-              <div className="analytics-chart">
-                {chartDays.map((day, i) => (
-                  <div key={day.date} className="analytics-chart-bar-col" title={`${day.date}\n${day.actions} actions\n${formatTimeShort(day.time_saved)} saved`}>
-                    <div className="analytics-chart-bar-wrap">
-                      <div
-                        className="analytics-chart-bar"
-                        style={{ height: `${Math.max(2, (day.actions / chartMax) * 100)}%` }}
-                      />
-                    </div>
-                    <span className="analytics-chart-label">
-                      {new Date(day.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'narrow' })}
-                    </span>
+            {/* Free: Records (2 cards) + Breakdown side by side */}
+            <div className="analytics-two-col">
+              <section className="analytics-section">
+                <div className="analytics-section-title">RECORDS</div>
+                <div className="analytics-cards-2">
+                  <div className="analytics-card-sm">
+                    <span className="analytics-card-sm-value">{total.toLocaleString()}</span>
+                    <span className="analytics-card-sm-label">all time actions</span>
                   </div>
-                ))}
+                  <div className="analytics-card-sm">
+                    <span className="analytics-card-sm-value accent">{formatTimeLong(stats.total_time_saved_seconds || 0)}</span>
+                    <span className="analytics-card-sm-label">all time saved</span>
+                  </div>
+                </div>
+              </section>
+
+              <section className="analytics-section">
+                <div className="analytics-section-title">
+                  BREAKDOWN
+                  <select className="analytics-range-select" value={typeRange} onChange={e => setTypeRange(Number(e.target.value))}>
+                    <option value={0}>All time</option>
+                    <option value={7}>Last 7 days</option>
+                    <option value={14}>Last 14 days</option>
+                    <option value={30}>Last 30 days</option>
+                  </select>
+                </div>
+                {renderBreakdown()}
+              </section>
+            </div>
+
+            {/* Free: Pro gate banner */}
+            <section className="analytics-section analytics-pro-gate">
+              <div className="analytics-pro-gate-content">
+                <span className="pro-badge">PRO</span>
+                <div className="analytics-pro-gate-title">Detailed Analytics</div>
+                <div className="analytics-pro-gate-desc">
+                  Streaks, activity chart, heatmap, leaderboards, and CSV export.
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* ── Chart + Heatmap (two-col, pro only) ── */}
+        {isPro && (
+          <div className="analytics-two-col">
+            <section className="analytics-section">
+              <div className="analytics-section-title">
+                ACTIVITY <span className="pro-badge">PRO</span>
+                <select className="analytics-range-select" value={chartRange} onChange={e => setChartRange(Number(e.target.value))}>
+                  <option value={7}>Last 7 days</option>
+                  <option value={14}>Last 14 days</option>
+                </select>
+              </div>
+              <div className="analytics-chart">
+                {chartDays.map((day) => {
+                  const dayLabel = new Date(day.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                  return (
+                    <div
+                      key={day.date}
+                      className="analytics-chart-bar-col"
+                      onMouseEnter={e => showTooltip(e, [
+                        { label: dayLabel },
+                        { label: 'Actions', value: String(day.actions) },
+                        { label: 'Saved', value: formatTimeShort(day.time_saved), accent: true },
+                      ])}
+                      onMouseLeave={hideTooltip}
+                    >
+                      <div className="analytics-chart-bar-wrap">
+                        <div
+                          className="analytics-chart-bar analytics-chart-bar--actions"
+                          style={{ height: `${Math.max(2, (day.actions / chartMax) * 100)}%` }}
+                        />
+                        <div
+                          className="analytics-chart-bar analytics-chart-bar--saved"
+                          style={{ height: `${Math.max(2, (day.time_saved / chartTimeSavedMax) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="analytics-chart-label">
+                        {new Date(day.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'narrow' })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="analytics-chart-legend">
+                <span className="analytics-chart-legend-item"><span className="analytics-chart-legend-swatch analytics-chart-legend-swatch--actions" />Actions</span>
+                <span className="analytics-chart-legend-item"><span className="analytics-chart-legend-swatch analytics-chart-legend-swatch--saved" />Time Saved</span>
               </div>
             </section>
 
-            {/* ── Hourly Heatmap ──────────────────────────────── */}
             <section className="analytics-section">
-              <div className="analytics-section-title">ACTIVITY HEATMAP (7 DAYS)</div>
+              <div className="analytics-section-title">
+                HEATMAP <span className="pro-badge">PRO</span>
+                <select className="analytics-range-select" value={chartRange} onChange={e => setChartRange(Number(e.target.value))}>
+                  <option value={7}>Last 7 days</option>
+                  <option value={14}>Last 14 days</option>
+                </select>
+              </div>
               <div className="analytics-heatmap">
                 <div className="analytics-heatmap-corner" />
                 {Array.from({ length: 24 }, (_, h) => (
@@ -303,14 +568,19 @@ export default function AnalyticsPanel({ isPro = false }) {
                   <React.Fragment key={dow}>
                     <div className="analytics-heatmap-dow-label">{label}</div>
                     {Array.from({ length: 24 }, (_, h) => {
-                      const count = heatmapGrid.grid[dow][h];
-                      const intensity = count > 0 ? Math.max(0.15, count / heatmapGrid.max) : 0;
+                      const cell = heatmapGrid.grid[dow][h];
+                      const intensity = cell.count > 0 ? Math.max(0.15, cell.count / heatmapGrid.max) : 0;
                       return (
                         <div
                           key={h}
                           className="analytics-heatmap-cell"
                           style={{ opacity: intensity > 0 ? 1 : 0.3, background: intensity > 0 ? `rgba(232, 160, 32, ${intensity})` : 'var(--bg-elevated)' }}
-                          title={`${label} ${h}:00 — ${count} action${count !== 1 ? 's' : ''}`}
+                          onMouseEnter={cell.count > 0 ? e => showTooltip(e, [
+                            { label: `${label} ${h}:00–${h + 1}:00` },
+                            { label: 'Actions', value: String(cell.count) },
+                            ...(cell.time_saved > 0 ? [{ label: 'Saved', value: formatTimeShort(cell.time_saved), accent: true }] : []),
+                          ]) : undefined}
+                          onMouseLeave={cell.count > 0 ? hideTooltip : undefined}
                         />
                       );
                     })}
@@ -318,41 +588,103 @@ export default function AnalyticsPanel({ isPro = false }) {
                 ))}
               </div>
             </section>
-
-            {/* ── Per-Assignment Breakdown ────────────────────── */}
-            {sortedBreakdown.length > 0 && (
-              <section className="analytics-section">
-                <div className="analytics-section-title">
-                  TOP ASSIGNMENTS
-                  <div className="analytics-sort-pills">
-                    {[{ id: 'count', label: 'Most used' }, { id: 'time', label: 'Most saved' }, { id: 'label', label: 'A–Z' }].map(s => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={`analytics-sort-pill ${breakdownSort === s.id ? 'active' : ''}`}
-                        onClick={() => setBreakdownSort(s.id)}
-                      >{s.label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="analytics-assignment-list">
-                  {sortedBreakdown.map((item, i) => (
-                    <div key={item.trigger || i} className="analytics-assignment-row">
-                      <span className="analytics-assignment-rank">{i + 1}</span>
-                      <div className="analytics-assignment-info">
-                        <span className="analytics-assignment-label">{item.label || item.trigger || '(unnamed)'}</span>
-                        <span className="analytics-assignment-trigger">{item.trigger}</span>
-                      </div>
-                      <span className={`analytics-assignment-type ${item.type}`}>{item.type}</span>
-                      <span className="analytics-assignment-count">{item.count}x</span>
-                      <span className="analytics-assignment-saved">{formatTimeShort(item.time_saved)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-          </>
+          </div>
         )}
+
+        {/* ── Leaderboards: Key Mappings + Text Expansions + Top Apps ── */}
+        {isPro && (
+          <div className="analytics-three-col">
+            <section className="analytics-section">
+              <div className="analytics-section-title">
+                KEY MAPPINGS <span className="pro-badge">PRO</span>
+                <select className="analytics-range-select" value={keysRange} onChange={e => setKeysRange(Number(e.target.value))}>
+                  <option value={0}>All time</option>
+                  <option value={7}>Last 7 days</option>
+                  <option value={14}>Last 14 days</option>
+                  <option value={30}>Last 30 days</option>
+                </select>
+              </div>
+              <div className="analytics-breakdown-tabs">
+                {[{ id: 'count', label: 'Most Used' }, { id: 'time', label: 'Most Saved' }].map(t => (
+                  <button key={t.id} type="button" className={`analytics-breakdown-tab${keysSort === t.id ? ' active' : ''}`} onClick={() => setKeysSort(t.id)}>{t.label}</button>
+                ))}
+              </div>
+              <div className="analytics-assignment-list">
+                {keysLeaderboard.length > 0 ? keysLeaderboard.map((item, i) => (
+                  <div key={item.trigger || i} className="analytics-assignment-row">
+                    <span className="analytics-assignment-rank">{i + 1}</span>
+                    <div className="analytics-assignment-info">
+                      <span className="analytics-assignment-label">{item.label || item.trigger || '(unnamed)'}</span>
+                      <span className="analytics-assignment-trigger">{item.trigger}</span>
+                    </div>
+                    <span className="analytics-assignment-count">{item.count}x</span>
+                    <span className="analytics-assignment-saved">{formatTimeShort(item.time_saved)}</span>
+                  </div>
+                )) : <div className="analytics-empty-tab">No key mapping data yet</div>}
+              </div>
+            </section>
+
+            <section className="analytics-section">
+              <div className="analytics-section-title">
+                TEXT EXPANSIONS <span className="pro-badge">PRO</span>
+                <select className="analytics-range-select" value={expRange} onChange={e => setExpRange(Number(e.target.value))}>
+                  <option value={0}>All time</option>
+                  <option value={7}>Last 7 days</option>
+                  <option value={14}>Last 14 days</option>
+                  <option value={30}>Last 30 days</option>
+                </select>
+              </div>
+              <div className="analytics-breakdown-tabs">
+                {[{ id: 'count', label: 'Most Used' }, { id: 'time', label: 'Most Saved' }].map(t => (
+                  <button key={t.id} type="button" className={`analytics-breakdown-tab${expSort === t.id ? ' active' : ''}`} onClick={() => setExpSort(t.id)}>{t.label}</button>
+                ))}
+              </div>
+              <div className="analytics-assignment-list">
+                {expLeaderboard.length > 0 ? expLeaderboard.map((item, i) => (
+                  <div key={item.trigger || i} className="analytics-assignment-row">
+                    <span className="analytics-assignment-rank">{i + 1}</span>
+                    <div className="analytics-assignment-info">
+                      <span className="analytics-assignment-label">{item.label || item.trigger || '(unnamed)'}</span>
+                      <span className="analytics-assignment-trigger">{item.trigger}</span>
+                    </div>
+                    <span className="analytics-assignment-count">{item.count}x</span>
+                    <span className="analytics-assignment-saved">{formatTimeShort(item.time_saved)}</span>
+                  </div>
+                )) : <div className="analytics-empty-tab">No expansion data yet</div>}
+              </div>
+            </section>
+
+            <section className="analytics-section">
+              <div className="analytics-section-title">
+                TOP APPS <span className="pro-badge">PRO</span>
+                <select className="analytics-range-select" value={appsRange} onChange={e => setAppsRange(Number(e.target.value))}>
+                  <option value={0}>All time</option>
+                  <option value={7}>Last 7 days</option>
+                  <option value={14}>Last 14 days</option>
+                  <option value={30}>Last 30 days</option>
+                </select>
+              </div>
+              <div className="analytics-breakdown-tabs">
+                {[{ id: 'count', label: 'Most Used' }, { id: 'time', label: 'Most Saved' }].map(t => (
+                  <button key={t.id} type="button" className={`analytics-breakdown-tab${appsSort === t.id ? ' active' : ''}`} onClick={() => setAppsSort(t.id)}>{t.label}</button>
+                ))}
+              </div>
+              <div className="analytics-assignment-list">
+                {sortedApps.length > 0 ? sortedApps.map((item, i) => (
+                  <div key={item.app || i} className="analytics-assignment-row">
+                    <span className="analytics-assignment-rank">{i + 1}</span>
+                    <div className="analytics-assignment-info">
+                      <span className="analytics-assignment-label">{item.app || '(unknown)'}</span>
+                    </div>
+                    <span className="analytics-assignment-count">{item.count}x</span>
+                    <span className="analytics-assignment-saved">{formatTimeShort(item.time_saved)}</span>
+                  </div>
+                )) : <div className="analytics-empty-tab">App data will appear as you use Trigr</div>}
+              </div>
+            </section>
+          </div>
+        )}
+
 
         {/* ── Section: Reset ──────────────────────────────── */}
         {total > 0 && (
@@ -367,6 +699,27 @@ export default function AnalyticsPanel({ isPro = false }) {
           </div>
         )}
       </div>
+
+      {/* ── Custom tooltip ── */}
+      {tooltip && (
+        <div
+          className="analytics-tooltip"
+          style={{ left: tooltip.x, top: tooltip.y }}
+        >
+          {tooltip.lines.map((line, i) => (
+            <div key={i} className={`analytics-tooltip-line${line.value == null ? ' analytics-tooltip-header' : ''}`}>
+              {line.value != null ? (
+                <>
+                  <span className="analytics-tooltip-label">{line.label}</span>
+                  <span className={`analytics-tooltip-value${line.accent ? ' accent' : ''}`}>{line.value}</span>
+                </>
+              ) : (
+                <span className="analytics-tooltip-title">{line.label}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

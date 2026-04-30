@@ -69,7 +69,8 @@ function App() {
 
   // Current modifier combo string e.g. "Ctrl+Alt"
   const currentCombo = comboString(activeModifiers);
-  const isPro = licenceStatus.is_pro;
+  // Alpha/Beta: all users get pro features. Remove this override when licence system goes live.
+  const isPro = true; // licenceStatus.is_pro;
 
   // ── Load config on mount ──────────────────────────────────
   useEffect(() => {
@@ -192,6 +193,7 @@ function App() {
       window.electronAPI.checkLicenceRevalidation?.().then(ls => {
         if (ls) setLicenceStatus(ls);
       });
+
 
       window.electronAPI.onEngineStatus((status) => {
         setEngineStatus(status);

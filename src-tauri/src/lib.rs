@@ -1000,27 +1000,21 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
         std::thread::sleep(std::time::Duration::from_millis(180));
 
         match result_type.as_str() {
-            "assignment" => {
+            "assignment" | "quickaction" => {
                 if let Some(storage_key) = result.get("storageKey").and_then(|v| v.as_str()) {
                     let state = hotkeys::engine_state().lock().unwrap();
                     if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
                         drop(state);
                         actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), &app);
                         let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
-                        let analytics_type = if at == "macro" { "macro" } else { "hotkey" };
                         let label = macro_val.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                        analytics::log_action(analytics_type, 0, storage_key, label);
-                    }
-                }
-            }
-            "quickaction" => {
-                if let Some(storage_key) = result.get("storageKey").and_then(|v| v.as_str()) {
-                    let state = hotkeys::engine_state().lock().unwrap();
-                    if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
-                        drop(state);
-                        actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), &app);
-                        let label = macro_val.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                        analytics::log_action("hotkey", 0, storage_key, label);
+                        let macro_steps = if at == "macro" {
+                            macro_val.get("data")
+                                .and_then(|d| d.get("steps"))
+                                .and_then(|s| s.as_array())
+                                .map(|arr| arr.iter().filter_map(|s| s.get("type").and_then(|v| v.as_str()).map(String::from)).collect())
+                        } else { None };
+                        analytics::log_action_ext(at, 0, storage_key, label, macro_steps);
                     }
                 }
             }
@@ -1160,13 +1154,28 @@ fn get_daily_chart(days: u32) -> Value {
 }
 
 #[tauri::command]
-fn get_assignment_breakdown() -> Value {
-    analytics::get_assignment_breakdown()
+fn get_assignment_breakdown(days: Option<u32>) -> Value {
+    analytics::get_assignment_breakdown(days.unwrap_or(0))
 }
 
 #[tauri::command]
-fn get_hourly_heatmap() -> Value {
-    analytics::get_hourly_heatmap()
+fn get_type_breakdown(days: Option<u32>) -> Value {
+    analytics::get_type_breakdown(days.unwrap_or(0))
+}
+
+#[tauri::command]
+fn get_hourly_heatmap(days: Option<u32>) -> Value {
+    analytics::get_hourly_heatmap(days.unwrap_or(7))
+}
+
+#[tauri::command]
+fn get_top_apps(days: Option<u32>) -> Value {
+    analytics::get_top_apps(days.unwrap_or(0))
+}
+
+#[tauri::command]
+fn get_expansion_efficiency() -> Value {
+    analytics::get_expansion_efficiency()
 }
 
 #[tauri::command]
@@ -1419,7 +1428,8 @@ fn get_clipboard_settings() -> Value {
 
 #[tauri::command]
 fn set_clipboard_settings(retention_days: u32) {
-    let max_days = if licence::is_pro() { 30 } else { 7 };
+    // Alpha/Beta: all users get pro limits. Restore gate when licence system goes live.
+    let max_days = 30; // if licence::is_pro() { 30 } else { 7 };
     clipboard::set_retention_days(retention_days.min(max_days));
 }
 
@@ -1541,6 +1551,16 @@ pub fn run() {
             config::init(app_data.clone());
             licence::init();
             analytics::init(app_data.clone());
+
+            // One-time migration: recalculate time_saved for old analytics entries
+            // using the current assignments to determine actual action types.
+            if let Some(cfg) = config::load_config() {
+                if let Some(assignments) = cfg.get("assignments").and_then(|v| v.as_object()) {
+                    let map: std::collections::HashMap<String, serde_json::Value> =
+                        assignments.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                    analytics::migrate_time_saved(map);
+                }
+            }
             clipboard::init(app_data.clone(), app.handle().clone());
             actions::cleanup_stale_ahk_scripts(app_data);
 
@@ -1847,7 +1867,10 @@ pub fn run() {
             reset_analytics,
             get_daily_chart,
             get_assignment_breakdown,
+            get_type_breakdown,
             get_hourly_heatmap,
+            get_top_apps,
+            get_expansion_efficiency,
             get_streaks,
             export_analytics_csv,
             // Clipboard

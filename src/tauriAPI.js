@@ -168,8 +168,11 @@ window.electronAPI = {
   getAnalytics:  () => invoke('get_analytics'),
   resetAnalytics: () => invoke('reset_analytics'),
   getDailyChart:          (days) => invoke('get_daily_chart', { days: days || 14 }),
-  getAssignmentBreakdown: ()     => invoke('get_assignment_breakdown'),
-  getHourlyHeatmap:       ()     => invoke('get_hourly_heatmap'),
+  getAssignmentBreakdown: (days) => invoke('get_assignment_breakdown', { days: days || null }),
+  getTypeBreakdown:       (days) => invoke('get_type_breakdown', { days: days || null }),
+  getHourlyHeatmap:       (days) => invoke('get_hourly_heatmap', { days: days || null }),
+  getTopApps:             (days) => invoke('get_top_apps', { days: days || null }),
+  getExpansionEfficiency: ()     => invoke('get_expansion_efficiency'),
   getStreaks:              ()     => invoke('get_streaks'),
   exportAnalyticsCsv:     ()     => invoke('export_analytics_csv'),
 
