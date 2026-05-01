@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import './SearchOverlay.css';
 import { friendlyKeyName } from './keyboardLayout';
 
@@ -94,6 +94,7 @@ function buildItems(data) {
         assignType: macro.type,
         label:      macro.label || '',
         preview:    buildPreview(macro),
+        voicePhrase: macro.data?.voicePhrase || null,
       });
     } else if (storageKey.startsWith('GLOBAL::EXPANSION::')) {
       const trigger = storageKey.slice('GLOBAL::EXPANSION::'.length);
@@ -108,6 +109,7 @@ function buildItems(data) {
           : (macro.data?.text || '').substring(0, 60),
         text:    macro.data?.text,
         html:    macro.data?.html,
+        voicePhrase: macro.data?.voicePhrase || null,
       });
     } else if (storageKey.startsWith('GLOBAL::QUICKACTION::')) {
       items.push({
@@ -116,6 +118,7 @@ function buildItems(data) {
         assignType: macro.type,
         label:      macro.label || '',
         preview:    buildPreview(macro),
+        voicePhrase: macro.data?.voicePhrase || null,
       });
     } else if (storageKey.startsWith('GLOBAL::AUTOCORRECT::')) {
       if (!includeAutocorrect) continue;
@@ -160,7 +163,8 @@ function searchItems(items, query, showAll) {
       const scorePreview = scoreMatch(item.preview || '',  query);
       const scoreCombo   = scoreMatch(item.comboLabel || '', query);
       const scoreTrigger = scoreMatch(item.trigger || '',  query);
-      const bestScore    = Math.max(scoreLabel, scorePreview, scoreCombo, scoreTrigger);
+      const scoreText    = scoreMatch(item.text || '',     query);
+      const bestScore    = Math.max(scoreLabel, scorePreview, scoreCombo, scoreTrigger, scoreText);
       return { item, bestScore };
     })
     .filter(({ bestScore }) => bestScore > 0)
@@ -198,6 +202,48 @@ function HighlightMatch({ text, query }) {
   return <>{text}</>;
 }
 
+// ── Levenshtein distance (for fuzzy voice matching) ───────────────────────────
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => i);
+  for (let j = 1; j <= n; j++) {
+    let prev = dp[0];
+    dp[0] = j;
+    for (let i = 1; i <= m; i++) {
+      const tmp = dp[i];
+      dp[i] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[i], dp[i - 1]);
+      prev = tmp;
+    }
+  }
+  return dp[m];
+}
+
+function findBestVoiceMatch(transcript, phraseMap) {
+  const t = transcript.toLowerCase().trim();
+  if (!t) return null;
+  // Exact match
+  if (phraseMap[t]) return phraseMap[t];
+  // Starts-with match
+  for (const [phrase, item] of Object.entries(phraseMap)) {
+    if (t.startsWith(phrase) || phrase.startsWith(t)) return item;
+  }
+  // Contains match
+  for (const [phrase, item] of Object.entries(phraseMap)) {
+    if (t.includes(phrase) || phrase.includes(t)) return item;
+  }
+  // Fuzzy: Levenshtein distance < 30% of phrase length
+  let bestItem = null, bestDist = Infinity;
+  for (const [phrase, item] of Object.entries(phraseMap)) {
+    const dist = levenshtein(t, phrase);
+    if (dist < phrase.length * 0.3 && dist < bestDist) {
+      bestDist = dist;
+      bestItem = item;
+    }
+  }
+  return bestItem;
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function SearchOverlay() {
@@ -211,15 +257,77 @@ export default function SearchOverlay() {
   const [ready, setReady] = useState(false);
 
   // ── Search Template state machine ──
-  // mode: 'main' (normal search) | 'query' (typing a search template query)
+  // mode: 'main' (normal search) | 'query' (typing a search template query) | 'voice' (listening)
   const [mode, setMode]                     = useState('main');
   const [activeTemplate, setActiveTemplate] = useState(null);
   const [triggerToken, setTriggerToken]     = useState('');
   const [searchTemplates, setSearchTemplates] = useState([]);
 
+  // ── Voice mode state ──
+  const [voiceState, setVoiceState]         = useState('idle'); // 'idle' | 'listening' | 'matched' | 'no-match' | 'error' | 'unsupported'
+  const [interimText, setInterimText]       = useState('');
+  const [matchedLabel, setMatchedLabel]     = useState('');
+  const recognitionRef   = useRef(false);  // boolean: is WinRT recognition running
+  const voiceTimeoutRef  = useRef(null);
+  const modeRef          = useRef(mode);
+  modeRef.current = mode;
+  const voiceStateRef    = useRef(voiceState);
+  voiceStateRef.current = voiceState;
+
   const inputRef   = useRef(null);
   const resultsRef = useRef(null);
   const rowRefs    = useRef([]);
+
+  // ── Voice phrase map (built from items with voicePhrase) ──
+  const voicePhraseMap = useMemo(() => {
+    const map = {};
+    for (const item of allItems) {
+      if (item.voicePhrase) {
+        map[item.voicePhrase.toLowerCase().trim()] = item;
+      }
+    }
+    return map;
+  }, [allItems]);
+
+  const voicePhraseMapRef = useRef(voicePhraseMap);
+  voicePhraseMapRef.current = voicePhraseMap;
+
+  // ── Voice recognition functions (WinRT backend via Rust IPC) ──
+  const stopListening = useCallback(() => {
+    window.electronAPI?.stopVoiceRecognition();
+    clearTimeout(voiceTimeoutRef.current);
+    recognitionRef.current = false;
+  }, []);
+
+  // Ref for fireItem so speech callbacks always have the latest version
+  const fireItemRef = useRef(null);
+
+  const startListening = useCallback(() => {
+    if (recognitionRef.current) return; // already running
+
+    const phrases = Object.keys(voicePhraseMap);
+    if (phrases.length === 0) {
+      setVoiceState('error');
+      setInterimText('No voice commands configured');
+      return;
+    }
+
+    recognitionRef.current = true;
+    setVoiceState('listening');
+    setInterimText('');
+    setMatchedLabel('');
+
+    // Send phrases to Rust WinRT recognizer
+    window.electronAPI?.startVoiceRecognition(phrases);
+
+    // Auto-cancel timeout (WinRT has its own timeout but this is a safety net)
+    voiceTimeoutRef.current = setTimeout(() => {
+      stopListening();
+      setVoiceState('no-match');
+      setInterimText('No speech detected');
+      setTimeout(() => window.electronAPI?.closeOverlay(), 1200);
+    }, 8000);
+  }, [voicePhraseMap, stopListening]);
 
   // ── Receive data from main process ──
   useEffect(() => {
@@ -238,7 +346,11 @@ export default function SearchOverlay() {
       setMode('main');
       setActiveTemplate(null);
       setTriggerToken('');
+      setVoiceState('idle');
+      setInterimText('');
+      setMatchedLabel('');
       setReady(true);
+
       // Focus the input each time the overlay opens (data arrives on every show)
       setTimeout(() => inputRef.current?.focus(), 0);
     });
@@ -263,7 +375,7 @@ export default function SearchOverlay() {
 
   // ── Update displayItems when query/allItems/settings change (Main mode only) ──
   useEffect(() => {
-    if (mode === 'query') {
+    if (mode === 'query' || mode === 'voice') {
       setDisplayItems([]);
       return;
     }
@@ -272,9 +384,88 @@ export default function SearchOverlay() {
     setSelectedIndex(0);
   }, [query, allItems, settings.showAll, mode]);
 
+  // ── Start/stop voice recognition when mode changes ──
+  useEffect(() => {
+    if (mode === 'voice') {
+      // Delay to let overlay render first
+      const t = setTimeout(() => startListening(), 200);
+      return () => { clearTimeout(t); stopListening(); };
+    } else {
+      stopListening();
+    }
+    return () => stopListening();
+  }, [mode, startListening, stopListening]);
+
+  // ── Voice mode: press to activate, speak, Trigr matches and fires ──
+  useEffect(() => {
+    if (!window.electronAPI?.onOverlayVoiceData) return;
+    window.electronAPI.onOverlayVoiceData((data) => {
+      document.documentElement.setAttribute('data-theme', data.theme || 'dark');
+      const items = buildItems(data);
+      setAllItems(items);
+      setQuery('');
+      setSelectedIndex(0);
+      setDisplayItems([]);
+      setMode('voice');
+      setVoiceState('idle');
+      setInterimText('');
+      setMatchedLabel('');
+      setReady(true);
+    });
+  }, []);
+
+  // ── Listen for WinRT voice recognition results from Rust ──
+  useEffect(() => {
+    if (!window.electronAPI?.onVoiceResult) return;
+    window.electronAPI.onVoiceResult((data) => {
+      if (modeRef.current !== 'voice') return;
+      clearTimeout(voiceTimeoutRef.current);
+      recognitionRef.current = false;
+      const text = (data.text || '').toLowerCase().trim();
+      if (!text) {
+        setVoiceState('no-match');
+        setInterimText('');
+        setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+        return;
+      }
+      setInterimText(text);
+      // WinRT returns an exact match from the phrase list — look it up directly
+      const phraseMap = voicePhraseMapRef.current;
+      const match = phraseMap[text] || findBestVoiceMatch(text, phraseMap);
+      if (match) {
+        setVoiceState('matched');
+        setMatchedLabel(match.label || match.trigger || '(matched)');
+        setTimeout(() => fireItemRef.current?.(match), 500);
+      } else {
+        setVoiceState('no-match');
+        setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onVoiceError) return;
+    window.electronAPI.onVoiceError((data) => {
+      if (modeRef.current !== 'voice') return;
+      clearTimeout(voiceTimeoutRef.current);
+      recognitionRef.current = false;
+      if (data.error === 'no-speech') {
+        setVoiceState('no-match');
+        setInterimText('');
+        setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+      } else {
+        setVoiceState('error');
+        setInterimText(data.error || 'Voice unavailable');
+      }
+    });
+  }, []);
+
   // ── Resize overlay window whenever displayItems or mode change ──
   const panelRef = useRef(null);
   useEffect(() => {
+    // Voice mode: Rust already set the correct size/position — skip JS resize
+    if (mode === 'voice') return;
+
     // Double-rAF ensures React has committed the DOM update before we measure.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -316,6 +507,7 @@ export default function SearchOverlay() {
       window.electronAPI?.executeSearchResult(payload);
     }
   }
+  fireItemRef.current = fireItem;
 
   // ── Fire search template ──
   function fireSearchTemplate() {
@@ -379,7 +571,12 @@ export default function SearchOverlay() {
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      if (mode === 'query') {
+      if (mode === 'voice') {
+        stopListening();
+        setMode('main');
+        setVoiceState('idle');
+        setTimeout(() => inputRef.current?.focus(), 0);
+      } else if (mode === 'query') {
         // First Escape: return to Main mode, don't close
         setMode('main');
         setQuery('');
@@ -472,39 +669,65 @@ export default function SearchOverlay() {
           </div>
         )}
 
-        <div className="search-input-row">
-          {mode === 'query' ? (
-            <span className="search-back-hint" title="Esc to go back">←</span>
-          ) : (
-            <span className="search-icon">⌕</span>
-          )}
-          <input
-            ref={inputRef}
-            className="search-input"
-            type="text"
-            placeholder={
-              mode === 'query' && activeTemplate
-                ? `Search ${activeTemplate.label}…`
-                : 'Search macros, hotkeys, expansions…'
-            }
-            value={query}
-            onChange={handleInputChange}
-            onKeyDown={handleInputKeyDown}
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-          />
-          <span className="search-esc-hint">Esc</span>
-        </div>
-
-        {mode === 'main' && displayItems.length > 0 && (
-          <div className="search-results" ref={resultsRef}>
-            {renderGroups()}
+        {/* Voice mode UI — compact square */}
+        {mode === 'voice' ? (
+          <div className="search-voice-pill" onKeyDown={handleInputKeyDown} tabIndex={-1}>
+            {(voiceState === 'listening' || voiceState === 'idle') && (
+              <div className="search-voice-pill-mic">
+                <div className="search-voice-pill-ring" />
+                <span className="search-voice-pill-mic-icon">🎙</span>
+              </div>
+            )}
+            {voiceState === 'matched' && (
+              <span className="search-voice-pill-match-icon">✓</span>
+            )}
+            {voiceState === 'no-match' && (
+              <span className="search-voice-pill-label">✗</span>
+            )}
+            {voiceState === 'error' && (
+              <span className="search-voice-pill-label">⚠</span>
+            )}
+            {voiceState === 'unsupported' && (
+              <span className="search-voice-pill-label">⚠</span>
+            )}
           </div>
-        )}
+        ) : (
+          <>
+            <div className="search-input-row">
+              {mode === 'query' ? (
+                <span className="search-back-hint" title="Esc to go back">←</span>
+              ) : (
+                <span className="search-icon">⌕</span>
+              )}
+              <input
+                ref={inputRef}
+                className="search-input"
+                type="text"
+                placeholder={
+                  mode === 'query' && activeTemplate
+                    ? `Search ${activeTemplate.label}…`
+                    : 'Search macros, hotkeys, expansions…'
+                }
+                value={query}
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
+                spellCheck={false}
+                autoComplete="off"
+                autoCorrect="off"
+              />
+              <span className="search-esc-hint">Esc</span>
+            </div>
 
-        {mode === 'main' && query && displayItems.length === 0 && ready && (
-          <div className="search-empty">No results for "{query}"</div>
+            {mode === 'main' && displayItems.length > 0 && (
+              <div className="search-results" ref={resultsRef}>
+                {renderGroups()}
+              </div>
+            )}
+
+            {mode === 'main' && query && displayItems.length === 0 && ready && (
+              <div className="search-empty">No results for "{query}"</div>
+            )}
+          </>
         )}
       </div>
     </div>

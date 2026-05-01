@@ -387,6 +387,26 @@
   flex-shrink: 0;
 }
 
+.te-search-input {
+  flex: 0 1 160px;
+  height: 22px;
+  padding: 0 8px;
+  margin-left: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-body);
+  outline: none;
+}
+.te-search-input:focus {
+  border-color: var(--border-accent);
+}
+.te-search-input::placeholder {
+  color: var(--text-muted);
+}
+
 .te-toolbar-count {
   font-size: 10px;
   color: var(--text-muted);
@@ -1879,6 +1899,7 @@ button.te-col-header:hover {
 
 .te-type-filter {
   display: flex;
+  align-items: center;
   gap: 4px;
 }
 

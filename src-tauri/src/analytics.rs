@@ -31,6 +31,7 @@ enum AnalyticsMsg {
     GetHourlyHeatmap(u32, mpsc::Sender<serde_json::Value>),
     GetTopApps(u32, mpsc::Sender<serde_json::Value>),              // days (0 = all time)
     GetExpansionEfficiency(mpsc::Sender<serde_json::Value>),
+    GetExpansionCounts(mpsc::Sender<serde_json::Value>),
     GetStreaks(mpsc::Sender<serde_json::Value>),
     ExportCsv(mpsc::Sender<String>),
     Reset(mpsc::Sender<bool>),
@@ -117,6 +118,10 @@ pub fn init(app_data_dir: PathBuf) {
                         let data = handle_expansion_efficiency(&conn);
                         let _ = reply.send(data);
                     }
+                    AnalyticsMsg::GetExpansionCounts(reply) => {
+                        let data = handle_expansion_counts(&conn);
+                        let _ = reply.send(data);
+                    }
                     AnalyticsMsg::GetStreaks(reply) => {
                         let data = handle_streaks(&conn);
                         let _ = reply.send(data);
@@ -195,6 +200,11 @@ pub fn get_top_apps(days: u32) -> serde_json::Value {
 /// Get expansion efficiency stats (chars typed vs chars expanded).
 pub fn get_expansion_efficiency() -> serde_json::Value {
     send_and_recv(|reply| AnalyticsMsg::GetExpansionEfficiency(reply), serde_json::json!({}))
+}
+
+/// Get per-expansion fire counts (trigger_key → count).
+pub fn get_expansion_counts() -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetExpansionCounts(reply), serde_json::json!({}))
 }
 
 /// Get current and longest streaks.
@@ -533,12 +543,13 @@ fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Valu
 fn handle_top_apps(conn: &Connection, days: u32) -> serde_json::Value {
     let query = if days == 0 {
         "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
-         FROM action_log WHERE target_app != ''
+         FROM action_log WHERE target_app != '' AND LOWER(target_app) != 'trigr'
          GROUP BY target_app ORDER BY count DESC LIMIT 20".to_string()
     } else {
         format!(
             "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
-             FROM action_log WHERE target_app != '' AND timestamp >= datetime('now', '-{} days')
+             FROM action_log WHERE target_app != '' AND LOWER(target_app) != 'trigr'
+             AND timestamp >= datetime('now', '-{} days')
              GROUP BY target_app ORDER BY count DESC LIMIT 20", days
         )
     };
@@ -605,6 +616,29 @@ fn handle_expansion_efficiency(conn: &Connection) -> serde_json::Value {
         "month": month,
         "all": all,
     })
+}
+
+fn handle_expansion_counts(conn: &Connection) -> serde_json::Value {
+    let query = "SELECT trigger_key, COUNT(*) AS count FROM action_log \
+                 WHERE action_type = 'expansion' AND trigger_key != '' \
+                 GROUP BY trigger_key";
+    let mut stmt = match conn.prepare(query) {
+        Ok(s) => s,
+        Err(_) => return serde_json::json!({}),
+    };
+    let mut map = serde_json::Map::new();
+    let _ = stmt
+        .query_map([], |row| {
+            let trigger: String = row.get(0)?;
+            let count: i64 = row.get(1)?;
+            Ok((trigger, count))
+        })
+        .map(|rows| {
+            for row in rows.flatten() {
+                map.insert(row.0, serde_json::json!(row.1));
+            }
+        });
+    serde_json::Value::Object(map)
 }
 
 fn handle_hourly_heatmap(conn: &Connection, days: u32) -> serde_json::Value {

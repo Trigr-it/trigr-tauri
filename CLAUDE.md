@@ -11,7 +11,7 @@
 |---|---|
 | Product | Trigr — Windows desktop hotkey/macro/text expansion/clipboard manager |
 | Stack | Tauri v2 + Rust backend + React 18 frontend |
-| Version | v0.1.36 (check `tauri.conf.json` for current) |
+| Version | v0.2.4 (check `tauri.conf.json` for current) |
 | Dev command | `cargo tauri dev` |
 | Build command | `cargo tauri build` |
 | Frontend dev | `npm run dev` (Vite on localhost:5173) |

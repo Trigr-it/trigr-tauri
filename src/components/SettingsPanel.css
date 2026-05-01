@@ -69,6 +69,24 @@
   border-bottom: 1px solid var(--border);
 }
 
+
+.settings-mic-meter {
+  margin-top: 8px;
+  height: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.settings-mic-meter-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.05s linear;
+  min-width: 0;
+}
+
 .settings-section:last-child {
   border-bottom: none;
 }

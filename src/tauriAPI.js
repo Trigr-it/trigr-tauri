@@ -173,6 +173,7 @@ window.electronAPI = {
   getHourlyHeatmap:       (days) => invoke('get_hourly_heatmap', { days: days || null }),
   getTopApps:             (days) => invoke('get_top_apps', { days: days || null }),
   getExpansionEfficiency: ()     => invoke('get_expansion_efficiency'),
+  getExpansionCounts:     ()     => invoke('get_expansion_counts'),
   getStreaks:              ()     => invoke('get_streaks'),
   exportAnalyticsCsv:     ()     => invoke('export_analytics_csv'),
 
@@ -200,6 +201,19 @@ window.electronAPI = {
   // ── Global pause toggle ─────────────────────────────────────────────────────
   setPauseHotkey:      (combo) => invoke('set_global_pause_key', { combo }),
   clearPauseHotkey:    ()      => invoke('clear_global_pause_key'),
+  setVoiceHotkey:      (combo) => invoke('set_voice_hotkey', { combo }),
+  clearVoiceHotkey:    ()      => invoke('clear_voice_hotkey'),
+  startVoiceRecognition: (phrases) => invoke('start_voice_recognition', { phrases }),
+  stopVoiceRecognition:  ()        => invoke('stop_voice_recognition'),
+  onVoiceResult: (callback) => {
+    listen('voice-result', (event) => callback(event.payload)).then(u => { listeners['voice-result'] = u; });
+  },
+  onVoiceError: (callback) => {
+    listen('voice-error', (event) => callback(event.payload)).then(u => { listeners['voice-error'] = u; });
+  },
+  onOverlayVoiceData: (callback) => {
+    listen('overlay-voice-data', (event) => callback(event.payload)).then(u => { listeners['overlay-voice-data'] = u; });
+  },
   checkHotkeyConflict: (combo) => invoke('check_hotkey_conflict', { combo }),
 
   // ── Auto-updater ────────────────────────────────────────────────────────────
@@ -238,6 +252,10 @@ document.addEventListener('keydown', (e) => {
       invoke('js_key_event', { code: 'Space', ctrl: true, shift: false, alt: false, meta: false });
       return;
     }
+  }
+  // Block Alt key activating the system menu in WebView2
+  if (e.altKey) {
+    e.preventDefault();
   }
   // Block standalone browser keys
   if (e.key === 'F5' || e.key === 'F12') {

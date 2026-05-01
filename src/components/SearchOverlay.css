@@ -292,3 +292,85 @@ html, body {
   line-height: 1;
   opacity: 0.6;
 }
+
+/* ── Voice mode — compact pill ──────────────────────────────────────── */
+
+/* ── Voice mode — compact square ─────────────────────────────────────── */
+
+.search-panel:has(.search-voice-pill) {
+  width: 64px;
+  max-width: 64px;
+  min-width: 64px;
+  border-radius: 16px;
+  margin: 0 auto;
+}
+
+.search-voice-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+/* Mic icon with pulsing ring */
+.search-voice-pill-mic {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-voice-pill-mic-icon {
+  font-size: 22px;
+  z-index: 2;
+  animation: voice-mic-bounce 1.2s ease-in-out infinite;
+}
+
+.search-voice-pill-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  animation: voice-ring-expand 1.5s ease-out infinite;
+}
+
+@keyframes voice-ring-expand {
+  0%   { transform: scale(0.5); opacity: 0.5; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes voice-mic-bounce {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.1); }
+}
+
+/* Hide text elements in the compact square — icon only */
+.search-voice-pill-text,
+.search-voice-pill-interim { display: none; }
+
+.search-voice-pill-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-align: center;
+}
+
+/* Match state */
+.search-voice-pill-match-icon {
+  font-size: 24px;
+  color: var(--accent);
+  animation: voice-match-pop 0.25s ease;
+}
+
+.search-voice-pill-match-label { display: none; }
+
+@keyframes voice-match-pop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  60%  { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}

@@ -85,6 +85,17 @@ static MOD_ALT: AtomicBool = AtomicBool::new(false);
 static MOD_SHIFT: AtomicBool = AtomicBool::new(false);
 static MOD_META: AtomicBool = AtomicBool::new(false);
 
+/// Tracks whether the overlay was just opened (not toggled off).
+static OVERLAY_JUST_OPENED: AtomicBool = AtomicBool::new(false);
+
+/// Tracks whether voice mode is active — allows bare action-key presses to be
+/// routed as voice events (modifiers were cleared on the initial keydown).
+static VOICE_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// The VK code of the voice hotkey's action key (e.g., Space = 0x20).
+static VOICE_ACTION_VK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// Tracks whether the voice action key is physically held (to suppress key repeat).
+static VOICE_KEY_HELD: AtomicBool = AtomicBool::new(false);
+
 /// Set of (modifier_bits, vk_code) combos that should be suppressed (swallowed) by the hook.
 /// Rebuilt whenever assignments change. Read-locked in hook callback, write-locked on update.
 /// Modifier bits: Ctrl=1, Shift=2, Alt=4, Win=8
@@ -296,6 +307,15 @@ fn add_pause_to_suppress(pause: Option<(u8, u32)>) {
     }
 }
 
+/// Insert the voice hotkey into the suppress set.
+fn add_voice_to_suppress(voice: Option<(u8, u32)>) {
+    if let Some(combo) = voice {
+        if let Ok(mut w) = suppress_keys().write() {
+            w.insert(combo);
+        }
+    }
+}
+
 /// Insert the clipboard paste hotkey into the suppress set.
 fn add_clipboard_paste_to_suppress(combo: Option<(u8, u32)>) {
     if let Some(combo) = combo {
@@ -382,6 +402,8 @@ pub(crate) struct EngineState {
     pub(crate) custom_pre_execution_delay: u64,
     // Clipboard quick-paste hotkey — parsed as (modifier_bits, vk_code)
     clipboard_paste_hotkey: Option<(u8, u32)>,
+    // Voice trigger hotkey — parsed as (modifier_bits, vk_code)
+    voice_hotkey: Option<(u8, u32)>,
 }
 
 use std::sync::Arc;
@@ -407,6 +429,7 @@ impl Default for EngineState {
             macro_speed: "safe".to_string(),
             custom_keystroke_delay: 30,
             custom_pre_execution_delay: 150,
+            voice_hotkey: Some((4, 0x20)), // Default: Alt+Space (bits=4=Alt, vk=0x20=Space)
             clipboard_paste_hotkey: Some((3, 0x56)), // Default: Ctrl+Shift+V (bits=3, vk=0x56)
         }
     }
@@ -1268,11 +1291,50 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                 crate::actions::release_held_modifiers();
                 SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                OVERLAY_JUST_OPENED.store(true, Ordering::SeqCst);
                 let _ = app.emit("toggle-overlay", Value::Null);
                 return;
             }
         }
         drop(state);
+    }
+
+    // ── Voice trigger hotkey check ────────────────────────────────────
+    // First press: full combo match (e.g., Alt+Space)
+    if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
+        let state = engine_state().lock().unwrap();
+        if let Some((mod_bits, vk)) = state.voice_hotkey {
+            let current_bits = modifier_bits();
+            let key_vk = key_id_to_vk(key_id);
+            if current_bits == mod_bits && key_vk == Some(vk) {
+                drop(state);
+                MOD_CTRL.store(false, Ordering::SeqCst);
+                MOD_SHIFT.store(false, Ordering::SeqCst);
+                MOD_ALT.store(false, Ordering::SeqCst);
+                MOD_META.store(false, Ordering::SeqCst);
+                SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                crate::actions::release_held_modifiers();
+                SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                VOICE_ACTIVE.store(true, Ordering::SeqCst);
+                VOICE_ACTION_VK.store(vk, Ordering::SeqCst);
+                VOICE_KEY_HELD.store(true, Ordering::SeqCst);
+                info!("[Trigr] Voice hotkey detected — emitting voice-keydown");
+                let _ = app.emit("voice-keydown", Value::Null);
+                return;
+            }
+        }
+        drop(state);
+    }
+    // Subsequent presses: bare action-key while voice is active (modifiers cleared on first press)
+    if VOICE_ACTIVE.load(Ordering::SeqCst) {
+        let vk = VOICE_ACTION_VK.load(Ordering::SeqCst);
+        if vk != 0 && key_id_to_vk(key_id) == Some(vk) {
+            // Suppress keyboard repeat — only emit on fresh press (after keyup)
+            if !VOICE_KEY_HELD.swap(true, Ordering::SeqCst) {
+                let _ = app.emit("voice-keydown", Value::Null);
+            }
+            return;
+        }
     }
 
     // ── Clipboard quick-paste hotkey check ─────────────────────────────
@@ -1540,6 +1602,16 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 // ── Keyup handler ───────────────────────────────────────────────────────────
 
 fn handle_keyup(vk: u32, _scan: u32, app: &AppHandle) {
+    // Voice action-key release tracking — always clear held flag on keyup,
+    // even if VOICE_ACTIVE was already cleared (overlay dismissed after match).
+    // This prevents keyboard repeat from reopening the overlay.
+    if VOICE_KEY_HELD.load(Ordering::SeqCst) {
+        let voice_vk = VOICE_ACTION_VK.load(Ordering::SeqCst);
+        if voice_vk != 0 && vk == voice_vk {
+            VOICE_KEY_HELD.store(false, Ordering::SeqCst);
+        }
+    }
+
     // Update modifier state
     if is_modifier_vk(vk) {
         update_modifier_state(vk, false);
@@ -1628,6 +1700,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
                 add_overlay_to_suppress(state.overlay_hotkey);
                 add_pause_to_suppress(state.pause_hotkey);
                 add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+                add_voice_to_suppress(state.voice_hotkey);
                 MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
                 info!("[Trigr] Refocus-switched to profile \"{}\"", rp);
                 let profile_name = rp.clone();
@@ -2058,6 +2131,7 @@ pub fn start_hooks(app: AppHandle) {
                             add_overlay_to_suppress(state.overlay_hotkey);
                             add_pause_to_suppress(state.pause_hotkey);
                             add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+                            add_voice_to_suppress(state.voice_hotkey);
                         }
                         println!("[HOOK] Hooks reinstalled, suppress set rebuilt");
                         thread::sleep(Duration::from_secs(5));
@@ -2132,6 +2206,7 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
                         SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                         crate::actions::release_held_modifiers();
                         SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                        OVERLAY_JUST_OPENED.store(true, Ordering::SeqCst);
                         let _ = app.emit("toggle-overlay", Value::Null);
                         return;
                     }
@@ -2204,6 +2279,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    add_voice_to_suppress(state.voice_hotkey);
     println!("[ENGINE] Assignments stored: {} entries", state.assignments.len());
 }
 
@@ -2215,6 +2291,7 @@ pub fn set_active_profile(profile: String) {
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    add_voice_to_suppress(state.voice_hotkey);
     // Clear down-suppressed flags so stale button-ups aren't eaten after switch
     MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
     info!("[Trigr] Active profile: {}", profile);
@@ -2222,6 +2299,19 @@ pub fn set_active_profile(profile: String) {
 
 pub fn get_active_profile() -> String {
     engine_state().lock().unwrap().active_profile.clone()
+}
+
+/// Clear the overlay-opened flag (called when overlay is hidden/toggled off).
+pub fn clear_overlay_opened_flag() {
+    OVERLAY_JUST_OPENED.store(false, Ordering::SeqCst);
+}
+
+/// Clear voice-active state (called when overlay is hidden).
+/// Preserves VOICE_KEY_HELD and VOICE_ACTION_VK so the physical keyup
+/// can still clear the held flag — prevents keyboard repeat from
+/// reopening the overlay after a match fires and the overlay closes.
+pub fn clear_voice_active() {
+    VOICE_ACTIVE.store(false, Ordering::SeqCst);
 }
 
 pub fn update_profile_settings(settings: HashMap<String, Value>) {
@@ -2232,6 +2322,7 @@ pub fn update_profile_settings(settings: HashMap<String, Value>) {
     add_overlay_to_suppress(state.overlay_hotkey);
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    add_voice_to_suppress(state.voice_hotkey);
 }
 
 pub fn update_global_settings(settings: &Value) {
@@ -2287,6 +2378,7 @@ pub fn set_overlay_hotkey(combo: &str) {
         add_overlay_to_suppress(Some(parsed));
         add_pause_to_suppress(state.pause_hotkey);
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+        add_voice_to_suppress(state.voice_hotkey);
         println!("[HOOK] Overlay hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
@@ -2300,8 +2392,35 @@ pub fn set_pause_hotkey(combo: &str) {
         add_overlay_to_suppress(state.overlay_hotkey);
         add_pause_to_suppress(Some(parsed));
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+        add_voice_to_suppress(state.voice_hotkey);
         println!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
+}
+
+pub fn set_voice_hotkey(combo: &str) {
+    if let Some(parsed) = parse_hotkey_combo(combo) {
+        let mut state = engine_state().lock().unwrap();
+        state.voice_hotkey = Some(parsed);
+        rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+        rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
+        add_overlay_to_suppress(state.overlay_hotkey);
+        add_pause_to_suppress(state.pause_hotkey);
+        add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+        add_voice_to_suppress(Some(parsed));
+        println!("[HOOK] Voice hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+    }
+}
+
+pub fn clear_voice_hotkey() {
+    let mut state = engine_state().lock().unwrap();
+    state.voice_hotkey = None;
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+    rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
+    add_overlay_to_suppress(state.overlay_hotkey);
+    add_pause_to_suppress(state.pause_hotkey);
+    add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    add_voice_to_suppress(state.voice_hotkey);
+    println!("[HOOK] Voice hotkey cleared");
 }
 
 pub fn clear_pause_hotkey() {
@@ -2311,6 +2430,7 @@ pub fn clear_pause_hotkey() {
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    add_voice_to_suppress(state.voice_hotkey);
     println!("[HOOK] Pause hotkey cleared");
 }
 

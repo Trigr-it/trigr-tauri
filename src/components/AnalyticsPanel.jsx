@@ -564,9 +564,18 @@ export default function AnalyticsPanel({ isPro = false }) {
                 {Array.from({ length: 24 }, (_, h) => (
                   <div key={h} className="analytics-heatmap-hour-label">{h}</div>
                 ))}
-                {DOW_LABELS.map((label, dow) => (
+                {(() => {
+                  // Reorder rows so today is first, going backwards in time
+                  const todayDow = new Date().getDay(); // 0=Sun..6=Sat
+                  const orderedDows = [];
+                  for (let i = 0; i < 7; i++) {
+                    orderedDows.push((todayDow - i + 7) % 7);
+                  }
+                  return orderedDows.map(dow => {
+                    const label = DOW_LABELS[dow];
+                    return (
                   <React.Fragment key={dow}>
-                    <div className="analytics-heatmap-dow-label">{label}</div>
+                    <div className="analytics-heatmap-dow-label">{dow === todayDow ? 'Today' : label}</div>
                     {Array.from({ length: 24 }, (_, h) => {
                       const cell = heatmapGrid.grid[dow][h];
                       const intensity = cell.count > 0 ? Math.max(0.15, cell.count / heatmapGrid.max) : 0;
@@ -585,7 +594,9 @@ export default function AnalyticsPanel({ isPro = false }) {
                       );
                     })}
                   </React.Fragment>
-                ))}
+                    );
+                  });
+                })()}
               </div>
             </section>
           </div>
@@ -599,6 +610,7 @@ export default function AnalyticsPanel({ isPro = false }) {
                 KEY MAPPINGS <span className="pro-badge">PRO</span>
                 <select className="analytics-range-select" value={keysRange} onChange={e => setKeysRange(Number(e.target.value))}>
                   <option value={0}>All time</option>
+                  <option value={1}>Today</option>
                   <option value={7}>Last 7 days</option>
                   <option value={14}>Last 14 days</option>
                   <option value={30}>Last 30 days</option>
@@ -629,6 +641,7 @@ export default function AnalyticsPanel({ isPro = false }) {
                 TEXT EXPANSIONS <span className="pro-badge">PRO</span>
                 <select className="analytics-range-select" value={expRange} onChange={e => setExpRange(Number(e.target.value))}>
                   <option value={0}>All time</option>
+                  <option value={1}>Today</option>
                   <option value={7}>Last 7 days</option>
                   <option value={14}>Last 14 days</option>
                   <option value={30}>Last 30 days</option>
@@ -659,6 +672,7 @@ export default function AnalyticsPanel({ isPro = false }) {
                 TOP APPS <span className="pro-badge">PRO</span>
                 <select className="analytics-range-select" value={appsRange} onChange={e => setAppsRange(Number(e.target.value))}>
                   <option value={0}>All time</option>
+                  <option value={1}>Today</option>
                   <option value={7}>Last 7 days</option>
                   <option value={14}>Last 14 days</option>
                   <option value={30}>Last 30 days</option>

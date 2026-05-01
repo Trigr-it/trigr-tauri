@@ -29,6 +29,10 @@ function htmlToPlainText(html) {
 
 const INSERT_MENU = [
   { type: 'item', token: '{clipboard}',       label: 'Clipboard Contents',  display: 'Clipboard'  },
+  { type: 'item', token: '{clipboard:uppercase}', label: 'Clipboard (UPPERCASE)', display: 'CLIP ▲' },
+  { type: 'item', token: '{clipboard:lowercase}', label: 'Clipboard (lowercase)', display: 'clip ▼' },
+  { type: 'item', token: '{clipboard:trim}',      label: 'Clipboard (trimmed)',   display: 'Clip ✂'  },
+  { type: 'item', token: '{clipboard:urlencode}',  label: 'Clipboard (URL encode)',display: 'Clip %'  },
   { type: 'sep'  },
   { type: 'item', token: '{date:DD/MM/YYYY}', label: 'Date (DD/MM/YYYY)',   display: 'DD/MM/YYYY' },
   { type: 'item', token: '{date:DD/MM/YY}',   label: 'Date (DD/MM/YY)',     display: 'DD/MM/YY'   },
@@ -37,6 +41,16 @@ const INSERT_MENU = [
   { type: 'item', token: '{time:HH:MM}',      label: 'Time (HH:MM)',        display: 'HH:MM'      },
   { type: 'item', token: '{time:HH:MM:SS}',   label: 'Time (HH:MM:SS)',     display: 'HH:MM:SS'   },
   { type: 'item', token: '{dayofweek}',        label: 'Day of Week',         display: 'Day'        },
+  { type: 'item', token: '{month}',            label: 'Month Name',           display: 'Month'      },
+  { type: 'item', token: '{year}',             label: 'Year (YYYY)',          display: 'Year'       },
+  { type: 'item', token: '{day}',              label: 'Day of Month',         display: 'Day#'       },
+  { type: 'item', token: '{date:D MMMM YYYY}', label: 'Date (1 May 2026)',   display: 'D MMMM YYYY'},
+  { type: 'item', token: '{isodate}',          label: 'ISO 8601 Date+Time',  display: 'ISO Date'   },
+  { type: 'sep'  },
+  { type: 'item', token: '{date:+1d}',         label: 'Tomorrow',             display: '+1 day'     },
+  { type: 'item', token: '{date:-1d}',          label: 'Yesterday',            display: '-1 day'     },
+  { type: 'item', token: '{date:+7d}',          label: 'Next Week',            display: '+7 days'    },
+  { type: 'item', token: '{date:+1m}',          label: 'Next Month',           display: '+1 month'   },
   { type: 'sep'  },
   { type: 'item', token: '{cursor}',           label: 'Cursor Position',     display: '↕ Cursor'   },
   { type: 'item', token: '__fillin__',          label: 'Fill-in Field…',      display: null         },
@@ -396,10 +410,14 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
                   }}
                 >
                   <span className={`rte-menu-chip rte-chip-${
-                    item.token === '{clipboard}'   ? 'clipboard' :
+                    item.token.startsWith('{clipboard') ? 'clipboard' :
                     item.token.startsWith('{date') ? 'date' :
                     item.token.startsWith('{time') ? 'date' :
                     item.token === '{dayofweek}'   ? 'date' :
+                    item.token === '{month}'       ? 'date' :
+                    item.token === '{year}'        ? 'date' :
+                    item.token === '{day}'         ? 'date' :
+                    item.token === '{isodate}'     ? 'date' :
                     item.token === '{cursor}'      ? 'cursor' :
                     'fillin'
                   }`}>
@@ -506,6 +524,7 @@ export default function TextExpansions({
   const [imageExists, setImageExists]     = useState(true);
   const [imageDataUri, setImageDataUri]   = useState(null); // base64 data URI for preview
   const [variantOptions, setVariantOptions] = useState([]); // [{label, text}]
+  const [voicePhrase, setVoicePhrase]     = useState('');
 
   // Load image preview via Rust when imagePath changes
   useEffect(() => {
@@ -549,6 +568,9 @@ export default function TextExpansions({
 
   // ── Expansion type filter ──
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'text' | 'image'
+
+  // ── Expansion search ──
+  const [searchQuery, setSearchQuery] = useState('');
 
   // ── Expansion sort state (persisted to localStorage) ──
   const [sortKey, setSortKey] = useState(() =>
@@ -619,6 +641,7 @@ export default function TextExpansions({
     setImageScale(100);
     setImageExists(true);
     setVariantOptions([]);
+    setVoicePhrase('');
     setEditing({ isNew: true });
   }
 
@@ -635,6 +658,7 @@ export default function TextExpansions({
     setImageScale(exp.imageScale ?? 100);
     setImageExists(true);
     setVariantOptions(exp.options || []);
+    setVoicePhrase(exp.voicePhrase || '');
     setEditing({ isNew: false, originalTrigger: exp.trigger });
   }
 
@@ -649,7 +673,7 @@ export default function TextExpansions({
     }
     const originalTrigger = editing.isNew ? null : editing.originalTrigger;
     const cleanedVariants = hasVariants ? variantOptions.filter(o => o.text?.trim()) : [];
-    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants);
+    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants, voicePhrase.trim() || null);
     setEditing(null);
   }
 
@@ -841,6 +865,22 @@ export default function TextExpansions({
     return result;
   })();
 
+  // Apply search filter to expansion list
+  const filteredListItems = (() => {
+    if (!searchQuery.trim()) return listItems;
+    const q = searchQuery.trim().toLowerCase();
+    return listItems.filter(item => {
+      if (item.type === 'header') return false;
+      const exp = item.exp;
+      return (
+        exp.trigger.toLowerCase().includes(q) ||
+        (exp.displayName || '').toLowerCase().includes(q) ||
+        (exp.text || '').toLowerCase().includes(q) ||
+        (exp.category || '').toLowerCase().includes(q)
+      );
+    });
+  })();
+
   // Sorted custom autocorrections
   const sortedAc = [...autocorrections].sort((a, b) => a.typo.localeCompare(b.typo));
 
@@ -898,7 +938,7 @@ export default function TextExpansions({
   const canGdSave = gdTitle.trim() !== '' && gdValue.trim() !== '' && !validateGdTitle(gdTitle);
   const gdSuggestionsToShow = GD_SUGGESTIONS.filter(title => !(titleToKey(title) in globalVariables));
 
-  const itemCount = listItems.filter(x => x.type === 'item').length;
+  const itemCount = filteredListItems.filter(x => x.type === 'item').length;
 
   return (
     <div className="text-expansions">
@@ -1091,6 +1131,14 @@ export default function TextExpansions({
                 className={`te-type-filter-pill${typeFilter === 'image' ? ' active' : ''}`}
                 onClick={() => setTypeFilter('image')}
               >Image</button>
+              <input
+                type="text"
+                className="te-search-input"
+                placeholder="Search…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { setSearchQuery(''); e.target.blur(); } }}
+              />
             </div>
             <span className="te-toolbar-count">{itemCount} expansion{itemCount !== 1 ? 's' : ''}</span>
           </div>
@@ -1145,7 +1193,7 @@ export default function TextExpansions({
                   <div className="te-empty-row">No expansions in this category yet</div>
                 )
               ) : (
-                listItems.map((item, i) => {
+                filteredListItems.map((item, i) => {
                   if (item.type === 'header') {
                     return (
                       <div key={`h-${item.label}`} className="te-group-header">
@@ -1250,6 +1298,18 @@ export default function TextExpansions({
                         autoFocus
                         spellCheck={false}
                       />
+                    </div>
+                    <div className="te-panel-field">
+                      <label className="form-label">VOICE COMMAND <span className="pro-badge">PRO</span></label>
+                      <input
+                        className="form-input"
+                        placeholder="e.g. my address, email signature"
+                        value={voicePhrase}
+                        onChange={e => setVoicePhrase(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') handleCancel(); }}
+                        spellCheck={false}
+                      />
+                      <span className="form-hint" style={{ marginTop: 2 }}>Hold Ctrl+Space to trigger by voice</span>
                     </div>
                     <div className="te-panel-field">
                       <label className="form-label">TRIGGER</label>

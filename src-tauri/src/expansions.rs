@@ -159,6 +159,7 @@ pub fn check_space_trigger() -> bool {
         return false;
     }
 
+    let original_buffer = s.buffer.clone();
     let buffer_lower = s.buffer.to_lowercase();
 
     // Priority 1: Custom autocorrect — DISABLED FOR ALPHA
@@ -276,7 +277,8 @@ pub fn check_space_trigger() -> bool {
         drop(s);
 
         info!("[Trigr] Expansion: \"{}\" → \"{}\"", buffer_lower, text);
-        fire_expansion(&buffer_lower, trigger_len, true, &text, &global_vars);
+        let case_pattern = detect_case(&original_buffer);
+        fire_expansion(&buffer_lower, trigger_len, true, &text, &global_vars, case_pattern);
         return true;
     }
 
@@ -292,6 +294,7 @@ pub fn check_immediate_triggers() -> bool {
         return false;
     }
 
+    let original_buffer = s.buffer.clone();
     let buf_lower = s.buffer.to_lowercase();
 
     // Collect immediate triggers sorted by length (longest first)
@@ -364,16 +367,59 @@ pub fn check_immediate_triggers() -> bool {
             let global_vars = s.global_variables.clone();
             let text = imm.text.clone();
             let trigger = imm.trigger.clone();
+            // Detect case from the original-case suffix of the buffer.
+            // Use .get() to avoid panicking if trigger_len falls mid-char (non-ASCII buffer).
+            let original_suffix = original_buffer
+                .get(original_buffer.len().saturating_sub(trigger_len)..)
+                .unwrap_or(&original_buffer);
+            let case_pattern = detect_case(original_suffix);
             s.buffer.clear();
             drop(s);
 
             info!("[Trigr] Expansion (immediate): \"{}\" → \"{}\"", trigger, text);
-            fire_expansion(&trigger, trigger_len, false, &text, &global_vars);
+            fire_expansion(&trigger, trigger_len, false, &text, &global_vars, case_pattern);
             return true;
         }
     }
 
     false
+}
+
+// ── Smart Case ─────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy)]
+enum CasePattern {
+    Lower,       // "brb" → no transform
+    Capitalized, // "Brb" → capitalize first letter of output
+    Upper,       // "BRB" → all caps
+}
+
+fn detect_case(original: &str) -> CasePattern {
+    let has_alpha = original.chars().any(|c| c.is_alphabetic());
+    if !has_alpha {
+        return CasePattern::Lower;
+    }
+    if original.chars().all(|c| c.is_uppercase() || !c.is_alphabetic()) {
+        CasePattern::Upper
+    } else if original.chars().next().map_or(false, |c| c.is_uppercase()) {
+        CasePattern::Capitalized
+    } else {
+        CasePattern::Lower
+    }
+}
+
+fn apply_case(text: &str, pattern: CasePattern) -> String {
+    match pattern {
+        CasePattern::Lower => text.to_string(),
+        CasePattern::Upper => text.to_uppercase(),
+        CasePattern::Capitalized => {
+            let mut chars = text.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        }
+    }
 }
 
 // ── Fire expansion ──────────────────────────────────────────────────────────
@@ -384,6 +430,7 @@ fn fire_expansion(
     delete_extra: bool,
     text: &str,
     global_vars: &HashMap<String, String>,
+    case_pattern: CasePattern,
 ) {
     // Check for {fillIn:...} tokens — if present, spawn a dedicated thread for the
     // entire fill-in + injection flow so the processor thread is never blocked.
@@ -398,13 +445,14 @@ fn fire_expansion(
         let trigger_len = trigger_len;
         let trigger_str = _trigger.to_string();
         thread::spawn(move || {
-            fire_expansion_with_fillin(fill_in_fields, &text, trigger_len, delete_extra, &global_vars, &trigger_str);
+            fire_expansion_with_fillin(fill_in_fields, &text, trigger_len, delete_extra, &global_vars, &trigger_str, case_pattern);
         });
         return;
     }
 
     // No fill-in tokens — resolve and inject directly
     let (resolved, cursor_back) = resolve_tokens(text, global_vars);
+    let resolved = apply_case(&resolved, case_pattern);
 
     if resolved.is_empty() {
         return;
@@ -524,6 +572,7 @@ fn fire_expansion_with_fillin(
     delete_extra: bool,
     global_vars: &HashMap<String, String>,
     trigger_str: &str,
+    case_pattern: CasePattern,
 ) {
     crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -611,6 +660,7 @@ fn fire_expansion_with_fillin(
 
     // Resolve remaining tokens
     let (resolved, cursor_back) = resolve_tokens(&text_after_fillin, global_vars);
+    let resolved = apply_case(&resolved, case_pattern);
 
     if resolved.is_empty() {
         return;
@@ -716,9 +766,14 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
         }
     }
 
-    // {clipboard} — read current clipboard
-    if result.contains("{clipboard}") {
+    // {clipboard} and {clipboard:transform} tokens — read clipboard once
+    if result.contains("{clipboard") {
         let clip = read_clipboard().unwrap_or_default();
+        // Replace specific variants BEFORE bare {clipboard} to prevent prefix matching
+        result = result.replace("{clipboard:uppercase}", &clip.to_uppercase());
+        result = result.replace("{clipboard:lowercase}", &clip.to_lowercase());
+        result = result.replace("{clipboard:trim}", clip.trim());
+        result = result.replace("{clipboard:urlencode}", &url_encode(&clip));
         result = result.replace("{clipboard}", &clip);
     }
 
@@ -731,6 +786,65 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
     result = result.replace("{time:HH:MM:SS}", &now.format("%H:%M:%S").to_string());
     result = result.replace("{time:HH:MM}", &now.format("%H:%M").to_string());
     result = result.replace("{dayofweek}", &now.format("%A").to_string());
+    result = result.replace("{month}", &now.format("%B").to_string());
+    result = result.replace("{year}", &now.format("%Y").to_string());
+    result = result.replace("{day}", &now.format("%-d").to_string());
+    result = result.replace("{date:D MMMM YYYY}", &now.format("%-d %B %Y").to_string());
+    result = result.replace("{isodate}", &now.format("%Y-%m-%dT%H:%M:%S").to_string());
+
+    // {date:+Nd}, {date:-Nm}, {date:+Ny} — date/time math with optional format suffix
+    if result.contains("{date:+") || result.contains("{date:-") {
+        let re = regex_lite::Regex::new(r"\{date:([+-]\d+)([dmy])(?::([^}]+))?\}").unwrap();
+        // Collect matches first to avoid mutating result during iteration
+        let matches: Vec<(String, String)> = re
+            .captures_iter(&result.clone())
+            .filter_map(|caps| {
+                let full_match = caps.get(0)?.as_str().to_string();
+                let sign_and_mag = caps.get(1)?.as_str();
+                let unit = caps.get(2)?.as_str();
+                let fmt_suffix = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+
+                let n: i64 = sign_and_mag.parse().ok()?;
+
+                let target_date = match unit {
+                    "d" => {
+                        now.date_naive() + chrono::Duration::days(n)
+                    }
+                    "m" => {
+                        if n >= 0 {
+                            now.date_naive().checked_add_months(chrono::Months::new(n as u32))?
+                        } else {
+                            now.date_naive().checked_sub_months(chrono::Months::new(n.unsigned_abs() as u32))?
+                        }
+                    }
+                    "y" => {
+                        if n >= 0 {
+                            now.date_naive().checked_add_months(chrono::Months::new((n as u32) * 12))?
+                        } else {
+                            now.date_naive().checked_sub_months(chrono::Months::new((n.unsigned_abs() as u32) * 12))?
+                        }
+                    }
+                    _ => return None,
+                };
+
+                let chrono_fmt = match fmt_suffix {
+                    "DD/MM/YYYY" => "%d/%m/%Y",
+                    "DD/MM/YY"   => "%d/%m/%y",
+                    "MM/DD/YYYY" => "%m/%d/%Y",
+                    "YYYY-MM-DD" => "%Y-%m-%d",
+                    "D MMMM YYYY" => "%-d %B %Y",
+                    _ => "%Y-%m-%d",
+                };
+
+                let formatted = target_date.format(chrono_fmt).to_string();
+                Some((full_match, formatted))
+            })
+            .collect();
+
+        for (token, replacement) in matches {
+            result = result.replace(&token, &replacement);
+        }
+    }
 
     // {cursor} — track position, then remove token
     let mut cursor_back = 0;
@@ -740,6 +854,22 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
     }
 
     (result, cursor_back)
+}
+
+/// Percent-encode a string per RFC 3986 (unreserved characters pass through).
+fn url_encode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() * 3);
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(byte as char);
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    result
 }
 
 // ── Clipboard operations (Win32) ────────────────────────────────────────────

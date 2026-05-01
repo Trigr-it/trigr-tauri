@@ -10,6 +10,7 @@ mod foreground;
 mod hotkeys;
 mod licence;
 mod tray;
+mod voice;
 
 // ── Config (Phase 2) ────────────────────────────────────────────────────────
 
@@ -687,6 +688,27 @@ fn clear_global_pause_key() {
 }
 
 #[tauri::command]
+fn set_voice_hotkey(combo: String) -> Value {
+    hotkeys::set_voice_hotkey(&combo);
+    serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+fn clear_voice_hotkey() {
+    hotkeys::clear_voice_hotkey();
+}
+
+#[tauri::command]
+fn start_voice_recognition(phrases: Vec<String>, app: tauri::AppHandle) {
+    voice::start_recognition(phrases, app);
+}
+
+#[tauri::command]
+fn stop_voice_recognition() {
+    voice::stop_recognition();
+}
+
+#[tauri::command]
 fn check_hotkey_conflict(combo: String) -> Value {
     let _ = combo;
     serde_json::json!({ "conflict": false })
@@ -867,7 +889,8 @@ fn show_overlay(app: &tauri::AppHandle) {
                 "showAll": cfg.get("overlayShowAll").and_then(|v| v.as_bool()).unwrap_or(true),
                 "closeAfterFiring": cfg.get("overlayCloseAfterFiring").and_then(|v| v.as_bool()).unwrap_or(true),
                 "includeAutocorrect": cfg.get("overlayIncludeAutocorrect").and_then(|v| v.as_bool()).unwrap_or(false),
-            }
+            },
+            "voiceEnabled": cfg.get("voiceCommandsEnabled").and_then(|v| v.as_bool()).unwrap_or(true)
         })
     };
     let _ = overlay.emit("overlay-search-data", search_data);
@@ -878,7 +901,77 @@ fn show_overlay(app: &tauri::AppHandle) {
     let _ = overlay.set_focus();
 }
 
+fn show_voice_overlay(app: &tauri::AppHandle) {
+    use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow};
+    use windows_sys::Win32::Foundation::POINT;
+
+    log::info!("[Trigr] show_voice_overlay: START");
+
+    // Capture target HWND before we steal focus
+    let target = unsafe { GetForegroundWindow() as isize };
+    OVERLAY_TARGET_HWND.store(target, AtomicOrdering::Relaxed);
+
+    let overlay = match app.get_webview_window("overlay") {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Position on active monitor — same logic as show_overlay
+    let (cx, cy) = unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut pt);
+        (pt.x, pt.y)
+    };
+    let (wa_left, wa_top, wa_right, wa_bottom) = unsafe {
+        let pt = POINT { x: cx, y: cy };
+        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+        } else {
+            (0, 0, 1920, 1080)
+        }
+    };
+
+    let scale = overlay.scale_factor().unwrap_or(1.0);
+    let log_left = wa_left as f64 / scale;
+    let log_top = wa_top as f64 / scale;
+    let log_w = (wa_right - wa_left) as f64 / scale;
+    let log_h = (wa_bottom - wa_top) as f64 / scale;
+    // Compact square — bottom-centre, above taskbar
+    let win_w = 72.0_f64;
+    let win_h = 72.0_f64;
+    let x = log_left + (log_w - win_w) / 2.0;
+    let y = log_top + log_h - win_h - 12.0; // 12px above taskbar
+    let _ = overlay.set_position(tauri::LogicalPosition::new(x, y));
+    let _ = overlay.set_size(tauri::LogicalSize::new(win_w, win_h));
+
+    // Send voice data to overlay
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let voice_data = {
+        let state = hotkeys::engine_state().lock().unwrap();
+        serde_json::json!({
+            "assignments": state.assignments,
+            "activeProfile": state.active_profile,
+            "theme": cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"),
+            "voiceMicId": cfg.get("voiceMicId").and_then(|v| v.as_str()).unwrap_or(""),
+        })
+    };
+    log::info!("[Trigr] show_voice_overlay: emitting overlay-voice-data");
+    let _ = overlay.emit("overlay-voice-data", voice_data);
+
+    log::info!("[Trigr] show_voice_overlay: showing window");
+    *overlay_show_time().lock().unwrap() = Some(StdInstant::now());
+    let _ = overlay.show();
+    let _ = overlay.set_focus();
+    log::info!("[Trigr] show_voice_overlay: DONE");
+}
+
 fn hide_overlay(app: &tauri::AppHandle) {
+    hotkeys::clear_overlay_opened_flag();
+    hotkeys::clear_voice_active();
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.hide();
     }
@@ -1176,6 +1269,11 @@ fn get_top_apps(days: Option<u32>) -> Value {
 #[tauri::command]
 fn get_expansion_efficiency() -> Value {
     analytics::get_expansion_efficiency()
+}
+
+#[tauri::command]
+fn get_expansion_counts() -> Value {
+    analytics::get_expansion_counts()
 }
 
 #[tauri::command]
@@ -1720,6 +1818,23 @@ pub fn run() {
                 }
             });
 
+            // Listen for voice keydown from hotkey system — show overlay on first press,
+            // forward subsequent presses to the overlay JS for double-press detection
+            let app_handle_voice = app.handle().clone();
+            app.listen("voice-keydown", move |_| {
+                let overlay_visible = app_handle_voice
+                    .get_webview_window("overlay")
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                if !overlay_visible {
+                    show_voice_overlay(&app_handle_voice);
+                } else {
+                    // Already open — toggle off
+                    hide_overlay(&app_handle_voice);
+                    restore_overlay_target();
+                }
+            });
+
             // Listen for clipboard overlay toggle from hotkey system
             let app_handle_clip = app.handle().clone();
             app.listen("toggle-clipboard-overlay", move |_| {
@@ -1765,7 +1880,7 @@ pub fn run() {
                         .map(|t| t.elapsed() > std::time::Duration::from_millis(300))
                         .unwrap_or(true);
                     if should_hide {
-                        let _ = window.hide();
+                        hide_overlay(window.app_handle());
                     }
                 }
             } else if label == "clipboardoverlay" {
@@ -1825,6 +1940,10 @@ pub fn run() {
             // Pause
             set_global_pause_key,
             clear_global_pause_key,
+            set_voice_hotkey,
+            clear_voice_hotkey,
+            start_voice_recognition,
+            stop_voice_recognition,
             check_hotkey_conflict,
             // Window
             window_minimize,
@@ -1871,6 +1990,7 @@ pub fn run() {
             get_hourly_heatmap,
             get_top_apps,
             get_expansion_efficiency,
+            get_expansion_counts,
             get_streaks,
             export_analytics_csv,
             // Clipboard

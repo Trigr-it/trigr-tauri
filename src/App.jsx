@@ -50,6 +50,8 @@ function App() {
   const [keystrokeDelay,     setKeystrokeDelay]     = useState(30);
   const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(150);
   const [searchOverlayHotkey,       setSearchOverlayHotkey]       = useState('Ctrl+Space');
+  const [voiceHotkey,               setVoiceHotkey]               = useState('Alt+Space');
+  const [voiceMicId,               setVoiceMicId]               = useState('');
   const [overlayShowAll,             setOverlayShowAll]             = useState(true);
   const [overlayCloseAfterFiring,    setOverlayCloseAfterFiring]    = useState(true);
   const [overlayIncludeAutocorrect,  setOverlayIncludeAutocorrect]  = useState(false);
@@ -121,6 +123,8 @@ function App() {
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         // Always start on the Mapping view — do not restore last-used view/area
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
+        setVoiceHotkey(             config.voiceHotkey              || 'Alt+Space');
+        setVoiceMicId(              config.voiceMicId               || '');
         setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
@@ -149,6 +153,10 @@ function App() {
         // Register pause hotkey with Rust backend if one is stored in config
         if (config.globalPauseToggleKey) {
           window.electronAPI?.setPauseHotkey(config.globalPauseToggleKey);
+        }
+        // Register voice hotkey with Rust backend
+        if (config.voiceHotkey) {
+          window.electronAPI?.setVoiceHotkey(config.voiceHotkey);
         }
         // If the main process auto-restored from a backup, surface that to the user
         if (config._restoredFrom) setBackupRestoredFrom(config._restoredFrom);
@@ -255,6 +263,8 @@ function App() {
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
+        setVoiceHotkey(             config.voiceHotkey              || 'Alt+Space');
+        setVoiceMicId(              config.voiceMicId               || '');
         setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
@@ -753,13 +763,15 @@ function App() {
       expansionType: v.data?.expansionType || 'text',
       imagePath: v.data?.imagePath || '',
       imageScale: v.data?.imageScale ?? 100,
+      options: v.data?.options || [],
+      voicePhrase: v.data?.voicePhrase || '',
     }))
     .sort((a, b) => a.trigger.localeCompare(b.trigger));
 
   // editorValue is { html, text } from the rich text editor.
   // originalTrigger is provided when editing an existing expansion; if it differs
   // from trigger the old key is removed in the same update (single atomic write).
-  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale, variantOptions) => {
+  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale, variantOptions, voicePhrase) => {
     const newAssignments = { ...assignments };
     if (originalTrigger && originalTrigger !== trigger) {
       delete newAssignments[`GLOBAL::EXPANSION::${originalTrigger}`];
@@ -776,6 +788,7 @@ function App() {
     if (variantOptions && variantOptions.length > 0) {
       data.options = variantOptions;
     }
+    if (voicePhrase) data.voicePhrase = voicePhrase;
     newAssignments[`GLOBAL::EXPANSION::${trigger}`] = {
       type: 'expansion',
       label: displayName || (expansionType === 'image' ? `Image: ${trigger}` : `Expand: ${trigger}`),
@@ -1334,6 +1347,24 @@ function App() {
     window.electronAPI?.clearPauseHotkey();
   }, []);
 
+  // ── Voice hotkey ───────────────────────────────
+  const handleSetVoiceKey = useCallback((combo) => {
+    setVoiceHotkey(combo);
+    window.electronAPI?.setVoiceHotkey(combo);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, voiceHotkey: combo });
+  }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
+
+  const handleClearVoiceKey = useCallback(() => {
+    setVoiceHotkey('');
+    window.electronAPI?.clearVoiceHotkey();
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, voiceHotkey: '' });
+  }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
+
+  const handleSetVoiceMic = useCallback((micId) => {
+    setVoiceMicId(micId);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, voiceMicId: micId });
+  }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
+
   // ── Search overlay settings ───────────────────────────────
   const handleUpdateSearchSettings = useCallback((patch) => {
     if (patch.searchOverlayHotkey      !== undefined) setSearchOverlayHotkey(patch.searchOverlayHotkey);
@@ -1877,6 +1908,9 @@ function App() {
             globalPauseToggleKey={globalPauseToggleKey}
             onSetPauseKey={handleSetPauseKey}
             onClearPauseKey={handleClearPauseKey}
+            voiceHotkey={voiceHotkey}
+            onSetVoiceKey={handleSetVoiceKey}
+            onClearVoiceKey={handleClearVoiceKey}
             onRestartOnboarding={handleRestartOnboarding}
             activeProfile={activeProfile}
             onImportTemplate={handleImportTemplate}

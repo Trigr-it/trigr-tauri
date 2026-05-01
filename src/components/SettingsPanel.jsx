@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
 import { friendlyKeyName } from './keyboardLayout';
@@ -35,6 +35,9 @@ export default function SettingsPanel({
   globalPauseToggleKey  = null,
   onSetPauseKey,
   onClearPauseKey,
+  voiceHotkey           = 'Alt+Space',
+  onSetVoiceKey,
+  onClearVoiceKey,
   onRestartOnboarding,
   activeProfile = 'Default',
   onImportTemplate,
@@ -48,6 +51,11 @@ export default function SettingsPanel({
   const [capturingHotkey, setCapturingHotkey] = useState(false);
   const [capturedHotkey, setCapturedHotkey]   = useState(null);
   const [capturingPauseKey, setCapturingPauseKey] = useState(false);
+  const [capturingVoiceKey, setCapturingVoiceKey] = useState(false);
+  const [capturedVoiceKey, setCapturedVoiceKey]   = useState(null);
+  const [micTesting, setMicTesting]               = useState(false);
+  const [micLevel, setMicLevel]                   = useState(0);
+  const micTestRef = useRef(null); // { stream, audioCtx, analyser, animFrame }
   const [capturedPauseKey, setCapturedPauseKey]   = useState(null);
   const [pauseConflict, setPauseConflict]         = useState(null);
   const [backupList, setBackupList]           = useState(null);
@@ -74,6 +82,54 @@ export default function SettingsPanel({
       if (s?.retention_days) setClipboardRetention(s.retention_days);
     });
   }, []);
+
+  const stopMicTest = useCallback(() => {
+    if (micTestRef.current) {
+      cancelAnimationFrame(micTestRef.current.animFrame);
+      micTestRef.current.stream.getTracks().forEach(t => t.stop());
+      micTestRef.current.audioCtx.close();
+      micTestRef.current = null;
+    }
+    setMicTesting(false);
+    setMicLevel(0);
+  }, []);
+
+  const startMicTest = useCallback(() => {
+    if (micTesting) { stopMicTest(); return; }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(async stream => {
+        const audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.3;
+        source.connect(analyser);
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        micTestRef.current = { stream, audioCtx, analyser, animFrame: 0 };
+        setMicTesting(true);
+
+        function poll() {
+          if (!micTestRef.current) return;
+          analyser.getByteTimeDomainData(dataArray);
+          // RMS of waveform — much more responsive than frequency averaging
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const v = (dataArray[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          setMicLevel(Math.min(100, Math.round(rms * 400))); // amplify for visibility
+          micTestRef.current.animFrame = requestAnimationFrame(poll);
+        }
+        poll();
+      })
+      .catch(() => {
+        setMicTesting(false);
+        setMicLevel(0);
+      });
+  }, [micTesting, stopMicTest]);
 
   function loadBackups() {
     window.electronAPI?.listBackups().then(data => setBackupList(data || { backups: [], lastKnownGood: null }));
@@ -505,6 +561,125 @@ export default function SettingsPanel({
           </div>
         </section>
 
+        {/* ── VOICE COMMANDS ─────────────────────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">VOICE COMMANDS <span className="pro-badge">PRO</span></div>
+          <div className="settings-pause-stack">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Voice hotkey</span>
+              <span className="settings-toggle-sub">Press this from any app to activate voice mode. Speak a configured voice command to fire an action.</span>
+            </div>
+            <div className="settings-qs-hotkey-ctrl">
+              {capturingVoiceKey ? (
+                <div
+                  className="settings-qs-capture"
+                  tabIndex={0}
+                  autoFocus
+                  onBlur={() => { setCapturingVoiceKey(false); setCapturedVoiceKey(null); }}
+                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onKeyDown={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                    const mods = [];
+                    if (e.ctrlKey)  mods.push('Ctrl');
+                    if (e.shiftKey) mods.push('Shift');
+                    if (e.altKey)   mods.push('Alt');
+                    if (e.metaKey)  mods.push('Win');
+                    if (mods.length === 0) return;
+                    mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                    const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                    const combo = [...mods, e.code].join('+');
+                    const label = [...mods, keyDisplay].join('+');
+                    setCapturedVoiceKey({ combo, label });
+                  }}
+                >
+                  {capturedVoiceKey ? (
+                    <span className="settings-qs-captured">{capturedVoiceKey.label}</span>
+                  ) : (
+                    <span className="settings-qs-waiting">Press combo…</span>
+                  )}
+                  {capturedVoiceKey && (
+                    <button
+                      className="settings-qs-save-btn"
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        onSetVoiceKey?.(capturedVoiceKey.combo);
+                        setCapturingVoiceKey(false);
+                        setCapturedVoiceKey(null);
+                      }}
+                    >
+                      Save
+                    </button>
+                  )}
+                  <button
+                    className="settings-qs-cancel-btn"
+                    type="button"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setCapturingVoiceKey(false); setCapturedVoiceKey(null); }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : voiceHotkey ? (
+                <>
+                  <span className="settings-qs-hotkey-badge">
+                    {voiceHotkey.split('+').map((p, i, arr) => (
+                        <React.Fragment key={i}>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                        </React.Fragment>
+                    ))}
+                  </span>
+                  <button
+                    className="settings-action-btn"
+                    type="button"
+                    onClick={() => setCapturingVoiceKey(true)}
+                  >
+                    Change
+                  </button>
+                  <button
+                    className="settings-action-btn settings-danger-btn"
+                    type="button"
+                    onClick={() => onClearVoiceKey?.()}
+                    title="Remove voice hotkey"
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="settings-action-btn"
+                  type="button"
+                  onClick={() => setCapturingVoiceKey(true)}
+                >
+                  Set hotkey
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Microphone</span>
+              <span className="settings-toggle-sub">Trigr uses your Windows default recording device. To change it: Windows Settings &gt; System &gt; Sound &gt; Input.</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-action-btn${micTesting ? ' settings-danger-btn' : ''}`}
+              onClick={startMicTest}
+            >
+              {micTesting ? 'Stop' : 'Test Microphone'}
+            </button>
+          </div>
+          {micTesting && (
+            <div className="settings-mic-meter">
+              <div className="settings-mic-meter-bar" style={{ width: `${micLevel}%` }} />
+            </div>
+          )}
+        </section>
+
         {/* ── GLOBAL PAUSE ───────────────────────────────── */}
         <section className="settings-section">
           <div className="settings-section-title">GLOBAL PAUSE</div>
@@ -521,6 +696,7 @@ export default function SettingsPanel({
                   tabIndex={0}
                   autoFocus
                   onBlur={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
+                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
                   onKeyDown={async e => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -627,6 +803,7 @@ export default function SettingsPanel({
                   tabIndex={0}
                   autoFocus
                   onBlur={() => { setCapturingHotkey(false); setCapturedHotkey(null); }}
+                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
                   onKeyDown={e => {
                     e.preventDefault();
                     e.stopPropagation();

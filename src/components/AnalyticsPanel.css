@@ -61,7 +61,7 @@
 .analytics-two-col {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0 24px;
+  gap: 0 10px;
 }
 
 @media (min-width: 900px) {
@@ -96,12 +96,15 @@
 .analytics-four-col {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0 24px;
+  gap: 10px;
 }
 
 @media (min-width: 1200px) {
   .analytics-four-col {
-    grid-template-columns: 1fr 1fr 1fr 1fr;
+    /* Outer boxes (Breakdown, Efficiency) align with the white Records edge;
+       inner boxes (Streaks, ROI) match the grey record card width.
+       17px = 16px padding + 1px border of the Records section above. */
+    grid-template-columns: calc(25% + 1px) calc(25% - 16px) calc(25% - 16px) calc(25% + 1px);
   }
 }
 

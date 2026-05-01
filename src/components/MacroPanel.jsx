@@ -1227,6 +1227,7 @@ export default function MacroPanel({
   const [activeType, setActiveType] = useState('text');
   const [formValue, setFormValue] = useState({});
   const [label, setLabel] = useState('');
+  const [voicePhrase, setVoicePhrase] = useState('');
   const [pressMode, setPressMode] = useState('single'); // 'single' | 'double'
   const [reassigning, setReassigning] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
@@ -1242,16 +1243,19 @@ export default function MacroPanel({
       setActiveType(doubleAssignment.type || 'text');
       setFormValue(doubleAssignment.data || {});
       setLabel(doubleAssignment.label || '');
+      setVoicePhrase(doubleAssignment.data?.voicePhrase || '');
     } else {
       setPressMode('single');
       if (assignment) {
         setActiveType(assignment.type || 'text');
         setFormValue(assignment.data || {});
         setLabel(assignment.label || '');
+        setVoicePhrase(assignment.data?.voicePhrase || '');
       } else {
         setActiveType('text');
         setFormValue({});
         setLabel('');
+        setVoicePhrase('');
       }
     }
   }, [selectedKey, assignment, doubleAssignment]);
@@ -1263,20 +1267,24 @@ export default function MacroPanel({
         setActiveType(doubleAssignment.type || 'text');
         setFormValue(doubleAssignment.data || {});
         setLabel(doubleAssignment.label || '');
+        setVoicePhrase(doubleAssignment.data?.voicePhrase || '');
       } else {
         setActiveType('text');
         setFormValue({});
         setLabel('');
+        setVoicePhrase('');
       }
     } else {
       if (assignment) {
         setActiveType(assignment.type || 'text');
         setFormValue(assignment.data || {});
         setLabel(assignment.label || '');
+        setVoicePhrase(assignment.data?.voicePhrase || '');
       } else {
         setActiveType('text');
         setFormValue({});
         setLabel('');
+        setVoicePhrase('');
       }
     }
   // eslint-disable-next-line
@@ -1285,10 +1293,14 @@ export default function MacroPanel({
   const handleSave = () => {
     if (!selectedKey) return;
 
+    const data = { ...formValue };
+    if (voicePhrase.trim()) data.voicePhrase = voicePhrase.trim();
+    else delete data.voicePhrase;
+
     const macro = {
       type: activeType,
       label: label || getAutoLabel(),
-      data: formValue,
+      data,
     };
 
     if (pressMode === 'double') {
@@ -1549,6 +1561,19 @@ export default function MacroPanel({
             onChange={e => setLabel(e.target.value)}
             onKeyDown={e => e.stopPropagation()}
           />
+        </div>
+
+        {/* Voice command */}
+        <div className="form-section" style={{ marginTop: 4 }}>
+          <label className="form-label">Voice command <span className="pro-badge">PRO</span></label>
+          <input
+            className="form-input"
+            placeholder="e.g. open revit, my shortcut"
+            value={voicePhrase}
+            onChange={e => setVoicePhrase(e.target.value)}
+            onKeyDown={e => e.stopPropagation()}
+          />
+          <span className="form-hint">Hold Ctrl+Space to trigger by voice</span>
         </div>
       </div>
 
