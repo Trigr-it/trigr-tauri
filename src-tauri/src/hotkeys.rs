@@ -1460,14 +1460,15 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 let double_key_str = format!("{}::double", bare_key);
                 let has_double = state.assignments.contains_key(&double_key_str);
 
-                // Hotkey actions on bare keys fire on keydown so that OS key-repeat
-                // gives natural hold-to-spam behaviour (e.g. X → E in a game).
-                // Fast path: remap_key_direct runs inline on this thread — no spawn,
-                // no SUPPRESS_SIMULATED race, single batched SendInput.
+                // Hotkey actions on bare keys: AHK-style direct passthrough.
+                // keydown → send target keydown only (no up yet).
+                // keyup  → remap_key_release sends target keyup (see handle_keyup).
+                // This makes hold, tap, and OS key-repeat all feel identical to
+                // pressing the target key directly.
                 // Falls back to fire_macro for mouse, hold, repeat, or unknown key.
                 if action_type == "hotkey" && !has_double {
                     if let Some(data) = macro_val.get("data") {
-                        if crate::actions::remap_key_direct(data) {
+                        if crate::actions::remap_key_press(vk as u16, data) {
                             drop(state);
                             return;
                         }
@@ -1663,6 +1664,12 @@ fn handle_keyup(vk: u32, _scan: u32, app: &AppHandle) {
                 let _ = app.emit("key-captured", Value::String(sole.clone()));
             }
         }
+    }
+
+    // Release active bare-key remap — sends target keyup if this trigger was remapped.
+    // Must come after modifier update so modifier state is accurate for the release.
+    if crate::actions::remap_key_release(vk as u16) {
+        return;
     }
 
     // Fire pending macro once all modifiers released (or immediately for bare keys)

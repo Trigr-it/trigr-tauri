@@ -616,7 +616,7 @@ fn send_unicode_key(scan: u16, key_up: bool) {
     }
 }
 
-// ── Direct inline key remap ──────────────────────────────────────────────────
+// ── Direct inline key remap (AHK-style T::W passthrough) ────────────────────
 
 /// Build a single VK keyboard INPUT struct (key-down or key-up).
 fn make_vk_input(vk: u16, key_up: bool) -> INPUT {
@@ -635,32 +635,27 @@ fn make_vk_input(vk: u16, key_up: bool) -> INPUT {
     }
 }
 
-/// Execute a plain hotkey remap directly on the calling thread (processor thread)
-/// using a single batched SendInput call.  This eliminates the thread-spawn race
-/// with SUPPRESS_SIMULATED that caused dropped presses when spamming remapped keys.
+/// trigger_vk → (target_vk, mod_vks)
+/// Populated on keydown, removed on keyup so hold and OS key-repeat work correctly.
+static ACTIVE_BARE_REMAPS: LazyLock<Mutex<HashMap<u16, (u16, Vec<u16>)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Press phase of a bare-key remap (called on keydown / OS key-repeat events).
 ///
-/// Returns `true` if the remap was executed inline.
-/// Returns `false` when the action needs the full `fire_macro` path:
-///   - mouse buttons (handled by mouse event functions)
-///   - hold mode  (requires key-up pairing via HELD_KEY state)
-///   - repeat mode (requires a background thread + stop flag)
-///   - unknown / unmapped key name
-pub fn remap_key_direct(data: &Value) -> bool {
+/// Sends mod_downs + target_keydown only — NO keyup.  The matching
+/// `remap_key_release` sends the keyup when the trigger is released.
+/// This gives true AHK-style hold behaviour: hold I → Tab is held in the game.
+///
+/// Returns `false` → fall through to `fire_macro` for:
+///   - mouse buttons, hold mode, repeat mode, unknown key name.
+pub fn remap_key_press(trigger_vk: u16, data: &Value) -> bool {
     let key_name = match data.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
         None => return false,
     };
-
-    // Mouse buttons, hold mode, and repeat mode need the full fire_macro path
-    if is_mouse_button(key_name) {
-        return false;
-    }
-    if data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false) {
-        return false;
-    }
-    if data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false) {
-        return false;
-    }
+    if is_mouse_button(key_name) { return false; }
+    if data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false) { return false; }
+    if data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false) { return false; }
 
     let target_vk = match display_name_to_vk(key_name) {
         Some(vk) => vk,
@@ -683,19 +678,17 @@ pub fn remap_key_direct(data: &Value) -> bool {
         })
         .unwrap_or_default();
 
-    // Build INPUT array: mod_downs, target_down, target_up, mod_ups
-    let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() * 2 + 2);
+    // Record active remap so keyup knows which target VK to release.
+    // Overwriting on OS key-repeat is intentional and idempotent.
+    ACTIVE_BARE_REMAPS.lock().unwrap().insert(trigger_vk, (target_vk, mod_vks.clone()));
+
+    // Send mod_downs + target_down (keyup is sent by remap_key_release).
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
     for &vk in &mod_vks {
         inputs.push(make_vk_input(vk, false));
     }
     inputs.push(make_vk_input(target_vk, false));
-    inputs.push(make_vk_input(target_vk, true));
-    for &vk in mod_vks.iter().rev() {
-        inputs.push(make_vk_input(vk, true));
-    }
 
-    // Single batched SendInput under SuppressionGuard — the entire sequence is
-    // injected atomically, and SUPPRESS_SIMULATED is only true for those events.
     let _guard = SuppressionGuard::new();
     unsafe {
         SendInput(
@@ -704,8 +697,33 @@ pub fn remap_key_direct(data: &Value) -> bool {
             std::mem::size_of::<INPUT>() as i32,
         );
     }
-
     true
+}
+
+/// Release phase of a bare-key remap (called on keyup).
+///
+/// Sends target_keyup + mod_ups for the remap that was started by `remap_key_press`.
+/// Returns `true` if a remap was active for this trigger VK (caller should early-return).
+pub fn remap_key_release(trigger_vk: u16) -> bool {
+    let entry = ACTIVE_BARE_REMAPS.lock().unwrap().remove(&trigger_vk);
+    if let Some((target_vk, mod_vks)) = entry {
+        let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+        inputs.push(make_vk_input(target_vk, true));
+        for &vk in mod_vks.iter().rev() {
+            inputs.push(make_vk_input(vk, true));
+        }
+        let _guard = SuppressionGuard::new();
+        unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            );
+        }
+        true
+    } else {
+        false
+    }
 }
 
 // ── Send Hotkey: VK-based key simulation ────────────────────────────────────
