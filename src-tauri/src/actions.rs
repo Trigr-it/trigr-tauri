@@ -256,8 +256,9 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
 
     let (initial_ms, step_settle_ms, _fg_settle_ms, _clip_restore_ms) = speed_delays();
 
-    // Initial delay — lets Windows finish delivering the trigger keydown
-    if initial_ms > 0 { thread::sleep(Duration::from_millis(initial_ms)); }
+    // Initial delay — lets Windows finish delivering the trigger keydown.
+    // Skip for hotkey actions: trigger was already suppressed by the hook, nothing to wait for.
+    if initial_ms > 0 && macro_type != "hotkey" { thread::sleep(Duration::from_millis(initial_ms)); }
 
     // Erase leaked character for bare keys or AltGr dead characters
     if is_bare || is_altgr {
@@ -286,7 +287,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
 
         "hotkey" => {
             if let Some(d) = data {
-                if step_settle_ms > 0 { thread::sleep(Duration::from_millis(step_settle_ms)); }
+                // Skip step delay for plain hotkey — SendInput doesn't need settle time
                 execute_send_hotkey(d, trigger_key, app);
             }
         }

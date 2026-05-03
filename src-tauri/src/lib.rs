@@ -827,6 +827,16 @@ fn overlay_show_time() -> &'static StdMutex<Option<StdInstant>> {
     OVERLAY_SHOW_TIME.get_or_init(|| StdMutex::new(None))
 }
 
+/// Whether voice mode is locked in continuous mode (double-tap to activate).
+static VOICE_CONTINUOUS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Timestamp when the voice overlay was opened — used for double-tap detection.
+static VOICE_OVERLAY_OPEN_TIME: std::sync::OnceLock<StdMutex<Option<StdInstant>>> = std::sync::OnceLock::new();
+
+fn voice_overlay_open_time() -> &'static StdMutex<Option<StdInstant>> {
+    VOICE_OVERLAY_OPEN_TIME.get_or_init(|| StdMutex::new(None))
+}
+
 fn show_overlay(app: &tauri::AppHandle) {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST};
@@ -963,7 +973,9 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
     let _ = overlay.emit("overlay-voice-data", voice_data);
 
     log::info!("[Trigr] show_voice_overlay: showing window");
-    *overlay_show_time().lock().unwrap() = Some(StdInstant::now());
+    let voice_open_now = StdInstant::now();
+    *overlay_show_time().lock().unwrap() = Some(voice_open_now);
+    *voice_overlay_open_time().lock().unwrap() = Some(voice_open_now);
     let _ = overlay.show();
     let _ = overlay.set_focus();
     log::info!("[Trigr] show_voice_overlay: DONE");
@@ -972,6 +984,8 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
 fn hide_overlay(app: &tauri::AppHandle) {
     hotkeys::clear_overlay_opened_flag();
     hotkeys::clear_voice_active();
+    VOICE_CONTINUOUS.store(false, AtomicOrdering::SeqCst);
+    *voice_overlay_open_time().lock().unwrap() = None;
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.hide();
     }
@@ -1819,7 +1833,7 @@ pub fn run() {
             });
 
             // Listen for voice keydown from hotkey system — show overlay on first press,
-            // forward subsequent presses to the overlay JS for double-press detection
+            // double-tap within 500ms enters continuous mode (stays open between commands)
             let app_handle_voice = app.handle().clone();
             app.listen("voice-keydown", move |_| {
                 let overlay_visible = app_handle_voice
@@ -1828,10 +1842,28 @@ pub fn run() {
                     .unwrap_or(false);
                 if !overlay_visible {
                     show_voice_overlay(&app_handle_voice);
-                } else {
-                    // Already open — toggle off
+                } else if VOICE_CONTINUOUS.load(AtomicOrdering::SeqCst) {
+                    // Already in continuous mode — press again to exit
+                    VOICE_CONTINUOUS.store(false, AtomicOrdering::SeqCst);
                     hide_overlay(&app_handle_voice);
                     restore_overlay_target();
+                } else {
+                    // Overlay open but not continuous — check for double-tap
+                    let elapsed_ms = {
+                        let guard = voice_overlay_open_time().lock().unwrap();
+                        guard.as_ref().map(|t| t.elapsed().as_millis() as u64).unwrap_or(u64::MAX)
+                    };
+                    if elapsed_ms < 500 {
+                        // Double-tap: enter continuous mode — overlay stays open between commands
+                        VOICE_CONTINUOUS.store(true, AtomicOrdering::SeqCst);
+                        if let Some(overlay) = app_handle_voice.get_webview_window("overlay") {
+                            let _ = overlay.emit("voice-continuous-on", ());
+                        }
+                    } else {
+                        // Normal single-tap toggle off
+                        hide_overlay(&app_handle_voice);
+                        restore_overlay_target();
+                    }
                 }
             });
 
@@ -1872,7 +1904,11 @@ pub fn run() {
             } else if label == "overlay" {
                 // Auto-hide overlay on blur (clicking outside)
                 if let tauri::WindowEvent::Focused(false) = event {
-                    // Guard: don't dismiss within 100ms of showing (prevents immediate dismiss)
+                    // Voice mode: the WinRT recognizer briefly steals focus during init — never auto-close on blur
+                    if hotkeys::is_voice_active() {
+                        return;
+                    }
+                    // Guard: don't dismiss within 300ms of showing (prevents immediate dismiss)
                     let should_hide = overlay_show_time()
                         .lock()
                         .ok()

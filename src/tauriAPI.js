@@ -214,6 +214,9 @@ window.electronAPI = {
   onOverlayVoiceData: (callback) => {
     listen('overlay-voice-data', (event) => callback(event.payload)).then(u => { listeners['overlay-voice-data'] = u; });
   },
+  onVoiceContinuousOn: (callback) => {
+    listen('voice-continuous-on', () => callback()).then(u => { listeners['voice-continuous-on'] = u; });
+  },
   checkHotkeyConflict: (combo) => invoke('check_hotkey_conflict', { combo }),
 
   // ── Auto-updater ────────────────────────────────────────────────────────────

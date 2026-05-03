@@ -267,11 +267,15 @@ export default function SearchOverlay() {
   const [voiceState, setVoiceState]         = useState('idle'); // 'idle' | 'listening' | 'matched' | 'no-match' | 'error' | 'unsupported'
   const [interimText, setInterimText]       = useState('');
   const [matchedLabel, setMatchedLabel]     = useState('');
-  const recognitionRef   = useRef(false);  // boolean: is WinRT recognition running
-  const voiceTimeoutRef  = useRef(null);
-  const modeRef          = useRef(mode);
+  const [voiceContinuous, setVoiceContinuous] = useState(false); // double-tap stay-active mode
+  const recognitionRef      = useRef(false);  // boolean: is WinRT recognition running
+  const voiceTimeoutRef     = useRef(null);
+  const voiceContinuousRef  = useRef(false);
+  voiceContinuousRef.current = voiceContinuous;
+  const startListeningRef   = useRef(null);   // ref so async callbacks can call startListening
+  const modeRef             = useRef(mode);
   modeRef.current = mode;
-  const voiceStateRef    = useRef(voiceState);
+  const voiceStateRef       = useRef(voiceState);
   voiceStateRef.current = voiceState;
 
   const inputRef   = useRef(null);
@@ -320,12 +324,19 @@ export default function SearchOverlay() {
     // Send phrases to Rust WinRT recognizer
     window.electronAPI?.startVoiceRecognition(phrases);
 
-    // Auto-cancel timeout (WinRT has its own timeout but this is a safety net)
+    // Auto-cancel timeout — in continuous mode, restart instead of closing
     voiceTimeoutRef.current = setTimeout(() => {
       stopListening();
-      setVoiceState('no-match');
-      setInterimText('No speech detected');
-      setTimeout(() => window.electronAPI?.closeOverlay(), 1200);
+      if (voiceContinuousRef.current) {
+        setVoiceState('listening');
+        setInterimText('');
+        recognitionRef.current = false;
+        startListeningRef.current?.();
+      } else {
+        setVoiceState('no-match');
+        setInterimText('No speech detected');
+        setTimeout(() => window.electronAPI?.closeOverlay(), 1200);
+      }
     }, 8000);
   }, [voicePhraseMap, stopListening]);
 
@@ -410,7 +421,16 @@ export default function SearchOverlay() {
       setVoiceState('idle');
       setInterimText('');
       setMatchedLabel('');
+      setVoiceContinuous(false);
       setReady(true);
+    });
+  }, []);
+
+  // ── Continuous mode: double-tap to stay active between commands ──
+  useEffect(() => {
+    if (!window.electronAPI?.onVoiceContinuousOn) return;
+    window.electronAPI.onVoiceContinuousOn(() => {
+      setVoiceContinuous(true);
     });
   }, []);
 
@@ -425,7 +445,17 @@ export default function SearchOverlay() {
       if (!text) {
         setVoiceState('no-match');
         setInterimText('');
-        setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+        if (voiceContinuousRef.current) {
+          // Continuous mode: restart after brief pause
+          setTimeout(() => {
+            setVoiceState('listening');
+            setInterimText('');
+            recognitionRef.current = false;
+            startListeningRef.current?.();
+          }, 1000);
+        } else {
+          setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+        }
         return;
       }
       setInterimText(text);
@@ -435,10 +465,31 @@ export default function SearchOverlay() {
       if (match) {
         setVoiceState('matched');
         setMatchedLabel(match.label || match.trigger || '(matched)');
-        setTimeout(() => fireItemRef.current?.(match), 500);
+        setTimeout(() => {
+          fireItemRef.current?.(match);
+          if (voiceContinuousRef.current) {
+            // Continuous mode: restart listening after command fires
+            setTimeout(() => {
+              setVoiceState('listening');
+              setInterimText('');
+              setMatchedLabel('');
+              recognitionRef.current = false;
+              startListeningRef.current?.();
+            }, 600);
+          }
+        }, 500);
       } else {
         setVoiceState('no-match');
-        setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+        if (voiceContinuousRef.current) {
+          setTimeout(() => {
+            setVoiceState('listening');
+            setInterimText('');
+            recognitionRef.current = false;
+            startListeningRef.current?.();
+          }, 1200);
+        } else {
+          setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+        }
       }
     });
   }, []);
@@ -450,9 +501,16 @@ export default function SearchOverlay() {
       clearTimeout(voiceTimeoutRef.current);
       recognitionRef.current = false;
       if (data.error === 'no-speech') {
-        setVoiceState('no-match');
-        setInterimText('');
-        setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+        if (voiceContinuousRef.current) {
+          // Continuous mode: silently restart on no-speech
+          setVoiceState('listening');
+          setInterimText('');
+          setTimeout(() => startListeningRef.current?.(), 300);
+        } else {
+          setVoiceState('no-match');
+          setInterimText('');
+          setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+        }
       } else {
         setVoiceState('error');
         setInterimText(data.error || 'Voice unavailable');
@@ -500,7 +558,10 @@ export default function SearchOverlay() {
     if (item.text  != null) payload.text  = item.text;
     if (item.html  != null) payload.html  = item.html;
 
-    if (settings.closeAfterFiring) {
+    if (voiceContinuousRef.current) {
+      // Continuous voice mode — fire without closing overlay
+      window.electronAPI?.executeSearchResult(payload);
+    } else if (settings.closeAfterFiring) {
       window.electronAPI?.closeOverlay();
       window.electronAPI?.executeSearchResult(payload);
     } else {
@@ -508,6 +569,7 @@ export default function SearchOverlay() {
     }
   }
   fireItemRef.current = fireItem;
+  startListeningRef.current = startListening;
 
   // ── Fire search template ──
   function fireSearchTemplate() {
@@ -672,6 +734,9 @@ export default function SearchOverlay() {
         {/* Voice mode UI — compact square */}
         {mode === 'voice' ? (
           <div className="search-voice-pill" onKeyDown={handleInputKeyDown} tabIndex={-1}>
+            {voiceContinuous && (
+              <div className="search-voice-continuous-badge" title="Continuous mode — press hotkey again to stop">∞</div>
+            )}
             {(voiceState === 'listening' || voiceState === 'idle') && (
               <div className="search-voice-pill-mic">
                 <div className="search-voice-pill-ring" />

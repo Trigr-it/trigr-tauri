@@ -1439,6 +1439,20 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             }
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 crate::expansions::buffer_clear();
+                let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                let double_key_str = format!("{}::double", bare_key);
+                let has_double = state.assignments.contains_key(&double_key_str);
+
+                // Hotkey actions on bare keys fire on keydown so that OS key-repeat
+                // gives natural hold-to-spam behaviour (e.g. X → E in a game).
+                // is_bare=false: the trigger was suppressed by the hook, no leaked char.
+                if action_type == "hotkey" && !has_double {
+                    let trigger = bare_key.clone();
+                    drop(state);
+                    fire_macro(macro_val, false, Some(trigger), app);
+                    return;
+                }
+
                 state.pending_macro = Some(macro_val);
                 state.pending_storage_key = Some(bare_key.clone());
                 state.pending_trigger_key = Some(bare_key);
@@ -2312,6 +2326,11 @@ pub fn clear_overlay_opened_flag() {
 /// reopening the overlay after a match fires and the overlay closes.
 pub fn clear_voice_active() {
     VOICE_ACTIVE.store(false, Ordering::SeqCst);
+}
+
+/// Check whether voice mode is currently active (used to suppress blur auto-hide).
+pub fn is_voice_active() -> bool {
+    VOICE_ACTIVE.load(Ordering::SeqCst)
 }
 
 pub fn update_profile_settings(settings: HashMap<String, Value>) {

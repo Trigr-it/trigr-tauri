@@ -972,6 +972,17 @@
   <h2>Shortcuts stopped working globally</h2>
   <p>Trigr uses a Windows keyboard hook to capture global keypresses. In rare cases Windows can disable hooks under high system load. The heartbeat monitor should detect this and reinstall the hook automatically. If shortcuts stop working, right-click the tray icon and restart Trigr.</p>
 
+  <h2>Gaming &amp; anti-cheat</h2>
+
+  <div class="accordion" id="acc-ts-game">
+    <div class="accordion-header" onclick="toggleAcc('acc-ts-game')"><span>Will Trigr get me banned in online games?</span><span class="accordion-arrow">▼</span></div>
+    <div class="accordion-body">
+      <p>It might. Trigr uses a low-level Windows keyboard hook (WH_KEYBOARD_LL) to capture global keypresses — the same technique that tools like AutoHotkey, Razer Synapse, and Logitech G Hub use. Anti-cheat systems including Vanguard (Valorant), Easy Anti-Cheat (Fortnite, Apex Legends), and BattlEye (PUBG, Rainbow Six Siege) actively scan for this type of hook and can flag or ban accounts when they detect it, even if you are not using Trigr to gain any in-game advantage.</p>
+      <p><strong>If you play competitive online games: close Trigr before launching the game.</strong> Right-click the tray icon and select <strong>Quit</strong> to ensure the hook is fully removed before the anti-cheat driver loads.</p>
+      <p>Trigr is intended for productivity automation. Use while playing online multiplayer games may violate the game's terms of service and trigger anti-cheat systems, potentially resulting in account bans. Users assume all responsibility for such use.</p>
+    </div>
+  </div>
+
   <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
 </div>
 
