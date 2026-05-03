@@ -154,6 +154,7 @@ window.electronAPI = {
   // ── Quick Search overlay ────────────────────────────────────────────────────
   closeOverlay:          ()          => invoke('close_overlay'),
   resizeOverlay:         (height)    => invoke('overlay_resize', { height }),
+  voiceOverlayErrorExpand: ()        => invoke('voice_overlay_error_expand'),
   executeSearchResult:   (result)    => invoke('execute_search_result', { result }),
   updateSearchSettings:  (settings)  => invoke('update_search_settings', { settings }),
 
@@ -216,6 +217,9 @@ window.electronAPI = {
   },
   onVoiceContinuousOn: (callback) => {
     listen('voice-continuous-on', () => callback()).then(u => { listeners['voice-continuous-on'] = u; });
+  },
+  onVoiceContinuousRestart: (callback) => {
+    listen('voice-continuous-restart', () => callback()).then(u => { listeners['voice-continuous-restart'] = u; });
   },
   checkHotkeyConflict: (combo) => invoke('check_hotkey_conflict', { combo }),
 

@@ -428,11 +428,22 @@ export default function SearchOverlay() {
     });
   }, []);
 
-  // ── Continuous mode: double-tap to stay active between commands ──
+  // ── Continuous mode: press hotkey again while overlay is open to stay active between commands ──
   useEffect(() => {
     if (!window.electronAPI?.onVoiceContinuousOn) return;
     window.electronAPI.onVoiceContinuousOn(() => {
       setVoiceContinuous(true);
+    });
+  }, []);
+
+  // ── Continuous mode: restart listening after each command fires ──
+  useEffect(() => {
+    if (!window.electronAPI?.onVoiceContinuousRestart) return;
+    window.electronAPI.onVoiceContinuousRestart(() => {
+      setVoiceState('listening');
+      setInterimText('');
+      recognitionRef.current = false;
+      startListeningRef.current?.();
     });
   }, []);
 

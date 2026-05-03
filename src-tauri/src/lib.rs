@@ -1094,13 +1094,39 @@ fn overlay_resize(height: f64, app: tauri::AppHandle) {
     }
 }
 
+/// Expand the voice overlay from its compact 72×72 pill to a wider error banner.
+/// Re-centres the window for the new width so it stays bottom-centre on screen.
+#[tauri::command]
+fn voice_overlay_error_expand(app: tauri::AppHandle) {
+    let new_w = 340.0_f64;
+    let new_h = 72.0_f64;
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let scale = overlay.scale_factor().unwrap_or(1.0);
+        // Current window is 72px wide, centred. Shift x left to re-centre for new width.
+        if let Ok(pos) = overlay.outer_position() {
+            let log_x = pos.x as f64 / scale;
+            let log_y = pos.y as f64 / scale;
+            let adj_x = (log_x - (new_w - 72.0) / 2.0).max(0.0);
+            let _ = overlay.set_position(tauri::LogicalPosition::new(adj_x, log_y));
+        }
+        let _ = overlay.set_size(tauri::LogicalSize::new(new_w, new_h));
+    }
+}
+
 #[tauri::command]
 fn execute_search_result(result: Value, app: tauri::AppHandle) {
-    hide_overlay(&app);
+    let is_continuous = VOICE_CONTINUOUS.load(AtomicOrdering::SeqCst);
+
+    if !is_continuous {
+        hide_overlay(&app);
+    }
+    // Always restore focus to target app so actions execute in the right window.
+    // In continuous mode the overlay stays visible (always_on_top) above the target.
     restore_overlay_target();
 
     let result_type = result.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let target_hwnd = OVERLAY_TARGET_HWND.load(AtomicOrdering::Relaxed);
+    let app_cont = if is_continuous { Some(app.clone()) } else { None };
 
     std::thread::spawn(move || {
         // Wait for focus transfer to target app
@@ -1197,6 +1223,13 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
                 }
             }
             _ => {}
+        }
+
+        // Continuous voice mode: signal frontend to restart listening after the action executed.
+        if let Some(app2) = app_cont {
+            if let Some(overlay) = app2.get_webview_window("overlay") {
+                let _ = overlay.emit("voice-continuous-restart", ());
+            }
         }
     });
 }
@@ -1848,21 +1881,11 @@ pub fn run() {
                     hide_overlay(&app_handle_voice);
                     restore_overlay_target();
                 } else {
-                    // Overlay open but not continuous — check for double-tap
-                    let elapsed_ms = {
-                        let guard = voice_overlay_open_time().lock().unwrap();
-                        guard.as_ref().map(|t| t.elapsed().as_millis() as u64).unwrap_or(u64::MAX)
-                    };
-                    if elapsed_ms < 500 {
-                        // Double-tap: enter continuous mode — overlay stays open between commands
-                        VOICE_CONTINUOUS.store(true, AtomicOrdering::SeqCst);
-                        if let Some(overlay) = app_handle_voice.get_webview_window("overlay") {
-                            let _ = overlay.emit("voice-continuous-on", ());
-                        }
-                    } else {
-                        // Normal single-tap toggle off
-                        hide_overlay(&app_handle_voice);
-                        restore_overlay_target();
+                    // Overlay open but not continuous — press hotkey again to enter continuous mode.
+                    // (Press a third time while continuous to close — handled by the branch above.)
+                    VOICE_CONTINUOUS.store(true, AtomicOrdering::SeqCst);
+                    if let Some(overlay) = app_handle_voice.get_webview_window("overlay") {
+                        let _ = overlay.emit("voice-continuous-on", ());
                     }
                 }
             });
@@ -2013,6 +2036,7 @@ pub fn run() {
             // Overlay
             close_overlay,
             overlay_resize,
+            voice_overlay_error_expand,
             execute_search_result,
             update_search_settings,
             // Onboarding
