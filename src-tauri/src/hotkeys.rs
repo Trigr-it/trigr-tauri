@@ -898,6 +898,23 @@ unsafe extern "system" fn keyboard_hook_proc(
             }
         }
     }
+    if n_code >= 0 && SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
+        // Mid-injection: our synthetic events pass through, but a real user keypress
+        // for a suppressed key must still be blocked — otherwise it leaks to the game
+        // as raw input (e.g. "I" reaching the game instead of being consumed by Trigr).
+        let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+        if matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN)
+            && !is_modifier_vk(kb.vkCode)
+            && MACROS_ENABLED.load(Ordering::SeqCst)
+        {
+            let bits = modifier_bits();
+            if let Ok(set) = suppress_keys().try_read() {
+                if set.contains(&(bits, kb.vkCode)) && !(bits == 0 && is_foreground_dialog()) {
+                    return 1;
+                }
+            }
+        }
+    }
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         match w_param as u32 {
@@ -1445,8 +1462,16 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
                 // Hotkey actions on bare keys fire on keydown so that OS key-repeat
                 // gives natural hold-to-spam behaviour (e.g. X → E in a game).
-                // is_bare=false: the trigger was suppressed by the hook, no leaked char.
+                // Fast path: remap_key_direct runs inline on this thread — no spawn,
+                // no SUPPRESS_SIMULATED race, single batched SendInput.
+                // Falls back to fire_macro for mouse, hold, repeat, or unknown key.
                 if action_type == "hotkey" && !has_double {
+                    if let Some(data) = macro_val.get("data") {
+                        if crate::actions::remap_key_direct(data) {
+                            drop(state);
+                            return;
+                        }
+                    }
                     let trigger = bare_key.clone();
                     drop(state);
                     fire_macro(macro_val, false, Some(trigger), app);

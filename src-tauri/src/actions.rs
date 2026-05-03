@@ -616,6 +616,98 @@ fn send_unicode_key(scan: u16, key_up: bool) {
     }
 }
 
+// ── Direct inline key remap ──────────────────────────────────────────────────
+
+/// Build a single VK keyboard INPUT struct (key-down or key-up).
+fn make_vk_input(vk: u16, key_up: bool) -> INPUT {
+    let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk as VIRTUAL_KEY,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
+
+/// Execute a plain hotkey remap directly on the calling thread (processor thread)
+/// using a single batched SendInput call.  This eliminates the thread-spawn race
+/// with SUPPRESS_SIMULATED that caused dropped presses when spamming remapped keys.
+///
+/// Returns `true` if the remap was executed inline.
+/// Returns `false` when the action needs the full `fire_macro` path:
+///   - mouse buttons (handled by mouse event functions)
+///   - hold mode  (requires key-up pairing via HELD_KEY state)
+///   - repeat mode (requires a background thread + stop flag)
+///   - unknown / unmapped key name
+pub fn remap_key_direct(data: &Value) -> bool {
+    let key_name = match data.get("key").and_then(|v| v.as_str()) {
+        Some(k) => k,
+        None => return false,
+    };
+
+    // Mouse buttons, hold mode, and repeat mode need the full fire_macro path
+    if is_mouse_button(key_name) {
+        return false;
+    }
+    if data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return false;
+    }
+    if data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return false;
+    }
+
+    let target_vk = match display_name_to_vk(key_name) {
+        Some(vk) => vk,
+        None => return false,
+    };
+
+    let mod_vks: Vec<u16> = data
+        .get("modifiers")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| match v.as_str()?.to_lowercase().as_str() {
+                    "ctrl" => Some(VK_LCONTROL),
+                    "alt" => Some(VK_LALT),
+                    "shift" => Some(VK_LSHIFT),
+                    "win" => Some(VK_LWIN),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Build INPUT array: mod_downs, target_down, target_up, mod_ups
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() * 2 + 2);
+    for &vk in &mod_vks {
+        inputs.push(make_vk_input(vk, false));
+    }
+    inputs.push(make_vk_input(target_vk, false));
+    inputs.push(make_vk_input(target_vk, true));
+    for &vk in mod_vks.iter().rev() {
+        inputs.push(make_vk_input(vk, true));
+    }
+
+    // Single batched SendInput under SuppressionGuard — the entire sequence is
+    // injected atomically, and SUPPRESS_SIMULATED is only true for those events.
+    let _guard = SuppressionGuard::new();
+    unsafe {
+        SendInput(
+            inputs.len() as u32,
+            inputs.as_ptr(),
+            std::mem::size_of::<INPUT>() as i32,
+        );
+    }
+
+    true
+}
+
 // ── Send Hotkey: VK-based key simulation ────────────────────────────────────
 
 fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::AppHandle) {
