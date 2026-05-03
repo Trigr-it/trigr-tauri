@@ -1195,6 +1195,7 @@ button.te-col-header:hover {
 .rte-chip-cursor     { background: rgba(255,200,50,0.12);  color: #ffc832; border: 1px solid rgba(255,200,50,0.35);  }
 .rte-chip-fillin     { background: rgba(200,100,255,0.12); color: #c864ff; border: 1px solid rgba(200,100,255,0.35); }
 .rte-chip-globalvar  { background: rgba(232,160,32,0.12);  color: #e8a020; border: 1px solid rgba(232,160,32,0.35);  }
+.rte-chip-key        { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); }
 
 /* Section label inside the insert dropdown */
 .rte-menu-section-label {
@@ -1257,6 +1258,133 @@ button.te-col-header:hover {
   background: rgba(200, 100, 255, 0.25);
 }
 
+/* ── Key capture popup ───────────────────────────────────────────────────── */
+
+.rte-key-capture-popup {
+  width: 220px;
+  padding: 4px 0 8px;
+}
+
+.rte-key-popup-body {
+  padding: 4px 8px 0;
+}
+
+.rte-key-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.rte-key-zone:hover {
+  border-color: var(--border-accent);
+}
+
+.rte-key-zone:focus {
+  outline: none;
+}
+
+.rte-key-zone-active {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.rte-key-zone-placeholder {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.rte-key-zone-prompt {
+  font-size: 11px;
+  color: var(--accent);
+  font-style: italic;
+}
+
+.rte-key-zone-value {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.rte-key-zone-value kbd {
+  background: var(--bg-active);
+  border: 1px solid var(--border-bright);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.rte-key-zone-plus {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.rte-key-popup-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rte-key-repeat-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+}
+
+.rte-key-repeat-x {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.rte-key-repeat-input {
+  width: 44px;
+  height: 26px;
+  padding: 0 5px;
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-body);
+}
+
+.rte-key-insert-btn {
+  height: 26px;
+  padding: 0 12px;
+  background: rgba(160, 170, 190, 0.15);
+  border: 1px solid rgba(160, 170, 190, 0.4);
+  border-radius: 4px;
+  color: #b0baca;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rte-key-insert-btn:hover {
+  background: rgba(160, 170, 190, 0.25);
+}
+
 /* ── Token chips inside the editor ──────────────────────────────────────── */
 
 .rte-token {
@@ -1306,6 +1434,19 @@ button.te-col-header:hover {
   background: rgba(232, 160, 32, 0.12);
   border-color: rgba(232, 160, 32, 0.35);
   color: #e8a020;
+}
+
+/* Key press tokens {key:Tab} etc. → neutral gray, keyboard-key look */
+.rte-token[data-token^="{key:"] {
+  background: rgba(160, 170, 190, 0.12);
+  border-color: rgba(160, 170, 190, 0.4);
+  color: #b0baca;
+  cursor: pointer;
+}
+
+.rte-token[data-token^="{key:"]:hover {
+  background: rgba(160, 170, 190, 0.22);
+  border-color: rgba(160, 170, 190, 0.65);
 }
 
 /* ── Rich Text Editor ───────────────────────────────────────────────────── */

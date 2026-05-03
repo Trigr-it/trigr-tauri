@@ -56,6 +56,24 @@ const INSERT_MENU = [
   { type: 'item', token: '__fillin__',          label: 'Fill-in Field…',      display: null         },
 ];
 
+
+// ── Key token helpers ──────────────────────────────────────────────────────
+
+function parseKeyToken(token) {
+  // "{key:Tab:1}" → { combo: "Tab", repeat: 1 }
+  // "{key:Ctrl+F4:2}" → { combo: "Ctrl+F4", repeat: 2 }
+  // "{key:Tab}" (legacy) → { combo: "Tab", repeat: 1 }
+  const inner = token.slice(5, -1); // strip "{key:" and "}"
+  const lastColon = inner.lastIndexOf(':');
+  if (lastColon !== -1) {
+    const n = parseInt(inner.slice(lastColon + 1), 10);
+    if (!isNaN(n) && n > 0) {
+      return { combo: inner.slice(0, lastColon), repeat: n };
+    }
+  }
+  return { combo: inner, repeat: 1 };
+}
+
 // ── Global variable key helpers ─────────────────────────────────────────────
 
 function titleToKey(title) {
@@ -118,6 +136,8 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
   const editorRef      = useRef(null);
   const btnRef         = useRef(null);
   const menuRef        = useRef(null);
+  const keyBtnRef      = useRef(null);
+  const keyMenuRef     = useRef(null);
   const initialHtmlRef = useRef(initialHtml);
   // Saved selection range — captured before the dropdown opens so that focus
   // loss (e.g. when the fill-in label input steals focus) doesn't destroy the
@@ -129,6 +149,14 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
   const [fillInEntry, setFillInEntry] = useState(false);
   const [fillInLabel, setFillInLabel] = useState('');
   const fillInInputRef = useRef(null);
+  const [showKeyPicker, setShowKeyPicker] = useState(false);
+  const [keyPickerPos, setKeyPickerPos] = useState(null);
+  const [keyPickerCapturing, setKeyPickerCapturing] = useState(false);
+  const [keyPickerCaptured, setKeyPickerCaptured] = useState('');
+  const [keyPickerRepeat, setKeyPickerRepeat] = useState(1);
+  const keyPickerCapturingRef = useRef(false);
+  const keyZoneRef = useRef(null);
+  const [keyPickerEditTarget, setKeyPickerEditTarget] = useState(null);
 
   useLayoutEffect(() => {
     if (editorRef.current) {
@@ -145,7 +173,23 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
     }
   }, [fillInEntry]);
 
-  // Close dropdown on outside click or any scroll — only mounted while open
+  // Keep ref in sync so the IPC handler can read it without a stale closure.
+  useEffect(() => { keyPickerCapturingRef.current = keyPickerCapturing; }, [keyPickerCapturing]);
+
+  // IPC: listen for captured key combo. Guard with ref so only the active picker
+  // instance processes the event.
+  useEffect(() => {
+    if (!window.electronAPI?.onKeyCaptured) return;
+    const handler = (combo) => {
+      if (!keyPickerCapturingRef.current) return;
+      setKeyPickerCaptured(combo);
+      setKeyPickerCapturing(false);
+    };
+    window.electronAPI.onKeyCaptured(handler);
+    return () => window.electronAPI.removeAllListeners?.('key-captured');
+  }, []);
+
+  // Close Insert dropdown on outside click or any scroll
   useEffect(() => {
     if (!showInsert) return;
 
@@ -172,6 +216,36 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
       window.removeEventListener('scroll', onScroll, { capture: true });
     };
   }, [showInsert]);
+
+  // Close Press Key picker on outside click or any scroll
+  useEffect(() => {
+    if (!showKeyPicker) return;
+    function close() {
+      if (keyPickerCapturingRef.current) {
+        window.electronAPI?.stopKeyCapture();
+      }
+      setShowKeyPicker(false);
+      setKeyPickerCapturing(false);
+      setKeyPickerCaptured('');
+      setKeyPickerRepeat(1);
+      setKeyPickerEditTarget(null);
+    }
+    function onMouseDown(e) {
+      if (!keyBtnRef.current?.contains(e.target) && !keyMenuRef.current?.contains(e.target)) {
+        close();
+      }
+    }
+    function onScroll(e) {
+      if (keyMenuRef.current?.contains(e.target)) return;
+      close();
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('scroll', onScroll, { capture: true });
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('scroll', onScroll, { capture: true });
+    };
+  }, [showKeyPicker]);
 
   const notify = useCallback(() => {
     const html = editorRef.current.innerHTML;
@@ -322,6 +396,40 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
 
         <div className="rte-sep" />
 
+        {/* ── Press Key dropdown ── */}
+        <button
+          ref={keyBtnRef}
+          type="button"
+          className={`rte-btn rte-insert-btn${showKeyPicker ? ' rte-btn-on' : ''}`}
+          style={{ width: 'auto', minWidth: 'fit-content', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+          onMouseDown={e => {
+            e.preventDefault();
+            saveSelection();
+            if (!showKeyPicker) {
+              const r = e.currentTarget.getBoundingClientRect();
+              setKeyPickerPos({ top: r.bottom + 4, left: r.left });
+              setShowKeyPicker(true);
+              setShowInsert(false);
+              setKeyPickerCapturing(false);
+              setKeyPickerCaptured('');
+              setKeyPickerRepeat(1);
+              setKeyPickerEditTarget(null);
+            } else {
+              if (keyPickerCapturingRef.current) {
+                window.electronAPI?.stopKeyCapture();
+              }
+              setShowKeyPicker(false);
+              setKeyPickerCapturing(false);
+              setKeyPickerCaptured('');
+              setKeyPickerRepeat(1);
+              setKeyPickerEditTarget(null);
+            }
+          }}
+          title="Insert a key press at cursor position"
+        >
+          Press Key <span className="rte-caret">▾</span>
+        </button>
+
         {/* ── Insert token dropdown ── */}
         <button
           ref={btnRef}
@@ -339,6 +447,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
               console.log('menu pos:', { top: r.bottom + 4, left: r.left });
               setMenuPos({ top: r.bottom + 4, left: r.left });
               setShowInsert(true);
+              setShowKeyPicker(false);
             } else {
               setShowInsert(false);
               setFillInEntry(false);
@@ -360,6 +469,21 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
         suppressContentEditableWarning
         spellCheck={false}
         data-placeholder="Type replacement text…"
+        onClick={e => {
+          const chip = e.target.closest?.('[data-token^="{key:"]');
+          if (chip) {
+            e.preventDefault();
+            const { combo, repeat } = parseKeyToken(chip.dataset.token);
+            const rect = chip.getBoundingClientRect();
+            setKeyPickerPos({ top: rect.bottom + 4, left: rect.left });
+            setKeyPickerCaptured(combo);
+            setKeyPickerRepeat(repeat);
+            setKeyPickerCapturing(false);
+            setKeyPickerEditTarget(chip);
+            setShowKeyPicker(true);
+            setShowInsert(false);
+          }
+        }}
       />
 
       {showInsert && menuPos && ReactDOM.createPortal(
@@ -450,6 +574,103 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
                   ))
                 }
               </>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showKeyPicker && keyPickerPos && ReactDOM.createPortal(
+        <div
+          ref={keyMenuRef}
+          className="rte-insert-menu rte-key-capture-popup"
+          style={{ top: keyPickerPos.top, left: keyPickerPos.left }}
+        >
+          <div className="rte-menu-section-label">{keyPickerEditTarget ? 'Edit Key Press' : 'Insert Key Press'}</div>
+          <div className="rte-key-popup-body">
+            {/* Capture zone — click to record, click again to cancel.
+                tabIndex+focus() needed so the zone takes focus away from the
+                contentEditable editor — the JS keydown intercept path in
+                tauriAPI.js skips capture when isContentEditable is true. */}
+            <div
+              ref={keyZoneRef}
+              tabIndex={0}
+              className={`rte-key-zone${keyPickerCapturing ? ' rte-key-zone-active' : ''}`}
+              onMouseDown={e => {
+                e.preventDefault();
+                if (keyPickerCapturing) {
+                  window.electronAPI?.stopKeyCapture();
+                  setKeyPickerCapturing(false);
+                } else {
+                  setKeyPickerCapturing(true);
+                  setKeyPickerCaptured('');
+                  keyZoneRef.current?.focus();
+                  window.electronAPI?.startKeyCapture();
+                }
+              }}
+            >
+              {keyPickerCapturing ? (
+                <span className="rte-key-zone-prompt">Press a key…</span>
+              ) : keyPickerCaptured ? (
+                <span className="rte-key-zone-value">
+                  {keyPickerCaptured.split('+').map((k, i, arr) => (
+                    <React.Fragment key={i}>
+                      <kbd>{k}</kbd>
+                      {i < arr.length - 1 && <span className="rte-key-zone-plus">+</span>}
+                    </React.Fragment>
+                  ))}
+                </span>
+              ) : (
+                <span className="rte-key-zone-placeholder">Click to record a key…</span>
+              )}
+            </div>
+
+            {keyPickerCaptured && !keyPickerCapturing && (
+              <div className="rte-key-popup-footer">
+                <div className="rte-key-repeat-row">
+                  <span className="rte-key-repeat-x">×</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    className="rte-key-repeat-input"
+                    value={keyPickerRepeat}
+                    onChange={e => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!isNaN(v) && v >= 1) setKeyPickerRepeat(Math.min(v, 99));
+                    }}
+                    onBlur={e => {
+                      const v = parseInt(e.target.value, 10);
+                      setKeyPickerRepeat(isNaN(v) || v < 1 ? 1 : Math.min(v, 99));
+                    }}
+                    onMouseDown={e => e.stopPropagation()}
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="rte-key-insert-btn"
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    const combo = keyPickerCaptured;
+                    const repeat = keyPickerRepeat;
+                    const token = `{key:${combo}:${repeat}}`;
+                    const chipDisplay = repeat > 1 ? `${combo} ×${repeat}` : combo;
+                    if (keyPickerEditTarget) {
+                      keyPickerEditTarget.dataset.token = token;
+                      keyPickerEditTarget.textContent = chipDisplay;
+                      notify();
+                    } else {
+                      insertTokenHtml(token, chipDisplay);
+                    }
+                    setShowKeyPicker(false);
+                    setKeyPickerCapturing(false);
+                    setKeyPickerCaptured('');
+                    setKeyPickerRepeat(1);
+                    setKeyPickerEditTarget(null);
+                  }}
+                >{keyPickerEditTarget ? 'Update' : 'Insert'}</button>
+              </div>
             )}
           </div>
         </div>,

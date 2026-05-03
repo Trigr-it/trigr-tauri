@@ -22,6 +22,9 @@ const VK_BACKSPACE: u16 = 0x08;
 const VK_SPACE: u16 = 0x20;
 const VK_LEFT: u16 = 0x25;
 const VK_LSHIFT: u16 = 0xA0;
+const VK_LCONTROL: u16 = 0xA2;
+const VK_LALT: u16 = 0xA4;
+const VK_LWIN: u16 = 0x5B;
 const VK_INSERT: u16 = 0x2D;
 const CF_UNICODETEXT: u32 = 13;
 const CF_DIB: u32 = 8;
@@ -495,27 +498,65 @@ fn fire_expansion(
 
         thread::sleep(Duration::from_millis(10));
 
-        let used_clipboard = should_use_clipboard(&resolved);
-        if used_clipboard {
-            inject_via_clipboard(&resolved, target_hwnd);
-        } else {
-            inject_via_sendinput(&resolved, target_hwnd);
-        }
-
-        // Move cursor back if {cursor} was present
-        if cursor_back > 0 {
-            thread::sleep(Duration::from_millis(10));
-            for _ in 0..cursor_back {
-                send_vk_tap(VK_LEFT);
-                thread::sleep(Duration::from_millis(5));
+        if resolved.contains("{key:") {
+            // Inline key-token path: inject each text/key segment in order
+            let prev_clipboard = read_clipboard().unwrap_or_default();
+            let held = crate::actions::release_held_modifiers();
+            if target_hwnd != 0 {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(target_hwnd as _);
+                }
+                thread::sleep(Duration::from_millis(10));
             }
-        }
-
-        crate::hotkeys::SUPPRESS_SIMULATED
-            .store(false, std::sync::atomic::Ordering::SeqCst);
-        if used_clipboard {
+            for seg in parse_key_segments(&resolved) {
+                match seg {
+                    KeySegment::Text(ref t) if !t.is_empty() => {
+                        inject_text_segment(t, target_hwnd);
+                    }
+                    KeySegment::Key { mod_vks, main_vk, repeat } => {
+                        for _ in 0..repeat {
+                            for &m in &mod_vks { send_vk_key(m, false); }
+                            send_vk_tap(main_vk);
+                            for m in mod_vks.iter().rev() { send_vk_key(*m, true); }
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            crate::actions::restore_modifiers(&held);
+            thread::sleep(Duration::from_millis(50));
+            if !prev_clipboard.is_empty() {
+                write_clipboard(&prev_clipboard);
+            }
+            crate::hotkeys::SUPPRESS_SIMULATED
+                .store(false, std::sync::atomic::Ordering::SeqCst);
             crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
                 .store(false, std::sync::atomic::Ordering::SeqCst);
+        } else {
+            // Normal path: single inject
+            let used_clipboard = should_use_clipboard(&resolved);
+            if used_clipboard {
+                inject_via_clipboard(&resolved, target_hwnd);
+            } else {
+                inject_via_sendinput(&resolved, target_hwnd);
+            }
+
+            // Move cursor back if {cursor} was present
+            if cursor_back > 0 {
+                thread::sleep(Duration::from_millis(10));
+                for _ in 0..cursor_back {
+                    send_vk_tap(VK_LEFT);
+                    thread::sleep(Duration::from_millis(5));
+                }
+            }
+
+            crate::hotkeys::SUPPRESS_SIMULATED
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            if used_clipboard {
+                crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+            }
         }
 
         // Replay any keystrokes that were buffered during injection
@@ -690,27 +731,62 @@ fn fire_expansion_with_fillin(
 
     thread::sleep(Duration::from_millis(10));
 
-    let used_clipboard = should_use_clipboard(&resolved);
-    if used_clipboard {
-        inject_via_clipboard(&resolved, target_hwnd);
-    } else {
-        inject_via_sendinput(&resolved, target_hwnd);
-    }
-
-    // Move cursor back if {cursor} was present
-    if cursor_back > 0 {
-        thread::sleep(Duration::from_millis(10));
-        for _ in 0..cursor_back {
-            send_vk_tap(VK_LEFT);
-            thread::sleep(Duration::from_millis(5));
+    if resolved.contains("{key:") {
+        let prev_clipboard = read_clipboard().unwrap_or_default();
+        let held = crate::actions::release_held_modifiers();
+        if target_hwnd != 0 {
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(target_hwnd as _);
+            }
+            thread::sleep(Duration::from_millis(10));
         }
-    }
-
-    crate::hotkeys::SUPPRESS_SIMULATED
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    if used_clipboard {
+        for seg in parse_key_segments(&resolved) {
+            match seg {
+                KeySegment::Text(ref t) if !t.is_empty() => {
+                    inject_text_segment(t, target_hwnd);
+                }
+                KeySegment::Key { mod_vks, main_vk, repeat } => {
+                    for _ in 0..repeat {
+                        for &m in &mod_vks { send_vk_key(m, false); }
+                        send_vk_tap(main_vk);
+                        for m in mod_vks.iter().rev() { send_vk_key(*m, true); }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                }
+                _ => {}
+            }
+        }
+        crate::actions::restore_modifiers(&held);
+        thread::sleep(Duration::from_millis(50));
+        if !prev_clipboard.is_empty() {
+            write_clipboard(&prev_clipboard);
+        }
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(false, std::sync::atomic::Ordering::SeqCst);
+    } else {
+        let used_clipboard = should_use_clipboard(&resolved);
+        if used_clipboard {
+            inject_via_clipboard(&resolved, target_hwnd);
+        } else {
+            inject_via_sendinput(&resolved, target_hwnd);
+        }
+
+        if cursor_back > 0 {
+            thread::sleep(Duration::from_millis(10));
+            for _ in 0..cursor_back {
+                send_vk_tap(VK_LEFT);
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        if used_clipboard {
+            crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+        }
     }
 
     // Replay any keystrokes that were buffered during injection
@@ -1551,6 +1627,151 @@ fn is_ctrl_v_mapped() -> bool {
     let profile = &state.active_profile;
     let key = format!("{}::Ctrl::KeyV", profile);
     state.assignments.contains_key(&key)
+}
+
+// ── Key token support ({key:Combo:N}, {key:Combo}, …) ──────────────────────
+
+enum KeySegment {
+    Text(String),
+    Key { mod_vks: Vec<u16>, main_vk: u16, repeat: u32 },
+}
+
+/// Split `text` on `{key:...}` tokens, returning text and key segments.
+/// Token format: `{key:Combo:N}` (e.g. `{key:Ctrl+F4:2}`) or legacy `{key:Combo}` (N=1).
+fn parse_key_segments(text: &str) -> Vec<KeySegment> {
+    let mut segments = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("{key:") {
+        if start > 0 {
+            segments.push(KeySegment::Text(rest[..start].to_string()));
+        }
+        let after = &rest[start + 5..]; // skip "{key:"
+        if let Some(end) = after.find('}') {
+            let token_body = &after[..end];
+            // Parse optional repeat count: "Combo:N" or just "Combo"
+            let (combo, repeat) = if let Some(colon_pos) = token_body.rfind(':') {
+                let potential_num = &token_body[colon_pos + 1..];
+                if let Ok(n) = potential_num.parse::<u32>() {
+                    (&token_body[..colon_pos], n.max(1))
+                } else {
+                    (token_body, 1u32)
+                }
+            } else {
+                (token_body, 1u32)
+            };
+            if let Some((mod_vks, main_vk)) = combo_str_to_vks(combo) {
+                segments.push(KeySegment::Key { mod_vks, main_vk, repeat });
+            }
+            rest = &after[end + 1..];
+        } else {
+            // Malformed token — treat remainder as text
+            segments.push(KeySegment::Text(rest[start..].to_string()));
+            rest = "";
+            break;
+        }
+    }
+    if !rest.is_empty() {
+        segments.push(KeySegment::Text(rest.to_string()));
+    }
+    segments
+}
+
+/// Parse a combo string like "Ctrl+F4" or "Shift+Tab" or just "Tab" into
+/// (modifier VKs, main VK). Modifier order is: Ctrl, Shift, Alt, Win.
+fn combo_str_to_vks(combo: &str) -> Option<(Vec<u16>, u16)> {
+    let parts: Vec<&str> = combo.split('+').collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let mut mod_vks = Vec::new();
+    // Everything before the last part is a modifier; last part is the key.
+    let main_part = parts[parts.len() - 1];
+    for &part in &parts[..parts.len().saturating_sub(1)] {
+        match part {
+            "Ctrl"  => mod_vks.push(VK_LCONTROL),
+            "Shift" => mod_vks.push(VK_LSHIFT),
+            "Alt"   => mod_vks.push(VK_LALT),
+            "Win"   => mod_vks.push(VK_LWIN),
+            _ => {}
+        }
+    }
+    key_name_to_vk(main_part).map(|vk| (mod_vks, vk))
+}
+
+fn key_name_to_vk(name: &str) -> Option<u16> {
+    match name {
+        "Tab"                          => Some(0x09),
+        "Enter"                        => Some(0x0D),
+        "Escape" | "Esc"               => Some(0x1B),
+        "Backspace"                    => Some(0x08),
+        "Delete" | "Del"               => Some(0x2E),
+        "Space"                        => Some(0x20),
+        // Arrow keys — display names ("Up") and legacy names ("ArrowUp")
+        "Left"  | "ArrowLeft"          => Some(0x25),
+        "Up"    | "ArrowUp"            => Some(0x26),
+        "Right" | "ArrowRight"         => Some(0x27),
+        "Down"  | "ArrowDown"          => Some(0x28),
+        "Home"                         => Some(0x24),
+        "End"                          => Some(0x23),
+        "PageUp" | "PgUp"              => Some(0x21),
+        "PageDown" | "PgDn"            => Some(0x22),
+        "Insert"                       => Some(0x2D),
+        "CapsLock" | "Caps"            => Some(0x14),
+        "PrintScreen"                  => Some(0x2C),
+        "ScrollLock"                   => Some(0x91),
+        "Pause"                        => Some(0x13),
+        "NumLock"                      => Some(0x90),
+        // Function keys
+        "F1"  => Some(0x70), "F2"  => Some(0x71), "F3"  => Some(0x72),
+        "F4"  => Some(0x73), "F5"  => Some(0x74), "F6"  => Some(0x75),
+        "F7"  => Some(0x76), "F8"  => Some(0x77), "F9"  => Some(0x78),
+        "F10" => Some(0x79), "F11" => Some(0x7A), "F12" => Some(0x7B),
+        // OEM punctuation keys (US layout)
+        "`"  => Some(0xC0), "'"  => Some(0xDE), ";"  => Some(0xBA),
+        "["  => Some(0xDB), "]"  => Some(0xDD), "\\" => Some(0xDC),
+        ","  => Some(0xBC), "."  => Some(0xBE), "/"  => Some(0xBF),
+        "-"  => Some(0xBD), "="  => Some(0xBB),
+        _ => {
+            // Single letter (A–Z) or digit (0–9)
+            if name.len() == 1 {
+                let b = name.as_bytes()[0].to_ascii_uppercase();
+                if b.is_ascii_alphanumeric() {
+                    return Some(b as u16);
+                }
+            }
+            None
+        }
+    }
+}
+
+/// Inject a text segment via clipboard paste, without a trailing space or clipboard restore.
+/// SUPPRESS_NEXT_CLIPBOARD_WRITE is set true by write_clipboard — caller manages the final reset.
+fn inject_text_segment(text: &str, target_hwnd: isize) {
+    if !write_clipboard(text) {
+        return;
+    }
+
+    if target_hwnd != 0 {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(target_hwnd as _);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    let use_ctrl_v = !is_ctrl_v_mapped();
+    if use_ctrl_v {
+        send_vk_key(0xA2, false); // LCtrl down
+        send_vk_key(0x56, false); // V down
+        send_vk_key(0x56, true);  // V up
+        send_vk_key(0xA2, true);  // LCtrl up
+    } else {
+        send_vk_key(VK_LSHIFT, false);
+        send_vk_key(VK_INSERT, false);
+        send_vk_key(VK_INSERT, true);
+        send_vk_key(VK_LSHIFT, true);
+    }
+
+    thread::sleep(Duration::from_millis(30));
 }
 
 // ── SendInput helpers ───────────────────────────────────────────────────────
