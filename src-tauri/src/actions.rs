@@ -726,6 +726,61 @@ pub fn remap_key_release(trigger_vk: u16) -> bool {
     }
 }
 
+/// Execute a modified hotkey combo (e.g. Ctrl+K → Ctrl+C) inline on the calling
+/// thread — no thread spawn, no `pending_macro` deferral, fires on keydown.
+///
+/// Returns `false` → fall through to `pending_macro` / `fire_macro` for:
+///   - mouse buttons, hold mode, repeat mode, unknown key name.
+pub fn execute_hotkey_inline(data: &Value, _app: &tauri::AppHandle) -> bool {
+    let key_name = match data.get("key").and_then(|v| v.as_str()) {
+        Some(k) => k,
+        None => return false,
+    };
+    if is_mouse_button(key_name) { return false; }
+    if data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false) { return false; }
+    if data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false) { return false; }
+
+    let target_vk = match display_name_to_vk(key_name) {
+        Some(vk) => vk,
+        None => return false,
+    };
+
+    let mod_vks: Vec<u16> = data
+        .get("modifiers")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| match v.as_str()?.to_lowercase().as_str() {
+                    "ctrl" => Some(VK_LCONTROL),
+                    "alt" => Some(VK_LALT),
+                    "shift" => Some(VK_LSHIFT),
+                    "win" => Some(VK_LWIN),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Release the physically held trigger modifiers (e.g. Ctrl from Ctrl+K).
+    // Done outside SuppressionGuard so the key-ups update Trigr's modifier tracking.
+    let held = release_held_modifiers();
+
+    // Batched SendInput: target mod_downs, target_down, target_up, target mod_ups.
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() * 2 + 2);
+    for &vk in &mod_vks { inputs.push(make_vk_input(vk, false)); }
+    inputs.push(make_vk_input(target_vk, false));
+    inputs.push(make_vk_input(target_vk, true));
+    for &vk in mod_vks.iter().rev() { inputs.push(make_vk_input(vk, true)); }
+    {
+        let _guard = SuppressionGuard::new();
+        unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+    }
+
+    // Restore trigger modifiers so the user's held keys remain active.
+    restore_modifiers(&held);
+    true
+}
+
 // ── Send Hotkey: VK-based key simulation ────────────────────────────────────
 
 fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::AppHandle) {
@@ -834,16 +889,13 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 if is_mouse_copy {
                     send_mouse_click(&key_name_owned);
                 } else {
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                    for &vk in &mod_vks_clone {
-                        send_vk_key(vk, false);
-                    }
-                    send_vk_key(target_vk_copy, false);
-                    send_vk_key(target_vk_copy, true);
-                    for &vk in mod_vks_clone.iter().rev() {
-                        send_vk_key(vk, true);
-                    }
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks_clone.len() * 2 + 2);
+                    for &vk in &mod_vks_clone { inputs.push(make_vk_input(vk, false)); }
+                    inputs.push(make_vk_input(target_vk_copy, false));
+                    inputs.push(make_vk_input(target_vk_copy, true));
+                    for &vk in mod_vks_clone.iter().rev() { inputs.push(make_vk_input(vk, true)); }
+                    let _guard = SuppressionGuard::new();
+                    unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
                 }
 
                 thread::sleep(Duration::from_millis(repeat_interval));
@@ -881,16 +933,17 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             // Release it
             let state = mgr.key.take().unwrap();
             mgr.pending_mouse_release = None;
-            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-            if let Some(ref button) = state.mouse_button {
-                send_mouse_event(button, true);
-            } else {
-                send_vk_key(state.target_vk, true);
-                for &vk in state.mod_vks.iter().rev() {
-                    send_vk_key(vk, true);
+            {
+                let _guard = SuppressionGuard::new();
+                if let Some(ref button) = state.mouse_button {
+                    send_mouse_event(button, true);
+                } else {
+                    send_vk_key(state.target_vk, true);
+                    for &vk in state.mod_vks.iter().rev() {
+                        send_vk_key(vk, true);
+                    }
                 }
             }
-            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
             info!("[Trigr] Hold released: {}", combo_label);
             drop(mgr);
             crate::tray::update_tray_icon_normal(app);
@@ -899,34 +952,36 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
 
         // Different key held — release previous first
         if let Some(ref state) = mgr.key {
-            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-            if let Some(ref button) = state.mouse_button {
-                send_mouse_event(button, true);
-            } else {
-                send_vk_key(state.target_vk, true);
-                for &vk in state.mod_vks.iter().rev() {
-                    send_vk_key(vk, true);
+            {
+                let _guard = SuppressionGuard::new();
+                if let Some(ref button) = state.mouse_button {
+                    send_mouse_event(button, true);
+                } else {
+                    send_vk_key(state.target_vk, true);
+                    for &vk in state.mod_vks.iter().rev() {
+                        send_vk_key(vk, true);
+                    }
                 }
             }
-            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
             info!("[Trigr] Hold released (switching): {}", state.label);
         }
 
         // Hold the new key/button
         println!("[ACTION] Send Hotkey HOLD: {}", combo_label);
-        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-        if is_mouse {
-            send_mouse_event(key_name, false); // mousedown only
-        } else {
-            let physically_held = release_held_modifiers();
-            for &vk in &mod_vks {
-                send_vk_key(vk, false);
+        {
+            let _guard = SuppressionGuard::new();
+            if is_mouse {
+                send_mouse_event(key_name, false); // mousedown only
+            } else {
+                let physically_held = release_held_modifiers();
+                for &vk in &mod_vks {
+                    send_vk_key(vk, false);
+                }
+                send_vk_key(target_vk, false);
+                // Do NOT send keyup — key stays held
+                restore_modifiers(&physically_held);
             }
-            send_vk_key(target_vk, false);
-            // Do NOT send keyup — key stays held
-            restore_modifiers(&physically_held);
         }
-        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 
         // Detect if the trigger was a mouse button (from the storage key)
         let trigger_mouse = trigger_key
@@ -953,16 +1008,17 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             // Immediately release — the button UP event already fired
             let state = mgr.key.take().unwrap();
             mgr.pending_mouse_release = None;
-            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-            if let Some(ref button) = state.mouse_button {
-                send_mouse_event(button, true);
-            } else {
-                send_vk_key(state.target_vk, true);
-                for &vk in state.mod_vks.iter().rev() {
-                    send_vk_key(vk, true);
+            {
+                let _guard = SuppressionGuard::new();
+                if let Some(ref button) = state.mouse_button {
+                    send_mouse_event(button, true);
+                } else {
+                    send_vk_key(state.target_vk, true);
+                    for &vk in state.mod_vks.iter().rev() {
+                        send_vk_key(vk, true);
+                    }
                 }
             }
-            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
             info!("[Trigr] Hold immediately released — mouse was already up: {}", combo_label);
             drop(mgr);
             crate::tray::update_tray_icon_normal(app);
@@ -979,24 +1035,17 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         info!("[Trigr] Send Hotkey → mouse click: {}", key_name);
         send_mouse_click(key_name);
     } else {
-        println!(
-            "[ACTION] Send Hotkey: [{}] + {}",
-            modifiers.join("+"),
-            key_name
-        );
-
-        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
         let held = release_held_modifiers();
-        for &vk in &mod_vks {
-            send_vk_key(vk, false);
-        }
-        send_vk_key(target_vk, false);
-        send_vk_key(target_vk, true);
-        for &vk in mod_vks.iter().rev() {
-            send_vk_key(vk, true);
+        let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() * 2 + 2);
+        for &vk in &mod_vks { inputs.push(make_vk_input(vk, false)); }
+        inputs.push(make_vk_input(target_vk, false));
+        inputs.push(make_vk_input(target_vk, true));
+        for &vk in mod_vks.iter().rev() { inputs.push(make_vk_input(vk, true)); }
+        {
+            let _guard = SuppressionGuard::new();
+            unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
         }
         restore_modifiers(&held);
-        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
     }
 }
 
@@ -1606,28 +1655,19 @@ fn is_key_down(vk: u16) -> bool {
     unsafe { GetAsyncKeyState(vk as i32) < 0 }
 }
 
-/// Read which modifiers are physically held, release them all via SendInput,
+/// Read which modifiers are physically held, release them via SendInput,
 /// and return the list of VKs that were held (for later re-press).
+///
+/// The old code had a fallback that released all 8 modifier VKs when
+/// GetAsyncKeyState detected none — causing spurious key-ups in the target app.
+/// Removed: trust GetAsyncKeyState. If it says nothing is held, nothing is sent.
 pub fn release_held_modifiers() -> Vec<u16> {
-    println!("[MOD] release_held_modifiers() called");
     let mut held = Vec::new();
-    for &(vk, name) in ALL_MODIFIER_VKS {
-        let raw = unsafe { GetAsyncKeyState(vk as i32) };
-        let down = raw < 0;
-        println!("[MOD]   {} (0x{:02X}): GetAsyncKeyState={} (0x{:04X}) down={}", name, vk, raw, raw as u16, down);
-        if down {
+    for &(vk, _name) in ALL_MODIFIER_VKS {
+        if unsafe { GetAsyncKeyState(vk as i32) } < 0 {
             held.push(vk);
             send_vk_key(vk, true);
         }
-    }
-    if held.is_empty() {
-        println!("[MOD]   No modifiers detected as held — forcing release of all");
-        // Fallback: if GetAsyncKeyState doesn't see them, release all anyway
-        for &(vk, _) in ALL_MODIFIER_VKS {
-            send_vk_key(vk, true);
-        }
-    } else {
-        println!("[MOD]   Released {} modifier(s)", held.len());
     }
     held
 }

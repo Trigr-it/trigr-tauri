@@ -1610,7 +1610,18 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             // Don't set pending_macro — timer handles firing
             return;
         } else {
-            // No double variant — fire directly at keyup
+            // No double variant.
+            // Hotkey actions: fire inline at keydown (no thread, no deferred wait).
+            // Everything else fires at keyup via pending_macro (needs clean modifier state).
+            let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if action_type == "hotkey" {
+                if let Some(data) = macro_val.get("data") {
+                    if crate::actions::execute_hotkey_inline(data, app) {
+                        drop(state);
+                        return;
+                    }
+                }
+            }
             state.pending_macro = Some(macro_val);
             state.pending_storage_key = None;
             state.pending_trigger_key = Some(storage_key);
