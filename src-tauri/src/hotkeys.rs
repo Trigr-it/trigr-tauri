@@ -1317,7 +1317,8 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     }
 
     // ── Voice trigger hotkey check ────────────────────────────────────
-    // First press: full combo match (e.g., Alt+Space)
+    // Full combo match (e.g., Ctrl+Alt+W): emit voice-open on first press,
+    // voice-keydown on subsequent presses (voice already active).
     if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
         let state = engine_state().lock().unwrap();
         if let Some((mod_bits, vk)) = state.voice_hotkey {
@@ -1325,6 +1326,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             let key_vk = key_id_to_vk(key_id);
             if current_bits == mod_bits && key_vk == Some(vk) {
                 drop(state);
+                // Always release held modifiers on any voice hotkey press
                 MOD_CTRL.store(false, Ordering::SeqCst);
                 MOD_SHIFT.store(false, Ordering::SeqCst);
                 MOD_ALT.store(false, Ordering::SeqCst);
@@ -1332,22 +1334,31 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                 crate::actions::release_held_modifiers();
                 SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-                VOICE_ACTIVE.store(true, Ordering::SeqCst);
-                VOICE_ACTION_VK.store(vk, Ordering::SeqCst);
                 VOICE_KEY_HELD.store(true, Ordering::SeqCst);
-                info!("[Trigr] Voice hotkey detected — emitting voice-keydown");
-                let _ = app.emit("voice-keydown", Value::Null);
+                if VOICE_ACTIVE.load(Ordering::SeqCst) {
+                    // Second/third press — toggle continuous mode or close
+                    info!("[Trigr] Voice hotkey while active — emitting voice-keydown");
+                    let _ = app.emit("voice-keydown", Value::Null);
+                } else {
+                    // First press — open overlay
+                    VOICE_ACTIVE.store(true, Ordering::SeqCst);
+                    VOICE_ACTION_VK.store(vk, Ordering::SeqCst);
+                    info!("[Trigr] Voice hotkey first press — emitting voice-open");
+                    let _ = app.emit("voice-open", Value::Null);
+                }
                 return;
             }
         }
         drop(state);
     }
-    // Subsequent presses: bare action-key while voice is active (modifiers cleared on first press)
+    // Bare action-key while voice is active (modifiers were cleared on first press,
+    // so the combo check above won't match — this path catches the bare key).
     if VOICE_ACTIVE.load(Ordering::SeqCst) {
         let vk = VOICE_ACTION_VK.load(Ordering::SeqCst);
         if vk != 0 && key_id_to_vk(key_id) == Some(vk) {
             // Suppress keyboard repeat — only emit on fresh press (after keyup)
             if !VOICE_KEY_HELD.swap(true, Ordering::SeqCst) {
+                info!("[Trigr] Voice bare-key press — emitting voice-keydown");
                 let _ = app.emit("voice-keydown", Value::Null);
             }
             return;

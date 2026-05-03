@@ -1865,24 +1865,23 @@ pub fn run() {
                 }
             });
 
-            // Listen for voice keydown from hotkey system — show overlay on first press,
-            // double-tap within 500ms enters continuous mode (stays open between commands)
+            // voice-open: first press of voice hotkey — VOICE_ACTIVE was false in the hook
+            let app_handle_voice_open = app.handle().clone();
+            app.listen("voice-open", move |_| {
+                show_voice_overlay(&app_handle_voice_open);
+            });
+
+            // voice-keydown: second+ press while voice is already active.
+            // No is_visible() needed — the hook only emits this when VOICE_ACTIVE is true.
             let app_handle_voice = app.handle().clone();
             app.listen("voice-keydown", move |_| {
-                let overlay_visible = app_handle_voice
-                    .get_webview_window("overlay")
-                    .and_then(|w| w.is_visible().ok())
-                    .unwrap_or(false);
-                if !overlay_visible {
-                    show_voice_overlay(&app_handle_voice);
-                } else if VOICE_CONTINUOUS.load(AtomicOrdering::SeqCst) {
-                    // Already in continuous mode — press again to exit
+                if VOICE_CONTINUOUS.load(AtomicOrdering::SeqCst) {
+                    // Third press — close
                     VOICE_CONTINUOUS.store(false, AtomicOrdering::SeqCst);
                     hide_overlay(&app_handle_voice);
                     restore_overlay_target();
                 } else {
-                    // Overlay open but not continuous — press hotkey again to enter continuous mode.
-                    // (Press a third time while continuous to close — handled by the branch above.)
+                    // Second press — enter continuous mode
                     VOICE_CONTINUOUS.store(true, AtomicOrdering::SeqCst);
                     if let Some(overlay) = app_handle_voice.get_webview_window("overlay") {
                         let _ = overlay.emit("voice-continuous-on", ());
