@@ -305,6 +305,35 @@ html, body {
   margin: 0 auto;
 }
 
+/* Expanded error state — widen to fit error text */
+.search-panel:has(.search-voice-error-row) {
+  width: 320px;
+  max-width: 320px;
+  min-width: 320px;
+}
+
+.search-voice-error-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  width: 100%;
+}
+
+.search-voice-error-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.search-voice-error-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .search-voice-pill {
   position: relative;
   display: flex;

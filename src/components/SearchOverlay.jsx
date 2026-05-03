@@ -313,6 +313,8 @@ export default function SearchOverlay() {
     if (phrases.length === 0) {
       setVoiceState('error');
       setInterimText('No voice commands configured');
+      window.electronAPI?.voiceOverlayErrorExpand();
+      setTimeout(() => window.electronAPI?.closeOverlay(), 6000);
       return;
     }
 
@@ -514,6 +516,8 @@ export default function SearchOverlay() {
       } else {
         setVoiceState('error');
         setInterimText(data.error || 'Voice unavailable');
+        window.electronAPI?.voiceOverlayErrorExpand();
+        setTimeout(() => window.electronAPI?.closeOverlay(), 6000);
       }
     });
   }, []);
@@ -750,7 +754,10 @@ export default function SearchOverlay() {
               <span className="search-voice-pill-label">✗</span>
             )}
             {voiceState === 'error' && (
-              <span className="search-voice-pill-label">⚠</span>
+              <div className="search-voice-error-row">
+                <span className="search-voice-error-icon">⚠</span>
+                <span className="search-voice-error-text">{interimText || 'Voice error'}</span>
+              </div>
             )}
             {voiceState === 'unsupported' && (
               <span className="search-voice-pill-label">⚠</span>
