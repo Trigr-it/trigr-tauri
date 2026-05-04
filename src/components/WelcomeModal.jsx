@@ -4,7 +4,7 @@ import './WelcomeModal.css';
 const FEATURES = [
   {
     icon: '⌨',
-    name: 'Key Mapping',
+    name: 'Triggers',
     desc: 'Assign hotkeys and macros to any key or mouse button',
   },
   {

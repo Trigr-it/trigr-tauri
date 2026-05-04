@@ -972,6 +972,10 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
     log::info!("[Trigr] show_voice_overlay: emitting overlay-voice-data");
     let _ = overlay.emit("overlay-voice-data", voice_data);
 
+    // Brief pause so the frontend can commit React state resets (voiceContinuous=false etc.)
+    // before the window becomes visible and clickable. Imperceptible — window is hidden.
+    std::thread::sleep(std::time::Duration::from_millis(30));
+
     log::info!("[Trigr] show_voice_overlay: showing window");
     let voice_open_now = StdInstant::now();
     *overlay_show_time().lock().unwrap() = Some(voice_open_now);
@@ -1086,6 +1090,235 @@ fn close_overlay(app: tauri::AppHandle) {
     restore_overlay_target();
 }
 
+// ── Radial menu overlay show/hide ──────────────────────────────────────────
+
+static RADIAL_MENU_TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
+
+static RADIAL_MENU_SHOW_TIME: std::sync::OnceLock<StdMutex<Option<StdInstant>>> =
+    std::sync::OnceLock::new();
+
+fn radial_menu_show_time() -> &'static StdMutex<Option<StdInstant>> {
+    RADIAL_MENU_SHOW_TIME.get_or_init(|| StdMutex::new(None))
+}
+
+fn show_radial_menu(app: &tauri::AppHandle) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetCursorPos};
+    use windows_sys::Win32::Foundation::POINT;
+
+    let target = unsafe { GetForegroundWindow() as isize };
+    RADIAL_MENU_TARGET_HWND.store(target, std::sync::atomic::Ordering::SeqCst);
+
+    let win = match app.get_webview_window("radialmenu") {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Position: centre 620x620 window on cursor
+    let (cx, cy) = unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut pt);
+        (pt.x, pt.y)
+    };
+
+    let scale = win.scale_factor().unwrap_or(1.0);
+
+    let win_size = 620.0;
+    // Always centre on cursor — no clamping to work area.
+    // Items near screen edges may be clipped, but the cursor stays
+    // at the wheel centre which preserves muscle memory.
+    let x = cx as f64 / scale - win_size / 2.0;
+    let y = cy as f64 / scale - win_size / 2.0;
+    let _ = win.set_position(tauri::LogicalPosition::new(x, y));
+    let _ = win.set_size(tauri::LogicalSize::new(win_size, win_size));
+
+    // Build payload: resolve radial menu items from config
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+    let radial_items = cfg
+        .get("radialMenuItems")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+
+    // Helper: resolve a single storageKey against assignments
+    let state = hotkeys::engine_state().lock().unwrap();
+    let resolve_item = |item: &Value| -> Option<Value> {
+        // Check if this is a folder item (has type: "folder")
+        let is_folder = item
+            .get("type")
+            .and_then(|v| v.as_str())
+            .map(|t| t == "folder")
+            .unwrap_or(false);
+
+        if is_folder {
+            let label = item
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Folder");
+            let children_raw = item
+                .get("children")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            // Resolve each child
+            let resolved_children: Vec<Value> = children_raw
+                .iter()
+                .filter_map(|child| {
+                    let sk = child.get("storageKey")?.as_str()?;
+                    let assignment = state.assignments.get(sk);
+                    let child_label_override = child
+                        .get("label")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty());
+                    let default_label = assignment
+                        .and_then(|a| a.get("label").and_then(|l| l.as_str()))
+                        .unwrap_or("");
+                    let assign_type = assignment
+                        .and_then(|a| a.get("type").and_then(|t| t.as_str()))
+                        .unwrap_or("");
+                    let child_type = if sk.starts_with("GLOBAL::EXPANSION::") {
+                        "expansion"
+                    } else if sk.starts_with("GLOBAL::QUICKACTION::") {
+                        "quickaction"
+                    } else if sk.starts_with("GLOBAL::AUTOCORRECT::") {
+                        "autocorrect"
+                    } else {
+                        "assignment"
+                    };
+                    Some(serde_json::json!({
+                        "id": child.get("id"),
+                        "storageKey": sk,
+                        "label": child_label_override.unwrap_or(default_label),
+                        "icon": child.get("icon"),
+                        "iconColor": child.get("iconColor"),
+                        "assignType": assign_type,
+                        "exists": assignment.is_some(),
+                        "type": child_type,
+                        "data": assignment.and_then(|a| a.get("data").cloned()),
+                    }))
+                })
+                .collect();
+
+            return Some(serde_json::json!({
+                "id": item.get("id"),
+                "type": "folder",
+                "label": label,
+                "icon": item.get("icon"),
+            "iconColor": item.get("iconColor"),
+                "exists": true,
+                "children": resolved_children,
+            }));
+        }
+
+        // Regular item
+        let storage_key = item.get("storageKey")?.as_str()?;
+        let assignment = state.assignments.get(storage_key);
+        let label_override = item
+            .get("label")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let default_label = assignment
+            .and_then(|a| a.get("label").and_then(|l| l.as_str()))
+            .unwrap_or("");
+        let assign_type = assignment
+            .and_then(|a| a.get("type").and_then(|t| t.as_str()))
+            .unwrap_or("");
+        let item_type = if storage_key.starts_with("GLOBAL::EXPANSION::") {
+            "expansion"
+        } else if storage_key.starts_with("GLOBAL::QUICKACTION::") {
+            "quickaction"
+        } else if storage_key.starts_with("GLOBAL::AUTOCORRECT::") {
+            "autocorrect"
+        } else {
+            "assignment"
+        };
+
+        Some(serde_json::json!({
+            "id": item.get("id"),
+            "storageKey": storage_key,
+            "label": label_override.unwrap_or(default_label),
+            "icon": item.get("icon"),
+            "iconColor": item.get("iconColor"),
+            "assignType": assign_type,
+            "exists": assignment.is_some(),
+            "type": item_type,
+            "data": assignment.and_then(|a| a.get("data").cloned()),
+        }))
+    };
+
+    let resolved_items: Vec<Value> = radial_items
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|item| resolve_item(item))
+        .collect();
+    drop(state);
+
+    let payload = serde_json::json!({
+        "items": resolved_items,
+        "theme": theme,
+    });
+    use tauri::Emitter;
+    let _ = win.emit("radial-menu-data", payload);
+
+    *radial_menu_show_time().lock().unwrap() = Some(StdInstant::now());
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+fn hide_radial_menu(app: &tauri::AppHandle) {
+    hotkeys::clear_radial_menu_open();
+    if let Some(win) = app.get_webview_window("radialmenu") {
+        let _ = win.hide();
+    }
+}
+
+fn restore_radial_menu_target() {
+    let hwnd = RADIAL_MENU_TARGET_HWND.load(std::sync::atomic::Ordering::SeqCst);
+    if hwnd != 0 {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
+        }
+    }
+}
+
+#[tauri::command]
+fn set_radial_menu_hotkey(combo: String) -> Value {
+    hotkeys::set_radial_menu_hotkey(&combo);
+    serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+fn clear_radial_menu_hotkey() {
+    hotkeys::clear_radial_menu_hotkey();
+}
+
+#[tauri::command]
+fn close_radial_menu(app: tauri::AppHandle) {
+    hide_radial_menu(&app);
+    restore_radial_menu_target();
+}
+
+#[tauri::command]
+fn radial_menu_resize(width: f64, height: f64, app: tauri::AppHandle) {
+    let w = width.max(200.0).min(600.0);
+    let h = height.max(200.0).min(600.0);
+    if let Some(win) = app.get_webview_window("radialmenu") {
+        let _ = win.set_size(tauri::LogicalSize::new(w, h));
+    }
+}
+
+/// Called by the frontend when the user clicks the voice pill to toggle continuous mode.
+/// on=true: stay-alive after each command fires; on=false: close overlay immediately.
+#[tauri::command]
+fn set_voice_continuous(on: bool, app: tauri::AppHandle) {
+    VOICE_CONTINUOUS.store(on, AtomicOrdering::SeqCst);
+    if !on {
+        hide_overlay(&app);
+        restore_overlay_target();
+    }
+}
+
 #[tauri::command]
 fn overlay_resize(height: f64, app: tauri::AppHandle) {
     let h = height.max(60.0).min(400.0);
@@ -1113,6 +1346,105 @@ fn voice_overlay_error_expand(app: tauri::AppHandle) {
     }
 }
 
+/// Shared dispatch logic for executing an item from any overlay (search, radial menu).
+/// Runs on a background thread — caller must pass cloned values.
+fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle) {
+    let result_type = result.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+    match result_type {
+        "assignment" | "quickaction" => {
+            if let Some(storage_key) = result.get("storageKey").and_then(|v| v.as_str()) {
+                let state = hotkeys::engine_state().lock().unwrap();
+                if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
+                    drop(state);
+                    actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), app);
+                    let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
+                    let label = macro_val.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                    let macro_steps = if at == "macro" {
+                        macro_val.get("data")
+                            .and_then(|d| d.get("steps"))
+                            .and_then(|s| s.as_array())
+                            .map(|arr| arr.iter().filter_map(|s| s.get("type").and_then(|v| v.as_str()).map(String::from)).collect())
+                    } else { None };
+                    analytics::log_action_ext(at, 0, storage_key, label, macro_steps);
+                }
+            }
+        }
+        "expansion" | "autocorrect" => {
+            if let Some(raw_text) = result.get("text").and_then(|v| v.as_str()) {
+                // Resolve dynamic tokens ({date:...}, {time:...}, {clipboard}, {cursor}, etc.)
+                let global_vars = expansions::get_global_variables();
+                let (resolved, cursor_back) = expansions::resolve_tokens(raw_text, &global_vars);
+
+                let trigger = result.get("trigger").and_then(|v| v.as_str()).unwrap_or("");
+                analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, trigger, trigger);
+
+                actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                let _suppress = actions::SuppressionGuard::new();
+
+                let held = actions::release_held_modifiers();
+                if target_hwnd != 0 {
+                    unsafe {
+                        windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
+                            target_hwnd as _,
+                        );
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+
+                // Use clipboard paste
+                let prev = actions::read_clipboard_pub().unwrap_or_default();
+                actions::write_clipboard_pub(&resolved);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+
+                // Ctrl+V paste
+                actions::send_vk_key_pub(0xA2, false); // LCtrl down
+                actions::send_vk_key_pub(0x56, false); // V down
+                actions::send_vk_key_pub(0x56, true);  // V up
+                actions::send_vk_key_pub(0xA2, true);  // LCtrl up
+
+                // Move cursor back if {cursor} was present
+                if cursor_back > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    for _ in 0..cursor_back {
+                        actions::send_vk_key_pub(0x25, false); // VK_LEFT down
+                        actions::send_vk_key_pub(0x25, true);  // VK_LEFT up
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                }
+
+                actions::restore_modifiers(&held);
+                drop(_suppress); // SUPPRESS_SIMULATED = false (even on panic)
+
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                actions::write_clipboard_pub(&prev);
+                actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        "search_template" => {
+            let url_template = result.get("url_template").and_then(|v| v.as_str()).unwrap_or("");
+            let query = result.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let encode_query = result.get("encode_query").and_then(|v| v.as_bool()).unwrap_or(true);
+            let label = result.get("label").and_then(|v| v.as_str()).unwrap_or("");
+            let trigger = result.get("trigger").and_then(|v| v.as_str()).unwrap_or("");
+
+            if !url_template.is_empty() && !query.is_empty() {
+                let encoded_query = if encode_query {
+                    percent_encode_query(query)
+                } else {
+                    query.to_string()
+                };
+                let final_url = url_template.replace("{query}", &encoded_query);
+                let _ = opener::open(&final_url);
+                analytics::log_action("search_template", 0, trigger, label);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[tauri::command]
 fn execute_search_result(result: Value, app: tauri::AppHandle) {
     let is_continuous = VOICE_CONTINUOUS.load(AtomicOrdering::SeqCst);
@@ -1124,113 +1456,31 @@ fn execute_search_result(result: Value, app: tauri::AppHandle) {
     // In continuous mode the overlay stays visible (always_on_top) above the target.
     restore_overlay_target();
 
-    let result_type = result.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let target_hwnd = OVERLAY_TARGET_HWND.load(AtomicOrdering::Relaxed);
     let app_cont = if is_continuous { Some(app.clone()) } else { None };
 
     std::thread::spawn(move || {
         // Wait for focus transfer to target app
         std::thread::sleep(std::time::Duration::from_millis(180));
-
-        match result_type.as_str() {
-            "assignment" | "quickaction" => {
-                if let Some(storage_key) = result.get("storageKey").and_then(|v| v.as_str()) {
-                    let state = hotkeys::engine_state().lock().unwrap();
-                    if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
-                        drop(state);
-                        actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), &app);
-                        let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
-                        let label = macro_val.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                        let macro_steps = if at == "macro" {
-                            macro_val.get("data")
-                                .and_then(|d| d.get("steps"))
-                                .and_then(|s| s.as_array())
-                                .map(|arr| arr.iter().filter_map(|s| s.get("type").and_then(|v| v.as_str()).map(String::from)).collect())
-                        } else { None };
-                        analytics::log_action_ext(at, 0, storage_key, label, macro_steps);
-                    }
-                }
-            }
-            "expansion" | "autocorrect" => {
-                if let Some(raw_text) = result.get("text").and_then(|v| v.as_str()) {
-                    // Resolve dynamic tokens ({date:...}, {time:...}, {clipboard}, {cursor}, etc.)
-                    let global_vars = expansions::get_global_variables();
-                    let (resolved, cursor_back) = expansions::resolve_tokens(raw_text, &global_vars);
-
-                    let trigger = result.get("trigger").and_then(|v| v.as_str()).unwrap_or("");
-                    analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, trigger, trigger);
-
-                    actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                    let _suppress = actions::SuppressionGuard::new();
-
-                    let held = actions::release_held_modifiers();
-                    if target_hwnd != 0 {
-                        unsafe {
-                            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
-                                target_hwnd as _,
-                            );
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-                    }
-
-                    // Use clipboard paste
-                    let prev = actions::read_clipboard_pub().unwrap_or_default();
-                    actions::write_clipboard_pub(&resolved);
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-
-                    // Ctrl+V paste
-                    actions::send_vk_key_pub(0xA2, false); // LCtrl down
-                    actions::send_vk_key_pub(0x56, false); // V down
-                    actions::send_vk_key_pub(0x56, true);  // V up
-                    actions::send_vk_key_pub(0xA2, true);  // LCtrl up
-
-                    // Move cursor back if {cursor} was present
-                    if cursor_back > 0 {
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-                        for _ in 0..cursor_back {
-                            actions::send_vk_key_pub(0x25, false); // VK_LEFT down
-                            actions::send_vk_key_pub(0x25, true);  // VK_LEFT up
-                            std::thread::sleep(std::time::Duration::from_millis(5));
-                        }
-                    }
-
-                    actions::restore_modifiers(&held);
-                    drop(_suppress); // SUPPRESS_SIMULATED = false (even on panic)
-
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    actions::write_clipboard_pub(&prev);
-                    actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
-                        .store(false, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-            "search_template" => {
-                let url_template = result.get("url_template").and_then(|v| v.as_str()).unwrap_or("");
-                let query = result.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                let encode_query = result.get("encode_query").and_then(|v| v.as_bool()).unwrap_or(true);
-                let label = result.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                let trigger = result.get("trigger").and_then(|v| v.as_str()).unwrap_or("");
-
-                if !url_template.is_empty() && !query.is_empty() {
-                    let encoded_query = if encode_query {
-                        percent_encode_query(query)
-                    } else {
-                        query.to_string()
-                    };
-                    let final_url = url_template.replace("{query}", &encoded_query);
-                    let _ = opener::open(&final_url);
-                    analytics::log_action("search_template", 0, trigger, label);
-                }
-            }
-            _ => {}
-        }
+        execute_item_impl(&result, target_hwnd, &app);
 
         // Continuous voice mode: signal frontend to restart listening after the action executed.
         if let Some(app2) = app_cont {
-            if let Some(overlay) = app2.get_webview_window("overlay") {
-                let _ = overlay.emit("voice-continuous-restart", ());
-            }
+            let _ = app2.emit("voice-continuous-restart", ());
         }
+    });
+}
+
+#[tauri::command]
+fn execute_radial_menu_item(result: Value, app: tauri::AppHandle) {
+    hide_radial_menu(&app);
+    restore_radial_menu_target();
+
+    let target_hwnd = RADIAL_MENU_TARGET_HWND.load(std::sync::atomic::Ordering::SeqCst);
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(180));
+        execute_item_impl(&result, target_hwnd, &app);
     });
 }
 
@@ -1844,6 +2094,39 @@ pub fn run() {
             // Suppress unused variable warning
             let _ = &clipoverlay_win;
 
+            // Pre-create radial menu window hidden
+            let radial_url = tauri::WebviewUrl::App("index.html?radialmenu=1".into());
+            let radial_win = tauri::WebviewWindowBuilder::new(app, "radialmenu", radial_url)
+                .title("Trigr Radial Menu")
+                .inner_size(620.0, 620.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build()?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let _ = radial_win.with_webview(|webview| {
+                    unsafe {
+                        use webview2_com::Microsoft::Web::WebView2::Win32::{
+                            ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+                        };
+                        use windows_core::Interface;
+                        let controller = webview.controller();
+                        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                            let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                                R: 0, G: 0, B: 0, A: 0,
+                            });
+                        }
+                    }
+                });
+            }
+            let _ = &radial_win;
+
             // Store app handle for fill-in IPC from the expansion engine
             expansions::init_app_handle(app.handle().clone());
 
@@ -1871,22 +2154,13 @@ pub fn run() {
                 show_voice_overlay(&app_handle_voice_open);
             });
 
-            // voice-keydown: second+ press while voice is already active.
-            // No is_visible() needed — the hook only emits this when VOICE_ACTIVE is true.
+            // voice-keydown: hotkey pressed while voice overlay is active — always close.
+            // Continuous mode is now toggled by clicking the overlay, not the hotkey.
             let app_handle_voice = app.handle().clone();
             app.listen("voice-keydown", move |_| {
-                if VOICE_CONTINUOUS.load(AtomicOrdering::SeqCst) {
-                    // Third press — close
-                    VOICE_CONTINUOUS.store(false, AtomicOrdering::SeqCst);
-                    hide_overlay(&app_handle_voice);
-                    restore_overlay_target();
-                } else {
-                    // Second press — enter continuous mode
-                    VOICE_CONTINUOUS.store(true, AtomicOrdering::SeqCst);
-                    if let Some(overlay) = app_handle_voice.get_webview_window("overlay") {
-                        let _ = overlay.emit("voice-continuous-on", ());
-                    }
-                }
+                VOICE_CONTINUOUS.store(false, AtomicOrdering::SeqCst);
+                hide_overlay(&app_handle_voice);
+                restore_overlay_target();
             });
 
             // Listen for clipboard overlay toggle from hotkey system
@@ -1900,6 +2174,21 @@ pub fn run() {
                     hide_clipboard_overlay(&app_handle_clip);
                 } else {
                     show_clipboard_overlay(&app_handle_clip);
+                }
+            });
+
+            // Listen for radial menu toggle from hotkey system
+            let app_handle_radial = app.handle().clone();
+            app.listen("toggle-radial-menu", move |_| {
+                let visible = app_handle_radial
+                    .get_webview_window("radialmenu")
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                if visible {
+                    hide_radial_menu(&app_handle_radial);
+                    restore_radial_menu_target();
+                } else {
+                    show_radial_menu(&app_handle_radial);
                 }
             });
 
@@ -1949,6 +2238,19 @@ pub fn run() {
                         unsafe {
                             windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
                         }
+                    }
+                }
+            } else if label == "radialmenu" {
+                if let tauri::WindowEvent::Focused(false) = event {
+                    let should_hide = radial_menu_show_time()
+                        .lock()
+                        .ok()
+                        .and_then(|t| *t)
+                        .map(|t| t.elapsed() > std::time::Duration::from_millis(300))
+                        .unwrap_or(true);
+                    if should_hide {
+                        hide_radial_menu(window.app_handle());
+                        restore_radial_menu_target();
                     }
                 }
             } else if label == "fillin" {
@@ -2036,8 +2338,15 @@ pub fn run() {
             close_overlay,
             overlay_resize,
             voice_overlay_error_expand,
+            set_voice_continuous,
             execute_search_result,
             update_search_settings,
+            // Radial Menu
+            set_radial_menu_hotkey,
+            clear_radial_menu_hotkey,
+            close_radial_menu,
+            radial_menu_resize,
+            execute_radial_menu_item,
             // Onboarding
             reset_onboarding,
             // Analytics

@@ -204,8 +204,9 @@ window.electronAPI = {
   clearPauseHotkey:    ()      => invoke('clear_global_pause_key'),
   setVoiceHotkey:      (combo) => invoke('set_voice_hotkey', { combo }),
   clearVoiceHotkey:    ()      => invoke('clear_voice_hotkey'),
-  startVoiceRecognition: (phrases) => invoke('start_voice_recognition', { phrases }),
-  stopVoiceRecognition:  ()        => invoke('stop_voice_recognition'),
+  startVoiceRecognition:  (phrases) => invoke('start_voice_recognition', { phrases }),
+  stopVoiceRecognition:   ()        => invoke('stop_voice_recognition'),
+  setVoiceContinuous:     (on)      => invoke('set_voice_continuous', { on }),
   onVoiceResult: (callback) => {
     listen('voice-result', (event) => callback(event.payload)).then(u => { listeners['voice-result'] = u; });
   },
@@ -222,6 +223,19 @@ window.electronAPI = {
     listen('voice-continuous-restart', () => callback()).then(u => { listeners['voice-continuous-restart'] = u; });
   },
   checkHotkeyConflict: (combo) => invoke('check_hotkey_conflict', { combo }),
+
+  // ── Radial Menu ────────────────────────────────────────────────────────────
+  setRadialMenuHotkey:    (combo) => invoke('set_radial_menu_hotkey', { combo }),
+  clearRadialMenuHotkey:  ()      => invoke('clear_radial_menu_hotkey'),
+  closeRadialMenu:        ()      => invoke('close_radial_menu'),
+  resizeRadialMenu:       (width, height) => invoke('radial_menu_resize', { width, height }),
+  executeRadialMenuItem:  (result) => invoke('execute_radial_menu_item', { result }),
+  onRadialMenuData: (callback) => {
+    listen('radial-menu-data', (event) => callback(event.payload)).then(u => { listeners['radial-menu-data'] = u; });
+  },
+  onRadialMenuKeyReleased: (callback) => {
+    listen('radial-menu-key-released', () => callback()).then(u => { listeners['radial-menu-key-released'] = u; });
+  },
 
   // ── Auto-updater ────────────────────────────────────────────────────────────
   onUpdateAvailable:  (callback) => {

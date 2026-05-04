@@ -1,0 +1,155 @@
+/* ── Icon Picker ──────────────────────────────────────────────────────────── */
+
+.icon-picker {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  max-height: 340px;
+}
+
+.icon-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 4px;
+}
+
+.icon-picker-search {
+  flex: 1;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-body);
+  caret-color: var(--accent);
+  outline: none;
+}
+
+.icon-picker-search::placeholder {
+  color: var(--text-muted);
+}
+
+.icon-picker-close {
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.icon-picker-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* ── Category tabs ────────────────────────────────────────────────────── */
+
+.icon-picker-cats {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.icon-picker-cats::-webkit-scrollbar {
+  display: none;
+}
+
+.icon-picker-cat {
+  height: 22px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.08s, color 0.08s;
+  flex-shrink: 0;
+}
+
+.icon-picker-cat:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.icon-picker-cat.active {
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* ── Icon grid ────────────────────────────────────────────────────────── */
+
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 4px 6px 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.icon-picker-grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.icon-picker-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.icon-picker-grid::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 2px;
+}
+
+.icon-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s, border-color 0.08s;
+}
+
+.icon-picker-item:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border-color: var(--border-accent);
+}
+
+.icon-picker-item.active {
+  background: var(--key-bg-selected);
+  border-color: var(--key-border-selected);
+  color: var(--accent);
+}
+
+.icon-picker-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 11px;
+}

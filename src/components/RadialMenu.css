@@ -1,0 +1,99 @@
+/* ── CSS variable definitions for the radial menu standalone overlay window ──
+   Copied from SearchOverlay.css. Overlay windows must define their own vars
+   because they don't import global.css (which sets html/body bg, breaking
+   transparency). RadialWheel.css references these vars without defining them. */
+
+:root {
+  --bg-base:       #0d0d11;
+  --bg-surface:    #13131a;
+  --bg-elevated:   #1a1a24;
+  --bg-hover:      #20202d;
+  --accent:        #e8a020;
+  --accent-glow:   rgba(232, 160, 32, 0.15);
+  --accent-rgb:    232, 160, 32;
+  --text-primary:  #f0ede8;
+  --text-secondary:#8a8799;
+  --text-muted:    #4a4860;
+  --border-bright: #2e2e40;
+  --border-accent: rgba(232, 160, 32, 0.4);
+  --font-display:  'Rajdhani', sans-serif;
+  --font-body:     'DM Sans', sans-serif;
+}
+
+[data-theme="light"] {
+  --bg-base:       #f0f0f5;
+  --bg-surface:    #ffffff;
+  --bg-elevated:   #f5f5fa;
+  --bg-hover:      #ebebf0;
+  --accent:        #e8a020;
+  --accent-glow:   rgba(232, 160, 32, 0.08);
+  --accent-rgb:    232, 160, 32;
+  --text-primary:  #1a1a2e;
+  --text-secondary:#4a4a6a;
+  --text-muted:    #9090b0;
+  --border-bright: #c8c8dc;
+  --border-accent: rgba(232, 160, 32, 0.5);
+}
+
+/* ── Transparent window reset ─────────────────────────────────────────────── */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 620px;
+  height: 620px;
+  background: transparent !important;
+  overflow: hidden;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  font-size: 14px;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 620px;
+  height: 620px;
+  background: transparent !important;
+}
+
+/* ── Root container ───────────────────────────────────────────────────────── */
+
+.radial-root {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+
+.radial-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  animation: radial-appear 150ms ease-out both;
+}
+
+@keyframes radial-appear {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.radial-empty-icon {
+  font-size: 28px;
+  color: var(--text-muted);
+}
+
+.radial-empty-text {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.5;
+}

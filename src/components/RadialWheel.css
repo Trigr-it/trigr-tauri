@@ -1,0 +1,249 @@
+/* ── RadialWheel — shared SVG wheel component ────────────────────────────────
+   Used by both the live overlay (RadialMenu.jsx) and the settings editor.
+   All colours via CSS variables — no hardcoded hex.
+   Variable definitions live in RadialMenu.css (overlay) and global.css (main). */
+
+.rw-container {
+  width: 620px;
+  height: 620px;
+  flex-shrink: 0;
+}
+
+.rw-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.rw-svg--editor {
+  cursor: default;
+}
+
+/* ── Centre circle ────────────────────────────────────────────────────────── */
+
+.rw-centre {
+  fill: var(--bg-elevated);
+  stroke: var(--border-accent);
+  stroke-width: 2;
+}
+
+.rw-centre-text {
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  fill: var(--accent);
+  pointer-events: none;
+}
+
+/* ── Wedge base ───────────────────────────────────────────────────────────── */
+
+.rw-wedge {
+  cursor: pointer;
+}
+
+.rw-wedge .rw-wedge-path {
+  fill: var(--bg-surface);
+  stroke: var(--border-bright);
+  stroke-width: 1.5;
+  transition: fill 0.12s, stroke 0.12s, d 0.1s ease;
+}
+
+/* ── Hovered wedge ────────────────────────────────────────────────────────── */
+
+/* Opaque gold-tinted fills — must NOT use rgba transparency because the
+   live overlay window background is transparent. Semi-transparent fills
+   show through to the desktop and look invisible. */
+.rw-wedge--hovered .rw-wedge-path {
+  fill: #3d2e10;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+[data-theme="light"] .rw-wedge--hovered .rw-wedge-path {
+  fill: #f5e0b0;
+}
+
+/* ── Folder wedge ─────────────────────────────────────────────────────────── */
+
+.rw-wedge--folder .rw-wedge-path {
+  stroke-dasharray: 6 4;
+}
+
+.rw-wedge--folder.rw-wedge--hovered .rw-wedge-path {
+  stroke-dasharray: none;
+}
+
+.rw-wedge--folder-expanded .rw-wedge-path {
+  fill: #3d2e10;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+}
+
+[data-theme="light"] .rw-wedge--folder-expanded .rw-wedge-path {
+  fill: #f5e0b0;
+}
+
+/* ── Missing/orphaned item ────────────────────────────────────────────────── */
+
+.rw-wedge--missing {
+  opacity: 0.4;
+}
+
+.rw-wedge--missing .rw-wedge-path {
+  cursor: default;
+}
+
+/* ── Empty slot (editor mode) ─────────────────────────────────────────────── */
+
+.rw-wedge--empty .rw-wedge-path {
+  fill: none;
+  stroke: var(--border-bright);
+  stroke-dasharray: 4 6;
+  stroke-width: 1;
+}
+
+.rw-svg--editor .rw-wedge--empty .rw-wedge-path {
+  cursor: pointer;
+}
+
+.rw-svg--editor .rw-wedge--empty:hover .rw-wedge-path {
+  stroke: var(--border-accent);
+  fill: rgba(var(--accent-rgb), 0.04);
+}
+
+/* ── Outer ring wedge ─────────────────────────────────────────────────────── */
+
+.rw-outer-ring {
+  animation: rw-outer-appear 200ms ease-out both;
+}
+
+@keyframes rw-outer-appear {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.rw-wedge--outer .rw-wedge-path {
+  fill: var(--bg-elevated);
+  stroke: var(--border-bright);
+}
+
+.rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
+  fill: #3d2e10;
+  stroke: var(--accent);
+}
+
+[data-theme="light"] .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
+  fill: #f5e0b0;
+}
+
+.rw-wedge--outer.rw-wedge--empty .rw-wedge-path {
+  fill: none;
+}
+
+/* ── Wedge content ────────────────────────────────────────────────────────── */
+
+.rw-wedge-icon {
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-size: 26px;
+}
+
+/* ── Centre hover label ───────────────────────────────────────────────────── */
+
+.rw-centre-pill {
+  fill: var(--bg-surface);
+  stroke: var(--border-bright);
+  stroke-width: 1;
+}
+
+.rw-centre-hover-name {
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.rw-centre-hover-type {
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  fill: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rw-wedge-num {
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 600;
+  fill: var(--text-muted);
+  opacity: 0.5;
+}
+
+.rw-wedge--hovered .rw-wedge-num {
+  fill: var(--accent);
+  opacity: 1;
+}
+
+.rw-wedge-plus {
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-body);
+  font-size: 22px;
+  font-weight: 300;
+  fill: var(--text-muted);
+  opacity: 0.5;
+}
+
+.rw-svg--editor .rw-wedge--empty:hover .rw-wedge-plus {
+  fill: var(--accent);
+  opacity: 0.8;
+}
+
+/* ── Drop target highlight (library→wheel drag) ──────────────────────────── */
+
+.rw-wedge--drop-target .rw-wedge-path {
+  fill: var(--accent-glow);
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+
+.rw-wedge--drop-target .rw-wedge-plus {
+  fill: var(--accent);
+  opacity: 1;
+}
+
+/* ── Reject shake animation ──────────────────────────────────────────────── */
+
+.rw-wedge--reject {
+  animation: rw-wedge-reject 200ms ease-in-out;
+}
+
+@keyframes rw-wedge-reject {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* ── Folder trim — gold arc along outer edge ─────────────────────────────── */
+
+.rw-folder-trim {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+  opacity: 0.8;
+}

@@ -267,11 +267,17 @@ export default function SearchOverlay() {
   const [voiceState, setVoiceState]         = useState('idle'); // 'idle' | 'listening' | 'matched' | 'no-match' | 'error' | 'unsupported'
   const [interimText, setInterimText]       = useState('');
   const [matchedLabel, setMatchedLabel]     = useState('');
-  const [voiceContinuous, setVoiceContinuous] = useState(false); // double-tap stay-active mode
+  const [voiceContinuous, _setVoiceContinuousState] = useState(false); // double-tap stay-active mode
   const recognitionRef      = useRef(false);  // boolean: is WinRT recognition running
   const voiceTimeoutRef     = useRef(null);
   const voiceContinuousRef  = useRef(false);
-  voiceContinuousRef.current = voiceContinuous;
+  // Synchronized setter: ref updated immediately (synchronous), state queued for re-render.
+  // Do NOT do voiceContinuousRef.current = voiceContinuous here — that only runs on render
+  // commit and creates a one-cycle lag that causes the "second click closes" race.
+  const setVoiceContinuous = useCallback((val) => {
+    voiceContinuousRef.current = val;
+    _setVoiceContinuousState(val);
+  }, []);
   const startListeningRef   = useRef(null);   // ref so async callbacks can call startListening
   const modeRef             = useRef(mode);
   modeRef.current = mode;
@@ -428,18 +434,26 @@ export default function SearchOverlay() {
     });
   }, []);
 
-  // ── Continuous mode: press hotkey again while overlay is open to stay active between commands ──
-  useEffect(() => {
-    if (!window.electronAPI?.onVoiceContinuousOn) return;
-    window.electronAPI.onVoiceContinuousOn(() => {
+  // ── Continuous mode: click voice pill to go persistent, click again to close ──
+  const handleVoicePillClick = useCallback(() => {
+    if (voiceContinuousRef.current) {
+      // Already continuous — second click closes the overlay.
+      // Reset state NOW so next session starts with voiceContinuous=false,
+      // regardless of whether onOverlayVoiceData fires before the user clicks again.
+      setVoiceContinuous(false);
+      window.electronAPI?.closeOverlay();
+    } else {
+      // First click — enter continuous (stay-alive) mode
       setVoiceContinuous(true);
-    });
+      window.electronAPI?.setVoiceContinuous(true);
+    }
   }, []);
 
   // ── Continuous mode: restart listening after each command fires ──
   useEffect(() => {
     if (!window.electronAPI?.onVoiceContinuousRestart) return;
     window.electronAPI.onVoiceContinuousRestart(() => {
+      clearTimeout(voiceTimeoutRef.current);
       setVoiceState('listening');
       setInterimText('');
       recognitionRef.current = false;
@@ -748,9 +762,15 @@ export default function SearchOverlay() {
 
         {/* Voice mode UI — compact square */}
         {mode === 'voice' ? (
-          <div className="search-voice-pill" onKeyDown={handleInputKeyDown} tabIndex={-1}>
+          <div
+            className="search-voice-pill"
+            onClick={handleVoicePillClick}
+            onKeyDown={handleInputKeyDown}
+            tabIndex={-1}
+            title={voiceContinuous ? 'Click to close' : 'Click for continuous mode'}
+          >
             {voiceContinuous && (
-              <div className="search-voice-continuous-badge" title="Continuous mode — press hotkey again to stop">∞</div>
+              <div className="search-voice-continuous-badge">∞</div>
             )}
             {(voiceState === 'listening' || voiceState === 'idle') && (
               <div className="search-voice-pill-mic">

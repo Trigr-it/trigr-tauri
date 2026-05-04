@@ -21,6 +21,13 @@ if (params.get('overlay') === '1') {
       <FillInWindow />
     </React.Suspense>
   );
+} else if (params.get('radialmenu') === '1') {
+  const RadialMenu = React.lazy(() => import('./components/RadialMenu'));
+  root.render(
+    <React.Suspense fallback={null}>
+      <RadialMenu />
+    </React.Suspense>
+  );
 } else if (params.get('clipboardoverlay') === '1') {
   const ClipboardOverlay = React.lazy(() => import('./components/ClipboardOverlay'));
   root.render(

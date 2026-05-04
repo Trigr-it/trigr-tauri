@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import './styles/global.css';
 import './styles/app.css';
 import TitleBar from './components/TitleBar';
@@ -15,6 +15,9 @@ import QuickTips from './components/QuickTips';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import ClipboardPanel from './components/ClipboardPanel';
 import SearchTemplatesPanel from './components/SearchTemplatesPanel';
+import RadialEditorView from './components/RadialEditorView';
+import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
+import { MAX_SLOTS } from './components/RadialWheel';
 import { friendlyKeyName } from './components/keyboardLayout';
 
 function App() {
@@ -50,6 +53,7 @@ function App() {
   const [keystrokeDelay,     setKeystrokeDelay]     = useState(30);
   const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(150);
   const [searchOverlayHotkey,       setSearchOverlayHotkey]       = useState('Ctrl+Space');
+  const [voiceEnabled,              setVoiceEnabled]              = useState(false);
   const [voiceHotkey,               setVoiceHotkey]               = useState('Alt+Space');
   const [voiceMicId,               setVoiceMicId]               = useState('');
   const [overlayShowAll,             setOverlayShowAll]             = useState(true);
@@ -67,12 +71,52 @@ function App() {
   const [searchTemplates, setSearchTemplates]           = useState([]);
   const [searchTemplateCategories, setSearchTemplateCategories] = useState([]);
   const [quickActionCategories, setQuickActionCategories] = useState([]);
+  const [radialItemsMap, setRadialItemsMap]                 = useState({}); // { profileName: items[] }
+  const [radialMenuHotkey, setRadialMenuHotkey]           = useState(null);
+  const [selectedRadialSegment, setSelectedRadialSegment] = useState(null); // index or null
+  const [selectedRadialChild, setSelectedRadialChild] = useState(null);   // { folderId, childIndex } or null
+  const [expandedRadialFolder, setExpandedRadialFolder] = useState(null); // folder item id or null
 
 
   // Current modifier combo string e.g. "Ctrl+Alt"
   const currentCombo = comboString(activeModifiers);
   // Alpha/Beta: all users get pro features. Remove this override when licence system goes live.
   const isPro = true; // licenceStatus.is_pro;
+
+  // ── Per-profile radial menu items ──────────────────────────
+  const radialMenuItems = radialItemsMap[activeProfile] || [];
+
+  // Ref tracks activeProfile so the wrapper below has a stable identity.
+  // Without this, every handler that captures setRadialMenuItems would need
+  // it in its dependency array, and a stale closure on profile switch causes
+  // items to be written to the wrong profile — the root cause of drag-drop
+  // failing on app-specific profiles.
+  const activeProfileRef = useRef(activeProfile);
+  activeProfileRef.current = activeProfile;
+
+  // Drop-in wrapper: updates the per-profile map and syncs the flat
+  // radialMenuItems key that Rust reads on overlay show.
+  // Stable identity (empty deps) — reads activeProfile from ref at call time.
+  const setRadialMenuItems = useCallback((updater) => {
+    setRadialItemsMap(map => {
+      const profile = activeProfileRef.current;
+      const prev = map[profile] || [];
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (next === prev) return map;
+      const newMap = { ...map, [profile]: next };
+      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap, radialMenuItems: next });
+      return newMap;
+    });
+  }, []);
+
+  // Sync flat radialMenuItems to config when profile switches (for Rust overlay)
+  const prevRadialProfileRef = useRef(activeProfile);
+  useEffect(() => {
+    if (prevRadialProfileRef.current === activeProfile) return;
+    prevRadialProfileRef.current = activeProfile;
+    const items = radialItemsMap[activeProfile] || [];
+    window.electronAPI?.saveConfig({ radialMenuItems: items });
+  }, [activeProfile, radialItemsMap]);
 
   // ── Load config on mount ──────────────────────────────────
   useEffect(() => {
@@ -123,6 +167,7 @@ function App() {
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         // Always start on the Mapping view — do not restore last-used view/area
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
+        setVoiceEnabled(            config.voiceEnabled             ?? false);
         setVoiceHotkey(             config.voiceHotkey              || 'Alt+Space');
         setVoiceMicId(              config.voiceMicId               || '');
         setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
@@ -132,6 +177,15 @@ function App() {
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
         setQuickActionCategories(config.quickActionCategories || []);
+        {
+          let map = config.radialMenuItemsByProfile || {};
+          // Migration: old flat array → per-profile map under active profile
+          if (!config.radialMenuItemsByProfile && Array.isArray(config.radialMenuItems) && config.radialMenuItems.length > 0) {
+            map = { [globalProfile]: config.radialMenuItems };
+          }
+          setRadialItemsMap(map);
+        }
+        setRadialMenuHotkey(config.radialMenuHotkey || null);
         // Sync new settings to engine on load
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
@@ -154,9 +208,13 @@ function App() {
         if (config.globalPauseToggleKey) {
           window.electronAPI?.setPauseHotkey(config.globalPauseToggleKey);
         }
-        // Register voice hotkey with Rust backend
-        if (config.voiceHotkey) {
+        // Register voice hotkey with Rust backend only if voice is enabled
+        if ((config.voiceEnabled ?? false) && config.voiceHotkey) {
           window.electronAPI?.setVoiceHotkey(config.voiceHotkey);
+        }
+        // Register radial menu hotkey with Rust backend
+        if (config.radialMenuHotkey) {
+          window.electronAPI?.setRadialMenuHotkey(config.radialMenuHotkey);
         }
         // If the main process auto-restored from a backup, surface that to the user
         if (config._restoredFrom) setBackupRestoredFrom(config._restoredFrom);
@@ -263,6 +321,7 @@ function App() {
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
+        setVoiceEnabled(            config.voiceEnabled             ?? false);
         setVoiceHotkey(             config.voiceHotkey              || 'Alt+Space');
         setVoiceMicId(              config.voiceMicId               || '');
         setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
@@ -272,6 +331,15 @@ function App() {
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
         setQuickActionCategories(config.quickActionCategories || []);
+        {
+          let map = config.radialMenuItemsByProfile || {};
+          // Migration: old flat array → per-profile map under active profile
+          if (!config.radialMenuItemsByProfile && Array.isArray(config.radialMenuItems) && config.radialMenuItems.length > 0) {
+            map = { [globalProfile]: config.radialMenuItems };
+          }
+          setRadialItemsMap(map);
+        }
+        setRadialMenuHotkey(config.radialMenuHotkey || null);
         // Re-sync engine with updated config
         window.electronAPI?.updateAssignments(raw, globalProfile);
         window.electronAPI?.updateProfileSettings(config.profileSettings || {});
@@ -1228,6 +1296,8 @@ function App() {
   const handleSetView = useCallback((view) => {
     setActiveView(view);
     setSelectedKey(null);
+    setSelectedRadialSegment(null);
+    setSelectedRadialChild(null);
   }, []);
 
   // ── Hotkey recording ──────────────────────────────────────
@@ -1307,9 +1377,13 @@ function App() {
       setActiveModifiers(combo.split('+'));
     }
     setSelectedKey(keyId);
-    // Switch view to match the selected key type
-    setActiveView(keyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
-  }, []);
+    setSelectedRadialSegment(null);
+    setSelectedRadialChild(null);
+    // Stay on radial view when in radial mode; otherwise switch to keyboard/mouse
+    if (activeView !== 'radial') {
+      setActiveView(keyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+    }
+  }, [activeView]);
 
   // Sidebar combo-tab clicks update the sidebar's display filter only.
   // Modifier state is left untouched so clicking a tab never clears the
@@ -1347,11 +1421,22 @@ function App() {
     window.electronAPI?.clearPauseHotkey();
   }, []);
 
+  // ── Voice enabled toggle ────────────────────────
+  const handleToggleVoiceEnabled = useCallback((val) => {
+    setVoiceEnabled(val);
+    if (val && voiceHotkey) {
+      window.electronAPI?.setVoiceHotkey(voiceHotkey);
+    } else {
+      window.electronAPI?.clearVoiceHotkey();
+    }
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, voiceEnabled: val, voiceHotkey });
+  }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, voiceHotkey]);
+
   // ── Voice hotkey ───────────────────────────────
   const handleSetVoiceKey = useCallback((combo) => {
     setVoiceHotkey(combo);
     window.electronAPI?.setVoiceHotkey(combo);
-    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, voiceHotkey: combo });
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, voiceEnabled: true, voiceHotkey: combo });
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
 
   const handleClearVoiceKey = useCallback(() => {
@@ -1364,6 +1449,457 @@ function App() {
     setVoiceMicId(micId);
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, voiceMicId: micId });
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
+
+  // ── Radial Menu ────────────────────────────────────────────
+  const handleSetRadialMenuHotkey = useCallback((combo) => {
+    setRadialMenuHotkey(combo);
+    window.electronAPI?.setRadialMenuHotkey(combo);
+    window.electronAPI?.saveConfig({ radialMenuHotkey: combo });
+  }, []);
+
+  const handleClearRadialMenuHotkey = useCallback(() => {
+    setRadialMenuHotkey(null);
+    window.electronAPI?.clearRadialMenuHotkey();
+    window.electronAPI?.saveConfig({ radialMenuHotkey: null });
+  }, []);
+
+  const handleAddRadialMenuItem = useCallback((storageKey, label = null, targetIndex = -1) => {
+    // Inherit label from the assignment if not explicitly provided
+    const resolvedLabel = label || assignments[storageKey]?.label || storageKey.split('::').pop() || '';
+    setRadialMenuItems(prev => {
+      if (prev.filter(Boolean).length >= 12) return prev;
+      if (prev.some(item => item && item.storageKey === storageKey)) return prev;
+      const newItem = { id: crypto.randomUUID(), storageKey, label: resolvedLabel };
+      let next;
+      if (targetIndex >= 0 && targetIndex < 12) {
+        next = [...prev];
+        while (next.length <= targetIndex) next.push(null);
+        if (next[targetIndex] != null) return prev;
+        next[targetIndex] = newItem;
+      } else {
+        next = [...prev, newItem];
+      }
+      return next;
+    });
+  }, [assignments]);
+
+  const handleRemoveRadialMenuItem = useCallback((id) => {
+    setRadialMenuItems(prev => {
+      const next = prev.map(item => (item && item.id === id) ? null : item);
+      // Strip trailing nulls
+      while (next.length > 0 && next[next.length - 1] == null) next.pop();
+      return next;
+    });
+  }, []);
+
+  const handleReorderRadialMenuItems = useCallback((items) => {
+    setRadialMenuItems(items);
+  }, []);
+
+  const handleAddRadialMenuFolder = useCallback((label, targetIndex = -1) => {
+    setRadialMenuItems(prev => {
+      if (prev.filter(Boolean).length >= 12) return prev;
+      const newItem = { id: crypto.randomUUID(), type: 'folder', label, children: [] };
+      let next;
+      if (targetIndex >= 0 && targetIndex < 12) {
+        next = [...prev];
+        while (next.length <= targetIndex) next.push(null);
+        if (next[targetIndex] != null) return prev;
+        next[targetIndex] = newItem;
+      } else {
+        next = [...prev, newItem];
+      }
+      return next;
+    });
+  }, []);
+
+  const handleAddChildToFolder = useCallback((folderId, storageKey, label = null) => {
+    const resolvedLabel = label || assignments[storageKey]?.label || storageKey.split('::').pop() || '';
+    setRadialMenuItems(prev => {
+      const next = prev.map(item => {
+        if (!item || item.id !== folderId || item.type !== 'folder') return item;
+        if (item.children.length >= 8) return item;
+        if (item.children.some(c => c.storageKey === storageKey)) return item;
+        return { ...item, children: [...item.children, { id: crypto.randomUUID(), storageKey, label: resolvedLabel }] };
+      });
+      return next;
+    });
+  }, [assignments]);
+
+  const handleRemoveChildFromFolder = useCallback((folderId, childId) => {
+    setRadialMenuItems(prev => {
+      const next = prev.map(item => {
+        if (!item || item.id !== folderId || item.type !== 'folder') return item;
+        return { ...item, children: item.children.filter(c => c.id !== childId) };
+      });
+      return next;
+    });
+  }, []);
+
+  const handleReorderFolderChildren = useCallback((folderId, newChildren) => {
+    setRadialMenuItems(prev => {
+      const next = prev.map(item => {
+        if (!item || item.id !== folderId || item.type !== 'folder') return item;
+        return { ...item, children: newChildren };
+      });
+      return next;
+    });
+  }, []);
+
+  const handleRenameFolder = useCallback((folderId, newName) => {
+    setRadialMenuItems(prev => {
+      const next = prev.map(item => {
+        if (!item || item.id !== folderId || item.type !== 'folder') return item;
+        return { ...item, label: newName };
+      });
+      return next;
+    });
+  }, []);
+
+  const handleRenameRadialMenuItem = useCallback((id, newLabel) => {
+    setRadialMenuItems(prev => {
+      return prev.map(item => {
+        if (!item || item.id !== id) return item;
+        return { ...item, label: newLabel };
+      });
+    });
+  }, []);
+
+  const handleRenameChildInFolder = useCallback((folderId, childId, newLabel) => {
+    setRadialMenuItems(prev => {
+      return prev.map(item => {
+        if (!item || item.id !== folderId || item.type !== 'folder') return item;
+        return { ...item, children: item.children.map(c => c.id === childId ? { ...c, label: newLabel } : c) };
+      });
+    });
+  }, []);
+
+  const handleSetRadialMenuItemIcon = useCallback((id, iconName, iconColor) => {
+    setRadialMenuItems(prev => {
+      return prev.map(item => {
+        if (!item || item.id !== id) return item;
+        const patch = { ...item };
+        if (iconName !== undefined) patch.icon = iconName || undefined;
+        if (iconColor !== undefined) patch.iconColor = iconColor || undefined;
+        return patch;
+      });
+    });
+  }, []);
+
+  const handleSetRadialChildIcon = useCallback((folderId, childId, iconName, iconColor) => {
+    setRadialMenuItems(prev => {
+      return prev.map(item => {
+        if (!item || item.id !== folderId || item.type !== 'folder') return item;
+        return { ...item, children: item.children.map(c => {
+          if (c.id !== childId) return c;
+          const patch = { ...c };
+          if (iconName !== undefined) patch.icon = iconName || undefined;
+          if (iconColor !== undefined) patch.iconColor = iconColor || undefined;
+          return patch;
+        }) };
+      });
+    });
+  }, []);
+
+  const handleCreateRadialAction = useCallback((actionType, actionData, label, targetIndex) => {
+    const id = crypto.randomUUID();
+    const storageKey = `GLOBAL::RADIAL::${id}`;
+    const assignment = { type: actionType, label, data: actionData };
+    const newAssignments = { ...assignments, [storageKey]: assignment };
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    handleAddRadialMenuItem(storageKey, label, targetIndex);
+  }, [assignments, profiles, activeProfile, saveConfig, handleAddRadialMenuItem]);
+
+  // Assign action to radial segment (from MacroPanel save)
+  const handleRadialAssign = useCallback((_keyId, macro) => {
+    if (selectedRadialSegment == null) return;
+    const idx = selectedRadialSegment;
+    const existingItem = idx < radialMenuItems.length ? radialMenuItems[idx] : null;
+    const existingKey = existingItem?.storageKey;
+
+    if (existingKey && existingKey.startsWith('GLOBAL::RADIAL::')) {
+      // Update existing radial-only assignment in place
+      const newAssignments = { ...assignments, [existingKey]: macro };
+      setAssignments(newAssignments);
+      saveConfig(newAssignments, profiles, activeProfile);
+      // Update label on the radial item if it changed
+      if (macro.label) {
+        setRadialMenuItems(prev => prev.map((item, i) => (item && i === idx) ? { ...item, label: macro.label } : item));
+      }
+    } else {
+      // New segment or segment with a sidebar key — create a GLOBAL::RADIAL:: assignment
+      handleCreateRadialAction(macro.type, macro.data, macro.label || '', idx);
+    }
+    showNotification('Radial segment updated');
+  }, [selectedRadialSegment, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleCreateRadialAction, showNotification]);
+
+  // Clear radial segment (from MacroPanel clear)
+  const handleRadialClear = useCallback((_keyId) => {
+    if (selectedRadialSegment == null) return;
+    const idx = selectedRadialSegment;
+    const existingItem = idx < radialMenuItems.length ? radialMenuItems[idx] : null;
+    if (existingItem) {
+      // Remove from wheel
+      handleRemoveRadialMenuItem(existingItem.id);
+      // If it's a GLOBAL::RADIAL:: key, also delete the assignment
+      if (existingItem.storageKey?.startsWith('GLOBAL::RADIAL::')) {
+        const newAssignments = { ...assignments };
+        delete newAssignments[existingItem.storageKey];
+        setAssignments(newAssignments);
+        saveConfig(newAssignments, profiles, activeProfile);
+      }
+    }
+    setSelectedRadialSegment(null);
+    showNotification('Radial segment cleared', 'info');
+  }, [selectedRadialSegment, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleRemoveRadialMenuItem, showNotification]);
+
+  // Assign action to a folder child (from MacroPanel save)
+  const handleRadialChildAssign = useCallback((_keyId, macro) => {
+    if (!selectedRadialChild) return;
+    const { folderId, childIndex } = selectedRadialChild;
+    // Find the folder and check if child slot has an existing item
+    const folder = radialMenuItems.find(i => i && i.id === folderId);
+    const existingChild = folder?.children?.[childIndex];
+    const existingKey = existingChild?.storageKey;
+
+    if (existingKey && existingKey.startsWith('GLOBAL::RADIAL::')) {
+      // Update existing radial-only child assignment in place
+      const newAssignments = { ...assignments, [existingKey]: macro };
+      setAssignments(newAssignments);
+      saveConfig(newAssignments, profiles, activeProfile);
+      if (macro.label) {
+        setRadialMenuItems(prev => prev.map(item => {
+          if (!item || item.id !== folderId || item.type !== 'folder') return item;
+          return { ...item, children: item.children.map((c, ci) => ci === childIndex ? { ...c, label: macro.label } : c) };
+        }));
+      }
+    } else {
+      // New child — create GLOBAL::RADIAL:: assignment and add to folder
+      const id = crypto.randomUUID();
+      const storageKey = `GLOBAL::RADIAL::${id}`;
+      const newAssignments = { ...assignments, [storageKey]: macro };
+      setAssignments(newAssignments);
+      saveConfig(newAssignments, profiles, activeProfile);
+      handleAddChildToFolder(folderId, storageKey, macro.label || '');
+    }
+    showNotification('Folder child updated');
+  }, [selectedRadialChild, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleAddChildToFolder, showNotification]);
+
+  // Clear a folder child (from MacroPanel clear)
+  const handleRadialChildClear = useCallback((_keyId) => {
+    if (!selectedRadialChild) return;
+    const { folderId, childIndex } = selectedRadialChild;
+    const folder = radialMenuItems.find(i => i && i.id === folderId);
+    const existingChild = folder?.children?.[childIndex];
+    if (existingChild) {
+      handleRemoveChildFromFolder(folderId, existingChild.id);
+      if (existingChild.storageKey?.startsWith('GLOBAL::RADIAL::')) {
+        const newAssignments = { ...assignments };
+        delete newAssignments[existingChild.storageKey];
+        setAssignments(newAssignments);
+        saveConfig(newAssignments, profiles, activeProfile);
+      }
+    }
+    setSelectedRadialChild(null);
+    showNotification('Folder child cleared', 'info');
+  }, [selectedRadialChild, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleRemoveChildFromFolder, showNotification]);
+
+  // Select a radial segment — route to normal MacroPanel for sidebar items,
+  // radial MacroPanel for radial-only / new items
+  const handleSelectRadialSegment = useCallback((index) => {
+    const item = index < radialMenuItems.length ? radialMenuItems[index] : null;
+    const storageKey = item?.storageKey;
+
+    if (storageKey && !storageKey.startsWith('GLOBAL::') && storageKey.startsWith(activeProfile + '::')) {
+      // Existing sidebar assignment — open normally with sidebar highlight
+      const parts = storageKey.split('::');
+      if (parts.length >= 3) {
+        const combo = parts[1];
+        const keyId = parts[2];
+        if (combo === 'BARE') {
+          setActiveModifiers(['BARE']);
+        } else if (combo) {
+          setActiveModifiers(combo.split('+'));
+        }
+        setSelectedKey(keyId);
+        setSelectedRadialSegment(null);
+        setSelectedRadialChild(null);
+        return;
+      }
+    }
+
+    // Radial-only item, global item, or empty segment — use radial MacroPanel
+    setSelectedRadialSegment(index);
+    setSelectedKey(null);
+    setSelectedRadialChild(null);
+  }, [radialMenuItems, activeProfile]);
+
+  const handleSwapRadialMenuItems = useCallback((fromIndex, toIndex) => {
+    setRadialMenuItems(prev => {
+      const next = [...prev];
+      while (next.length <= Math.max(fromIndex, toIndex)) next.push(null);
+      const temp = next[fromIndex];
+      next[fromIndex] = next[toIndex];
+      next[toIndex] = temp;
+      while (next.length > 0 && next[next.length - 1] == null) next.pop();
+      return next;
+    });
+  }, []);
+
+  // ── Radial drag state + handlers (cross-container DndContext) ──
+  const [radialActiveDrag, setRadialActiveDrag] = useState(null);
+  const [radialDropTarget, setRadialDropTarget] = useState(-1);    // inner ring target
+  const [radialDropTargetOuter, setRadialDropTargetOuter] = useState(-1); // outer ring target
+  const [radialRejectIndex, setRadialRejectIndex] = useState(-1);
+  const wheelRef = useRef(null);
+  const radialDragActivatorRef = useRef(null); // stores the pointerdown event from drag start
+
+  const radialSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  const radialUsedKeys = useMemo(() => {
+    const s = new Set();
+    radialMenuItems.forEach(i => {
+      if (!i) return;
+      if (i.storageKey) s.add(i.storageKey);
+      if (i.children) i.children.forEach(c => { if (c && c.storageKey) s.add(c.storageKey); });
+    });
+    return s;
+  }, [radialMenuItems]);
+
+  // Hit test returning { ring: 'inner'|'outer', index } or null
+  const hitTestWedge = useCallback((clientX, clientY) => {
+    if (!wheelRef.current) return null;
+    const rect = wheelRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const svgX = ((clientX - rect.left) / rect.width) * 620;
+    const svgY = ((clientY - rect.top) / rect.height) * 620;
+    const CX = 310, CY = 310;
+    const INNER_R = 60, OUTER_R = 130;
+    const OUTER_INNER = OUTER_R + 8, OUTER_OUTER = OUTER_INNER + 70;
+    const dx = svgX - CX, dy = svgY - CY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Raw atan2 angle in degrees — same coordinate system as RadialWheel
+    // (0=right, 90=down, -90=up). RadialWheel offsets by -90 for slot layout.
+    const atan2Deg = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    // For inner ring: use the 0=top normalised angle (matches slot layout)
+    const slotAngle = ((atan2Deg + 90) % 360 + 360) % 360;
+
+    // Inner ring
+    if (dist >= INNER_R && dist <= OUTER_R) {
+      return { ring: 'inner', index: Math.floor(slotAngle / (360 / MAX_SLOTS)) };
+    }
+
+    // Outer ring — only when a folder is expanded
+    if (dist >= OUTER_INNER && dist <= OUTER_OUTER && expandedRadialFolder) {
+      const folderIdx = radialMenuItems.findIndex(i => i?.id === expandedRadialFolder);
+      if (folderIdx < 0) return null;
+      const folder = radialMenuItems[folderIdx];
+      if (folder?.type !== 'folder' || !folder.children) return null;
+
+      // Mirror exact RadialWheel.jsx outerWedges geometry
+      // All angles in RadialWheel coordinate system (0=right, -90 offset for slot 0 at top)
+      const slotStep = 360 / MAX_SLOTS;
+      const parentStart = slotStep * folderIdx - 90;
+      const parentEnd = parentStart + slotStep;
+      const parentBisector = (parentStart + parentEnd) / 2;
+      const childCount = folder.children.length;
+      const totalChildren = Math.max(childCount + 1, 1);
+      const minArcPerChild = 22;
+      const desiredArc = Math.max(slotStep, totalChildren * minArcPerChild);
+      const childArc = Math.min(desiredArc, 180);
+      const arcStart = parentBisector - childArc / 2;
+
+      // atan2Deg is in the SAME coordinate system as RadialWheel angles
+      const relAngle = ((atan2Deg - arcStart) % 360 + 360) % 360;
+      if (relAngle < childArc) {
+        const childIdx = Math.floor(relAngle / (childArc / totalChildren));
+        if (childIdx >= 0 && childIdx < totalChildren) {
+          return { ring: 'outer', index: childIdx, folderId: expandedRadialFolder };
+        }
+      }
+    }
+
+    return null;
+  }, [expandedRadialFolder, radialMenuItems]);
+
+  const handleRadialDragStart = useCallback((event) => {
+    if (activeView !== 'radial') return;
+    const { active, activatorEvent } = event;
+    const data = active.data?.current;
+    radialDragActivatorRef.current = activatorEvent || null;
+    setRadialActiveDrag({
+      id: active.id,
+      kind: data?.kind || 'library-card',
+      label: data?.folderName || String(active.id).split('::').pop() || '',
+    });
+  }, [activeView]);
+
+  const handleRadialDragMove = useCallback((event) => {
+    if (activeView !== 'radial') return;
+    const { activatorEvent, delta } = event;
+    const origin = activatorEvent || radialDragActivatorRef.current;
+    if (!origin) return;
+    const clientX = (origin.clientX || 0) + (delta?.x || 0);
+    const clientY = (origin.clientY || 0) + (delta?.y || 0);
+    const hit = hitTestWedge(clientX, clientY);
+    setRadialDropTarget(hit?.ring === 'inner' ? hit.index : -1);
+    setRadialDropTargetOuter(hit?.ring === 'outer' ? hit.index : -1);
+  }, [activeView, hitTestWedge]);
+
+  const handleRadialDragEnd = useCallback((event) => {
+    if (activeView !== 'radial') { setRadialActiveDrag(null); setRadialDropTarget(-1); setRadialDropTargetOuter(-1); return; }
+    const { active, delta } = event;
+    const data = active.data?.current;
+    const activator = radialDragActivatorRef.current;
+
+    setRadialActiveDrag(null);
+    setRadialDropTarget(-1);
+    setRadialDropTargetOuter(-1);
+    radialDragActivatorRef.current = null;
+
+    // Re-compute hit from final cursor position
+    const clientX = (activator?.clientX || 0) + (delta?.x || 0);
+    const clientY = (activator?.clientY || 0) + (delta?.y || 0);
+    const hit = hitTestWedge(clientX, clientY);
+
+    // Outer ring drop — add as child to expanded folder
+    if (hit?.ring === 'outer' && hit.folderId && (data?.kind === 'library-card') && data?.storageKey) {
+      const folder = radialMenuItems.find(i => i?.id === hit.folderId);
+      const existingChild = folder?.children?.[hit.index];
+      if (existingChild) return; // slot filled
+      handleAddChildToFolder(hit.folderId, data.storageKey, null);
+      return;
+    }
+
+    // Inner ring drop
+    if (!hit || hit.ring !== 'inner') return;
+    const idx = hit.index;
+    if (idx < 0 || idx >= MAX_SLOTS) return;
+
+    const existingItem = idx < radialMenuItems.length ? radialMenuItems[idx] : null;
+    if (existingItem) {
+      setRadialRejectIndex(idx);
+      setTimeout(() => setRadialRejectIndex(-1), 250);
+      return;
+    }
+
+    if (data?.kind === 'library-folder') {
+      handleAddRadialMenuFolder(data.folderName || 'New folder', idx);
+    } else if ((data?.kind === 'library-card') && data?.storageKey) {
+      handleAddRadialMenuItem(data.storageKey, null, idx);
+    }
+  }, [activeView, radialMenuItems, expandedRadialFolder, hitTestWedge, handleAddRadialMenuItem, handleAddRadialMenuFolder, handleAddChildToFolder]);
+
+  const handleRadialDragCancel = useCallback(() => {
+    setRadialActiveDrag(null);
+    setRadialDropTarget(-1);
+    setRadialDropTargetOuter(-1);
+  }, []);
 
   // ── Search overlay settings ───────────────────────────────
   const handleUpdateSearchSettings = useCallback((patch) => {
@@ -1725,6 +2261,13 @@ function App() {
         onImportCadTemplate={handleImportCadTemplate}
         onShowNotification={showNotification}
       />
+      <DndContext
+        sensors={radialSensors}
+        onDragStart={handleRadialDragStart}
+        onDragMove={handleRadialDragMove}
+        onDragEnd={handleRadialDragEnd}
+        onDragCancel={handleRadialDragCancel}
+      >
       <div className="app-body">
         {/* Sidebar only visible in Mapping area */}
         {activeArea === 'mapping' && (
@@ -1765,6 +2308,8 @@ function App() {
             onDuplicateFromContext={handleDuplicateFromContext}
             onCopyToProfile={handleCopyToProfile}
             onMoveToProfile={handleMoveToProfile}
+            activeView={activeView}
+            radialMenuItems={radialMenuItems}
           />
         )}
         <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}${listViewActive && activeArea === 'mapping' ? ' main-area--hidden' : ''}`}>
@@ -1783,6 +2328,13 @@ function App() {
                 type="button"
               >
                 🖱 Mouse
+              </button>
+              <button
+                className={`view-tab${activeView === 'radial' ? ' active' : ''}`}
+                onClick={() => handleSetView('radial')}
+                type="button"
+              >
+                &#x25ce; Radial
               </button>
             </div>
           )}
@@ -1834,6 +2386,43 @@ function App() {
           )}
           {activeArea === 'clipboard' && (
             <ClipboardPanel />
+          )}
+          {activeArea === 'mapping' && activeView === 'radial' && (
+            <RadialEditorView
+              radialMenuHotkey={radialMenuHotkey}
+              onSetRadialMenuHotkey={handleSetRadialMenuHotkey}
+              onClearRadialMenuHotkey={handleClearRadialMenuHotkey}
+              radialMenuItems={radialMenuItems}
+              onAddRadialMenuItem={handleAddRadialMenuItem}
+              onRemoveRadialMenuItem={handleRemoveRadialMenuItem}
+              onReorderRadialMenuItems={handleReorderRadialMenuItems}
+              onAddRadialMenuFolder={handleAddRadialMenuFolder}
+              onAddChildToFolder={handleAddChildToFolder}
+              onRemoveChildFromFolder={handleRemoveChildFromFolder}
+              onReorderFolderChildren={handleReorderFolderChildren}
+              onRenameFolder={handleRenameFolder}
+              onRenameRadialMenuItem={handleRenameRadialMenuItem}
+              onRenameChildInFolder={handleRenameChildInFolder}
+              onSwapRadialMenuItems={handleSwapRadialMenuItems}
+              onCreateRadialAction={handleCreateRadialAction}
+              onSetRadialMenuItemIcon={handleSetRadialMenuItemIcon}
+              onSetRadialChildIcon={handleSetRadialChildIcon}
+              selectedRadialSegment={selectedRadialSegment}
+              onSelectRadialSegment={handleSelectRadialSegment}
+              onSelectRadialChild={(folderId, childIndex) => {
+                setSelectedRadialChild({ folderId, childIndex });
+                setSelectedRadialSegment(null);
+                setSelectedKey(null);
+              }}
+              assignments={assignments}
+              dropTargetIndex={radialActiveDrag ? radialDropTarget : -1}
+              dropTargetOuterIndex={radialActiveDrag ? radialDropTargetOuter : -1}
+              rejectIndex={radialRejectIndex}
+              wheelRef={wheelRef}
+              usedKeys={radialUsedKeys}
+              expandedFolder={expandedRadialFolder}
+              onExpandedFolderChange={setExpandedRadialFolder}
+            />
           )}
           {activeArea === 'templates' && (
             <SearchTemplatesPanel
@@ -1908,6 +2497,8 @@ function App() {
             globalPauseToggleKey={globalPauseToggleKey}
             onSetPauseKey={handleSetPauseKey}
             onClearPauseKey={handleClearPauseKey}
+            voiceEnabled={voiceEnabled}
+            onToggleVoiceEnabled={handleToggleVoiceEnabled}
             voiceHotkey={voiceHotkey}
             onSetVoiceKey={handleSetVoiceKey}
             onClearVoiceKey={handleClearVoiceKey}
@@ -1918,6 +2509,59 @@ function App() {
             isPro={isPro}
             licenceStatus={licenceStatus}
             onLicenceStatusChange={setLicenceStatus}
+          />
+        ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
+          <MacroPanel
+            selectedKey={'Folder Child'}
+            activeModifiers={[]}
+            currentCombo=""
+            assignment={(() => {
+              const folder = radialMenuItems.find(i => i && i.id === selectedRadialChild.folderId);
+              const child = folder?.children?.[selectedRadialChild.childIndex];
+              if (!child?.storageKey) return null;
+              return assignments[child.storageKey] || null;
+            })()}
+            doubleAssignment={null}
+            assignments={assignments}
+            activeProfile={activeProfile}
+            profiles={profiles}
+            profileLinked={profileLinked}
+            globalInputMethod={globalInputMethod}
+            onAssign={handleRadialChildAssign}
+            onClear={handleRadialChildClear}
+            onAssignDouble={() => {}}
+            onClearDouble={() => {}}
+            onClose={() => setSelectedRadialChild(null)}
+            onReassign={() => {}}
+            onDuplicate={() => {}}
+            isPro={isPro}
+            voiceEnabled={voiceEnabled}
+          />
+        ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialSegment != null ? (
+          <MacroPanel
+            selectedKey={'Radial Segment'}
+            activeModifiers={[]}
+            currentCombo=""
+            assignment={(() => {
+              const item = selectedRadialSegment < radialMenuItems.length ? radialMenuItems[selectedRadialSegment] : null;
+              if (!item?.storageKey) return null;
+              return assignments[item.storageKey] || null;
+            })()}
+            doubleAssignment={null}
+            assignments={assignments}
+            activeProfile={activeProfile}
+            profiles={profiles}
+            profileLinked={profileLinked}
+            globalInputMethod={globalInputMethod}
+            onAssign={handleRadialAssign}
+            onClear={handleRadialClear}
+            onAssignDouble={() => {}}
+            onClearDouble={() => {}}
+            onClose={() => setSelectedRadialSegment(null)}
+            onReassign={() => {}}
+            onDuplicate={() => {}}
+            isPro={isPro}
+            voiceEnabled={voiceEnabled}
           />
         ) : activeArea === 'mapping' ? (
           <MacroPanel
@@ -1939,9 +2583,18 @@ function App() {
             onReassign={handleReassign}
             onDuplicate={handleDuplicateAssignment}
             isPro={isPro}
+            voiceEnabled={voiceEnabled}
           />
         ) : null}
       </div>
+      <DragOverlay>
+        {radialActiveDrag && (
+          <div className="rmp-card rmp-card-overlay">
+            <span className="rmp-card-label">{radialActiveDrag.label}</span>
+          </div>
+        )}
+      </DragOverlay>
+      </DndContext>
       <StatusBar
         selectedKey={selectedKey}
         currentCombo={currentCombo}

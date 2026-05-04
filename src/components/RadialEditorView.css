@@ -1,0 +1,654 @@
+/* ── Radial Editor View (integrated into Triggers panel) ──────────────────── */
+
+.rev-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Header strip ─────────────────────────────────────────────────────── */
+
+.rev-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.rev-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rev-hotkey-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ── Stats bar ────────────────────────────────────────────────────────── */
+
+.rev-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.rev-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.rev-stat-value {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.rev-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rev-stat-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border-bright);
+  flex-shrink: 0;
+}
+
+.rev-stat-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── Legend footer ─────────────────────────────────────────────────────── */
+
+.rev-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.rev-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.rev-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+
+.rev-legend-dot--empty {
+  background: var(--key-bg);
+  border-color: var(--key-border);
+  opacity: 0.5;
+}
+
+.rev-legend-dot--assigned {
+  background: var(--key-bg-assigned);
+  border-color: var(--key-border-assigned);
+}
+
+.rev-legend-dot--selected {
+  background: var(--key-bg-selected);
+  border-color: var(--key-border-selected);
+}
+
+.rev-legend-dot--folder {
+  background: var(--key-bg-assigned);
+  border-color: var(--key-border-assigned);
+  border-style: dashed;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+
+.rev-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+/* ── Wheel editor ─────────────────────────────────────────────────────── */
+
+.rev-wheel-zone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.rev-editor {
+  position: relative;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Editor-mode wedge overrides — exact match to KeyboardCanvas.css .key
+   Uses same --key-* CSS variables from global.css
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base wedge — .key ──
+   bg: var(--key-bg), border: 1px solid var(--key-border)
+   box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04) */
+.rev-editor .rw-wedge .rw-wedge-path {
+  fill: var(--key-bg);
+  stroke: var(--key-border);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  transition: fill 0.1s ease, stroke 0.1s ease, stroke-width 0.1s ease, filter 0.1s ease;
+}
+
+
+
+
+/* plus on empty */
+.rev-editor .rw-wedge-plus {
+  fill: var(--text-muted);
+  opacity: 0.35;
+}
+
+/* ── Hover — .key:hover ──
+   bg: var(--key-bg-hover), border-color: #484868
+   box-shadow: 0 4px 16px rgba(0,0,0,0.5) */
+.rev-editor .rw-wedge--hovered .rw-wedge-path {
+  fill: var(--key-bg-hover);
+  stroke: #484868;
+  stroke-width: 2;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+}
+
+.rev-editor .rw-wedge--hovered .rw-wedge-label {
+  fill: var(--text-primary);
+}
+
+.rev-editor .rw-wedge--hovered .rw-wedge-num {
+  fill: var(--accent);
+}
+
+/* ── Empty slots — .key (same base) but dimmed to 0.4 ── */
+.rev-editor .rw-wedge--empty .rw-wedge-path {
+  fill: var(--key-bg);
+  stroke: var(--key-border);
+  stroke-width: 1;
+  opacity: 0.4;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.25));
+}
+
+.rev-editor .rw-wedge--empty .rw-wedge-plus {
+  opacity: 0.35;
+}
+
+.rev-editor .rw-wedge--empty:hover .rw-wedge-path {
+  fill: var(--key-bg-hover);
+  stroke: #484868;
+  stroke-width: 1.5;
+  opacity: 0.8;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+}
+
+.rev-editor .rw-wedge--empty:hover .rw-wedge-plus {
+  fill: var(--accent);
+  opacity: 0.8;
+}
+
+/* ── Assigned (filled) — .key.assigned ──
+   bg: var(--key-bg-assigned), border: var(--key-border-assigned)
+   box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(232,160,32,0.08)
+   ::after radial gradient rgba(232,160,32,0.06)
+   label: color: var(--text-primary) */
+.rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer) .rw-wedge-path {
+  fill: var(--key-bg-assigned);
+  stroke: var(--key-border-assigned);
+  stroke-width: 1.5;
+  filter:
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4))
+    drop-shadow(0 0 8px rgba(232, 160, 32, 0.08));
+}
+
+.rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer) .rw-wedge-label {
+  fill: var(--text-primary);
+}
+
+/* .key.assigned:hover — border brightens */
+.rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer).rw-wedge--hovered .rw-wedge-path {
+  stroke: rgba(232, 160, 32, 0.7);
+  filter:
+    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 12px rgba(232, 160, 32, 0.12));
+}
+
+/* ── Selected — .key.selected ──
+   bg: var(--key-bg-selected), border: var(--key-border-selected)
+   box-shadow: 0 0 20px rgba(232,160,32,0.25)
+   ::after radial gradient rgba(232,160,32,0.12)
+   label: color: var(--accent) */
+.rev-editor .rw-wedge--selected .rw-wedge-path {
+  fill: var(--key-bg-selected);
+  stroke: var(--key-border-selected);
+  stroke-width: 2.5;
+  filter:
+    drop-shadow(0 0 10px rgba(232, 160, 32, 0.25))
+    drop-shadow(0 0 20px rgba(232, 160, 32, 0.12));
+}
+
+.rev-editor .rw-wedge--selected .rw-wedge-label {
+  fill: var(--accent);
+}
+
+.rev-editor .rw-wedge--selected .rw-wedge-num {
+  fill: var(--accent);
+}
+
+/* ── Folder — dashed gold border ── */
+.rev-editor .rw-wedge--folder .rw-wedge-path {
+  stroke: var(--key-border-assigned);
+  stroke-dasharray: 6 4;
+}
+
+.rev-editor .rw-wedge--folder.rw-wedge--hovered .rw-wedge-path {
+  stroke-dasharray: none;
+}
+
+/* ── Expanded folder — same as .key.selected ── */
+.rev-editor .rw-wedge--folder-expanded .rw-wedge-path {
+  fill: var(--key-bg-selected);
+  stroke: var(--key-border-selected);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  filter:
+    drop-shadow(0 0 10px rgba(232, 160, 32, 0.25))
+    drop-shadow(0 0 20px rgba(232, 160, 32, 0.12));
+}
+
+/* ── Drop target — same as .key.selected ── */
+.rev-editor .rw-wedge--drop-target .rw-wedge-path {
+  fill: var(--key-bg-selected);
+  stroke: var(--key-border-selected);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  filter:
+    drop-shadow(0 0 10px rgba(232, 160, 32, 0.25))
+    drop-shadow(0 0 20px rgba(232, 160, 32, 0.12));
+}
+
+.rev-editor .rw-wedge--drop-target .rw-wedge-plus {
+  fill: var(--accent);
+  opacity: 1;
+}
+
+/* ── Drag source — faded ── */
+.rev-editor .rw-wedge--drag-source .rw-wedge-path {
+  opacity: 0.3;
+}
+
+.rev-editor .rw-wedge--drag-source .rw-wedge-icon,
+.rev-editor .rw-wedge--drag-source .rw-wedge-label,
+.rev-editor .rw-wedge--drag-source .rw-wedge-num {
+  opacity: 0.3;
+}
+
+/* ── Outer ring (folder children) ── */
+.rev-editor .rw-wedge--outer .rw-wedge-path {
+  fill: var(--key-bg);
+  stroke: var(--key-border);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.rev-editor .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
+  fill: var(--key-bg-hover);
+  stroke: #484868;
+}
+
+.rev-editor .rw-wedge--outer.rw-wedge--empty .rw-wedge-path {
+  fill: var(--key-bg);
+  opacity: 0.4;
+}
+
+/* ── Light theme overrides — match [data-theme="light"] .key ── */
+[data-theme="light"] .rev-editor .rw-wedge .rw-wedge-path {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08));
+}
+
+[data-theme="light"] .rev-editor .rw-wedge--hovered .rw-wedge-path {
+  stroke: var(--border-bright);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.12));
+}
+
+[data-theme="light"] .rev-editor .rw-wedge--empty .rw-wedge-path {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="light"] .rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer) .rw-wedge-path {
+  filter:
+    drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08))
+    drop-shadow(0 0 8px rgba(232, 160, 32, 0.12));
+}
+
+[data-theme="light"] .rev-editor .rw-wedge--selected .rw-wedge-path {
+  filter:
+    drop-shadow(0 0 0 2px rgba(232, 160, 32, 0.35));
+}
+
+
+/* ── Icon picker panel (fixed position) ───────────────────────────────── */
+
+.rev-icon-picker-panel {
+  position: fixed;
+  z-index: 1001;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Colour picker row ───────────────────────────────────────────────── */
+
+.rev-color-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 4px;
+  border-bottom: 1px solid var(--border-bright);
+}
+
+.rev-color-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.rev-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-bright);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.08s, transform 0.08s, box-shadow 0.08s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--bg-surface);
+}
+
+.rev-color-swatch:hover {
+  border-color: var(--border-accent);
+  transform: scale(1.15);
+}
+
+.rev-color-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--accent);
+  transform: scale(1.15);
+}
+
+.rev-color-swatch-auto {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* ── Hotkey capture ──────────────────────────────────────────────────── */
+
+.rmp-capture {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  outline: none;
+}
+
+.rmp-captured {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.rmp-waiting {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.rmp-save-btn {
+  background: var(--accent);
+  color: var(--bg-base);
+  border: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rmp-cancel-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.rmp-hotkey-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rmp-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: 4px;
+}
+
+.rmp-plus {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin: 0 1px;
+}
+
+.rmp-action-btn {
+  background: none;
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.08s, border-color 0.08s, color 0.08s;
+}
+
+.rmp-action-btn:hover {
+  background: var(--accent-glow);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.rmp-action-danger:hover {
+  background: var(--accent-glow);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.rmp-empty-icon {
+  font-size: 32px;
+}
+
+/* ── Popover ─────────────────────────────────────────────────────────── */
+
+.rmp-backdrop {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 9;
+}
+
+.rmp-popover {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  padding: 6px;
+  z-index: 10;
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.rmp-popover-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rmp-popover-btn {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.08s, color 0.08s;
+}
+
+.rmp-popover-btn:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.rmp-popover-danger:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+/* ── Popover: picker ──────────────────────────────────────────────────── */
+
+.rmp-popover-picker {
+  display: flex;
+  flex-direction: column;
+}
+
+.rmp-popover-search {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border-bright) !important;
+  border-radius: 0 !important;
+  background: var(--bg-elevated) !important;
+  caret-color: var(--accent) !important;
+}
+
+.rmp-popover-list {
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.rmp-popover-pick {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.08s, color 0.08s;
+}
+
+.rmp-popover-pick:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.rmp-popover-empty {
+  padding: 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ── Popover: folder form ─────────────────────────────────────────────── */
+
+.rmp-popover-folder-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rmp-popover-input {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  border: 1px solid var(--border-accent) !important;
+  caret-color: var(--accent) !important;
+}
+
+/* ── Popover: confirm ─────────────────────────────────────────────────── */
+
+.rmp-popover-confirm-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0 0 4px;
+  padding: 2px 4px;
+}

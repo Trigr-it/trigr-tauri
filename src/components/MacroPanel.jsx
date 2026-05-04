@@ -1223,6 +1223,7 @@ export default function MacroPanel({
   onReassign,
   onDuplicate,
   isPro = false,
+  voiceEnabled = false,
 }) {
   const [activeType, setActiveType] = useState('text');
   const [formValue, setFormValue] = useState({});
@@ -1563,9 +1564,10 @@ export default function MacroPanel({
           />
         </div>
 
-        {/* Voice command */}
+        {/* Voice command — only visible when voice activation is enabled in Settings */}
+        {voiceEnabled && (
         <div className="form-section" style={{ marginTop: 4 }}>
-          <label className="form-label">Voice command <span className="pro-badge">PRO</span></label>
+          <label className="form-label">Voice command <span className="experimental-badge">EXPERIMENTAL</span></label>
           <input
             className="form-input"
             placeholder="e.g. open revit, my shortcut"
@@ -1575,6 +1577,7 @@ export default function MacroPanel({
           />
           <span className="form-hint">Hold Ctrl+Space to trigger by voice</span>
         </div>
+        )}
       </div>
 
       {/* Actions */}

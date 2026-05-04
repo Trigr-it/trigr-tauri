@@ -1201,6 +1201,115 @@
   min-width: 0;
 }
 
+/* ── Radial mode: draggable card states ────────────────────── */
+
+.is-dragging .grid-card,
+.is-dragging .sidebar-item {
+  opacity: 0.4;
+}
+
+.is-used .grid-card,
+.is-used .sidebar-item {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.is-dragging .grid-card {
+  border-color: var(--accent);
+}
+
+/* ── Radial mode: Add folder ─────────────────────────────── */
+
+.sidebar-add-folder-wrap {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-add-folder-btn {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px dashed var(--border-bright);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.sidebar-add-folder-btn:hover {
+  color: var(--accent);
+  border-color: var(--border-accent);
+}
+
+.sidebar-new-folder-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-new-folder-input {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-body);
+  caret-color: var(--accent);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.sidebar-new-folder-input:focus {
+  border-color: var(--border-accent);
+}
+
+.sidebar-folder-drag-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border-accent);
+  border-radius: 5px;
+  cursor: grab;
+}
+
+.sidebar-folder-drag-icon {
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.sidebar-folder-drag-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* ── Drag overlay card ────────────────────────────────────── */
+
+.rmp-card-overlay {
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.rmp-card-overlay .rmp-card-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 /* Inline clear confirmation */
 .sidebar-item-confirm,
 .grid-card-confirm {

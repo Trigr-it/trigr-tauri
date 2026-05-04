@@ -13,6 +13,7 @@
 
   --accent: #e8a020;
   --accent-dim: #b87c14;
+  --accent-rgb: 232, 160, 32;
   --accent-glow: rgba(232, 160, 32, 0.15);
   --accent-glow-strong: rgba(232, 160, 32, 0.3);
 
@@ -60,6 +61,8 @@
   --text-primary:   #1a1a2e;
   --text-secondary: #4a4a6a;
   --text-muted:     #9090b0;
+
+  --accent-rgb: 232, 160, 32;
 
   --border:        #dcdce8;
   --border-bright: #c8c8dc;
@@ -148,6 +151,24 @@ input:focus, textarea:focus, select:focus {
   color: var(--accent);
   background: var(--accent-glow);
   border: 1px solid var(--border-accent);
+  border-radius: 4px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ── Experimental badge ──────────────────────────────────────────────────── */
+.experimental-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e09f3e;
+  background: rgba(224, 159, 62, 0.12);
+  border: 1px solid rgba(224, 159, 62, 0.35);
   border-radius: 4px;
   white-space: nowrap;
   user-select: none;

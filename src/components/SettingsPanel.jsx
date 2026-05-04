@@ -35,6 +35,8 @@ export default function SettingsPanel({
   globalPauseToggleKey  = null,
   onSetPauseKey,
   onClearPauseKey,
+  voiceEnabled          = false,
+  onToggleVoiceEnabled,
   voiceHotkey           = 'Alt+Space',
   onSetVoiceKey,
   onClearVoiceKey,
@@ -563,7 +565,24 @@ export default function SettingsPanel({
 
         {/* ── VOICE COMMANDS ─────────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">VOICE COMMANDS <span className="pro-badge">PRO</span></div>
+          <div className="settings-section-title">VOICE COMMANDS <span className="experimental-badge">EXPERIMENTAL</span></div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Enable voice activation</span>
+              <span className="settings-toggle-sub">Trigger actions by voice. This feature is experimental and may not work reliably in all environments.</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${voiceEnabled ? ' on' : ''}`}
+              onClick={() => onToggleVoiceEnabled?.(!voiceEnabled)}
+              role="switch"
+              aria-checked={voiceEnabled}
+              title={voiceEnabled ? 'Disable voice activation' : 'Enable voice activation'}
+            />
+          </div>
+
+          {voiceEnabled && (<>
           <div className="settings-pause-stack">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Voice hotkey</span>
@@ -678,6 +697,7 @@ export default function SettingsPanel({
               <div className="settings-mic-meter-bar" style={{ width: `${micLevel}%` }} />
             </div>
           )}
+          </>)}
         </section>
 
         {/* ── GLOBAL PAUSE ───────────────────────────────── */}

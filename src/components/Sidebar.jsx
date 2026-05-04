@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './Sidebar.css';
@@ -486,6 +486,46 @@ const MODIFIERS = [
   { id: 'Win',   label: '⊞ Win', color: '#ffc832' },
 ];
 
+// ── Draggable wrapper for sidebar cards/items in radial mode ────────────────
+
+function DraggableCardWrap({ id, storageKey, isUsed, enabled, children }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `sidebar-${id}`,
+    data: { kind: 'library-card', storageKey },
+    disabled: !enabled || isUsed,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${isDragging ? 'is-dragging' : ''}${isUsed ? ' is-used' : ''}`}
+      {...(enabled && !isUsed ? { ...listeners, ...attributes } : {})}
+      style={{ touchAction: 'none' }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DraggableFolderCard({ id, folderName, children }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `folder-${id}`,
+    data: { kind: 'library-folder', folderName },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={isDragging ? 'is-dragging' : ''}
+      {...listeners}
+      {...attributes}
+      style={{ touchAction: 'none' }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 export default function Sidebar({
@@ -528,6 +568,9 @@ export default function Sidebar({
   onDuplicateFromContext,
   onCopyToProfile,
   onMoveToProfile,
+  // Radial mode props
+  activeView = 'keyboard',
+  radialMenuItems = [],
 }) {
   const profileEntries = (() => {
     const entries = [];
@@ -580,6 +623,20 @@ export default function Sidebar({
   const [assignSort, setAssignSort] = useState(() =>
     localStorage.getItem('trigr.assignmentSort') || 'key-asc'
   );
+
+  // ── Radial mode state ──
+  const isRadialMode = activeView === 'radial';
+  const [newFolderName, setNewFolderName] = useState(null);
+
+  const radialUsedKeys = useMemo(() => {
+    const s = new Set();
+    radialMenuItems.forEach(i => {
+      if (!i) return;
+      if (i.storageKey) s.add(i.storageKey);
+      if (i.children) i.children.forEach(c => { if (c && c.storageKey) s.add(c.storageKey); });
+    });
+    return s;
+  }, [radialMenuItems]);
 
   // ── Assignment context menu + inline actions ──
   const [assignCtx, setAssignCtx] = useState(null); // { combo, keyId, macro, x, y }
@@ -722,7 +779,10 @@ export default function Sidebar({
       );
     }
 
-    return (
+    const storageKey = `${activeProfile}::${combo}::${keyId}`;
+    const isUsedInRadial = radialUsedKeys.has(storageKey);
+
+    const itemEl = (
       <div
         key={`${combo}::${keyId}`}
         className={`sidebar-item type-${macro.type}${isSelected ? ' sidebar-item-active' : ''}${isBareItem ? ' bare-item' : ''}`}
@@ -762,6 +822,22 @@ export default function Sidebar({
         </div>
       </div>
     );
+
+    if (isRadialMode) {
+      return (
+        <DraggableCardWrap
+          key={`${combo}::${keyId}`}
+          id={`${combo}::${keyId}`}
+          storageKey={storageKey}
+          isUsed={isUsedInRadial}
+          enabled={true}
+        >
+          {itemEl}
+        </DraggableCardWrap>
+      );
+    }
+
+    return itemEl;
   }
 
   // ── Card for list view grid ──────────────────────────────────
@@ -803,7 +879,10 @@ export default function Sidebar({
       );
     }
 
-    return (
+    const storageKey = `${activeProfile}::${combo}::${keyId}`;
+    const isUsedInRadial = radialUsedKeys.has(storageKey);
+
+    const cardEl = (
       <div
         key={`${combo}::${keyId}`}
         className={`grid-card${isSelected ? ' grid-card--active' : ''}`}
@@ -836,6 +915,22 @@ export default function Sidebar({
         </div>
       </div>
     );
+
+    if (isRadialMode) {
+      return (
+        <DraggableCardWrap
+          key={`${combo}::${keyId}`}
+          id={`card-${combo}::${keyId}`}
+          storageKey={storageKey}
+          isUsed={isUsedInRadial}
+          enabled={true}
+        >
+          {cardEl}
+        </DraggableCardWrap>
+      );
+    }
+
+    return cardEl;
   }
 
   // ── Modifier bar for list view ──────────────────────────────
@@ -876,6 +971,7 @@ export default function Sidebar({
             Bare
           </button>
         </div>
+        {!isRadialMode && (
         <div className="sidebar-modifier-right">
           {isRecording ? (
             <button
@@ -899,6 +995,7 @@ export default function Sidebar({
             </button>
           )}
         </div>
+        )}
       </div>
     );
   }
@@ -962,6 +1059,44 @@ export default function Sidebar({
       </div>
 
       {listViewActive && renderModifierBar()}
+
+      {/* Add folder button — radial mode only */}
+      {isRadialMode && (
+        <div className="sidebar-add-folder-wrap">
+          {newFolderName === null ? (
+            <button
+              className="sidebar-add-folder-btn"
+              type="button"
+              onClick={() => setNewFolderName('')}
+            >
+              + Add folder
+            </button>
+          ) : (
+            <div className="sidebar-new-folder-row">
+              <input
+                className="sidebar-new-folder-input"
+                placeholder="Folder name"
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => {
+                  e.stopPropagation();
+                  if (e.key === 'Escape') setNewFolderName(null);
+                }}
+                autoFocus
+              />
+              <DraggableFolderCard
+                id="new-folder-drag"
+                folderName={newFolderName || 'New folder'}
+              >
+                <div className="sidebar-folder-drag-card">
+                  <span className="sidebar-folder-drag-icon">{'\u25c9'}</span>
+                  <span className="sidebar-folder-drag-label">{newFolderName || 'New folder'}</span>
+                </div>
+              </DraggableFolderCard>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tabs only shown in classic (non-list) view */}
       {!listViewActive && (

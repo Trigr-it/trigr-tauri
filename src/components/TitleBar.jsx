@@ -3,7 +3,7 @@ import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
 
 const AREA_TABS = [
-  { key: 'mapping',    label: 'Key Mapping' },
+  { key: 'mapping',    label: 'Triggers' },
   { key: 'expansions', label: 'Text Expansion' },
   { key: 'templates',  label: 'Quick Search' },
   { key: 'clipboard',  label: 'Clipboard' },
@@ -107,7 +107,7 @@ export default function TitleBar({
     setNavDropdownOpen(false);
   }, [onAreaChange]);
 
-  const activeLabel = AREA_TABS.find(t => t.key === activeArea)?.label || 'Key Mapping';
+  const activeLabel = AREA_TABS.find(t => t.key === activeArea)?.label || 'Triggers';
 
   return (
     <div className="titlebar" data-drag="true">

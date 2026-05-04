@@ -96,6 +96,11 @@ static VOICE_ACTION_VK: std::sync::atomic::AtomicU32 = std::sync::atomic::Atomic
 /// Tracks whether the voice action key is physically held (to suppress key repeat).
 static VOICE_KEY_HELD: AtomicBool = AtomicBool::new(false);
 
+/// Tracks whether the radial menu overlay is open (for hold-to-select release detection).
+static RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
+/// The VK code of the radial menu hotkey's action key (e.g., Space = 0x20).
+static RADIAL_ACTION_VK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 /// Set of (modifier_bits, vk_code) combos that should be suppressed (swallowed) by the hook.
 /// Rebuilt whenever assignments change. Read-locked in hook callback, write-locked on update.
 /// Modifier bits: Ctrl=1, Shift=2, Alt=4, Win=8
@@ -325,6 +330,15 @@ fn add_clipboard_paste_to_suppress(combo: Option<(u8, u32)>) {
     }
 }
 
+/// Insert the radial menu hotkey into the suppress set.
+fn add_radial_menu_to_suppress(combo: Option<(u8, u32)>) {
+    if let Some(combo) = combo {
+        if let Ok(mut w) = suppress_keys().write() {
+            w.insert(combo);
+        }
+    }
+}
+
 /// Map Trigr key ID back to VK code (reverse of vk_to_key_id).
 fn key_id_to_vk(key_id: &str) -> Option<u32> {
     match key_id {
@@ -404,6 +418,8 @@ pub(crate) struct EngineState {
     clipboard_paste_hotkey: Option<(u8, u32)>,
     // Voice trigger hotkey — parsed as (modifier_bits, vk_code)
     voice_hotkey: Option<(u8, u32)>,
+    // Radial menu hotkey — parsed as (modifier_bits, vk_code)
+    radial_menu_hotkey: Option<(u8, u32)>,
 }
 
 use std::sync::Arc;
@@ -431,6 +447,7 @@ impl Default for EngineState {
             custom_pre_execution_delay: 150,
             voice_hotkey: Some((4, 0x20)), // Default: Alt+Space (bits=4=Alt, vk=0x20=Space)
             clipboard_paste_hotkey: Some((3, 0x56)), // Default: Ctrl+Shift+V (bits=3, vk=0x56)
+            radial_menu_hotkey: None, // Set via set_radial_menu_hotkey command
         }
     }
 }
@@ -1334,15 +1351,21 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                 crate::actions::release_held_modifiers();
                 SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-                VOICE_KEY_HELD.store(true, Ordering::SeqCst);
                 if VOICE_ACTIVE.load(Ordering::SeqCst) {
-                    // Second/third press — toggle continuous mode or close
-                    info!("[Trigr] Voice hotkey while active — emitting voice-keydown");
-                    let _ = app.emit("voice-keydown", Value::Null);
+                    // Overlay already open — close it.
+                    // Key-repeat guard: only fire once per physical press.
+                    let was_held = VOICE_KEY_HELD.swap(true, Ordering::SeqCst);
+                    if !was_held {
+                        info!("[Trigr] Voice hotkey while active — closing overlay");
+                        let _ = app.emit("voice-keydown", Value::Null);
+                    }
                 } else {
-                    // First press — open overlay
+                    // Fresh press — open overlay.
+                    // No key-repeat guard here: VOICE_ACTIVE=true immediately so any
+                    // repeat keydown falls into the close branch above and is guarded there.
                     VOICE_ACTIVE.store(true, Ordering::SeqCst);
                     VOICE_ACTION_VK.store(vk, Ordering::SeqCst);
+                    VOICE_KEY_HELD.store(true, Ordering::SeqCst);
                     info!("[Trigr] Voice hotkey first press — emitting voice-open");
                     let _ = app.emit("voice-open", Value::Null);
                 }
@@ -1381,6 +1404,31 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 crate::actions::release_held_modifiers();
                 SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                 let _ = app.emit("toggle-clipboard-overlay", Value::Null);
+                return;
+            }
+        }
+        drop(state);
+    }
+
+    // ── Radial menu hotkey check ─────────────────────────────────────
+    if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
+        let state = engine_state().lock().unwrap();
+        if let Some((mod_bits, vk)) = state.radial_menu_hotkey {
+            let current_bits = modifier_bits();
+            let key_vk = key_id_to_vk(key_id);
+            if current_bits == mod_bits && key_vk == Some(vk) {
+                drop(state);
+                MOD_CTRL.store(false, Ordering::SeqCst);
+                MOD_SHIFT.store(false, Ordering::SeqCst);
+                MOD_ALT.store(false, Ordering::SeqCst);
+                MOD_META.store(false, Ordering::SeqCst);
+                SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                crate::actions::release_held_modifiers();
+                SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                // Track the action key VK for hold-to-select release detection
+                RADIAL_ACTION_VK.store(vk, Ordering::SeqCst);
+                RADIAL_MENU_OPEN.store(true, Ordering::SeqCst);
+                let _ = app.emit("toggle-radial-menu", Value::Null);
                 return;
             }
         }
@@ -1674,6 +1722,15 @@ fn handle_keyup(vk: u32, _scan: u32, app: &AppHandle) {
         }
     }
 
+    // Radial menu hold-to-select: detect action key release while overlay is open
+    if RADIAL_MENU_OPEN.load(Ordering::SeqCst) {
+        let radial_vk = RADIAL_ACTION_VK.load(Ordering::SeqCst);
+        if radial_vk != 0 && vk == radial_vk {
+            RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
+            let _ = app.emit("radial-menu-key-released", Value::Null);
+        }
+    }
+
     // Update modifier state
     if is_modifier_vk(vk) {
         update_modifier_state(vk, false);
@@ -1769,6 +1826,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
                 add_pause_to_suppress(state.pause_hotkey);
                 add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
                 add_voice_to_suppress(state.voice_hotkey);
+                add_radial_menu_to_suppress(state.radial_menu_hotkey);
                 MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
                 info!("[Trigr] Refocus-switched to profile \"{}\"", rp);
                 let profile_name = rp.clone();
@@ -2129,6 +2187,8 @@ fn spawn_hook_thread() {
                 MOD_SHIFT.store(false, Ordering::SeqCst);
                 MOD_META.store(false, Ordering::SeqCst);
                 MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
+                RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
+                RADIAL_ACTION_VK.store(0, Ordering::SeqCst);
                 info!("[Trigr] Hook reinstall: shared atomics reset to safe defaults");
 
                 println!("[HOOK] Input hooks installed (dedicated thread, high priority)");
@@ -2200,6 +2260,7 @@ pub fn start_hooks(app: AppHandle) {
                             add_pause_to_suppress(state.pause_hotkey);
                             add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
                             add_voice_to_suppress(state.voice_hotkey);
+                            add_radial_menu_to_suppress(state.radial_menu_hotkey);
                         }
                         println!("[HOOK] Hooks reinstalled, suppress set rebuilt");
                         thread::sleep(Duration::from_secs(5));
@@ -2279,6 +2340,21 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
                         return;
                     }
                 }
+                // Radial menu hotkey (JS path)
+                if let Some((mod_bits, vk)) = state.radial_menu_hotkey {
+                    if js_bits == mod_bits && key_id_to_vk(key_id).or_else(|| parse_hotkey_combo(key_id).map(|(_, v)| v)) == Some(vk) {
+                        drop(state);
+                        MOD_CTRL.store(false, Ordering::SeqCst);
+                        MOD_SHIFT.store(false, Ordering::SeqCst);
+                        MOD_ALT.store(false, Ordering::SeqCst);
+                        MOD_META.store(false, Ordering::SeqCst);
+                        SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        crate::actions::release_held_modifiers();
+                        SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                        let _ = app.emit("toggle-radial-menu", Value::Null);
+                        return;
+                    }
+                }
             }
         }
     }
@@ -2348,6 +2424,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
+    add_radial_menu_to_suppress(state.radial_menu_hotkey);
     println!("[ENGINE] Assignments stored: {} entries", state.assignments.len());
 }
 
@@ -2360,6 +2437,7 @@ pub fn set_active_profile(profile: String) {
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
+    add_radial_menu_to_suppress(state.radial_menu_hotkey);
     // Clear down-suppressed flags so stale button-ups aren't eaten after switch
     MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
     info!("[Trigr] Active profile: {}", profile);
@@ -2396,6 +2474,7 @@ pub fn update_profile_settings(settings: HashMap<String, Value>) {
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
+    add_radial_menu_to_suppress(state.radial_menu_hotkey);
 }
 
 pub fn update_global_settings(settings: &Value) {
@@ -2452,6 +2531,7 @@ pub fn set_overlay_hotkey(combo: &str) {
         add_pause_to_suppress(state.pause_hotkey);
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         add_voice_to_suppress(state.voice_hotkey);
+        add_radial_menu_to_suppress(state.radial_menu_hotkey);
         println!("[HOOK] Overlay hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
@@ -2466,6 +2546,7 @@ pub fn set_pause_hotkey(combo: &str) {
         add_pause_to_suppress(Some(parsed));
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         add_voice_to_suppress(state.voice_hotkey);
+        add_radial_menu_to_suppress(state.radial_menu_hotkey);
         println!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
@@ -2480,6 +2561,7 @@ pub fn set_voice_hotkey(combo: &str) {
         add_pause_to_suppress(state.pause_hotkey);
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         add_voice_to_suppress(Some(parsed));
+        add_radial_menu_to_suppress(state.radial_menu_hotkey);
         println!("[HOOK] Voice hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
@@ -2493,6 +2575,7 @@ pub fn clear_voice_hotkey() {
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
+    add_radial_menu_to_suppress(state.radial_menu_hotkey);
     println!("[HOOK] Voice hotkey cleared");
 }
 
@@ -2504,7 +2587,39 @@ pub fn clear_pause_hotkey() {
     add_overlay_to_suppress(state.overlay_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
+    add_radial_menu_to_suppress(state.radial_menu_hotkey);
     println!("[HOOK] Pause hotkey cleared");
+}
+
+pub fn set_radial_menu_hotkey(combo: &str) {
+    if let Some(parsed) = parse_hotkey_combo(combo) {
+        let mut state = engine_state().lock().unwrap();
+        state.radial_menu_hotkey = Some(parsed);
+        rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+        rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
+        add_overlay_to_suppress(state.overlay_hotkey);
+        add_pause_to_suppress(state.pause_hotkey);
+        add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+        add_voice_to_suppress(state.voice_hotkey);
+        add_radial_menu_to_suppress(Some(parsed));
+        println!("[HOOK] Radial menu hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+    }
+}
+
+pub fn clear_radial_menu_hotkey() {
+    let mut state = engine_state().lock().unwrap();
+    state.radial_menu_hotkey = None;
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+    add_overlay_to_suppress(state.overlay_hotkey);
+    add_pause_to_suppress(state.pause_hotkey);
+    add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    add_voice_to_suppress(state.voice_hotkey);
+    println!("[HOOK] Radial menu hotkey cleared");
+}
+
+/// Clear the radial menu open state (called when overlay hides).
+pub fn clear_radial_menu_open() {
+    RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
 }
 
 pub fn get_engine_status() -> Value {
