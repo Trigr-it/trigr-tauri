@@ -347,8 +347,16 @@ export default function RadialWheel({
           const iconColor = item.iconColor || meta.color;
           return (
           <>
-            {/* Icon — centred, duotone: filled shapes at low opacity + stroke on top */}
-            {isLucideIcon(item.icon) ? (
+            {/* Icon — priority: appIcon (exe extracted) > Lucide > unicode symbol */}
+            {item.appIcon ? (
+              <image
+                href={item.appIcon}
+                x={iconX - 14} y={iconY - 14}
+                width={28} height={28}
+                pointerEvents="none"
+                style={{ imageRendering: 'auto' }}
+              />
+            ) : isLucideIcon(item.icon) ? (
               <foreignObject
                 x={iconX - 14} y={iconY - 14}
                 width={28} height={28}

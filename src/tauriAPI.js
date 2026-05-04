@@ -225,6 +225,7 @@ window.electronAPI = {
   checkHotkeyConflict: (combo) => invoke('check_hotkey_conflict', { combo }),
 
   // ── Radial Menu ────────────────────────────────────────────────────────────
+  getAppIcon:             (path) => invoke('get_app_icon', { path }),
   setRadialMenuHotkey:    (combo) => invoke('set_radial_menu_hotkey', { combo }),
   clearRadialMenuHotkey:  ()      => invoke('clear_radial_menu_hotkey'),
   closeRadialMenu:        ()      => invoke('close_radial_menu'),

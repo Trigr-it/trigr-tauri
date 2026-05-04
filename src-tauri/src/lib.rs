@@ -409,6 +409,121 @@ async fn browse_for_image(app: tauri::AppHandle) -> Value {
 }
 
 #[tauri::command]
+fn get_app_icon(path: String) -> Value {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetDIBits, DeleteObject, CreateCompatibleDC, DeleteDC, GetObjectW,
+        BITMAPINFO, BITMAPINFOHEADER, BITMAP, BI_RGB, DIB_RGB_COLORS,
+    };
+
+    // SHGetFileInfoW is in Shell — define it manually since the feature may not expose it
+    #[link(name = "shell32")]
+    extern "system" {
+        fn SHGetFileInfoW(
+            pszPath: *const u16,
+            dwFileAttributes: u32,
+            psfi: *mut SHFILEINFOW,
+            cbFileInfo: u32,
+            uFlags: u32,
+        ) -> usize;
+    }
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct SHFILEINFOW {
+        hIcon: *mut std::ffi::c_void,
+        iIcon: i32,
+        dwAttributes: u32,
+        szDisplayName: [u16; 260],
+        szTypeName: [u16; 80],
+    }
+
+    const SHGFI_ICON: u32 = 0x000000100;
+    const SHGFI_LARGEICON: u32 = 0x000000000;
+
+    let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe {
+        let mut shfi: SHFILEINFOW = std::mem::zeroed();
+        let result = SHGetFileInfoW(
+            wide_path.as_ptr(),
+            0,
+            &mut shfi,
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON,
+        );
+        if result == 0 || shfi.hIcon.is_null() {
+            return Value::Null;
+        }
+
+        let mut icon_info: ICONINFO = std::mem::zeroed();
+        if GetIconInfo(shfi.hIcon as _, &mut icon_info) == 0 {
+            DestroyIcon(shfi.hIcon as _);
+            return Value::Null;
+        }
+
+        let mut bmp: BITMAP = std::mem::zeroed();
+        GetObjectW(
+            icon_info.hbmColor as _,
+            std::mem::size_of::<BITMAP>() as i32,
+            &mut bmp as *mut _ as *mut _,
+        );
+
+        let width = bmp.bmWidth;
+        let height = bmp.bmHeight;
+        if width <= 0 || height <= 0 {
+            if !icon_info.hbmColor.is_null() { DeleteObject(icon_info.hbmColor); }
+            if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask); }
+            DestroyIcon(shfi.hIcon as _);
+            return Value::Null;
+        }
+
+        let hdc = CreateCompatibleDC(std::ptr::null_mut());
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = width;
+        bmi.bmiHeader.biHeight = -height; // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB as u32;
+
+        let pixel_count = (width * height) as usize;
+        let mut pixels: Vec<u8> = vec![0u8; pixel_count * 4];
+        GetDIBits(
+            hdc,
+            icon_info.hbmColor,
+            0,
+            height as u32,
+            pixels.as_mut_ptr() as *mut _,
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
+        DeleteDC(hdc);
+
+        if !icon_info.hbmColor.is_null() { DeleteObject(icon_info.hbmColor); }
+        if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask); }
+        DestroyIcon(shfi.hIcon as _);
+
+        // BGRA → RGBA
+        for i in 0..pixel_count {
+            let off = i * 4;
+            pixels.swap(off, off + 2);
+        }
+
+        let img = match image::RgbaImage::from_raw(width as u32, height as u32, pixels) {
+            Some(img) => img,
+            None => return Value::Null,
+        };
+        let mut png_buf: Vec<u8> = Vec::new();
+        if img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png).is_err() {
+            return Value::Null;
+        }
+
+        Value::String(format!("data:image/png;base64,{}", base64_encode(&png_buf)))
+    }
+}
+
+#[tauri::command]
 async fn browse_for_folder(app: tauri::AppHandle) -> Value {
     use tauri_plugin_dialog::DialogExt;
 
@@ -1191,6 +1306,7 @@ fn show_radial_menu(app: &tauri::AppHandle) {
                         "label": child_label_override.unwrap_or(default_label),
                         "icon": child.get("icon"),
                         "iconColor": child.get("iconColor"),
+                        "appIcon": child.get("appIcon"),
                         "assignType": assign_type,
                         "exists": assignment.is_some(),
                         "type": child_type,
@@ -1205,6 +1321,7 @@ fn show_radial_menu(app: &tauri::AppHandle) {
                 "label": label,
                 "icon": item.get("icon"),
             "iconColor": item.get("iconColor"),
+            "appIcon": item.get("appIcon"),
                 "exists": true,
                 "children": resolved_children,
             }));
@@ -1239,6 +1356,7 @@ fn show_radial_menu(app: &tauri::AppHandle) {
             "label": label_override.unwrap_or(default_label),
             "icon": item.get("icon"),
             "iconColor": item.get("iconColor"),
+            "appIcon": item.get("appIcon"),
             "assignType": assign_type,
             "exists": assignment.is_some(),
             "type": item_type,
@@ -2316,6 +2434,7 @@ pub fn run() {
             // File dialogs
             browse_for_file,
             browse_for_image,
+            get_app_icon,
             browse_for_folder,
             read_image_base64,
             // Profile export/import

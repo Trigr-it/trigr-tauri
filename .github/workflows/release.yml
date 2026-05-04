@@ -4,15 +4,8 @@ on:
     tags:
       - 'v*'
 jobs:
-  release:
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-          - target: aarch64-pc-windows-msvc
-            runner: windows-latest
-    runs-on: ${{ matrix.runner }}
+  release-x64:
+    runs-on: windows-latest
     permissions:
       contents: write
     steps:
@@ -24,12 +17,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: x86_64-pc-windows-msvc
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-          shared-key: release-${{ matrix.target }}
+          shared-key: release-x86_64-pc-windows-msvc
       - name: Install dependencies
         run: npm install
       - name: Build and release
@@ -49,4 +42,38 @@ jobs:
           releaseDraft: false
           generateReleaseNotes: true
           prerelease: false
-          args: --target ${{ matrix.target }}
+          args: --target x86_64-pc-windows-msvc
+
+  release-arm64:
+    needs: release-x64
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: release-aarch64-pc-windows-msvc
+      - name: Install dependencies
+        run: npm install
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Trigr ${{ github.ref_name }}'
+          releaseDraft: false
+          prerelease: false
+          args: --target aarch64-pc-windows-msvc

@@ -4,8 +4,10 @@ import IconPicker from './IconPicker';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
 
-const EDITOR_INNER_R = 60;  // inner edge close to centre, minimal dead space
-const EDITOR_OUTER_R = 130; // outer edge — keeps wedge height at 70 (same as before)
+// Use the same radii as the live overlay (INNER_R=80, OUTER_R=180) for WYSIWYG.
+// The editor scales the wheel up via CSS to fill more space.
+const EDITOR_INNER_R = 80;
+const EDITOR_OUTER_R = 180;
 
 
 export default function RadialEditorView({
@@ -264,8 +266,6 @@ export default function RadialEditorView({
             <RadialWheel
               mode="editor"
               externalDnd={true}
-              innerRadius={EDITOR_INNER_R}
-              outerRadius={EDITOR_OUTER_R}
               items={radialMenuItems}
               expandedFolder={expandedFolder}
               hoveredIndex={hoveredIndex}

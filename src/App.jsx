@@ -1463,13 +1463,49 @@ function App() {
     window.electronAPI?.saveConfig({ radialMenuHotkey: null });
   }, []);
 
+  // Auto-fetch app icon for Open App assignments and store on the radial item
+  const fetchAndSetAppIcon = useCallback(async (itemId, storageKey) => {
+    const assignment = assignments[storageKey];
+    if (!assignment || assignment.type !== 'app') return;
+    const appPath = assignment.data?.path;
+    if (!appPath) return;
+    try {
+      const dataUrl = await window.electronAPI?.getAppIcon(appPath);
+      if (dataUrl) {
+        setRadialMenuItems(prev => prev.map(item => {
+          if (!item || item.id !== itemId) return item;
+          return { ...item, appIcon: dataUrl };
+        }));
+      }
+    } catch (e) {
+      // Silent fail — icon extraction is best-effort
+    }
+  }, [assignments]);
+
+  // Also fetch for folder children
+  const fetchAndSetChildAppIcon = useCallback(async (folderId, childId, storageKey) => {
+    const assignment = assignments[storageKey];
+    if (!assignment || assignment.type !== 'app') return;
+    const appPath = assignment.data?.path;
+    if (!appPath) return;
+    try {
+      const dataUrl = await window.electronAPI?.getAppIcon(appPath);
+      if (dataUrl) {
+        setRadialMenuItems(prev => prev.map(item => {
+          if (!item || item.id !== folderId || item.type !== 'folder') return item;
+          return { ...item, children: item.children.map(c => c.id === childId ? { ...c, appIcon: dataUrl } : c) };
+        }));
+      }
+    } catch (e) {}
+  }, [assignments]);
+
   const handleAddRadialMenuItem = useCallback((storageKey, label = null, targetIndex = -1) => {
-    // Inherit label from the assignment if not explicitly provided
     const resolvedLabel = label || assignments[storageKey]?.label || storageKey.split('::').pop() || '';
+    const itemId = crypto.randomUUID();
     setRadialMenuItems(prev => {
       if (prev.filter(Boolean).length >= 12) return prev;
       if (prev.some(item => item && item.storageKey === storageKey)) return prev;
-      const newItem = { id: crypto.randomUUID(), storageKey, label: resolvedLabel };
+      const newItem = { id: itemId, storageKey, label: resolvedLabel };
       let next;
       if (targetIndex >= 0 && targetIndex < 12) {
         next = [...prev];
@@ -1481,14 +1517,13 @@ function App() {
       }
       return next;
     });
-  }, [assignments]);
+    // Auto-fetch app icon for Open App assignments
+    fetchAndSetAppIcon(itemId, storageKey);
+  }, [assignments, fetchAndSetAppIcon]);
 
   const handleRemoveRadialMenuItem = useCallback((id) => {
     setRadialMenuItems(prev => {
-      const next = prev.map(item => (item && item.id === id) ? null : item);
-      // Strip trailing nulls
-      while (next.length > 0 && next[next.length - 1] == null) next.pop();
-      return next;
+      return prev.map(item => (item && item.id === id) ? null : item);
     });
   }, []);
 
@@ -1515,16 +1550,18 @@ function App() {
 
   const handleAddChildToFolder = useCallback((folderId, storageKey, label = null) => {
     const resolvedLabel = label || assignments[storageKey]?.label || storageKey.split('::').pop() || '';
+    const childId = crypto.randomUUID();
     setRadialMenuItems(prev => {
       const next = prev.map(item => {
         if (!item || item.id !== folderId || item.type !== 'folder') return item;
         if (item.children.length >= 8) return item;
         if (item.children.some(c => c.storageKey === storageKey)) return item;
-        return { ...item, children: [...item.children, { id: crypto.randomUUID(), storageKey, label: resolvedLabel }] };
+        return { ...item, children: [...item.children, { id: childId, storageKey, label: resolvedLabel }] };
       });
       return next;
     });
-  }, [assignments]);
+    fetchAndSetChildAppIcon(folderId, childId, storageKey);
+  }, [assignments, fetchAndSetChildAppIcon]);
 
   const handleRemoveChildFromFolder = useCallback((folderId, childId) => {
     setRadialMenuItems(prev => {
@@ -1623,9 +1660,12 @@ function App() {
       const newAssignments = { ...assignments, [existingKey]: macro };
       setAssignments(newAssignments);
       saveConfig(newAssignments, profiles, activeProfile);
-      // Update label on the radial item if it changed
       if (macro.label) {
         setRadialMenuItems(prev => prev.map((item, i) => (item && i === idx) ? { ...item, label: macro.label } : item));
+      }
+      // Re-fetch app icon if type is app
+      if (macro.type === 'app' && macro.data?.path && existingItem?.id) {
+        fetchAndSetAppIcon(existingItem.id, existingKey);
       }
     } else {
       // New segment or segment with a sidebar key — create a GLOBAL::RADIAL:: assignment
@@ -1742,7 +1782,6 @@ function App() {
       const temp = next[fromIndex];
       next[fromIndex] = next[toIndex];
       next[toIndex] = temp;
-      while (next.length > 0 && next[next.length - 1] == null) next.pop();
       return next;
     });
   }, []);
@@ -1777,8 +1816,8 @@ function App() {
     const svgX = ((clientX - rect.left) / rect.width) * 620;
     const svgY = ((clientY - rect.top) / rect.height) * 620;
     const CX = 310, CY = 310;
-    const INNER_R = 60, OUTER_R = 130;
-    const OUTER_INNER = OUTER_R + 8, OUTER_OUTER = OUTER_INNER + 70;
+    const INNER_R = 80, OUTER_R = 180;
+    const OUTER_INNER = OUTER_R + 8, OUTER_OUTER = OUTER_INNER + (OUTER_R - INNER_R);
     const dx = svgX - CX, dy = svgY - CY;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
