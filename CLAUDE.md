@@ -1,7 +1,8 @@
 # Trigr — CLAUDE.md
 
-> Read at the start of every session. For deep-dive context, see TRIGR_CONTEXT.md and TRIGR_TAURI_CONTEXT.md.
+> Read at the start of every session. This is the single source of truth for project rules and architecture.
 > For on-demand memory files, see ~/.claude/projects/-mnt-e-Development-Trigr-Tauri/memory/
+> Historical context (Electron migration, session logs) is archived in TRIGR_TAURI_CONTEXT.md — do NOT read unless specifically debugging migration-era code.
 
 ---
 
@@ -11,7 +12,7 @@
 |---|---|
 | Product | Trigr — Windows desktop hotkey/macro/text expansion/clipboard manager |
 | Stack | Tauri v2 + Rust backend + React 18 frontend |
-| Version | v0.2.4 (check `tauri.conf.json` for current) |
+| Version | Check `src-tauri/tauri.conf.json` for current |
 | Dev command | `cargo tauri dev` |
 | Build command | `cargo tauri build` |
 | Frontend dev | `npm run dev` (Vite on localhost:5173) |
@@ -28,15 +29,17 @@
 src-tauri/
   src/
     main.rs          # Entry point (5 lines, delegates to lib.rs)
-    lib.rs           # Tauri builder, 47 commands, window management (~1724 lines)
-    hotkeys.rs       # LL keyboard/mouse hooks, modifier tracking, double-tap (~1785 lines)
-    actions.rs       # Action execution: text, hotkey, macro, app/url/folder (~1438 lines)
-    expansions.rs    # Text/image expansion, token resolution, fill-in fields (~1330 lines)
+    lib.rs           # Tauri builder, commands, window management (~2530 lines)
+    hotkeys.rs       # LL keyboard/mouse hooks, modifier tracking, double-tap (~2660 lines)
+    actions.rs       # Action execution: text, hotkey, macro, app/url/folder (~2040 lines)
+    expansions.rs    # Text/image expansion, token resolution, fill-in fields (~1895 lines)
     clipboard.rs     # Clipboard history: listener, SQLite, auto-tag, images (~838 lines)
-    config.rs        # Config load/save/backup, file watcher, shared path (~767 lines)
+    config.rs        # Config load/save/backup, file watcher, shared path (~791 lines)
     tray.rs          # System tray, startup registry, window show/hide (~408 lines)
-    foreground.rs    # Foreground watcher, app-profile auto-switching (~233 lines)
-    analytics.rs     # SQLite action logging, time-saved stats (~262 lines)
+    foreground.rs    # Foreground watcher, app-profile auto-switching (~389 lines)
+    analytics.rs     # SQLite action logging, time-saved stats (~913 lines)
+    licence.rs       # LemonSqueezy licence validation, activation, grace period (~396 lines)
+    voice.rs         # Voice command recognition via WinRT Speech API (~189 lines)
   Cargo.toml         # Rust dependencies
   tauri.conf.json    # Tauri app config, bundler, updater
   capabilities/
@@ -46,32 +49,37 @@ src-tauri/
 src/
   main.jsx           # React entry — routes to App, SearchOverlay, FillInWindow, or ClipboardOverlay
   tauriAPI.js        # window.electronAPI bridge — all invoke() and listen() wrappers
-  App.jsx            # Root component (~1705 lines) — state owner, config persistence
+  App.jsx            # Root component (~2710 lines) — state owner, config persistence
   styles/
     global.css       # CSS variables, theme definitions
     app.css          # App-level layout
   components/
-    TitleBar.jsx/css         # Custom titlebar, nav tabs, list view toggle, templates pill
-    Sidebar.jsx/css          # Profile accordion, assignment list/grid views (~1015 lines)
-    StatusBar.jsx/css        # Bottom bar: key info, engine status, version
-    KeyboardCanvas.jsx/css   # Visual keyboard + ModifierBar (~431 lines)
-    MouseCanvas.jsx/css      # Mouse button mapping UI (~399 lines)
-    NumpadCanvas.jsx/css     # Slide-out numpad (~117 lines)
-    MacroPanel.jsx/css       # Action editor: all 6 types + macro sequences (~1512 lines)
-    TextExpansions.jsx/css   # Expansion editor with rich text, categories (~1618 lines)
-    SettingsPanel.jsx/css    # All settings sections (~886 lines)
-    SearchOverlay.jsx/css    # Ctrl+Space quick search (standalone window)
-    ClipboardOverlay.jsx/css # Ctrl+Shift+V clipboard popup (standalone window)
-    ClipboardPanel.jsx/css   # Clipboard history panel (main window tab)
-    FillInWindow.jsx/css     # Fill-in field prompt (standalone window)
-    FillInModal.jsx/css      # Simple fill-in modal
-    AnalyticsPanel.jsx/css   # Usage stats dashboard
-    TemplatesPanel.jsx/css   # Starter template packs
-    OnboardingTour.jsx/css   # 5-step first-run tour
-    WelcomeModal.jsx/css     # Welcome screen
-    QuickTips.jsx/css        # Random tip display
-    ZoomableImage.jsx/css    # Scroll-zoom + drag-pan image viewer
-    keyboardLayout.jsx       # Keyboard key definitions and layout constants
+    TitleBar.jsx/css            # Custom titlebar, nav tabs, list view toggle, templates pill
+    Sidebar.jsx/css             # Profile accordion, assignment list/grid views (~1289 lines)
+    StatusBar.jsx/css           # Bottom bar: key info, engine status, version
+    KeyboardCanvas.jsx/css      # Visual keyboard + ModifierBar (~426 lines)
+    MouseCanvas.jsx/css         # Mouse button mapping UI (~399 lines)
+    NumpadCanvas.jsx/css        # Slide-out numpad (~126 lines)
+    MacroPanel.jsx/css          # Action editor: all 6 types + macro sequences (~1675 lines)
+    TextExpansions.jsx/css      # Expansion editor with rich text, categories (~1996 lines)
+    SettingsPanel.jsx/css       # All settings sections (~1159 lines)
+    SearchOverlay.jsx/css       # Ctrl+Space quick search (standalone window)
+    SearchTemplatesPanel.jsx/css # Search template packs for voice/quick search
+    ClipboardOverlay.jsx/css    # Ctrl+Shift+V clipboard popup (standalone window)
+    ClipboardPanel.jsx/css      # Clipboard history panel (main window tab)
+    FillInWindow.jsx/css        # Fill-in field prompt (standalone window)
+    FillInModal.jsx/css         # Simple fill-in modal
+    AnalyticsPanel.jsx/css      # Usage stats dashboard
+    TemplatesPanel.jsx/css      # Starter template packs
+    RadialEditorView.jsx/css    # Radial menu editor — segment config, drag-drop, icons
+    RadialMenu.jsx/css          # Radial menu live overlay (standalone window)
+    RadialWheel.jsx/css         # SVG wedge wheel renderer (used in editor + overlay)
+    IconPicker.jsx/css          # Lucide + Simple Icons picker for radial segments
+    OnboardingTour.jsx/css      # 5-step first-run tour
+    WelcomeModal.jsx/css        # Welcome screen
+    QuickTips.jsx/css           # Random tip display
+    ZoomableImage.jsx/css       # Scroll-zoom + drag-pan image viewer
+    keyboardLayout.jsx          # Keyboard key definitions and layout constants
 
 assets/icons/        # Tray icon (tray-icon.png)
 public/
@@ -96,7 +104,7 @@ docs/                # GitHub Pages: landing page, help guide, alpha tester guid
 5. **Analytics writer thread** — SQLite connection, processes AnalyticsMsg via mpsc channel
 6. **Foreground watcher thread** — 1500ms poll, GetForegroundWindow, profile auto-switching
 
-Additional threads spawned on demand: expansion injection, macro execution, fill-in flow, config file watcher.
+Additional threads spawned on demand: expansion injection, macro execution, fill-in flow, config file watcher, voice recognition.
 
 ### Multi-Window Architecture
 | Window | Query Param | Purpose |
@@ -105,6 +113,7 @@ Additional threads spawned on demand: expansion injection, macro execution, fill
 | overlay | `?overlay=1` | Ctrl+Space quick search |
 | fillin | `?fillin=1` | Fill-in field prompts |
 | clipboardoverlay | `?clipboardoverlay=1` | Ctrl+Shift+V clipboard popup |
+| radialmenu | `?radialmenu=1` | Radial menu launcher overlay |
 
 All secondary windows are pre-created hidden at startup and shown/hidden as needed.
 
@@ -168,6 +177,12 @@ Mouse button:  ProfileName::Modifier::MOUSE_LEFT
 - **Double press clear**: `handleClearKey` must delete both `::` and `::double` entries
 - **Hook heartbeat**: Must be incremented in BOTH keyboard AND mouse hook procs
 - **Keystroke buffering**: `INJECTION_IN_PROGRESS` guards real keystrokes during injection, replays after
+- **Two-path capture sync**: Keystroke capture uses two paths: LL hook (other apps focused) and JS `keydown` listener in `tauriAPI.js` (WebView2 focused). The JS `window.__trigr_recording` / `__trigr_capturing` flags MUST stay in sync with the Rust `IS_RECORDING_HOTKEY` / `IS_CAPTURING_KEY` atomics. Both cleared when capture event is received.
+- **Startup assignment sync**: `updateAssignments(assignments, profile)` must be called from the frontend after config loads on startup (App.jsx). The Tauri command parameter name must match the Rust function signature exactly. Missing this call causes `assignments=0` on all hotkeys.
+- **Fill-in window**: Pre-created hidden with `transparent(true)` + WebView2 `SetDefaultBackgroundColor(0,0,0,0)` — DO NOT remove either. Window sizing is content-based via JS `fillin_resize` — DO NOT set fixed heights in Rust. `FILL_IN_ACTIVE` AtomicBool prevents concurrent invocations. `FILLIN_HWND` guard in `handle_keydown` skips expansion buffer while fill-in is visible. CloseRequested handler hides window instead of destroying it.
+- **Trailing space**: Expansion trailing space is sent as a synthetic `VK_SPACE` keystroke via SendInput, NOT included in the clipboard paste string. Some apps strip trailing whitespace from clipboard paste.
+- **Structured logging**: `tauri-plugin-log` requires `.clear_targets()` after `Builder::new()` before adding targets — the plugin ships with 2 default targets and `.target()` appends, not replaces. Without `.clear_targets()`, every log entry is duplicated. All Rust modules use `log::info!()` / `log::error!()` — never `println!()`.
+- **ESC key is mappable**: ESC is a mappable key in hotkey recording and key capture. Cancel is handled by dedicated Cancel buttons, not ESC. The App.jsx document-level ESC handler has a `__trigr_capturing || __trigr_recording` guard.
 
 ### Help Window
 `open_help` uses `opener::open()` to the GitHub Pages URL. DO NOT create a WebviewWindow for help — a 3.2MB HTML file freezes WebView2.

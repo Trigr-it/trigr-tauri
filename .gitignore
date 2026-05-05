@@ -4,4 +4,4 @@ node_modules/
 *.key
 dist/
 build/
-docs/private/
+# docs/private/ — removed: encrypted files are safe to commit
