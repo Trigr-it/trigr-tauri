@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trigr — Roadmap</title>
+<meta name="description" content="See what's shipped and what's coming next for Trigr — the visual hotkey, macro and text expansion tool for Windows.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --gold: #e8a020; --gold-light: #f0b942; --gold-dark: #c8860a;
+  --bg: #080B14; --bg-2: #0D1120; --bg-3: #111827;
+  --border-subtle: rgba(255,255,255,0.06);
+  --text: #F1F5F9; --text-muted: #94A3B8; --text-dim: #475569;
+}
+html { scroll-behavior: smooth; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:0; opacity:0.4; }
+
+/* ── NAV ── */
+nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 40px; height:64px; display:flex; align-items:center; justify-content:space-between; background:rgba(8,11,20,0.85); backdrop-filter:blur(20px); border-bottom:1px solid var(--border-subtle); }
+.nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.logo-mark { width:32px; height:32px; background:#e8a020; border-radius:8px; display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:800; font-size:16px; color:white; }
+.nav-wordmark { font-family:'Syne',sans-serif; font-weight:700; font-size:18px; color:var(--text); }
+.nav-links { display:flex; align-items:center; gap:32px; }
+.nav-links a { font-size:14px; font-weight:500; color:var(--text-muted); text-decoration:none; transition:color 0.2s; }
+.nav-links a:hover { color:var(--text); }
+.nav-cta { background:var(--gold)!important; color:#13131a!important; padding:8px 20px; border-radius:8px; font-weight:500!important; }
+.nav-cta:hover { background:var(--gold-dark)!important; }
+
+/* ── HERO ── */
+.hero { position:relative; padding:140px 40px 60px; text-align:center; overflow:hidden; }
+.hero-glow { position:absolute; top:-100px; left:50%; transform:translateX(-50%); width:800px; height:600px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.12) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
+.hero h1 { font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(36px,5vw,56px); line-height:1.1; letter-spacing:-1.5px; color:var(--text); margin-bottom:16px; position:relative; }
+.hero h1 em { font-style:normal; background:linear-gradient(135deg,#f0b942,#e8a020); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hero p { font-size:17px; color:var(--text-muted); max-width:560px; margin:0 auto; font-weight:300; line-height:1.7; position:relative; }
+.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.1); border:1px solid rgba(232,160,32,0.3); border-radius:100px; padding:6px 16px; font-size:13px; font-weight:500; color:#f0b942; margin-bottom:28px; position:relative; }
+.hero-badge-dot { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+/* ── STATS ── */
+.stats { display:flex; justify-content:center; gap:48px; padding:0 40px 64px; position:relative; }
+.stat { text-align:center; }
+.stat-val { font-family:'Syne',sans-serif; font-weight:800; font-size:36px; color:var(--gold); line-height:1; }
+.stat-label { font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-top:6px; }
+
+/* ── TIMELINE ── */
+.timeline-section { max-width:800px; margin:0 auto; padding:0 40px 80px; position:relative; }
+.timeline-section h2 { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--gold); margin-bottom:40px; text-align:center; }
+
+.timeline { position:relative; padding-left:32px; }
+.timeline::before { content:''; position:absolute; left:7px; top:0; bottom:0; width:2px; background:linear-gradient(180deg, var(--gold) 0%, rgba(232,160,32,0.2) 100%); }
+
+.phase { position:relative; margin-bottom:48px; }
+.phase:last-child { margin-bottom:0; }
+
+.phase-dot { position:absolute; left:-29px; top:4px; width:14px; height:14px; border-radius:50%; border:2px solid var(--bg); }
+.phase-dot.shipped { background:var(--gold); box-shadow:0 0 12px rgba(232,160,32,0.4); }
+.phase-dot.current { background:var(--bg); border:2px solid var(--gold); box-shadow:0 0 0 4px rgba(232,160,32,0.15); }
+.phase-dot.upcoming { background:var(--bg-3); border:2px solid var(--text-dim); }
+
+.phase-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+.phase-name { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; color:var(--text); }
+.phase-date { font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }
+.phase-tag { font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; padding:3px 10px; border-radius:100px; }
+.tag-shipped { background:rgba(34,197,94,0.12); color:#22c55e; border:1px solid rgba(34,197,94,0.25); }
+.tag-active { background:rgba(232,160,32,0.12); color:var(--gold-light); border:1px solid rgba(232,160,32,0.25); animation:pulse-border 2s infinite; }
+@keyframes pulse-border { 0%,100%{border-color:rgba(232,160,32,0.25)} 50%{border-color:rgba(232,160,32,0.5)} }
+.tag-planned { background:rgba(148,163,184,0.08); color:var(--text-dim); border:1px solid rgba(148,163,184,0.15); }
+
+.feature-grid { display:grid; grid-template-columns:1fr; gap:8px; }
+.feature { display:flex; align-items:flex-start; gap:10px; padding:10px 14px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); transition:border-color 0.2s; }
+.feature:hover { border-color:rgba(232,160,32,0.15); }
+.feature-icon { font-size:16px; margin-top:1px; flex-shrink:0; width:20px; text-align:center; }
+.feature-body { flex:1; }
+.feature-name { font-size:14px; font-weight:500; color:var(--text); line-height:1.4; }
+.feature-desc { font-size:13px; color:var(--text-muted); margin-top:2px; line-height:1.5; font-weight:300; }
+.feature-pill { display:inline-block; font-family:'Rajdhani',sans-serif; font-size:10px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; padding:1px 7px; border-radius:4px; margin-left:6px; vertical-align:middle; }
+.pill-free { background:rgba(34,197,94,0.1); color:#22c55e; }
+.pill-pro { background:rgba(232,160,32,0.1); color:var(--gold-light); }
+.pill-exp { background:rgba(148,163,184,0.1); color:var(--text-muted); }
+
+/* Hero feature — standout card per release */
+.feature-hero { background:rgba(232,160,32,0.06)!important; border-color:rgba(232,160,32,0.25)!important; padding:16px 18px!important; }
+.feature-hero .feature-name { font-size:16px; font-weight:600; }
+.feature-hero .feature-desc { font-size:14px; }
+.feature-hero .feature-icon { font-size:22px; }
+
+/* Team section */
+.team-section { max-width:800px; margin:0 auto; padding:0 40px 48px; position:relative; }
+.team-section h2 { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--gold); margin-bottom:24px; text-align:center; }
+.team-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.team-card { background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:12px; padding:24px; text-align:center; }
+.team-emoji { font-size:36px; margin-bottom:12px; }
+.team-name { font-family:'Syne',sans-serif; font-weight:700; font-size:16px; color:var(--text); margin-bottom:2px; }
+.team-role { font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); margin-bottom:10px; }
+.team-desc { font-size:13px; color:var(--text-muted); line-height:1.6; font-weight:300; }
+.team-footnote { text-align:center; margin-top:18px; font-size:13px; color:var(--text-dim); font-style:italic; line-height:1.6; }
+@media (max-width:640px) { .team-grid { grid-template-columns:1fr; } }
+
+/* Origin blurb */
+.origin-blurb { max-width:800px; margin:0 auto; padding:0 40px 48px; text-align:center; position:relative; }
+.origin-card { background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:12px; padding:28px 32px; }
+.origin-card h3 { font-family:'Syne',sans-serif; font-weight:700; font-size:16px; color:var(--gold); margin-bottom:10px; }
+.origin-card p { font-size:14px; color:var(--text-muted); line-height:1.7; margin:0; font-weight:300; }
+.origin-stats { display:flex; justify-content:center; gap:32px; margin-top:18px; padding-top:16px; border-top:1px solid var(--border-subtle); }
+.origin-stat { text-align:center; }
+.origin-stat strong { font-family:'Syne',sans-serif; font-size:18px; font-weight:800; color:var(--text); display:block; }
+.origin-stat span { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.8px; font-family:'Rajdhani',sans-serif; font-weight:600; }
+
+/* ── DIVIDER ── */
+.section-divider { max-width:800px; margin:0 auto 64px; padding:0 40px; }
+.section-divider hr { border:none; height:1px; background:linear-gradient(90deg, transparent, rgba(232,160,32,0.2), transparent); }
+
+/* ── CTA ── */
+.cta-section { text-align:center; padding:40px 40px 100px; position:relative; }
+.cta-section h2 { font-family:'Syne',sans-serif; font-weight:800; font-size:28px; color:var(--text); margin-bottom:12px; }
+.cta-section p { font-size:15px; color:var(--text-muted); margin-bottom:28px; font-weight:300; }
+.btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#13131a; text-decoration:none; padding:14px 28px; border-radius:12px; font-size:15px; font-weight:600; transition:all 0.2s; }
+.btn-primary:hover { background:var(--gold-dark); transform:translateY(-1px); box-shadow:0 8px 32px rgba(232,160,32,0.3); }
+
+/* ── FOOTER ── */
+footer { text-align:center; padding:32px 40px; border-top:1px solid var(--border-subtle); font-size:13px; color:var(--text-dim); }
+footer a { color:var(--text-muted); text-decoration:none; }
+footer a:hover { color:var(--gold); }
+
+/* ── MOBILE ── */
+@media (max-width:640px) {
+  nav { padding:0 20px; }
+  .hero { padding:120px 20px 48px; }
+  .stats { gap:24px; flex-wrap:wrap; padding:0 20px 48px; }
+  .stat-val { font-size:28px; }
+  .timeline-section { padding:0 20px 60px; }
+  .phase-name { font-size:17px; }
+  .nav-links a:not(.nav-cta) { display:none; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="index.html">
+    <div class="logo-mark">T</div>
+    <span class="nav-wordmark">Trigr</span>
+  </a>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="trigr-help.html">Help Guide</a>
+    <a class="nav-cta" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr-Setup.exe">Download</a>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-badge"><span class="hero-badge-dot"></span> Updated May 2026</div>
+  <h1>What we've <em>built</em><br>and what's <em>next</em></h1>
+  <p>Development started February 2026. 60+ releases shipped across three major versions. Here's everything that's live, what we're working on now, and where we're headed.</p>
+</section>
+
+<!-- ── STATS ── -->
+<section class="stats">
+  <div class="stat">
+    <div class="stat-val">60+</div>
+    <div class="stat-label">Releases shipped</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">v0.3</div>
+    <div class="stat-label">Current version</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">~10MB</div>
+    <div class="stat-label">Installer size</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">100%</div>
+    <div class="stat-label">Local &mdash; nothing leaves your device</div>
+  </div>
+</section>
+
+<div class="section-divider"><hr></div>
+
+<!-- ── ORIGIN BLURB ── -->
+<section class="origin-blurb">
+  <div class="origin-card">
+    <h3>Rebuilt from the ground up</h3>
+    <p>Trigr was originally built on Electron — a 77MB installer, 150-250MB RAM, and noticeable battery drain. We rewrote the entire backend in Rust using Tauri v2, keeping the same React UI. The result: native performance, a fraction of the footprint, and a clear path to Mac support. Every feature migrated and verified on both x64 and ARM64 Windows.</p>
+    <div class="origin-stats">
+      <div class="origin-stat"><strong>77MB &rarr; 10MB</strong><span>Installer size</span></div>
+      <div class="origin-stat"><strong>250MB &rarr; 30MB</strong><span>RAM usage</span></div>
+      <div class="origin-stat"><strong>Rust</strong><span>Backend</span></div>
+      <div class="origin-stat"><strong>x64 + ARM64</strong><span>Platforms</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── THE TEAM ── -->
+<section class="team-section">
+  <h2>The team</h2>
+  <div class="team-grid">
+    <div class="team-card">
+      <div class="team-emoji">👷</div>
+      <div class="team-name">Trigr</div>
+      <div class="team-role">Product &amp; Design</div>
+      <div class="team-desc">builder turned product builder. Designs every feature, writes every spec, tests every release. Has never typed a line of Rust or React in his life. Not once. Not even a semicolon.</div>
+    </div>
+    <div class="team-card">
+      <div class="team-emoji">🤖</div>
+      <div class="team-name">Claude</div>
+      <div class="team-role">Engineering &amp; CTO</div>
+      <div class="team-desc">Writes every line of code. All 30,000 of them. Rust backend, React frontend, CSS, CI pipelines, this very webpage. Works 24/7. Never complains. Occasionally hallucinates a function that doesn't exist.</div>
+    </div>
+  </div>
+  <div class="team-footnote">Yes, Trigr is 100% AI-built. No, we're not ashamed of it.<br>the founder decides what to build. Claude builds it. It works. Ship it.</div>
+</section>
+
+<div class="section-divider"><hr></div>
+
+<!-- ══════════════════════════════════════════════════
+     SHIPPED
+═══════════════════════════════════════════════════ -->
+<section class="timeline-section">
+  <h2>What's shipped</h2>
+
+  <div class="timeline">
+
+    <!-- v0 -->
+    <div class="phase">
+      <div class="phase-dot shipped"></div>
+      <div class="phase-header">
+        <span class="phase-name">v0 — The Prototype</span>
+        <span class="phase-date">Feb — Mar 2026</span>
+        <span class="phase-tag tag-shipped">Shipped</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature feature-hero">
+          <span class="feature-icon">🎯</span>
+          <div class="feature-body">
+            <div class="feature-name">Visual Keyboard UI <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Click any key to assign an action. Full keyboard, modifier bar, arrow keys, numpad, and all 7 mouse buttons. No scripting, no config files. The core idea that started Trigr.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">⚡</span>
+          <div class="feature-body">
+            <div class="feature-name">7 Action Types + Macro Sequences <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Type Text, Send Hotkey (hold/repeat modes), Macro Sequence, Open App/URL/Folder, Focus Window. Chain steps with drag-drop reorder, repeat counters, and Wait for Input.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">📝</span>
+          <div class="feature-body">
+            <div class="feature-name">Text Expansions <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Trigger word + Space fires replacement text anywhere. Fill-in fields, global variables, image expansions, categories with colour-coding and drag-reorder.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">📜</span>
+          <div class="feature-body">
+            <div class="feature-name">AHK Script Runner <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Paste any AutoHotkey script body as a macro step or standalone action. Bundles AHK — no installation needed. v1 and v2 syntax.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v0.1 -->
+    <div class="phase">
+      <div class="phase-dot shipped"></div>
+      <div class="phase-header">
+        <span class="phase-name">v0.1 — The Foundation</span>
+        <span class="phase-date">46 releases &middot; Apr 2026</span>
+        <span class="phase-tag tag-shipped">Shipped</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature feature-hero">
+          <span class="feature-icon">📋</span>
+          <div class="feature-body">
+            <div class="feature-name">Clipboard Manager <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">History, search, pin, edit, auto-tagging (Text/Link/Email/Colour/Number/Image), source app capture, Ctrl+Shift+V quick-paste overlay, scratchpad. 7-30 day retention.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🔄</span>
+          <div class="feature-body">
+            <div class="feature-name">App-Specific Profiles <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Link profiles to apps. Foreground watcher auto-switches when an app gains focus. Profile export/import, right-click link/unlink, drag-drop reorder.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🖱️</span>
+          <div class="feature-body">
+            <div class="feature-name">Mouse Button Remapping <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">All 7 buttons assignable in app-linked profiles. Hold/release mirroring, modifier passthrough, bare key support, double-press detection.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🎓</span>
+          <div class="feature-body">
+            <div class="feature-name">Onboarding + Infrastructure</div>
+            <div class="feature-desc">5-step onboarding tour, starter template packs, list view toggle, macro speed presets, shared config sync via Dropbox/OneDrive, automatic rolling backups.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v0.2 -->
+    <div class="phase">
+      <div class="phase-dot shipped"></div>
+      <div class="phase-header">
+        <span class="phase-name">v0.2 — Quick Search Overlay</span>
+        <span class="phase-date">5 releases &middot; Apr 27 — 30</span>
+        <span class="phase-tag tag-shipped">Shipped</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature feature-hero">
+          <span class="feature-icon">🔍</span>
+          <div class="feature-body">
+            <div class="feature-name">Quick Search Overlay <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Ctrl+Space from anywhere. Instantly search all assignments, expansions (including body text), and search templates. Fire ChatGPT, Perplexity, Google queries with trigger+Space. User categories with colours and drag-reorder.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">📊</span>
+          <div class="feature-body">
+            <div class="feature-name">Analytics Dashboard <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Period summaries (Today/7/14/30 days), activity chart + heatmap, streak tracking, three-column leaderboards, ROI calculator, expansion efficiency ratio. All local.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🎨</span>
+          <div class="feature-body">
+            <div class="feature-name">UI Overhaul</div>
+            <div class="feature-desc">Keyboard layout rebuilt with arrow keys and nav cluster. Macro panel widened to 450px with inline inputs. Clipboard overlay redesigned. Consistent edit panels across all views.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🔤</span>
+          <div class="feature-body">
+            <div class="feature-name">Smart Case + Sorting</div>
+            <div class="feature-desc">Smart case matching — type "Brb" to get "Be right back", "BRB" for "BE RIGHT BACK". Sortable columns in expansion and assignment lists.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">✌️</span>
+          <div class="feature-body">
+            <div class="feature-name">Double-Press Hotkeys <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Assign separate actions to single press and double press of the same key. Configurable detection timer (150-500ms). Works for both keyboard and mouse buttons.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🔁</span>
+          <div class="feature-body">
+            <div class="feature-name">Hold Mode + Repeat Mode <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Hold mode: first press holds, second press releases. Repeat mode: first press starts auto-firing at a configurable interval, second press stops. Works for keyboard and mouse targets.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">📦</span>
+          <div class="feature-body">
+            <div class="feature-name">Starter Templates <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Three ready-made packs: General/Office, CAD/Engineering, Sales/BD. One-click import with app-specific profile creation for CAD workflows.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v0.3 -->
+    <div class="phase">
+      <div class="phase-dot shipped"></div>
+      <div class="phase-header">
+        <span class="phase-name">v0.3 — Radial Menu</span>
+        <span class="phase-date">10 releases &middot; May 1 — 5</span>
+        <span class="phase-tag tag-shipped">Shipped</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature feature-hero">
+          <span class="feature-icon">🎡</span>
+          <div class="feature-body">
+            <div class="feature-name">Radial Menu <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Hotkey-triggered SVG wheel at cursor position. 8 segments per ring, folder nesting, per-profile configuration, 1500+ Lucide icons, Simple Icons, custom images, drag-drop reorder. Originally planned for v1.2 — shipped 6 months ahead of schedule.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🎤</span>
+          <div class="feature-body">
+            <div class="feature-name">Voice Triggers <span class="feature-pill pill-exp">Experimental</span></div>
+            <div class="feature-desc">Say a phrase, fire an action. WinRT speech recognition with grammar-constrained matching. 100% offline — audio never leaves your device. Per-action voice phrases, mic test with live level meter.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🖼️</span>
+          <div class="feature-body">
+            <div class="feature-name">Image Expansions <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Paste PNG or JPEG images via trigger word. Scalable (10-100%), clipboard paste with CF_DIB + PNG stream for compatibility across Office, browsers, and design tools.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🕐</span>
+          <div class="feature-body">
+            <div class="feature-name">Dynamic Tokens</div>
+            <div class="feature-desc">Date/time tokens with date math ({date:+7d}), clipboard transforms ({clipboard:uppercase}, {clipboard:trim}), cursor placement. Expansions that adapt to context.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">📤</span>
+          <div class="feature-body">
+            <div class="feature-name">Profile Export/Import <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Right-click any profile to export as .json. Share with colleagues or move between machines. Import with copy/overwrite collision handling.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">☁️</span>
+          <div class="feature-body">
+            <div class="feature-name">Config Sync <span class="feature-pill pill-free">Free</span></div>
+            <div class="feature-desc">Point Trigr at a Dropbox or OneDrive folder. Config syncs across machines automatically with file watching, conflict detection, and self-write suppression.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="section-divider"><hr></div>
+
+<!-- ══════════════════════════════════════════════════
+     COMING NEXT
+═══════════════════════════════════════════════════ -->
+<section class="timeline-section">
+  <h2>What's next</h2>
+
+  <div class="timeline">
+
+    <!-- BETA -->
+    <div class="phase">
+      <div class="phase-dot current"></div>
+      <div class="phase-header">
+        <span class="phase-name">Beta</span>
+        <span class="phase-date">May 2026</span>
+        <span class="phase-tag tag-active">In progress</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon">🔑</span>
+          <div class="feature-body">
+            <div class="feature-name">Free Beta Keys</div>
+            <div class="feature-desc">LemonSqueezy integration with free licence keys. All Pro features unlocked during beta — experience the full product before paid tiers go live.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">✍️</span>
+          <div class="feature-body">
+            <div class="feature-name">Code Signing</div>
+            <div class="feature-desc">Microsoft Azure Trusted Signing. No more SmartScreen warnings on install.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">💡</span>
+          <div class="feature-body">
+            <div class="feature-name">Save Snippet from Highlight</div>
+            <div class="feature-desc">Highlight text anywhere, open Quick Search, save it directly as a new expansion. One-step snippet creation.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🎬</span>
+          <div class="feature-body">
+            <div class="feature-name">Macro Recorder</div>
+            <div class="feature-desc">Record keystrokes and mouse actions, replay as a macro. Build complex sequences without manual step entry.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v1.0 -->
+    <div class="phase">
+      <div class="phase-dot upcoming"></div>
+      <div class="phase-header">
+        <span class="phase-name">v1.0 Windows</span>
+        <span class="phase-date">August 2026</span>
+        <span class="phase-tag tag-planned">Planned</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon">📥</span>
+          <div class="feature-body">
+            <div class="feature-name">AHK Importer <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Parse existing .ahk files and convert hotkeys, text replacements and macros to Trigr assignments automatically.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">💳</span>
+          <div class="feature-body">
+            <div class="feature-name">Paid Tiers Live</div>
+            <div class="feature-desc">Free / Pro / Teams pricing activated. Free tier stays generous — unlimited hotkeys, expansions, profiles. Pro unlocks advanced features.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🚀</span>
+          <div class="feature-body">
+            <div class="feature-name">ProductHunt Launch</div>
+            <div class="feature-desc">Public launch on ProductHunt. Visual keyboard meets radial menu meets clipboard manager — a new category of Windows automation.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v1.0 Mac -->
+    <div class="phase">
+      <div class="phase-dot upcoming"></div>
+      <div class="phase-header">
+        <span class="phase-name">v1.0 Mac Beta</span>
+        <span class="phase-date">September 2026</span>
+        <span class="phase-tag tag-planned">Planned</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon">🍎</span>
+          <div class="feature-body">
+            <div class="feature-name">Mac Support</div>
+            <div class="feature-desc">Same React UI, Rust backend. Tauri makes Mac a platform switch, not a rewrite. All existing features ported. The Keyboard Maestro alternative, from Windows.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v1.1 -->
+    <div class="phase">
+      <div class="phase-dot upcoming"></div>
+      <div class="phase-header">
+        <span class="phase-name">v1.1</span>
+        <span class="phase-date">October 2026</span>
+        <span class="phase-tag tag-planned">Planned</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon">📥</span>
+          <div class="feature-body">
+            <div class="feature-name">TextExpander + espanso Importers <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Migrate existing TextExpander snippets or espanso YAML configs into Trigr with one click.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">▶️</span>
+          <div class="feature-body">
+            <div class="feature-name">Run Macro on Selection <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Highlight text, open Quick Search, run a macro with the selection as input. Process text without leaving your app.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v1.2 -->
+    <div class="phase">
+      <div class="phase-dot upcoming"></div>
+      <div class="phase-header">
+        <span class="phase-name">v1.2</span>
+        <span class="phase-date">Nov — Dec 2026</span>
+        <span class="phase-tag tag-planned">Planned</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon">🔀</span>
+          <div class="feature-body">
+            <div class="feature-name">Conditional Expansions <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">If/then logic in text expansions. Different output based on context, clipboard content, or time of day.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">⏰</span>
+          <div class="feature-body">
+            <div class="feature-name">Scheduled Macros <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Run macros at set times or intervals. Automate recurring tasks without being at your desk.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🔣</span>
+          <div class="feature-body">
+            <div class="feature-name">Regex Triggers <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Pattern-matching expansion triggers. Match flexible input patterns, not just exact strings.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v2.0 -->
+    <div class="phase">
+      <div class="phase-dot upcoming"></div>
+      <div class="phase-header">
+        <span class="phase-name">v2.0</span>
+        <span class="phase-date">Q1 2027</span>
+        <span class="phase-tag tag-planned">Planned</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon">☁️</span>
+          <div class="feature-body">
+            <div class="feature-name">Cloud Sync <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Sync profiles, expansions and settings across all your devices. Automatic, no manual export/import.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">👥</span>
+          <div class="feature-body">
+            <div class="feature-name">Teams</div>
+            <div class="feature-desc">Shared snippet libraries, admin dashboard, team analytics, SSO. Deploy consistent automation across your whole organisation.</div>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🌐</span>
+          <div class="feature-body">
+            <div class="feature-name">Browser Extension <span class="feature-pill pill-pro">Pro</span></div>
+            <div class="feature-desc">Trigger expansions and snippets inside the browser. Extend Trigr into web apps.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta-section">
+  <h2>Try Trigr today</h2>
+  <p>Free download. No sign-up. All Pro features unlocked during alpha.</p>
+  <a class="btn-primary" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr-Setup.exe">Download for Windows</a>
+</section>
+
+<footer>
+  Trigr &bull; Node Scaffold Design Ltd &bull; <a href="index.html">trigr.it</a>
+</footer>
+
+</body>
+</html>
