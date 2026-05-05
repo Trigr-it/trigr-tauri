@@ -1069,6 +1069,10 @@
   min-width: 70px;
 }
 
+.win-builder-select.win-builder-mod {
+  min-width: 56px;
+}
+
 .win-builder-select:focus {
   border-color: var(--border-accent);
 }

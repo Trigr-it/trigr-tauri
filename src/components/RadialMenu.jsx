@@ -7,20 +7,13 @@ export default function RadialMenu() {
   const [hoveredIndex, setHoveredIndex] = useState(-1);
   const [hoveredOuterIndex, setHoveredOuterIndex] = useState(-1);
   const [expandedFolder, setExpandedFolder] = useState(null);
+  const [animKey, setAnimKey] = useState(0);
 
-  // Refs for hold-to-select — event listeners need latest values
-  const hoveredIndexRef = useRef(-1);
-  const hoveredOuterIndexRef = useRef(-1);
-  const expandedFolderRef = useRef(null);
   const itemsRef = useRef([]);
+  const expandedFolderRef = useRef(null);
 
-  hoveredIndexRef.current = hoveredIndex;
-  hoveredOuterIndexRef.current = hoveredOuterIndex;
-  expandedFolderRef.current = expandedFolder;
   itemsRef.current = items;
-
-  // Track when the overlay was shown — distinguish quick tap from hold
-  const showTimeRef = useRef(0);
+  expandedFolderRef.current = expandedFolder;
 
   // ── Listen for data from Rust ──────────────────────────────────────────
   useEffect(() => {
@@ -30,7 +23,7 @@ export default function RadialMenu() {
       setHoveredIndex(-1);
       setHoveredOuterIndex(-1);
       setExpandedFolder(null);
-      showTimeRef.current = Date.now();
+      setAnimKey(k => k + 1);
     });
   }, []);
 
@@ -43,43 +36,14 @@ export default function RadialMenu() {
     window.electronAPI?.executeRadialMenuItem(payload);
   }, []);
 
-  // ── Hold-to-select: fire hovered item on hotkey release ────────────────
-  useEffect(() => {
-    window.electronAPI?.onRadialMenuKeyReleased?.(() => {
-      // Quick tap (< 250ms): leave the wheel open for click selection
-      if (Date.now() - showTimeRef.current < 250) return;
+  // ── Hover handlers — highlight only, no auto-fire ─────────────────────
+  const handleHoverInner = useCallback((idx) => {
+    setHoveredIndex(idx);
+  }, []);
 
-      const idx = hoveredIndexRef.current;
-      const outerIdx = hoveredOuterIndexRef.current;
-      const folder = expandedFolderRef.current;
-      const currentItems = itemsRef.current;
-
-      // If hovering an outer-ring child (folder expanded)
-      if (folder && outerIdx >= 0) {
-        const folderItem = currentItems.find(i => i.id === folder);
-        if (folderItem?.children && outerIdx < folderItem.children.length) {
-          fireItem(folderItem.children[outerIdx]);
-          return;
-        }
-      }
-
-      // If hovering an inner-ring item
-      if (idx >= 0 && idx < currentItems.length) {
-        const item = currentItems[idx];
-        if (item.type === 'folder') {
-          // Expand the folder instead of firing
-          setExpandedFolder(prev => prev === item.id ? null : item.id);
-          setHoveredOuterIndex(-1);
-          return;
-        }
-        fireItem(item);
-        return;
-      }
-
-      // Nothing hovered — close
-      window.electronAPI?.closeRadialMenu();
-    });
-  }, [fireItem]);
+  const handleHoverOuter = useCallback((idx) => {
+    setHoveredOuterIndex(idx);
+  }, []);
 
   // ── Keyboard navigation ────────────────────────────────────────────────
   useEffect(() => {
@@ -94,15 +58,15 @@ export default function RadialMenu() {
         return;
       }
       const num = parseInt(e.key, 10);
-      const idx = e.key === '0' ? 9 : (num >= 1 && num <= 9 ? num - 1 : -1);
+      const idx = num >= 1 && num <= 8 ? num - 1 : -1;
       if (idx < 0) return;
 
       if (expandedFolder) {
-        const folder = items.find(i => i.id === expandedFolder);
+        const folder = items.find(i => i?.id === expandedFolder);
         if (folder?.children && idx < folder.children.length) {
           fireItem(folder.children[idx]);
         }
-      } else if (idx < items.length) {
+      } else if (idx < items.length && items[idx]) {
         const item = items[idx];
         if (item.type === 'folder') {
           setExpandedFolder(item.id);
@@ -130,14 +94,10 @@ export default function RadialMenu() {
     fireItem(child);
   }, [fireItem]);
 
+  // Click outside any segment — always close
   const handleBackgroundClick = useCallback(() => {
-    if (expandedFolder) {
-      setExpandedFolder(null);
-      setHoveredOuterIndex(-1);
-    } else {
-      window.electronAPI?.closeRadialMenu();
-    }
-  }, [expandedFolder]);
+    window.electronAPI?.closeRadialMenu();
+  }, []);
 
   // ── Empty state ────────────────────────────────────────────────────────
   if (items.length === 0) {
@@ -156,13 +116,14 @@ export default function RadialMenu() {
   return (
     <div className="radial-root">
       <RadialWheel
+        key={animKey}
         mode="live"
         items={items}
         expandedFolder={expandedFolder}
         hoveredIndex={hoveredIndex}
         hoveredOuterIndex={hoveredOuterIndex}
-        onHoverInner={setHoveredIndex}
-        onHoverOuter={setHoveredOuterIndex}
+        onHoverInner={handleHoverInner}
+        onHoverOuter={handleHoverOuter}
         onItemClick={handleItemClick}
         onFolderChildClick={handleFolderChildClick}
         onBackgroundClick={handleBackgroundClick}

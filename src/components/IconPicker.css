@@ -52,6 +52,46 @@
   background: var(--bg-hover);
 }
 
+/* ── Source tabs (Icons / Brands / Custom) ────────────────────────────── */
+
+.icon-picker-sources {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px 4px;
+  flex-shrink: 0;
+}
+
+.icon-picker-source {
+  flex: 1;
+  height: 24px;
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s, border-color 0.08s;
+}
+
+.icon-picker-source:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.icon-picker-source.active {
+  color: var(--accent);
+  background: var(--accent-glow);
+  border-color: var(--border-accent);
+}
+
+.icon-picker-source--upload {
+  flex: none;
+  padding: 0 8px;
+  border-style: dashed;
+}
+
 /* ── Category tabs ────────────────────────────────────────────────────── */
 
 .icon-picker-cats {

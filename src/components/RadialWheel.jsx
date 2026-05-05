@@ -1,16 +1,16 @@
 import React, { useMemo, useCallback } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove } from '@dnd-kit/sortable';
-import { isLucideIcon, getLucideIconName, renderLucideIcon } from './IconPicker';
+import { isLucideIcon, getLucideIconName, renderLucideIcon, isSimpleIcon, getSimpleIconSlug, renderSimpleIcon, isCustomIcon, getCustomIconData } from './IconPicker';
 import './RadialWheel.css';
 
 // ── Geometry constants ─────────────────────────────────────────────────────────
 
-const CX = 310, CY = 310;
-const INNER_R = 80, OUTER_R = 180;
-const OUTER_INNER_R = 188, OUTER_OUTER_R = 280;
+const CX = 210, CY = 210;
+const INNER_R = 55, OUTER_R = 105;
+const OUTER_INNER_R = 113, OUTER_OUTER_R = 163;
 const CENTRE_R = 35;
-const MAX_SLOTS = 12;
+const MAX_SLOTS = 8;
 
 // ── Type icons (matches SearchOverlay TYPE_META) ───────────────────────────────
 
@@ -75,8 +75,7 @@ function getItemMeta(item) {
 }
 
 function numLabel(i) {
-  if (i < 9) return String(i + 1);
-  if (i === 9) return '0';
+  if (i < MAX_SLOTS) return String(i + 1);
   return '';
 }
 
@@ -134,7 +133,7 @@ export default function RadialWheel({
     if (count === 0 && !isEditor) return wedges;
     const step = 360 / slotCount;
     for (let i = 0; i < slotCount; i++) {
-      const startAngle = step * i - 90;
+      const startAngle = step * i - 90 - step / 2;
       const endAngle = startAngle + step;
       const bisector = (startAngle + endAngle) / 2;
       const item = i < count ? items[i] : null;
@@ -149,7 +148,7 @@ export default function RadialWheel({
   // ── Compute outer wedges (expanded folder children) ──────────────────
   const outerWedges = useMemo(() => {
     if (!expandedFolder) return [];
-    const folderIdx = items.findIndex(i => i.id === expandedFolder);
+    const folderIdx = items.findIndex(i => i?.id === expandedFolder);
     if (folderIdx < 0) return [];
     const folder = items[folderIdx];
     if (folder.type !== 'folder' || !folder.children) return [];
@@ -158,7 +157,7 @@ export default function RadialWheel({
     const childCount = children.length;
     // Always use MAX_SLOTS for parent slot geometry (matches inner ring layout)
     const slotStep = 360 / MAX_SLOTS;
-    const parentStart = slotStep * folderIdx - 90;
+    const parentStart = slotStep * folderIdx - 90 - slotStep / 2;
     const parentEnd = parentStart + slotStep;
     const parentBisector = (parentStart + parentEnd) / 2;
     const parentArc = slotStep;
@@ -193,7 +192,7 @@ export default function RadialWheel({
     // Check if this is a top-level reorder or a child reorder
     const activeIsChild = String(active.id).startsWith('child-');
     if (activeIsChild && onReorderChildren && expandedFolder) {
-      const folder = items.find(i => i.id === expandedFolder);
+      const folder = items.find(i => i?.id === expandedFolder);
       if (!folder?.children) return;
       const oldIdx = folder.children.findIndex(c => `child-${c.id}` === active.id);
       const newIdx = folder.children.findIndex(c => `child-${c.id}` === over.id);
@@ -201,8 +200,8 @@ export default function RadialWheel({
         onReorderChildren(expandedFolder, arrayMove(folder.children, oldIdx, newIdx));
       }
     } else if (!activeIsChild && onReorder) {
-      const oldIdx = items.findIndex(i => i.id === active.id);
-      const newIdx = items.findIndex(i => i.id === over.id);
+      const oldIdx = items.findIndex(i => i?.id === active.id);
+      const newIdx = items.findIndex(i => i?.id === over.id);
       if (oldIdx >= 0 && newIdx >= 0) {
         onReorder(arrayMove([...items], oldIdx, newIdx));
       }
@@ -216,7 +215,7 @@ export default function RadialWheel({
   );
   const outerSortableIds = useMemo(() => {
     if (!expandedFolder) return [];
-    const folder = items.find(i => i.id === expandedFolder);
+    const folder = items.find(i => i?.id === expandedFolder);
     return (folder?.children || []).filter(c => c?.id).map(c => `child-${c.id}`);
   }, [items, expandedFolder]);
 
@@ -241,7 +240,7 @@ export default function RadialWheel({
     const midR = (iR + oR) / 2;
     const isFolder = item?.type === 'folder';
     const isFolderExpanded = isFolder && expandedFolder === item?.id;
-    const isMissing = item && !item.exists;
+    const isMissing = item && item.exists === false;
 
     const meta = getItemMeta(item);
 
@@ -314,8 +313,13 @@ export default function RadialWheel({
     // Full-size path for hover hit area (invisible)
     const dFull = wedgePath(CX, CY, iR, oR, startAngle, endAngle);
 
+    // Animation: slide outward from centre along bisector (live mode only)
+    const animStyle = !isEditor ? {
+      animation: `wedge-expand 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.05) both`,
+    } : undefined;
+
     return (
-      <g key={`${isOuter ? 'outer' : 'inner'}-${index}`} className={classNames}>
+      <g key={`${isOuter ? 'outer' : 'inner'}-${index}`} className={classNames} style={animStyle}>
         {/* Invisible hit area — covers full wedge including gaps */}
         <path
           d={dFull}
@@ -347,7 +351,7 @@ export default function RadialWheel({
           const iconColor = item.iconColor || meta.color;
           return (
           <>
-            {/* Icon — priority: appIcon (exe extracted) > Lucide > unicode symbol */}
+            {/* Icon — priority: appIcon > custom image > Simple Icon > Lucide > unicode */}
             {item.appIcon ? (
               <image
                 href={item.appIcon}
@@ -356,16 +360,33 @@ export default function RadialWheel({
                 pointerEvents="none"
                 style={{ imageRendering: 'auto' }}
               />
-            ) : isLucideIcon(item.icon) ? (
-              <foreignObject
+            ) : isCustomIcon(item.icon) ? (
+              <image
+                href={getCustomIconData(item.icon)}
                 x={iconX - 14} y={iconY - 14}
                 width={28} height={28}
                 pointerEvents="none"
+                preserveAspectRatio="xMidYMid meet"
+                style={{ imageRendering: 'auto' }}
+              />
+            ) : isSimpleIcon(item.icon) ? (
+              <svg
+                x={iconX - 10} y={iconY - 10}
+                width={20} height={20}
+                viewBox="0 0 24 24"
+                pointerEvents="none"
               >
-                <div xmlns="http://www.w3.org/1999/xhtml" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', position: 'relative' }}>
-                  {renderLucideIcon(getLucideIconName(item.icon), 24, iconColor, true)}
-                </div>
-              </foreignObject>
+                {renderSimpleIcon(getSimpleIconSlug(item.icon), 24, iconColor !== 'currentColor' ? iconColor : undefined)}
+              </svg>
+            ) : isLucideIcon(item.icon) ? (
+              <svg
+                x={iconX - 12} y={iconY - 12}
+                width={24} height={24}
+                viewBox="0 0 24 24"
+                pointerEvents="none"
+              >
+                {renderLucideIcon(getLucideIconName(item.icon), 24, iconColor, false)}
+              </svg>
             ) : (
               <text
                 x={iconX} y={iconY}
@@ -374,21 +395,41 @@ export default function RadialWheel({
                 pointerEvents="none"
               >{meta.icon}</text>
             )}
-            {/* Number key badge — inner edge, always visible */}
-            {!isFolder && !isOuter && (
+            {/* Number key badge — editor only */}
+            {isEditor && !isFolder && !isOuter && (
               <text
                 x={numX} y={numY}
                 className="rw-wedge-num"
                 pointerEvents="none"
               >{numLabel(index)}</text>
             )}
-            {/* Folder child count badge */}
-            {isFolder && item.children?.length > 0 && (
-              <path
-                d={arcPath(CX, CY, oR - 3, startAngle + gapAngle + 1, endAngle - gapAngle - 1)}
-                className="rw-folder-trim"
-                pointerEvents="none"
-              />
+            {/* Folder trim + expand chevron */}
+            {isFolder && (
+              <>
+                <path
+                  d={arcPath(CX, CY, oR - 5, startAngle + gapAngle + 1, endAngle - gapAngle - 1)}
+                  className="rw-folder-trim"
+                  pointerEvents="none"
+                />
+                {/* Chevron pointing outward along bisector */}
+                {(() => {
+                  const chevR = oR - 5;
+                  const [cx2, cy2] = polarToXY(CX, CY, chevR, bisector);
+                  const chevSize = 4;
+                  const rad = bisector * Math.PI / 180;
+                  // Outward direction
+                  const ox = Math.cos(rad), oy = Math.sin(rad);
+                  // Perpendicular (tangent)
+                  const tx = -oy, ty = ox;
+                  return (
+                    <polyline
+                      points={`${cx2 - ox * chevSize + tx * chevSize},${cy2 - oy * chevSize + ty * chevSize} ${cx2 + ox * chevSize},${cy2 + oy * chevSize} ${cx2 - ox * chevSize - tx * chevSize},${cy2 - oy * chevSize - ty * chevSize}`}
+                      className="rw-folder-chevron"
+                      pointerEvents="none"
+                    />
+                  );
+                })()}
+              </>
             )}
           </>
         );})()}
@@ -399,13 +440,13 @@ export default function RadialWheel({
   // ── Main render ──────────────────────────────────────────────────────
   const svgContent = (
     <svg
-      viewBox="0 0 620 620"
+      viewBox="0 0 420 420"
       className={`rw-svg${isEditor ? ' rw-svg--editor' : ''}`}
       xmlns="http://www.w3.org/2000/svg"
     >
       {/* Transparent backdrop for click-outside handling */}
       <rect
-        x="0" y="0" width="620" height="620"
+        x="0" y="0" width="420" height="420"
         fill="transparent"
         pointerEvents="all"
         onClick={(e) => {
@@ -425,9 +466,9 @@ export default function RadialWheel({
         }
         if (!hovItem) return null;
         const label = hovItem.label || '';
-        const typeName = hovItem.type === 'folder' ? 'Folder' : (hovItem.assignType || hovItem.type || '');
+        const showType = isEditor && (hovItem.type === 'folder' ? 'Folder' : (hovItem.assignType || hovItem.type || ''));
         const pillW = Math.max(label.length * 7.5, 60);
-        const pillH = typeName ? 34 : 22;
+        const pillH = showType ? 34 : 22;
         return (
           <g className="rw-centre-label">
             <rect
@@ -436,11 +477,11 @@ export default function RadialWheel({
               rx={6}
               className="rw-centre-pill"
             />
-            <text x={CX} y={typeName ? CY - 5 : CY} className="rw-centre-hover-name">{
+            <text x={CX} y={showType ? CY - 5 : CY} className="rw-centre-hover-name">{
               label.length > 20 ? label.slice(0, 19) + '\u2026' : label
             }</text>
-            {typeName && (
-              <text x={CX} y={CY + 11} className="rw-centre-hover-type">{typeName}</text>
+            {showType && (
+              <text x={CX} y={CY + 11} className="rw-centre-hover-type">{showType}</text>
             )}
           </g>
         );

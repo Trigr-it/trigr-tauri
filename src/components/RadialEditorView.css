@@ -1,6 +1,7 @@
 /* ── Radial Editor View (integrated into Triggers panel) ──────────────────── */
 
 .rev-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -150,221 +151,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   min-height: 0;
 }
 
 .rev-editor {
   position: relative;
-  transform: scale(1.5);
-  transform-origin: center center;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Editor-mode wedge overrides — exact match to KeyboardCanvas.css .key
-   Uses same --key-* CSS variables from global.css
+   Editor-mode wedge overrides — MINIMAL. Base appearance inherited from
+   RadialWheel.css so editor looks identical to the live overlay.
+   Only interactive states (selected, drag, empty fade) are overridden.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Base wedge — .key ──
-   bg: var(--key-bg), border: 1px solid var(--key-border)
-   box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04) */
-.rev-editor .rw-wedge .rw-wedge-path {
-  fill: var(--key-bg);
-  stroke: var(--key-border);
-  stroke-width: 1.5;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
-  transition: fill 0.1s ease, stroke 0.1s ease, stroke-width 0.1s ease, filter 0.1s ease;
-}
+/* ── Empty slots — faded ── */
+.rev-editor .rw-wedge--empty { opacity: 0.35; }
+.rev-editor .rw-wedge--empty:hover { opacity: 0.6; }
 
-
-
-
-/* plus on empty */
-.rev-editor .rw-wedge-plus {
-  fill: var(--text-muted);
-  opacity: 0.35;
-}
-
-/* ── Hover — .key:hover ──
-   bg: var(--key-bg-hover), border-color: #484868
-   box-shadow: 0 4px 16px rgba(0,0,0,0.5) */
-.rev-editor .rw-wedge--hovered .rw-wedge-path {
-  fill: var(--key-bg-hover);
-  stroke: #484868;
-  stroke-width: 2;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
-}
-
-.rev-editor .rw-wedge--hovered .rw-wedge-label {
-  fill: var(--text-primary);
-}
-
-.rev-editor .rw-wedge--hovered .rw-wedge-num {
-  fill: var(--accent);
-}
-
-/* ── Empty slots — .key (same base) but dimmed to 0.4 ── */
-.rev-editor .rw-wedge--empty .rw-wedge-path {
-  fill: var(--key-bg);
-  stroke: var(--key-border);
-  stroke-width: 1;
-  opacity: 0.4;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.25));
-}
-
-.rev-editor .rw-wedge--empty .rw-wedge-plus {
-  opacity: 0.35;
-}
-
-.rev-editor .rw-wedge--empty:hover .rw-wedge-path {
-  fill: var(--key-bg-hover);
-  stroke: #484868;
-  stroke-width: 1.5;
-  opacity: 0.8;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
-}
-
-.rev-editor .rw-wedge--empty:hover .rw-wedge-plus {
-  fill: var(--accent);
-  opacity: 0.8;
-}
-
-/* ── Assigned (filled) — .key.assigned ──
-   bg: var(--key-bg-assigned), border: var(--key-border-assigned)
-   box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(232,160,32,0.08)
-   ::after radial gradient rgba(232,160,32,0.06)
-   label: color: var(--text-primary) */
-.rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer) .rw-wedge-path {
-  fill: var(--key-bg-assigned);
-  stroke: var(--key-border-assigned);
-  stroke-width: 1.5;
-  filter:
-    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4))
-    drop-shadow(0 0 8px rgba(232, 160, 32, 0.08));
-}
-
-.rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer) .rw-wedge-label {
-  fill: var(--text-primary);
-}
-
-/* .key.assigned:hover — border brightens */
-.rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer).rw-wedge--hovered .rw-wedge-path {
-  stroke: rgba(232, 160, 32, 0.7);
-  filter:
-    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5))
-    drop-shadow(0 0 12px rgba(232, 160, 32, 0.12));
-}
-
-/* ── Selected — .key.selected ──
-   bg: var(--key-bg-selected), border: var(--key-border-selected)
-   box-shadow: 0 0 20px rgba(232,160,32,0.25)
-   ::after radial gradient rgba(232,160,32,0.12)
-   label: color: var(--accent) */
+/* ── Selected segment — accent border highlight ── */
 .rev-editor .rw-wedge--selected .rw-wedge-path {
-  fill: var(--key-bg-selected);
-  stroke: var(--key-border-selected);
-  stroke-width: 2.5;
-  filter:
-    drop-shadow(0 0 10px rgba(232, 160, 32, 0.25))
-    drop-shadow(0 0 20px rgba(232, 160, 32, 0.12));
-}
-
-.rev-editor .rw-wedge--selected .rw-wedge-label {
-  fill: var(--accent);
-}
-
-.rev-editor .rw-wedge--selected .rw-wedge-num {
-  fill: var(--accent);
-}
-
-/* ── Folder — dashed gold border ── */
-.rev-editor .rw-wedge--folder .rw-wedge-path {
-  stroke: var(--key-border-assigned);
-  stroke-dasharray: 6 4;
-}
-
-.rev-editor .rw-wedge--folder.rw-wedge--hovered .rw-wedge-path {
-  stroke-dasharray: none;
-}
-
-/* ── Expanded folder — same as .key.selected ── */
-.rev-editor .rw-wedge--folder-expanded .rw-wedge-path {
-  fill: var(--key-bg-selected);
-  stroke: var(--key-border-selected);
-  stroke-width: 2.5;
-  stroke-dasharray: none;
-  filter:
-    drop-shadow(0 0 10px rgba(232, 160, 32, 0.25))
-    drop-shadow(0 0 20px rgba(232, 160, 32, 0.12));
-}
-
-/* ── Drop target — same as .key.selected ── */
-.rev-editor .rw-wedge--drop-target .rw-wedge-path {
-  fill: var(--key-bg-selected);
-  stroke: var(--key-border-selected);
-  stroke-width: 2.5;
-  stroke-dasharray: none;
-  filter:
-    drop-shadow(0 0 10px rgba(232, 160, 32, 0.25))
-    drop-shadow(0 0 20px rgba(232, 160, 32, 0.12));
-}
-
-.rev-editor .rw-wedge--drop-target .rw-wedge-plus {
-  fill: var(--accent);
-  opacity: 1;
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 
 /* ── Drag source — faded ── */
-.rev-editor .rw-wedge--drag-source .rw-wedge-path {
-  opacity: 0.3;
-}
+.rev-editor .rw-wedge--drag-source { opacity: 0.3; }
 
-.rev-editor .rw-wedge--drag-source .rw-wedge-icon,
-.rev-editor .rw-wedge--drag-source .rw-wedge-label,
-.rev-editor .rw-wedge--drag-source .rw-wedge-num {
-  opacity: 0.3;
-}
-
-/* ── Outer ring (folder children) ── */
-.rev-editor .rw-wedge--outer .rw-wedge-path {
-  fill: var(--key-bg);
-  stroke: var(--key-border);
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
-}
-
-.rev-editor .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
-  fill: var(--key-bg-hover);
-  stroke: #484868;
-}
-
-.rev-editor .rw-wedge--outer.rw-wedge--empty .rw-wedge-path {
-  fill: var(--key-bg);
-  opacity: 0.4;
-}
-
-/* ── Light theme overrides — match [data-theme="light"] .key ── */
-[data-theme="light"] .rev-editor .rw-wedge .rw-wedge-path {
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08));
-}
-
-[data-theme="light"] .rev-editor .rw-wedge--hovered .rw-wedge-path {
-  stroke: var(--border-bright);
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.12));
-}
-
-[data-theme="light"] .rev-editor .rw-wedge--empty .rw-wedge-path {
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.06));
-}
-
-[data-theme="light"] .rev-editor .rw-wedge:not(.rw-wedge--empty):not(.rw-wedge--outer) .rw-wedge-path {
-  filter:
-    drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08))
-    drop-shadow(0 0 8px rgba(232, 160, 32, 0.12));
-}
-
-[data-theme="light"] .rev-editor .rw-wedge--selected .rw-wedge-path {
-  filter:
-    drop-shadow(0 0 0 2px rgba(232, 160, 32, 0.35));
+/* ── Drop target — accent border ── */
+.rev-editor .rw-wedge--drop-target .rw-wedge-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: none;
 }
 
 

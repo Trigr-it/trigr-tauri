@@ -40,8 +40,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  width: 620px;
-  height: 620px;
+  width: 525px;
+  height: 525px;
   background: transparent !important;
   overflow: hidden;
   user-select: none;
@@ -53,8 +53,8 @@ html, body {
 }
 
 #root {
-  width: 620px;
-  height: 620px;
+  width: 525px;
+  height: 525px;
   background: transparent !important;
 }
 
@@ -67,6 +67,7 @@ html, body {
   align-items: center;
   justify-content: center;
   background: transparent !important;
+
 }
 
 /* ── Empty state ──────────────────────────────────────────────────────────── */

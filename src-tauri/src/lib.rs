@@ -1220,6 +1220,10 @@ fn show_radial_menu(app: &tauri::AppHandle) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetCursorPos};
     use windows_sys::Win32::Foundation::POINT;
 
+    // Force an immediate foreground/profile check so the radial menu
+    // uses the correct profile even if the 1500ms poll hasn't fired yet.
+    foreground::force_check(app);
+
     let target = unsafe { GetForegroundWindow() as isize };
     RADIAL_MENU_TARGET_HWND.store(target, std::sync::atomic::Ordering::SeqCst);
 
@@ -1237,7 +1241,7 @@ fn show_radial_menu(app: &tauri::AppHandle) {
 
     let scale = win.scale_factor().unwrap_or(1.0);
 
-    let win_size = 620.0;
+    let win_size = 525.0;
     // Always centre on cursor — no clamping to work area.
     // Items near screen edges may be clipped, but the cursor stays
     // at the wheel centre which preserves muscle memory.
@@ -1246,16 +1250,19 @@ fn show_radial_menu(app: &tauri::AppHandle) {
     let _ = win.set_position(tauri::LogicalPosition::new(x, y));
     let _ = win.set_size(tauri::LogicalSize::new(win_size, win_size));
 
-    // Build payload: resolve radial menu items from config
+    // Build payload: resolve radial menu items for the CURRENT active profile.
+    // Use radialMenuItemsByProfile[activeProfile] rather than the flat radialMenuItems
+    // array, which may be stale if a profile switch hasn't flushed to disk yet.
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
-    let radial_items = cfg
-        .get("radialMenuItems")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!([]));
-
-    // Helper: resolve a single storageKey against assignments
     let state = hotkeys::engine_state().lock().unwrap();
+    let active_profile = state.active_profile.clone();
+    let radial_items = cfg
+        .get("radialMenuItemsByProfile")
+        .and_then(|m| m.get(&active_profile))
+        .cloned()
+        .or_else(|| cfg.get("radialMenuItems").cloned())
+        .unwrap_or_else(|| serde_json::json!([]));
     let resolve_item = |item: &Value| -> Option<Value> {
         // Check if this is a folder item (has type: "folder")
         let is_folder = item
@@ -1368,7 +1375,13 @@ fn show_radial_menu(app: &tauri::AppHandle) {
         .as_array()
         .unwrap_or(&vec![])
         .iter()
-        .filter_map(|item| resolve_item(item))
+        .map(|item| {
+            if item.is_null() {
+                Value::Null
+            } else {
+                resolve_item(item).unwrap_or(Value::Null)
+            }
+        })
         .collect();
     drop(state);
 
@@ -1419,8 +1432,8 @@ fn close_radial_menu(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn radial_menu_resize(width: f64, height: f64, app: tauri::AppHandle) {
-    let w = width.max(200.0).min(600.0);
-    let h = height.max(200.0).min(600.0);
+    let w = width.max(200.0).min(525.0);
+    let h = height.max(200.0).min(525.0);
     if let Some(win) = app.get_webview_window("radialmenu") {
         let _ = win.set_size(tauri::LogicalSize::new(w, h));
     }
@@ -2216,7 +2229,7 @@ pub fn run() {
             let radial_url = tauri::WebviewUrl::App("index.html?radialmenu=1".into());
             let radial_win = tauri::WebviewWindowBuilder::new(app, "radialmenu", radial_url)
                 .title("Trigr Radial Menu")
-                .inner_size(620.0, 620.0)
+                .inner_size(525.0, 525.0)
                 .decorations(false)
                 .transparent(true)
                 .always_on_top(true)
@@ -2360,6 +2373,11 @@ pub fn run() {
                 }
             } else if label == "radialmenu" {
                 if let tauri::WindowEvent::Focused(false) = event {
+                    // If the radial hotkey is still physically held (hold-to-select),
+                    // don't hide — the keyup handler will close the menu when released.
+                    if hotkeys::is_radial_menu_held() {
+                        return;
+                    }
                     let should_hide = radial_menu_show_time()
                         .lock()
                         .ok()

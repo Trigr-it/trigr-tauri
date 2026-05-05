@@ -4,10 +4,10 @@ import IconPicker from './IconPicker';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
 
-// Use the same radii as the live overlay (INNER_R=80, OUTER_R=180) for WYSIWYG.
+// Use the same radii as the live overlay (INNER_R=80, OUTER_R=130) for WYSIWYG.
 // The editor scales the wheel up via CSS to fill more space.
-const EDITOR_INNER_R = 80;
-const EDITOR_OUTER_R = 180;
+const EDITOR_INNER_R = 55;
+const EDITOR_OUTER_R = 105;
 
 
 export default function RadialEditorView({
@@ -40,6 +40,10 @@ export default function RadialEditorView({
   rejectIndex           = -1,
   wheelRef,
   usedKeys,
+  profiles              = [],
+  activeProfile         = '',
+  onCopyRadialSegmentToProfile,
+  onForceOverwriteRadialSegment,
 }) {
   const [capturingKey, setCapturingKey] = useState(false);
   const [capturedKey, setCapturedKey]   = useState(null);
@@ -50,6 +54,10 @@ export default function RadialEditorView({
   // ── Right-click context menu ──────────────────────────────────────────
   const [ctxMenu, setCtxMenu] = useState(null); // { type, item, index, folderId?, child?, childIndex?, x, y }
   const ctxRef = useRef(null);
+
+  // ── Copy-to-profile overwrite confirmation ───────────────────────────
+  const [copyConfirm, setCopyConfirm] = useState(null); // { targetProfile, index, existingLabel }
+  const otherProfiles = profiles.filter(p => p !== activeProfile);
 
   // ── Icon picker panel (fixed position, outside SVG) ─────────────────
   const [iconPicker, setIconPicker] = useState(null); // { itemId, folderId?, childId?, currentIcon, currentColor, x, y }
@@ -89,14 +97,15 @@ export default function RadialEditorView({
     if (!wheelRef?.current) return -1;
     const rect = wheelRef.current.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return -1;
-    const svgX = ((clientX - rect.left) / rect.width) * 620;
-    const svgY = ((clientY - rect.top) / rect.height) * 620;
+    const svgX = ((clientX - rect.left) / rect.width) * 420;
+    const svgY = ((clientY - rect.top) / rect.height) * 420;
     const dx = svgX - CX, dy = svgY - CY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < EDITOR_INNER_R || dist > EDITOR_OUTER_R) return -1;
+    const step = 360 / MAX_SLOTS;
     let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    angle = ((angle + 90) % 360 + 360) % 360;
-    return Math.floor(angle / (360 / MAX_SLOTS));
+    angle = ((angle + 90 + step / 2) % 360 + 360) % 360;
+    return Math.floor(angle / step);
   }, [wheelRef]);
 
   const handleWedgePointerDown = useCallback((item, index, e) => {
@@ -441,6 +450,25 @@ export default function RadialEditorView({
                 </div>
               </>
             )}
+
+            {/* ── Copy-to-profile overwrite confirmation ── */}
+            {copyConfirm && (
+              <>
+                <div className="rmp-backdrop" onClick={() => setCopyConfirm(null)} />
+                <div className="rmp-popover" style={{ left: '50%', top: '50%' }}>
+                  <div className="rmp-popover-confirm-text">
+                    Segment {copyConfirm.index + 1} on <strong>{copyConfirm.targetProfile}</strong> already has <strong>{copyConfirm.existingLabel}</strong>. Overwrite?
+                  </div>
+                  <div className="rmp-popover-btns">
+                    <button type="button" className="rmp-popover-btn rmp-popover-danger" onClick={() => {
+                      onForceOverwriteRadialSegment?.(copyConfirm.targetProfile, copyConfirm.index);
+                      setCopyConfirm(null);
+                    }}>Overwrite</button>
+                    <button type="button" className="rmp-popover-btn" onClick={() => setCopyConfirm(null)}>Cancel</button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -480,6 +508,25 @@ export default function RadialEditorView({
                 setIconPicker({ itemId: ctxMenu.item.id, currentIcon: ctxMenu.item.icon || '', currentColor: ctxMenu.item.iconColor || '', x: ctxMenu.x, y: ctxMenu.y });
                 setCtxMenu(null);
               }}>Change icon</button>
+              {otherProfiles.length > 0 && (
+                <>
+                  <div className="assign-ctx-divider" />
+                  <div className="assign-ctx-sub">
+                    <button className="assign-ctx-item" type="button">Copy to {'\u25b8'}</button>
+                    <div className="assign-ctx-submenu">
+                      {otherProfiles.map(p => (
+                        <button key={p} className="assign-ctx-item" type="button" onClick={() => {
+                          const result = onCopyRadialSegmentToProfile?.(p, ctxMenu.index);
+                          if (result?.conflict) {
+                            setCopyConfirm({ targetProfile: p, index: ctxMenu.index, existingLabel: result.existingLabel });
+                          }
+                          setCtxMenu(null);
+                        }}>{p}</button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="assign-ctx-divider" />
               <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={() => {
                 onRemoveRadialMenuItem?.(ctxMenu.item.id);
@@ -506,6 +553,25 @@ export default function RadialEditorView({
                 setIconPicker({ itemId: ctxMenu.item.id, currentIcon: ctxMenu.item.icon || '', currentColor: ctxMenu.item.iconColor || '', x: ctxMenu.x, y: ctxMenu.y });
                 setCtxMenu(null);
               }}>Change icon</button>
+              {otherProfiles.length > 0 && (
+                <>
+                  <div className="assign-ctx-divider" />
+                  <div className="assign-ctx-sub">
+                    <button className="assign-ctx-item" type="button">Copy to {'\u25b8'}</button>
+                    <div className="assign-ctx-submenu">
+                      {otherProfiles.map(p => (
+                        <button key={p} className="assign-ctx-item" type="button" onClick={() => {
+                          const result = onCopyRadialSegmentToProfile?.(p, ctxMenu.index);
+                          if (result?.conflict) {
+                            setCopyConfirm({ targetProfile: p, index: ctxMenu.index, existingLabel: result.existingLabel });
+                          }
+                          setCtxMenu(null);
+                        }}>{p}</button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="assign-ctx-divider" />
               <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={() => {
                 setCtxMenu(null);
@@ -587,6 +653,7 @@ export default function RadialEditorView({
           />
         </div>
       )}
+
     </div>
   );
 }

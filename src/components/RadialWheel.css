@@ -4,8 +4,8 @@
    Variable definitions live in RadialMenu.css (overlay) and global.css (main). */
 
 .rw-container {
-  width: 620px;
-  height: 620px;
+  width: 525px;
+  height: 525px;
   flex-shrink: 0;
 }
 
@@ -37,16 +37,24 @@
   pointer-events: none;
 }
 
+/* ── Wedge expand animation (live overlay only) ──────────────────────────── */
+
+@keyframes wedge-expand {
+  from { transform: scale(0.15); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
 /* ── Wedge base ───────────────────────────────────────────────────────────── */
 
 .rw-wedge {
   cursor: pointer;
+  transform-origin: 210px 210px;
 }
 
 .rw-wedge .rw-wedge-path {
   fill: var(--bg-surface);
-  stroke: var(--border-bright);
-  stroke-width: 1.5;
+  stroke: var(--accent);
+  stroke-width: 1;
   transition: fill 0.12s, stroke 0.12s, d 0.1s ease;
 }
 
@@ -99,7 +107,7 @@
 /* ── Empty slot (editor mode) ─────────────────────────────────────────────── */
 
 .rw-wedge--empty .rw-wedge-path {
-  fill: none;
+  fill: rgba(128, 128, 128, 0.18);
   stroke: var(--border-bright);
   stroke-dasharray: 4 6;
   stroke-width: 1;
@@ -140,7 +148,7 @@
 }
 
 .rw-wedge--outer.rw-wedge--empty .rw-wedge-path {
-  fill: none;
+  fill: rgba(128, 128, 128, 0.18);
 }
 
 /* ── Wedge content ────────────────────────────────────────────────────────── */
@@ -243,7 +251,16 @@
 .rw-folder-trim {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 10;
+  stroke-width: 4;
   stroke-linecap: round;
   opacity: 0.8;
+}
+
+.rw-folder-chevron {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
 }

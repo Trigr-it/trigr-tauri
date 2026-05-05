@@ -162,6 +162,7 @@ function parseHotkeyCapture(str) {
 function HotkeyCaptureInput({ value, onChange }) {
   const [capturing, setCapturing] = useState(false);
   const [winBuilder, setWinBuilder] = useState(false);
+  const [winMod, setWinMod] = useState('');
   const [winKey, setWinKey] = useState('A');
   const divRef        = useRef(null);
   const onChangeRef   = useRef(onChange);
@@ -199,6 +200,7 @@ function HotkeyCaptureInput({ value, onChange }) {
       e.stopPropagation();
       window.electronAPI?.stopKeyCapture();
       setWinBuilder(true);
+      setWinMod('');
       setWinKey('A');
     }
   }
@@ -224,7 +226,8 @@ function HotkeyCaptureInput({ value, onChange }) {
   }
 
   function confirmWinBuilder() {
-    onChangeRef.current({ ...valueRef.current, ...parseHotkeyCapture('Win+' + winKey) });
+    const combo = winMod ? `Win+${winMod}+${winKey}` : `Win+${winKey}`;
+    onChangeRef.current({ ...valueRef.current, ...parseHotkeyCapture(combo) });
     setCapturing(false);
     setWinBuilder(false);
   }
@@ -257,6 +260,18 @@ function HotkeyCaptureInput({ value, onChange }) {
           {capturing && winBuilder ? (
             <div className="win-builder">
               <kbd className="win-builder-badge">Win</kbd>
+              <span className="win-builder-plus">+</span>
+              <select
+                className="win-builder-select win-builder-mod"
+                value={winMod}
+                onChange={e => setWinMod(e.target.value)}
+                onClick={e => e.stopPropagation()}
+              >
+                <option value="">None</option>
+                <option value="Ctrl">Ctrl</option>
+                <option value="Shift">Shift</option>
+                <option value="Alt">Alt</option>
+              </select>
               <span className="win-builder-plus">+</span>
               <select
                 className="win-builder-select"
@@ -588,6 +603,7 @@ function FocusWindowFields({ focusData, onChange }) {
 function KeyCaptureInput({ value, onChange }) {
   const [capturing, setCapturing] = useState(false);
   const [winBuilder, setWinBuilder] = useState(false);
+  const [winMod, setWinMod] = useState('');
   const [winKey, setWinKey] = useState('A');
   const divRef       = useRef(null);
   const onChangeRef  = useRef(onChange);
@@ -622,6 +638,7 @@ function KeyCaptureInput({ value, onChange }) {
       e.stopPropagation();
       window.electronAPI?.stopKeyCapture();
       setWinBuilder(true);
+      setWinMod('');
       setWinKey('A');
     }
   }
@@ -647,7 +664,8 @@ function KeyCaptureInput({ value, onChange }) {
   }
 
   function confirmWinBuilder() {
-    onChangeRef.current('Win+' + winKey);
+    const combo = winMod ? `Win+${winMod}+${winKey}` : `Win+${winKey}`;
+    onChangeRef.current(combo);
     setCapturing(false);
     setWinBuilder(false);
   }
@@ -676,6 +694,18 @@ function KeyCaptureInput({ value, onChange }) {
         {capturing && winBuilder ? (
           <div className="win-builder">
             <kbd className="win-builder-badge">Win</kbd>
+            <span className="win-builder-plus">+</span>
+            <select
+              className="win-builder-select win-builder-mod"
+              value={winMod}
+              onChange={e => setWinMod(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            >
+              <option value="">None</option>
+              <option value="Ctrl">Ctrl</option>
+              <option value="Shift">Shift</option>
+              <option value="Alt">Alt</option>
+            </select>
             <span className="win-builder-plus">+</span>
             <select
               className="win-builder-select"

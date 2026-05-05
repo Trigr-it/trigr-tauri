@@ -183,6 +183,18 @@ function App() {
           if (!config.radialMenuItemsByProfile && Array.isArray(config.radialMenuItems) && config.radialMenuItems.length > 0) {
             map = { [globalProfile]: config.radialMenuItems };
           }
+          // Migration: truncate radial arrays to MAX_SLOTS (handles 12 → 8 reduction)
+          let migrated = false;
+          for (const prof of Object.keys(map)) {
+            if (Array.isArray(map[prof]) && map[prof].length > MAX_SLOTS) {
+              map[prof] = map[prof].slice(0, MAX_SLOTS);
+              migrated = true;
+            }
+          }
+          if (migrated) {
+            const flat = map[globalProfile] || [];
+            window.electronAPI?.saveConfig({ radialMenuItemsByProfile: map, radialMenuItems: flat });
+          }
           setRadialItemsMap(map);
         }
         setRadialMenuHotkey(config.radialMenuHotkey || null);
@@ -1503,11 +1515,11 @@ function App() {
     const resolvedLabel = label || assignments[storageKey]?.label || storageKey.split('::').pop() || '';
     const itemId = crypto.randomUUID();
     setRadialMenuItems(prev => {
-      if (prev.filter(Boolean).length >= 12) return prev;
+      if (prev.filter(Boolean).length >= MAX_SLOTS) return prev;
       if (prev.some(item => item && item.storageKey === storageKey)) return prev;
       const newItem = { id: itemId, storageKey, label: resolvedLabel };
       let next;
-      if (targetIndex >= 0 && targetIndex < 12) {
+      if (targetIndex >= 0 && targetIndex < MAX_SLOTS) {
         next = [...prev];
         while (next.length <= targetIndex) next.push(null);
         if (next[targetIndex] != null) return prev;
@@ -1533,10 +1545,10 @@ function App() {
 
   const handleAddRadialMenuFolder = useCallback((label, targetIndex = -1) => {
     setRadialMenuItems(prev => {
-      if (prev.filter(Boolean).length >= 12) return prev;
+      if (prev.filter(Boolean).length >= MAX_SLOTS) return prev;
       const newItem = { id: crypto.randomUUID(), type: 'folder', label, children: [] };
       let next;
-      if (targetIndex >= 0 && targetIndex < 12) {
+      if (targetIndex >= 0 && targetIndex < MAX_SLOTS) {
         next = [...prev];
         while (next.length <= targetIndex) next.push(null);
         if (next[targetIndex] != null) return prev;
@@ -1786,6 +1798,50 @@ function App() {
     });
   }, []);
 
+  // Copy a radial segment to another profile's same slot.
+  // Returns 'conflict' + existing item label if the slot is occupied, otherwise copies directly.
+  const handleCopyRadialSegmentToProfile = useCallback((targetProfile, segmentIndex) => {
+    const sourceItems = radialItemsMap[activeProfile] || [];
+    const sourceItem = sourceItems[segmentIndex];
+    if (!sourceItem) return null;
+    const targetItems = radialItemsMap[targetProfile] || [];
+    const existing = targetItems[segmentIndex];
+    if (existing) {
+      return { conflict: true, existingLabel: existing.label || existing.type || 'item' };
+    }
+    // Deep copy with new UUID
+    const copied = JSON.parse(JSON.stringify(sourceItem));
+    copied.id = crypto.randomUUID();
+    if (copied.children) copied.children = copied.children.map(c => c ? { ...c, id: crypto.randomUUID() } : c);
+    const newTarget = [...targetItems];
+    while (newTarget.length <= segmentIndex) newTarget.push(null);
+    newTarget[segmentIndex] = copied;
+    const newMap = { ...radialItemsMap, [targetProfile]: newTarget };
+    setRadialItemsMap(newMap);
+    const flatItems = newMap[activeProfile] || [];
+    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap, radialMenuItems: flatItems });
+    showNotification(`Copied to "${targetProfile}"`);
+    return null;
+  }, [radialItemsMap, activeProfile, showNotification]);
+
+  const handleForceOverwriteRadialSegment = useCallback((targetProfile, segmentIndex) => {
+    const sourceItems = radialItemsMap[activeProfile] || [];
+    const sourceItem = sourceItems[segmentIndex];
+    if (!sourceItem) return;
+    const copied = JSON.parse(JSON.stringify(sourceItem));
+    copied.id = crypto.randomUUID();
+    if (copied.children) copied.children = copied.children.map(c => c ? { ...c, id: crypto.randomUUID() } : c);
+    const targetItems = radialItemsMap[targetProfile] || [];
+    const newTarget = [...targetItems];
+    while (newTarget.length <= segmentIndex) newTarget.push(null);
+    newTarget[segmentIndex] = copied;
+    const newMap = { ...radialItemsMap, [targetProfile]: newTarget };
+    setRadialItemsMap(newMap);
+    const flatItems = newMap[activeProfile] || [];
+    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap, radialMenuItems: flatItems });
+    showNotification(`Copied to "${targetProfile}" (overwritten)`);
+  }, [radialItemsMap, activeProfile, showNotification]);
+
   // ── Radial drag state + handlers (cross-container DndContext) ──
   const [radialActiveDrag, setRadialActiveDrag] = useState(null);
   const [radialDropTarget, setRadialDropTarget] = useState(-1);    // inner ring target
@@ -1813,24 +1869,24 @@ function App() {
     if (!wheelRef.current) return null;
     const rect = wheelRef.current.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
-    const svgX = ((clientX - rect.left) / rect.width) * 620;
-    const svgY = ((clientY - rect.top) / rect.height) * 620;
-    const CX = 310, CY = 310;
-    const INNER_R = 80, OUTER_R = 180;
-    const OUTER_INNER = OUTER_R + 8, OUTER_OUTER = OUTER_INNER + (OUTER_R - INNER_R);
+    const svgX = ((clientX - rect.left) / rect.width) * 420;
+    const svgY = ((clientY - rect.top) / rect.height) * 420;
+    const CX = 210, CY = 210;
+    const INNER_R = 55, OUTER_R = 105;
+    const OUTER_INNER = 113, OUTER_OUTER = 163;
     const dx = svgX - CX, dy = svgY - CY;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     // Raw atan2 angle in degrees — same coordinate system as RadialWheel
-    // (0=right, 90=down, -90=up). RadialWheel offsets by -90 for slot layout.
     const atan2Deg = Math.atan2(dy, dx) * (180 / Math.PI);
 
-    // For inner ring: use the 0=top normalised angle (matches slot layout)
-    const slotAngle = ((atan2Deg + 90) % 360 + 360) % 360;
+    // Slot angle — offset by +90 (0=top) and +halfStep to match centred wedge layout
+    const step = 360 / MAX_SLOTS;
+    const slotAngle = ((atan2Deg + 90 + step / 2) % 360 + 360) % 360;
 
     // Inner ring
     if (dist >= INNER_R && dist <= OUTER_R) {
-      return { ring: 'inner', index: Math.floor(slotAngle / (360 / MAX_SLOTS)) };
+      return { ring: 'inner', index: Math.floor(slotAngle / step) };
     }
 
     // Outer ring — only when a folder is expanded
@@ -1841,9 +1897,8 @@ function App() {
       if (folder?.type !== 'folder' || !folder.children) return null;
 
       // Mirror exact RadialWheel.jsx outerWedges geometry
-      // All angles in RadialWheel coordinate system (0=right, -90 offset for slot 0 at top)
       const slotStep = 360 / MAX_SLOTS;
-      const parentStart = slotStep * folderIdx - 90;
+      const parentStart = slotStep * folderIdx - 90 - slotStep / 2;
       const parentEnd = parentStart + slotStep;
       const parentBisector = (parentStart + parentEnd) / 2;
       const childCount = folder.children.length;
@@ -1853,7 +1908,6 @@ function App() {
       const childArc = Math.min(desiredArc, 180);
       const arcStart = parentBisector - childArc / 2;
 
-      // atan2Deg is in the SAME coordinate system as RadialWheel angles
       const relAngle = ((atan2Deg - arcStart) % 360 + 360) % 360;
       if (relAngle < childArc) {
         const childIdx = Math.floor(relAngle / (childArc / totalChildren));
@@ -2461,6 +2515,10 @@ function App() {
               usedKeys={radialUsedKeys}
               expandedFolder={expandedRadialFolder}
               onExpandedFolderChange={setExpandedRadialFolder}
+              profiles={profiles}
+              activeProfile={activeProfile}
+              onCopyRadialSegmentToProfile={handleCopyRadialSegmentToProfile}
+              onForceOverwriteRadialSegment={handleForceOverwriteRadialSegment}
             />
           )}
           {activeArea === 'templates' && (

@@ -98,6 +98,8 @@ static VOICE_KEY_HELD: AtomicBool = AtomicBool::new(false);
 
 /// Tracks whether the radial menu overlay is open (for hold-to-select release detection).
 static RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
+/// Tracks whether the radial action key is physically held (to suppress key repeat).
+static RADIAL_KEY_HELD: AtomicBool = AtomicBool::new(false);
 /// The VK code of the radial menu hotkey's action key (e.g., Space = 0x20).
 static RADIAL_ACTION_VK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
@@ -1417,6 +1419,11 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
             if current_bits == mod_bits && key_vk == Some(vk) {
+                // Key-repeat guard: if action key is still physically held, suppress
+                if RADIAL_KEY_HELD.swap(true, Ordering::SeqCst) {
+                    drop(state);
+                    return;
+                }
                 drop(state);
                 MOD_CTRL.store(false, Ordering::SeqCst);
                 MOD_SHIFT.store(false, Ordering::SeqCst);
@@ -1433,6 +1440,14 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             }
         }
         drop(state);
+    }
+    // Bare action-key while radial key is held (modifiers were cleared on first press,
+    // so the combo check above won't match on repeat — catch bare repeats here).
+    if RADIAL_KEY_HELD.load(Ordering::SeqCst) {
+        let radial_vk = RADIAL_ACTION_VK.load(Ordering::SeqCst);
+        if radial_vk != 0 && key_id_to_vk(key_id) == Some(radial_vk) {
+            return;
+        }
     }
 
     // ── Global pause hotkey check (works even when paused) ────────────
@@ -1711,23 +1726,27 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
 // ── Keyup handler ───────────────────────────────────────────────────────────
 
-fn handle_keyup(vk: u32, _scan: u32, app: &AppHandle) {
-    // Voice action-key release tracking — always clear held flag on keyup,
-    // even if VOICE_ACTIVE was already cleared (overlay dismissed after match).
-    // This prevents keyboard repeat from reopening the overlay.
+fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
+    // Normalize VK through scan-code resolution so OEM keys match on all layouts.
+    let normalised_vk = resolve_key_id(vk, scan)
+        .and_then(key_id_to_vk)
+        .unwrap_or(vk);
+
+    // Voice action-key release tracking
     if VOICE_KEY_HELD.load(Ordering::SeqCst) {
         let voice_vk = VOICE_ACTION_VK.load(Ordering::SeqCst);
-        if voice_vk != 0 && vk == voice_vk {
+        if voice_vk != 0 && normalised_vk == voice_vk {
             VOICE_KEY_HELD.store(false, Ordering::SeqCst);
         }
     }
 
-    // Radial menu hold-to-select: detect action key release while overlay is open
-    if RADIAL_MENU_OPEN.load(Ordering::SeqCst) {
+    // Radial menu: clear held flag on action key release
+    {
+        let held = RADIAL_KEY_HELD.load(Ordering::SeqCst);
         let radial_vk = RADIAL_ACTION_VK.load(Ordering::SeqCst);
-        if radial_vk != 0 && vk == radial_vk {
+        if held && radial_vk != 0 && (vk == radial_vk || normalised_vk == radial_vk) {
+            RADIAL_KEY_HELD.store(false, Ordering::SeqCst);
             RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
-            let _ = app.emit("radial-menu-key-released", Value::Null);
         }
     }
 
@@ -2617,9 +2636,15 @@ pub fn clear_radial_menu_hotkey() {
     println!("[HOOK] Radial menu hotkey cleared");
 }
 
+/// Returns true while the radial menu hotkey is physically held (keydown fired, keyup hasn't).
+pub fn is_radial_menu_held() -> bool {
+    RADIAL_MENU_OPEN.load(Ordering::SeqCst)
+}
+
 /// Clear the radial menu open state (called when overlay hides).
 pub fn clear_radial_menu_open() {
     RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
+    RADIAL_KEY_HELD.store(false, Ordering::SeqCst);
 }
 
 pub fn get_engine_status() -> Value {

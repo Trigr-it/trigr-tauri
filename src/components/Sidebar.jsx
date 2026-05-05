@@ -613,7 +613,10 @@ export default function Sidebar({
 
   const otherProfiles = (profiles || []).filter(p => p !== activeProfile);
 
-  const combos = [...new Set(profileEntries.map(e => e.combo))].sort((a, b) => {
+  const comboSource = activeView === 'mouse'
+    ? profileEntries.filter(e => e.keyId.startsWith('MOUSE_'))
+    : profileEntries;
+  const combos = [...new Set(comboSource.map(e => e.combo))].sort((a, b) => {
     if (a.length !== b.length) return a.length - b.length;
     return a.localeCompare(b);
   });
@@ -676,9 +679,14 @@ export default function Sidebar({
     return label.includes(filterQ) || keyName.includes(filterQ) || typeName.includes(filterQ) || combo.includes(filterQ);
   }
 
+  // When in mouse view, show only mouse button assignments
+  const viewFiltered = activeView === 'mouse'
+    ? profileEntries.filter(e => e.keyId.startsWith('MOUSE_'))
+    : profileEntries;
+
   const filtered = sortEntries((activeTab === 'All'
-    ? profileEntries
-    : profileEntries.filter(e => e.combo === activeTab)
+    ? viewFiltered
+    : viewFiltered.filter(e => e.combo === activeTab)
   ).filter(matchesFilter));
 
   const grouped = {};
@@ -1024,7 +1032,7 @@ export default function Sidebar({
 
       <div className="sidebar-header">
         <span className="sidebar-title">Assignments</span>
-        <span className="sidebar-count">{profileEntries.length}</span>
+        <span className="sidebar-count">{comboSource.length}</span>
       </div>
 
       <div className="sidebar-filter-wrap">

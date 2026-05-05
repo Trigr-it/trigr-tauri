@@ -234,9 +234,6 @@ window.electronAPI = {
   onRadialMenuData: (callback) => {
     listen('radial-menu-data', (event) => callback(event.payload)).then(u => { listeners['radial-menu-data'] = u; });
   },
-  onRadialMenuKeyReleased: (callback) => {
-    listen('radial-menu-key-released', () => callback()).then(u => { listeners['radial-menu-key-released'] = u; });
-  },
 
   // ── Auto-updater ────────────────────────────────────────────────────────────
   onUpdateAvailable:  (callback) => {

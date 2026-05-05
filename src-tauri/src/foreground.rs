@@ -354,6 +354,20 @@ pub fn linked_profile_for_pid(pid: u32) -> Option<String> {
         .and_then(|cache| cache.get(&pid).cloned())
 }
 
+/// Force an immediate foreground check and profile switch if needed.
+/// Called before showing the radial menu to avoid the 1500ms poll lag.
+pub fn force_check(app: &AppHandle) {
+    let hwnd = unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
+    };
+    if hwnd == 0 { return; }
+    LAST_FG_HWND.store(hwnd, Ordering::Relaxed);
+    if let Some(name) = unsafe { get_fg_proc_name(hwnd) } {
+        cache_linked_pid_if_match(hwnd, &name);
+        handle_foreground_change(&name, app);
+    }
+}
+
 pub fn set_active_global_profile(profile: String) {
     let mut state = fg_state().lock().unwrap();
     state.active_global_profile = profile;
