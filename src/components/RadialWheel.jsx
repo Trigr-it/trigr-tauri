@@ -104,6 +104,7 @@ export default function RadialWheel({
   onChildContextMenu,        // (folderId, child, childIndex, event) — right-click on filled outer wedge
   onEmptyWedgeContextMenu,   // (index, event) — right-click on empty inner wedge
   onWedgePointerDown,        // (item, index, event) — pointerdown on filled inner wedge (for drag)
+  onChildPointerDown,        // (folderId, item, index, event) — pointerdown on filled outer wedge (for drag out)
   dragFromIndex = -1,        // inner wedge index being dragged (dim visual)
   selectedIndex = -1,        // inner wedge index currently selected for editing
   innerRadius,               // override INNER_R (editor uses smaller value to reduce centre gap)
@@ -162,23 +163,35 @@ export default function RadialWheel({
     const parentBisector = (parentStart + parentEnd) / 2;
     const parentArc = slotStep;
 
-    // Editor shows +1 empty slot for adding; live shows children only but at same wedge size
     const minArcPerChild = 22;
-    const totalChildren = isEditor ? Math.max(childCount + 1, 1) : childCount;
-    const desiredArc = Math.max(parentArc, totalChildren * minArcPerChild);
-    const childArc = Math.min(desiredArc, 180);
-    const startAngle = parentBisector - childArc / 2;
-    const childWedgeAngle = childArc / totalChildren;
+    const hasEmpty = isEditor && childCount < 8;
+    // Centre the assigned children on the parent; empty slot goes at the end
+    const assignedCount = Math.max(childCount, 1);
+    const desiredArc = Math.max(parentArc, assignedCount * minArcPerChild);
+    const assignedArc = Math.min(desiredArc, 160);
+    const childWedgeAngle = assignedArc / assignedCount;
+    const assignedStart = parentBisector - assignedArc / 2;
 
     const wedges = [];
-    for (let i = 0; i < totalChildren; i++) {
-      const s = startAngle + childWedgeAngle * i;
+    // Assigned children — centred on parent
+    for (let i = 0; i < childCount; i++) {
+      const s = assignedStart + childWedgeAngle * i;
       const e = s + childWedgeAngle;
-      const bisector = (s + e) / 2;
-      const child = i < childCount ? children[i] : null;
       wedges.push({
-        index: i, startAngle: s, endAngle: e, bisector,
-        item: child, isEmpty: !child, folderId: expandedFolder,
+        index: i, startAngle: s, endAngle: e, bisector: (s + e) / 2,
+        item: children[i], isEmpty: false, folderId: expandedFolder,
+      });
+    }
+    // Empty "+" slot at the end (editor only, if room)
+    if (hasEmpty) {
+      const emptyStart = childCount > 0
+        ? assignedStart + childWedgeAngle * childCount
+        : assignedStart;
+      const emptyEnd = emptyStart + childWedgeAngle;
+      wedges.push({
+        index: childCount, startAngle: emptyStart, endAngle: emptyEnd,
+        bisector: (emptyStart + emptyEnd) / 2,
+        item: null, isEmpty: true, folderId: expandedFolder,
       });
     }
     return wedges;
@@ -306,8 +319,12 @@ export default function RadialWheel({
     };
 
     const handlePtrDown = (e) => {
-      if (e.button !== 0 || isEmpty || !item || !isEditor || isOuter) return;
-      onWedgePointerDown?.(item, index, e);
+      if (e.button !== 0 || isEmpty || !item || !isEditor) return;
+      if (isOuter && folderId) {
+        onChildPointerDown?.(folderId, item, index, e);
+      } else if (!isOuter) {
+        onWedgePointerDown?.(item, index, e);
+      }
     };
 
     // Full-size path for hover hit area (invisible)
@@ -349,9 +366,11 @@ export default function RadialWheel({
         )}
         {item && (() => {
           const iconColor = item.iconColor || meta.color;
+          const iconScale = isHovered ? 1.12 : 1;
           return (
           <>
             {/* Icon — priority: appIcon > custom image > Simple Icon > Lucide > unicode */}
+            <g style={{ transform: `scale(${iconScale})`, transformOrigin: `${iconX}px ${iconY}px`, transition: 'transform 0.12s cubic-bezier(0.2, 0, 0, 1)' }}>
             {item.appIcon ? (
               <image
                 href={item.appIcon}
@@ -395,6 +414,7 @@ export default function RadialWheel({
                 pointerEvents="none"
               >{meta.icon}</text>
             )}
+            </g>
             {/* Number key badge — editor only */}
             {isEditor && !isFolder && !isOuter && (
               <text
@@ -403,33 +423,13 @@ export default function RadialWheel({
                 pointerEvents="none"
               >{numLabel(index)}</text>
             )}
-            {/* Folder trim + expand chevron */}
+            {/* Folder trim — gold arc along outer edge */}
             {isFolder && (
-              <>
-                <path
-                  d={arcPath(CX, CY, oR - 5, startAngle + gapAngle + 1, endAngle - gapAngle - 1)}
-                  className="rw-folder-trim"
-                  pointerEvents="none"
-                />
-                {/* Chevron pointing outward along bisector */}
-                {(() => {
-                  const chevR = oR - 5;
-                  const [cx2, cy2] = polarToXY(CX, CY, chevR, bisector);
-                  const chevSize = 4;
-                  const rad = bisector * Math.PI / 180;
-                  // Outward direction
-                  const ox = Math.cos(rad), oy = Math.sin(rad);
-                  // Perpendicular (tangent)
-                  const tx = -oy, ty = ox;
-                  return (
-                    <polyline
-                      points={`${cx2 - ox * chevSize + tx * chevSize},${cy2 - oy * chevSize + ty * chevSize} ${cx2 + ox * chevSize},${cy2 + oy * chevSize} ${cx2 - ox * chevSize - tx * chevSize},${cy2 - oy * chevSize - ty * chevSize}`}
-                      className="rw-folder-chevron"
-                      pointerEvents="none"
-                    />
-                  );
-                })()}
-              </>
+              <path
+                d={arcPath(CX, CY, oR - 5, startAngle + gapAngle + 1, endAngle - gapAngle - 1)}
+                className="rw-folder-trim"
+                pointerEvents="none"
+              />
             )}
           </>
         );})()}
@@ -490,9 +490,9 @@ export default function RadialWheel({
       {/* Inner ring wedges */}
       {innerWedges.map(w => renderWedge(w, false))}
 
-      {/* Outer ring wedges (expanded folder children) */}
+      {/* Outer ring wedges (expanded folder children) — key forces remount on folder switch */}
       {outerWedges.length > 0 && (
-        <g className="rw-outer-ring">
+        <g className="rw-outer-ring" key={expandedFolder}>
           {outerWedges.map(w => renderWedge(w, true))}
         </g>
       )}

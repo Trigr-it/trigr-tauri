@@ -1476,8 +1476,9 @@ function App() {
   }, []);
 
   // Auto-fetch app icon for Open App assignments and store on the radial item
-  const fetchAndSetAppIcon = useCallback(async (itemId, storageKey) => {
-    const assignment = assignments[storageKey];
+  // Optional assignmentOverride: pass the assignment directly when state hasn't flushed yet
+  const fetchAndSetAppIcon = useCallback(async (itemId, storageKey, assignmentOverride) => {
+    const assignment = assignmentOverride || assignments[storageKey];
     if (!assignment || assignment.type !== 'app') return;
     const appPath = assignment.data?.path;
     if (!appPath) return;
@@ -1585,6 +1586,60 @@ function App() {
     });
   }, []);
 
+  // Move a main segment into a folder, preserving icon/iconColor/appIcon
+  const handleMoveItemToFolder = useCallback((sourceIndex, folderId) => {
+    setRadialMenuItems(prev => {
+      const source = prev[sourceIndex];
+      if (!source || source.type === 'folder' || !source.storageKey) return prev;
+      const folderIdx = prev.findIndex(i => i && i.id === folderId);
+      if (folderIdx < 0) return prev;
+      const folder = prev[folderIdx];
+      if (folder.children.length >= 8) return prev;
+      if (folder.children.some(c => c.storageKey === source.storageKey)) return prev;
+      const child = {
+        id: crypto.randomUUID(),
+        storageKey: source.storageKey,
+        label: source.label || '',
+        ...(source.icon ? { icon: source.icon } : {}),
+        ...(source.iconColor ? { iconColor: source.iconColor } : {}),
+        ...(source.appIcon ? { appIcon: source.appIcon } : {}),
+      };
+      const next = prev.map((item, i) => {
+        if (i === sourceIndex) return null; // remove from main
+        if (i === folderIdx) return { ...item, children: [...item.children, child] };
+        return item;
+      });
+      return next;
+    });
+  }, []);
+
+  // Move a folder child out to a main segment slot
+  const handleMoveChildToMain = useCallback((folderId, childId, targetIndex) => {
+    setRadialMenuItems(prev => {
+      const folderIdx = prev.findIndex(i => i && i.id === folderId);
+      if (folderIdx < 0) return prev;
+      const folder = prev[folderIdx];
+      const child = folder.children.find(c => c.id === childId);
+      if (!child) return prev;
+      // Target slot must be empty
+      const next = [...prev];
+      while (next.length <= targetIndex) next.push(null);
+      if (next[targetIndex] != null) return prev;
+      // Create main item from child data
+      next[targetIndex] = {
+        id: crypto.randomUUID(),
+        storageKey: child.storageKey,
+        label: child.label || '',
+        ...(child.icon ? { icon: child.icon } : {}),
+        ...(child.iconColor ? { iconColor: child.iconColor } : {}),
+        ...(child.appIcon ? { appIcon: child.appIcon } : {}),
+      };
+      // Remove child from folder
+      next[folderIdx] = { ...folder, children: folder.children.filter(c => c.id !== childId) };
+      return next;
+    });
+  }, []);
+
   const handleReorderFolderChildren = useCallback((folderId, newChildren) => {
     setRadialMenuItems(prev => {
       const next = prev.map(item => {
@@ -1658,7 +1713,19 @@ function App() {
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     handleAddRadialMenuItem(storageKey, label, targetIndex);
-  }, [assignments, profiles, activeProfile, saveConfig, handleAddRadialMenuItem]);
+    // Fetch app icon immediately — pass assignment directly since state hasn't flushed
+    if (actionType === 'app' && actionData?.path) {
+      // Need to find the item ID that handleAddRadialMenuItem just created
+      // Use a microtask to let the state update flush, then find the item
+      queueMicrotask(() => {
+        setRadialMenuItems(prev => {
+          const item = prev.find(i => i && i.storageKey === storageKey);
+          if (item) fetchAndSetAppIcon(item.id, storageKey, assignment);
+          return prev; // no mutation — just reading
+        });
+      });
+    }
+  }, [assignments, profiles, activeProfile, saveConfig, handleAddRadialMenuItem, fetchAndSetAppIcon]);
 
   // Assign action to radial segment (from MacroPanel save)
   const handleRadialAssign = useCallback((_keyId, macro) => {
@@ -1675,9 +1742,9 @@ function App() {
       if (macro.label) {
         setRadialMenuItems(prev => prev.map((item, i) => (item && i === idx) ? { ...item, label: macro.label } : item));
       }
-      // Re-fetch app icon if type is app
+      // Re-fetch app icon if type is app — pass macro directly since state hasn't flushed
       if (macro.type === 'app' && macro.data?.path && existingItem?.id) {
-        fetchAndSetAppIcon(existingItem.id, existingKey);
+        fetchAndSetAppIcon(existingItem.id, existingKey, macro);
       }
     } else {
       // New segment or segment with a sidebar key — create a GLOBAL::RADIAL:: assignment
@@ -2492,6 +2559,8 @@ function App() {
               onAddRadialMenuFolder={handleAddRadialMenuFolder}
               onAddChildToFolder={handleAddChildToFolder}
               onRemoveChildFromFolder={handleRemoveChildFromFolder}
+              onMoveItemToFolder={handleMoveItemToFolder}
+              onMoveChildToMain={handleMoveChildToMain}
               onReorderFolderChildren={handleReorderFolderChildren}
               onRenameFolder={handleRenameFolder}
               onRenameRadialMenuItem={handleRenameRadialMenuItem}

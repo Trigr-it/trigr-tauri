@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import RadialWheel, { CX, CY, MAX_SLOTS, polarToXY } from './RadialWheel';
+import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
 import IconPicker from './IconPicker';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
@@ -21,6 +21,8 @@ export default function RadialEditorView({
   onAddRadialMenuFolder,
   onAddChildToFolder,
   onRemoveChildFromFolder,
+  onMoveItemToFolder,
+  onMoveChildToMain,
   onReorderFolderChildren,
   onRenameFolder,
   onRenameRadialMenuItem,
@@ -91,26 +93,72 @@ export default function RadialEditorView({
   // ── Wedge drag-to-swap state ──────────────────────────────────────────
   const [wedgeDragFrom, setWedgeDragFrom] = useState(-1);
   const [wedgeDragTo, setWedgeDragTo] = useState(-1);
+  const [wedgeDragPos, setWedgeDragPos] = useState(null); // { x, y } for ghost
   const wedgeDragRef = useRef(null); // { fromIndex, startX, startY, active }
+  // Keep a live ref to items so the drag callback never reads stale data
+  const itemsRef = useRef(radialMenuItems);
+  itemsRef.current = radialMenuItems;
 
-  const localHitTest = useCallback((clientX, clientY) => {
-    if (!wheelRef?.current) return -1;
+  // Ref for expandedFolder so hit test always reads latest value
+  const expandedFolderRef = useRef(expandedFolder);
+  expandedFolderRef.current = expandedFolder;
+
+  // Hit test returning { ring: 'inner'|'outer', index } or null
+  const localHitTestFull = useCallback((clientX, clientY) => {
+    if (!wheelRef?.current) return null;
     const rect = wheelRef.current.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return -1;
+    if (rect.width === 0 || rect.height === 0) return null;
     const svgX = ((clientX - rect.left) / rect.width) * 420;
     const svgY = ((clientY - rect.top) / rect.height) * 420;
     const dx = svgX - CX, dy = svgY - CY;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < EDITOR_INNER_R || dist > EDITOR_OUTER_R) return -1;
     const step = 360 / MAX_SLOTS;
     let angle = Math.atan2(dy, dx) * (180 / Math.PI);
     angle = ((angle + 90 + step / 2) % 360 + 360) % 360;
-    return Math.floor(angle / step);
+    const idx = Math.floor(angle / step);
+    if (dist >= EDITOR_INNER_R && dist <= EDITOR_OUTER_R) return { ring: 'inner', index: idx };
+
+    // Outer ring: compute child index using same geometry as RadialWheel outerWedges
+    if (dist >= OUTER_INNER_R && dist <= OUTER_OUTER_R && expandedFolderRef.current) {
+      const items = itemsRef.current;
+      const folderIdx = items.findIndex(i => i?.id === expandedFolderRef.current);
+      if (folderIdx < 0) return null;
+      const folder = items[folderIdx];
+      if (!folder?.children) return null;
+      const childCount = folder.children.length;
+      const minArc = 22;
+      const parentArc = step;
+      const parentBisector = step * folderIdx - 90;
+      const assignedCount = Math.max(childCount, 1);
+      const assignedArc = Math.min(Math.max(parentArc, assignedCount * minArc), 160);
+      const childWedge = assignedArc / assignedCount;
+      const totalSlots = childCount + 1; // children + empty slot
+      const totalArc = assignedArc + childWedge; // assigned arc + one empty slot
+      const startAngle = parentBisector - assignedArc / 2;
+      // Raw angle from atan2 (not the inner-ring-adjusted angle)
+      let rawAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+      rawAngle = ((rawAngle % 360) + 360) % 360;
+      let rel = rawAngle - ((startAngle % 360) + 360) % 360;
+      if (rel < -180) rel += 360;
+      if (rel > 180) rel -= 360;
+      if (rel >= 0 && rel < totalArc) {
+        const ci = Math.floor(rel / childWedge);
+        if (ci >= 0 && ci < totalSlots) return { ring: 'outer', index: ci };
+      }
+      return null;
+    }
+    return null;
   }, [wheelRef]);
+
+  // Simple inner-ring-only hit test for backward compat
+  const localHitTest = useCallback((clientX, clientY) => {
+    const hit = localHitTestFull(clientX, clientY);
+    return hit?.ring === 'inner' ? hit.index : -1;
+  }, [localHitTestFull]);
 
   const handleWedgePointerDown = useCallback((item, index, e) => {
     if (e.button !== 0) return;
-    wedgeDragRef.current = { fromIndex: index, startX: e.clientX, startY: e.clientY, active: false };
+    wedgeDragRef.current = { fromIndex: index, fromRing: 'inner', startX: e.clientX, startY: e.clientY, active: false };
 
     const onMove = (me) => {
       const ref = wedgeDragRef.current;
@@ -120,43 +168,117 @@ export default function RadialEditorView({
         if (Math.sqrt(dx * dx + dy * dy) < 5) return;
         ref.active = true;
         setWedgeDragFrom(ref.fromIndex);
+        document.body.style.cursor = 'grabbing';
       }
+      // Use inner-ring hit for visual target highlight
       setWedgeDragTo(localHitTest(me.clientX, me.clientY));
+      setWedgeDragPos({ x: me.clientX, y: me.clientY });
     };
 
-    const onUp = () => {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-      const ref = wedgeDragRef.current;
-      wedgeDragRef.current = null;
-      if (ref?.active) {
-        const to = localHitTest(arguments[0]?.clientX ?? 0, arguments[0]?.clientY ?? 0);
-        // Use the last known target from state — React may not have flushed yet,
-        // so read from the ref-tracked value via a microtask.
-      }
-      setWedgeDragFrom(-1);
-      setWedgeDragTo(-1);
-    };
-
-    // Use a single pointerup that captures the final position
     const onUpFinal = (ue) => {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUpFinal);
       const ref = wedgeDragRef.current;
       wedgeDragRef.current = null;
       if (ref?.active) {
-        const target = localHitTest(ue.clientX, ue.clientY);
-        if (target >= 0 && target !== ref.fromIndex) {
-          onSwapRadialMenuItems?.(ref.fromIndex, target);
+        const hit = localHitTestFull(ue.clientX, ue.clientY);
+        const items = itemsRef.current;
+        const sourceItem = items[ref.fromIndex];
+
+        if (hit && sourceItem) {
+          if (hit.ring === 'inner' && hit.index !== ref.fromIndex) {
+            // Inner ring: always swap positions (regardless of folder/non-folder)
+            onSwapRadialMenuItems?.(ref.fromIndex, hit.index);
+          } else if (hit.ring === 'outer') {
+            // Outer ring: move item into the expanded folder as a child
+            const efId = expandedFolderRef.current;
+            const folderItem = efId ? items.find(i => i && i.id === efId) : null;
+            if (sourceItem.type !== 'folder' && folderItem) {
+              onMoveItemToFolder?.(ref.fromIndex, folderItem.id);
+            }
+          }
         }
       }
       setWedgeDragFrom(-1);
       setWedgeDragTo(-1);
+      setWedgeDragPos(null);
+      document.body.style.cursor = '';
     };
 
     document.addEventListener('pointermove', onMove);
     document.addEventListener('pointerup', onUpFinal);
-  }, [localHitTest, onSwapRadialMenuItems]);
+  }, [localHitTest, localHitTestFull, onSwapRadialMenuItems, onMoveItemToFolder, expandedFolder]);
+
+  // ── Drag child OUT of folder to main ring ──────────────────────────────
+  const [childDragFrom, setChildDragFrom] = useState(null); // { folderId, childId, childLabel }
+  const childDragRef = useRef(null);
+
+  const handleChildPointerDown = useCallback((folderId, child, childIndex, e) => {
+    if (e.button !== 0) return;
+    childDragRef.current = { folderId, child, childIndex, startX: e.clientX, startY: e.clientY, active: false };
+
+    const onMove = (me) => {
+      const ref = childDragRef.current;
+      if (!ref) return;
+      if (!ref.active) {
+        const dx = me.clientX - ref.startX, dy = me.clientY - ref.startY;
+        if (Math.sqrt(dx * dx + dy * dy) < 5) return;
+        ref.active = true;
+        setChildDragFrom({ folderId: ref.folderId, childId: ref.child.id, childLabel: ref.child.label || '' });
+        document.body.style.cursor = 'grabbing';
+      }
+      setWedgeDragTo(localHitTest(me.clientX, me.clientY));
+      setWedgeDragPos({ x: me.clientX, y: me.clientY });
+    };
+
+    const onUpFinal = (ue) => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUpFinal);
+      const ref = childDragRef.current;
+      childDragRef.current = null;
+      if (ref?.active) {
+        const hit = localHitTestFull(ue.clientX, ue.clientY);
+        if (hit?.ring === 'inner' && hit.index >= 0) {
+          const items = itemsRef.current;
+          const targetSlot = items[hit.index];
+          // Drop onto empty main slot → move child out of folder
+          if (!targetSlot) {
+            onMoveChildToMain?.(ref.folderId, ref.child.id, hit.index);
+          }
+        } else if (hit?.ring === 'outer' && hit.index !== ref.childIndex) {
+          // Drop onto another outer ring slot → swap children within folder
+          const efId = expandedFolderRef.current;
+          const items = itemsRef.current;
+          const folder = efId ? items.find(i => i && i.id === efId) : null;
+          if (folder?.children && hit.index < folder.children.length && hit.index !== ref.childIndex) {
+            const newChildren = [...folder.children];
+            const temp = newChildren[ref.childIndex];
+            newChildren[ref.childIndex] = newChildren[hit.index];
+            newChildren[hit.index] = temp;
+            onReorderFolderChildren?.(efId, newChildren);
+          }
+        }
+      }
+      setChildDragFrom(null);
+      setWedgeDragTo(-1);
+      setWedgeDragPos(null);
+      document.body.style.cursor = '';
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUpFinal);
+  }, [localHitTest, localHitTestFull, onMoveChildToMain, onReorderFolderChildren]);
+
+  // Derive drag ghost label
+  const isDraggingMain = wedgeDragFrom >= 0;
+  const isDraggingChild = childDragFrom != null;
+  const dragGhostLabel = isDraggingMain && radialMenuItems[wedgeDragFrom]
+    ? (radialMenuItems[wedgeDragFrom].label || radialMenuItems[wedgeDragFrom].storageKey?.split('::').pop() || 'Item')
+    : isDraggingChild
+      ? (childDragFrom.childLabel || 'Item')
+      : null;
+  const dragTargetIsFolder = wedgeDragTo >= 0 && radialMenuItems[wedgeDragTo]?.type === 'folder';
+  const dragTargetIsEmpty = wedgeDragTo >= 0 && !radialMenuItems[wedgeDragTo];
 
   // Effective drop target: combine library drops (parent prop) with wedge drag
   const effectiveDropTarget = wedgeDragFrom >= 0 ? wedgeDragTo : dropTargetIndex;
@@ -257,8 +379,8 @@ export default function RadialEditorView({
             {selectedRadialSegment != null
               ? 'Edit action in the panel on the right'
               : expandedFolder
-                ? 'Click a child segment to edit, or click background to collapse'
-                : 'Click a segment to edit \u00b7 Drag to reorder \u00b7 Right-click for options'}
+                ? 'Click child to edit \u00b7 Drag child to main ring to remove from folder'
+                : 'Click to edit \u00b7 Drag to reorder \u00b7 Drag onto folder to add \u00b7 Right-click for options'}
           </span>
         </div>
       )}
@@ -332,8 +454,20 @@ export default function RadialEditorView({
               }}
               onReorder={onReorderRadialMenuItems}
               onReorderChildren={onReorderFolderChildren}
+              onChildPointerDown={handleChildPointerDown}
             />
 
+            {/* ── Drag ghost — follows cursor during wedge drag ── */}
+            {wedgeDragPos && dragGhostLabel && (
+              <div
+                className={`rev-drag-ghost${dragTargetIsFolder ? ' rev-drag-ghost--folder' : ''}${isDraggingChild && dragTargetIsEmpty ? ' rev-drag-ghost--folder' : ''}`}
+                style={{ left: wedgeDragPos.x, top: wedgeDragPos.y }}
+              >
+                {dragGhostLabel}
+                {isDraggingMain && dragTargetIsFolder && <span className="rev-drag-ghost-hint">Drop into folder</span>}
+                {isDraggingChild && dragTargetIsEmpty && <span className="rev-drag-ghost-hint">Drop to main ring</span>}
+              </div>
+            )}
 
             {/* ── Popover: interactive forms (rename input, picker) ── */}
             {popover && (

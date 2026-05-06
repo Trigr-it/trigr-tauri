@@ -13,6 +13,13 @@
   --border-bright:  #2e2e40;
   --border-accent:  rgba(232, 160, 32, 0.4);
   --font-body:    'DM Sans', sans-serif;
+  --accent-rgb:   232, 160, 32;
+  --shadow-overlay: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 1px rgba(232,160,32,0.08);
+  /* backdrop-filter removed — causes hard-edge clipping on transparent Tauri windows */
+  --transition-expand: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --radius-lg: 12px;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-text: #0d0d11;
 }
 
 [data-theme="light"] {
@@ -26,6 +33,9 @@
   --text-muted:     #9090b0;
   --border-bright:  #c8c8dc;
   --border-accent:  rgba(232, 160, 32, 0.5);
+  --shadow-overlay: 0 2px 6px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05);
+  --backdrop-blur: blur(20px) saturate(130%);
+  --btn-primary-text: #1a1a2e;
 }
 
 /* ── Reset for transparent window ────────────────────────────────────────── */
@@ -53,17 +63,31 @@ html, body {
   background: transparent;
 }
 
+/* ── Frame wrapper — provides padding for shadow to render within window ── */
+
+.fillin-win-frame {
+  padding: 8px;
+  background: transparent;
+}
+
 /* ── Floating panel — matches SearchOverlay .search-panel ────────────────── */
 
 .fillin-win {
   background: var(--bg-elevated);
-  border: none;
-  border-radius: 12px;
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg, 12px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   height: auto;
   margin: 0;
+  box-shadow: var(--shadow-overlay);
+  animation: overlay-enter var(--transition-expand) both;
+}
+
+@keyframes overlay-enter {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
@@ -196,10 +220,10 @@ html, body {
 .fillin-win-ok {
   height: 30px;
   padding: 0 18px;
-  background: var(--accent);
-  border: 1px solid var(--accent);
+  background: var(--btn-primary-bg);
+  border: 1px solid var(--btn-primary-bg);
   border-radius: 6px;
-  color: #fff;
+  color: var(--btn-primary-text);
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
@@ -209,6 +233,8 @@ html, body {
 
 .fillin-win-ok:hover {
   filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.25);
 }
 
 /* ── Variant selection mode ──────────────────────────────────────────────── */

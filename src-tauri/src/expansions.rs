@@ -649,6 +649,39 @@ fn fire_expansion_with_fillin(
             crate::hotkeys::FILLIN_HWND.store(hwnd_val, std::sync::atomic::Ordering::SeqCst);
         }
 
+        // Position fill-in on the active monitor (where cursor is), not just primary
+        {
+            use windows_sys::Win32::Foundation::POINT;
+            use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST};
+            use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+            let scale = win.scale_factor().unwrap_or(1.0);
+            let (cx, cy) = unsafe {
+                let mut pt = POINT { x: 0, y: 0 };
+                GetCursorPos(&mut pt);
+                (pt.x, pt.y)
+            };
+            let (wa_left, wa_top, wa_right, wa_bottom) = unsafe {
+                let pt = POINT { x: cx, y: cy };
+                let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+                let mut mi: MONITORINFO = std::mem::zeroed();
+                mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+                if GetMonitorInfoW(hmon, &mut mi) != 0 {
+                    (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+                } else {
+                    (0, 0, 1920, 1080)
+                }
+            };
+            let log_left = wa_left as f64 / scale;
+            let log_top  = wa_top  as f64 / scale;
+            let log_w = (wa_right  - wa_left)  as f64 / scale;
+            let log_h = (wa_bottom - wa_top) as f64 / scale;
+            let win_w = 420.0;
+            let x = log_left + (log_w - win_w) / 2.0;
+            let y = log_top + log_h / 3.0;
+            let _ = win.set_position(tauri::LogicalPosition::new(x, y));
+        }
+
         let _ = win.show();
         let _ = win.set_focus();
 
@@ -1315,6 +1348,39 @@ fn fire_variant_expansion(
 
         if let Ok(hwnd) = win.hwnd() {
             crate::hotkeys::FILLIN_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        // Position fill-in on the active monitor (where cursor is), not just primary
+        {
+            use windows_sys::Win32::Foundation::POINT;
+            use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST};
+            use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+            let scale = win.scale_factor().unwrap_or(1.0);
+            let (cx, cy) = unsafe {
+                let mut pt = POINT { x: 0, y: 0 };
+                GetCursorPos(&mut pt);
+                (pt.x, pt.y)
+            };
+            let (wa_left, wa_top, wa_right, wa_bottom) = unsafe {
+                let pt = POINT { x: cx, y: cy };
+                let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+                let mut mi: MONITORINFO = std::mem::zeroed();
+                mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+                if GetMonitorInfoW(hmon, &mut mi) != 0 {
+                    (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+                } else {
+                    (0, 0, 1920, 1080)
+                }
+            };
+            let log_left = wa_left as f64 / scale;
+            let log_top  = wa_top  as f64 / scale;
+            let log_w = (wa_right  - wa_left)  as f64 / scale;
+            let log_h = (wa_bottom - wa_top) as f64 / scale;
+            let win_w = 420.0;
+            let x = log_left + (log_w - win_w) / 2.0;
+            let y = log_top + log_h / 3.0;
+            let _ = win.set_position(tauri::LogicalPosition::new(x, y));
         }
 
         let _ = win.show();

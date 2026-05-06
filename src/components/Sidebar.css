@@ -276,10 +276,12 @@
   z-index: 1000;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 8px;
+  border-radius: var(--radius-md, 8px);
   padding: 4px;
   min-width: 150px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.4));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -661,6 +663,7 @@
   border-radius: var(--radius-sm);
   margin-bottom: 2px;
   border: 1px solid transparent;
+  border-left: 2px solid transparent;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -668,6 +671,7 @@
 .sidebar-item:hover {
   background: var(--bg-hover);
   border-color: var(--border-bright);
+  border-left-color: var(--accent);
 }
 
 .sidebar-item-active {
@@ -1069,12 +1073,14 @@
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-sm, 6px);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s, box-shadow 0.12s;
 }
 
 .grid-card:hover {
   background: var(--bg-hover);
   border-color: var(--border-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
 }
 
 .grid-card--active {
@@ -1151,10 +1157,12 @@
   z-index: 1000;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 8px;
+  border-radius: var(--radius-md, 8px);
   padding: 4px;
   min-width: 140px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.4));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   display: flex;
   flex-direction: column;
   gap: 1px;

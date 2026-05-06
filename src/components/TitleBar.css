@@ -141,9 +141,12 @@
   min-width: 160px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 8px;
+  border-radius: var(--radius-md, 8px);
   padding: 4px;
   animation: area-nav-in 0.12s ease;
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0,0,0,0.4));
 }
 
 @keyframes area-nav-in {
@@ -339,10 +342,12 @@
   z-index: 1000;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 8px;
+  border-radius: var(--radius-md, 8px);
   padding: 4px;
   min-width: 160px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.4));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
 
 .tb-tpl-ctx-item {

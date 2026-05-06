@@ -25,6 +25,7 @@
   fill: var(--bg-elevated);
   stroke: var(--border-accent);
   stroke-width: 2;
+  filter: drop-shadow(0 0 12px rgba(var(--accent-rgb), 0.15));
 }
 
 .rw-centre-text {
@@ -53,9 +54,9 @@
 
 .rw-wedge .rw-wedge-path {
   fill: var(--bg-surface);
-  stroke: var(--accent);
-  stroke-width: 1;
-  transition: fill 0.12s, stroke 0.12s, d 0.1s ease;
+  stroke: rgba(var(--accent-rgb), 0.3);
+  stroke-width: 0.5;
+  transition: fill 0.12s, stroke 0.12s, stroke-width 0.12s, filter 0.15s, d 0.1s ease;
 }
 
 /* ── Hovered wedge ────────────────────────────────────────────────────────── */
@@ -65,8 +66,9 @@
    show through to the desktop and look invisible. */
 .rw-wedge--hovered .rw-wedge-path {
   fill: #3d2e10;
-  stroke: var(--accent);
-  stroke-width: 2.5;
+  stroke: rgba(var(--accent-rgb), 0.3);
+  stroke-width: 0.5;
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 [data-theme="light"] .rw-wedge--hovered .rw-wedge-path {
@@ -85,9 +87,10 @@
 
 .rw-wedge--folder-expanded .rw-wedge-path {
   fill: #3d2e10;
-  stroke: var(--accent);
-  stroke-width: 2.5;
+  stroke: rgba(var(--accent-rgb), 0.3);
+  stroke-width: 0.5;
   stroke-dasharray: none;
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 [data-theme="light"] .rw-wedge--folder-expanded .rw-wedge-path {
@@ -218,13 +221,26 @@
   opacity: 0.8;
 }
 
-/* ── Drop target highlight (library→wheel drag) ──────────────────────────── */
+/* ── Drag source (wedge being dragged away) ──────────────────────────────── */
+
+.rw-wedge--drag-source {
+  opacity: 0.35;
+}
+
+.rw-wedge--drag-source .rw-wedge-path {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+/* ── Drop target highlight (library→wheel drag + wedge→wedge drag) ───────── */
 
 .rw-wedge--drop-target .rw-wedge-path {
   fill: var(--accent-glow);
   stroke: var(--accent);
   stroke-width: 2;
   stroke-dasharray: none;
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 .rw-wedge--drop-target .rw-wedge-plus {

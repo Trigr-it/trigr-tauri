@@ -25,6 +25,11 @@ export default function RadialMenu() {
       setExpandedFolder(null);
       setAnimKey(k => k + 1);
     });
+
+    // Close on window blur (clicking outside the window entirely)
+    const onBlur = () => window.electronAPI?.closeRadialMenu();
+    window.addEventListener('blur', onBlur);
+    return () => window.removeEventListener('blur', onBlur);
   }, []);
 
   // ── Fire an item ───────────────────────────────────────────────────────
@@ -36,13 +41,34 @@ export default function RadialMenu() {
     window.electronAPI?.executeRadialMenuItem(payload);
   }, []);
 
-  // ── Hover handlers — highlight only, no auto-fire ─────────────────────
+  // ── Hover handlers with folder auto-expand/collapse ───────────────────
+  const expandTimer = useRef(null);
+  const collapseTimer = useRef(null);
+
   const handleHoverInner = useCallback((idx) => {
     setHoveredIndex(idx);
+    if (expandTimer.current) { clearTimeout(expandTimer.current); expandTimer.current = null; }
+    if (collapseTimer.current) { clearTimeout(collapseTimer.current); collapseTimer.current = null; }
+
+    if (idx >= 0) {
+      const item = itemsRef.current[idx];
+      if (item?.type === 'folder' && expandedFolderRef.current !== item.id) {
+        expandTimer.current = setTimeout(() => { setExpandedFolder(item.id); }, 50);
+      } else if (item && item.type !== 'folder' && expandedFolderRef.current) {
+        collapseTimer.current = setTimeout(() => { setExpandedFolder(null); }, 150);
+      }
+    } else if (expandedFolderRef.current) {
+      collapseTimer.current = setTimeout(() => { setExpandedFolder(null); }, 150);
+    }
   }, []);
 
   const handleHoverOuter = useCallback((idx) => {
     setHoveredOuterIndex(idx);
+    if (idx >= 0) {
+      if (collapseTimer.current) { clearTimeout(collapseTimer.current); collapseTimer.current = null; }
+    } else if (expandedFolderRef.current) {
+      collapseTimer.current = setTimeout(() => { setExpandedFolder(null); }, 150);
+    }
   }, []);
 
   // ── Keyboard navigation ────────────────────────────────────────────────
@@ -114,7 +140,7 @@ export default function RadialMenu() {
   }
 
   return (
-    <div className="radial-root">
+    <div className="radial-root" onClick={handleBackgroundClick}>
       <RadialWheel
         key={animKey}
         mode="live"

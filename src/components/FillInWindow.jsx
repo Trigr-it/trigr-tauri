@@ -72,7 +72,8 @@ export default function FillInWindow() {
       requestAnimationFrame(() => {
         const el = panelRef.current;
         if (!el) return;
-        const windowH = Math.ceil(el.scrollHeight);
+        const FRAME_PAD = 8; // room for shadow within transparent window
+        const windowH = Math.ceil(el.scrollHeight) + FRAME_PAD * 2;
         window.electronAPI?.resizeFillin(windowH);
       });
     });
@@ -128,27 +129,29 @@ export default function FillInWindow() {
   // ── Variant selection mode ──
   if (mode === 'variant') {
     return (
-      <div className="fillin-win" ref={panelRef}>
-        <div className="fillin-win-header">
-          <span className="fillin-win-icon">◇</span>
-          <span className="fillin-win-title">Select Variant</span>
-          <button className="fillin-win-close" onClick={cancel} tabIndex={-1}>✕</button>
-        </div>
-        <div className="fillin-variant-list">
-          {options.map((label, i) => (
-            <div
-              key={i}
-              className={`fillin-variant-row${i === selectedIdx ? ' selected' : ''}`}
-              onClick={() => selectVariant(i)}
-              onMouseEnter={() => setSelectedIdx(i)}
-            >
-              <span className="fillin-variant-num">{i + 1}</span>
-              <span className="fillin-variant-label">{label}</span>
-            </div>
-          ))}
-        </div>
-        <div className="fillin-variant-hint">
-          <kbd>↑↓</kbd> navigate &nbsp; <kbd>Enter</kbd> select &nbsp; <kbd>Esc</kbd> cancel
+      <div className="fillin-win-frame">
+        <div className="fillin-win" ref={panelRef}>
+          <div className="fillin-win-header">
+            <span className="fillin-win-icon">◇</span>
+            <span className="fillin-win-title">Select Variant</span>
+            <button className="fillin-win-close" onClick={cancel} tabIndex={-1}>✕</button>
+          </div>
+          <div className="fillin-variant-list">
+            {options.map((label, i) => (
+              <div
+                key={i}
+                className={`fillin-variant-row${i === selectedIdx ? ' selected' : ''}`}
+                onClick={() => selectVariant(i)}
+                onMouseEnter={() => setSelectedIdx(i)}
+              >
+                <span className="fillin-variant-num">{i + 1}</span>
+                <span className="fillin-variant-label">{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="fillin-variant-hint">
+            <kbd>↑↓</kbd> navigate &nbsp; <kbd>Enter</kbd> select &nbsp; <kbd>Esc</kbd> cancel
+          </div>
         </div>
       </div>
     );
@@ -156,31 +159,33 @@ export default function FillInWindow() {
 
   // ── Fill-in fields mode ──
   return (
-    <div className="fillin-win" ref={panelRef}>
-      <div className="fillin-win-header">
-        <span className="fillin-win-icon">✎</span>
-        <span className="fillin-win-title">Fill In</span>
-        <button className="fillin-win-close" onClick={cancel} tabIndex={-1}>✕</button>
-      </div>
-      <div className="fillin-win-fields">
-        {fields.map((label, i) => (
-          <div key={label} className="fillin-win-field">
-            <label className="fillin-win-label">{label}</label>
-            <input
-              ref={el => { inputRefs.current[i] = el; }}
-              className="fillin-win-input"
-              value={values[label] || ''}
-              onChange={e => setValues(v => ({ ...v, [label]: e.target.value }))}
-              onKeyDown={e => onFieldKeyDown(e, i)}
-              placeholder={`Enter ${label}…`}
-              spellCheck={false}
-            />
-          </div>
-        ))}
-      </div>
-      <div className="fillin-win-actions">
-        <button className="fillin-win-cancel" onClick={cancel}>Cancel</button>
-        <button className="fillin-win-ok" onClick={submit}>Insert</button>
+    <div className="fillin-win-frame">
+      <div className="fillin-win" ref={panelRef}>
+        <div className="fillin-win-header">
+          <span className="fillin-win-icon">✎</span>
+          <span className="fillin-win-title">Fill In</span>
+          <button className="fillin-win-close" onClick={cancel} tabIndex={-1}>✕</button>
+        </div>
+        <div className="fillin-win-fields">
+          {fields.map((label, i) => (
+            <div key={label} className="fillin-win-field">
+              <label className="fillin-win-label">{label}</label>
+              <input
+                ref={el => { inputRefs.current[i] = el; }}
+                className="fillin-win-input"
+                value={values[label] || ''}
+                onChange={e => setValues(v => ({ ...v, [label]: e.target.value }))}
+                onKeyDown={e => onFieldKeyDown(e, i)}
+                placeholder={`Enter ${label}…`}
+                spellCheck={false}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="fillin-win-actions">
+          <button className="fillin-win-cancel" onClick={cancel}>Cancel</button>
+          <button className="fillin-win-ok" onClick={submit}>Insert</button>
+        </div>
       </div>
     </div>
   );

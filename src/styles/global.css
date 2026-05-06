@@ -48,6 +48,28 @@
   --shadow-key: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
   --shadow-key-hover: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
   --shadow-panel: 0 8px 32px rgba(0,0,0,0.5);
+
+  /* ── Overlay & popup tokens ── */
+  --shadow-overlay: 0 8px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(232,160,32,0.08);
+  --shadow-overlay-lg: 0 16px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(232,160,32,0.1);
+  --backdrop-blur: blur(20px) saturate(150%);
+
+  /* ── Transition tokens ── */
+  --transition-micro: 0.12s cubic-bezier(0.2, 0, 0, 1);
+  --transition-expand: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Button hierarchy ── */
+  --btn-primary-bg: var(--accent);
+  --btn-primary-text: #0d0d11;
+  --btn-primary-hover: var(--accent-hover);
+  --btn-secondary-bg: transparent;
+  --btn-secondary-border: var(--border-bright);
+  --btn-secondary-text: var(--text-secondary);
+  --btn-ghost-text: var(--text-muted);
+  --btn-danger-bg: rgba(224, 80, 80, 0.1);
+  --btn-danger-border: rgba(224, 80, 80, 0.35);
+  --btn-danger-text: var(--danger);
+  --btn-radius: var(--radius-md);
 }
 
 /* ── Light theme ──────────────────────────────────────────── */
@@ -79,6 +101,11 @@
   --shadow-key:       0 1px 4px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
   --shadow-key-hover: 0 2px 8px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
   --shadow-panel:     0 4px 16px rgba(0,0,0,0.12);
+
+  --shadow-overlay: 0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06);
+  --shadow-overlay-lg: 0 16px 48px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08);
+  --backdrop-blur: blur(20px) saturate(130%);
+  --btn-primary-text: #1a1a2e;
 }
 
 html, body, #root {
@@ -111,9 +138,17 @@ html, body, #root {
 
 /* Smooth theme transition on all elements that use CSS vars */
 *, *::before, *::after {
-  transition-property: background-color, border-color, color, box-shadow;
-  transition-duration: 0.2s;
-  transition-timing-function: ease;
+  transition-property: background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 button {
@@ -121,6 +156,11 @@ button {
   cursor: pointer;
   border: none;
   outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 input, textarea, select {
@@ -172,4 +212,162 @@ input:focus, textarea:focus, select:focus {
   border-radius: 4px;
   white-space: nowrap;
   user-select: none;
+}
+
+/* ── Unified button hierarchy ──────────────────────────────────────────── */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 16px;
+  background: var(--btn-primary-bg);
+  border: 1px solid var(--btn-primary-bg);
+  border-radius: var(--btn-radius);
+  color: var(--btn-primary-text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--btn-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.25);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--btn-radius);
+  color: var(--btn-secondary-text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--btn-radius);
+  color: var(--btn-ghost-text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  background: var(--btn-danger-bg);
+  border: 1px solid var(--btn-danger-border);
+  border-radius: var(--btn-radius);
+  color: var(--btn-danger-text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: rgba(224, 80, 80, 0.18);
+  border-color: var(--danger);
+}
+
+.btn-sm { height: 26px; padding: 0 10px; font-size: 11px; }
+.btn-xs { height: 22px; padding: 0 8px; font-size: 10px; }
+
+/* ── Overlay entry animation ───────────────────────────────────────────── */
+
+@keyframes overlay-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Settings progressive disclosure (CSS prep) ────────────────────────── */
+
+.settings-advanced-content {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s ease,
+              padding 0.2s ease;
+  padding: 0 0;
+}
+
+.settings-advanced-content.expanded {
+  max-height: 500px;
+  opacity: 1;
+  padding: 8px 0 0;
+}
+
+.settings-advanced-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.settings-advanced-label:hover {
+  color: var(--text-secondary);
+}
+
+.settings-advanced-chevron {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.settings-advanced-chevron.open {
+  transform: rotate(180deg);
 }
