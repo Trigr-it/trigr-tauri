@@ -76,3 +76,23 @@ All 10 migration phases completed by v0.1.34 (2026-04-12): scaffold, config, tra
 Detailed session-by-session changelog preserved for historical reference. Covers: onboarding tour, fill-in fields, analytics, macro steps, profile accordion, list view, templates, context menus, hold/repeat mode, image expansions, clipboard manager, bare mouse remapping, scratchpad, and all bugfixes through April 2026.
 
 For specific historical details, use `git log` to find the relevant commits.
+
+---
+
+## 07 — App Icon / Brand Mark
+
+**Canonical mark:** `src-tauri/icons/trigr-logo.svg` (gradient version, for UI use)
+**Flat favicon version:** `src-tauri/icons/trigr-favicon.svg` (flat fills, for ICO export)
+
+**Design:** Chamfered keycap. Gold gradient base (`#f0b942` → `#c8860a`), white-to-cream keytop inset, gold-deep T legend stamped on keytop.
+- Base: `<rect x="0" y="0" width="64" height="64" rx="9"/>` — 9px chamfer
+- Keytop: `<rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5"/>` — inset with inner shadow strip at `y="46.5"`
+- T crossbar: `<rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>`
+- T stem: `<rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>`
+
+**Usage:**
+- App titlebar (TitleBar.jsx): inline SVG in `<span class="trigr-mark">`, 22×22px
+- Marketing nav + footer (docs/index.html): inline SVG in `.logo-mark` div, 32×32px; unique gradient IDs per instance (`-nav`, `-ft`)
+- Marketing mockup titlebar (docs/index.html): inline SVG in `.t-logo-mark` div, 22×22px; gradient ID suffix `-mock`
+- Tauri app icon (src-tauri/icons/): regenerate with `npx @tauri-apps/cli icon src-tauri/icons/trigr-favicon.svg` (run from Windows Git Bash/PowerShell, not WSL)
+- Marketing site favicon: `docs/favicon.svg` (copy of trigr-favicon.svg)

@@ -113,6 +113,25 @@ export default function TitleBar({
     <div className="titlebar" data-drag="true">
       <div className="titlebar-left">
         <div className="app-logo">
+          <span className="trigr-mark">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Trigr">
+              <defs>
+                <linearGradient id="trigr-base" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f0b942"/>
+                  <stop offset="100%" stopColor="#c8860a"/>
+                </linearGradient>
+                <linearGradient id="trigr-keytop" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ffffff"/>
+                  <stop offset="100%" stopColor="#e8e5dc"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="64" height="64" rx="9" fill="url(#trigr-base)"/>
+              <rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#trigr-keytop)"/>
+              <rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/>
+              <rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>
+              <rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>
+            </svg>
+          </span>
           <span className="app-name">Trigr</span>
         </div>
 

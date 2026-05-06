@@ -370,3 +370,16 @@
   color: var(--accent);
 }
 
+/* ── Trigr keycap mark ──────────────────────────────────────── */
+.trigr-mark {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.trigr-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
