@@ -13,7 +13,7 @@ use windows_sys::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowThreadProcessId,
+    GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
 };
 
 const POLL_INTERVAL_MS: u64 = 1500;
@@ -22,6 +22,11 @@ const POLL_INTERVAL_MS: u64 = 1500;
 
 static WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
 static LAST_FG_HWND: AtomicIsize = AtomicIsize::new(0);
+static LAST_FG_TITLE: OnceLock<Mutex<String>> = OnceLock::new();
+
+fn last_fg_title() -> &'static Mutex<String> {
+    LAST_FG_TITLE.get_or_init(|| Mutex::new(String::new()))
+}
 
 /// Cache of linked-app PIDs → profile name.  Populated when the foreground
 /// watcher detects a linked app.  The hook reads this (via try_read) to check
@@ -105,9 +110,21 @@ fn get_fg_proc_name(hwnd: isize) -> Option<String> {
     }
 }
 
+/// Retrieve the window title text for a given HWND (lowercase).
+fn get_window_title(hwnd: isize) -> String {
+    unsafe {
+        let mut buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd as _, buf.as_mut_ptr(), 512);
+        if len <= 0 {
+            return String::new();
+        }
+        String::from_utf16_lossy(&buf[..len as usize]).to_lowercase()
+    }
+}
+
 // ── Foreground change handler ───────────────────────────────────────────────
 
-fn handle_foreground_change(proc_name: &str, app: &AppHandle) {
+fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle) {
     let name = proc_name
         .to_lowercase()
         .trim_end_matches(".exe")
@@ -132,8 +149,8 @@ fn handle_foreground_change(proc_name: &str, app: &AppHandle) {
         }
     }
 
-    // Find linked profiles
-    let linked: Vec<(String, String)> = state
+    // Find linked profiles — tuple: (profile_name, app_name, optional_title_filter)
+    let linked: Vec<(String, String, Option<String>)> = state
         .profile_settings
         .iter()
         .filter_map(|(profile, settings)| {
@@ -145,7 +162,12 @@ fn handle_foreground_change(proc_name: &str, app: &AppHandle) {
                         .file_stem()
                         .map(|s| s.to_string_lossy().to_lowercase())
                         .unwrap_or_default();
-                    (profile.clone(), app_name)
+                    let title_filter = settings
+                        .get("linkedWindowTitle")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_lowercase());
+                    (profile.clone(), app_name, title_filter)
                 })
         })
         .collect();
@@ -154,11 +176,17 @@ fn handle_foreground_change(proc_name: &str, app: &AppHandle) {
         return;
     }
 
-    // Match foreground process to linked app
+    // Match foreground process to linked app (+ optional title filter)
+    // Note: window_title is already lowercase from get_window_title()
     let matched = linked
         .iter()
-        .find(|(_, app_name)| *app_name == name)
-        .map(|(profile, _)| profile.clone());
+        .find(|(_, app_name, title_filter)| {
+            *app_name == name
+                && title_filter
+                    .as_ref()
+                    .map_or(true, |filter| window_title.contains(filter.as_str()))
+        })
+        .map(|(profile, _, _)| profile.clone());
 
     // Target: matched profile or fallback to global
     let target = matched
@@ -211,15 +239,22 @@ pub fn start_watcher(app: AppHandle) {
                     let hwnd = GetForegroundWindow();
                     let hwnd_val = hwnd as isize;
 
-                    // Skip if unchanged from last poll
-                    if hwnd_val != 0
-                        && hwnd_val != LAST_FG_HWND.load(Ordering::Relaxed)
-                    {
-                        LAST_FG_HWND.store(hwnd_val, Ordering::Relaxed);
-                        if let Some(name) = get_fg_proc_name(hwnd_val) {
-                            // Cache PID for linked-app detection from the hook
-                            cache_linked_pid_if_match(hwnd_val, &name);
-                            handle_foreground_change(&name, &app);
+                    if hwnd_val != 0 {
+                        let hwnd_changed = hwnd_val != LAST_FG_HWND.load(Ordering::Relaxed);
+                        let title = get_window_title(hwnd_val);
+                        let title_changed = {
+                            let last = last_fg_title().lock().unwrap();
+                            *last != title
+                        };
+
+                        if hwnd_changed || title_changed {
+                            LAST_FG_HWND.store(hwnd_val, Ordering::Relaxed);
+                            *last_fg_title().lock().unwrap() = title.clone();
+                            if let Some(name) = get_fg_proc_name(hwnd_val) {
+                                // Cache PID for linked-app detection from the hook
+                                cache_linked_pid_if_match(hwnd_val, &name);
+                                handle_foreground_change(&name, &title, &app);
+                            }
                         }
                     }
                 }
@@ -243,6 +278,7 @@ pub fn start_watcher(app: AppHandle) {
 pub fn stop_watcher() {
     WATCHER_RUNNING.store(false, Ordering::Relaxed);
     LAST_FG_HWND.store(0, Ordering::Relaxed);
+    *last_fg_title().lock().unwrap() = String::new();
 }
 
 /// Resolve a PID to process base name (lowercase, no .exe).
@@ -362,9 +398,11 @@ pub fn force_check(app: &AppHandle) {
     };
     if hwnd == 0 { return; }
     LAST_FG_HWND.store(hwnd, Ordering::Relaxed);
+    let title = get_window_title(hwnd);
+    *last_fg_title().lock().unwrap() = title.clone();
     if let Some(name) = unsafe { get_fg_proc_name(hwnd) } {
         cache_linked_pid_if_match(hwnd, &name);
-        handle_foreground_change(&name, app);
+        handle_foreground_change(&name, &title, app);
     }
 }
 

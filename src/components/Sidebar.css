@@ -418,6 +418,40 @@
   color: var(--text-primary);
 }
 
+.profile-link-picker-title-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profile-link-picker-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.profile-link-picker-title-input {
+  height: 26px;
+  padding: 0 8px;
+  background: var(--bg-input, var(--bg-deep));
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.profile-link-picker-title-input:focus {
+  border-color: var(--accent);
+}
+
+.profile-link-picker-title-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
 .pick-window-dropdown--portal {
   position: fixed;
   z-index: 1000;

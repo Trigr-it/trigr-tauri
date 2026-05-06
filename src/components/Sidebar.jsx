@@ -22,7 +22,7 @@ const TYPE_NAMES = {
 
 // ── Sortable profile row ────────────────────────────────────────────────────
 
-function SortableProfileRow({ profile, isActive, isFallback, hasLink, linkedAppName, onSelect, onDoubleClick, onContextMenu }) {
+function SortableProfileRow({ profile, isActive, isFallback, hasLink, linkedAppName, linkedWindowTitle, onSelect, onDoubleClick, onContextMenu }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: profile });
   const style = {
     transform: DndCSS.Transform.toString(transform),
@@ -44,7 +44,7 @@ function SortableProfileRow({ profile, isActive, isFallback, hasLink, linkedAppN
         {isFallback && <span className="profile-fallback-dot" />}
         {profile}
       </span>
-      {hasLink && <span className="profile-row-link" title={linkedAppName}>⊞</span>}
+      {hasLink && <span className="profile-row-link" title={linkedAppName + (linkedWindowTitle ? ` (title: ${linkedWindowTitle})` : '')}>⊞</span>}
     </div>
   );
 }
@@ -71,6 +71,7 @@ function ProfileAccordion({
   const [linkPicker, setLinkPicker] = useState(null); // profileName or null
   const [linkWindowList, setLinkWindowList] = useState([]);
   const [linkSelectedExe, setLinkSelectedExe] = useState(null);
+  const [linkWindowTitle, setLinkWindowTitle] = useState('');
   const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
   const linkDropdownRef = useRef(null);
   const linkDropdownPortalRef = useRef(null);
@@ -200,6 +201,7 @@ function ProfileAccordion({
 
   function renderProfileRow(p, { sortable = true } = {}) {
     const linkedApp = profileSettings[p]?.linkedApp;
+    const linkedWinTitle = profileSettings[p]?.linkedWindowTitle;
     const isFallback = p === activeGlobalProfile;
 
     if (renaming === p) {
@@ -231,6 +233,7 @@ function ProfileAccordion({
           isFallback={isFallback}
           hasLink={!!linkedApp}
           linkedAppName={linkedApp ? linkedApp.split(/[/\\]/).pop() : ''}
+          linkedWindowTitle={linkedWinTitle || ''}
           onSelect={() => handleSelect(p)}
           onDoubleClick={() => startRename(p)}
           onContextMenu={e => handleContextMenu(e, p)}
@@ -368,6 +371,7 @@ function ProfileAccordion({
               <button className="profile-ctx-item" onClick={() => {
                 setLinkPicker(contextMenu.profile);
                 setLinkSelectedExe(null);
+                setLinkWindowTitle('');
                 setContextMenu(null);
               }}>
                 Link to App
@@ -375,7 +379,7 @@ function ProfileAccordion({
             )}
             {!isStatic && (
               <button className="profile-ctx-item" onClick={() => {
-                onUpdateProfileSettings?.(contextMenu.profile, { linkedApp: null });
+                onUpdateProfileSettings?.(contextMenu.profile, { linkedApp: null, linkedWindowTitle: null });
                 setContextMenu(null);
               }}>
                 Unlink App
@@ -396,7 +400,7 @@ function ProfileAccordion({
         <div className="profile-link-picker">
           <div className="profile-link-picker-header">
             <span className="profile-link-picker-title">Link "{linkPicker}" to App</span>
-            <button className="profile-link-picker-close" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkDropdownOpen(false); }}>✕</button>
+            <button className="profile-link-picker-close" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkWindowTitle(''); setLinkDropdownOpen(false); }}>✕</button>
           </div>
           <p className="profile-link-picker-hint">Open the app first, then pick it below.</p>
           <div className="profile-link-picker-row" ref={linkDropdownRef}>
@@ -459,17 +463,33 @@ function ProfileAccordion({
               document.body
             )}
           </div>
+          {linkSelectedExe && (
+            <div className="profile-link-picker-title-row">
+              <label className="profile-link-picker-label">Window title contains (optional):</label>
+              <input
+                className="profile-link-picker-title-input"
+                type="text"
+                placeholder="e.g. Inbox"
+                value={linkWindowTitle}
+                onChange={e => setLinkWindowTitle(e.target.value)}
+              />
+            </div>
+          )}
           <div className="profile-link-picker-actions">
             {linkSelectedExe && (
               <button className="profile-link-picker-confirm" type="button" onClick={() => {
-                onUpdateProfileSettings?.(linkPicker, { linkedApp: linkSelectedExe });
+                onUpdateProfileSettings?.(linkPicker, {
+                  linkedApp: linkSelectedExe,
+                  linkedWindowTitle: linkWindowTitle.trim() || null,
+                });
                 setLinkPicker(null);
                 setLinkSelectedExe(null);
+                setLinkWindowTitle('');
               }}>
                 Confirm
               </button>
             )}
-            <button className="profile-link-picker-cancel" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkDropdownOpen(false); }}>
+            <button className="profile-link-picker-cancel" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkWindowTitle(''); setLinkDropdownOpen(false); }}>
               Cancel
             </button>
           </div>

@@ -240,6 +240,7 @@ html, body {
   transition: background 0.08s;
   position: relative;
   min-height: 44px;
+  border-bottom: 1px solid var(--border-bright);
 }
 
 .co-row:hover {

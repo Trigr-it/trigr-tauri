@@ -594,7 +594,7 @@ fn list_open_windows() -> Vec<Value> {
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
 
     static EXCLUDED: &[&str] = &[
@@ -617,8 +617,8 @@ fn list_open_windows() -> Vec<Value> {
     ) -> i32 {
         let state = &mut *(lparam as *mut ListState);
 
-        // Must be visible and not minimized
-        if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 {
+        // Must be visible (skip hidden system windows, but allow minimized apps)
+        if IsWindowVisible(hwnd) == 0 {
             return 1;
         }
 
