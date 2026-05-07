@@ -371,7 +371,12 @@ export default function ClipboardPanel() {
                   spellCheck={false}
                 />
               ) : (
-                <pre className="cbg-detail-text">{selected.text_content || selected.preview || ''}</pre>
+                <pre className="cbg-detail-text" style={{ fontSize: (() => {
+                  const len = (selected.text_content || selected.preview || '').length;
+                  if (len < 60) return '1.6rem';
+                  if (len < 200) return '1.25rem';
+                  return '1.0rem';
+                })() }}>{selected.text_content || selected.preview || ''}</pre>
               )}
             </div>
             <div className="cbg-detail-meta">

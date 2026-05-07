@@ -1806,7 +1806,7 @@ fn display_name_to_vk(name: &str) -> Option<u16> {
 /// Resolve the path to the bundled AutoHotkey executable.
 /// `ahk_version`: "v1" (default) or "v2"
 fn resolve_ahk_exe(app: &tauri::AppHandle, ahk_version: &str) -> Option<PathBuf> {
-    let filename = if ahk_version == "v2" { "AutoHotkey32.exe" } else { "AutoHotkeyU32.exe" };
+    let filename = if ahk_version == "v2" { "AutoHotkey64.exe" } else { "AutoHotkeyU32.exe" };
     // Production: bundled resource
     if let Ok(resource_dir) = app.path().resource_dir() {
         let path = resource_dir.join("ahk").join(filename);

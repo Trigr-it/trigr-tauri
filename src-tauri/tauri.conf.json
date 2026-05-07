@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/refs/heads/dev/crates/tauri-cli/schema.json",
   "productName": "Trigr",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "identifier": "com.nodescaffold.trigr",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -41,7 +41,7 @@
     "resources": {
       "../assets/icons/tray-icon.png": "icons/tray-icon.png",
       "../assets/ahk/AutoHotkeyU32.exe": "ahk/AutoHotkeyU32.exe",
-      "../assets/ahk/AutoHotkey32.exe": "ahk/AutoHotkey32.exe"
+      "../assets/ahk/AutoHotkey64.exe": "ahk/AutoHotkey64.exe"
     },
     "windows": {
       "nsis": {

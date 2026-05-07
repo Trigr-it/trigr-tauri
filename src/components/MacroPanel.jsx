@@ -52,7 +52,7 @@ const ACTION_TYPES = [
     id: 'ahk',
     icon: '⟁',
     label: 'AHK Script',
-    desc: 'Run an AutoHotkey v1 script',
+    desc: 'Run an AutoHotkey v1 or v2 script',
     color: '#4ecdc4',
   },
 ];
@@ -952,13 +952,26 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         );
       })()}
       {step.type === 'Run AHK Script' && (() => {
-        let ahk = { script: '', scriptName: '' };
+        let ahk = { script: '', scriptName: '', ahkVersion: 'v1' };
         try { ahk = { ...ahk, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+        const isV2 = ahk.ahkVersion === 'v2';
         return (
           <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+            <div className="ahk-version-row">
+              <button
+                type="button"
+                className={`ahk-version-pill ${!isV2 ? 'active' : ''}`}
+                onClick={() => updateStep({ ...step, value: JSON.stringify({ ...ahk, ahkVersion: 'v1' }) })}
+              >v1</button>
+              <button
+                type="button"
+                className={`ahk-version-pill ${isV2 ? 'active' : ''}`}
+                onClick={() => updateStep({ ...step, value: JSON.stringify({ ...ahk, ahkVersion: 'v2' }) })}
+              >v2</button>
+            </div>
             <textarea
               className="form-textarea"
-              placeholder={"; AHK v1 script body..."}
+              placeholder={isV2 ? "; AHK v2 script body..." : "; AHK v1 script body..."}
               value={ahk.script}
               onChange={e => updateStep({ ...step, value: JSON.stringify({ ...ahk, script: e.target.value }) })}
               rows={4}

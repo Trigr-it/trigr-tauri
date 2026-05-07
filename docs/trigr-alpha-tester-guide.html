@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trigr — Alpha Tester Guide</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Chakra+Petch:wght@500&display=swap" rel="stylesheet">
   <style>
     :root {
       --gold: #E8A020; --gold-dark: #C8860A; --gold-light: #F0B942; --gold-bg: #FFF8ED;
@@ -17,7 +17,10 @@
     .page { max-width: 800px; margin: 40px auto; background: var(--white); border-radius: 12px; box-shadow: 0 2px 20px rgba(0,0,0,0.08); overflow: hidden; }
 
     .doc-header { background: var(--navy); padding: 32px 40px; }
-    .doc-header-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; color: var(--gold); margin-bottom: 12px; }
+    .doc-header-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .doc-header-logo-mark { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; }
+    .doc-header-logo-mark svg { width: 100%; height: 100%; display: block; }
+    .doc-header-logo-name { font-family: 'Chakra Petch', sans-serif; font-weight: 500; font-size: 15px; color: var(--muted); letter-spacing: 0.08em; }
     .doc-header-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 30px; color: var(--white); margin-bottom: 6px; }
     .doc-header-subtitle { font-size: 14px; color: var(--muted); }
 
@@ -73,7 +76,10 @@
 <div class="page">
 
   <div class="doc-header">
-    <div class="doc-header-logo">Trigr</div>
+    <div class="doc-header-logo">
+      <div class="doc-header-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="alp-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="alp-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect x="0" y="0" width="64" height="64" rx="9" fill="url(#alp-base)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#alp-top)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+      <span class="doc-header-logo-name">Trigr</span>
+    </div>
     <div class="doc-header-title">Alpha Tester Guide</div>
     <div class="doc-header-subtitle">Private Alpha — April 2026 &nbsp;·&nbsp; Thank you for being here early.</div>
   </div>
