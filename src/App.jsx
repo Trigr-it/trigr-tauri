@@ -1426,11 +1426,13 @@ function App() {
   const handleSetPauseKey = useCallback(async (combo) => {
     setGlobalPauseToggleKey(combo);
     await window.electronAPI?.setPauseHotkey(combo);
+    window.electronAPI?.saveConfig({ globalPauseToggleKey: combo });
   }, []);
 
   const handleClearPauseKey = useCallback(() => {
     setGlobalPauseToggleKey(null);
     window.electronAPI?.clearPauseHotkey();
+    window.electronAPI?.saveConfig({ globalPauseToggleKey: null });
   }, []);
 
   // ── Voice enabled toggle ────────────────────────
