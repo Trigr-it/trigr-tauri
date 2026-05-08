@@ -1198,9 +1198,15 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     // Re-press modifiers that were physically held
     crate::actions::restore_modifiers(&held);
 
-    // Restore clipboard after paste settles — skip if previous was empty to avoid blank clipboard entry
-    thread::sleep(Duration::from_millis(50));
-    if !prev.is_empty() {
+    // Restore clipboard after paste settles.
+    // 150ms: Excel (and other Office apps) process clipboard paste via their message
+    // queue — slower than most apps. 50ms was not enough, causing Excel to read the
+    // restored-old-content instead of the expansion text.
+    thread::sleep(Duration::from_millis(150));
+    // Only restore if the clipboard still holds our expansion text — if the user
+    // copied something during injection, leave their new content alone.
+    let current = read_clipboard().unwrap_or_default();
+    if !prev.is_empty() && current.trim() == text.trim() {
         write_clipboard(&prev);
     }
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE

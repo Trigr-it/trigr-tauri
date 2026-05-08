@@ -1755,7 +1755,11 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
             "text" => {
                 if let Some(text) = &item.text_content {
                     let prev = actions::read_clipboard_pub().unwrap_or_default();
-                    actions::write_clipboard_pub(text);
+                    // If write fails (e.g. Excel holds clipboard lock), skip paste —
+                    // pasting now would send whatever was already on the clipboard.
+                    if !actions::write_clipboard_pub(text) {
+                        return;
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(10));
 
                     // Ctrl+V
@@ -1766,8 +1770,14 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
 
                     actions::restore_modifiers(&held);
 
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    if !prev.is_empty() {
+                    // 150ms: Excel processes clipboard paste via its message queue,
+                    // slower than most apps. 50ms caused Excel to read the restored
+                    // old content instead of the selected clipboard item.
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    // Only restore if clipboard still holds the item we pasted —
+                    // if the user copied something in the meantime, leave it alone.
+                    let current = actions::read_clipboard_pub().unwrap_or_default();
+                    if !prev.is_empty() && current.trim() == text.trim() {
                         actions::write_clipboard_pub(&prev);
                     }
                 }

@@ -2034,8 +2034,8 @@ pub fn read_clipboard_pub() -> Option<String> {
     read_clipboard()
 }
 
-pub fn write_clipboard_pub(text: &str) {
-    write_clipboard(text);
+pub fn write_clipboard_pub(text: &str) -> bool {
+    write_clipboard(text)
 }
 
 pub fn send_vk_key_pub(vk: u16, key_up: bool) {
