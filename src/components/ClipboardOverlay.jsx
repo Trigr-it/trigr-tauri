@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import './ClipboardOverlay.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -154,6 +155,42 @@ export default function ClipboardOverlay() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filtered, selectedIndex, selected, editing]);
+
+  // ── LL hook keyboard routing (WS_EX_NOACTIVATE path) ─────────────────────
+  // When the overlay is open it never steals OS focus (WS_EX_NOACTIVATE).
+  // The Rust LL hook intercepts keystrokes and emits 'clipboard-overlay-key'
+  // with { vk, shift } so navigation and search still work without DOM focus.
+
+  useEffect(() => {
+    function vkToChar(vk, shift) {
+      if (vk >= 65 && vk <= 90) return shift ? String.fromCharCode(vk) : String.fromCharCode(vk + 32);
+      if (vk >= 48 && vk <= 57) return String.fromCharCode(vk);
+      if (vk === 32) return ' ';
+      return null;
+    }
+
+    function handleHookKey({ payload }) {
+      const { vk, shift } = payload || {};
+      if (editing) {
+        if (vk === 27) { setEditing(false); setEditText(''); }
+        return;
+      }
+      if (vk === 27) { window.electronAPI?.closeClipboardOverlay(); return; }
+      if (vk === 13) {
+        if (selected) { window.electronAPI?.closeClipboardOverlay(); window.electronAPI?.pasteClipboardItem(selected.id); }
+        return;
+      }
+      if (vk === 40) { setSelectedIndex(i => Math.min(i + 1, filtered.length - 1)); return; }
+      if (vk === 38) { setSelectedIndex(i => Math.max(i - 1, 0)); return; }
+      if (vk === 8)  { setSearch(q => q.slice(0, -1)); return; }
+      const ch = vkToChar(vk, shift);
+      if (ch !== null) setSearch(q => q + ch);
+    }
+
+    let unlisten;
+    listen('clipboard-overlay-key', handleHookKey).then(fn => { unlisten = fn; });
+    return () => { if (unlisten) unlisten(); };
+  }, [filtered, selected, editing]);
 
   useLayoutEffect(() => {
     const el = rowRefs.current[selectedIndex];

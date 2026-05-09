@@ -1175,10 +1175,12 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let _ = win.emit("clipboard-overlay-data", payload);
 
     let _ = win.show();
-    let _ = win.set_focus();
+    // No set_focus() — WS_EX_NOACTIVATE prevents focus steal; keyboard routed via LL hook.
+    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
 fn hide_clipboard_overlay(app: &tauri::AppHandle) {
+    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(false, std::sync::atomic::Ordering::SeqCst);
     if let Some(win) = app.get_webview_window("clipboardoverlay") {
         let _ = win.hide();
     }
@@ -2232,6 +2234,21 @@ pub fn run() {
                     }
                 });
             }
+            // Apply WS_EX_NOACTIVATE so the overlay never steals focus from the
+            // active app when shown. Keyboard input is routed via the LL hook instead.
+            #[cfg(target_os = "windows")]
+            if let Ok(hwnd) = clipoverlay_win.hwnd() {
+                unsafe {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        GetWindowLongW, SetWindowLongW,
+                    };
+                    const GWL_EXSTYLE: i32 = -20;
+                    const WS_EX_NOACTIVATE: u32 = 0x08000000;
+                    let ex = GetWindowLongW(hwnd.0 as _, GWL_EXSTYLE) as u32;
+                    SetWindowLongW(hwnd.0 as _, GWL_EXSTYLE, (ex | WS_EX_NOACTIVATE) as i32);
+                }
+            }
+
             // Suppress unused variable warning
             let _ = &clipoverlay_win;
 

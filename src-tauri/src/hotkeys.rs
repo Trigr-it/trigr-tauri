@@ -58,6 +58,11 @@ pub static FILLIN_HWND: AtomicIsize = AtomicIsize::new(0);
 /// When true, a fill-in prompt is active — prevents concurrent fill-in invocations.
 pub static FILL_IN_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+/// When true, the clipboard overlay is visible and keyboard input is routed to it
+/// via the LL hook instead of DOM events (the overlay uses WS_EX_NOACTIVATE so it
+/// never steals focus from the active app).
+pub static CLIPBOARD_OVERLAY_VISIBLE: AtomicBool = AtomicBool::new(false);
+
 /// Keystroke captured during injection for later replay.
 pub struct BufferedKey {
     pub vk_code: u32,
@@ -1491,6 +1496,25 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // If moved below, capture will silently fail when Trigr has focus.
     // Skip if Trigr input field is focused (normal hotkey matching suppressed)
     if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
+        return;
+    }
+
+    // ── Clipboard overlay keyboard routing ─────────────────────────────────
+    // The overlay uses WS_EX_NOACTIVATE so it never activates the window,
+    // preventing focus-sensitive apps (SnagIt, drawing tools) from losing
+    // their text cursor when the overlay opens. All keyboard input is routed
+    // here instead of via DOM events.
+    // Note: Ctrl+Shift+V (toggle) is handled above and has already returned.
+    if CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst) {
+        if !is_modifier_vk(vk) {
+            // Route bare or shift-modified keys (search input + navigation).
+            // Ctrl/Alt combos are suppressed silently — avoids firing hotkeys
+            // while the overlay is open.
+            if !MOD_CTRL.load(Ordering::SeqCst) && !MOD_ALT.load(Ordering::SeqCst) {
+                let shift = MOD_SHIFT.load(Ordering::SeqCst);
+                let _ = app.emit("clipboard-overlay-key", serde_json::json!({ "vk": vk, "shift": shift }));
+            }
+        }
         return;
     }
 
