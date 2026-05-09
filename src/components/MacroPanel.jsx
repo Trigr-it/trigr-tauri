@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, Fragment, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, Fragment, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
@@ -322,23 +323,144 @@ function HotkeyCaptureInput({ value, onChange }) {
   );
 }
 
-function AppForm({ value, onChange }) {
-  async function handleBrowse() {
+// AppPickerModal — searchable list of apps from Windows AppsFolder, with a
+// fallback to the file browser. Selecting an installed app stores an AUMID
+// (portable across devices); browsing a file stores an absolute path (does
+// not sync portably — same as the legacy behavior).
+function AppPickerModal({ onSelect, onClose }) {
+  const [apps, setApps] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const result = await window.electronAPI?.listInstalledApps();
+      if (!mounted) return;
+      setApps(Array.isArray(result) ? result : []);
+      setLoading(false);
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return apps;
+    return apps.filter(a => a.name.toLowerCase().includes(q));
+  }, [apps, search]);
+
+  async function handleBrowseFallback() {
     const path = await window.electronAPI?.browseForFile();
-    if (path) onChange({ ...value, path });
+    if (path) {
+      const baseName = path.split(/[\\/]/).pop().replace(/\.(exe|lnk|bat|cmd)$/i, '');
+      onSelect({ kind: 'path', path, appId: '', name: baseName });
+    }
   }
+
+  return createPortal(
+    <div className="app-picker-overlay" onClick={onClose}>
+      <div className="app-picker-modal" onClick={e => e.stopPropagation()}>
+        <div className="app-picker-header">
+          <input
+            className="form-input app-picker-search"
+            placeholder="Search installed apps..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            autoFocus
+          />
+          <button className="app-picker-close" type="button" onClick={onClose} title="Close">✕</button>
+        </div>
+        <div className="app-picker-list">
+          {loading ? (
+            <div className="app-picker-empty">Loading apps...</div>
+          ) : filtered.length === 0 ? (
+            <div className="app-picker-empty">
+              {apps.length === 0 ? 'No apps found.' : 'No matches.'}
+            </div>
+          ) : (
+            filtered.map(app => (
+              <button
+                key={app.appId}
+                type="button"
+                className="app-picker-item"
+                onClick={() => onSelect({ kind: 'aumid', path: '', appId: app.appId, name: app.name })}
+                title={app.appId}
+              >
+                <span className="app-picker-name">{app.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="app-picker-footer">
+          <span className="app-picker-hint">Can't find it?</span>
+          <button className="app-picker-browse-link" type="button" onClick={handleBrowseFallback}>
+            Browse for a file instead...
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function AppForm({ value, onChange }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  function handlePick(picked) {
+    setPickerOpen(false);
+    if (picked.kind === 'aumid') {
+      onChange({
+        ...value,
+        kind: 'aumid',
+        appId: picked.appId,
+        path: '',
+        appName: value.appName || picked.name || '',
+      });
+    } else {
+      onChange({
+        ...value,
+        kind: 'path',
+        appId: '',
+        path: picked.path,
+        appName: value.appName || picked.name || '',
+      });
+    }
+  }
+
+  // Display the chosen target — installed app name or absolute path.
+  const isAumid = value.kind === 'aumid' && !!value.appId;
+  const displayLabel = isAumid
+    ? (value.appName || 'Installed app')
+    : (value.path || '');
+
   return (
     <div className="form-section">
-      <label className="form-label">Application path</label>
+      <label className="form-label">Application</label>
       <div className="file-input-row">
         <input
           className="form-input"
-          placeholder="C:\Program Files\App\app.exe"
-          value={value.path || ''}
-          onChange={e => onChange({ ...value, path: e.target.value })}
+          placeholder="Pick an installed app or browse for a file..."
+          value={displayLabel}
+          onChange={e => onChange({ ...value, kind: 'path', appId: '', path: e.target.value })}
         />
-        <button className="browse-btn" type="button" onClick={handleBrowse}>Browse</button>
+        <button className="browse-btn" type="button" onClick={() => setPickerOpen(true)}>Pick app...</button>
       </div>
+      {isAumid && (
+        <div className="form-hint">
+          Syncs across devices — uses the Windows app identifier.
+        </div>
+      )}
+      {!isAumid && value.path && (
+        <div className="form-hint">
+          Absolute path — won't work on other devices unless the app is installed at the same location.
+        </div>
+      )}
       <label className="form-label" style={{ marginTop: 12 }}>Display name (optional)</label>
       <input
         className="form-input"
@@ -346,7 +468,7 @@ function AppForm({ value, onChange }) {
         value={value.appName || ''}
         onChange={e => onChange({ ...value, appName: e.target.value })}
       />
-      <div className="form-hint">Enter the full path to the .exe or any file to open.</div>
+      {pickerOpen && <AppPickerModal onSelect={handlePick} onClose={() => setPickerOpen(false)} />}
     </div>
   );
 }
@@ -745,6 +867,50 @@ function KeyCaptureInput({ value, onChange }) {
   );
 }
 
+// Open-App sub-row used inside SortableMacroStep — picker + optional args.
+function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const isAumid = appData.kind === 'aumid' && !!appData.appId;
+  const displayLabel = isAumid
+    ? (appData.appName || 'Installed app')
+    : (appData.path || '');
+
+  function handlePick(picked) {
+    setPickerOpen(false);
+    if (picked.kind === 'aumid') {
+      updateValue({ ...appData, kind: 'aumid', appId: picked.appId, appName: picked.name || appData.appName || '', path: '' });
+    } else {
+      updateValue({ ...appData, kind: 'path', appId: '', appName: appData.appName || picked.name || '', path: picked.path });
+    }
+  }
+
+  return (
+    <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+      <div className="file-input-row">
+        <input
+          className="form-input"
+          style={{ flex: 1 }}
+          placeholder="Pick an installed app or browse for a file..."
+          value={displayLabel}
+          readOnly
+        />
+        <button className="browse-btn" type="button" onClick={() => setPickerOpen(true)}>Pick app...</button>
+      </div>
+      {(advancedOpen || appData.args) ? (
+        <input
+          className="form-input"
+          placeholder="Arguments (optional)"
+          value={appData.args}
+          onChange={e => updateValue({ ...appData, args: e.target.value })}
+        />
+      ) : (
+        <button className="macro-advanced-toggle" type="button" onClick={toggleAdvanced}>+ Advanced</button>
+      )}
+      {pickerOpen && <AppPickerModal onSelect={handlePick} onClose={() => setPickerOpen(false)} />}
+    </div>
+  );
+}
+
 // ── Sortable step row (extracted for @dnd-kit) ─────────────────────────────
 
 let _nextStepId = 1;
@@ -760,7 +926,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Run AHK Script', 'Click at Position'].includes(step.type);
 
   // Parse JSON values for structured step types
-  let appData = { path: '', args: '' };
+  let appData = { kind: 'path', appId: '', appName: '', path: '', args: '' };
   if (step.type === 'Open App') { try { appData = { ...appData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
   let focusData = { process: '', title: '' };
   if (step.type === 'Focus Window') { try { focusData = { ...focusData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
@@ -869,33 +1035,14 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
       </div>
 
-      {/* Sub-row: Open App — path + browse, optional args */}
+      {/* Sub-row: Open App — picker + optional args */}
       {step.type === 'Open App' && (
-        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-          <div className="file-input-row">
-            <input
-              className="form-input"
-              style={{ flex: 1 }}
-              placeholder="C:\Program Files\App\app.exe"
-              value={appData.path}
-              readOnly
-            />
-            <button className="browse-btn" type="button" onClick={async () => {
-              const path = await window.electronAPI?.browseForFile();
-              if (path) updateStep({ ...step, value: JSON.stringify({ ...appData, path }) });
-            }}>Browse</button>
-          </div>
-          {(advancedOpen || appData.args) ? (
-            <input
-              className="form-input"
-              placeholder="Arguments (optional)"
-              value={appData.args}
-              onChange={e => updateStep({ ...step, value: JSON.stringify({ ...appData, args: e.target.value }) })}
-            />
-          ) : (
-            <button className="macro-advanced-toggle" type="button" onClick={toggleAdvanced}>+ Advanced</button>
-          )}
-        </div>
+        <MacroOpenAppRow
+          appData={appData}
+          updateValue={(next) => updateStep({ ...step, value: JSON.stringify(next) })}
+          advancedOpen={advancedOpen}
+          toggleAdvanced={toggleAdvanced}
+        />
       )}
 
       {/* Sub-row: Open Folder — path + browse */}
@@ -1375,7 +1522,7 @@ export default function MacroPanel({
         if (mouseOpt && (!formValue.modifiers || formValue.modifiers.length === 0)) return mouseOpt.label;
         return [...(formValue.modifiers || []), formValue.key].filter(Boolean).join('+') || 'Key combo';
       }
-      case 'app':    return formValue.appName || formValue.path?.split('\\').pop() || 'Application';
+      case 'app':    return formValue.appName || formValue.path?.split('\\').pop() || (formValue.appId ? 'Installed app' : 'Application');
       case 'folder': return formValue.folderName || formValue.path?.split('\\').pop() || 'Folder';
       case 'url':    return formValue.urlName || formValue.url || 'URL';
       case 'macro':  return `Macro (${(formValue.steps || []).length} steps)`;
@@ -1388,7 +1535,7 @@ export default function MacroPanel({
     switch (activeType) {
       case 'text':   return !!formValue.text?.trim();
       case 'hotkey': return !!formValue.key;
-      case 'app':    return !!formValue.path?.trim();
+      case 'app':    return !!(formValue.path?.trim() || formValue.appId?.trim());
       case 'folder': return !!formValue.path?.trim();
       case 'url':    return !!formValue.url?.trim();
       case 'macro':  return (formValue.steps || []).length > 0;

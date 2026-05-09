@@ -888,7 +888,9 @@ export default function Sidebar({
     } else if (macro.type === 'hotkey') {
       preview = macro.data?.target || macro.label || '';
     } else if (macro.type === 'app') {
-      preview = (macro.data?.path || '').split(/[/\\]/).pop() || '';
+      preview = macro.data?.kind === 'aumid'
+        ? (macro.data?.appName || 'Installed app')
+        : ((macro.data?.path || '').split(/[/\\]/).pop() || '');
     } else if (macro.type === 'url') {
       preview = macro.data?.url || '';
     } else if (macro.type === 'folder') {

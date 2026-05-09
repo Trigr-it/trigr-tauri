@@ -408,6 +408,82 @@ async fn browse_for_image(app: tauri::AppHandle) -> Value {
     }
 }
 
+// Enumerate installed apps via PowerShell's Get-StartApps. Returns an array
+// of { name, appId } where appId is the AUMID (for Store/UWP apps) or the
+// folder-GUID-prefixed path (for Win32 apps with Start Menu shortcuts). Both
+// forms can be launched portably across devices via `shell:AppsFolder\<appId>`.
+#[tauri::command]
+fn list_installed_apps() -> Value {
+    use std::process::Command;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-StartApps | ConvertTo-Json -Compress",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("[Trigr] list_installed_apps: failed to run PowerShell: {}", e);
+            return Value::Array(vec![]);
+        }
+    };
+
+    if !output.status.success() {
+        log::warn!(
+            "[Trigr] list_installed_apps: PowerShell exited non-zero (stderr: {})",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        return Value::Array(vec![]);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Result<Value> = serde_json::from_str(&stdout);
+
+    let raw_items = match parsed {
+        Ok(Value::Array(arr)) => arr,
+        // ConvertTo-Json emits a bare object when there's only one result.
+        Ok(obj @ Value::Object(_)) => vec![obj],
+        Ok(_) => {
+            log::warn!("[Trigr] list_installed_apps: unexpected JSON shape");
+            return Value::Array(vec![]);
+        }
+        Err(e) => {
+            log::warn!("[Trigr] list_installed_apps: JSON parse error: {}", e);
+            return Value::Array(vec![]);
+        }
+    };
+
+    let mut apps: Vec<Value> = raw_items
+        .into_iter()
+        .filter_map(|item| {
+            let name = item.get("Name").and_then(|v| v.as_str())?.trim().to_string();
+            let app_id = item.get("AppID").and_then(|v| v.as_str())?.trim().to_string();
+            if name.is_empty() || app_id.is_empty() {
+                return None;
+            }
+            Some(serde_json::json!({ "name": name, "appId": app_id }))
+        })
+        .collect();
+
+    // Sort case-insensitive by name for a stable picker order.
+    apps.sort_by(|a, b| {
+        let an = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let bn = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        an.to_lowercase().cmp(&bn.to_lowercase())
+    });
+
+    log::info!("[Trigr] list_installed_apps: returned {} apps", apps.len());
+    Value::Array(apps)
+}
+
 #[tauri::command]
 fn get_app_icon(path: String) -> Value {
     use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
@@ -2480,6 +2556,7 @@ pub fn run() {
             browse_for_file,
             browse_for_image,
             get_app_icon,
+            list_installed_apps,
             browse_for_folder,
             read_image_base64,
             // Profile export/import

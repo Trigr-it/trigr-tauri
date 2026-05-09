@@ -50,6 +50,53 @@ impl Drop for SuppressionGuard {
     }
 }
 
+// ── Unified app launcher (path or AppsFolder AUMID) ───────────────────────
+//
+// Single helper for both single-action `app` assignments and macro `Open App`
+// steps. When `kind == "aumid"`, prefixes the AppID with `shell:AppsFolder\`
+// so `ShellExecuteW` resolves it through the Windows Apps namespace — this is
+// portable across devices because the AUMID is the same wherever the app is
+// installed. When `kind == "path"` (legacy default), launches the absolute
+// path directly.
+
+fn shell_launch_app(kind: &str, path: &str, app_id: &str, args: &str) {
+    let target = if kind == "aumid" && !app_id.is_empty() {
+        format!("shell:AppsFolder\\{}", app_id)
+    } else {
+        path.to_string()
+    };
+
+    if target.is_empty() {
+        warn!("[Trigr] Open App: empty target (kind={})", kind);
+        return;
+    }
+
+    let verb: Vec<u16> = "open\0".encode_utf16().collect();
+    let file: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
+    let params_wide: Vec<u16> = if !args.is_empty() {
+        args.encode_utf16().chain(std::iter::once(0)).collect()
+    } else {
+        Vec::new()
+    };
+    let params_ptr = if !args.is_empty() { params_wide.as_ptr() } else { std::ptr::null() };
+
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            params_ptr,
+            std::ptr::null(),
+            SW_SHOW,
+        )
+    };
+    if (result as usize) > 32 {
+        info!("[Trigr] Open App: launched {}", target);
+    } else {
+        warn!("[Trigr] Open App: ShellExecuteW failed for {} (code {})", target, result as usize);
+    }
+}
+
 // ── AHK Script Runner process tracking ─────────────────────────────────────
 
 use std::collections::HashMap;
@@ -298,7 +345,14 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
             }
         }
 
-        "app" | "folder" => {
+        "app" => {
+            let kind = data.and_then(|d| d.get("kind")).and_then(|v| v.as_str()).unwrap_or("path");
+            let app_id = data.and_then(|d| d.get("appId")).and_then(|v| v.as_str()).unwrap_or("");
+            let path = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()).unwrap_or("");
+            shell_launch_app(kind, path, app_id, "");
+        }
+
+        "folder" => {
             if let Some(path) = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()) {
                 let _ = opener::open(path);
             }
@@ -1330,37 +1384,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     return;
                 }
             };
+            let kind = parsed.get("kind").and_then(|v| v.as_str()).unwrap_or("path");
+            let app_id = parsed.get("appId").and_then(|v| v.as_str()).unwrap_or("");
             let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            if path.is_empty() {
-                warn!("[Trigr] Open App step: empty path");
-                return;
-            }
             let args = parsed.get("args").and_then(|v| v.as_str()).unwrap_or("");
-
-            let verb: Vec<u16> = "open\0".encode_utf16().collect();
-            let file: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-            let params_wide: Vec<u16> = if !args.is_empty() {
-                args.encode_utf16().chain(std::iter::once(0)).collect()
-            } else {
-                Vec::new()
-            };
-            let params_ptr = if !args.is_empty() { params_wide.as_ptr() } else { std::ptr::null() };
-
-            let result = unsafe {
-                ShellExecuteW(
-                    std::ptr::null_mut(),
-                    verb.as_ptr(),
-                    file.as_ptr(),
-                    params_ptr,
-                    std::ptr::null(),
-                    SW_SHOW,
-                )
-            };
-            if (result as usize) > 32 {
-                info!("[Trigr] Open App: launched {}", path);
-            } else {
-                warn!("[Trigr] Open App: ShellExecuteW failed for {} (code {})", path, result as usize);
-            }
+            shell_launch_app(kind, path, app_id, args);
         }
 
         "Focus Window" => {

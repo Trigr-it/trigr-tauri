@@ -157,14 +157,41 @@ function searchItems(items, query, showAll) {
     return [];
   }
 
+  // Tokenize on whitespace; every token must match somewhere in the searched
+  // fields (AND logic). This lets queries like "marker pla" match
+  // "Marker - Plan Layout" — a contiguous-substring match would miss it
+  // because " - " breaks the substring.
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) {
+    return [];
+  }
+
   const scored = items
     .map(item => {
-      const scoreLabel   = scoreMatch(item.label,          query);
-      const scorePreview = scoreMatch(item.preview || '',  query);
-      const scoreCombo   = scoreMatch(item.comboLabel || '', query);
-      const scoreTrigger = scoreMatch(item.trigger || '',  query);
-      const scoreText    = scoreMatch(item.text || '',     query);
-      const bestScore    = Math.max(scoreLabel, scorePreview, scoreCombo, scoreTrigger, scoreText);
+      const fields = [
+        item.label      || '',
+        item.preview    || '',
+        item.comboLabel || '',
+        item.trigger    || '',
+        item.text       || '',
+      ];
+      const haystack = fields.join(' ').toLowerCase();
+
+      // Every token must appear somewhere in the joined haystack.
+      const allMatch = tokens.every(tok => haystack.includes(tok));
+      if (!allMatch) return { item, bestScore: 0 };
+
+      // Ranking signal: best per-field score across tokens. For single-token
+      // queries this is identical to the previous scoreMatch behavior, so the
+      // existing ordering is preserved for cases that already worked.
+      let bestScore = 0;
+      for (const f of fields) {
+        for (const tok of tokens) {
+          const s = scoreMatch(f, tok);
+          if (s > bestScore) bestScore = s;
+        }
+      }
+
       return { item, bestScore };
     })
     .filter(({ bestScore }) => bestScore > 0)

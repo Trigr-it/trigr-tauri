@@ -38,6 +38,7 @@ window.electronAPI = {
   browseForImage:  () => invoke('browse_for_image'),
   browseForFolder: () => invoke('browse_for_folder'),
   readImageBase64: (path) => invoke('read_image_base64', { path }),
+  listInstalledApps: () => invoke('list_installed_apps'),
 
   // ── Profile settings ────────────────────────────────────────────────────────
   updateProfileSettings: (settings) =>
