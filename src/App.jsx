@@ -59,6 +59,7 @@ function App() {
   const [overlayShowAll,             setOverlayShowAll]             = useState(true);
   const [overlayCloseAfterFiring,    setOverlayCloseAfterFiring]    = useState(true);
   const [overlayIncludeAutocorrect,  setOverlayIncludeAutocorrect]  = useState(false);
+  const [clipboardPreviewWidth,      setClipboardPreviewWidth]      = useState(480);
   const [doubleTapWindow,            setDoubleTapWindow]            = useState(300);
   const [updateInfo,     setUpdateInfo]     = useState(null);   // { version, percent, ready, dismissed }
   const [appVersion,     setAppVersion]     = useState('');
@@ -174,6 +175,7 @@ function App() {
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
+        setClipboardPreviewWidth(   Math.max(320, Math.min(1200, config.clipboardPreviewWidth ?? 480)));
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
         setQuickActionCategories(config.quickActionCategories || []);
@@ -340,6 +342,7 @@ function App() {
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
+        setClipboardPreviewWidth(   Math.max(320, Math.min(1200, config.clipboardPreviewWidth ?? 480)));
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
         setQuickActionCategories(config.quickActionCategories || []);
@@ -2547,7 +2550,14 @@ function App() {
             <AnalyticsPanel isPro={isPro} />
           )}
           {activeArea === 'clipboard' && (
-            <ClipboardPanel />
+            <ClipboardPanel
+              previewWidth={clipboardPreviewWidth}
+              onChangePreviewWidth={(w) => {
+                const clamped = Math.max(320, Math.min(1200, Math.round(w)));
+                setClipboardPreviewWidth(clamped);
+                window.electronAPI?.saveConfig({ clipboardPreviewWidth: clamped });
+              }}
+            />
           )}
           {activeArea === 'mapping' && activeView === 'radial' && (
             <RadialEditorView

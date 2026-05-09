@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
+import { SearchBar } from './SearchBar';
+import { findPresetIconForUrl } from '../utils/presetIcons';
 
 // ── Lazy image thumbnail ────────────────────────────────────────────────────
 
@@ -62,7 +64,122 @@ function formatStorageSize(bytes) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export default function ClipboardPanel() {
+// ── Colour parser/formatter helpers (shared by ColourPane) ──────────────────
+// Handles #RRGGBB, #RGB, rgb(...), rgba(...) — all formats classified as
+// 'Colour' by clipboard.rs:auto_tag(). Returns null if the input is anything else.
+function parseColourValue(input) {
+  if (!input) return null;
+  const t = input.trim();
+  let m = /^#([0-9a-fA-F]{6})(?:[0-9a-fA-F]{2})?$/.exec(t);
+  if (m) {
+    const hex = m[1].toLowerCase();
+    return {
+      r: parseInt(hex.substring(0, 2), 16),
+      g: parseInt(hex.substring(2, 4), 16),
+      b: parseInt(hex.substring(4, 6), 16),
+    };
+  }
+  m = /^#([0-9a-fA-F]{3})$/.exec(t);
+  if (m) {
+    const h = m[1].toLowerCase();
+    return {
+      r: parseInt(h[0] + h[0], 16),
+      g: parseInt(h[1] + h[1], 16),
+      b: parseInt(h[2] + h[2], 16),
+    };
+  }
+  m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(t);
+  if (m) {
+    return { r: +m[1], g: +m[2], b: +m[3] };
+  }
+  return null;
+}
+
+function rgbToHexUpper(r, g, b) {
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0; const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r)      h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else                h = (r - g) / d + 4;
+    h /= 6;
+  }
+  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+const safeCopy = async (text) => { try { await navigator.clipboard?.writeText(text); } catch {} };
+
+// ── Type-specific preview panes (Stage E) ───────────────────────────────────
+
+function LinkPane({ url, onCopyToast }) {
+  const iconFile = findPresetIconForUrl(url);
+  return (
+    <div className="cbg-pane-link">
+      <div className="cbg-pane-link-head">
+        {iconFile
+          ? <img className="cbg-pane-icon" src={`/preset-icons/${iconFile}`} alt="" draggable={false} onError={e => { e.currentTarget.style.display = 'none'; }} />
+          : <span className="cbg-pane-icon-fallback" aria-hidden="true">🔗</span>
+        }
+        <div className="cbg-pane-link-url" title={url}>{url}</div>
+      </div>
+      <div className="cbg-pane-actions">
+        <button className="cbg-dbtn cbg-dbtn-paste" type="button" onClick={() => window.electronAPI?.openExternal(url)}>Open</button>
+        <button className="cbg-dbtn" type="button" onClick={() => { safeCopy(url); onCopyToast?.('url'); }}>Copy</button>
+      </div>
+    </div>
+  );
+}
+
+function EmailPane({ email, onCopyToast }) {
+  return (
+    <div className="cbg-pane-email">
+      <div className="cbg-pane-email-addr" title={email}>{email}</div>
+      <div className="cbg-pane-actions">
+        <button className="cbg-dbtn cbg-dbtn-paste" type="button" onClick={() => window.electronAPI?.openExternal(`mailto:${email}`)}>Mailto</button>
+        <button className="cbg-dbtn" type="button" onClick={() => { safeCopy(email); onCopyToast?.('email'); }}>Copy</button>
+      </div>
+    </div>
+  );
+}
+
+function ColourPane({ value }) {
+  const parsed = parseColourValue(value);
+  if (!parsed) {
+    // Unparseable input — fall back to plain text view so we never lose content.
+    return <pre className="cbg-detail-text">{value}</pre>;
+  }
+  const hex = rgbToHexUpper(parsed.r, parsed.g, parsed.b);
+  const rgb = `rgb(${parsed.r}, ${parsed.g}, ${parsed.b})`;
+  const { h, s, l } = rgbToHsl(parsed.r, parsed.g, parsed.b);
+  const hsl = `hsl(${h}, ${s}%, ${l}%)`;
+  return (
+    <div className="cbg-pane-colour">
+      <div className="cbg-pane-colour-swatch" style={{ background: hex }} aria-label={`Colour swatch ${hex}`} />
+      <div className="cbg-pane-colour-rows">
+        {[
+          { label: 'Hex', value: hex },
+          { label: 'RGB', value: rgb },
+          { label: 'HSL', value: hsl },
+        ].map(row => (
+          <div className="cbg-pane-colour-row" key={row.label}>
+            <span className="cbg-pane-colour-label">{row.label}</span>
+            <code className="cbg-pane-colour-value">{row.value}</code>
+            <button className="cbg-dbtn" type="button" onClick={() => safeCopy(row.value)}>Copy</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth }) {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -77,8 +194,40 @@ export default function ClipboardPanel() {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
   const [storageSize, setStorageSize] = useState(null);
+  // Live width during drag — null when not resizing. Persisted width comes from props.
+  const [dragWidth, setDragWidth] = useState(null);
+  const effectivePreviewWidth = dragWidth ?? previewWidth;
+  // Image-pane state — OCR result, loading/error, dominant colours, zoom toggle
+  const [ocrText, setOcrText]         = useState(null);
+  const [ocrLoading, setOcrLoading]   = useState(false);
+  const [ocrError, setOcrError]       = useState(null);
+  const [imageColors, setImageColors] = useState([]);
+  const [imageZoomMode, setImageZoomMode] = useState('fit'); // 'fit' | 'zoom'
+  const [copyToast, setCopyToast]     = useState(null); // for swatch hex-copy feedback
   const ctxRef = useRef(null);
   const gridRef = useRef(null);
+
+  // Resize-handle drag tracking
+  const startResize = useCallback((e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = previewWidth;
+    let lastW = startW;
+    const onMove = (ev) => {
+      // Handle is on the LEFT edge — moving left grows the pane (further from grid).
+      const delta = startX - ev.clientX;
+      lastW = Math.max(320, Math.min(1200, startW + delta));
+      setDragWidth(lastW);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setDragWidth(null);
+      onChangePreviewWidth?.(lastW);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [previewWidth, onChangePreviewWidth]);
 
   const PER_PAGE = 50;
 
@@ -146,7 +295,94 @@ export default function ClipboardPanel() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [editing, selectedId]);
 
-  const handlePaste = async (id) => { await window.electronAPI?.pasteClipboardItem(id); };
+  const handlePaste = async (id) => {
+    await window.electronAPI?.pasteClipboardItem(id);
+    // Optimistic counter bump — Rust increments asynchronously; reconciles on next loadHistory.
+    setItems(prev => prev.map(it => it.id === id ? { ...it, paste_count: (it.paste_count || 0) + 1 } : it));
+  };
+
+  // Paste arbitrary (possibly transformed/edited) text — does NOT modify the source row.
+  // The Rust side increments paste_count for the source clip when sourceId is provided.
+  const handlePasteText = async (text, sourceId) => {
+    if (!text) return;
+    await window.electronAPI?.pasteText(text, sourceId ?? null);
+    // Optimistic UI bump so the counter reflects immediately; will reconcile on next loadHistory.
+    if (sourceId) {
+      setItems(prev => prev.map(it => it.id === sourceId ? { ...it, paste_count: (it.paste_count || 0) + 1 } : it));
+    }
+  };
+
+  // Plain transform — replaces fancy unicode (curly quotes, em-dash, ellipsis, NBSP) with
+  // ASCII equivalents and strips zero-width characters. Useful for pasting copy from
+  // word processors and web pages that smuggled in non-ASCII characters.
+  const toPlainAscii = (s) => (s || '')
+    .replace(/[‘’‚‛]/g, "'")     // curly singles → '
+    .replace(/[“”„‟]/g, '"')     // curly doubles → "
+    .replace(/[–—]/g, '-')                  // en/em dash → -
+    .replace(/…/g, '...')                        // ellipsis → ...
+    .replace(/ /g, ' ')                          // NBSP → space
+    .replace(/[​-‍﻿]/g, '');           // zero-width chars → removed
+
+  // Smart-action detection — strict matches against the trimmed full text.
+  const detectSmartAction = (rawText) => {
+    const t = (rawText || '').trim();
+    if (!t) return { kind: null };
+    if (/^https?:\/\/\S+$/.test(t)) return { kind: 'url', value: t };
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return { kind: 'email', value: t };
+    // Phone: only digits/space/-/+/() characters, AND at least 7 digits total
+    if (/^[\d\s\-+()]+$/.test(t)) {
+      const digits = t.replace(/\D/g, '');
+      if (digits.length >= 7) return { kind: 'phone', value: t, digits };
+    }
+    return { kind: null };
+  };
+
+  // Counts row helpers
+  const countWords = (s) => (s || '').trim() ? (s.trim().match(/\S+/g) || []).length : 0;
+  const countLines = (s) => (s || '').length === 0 ? 0 : (s.match(/\n/g) || []).length + 1;
+
+  // ── Image preview helpers ──
+  const rgbToHex = (r, g, b) =>
+    '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+
+  const copyHexToClipboard = async (hex) => {
+    try { await navigator.clipboard?.writeText(hex); setCopyToast(hex); setTimeout(() => setCopyToast(null), 1200); } catch {}
+  };
+
+  const handleRunOcr = async () => {
+    if (!selectedId) return;
+    setOcrLoading(true);
+    setOcrError(null);
+    try {
+      const text = await window.electronAPI?.ocrClipboardImage(selectedId);
+      setOcrText(text || '');
+    } catch (e) {
+      setOcrError(typeof e === 'string' ? e : (e?.message || 'OCR failed'));
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  // Reset image-pane state whenever selection changes — prevents stale OCR/colours
+  // from a previous image leaking into the next preview.
+  useEffect(() => {
+    setOcrText(null);
+    setOcrError(null);
+    setOcrLoading(false);
+    setImageColors([]);
+    setImageZoomMode('fit');
+  }, [selectedId]);
+
+  // Fetch dominant colours when an image is selected.
+  useEffect(() => {
+    const sel = items.find(i => i.id === selectedId);
+    if (!sel || sel.content_type !== 'image') return;
+    let cancelled = false;
+    window.electronAPI?.getClipboardImageColors?.(selectedId).then(cols => {
+      if (!cancelled && Array.isArray(cols)) setImageColors(cols);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedId, items]);
 
   const handleDelete = async (id) => {
     const ok = await window.electronAPI?.deleteClipboardItem(id);
@@ -166,7 +402,13 @@ export default function ClipboardPanel() {
 
   const handleClearAll = async () => {
     const ok = await window.electronAPI?.clearClipboardHistory();
-    if (ok) { setItems([]); setTotal(0); setSelectedId(null); }
+    if (ok) {
+      setItems([]); setTotal(0); setSelectedId(null);
+      // Refresh storage size so the toolbar reflects post-VACUUM file size,
+      // not the stale value cached when the panel mounted.
+      const size = await window.electronAPI?.getClipboardStorageSize?.();
+      if (size != null) setStorageSize(size);
+    }
     setClearConfirm(false);
   };
 
@@ -244,46 +486,43 @@ export default function ClipboardPanel() {
   const isTextOnly = selected && selected.content_type === 'text';
 
   return (
-    <div className={`cbg-panel${selected ? ' cbg-panel-split' : ''}`}>
-      {/* ── Left: toolbar + grid ── */}
-      <div className="cbg-main">
-        <div className="cbg-toolbar">
-          <input
-            className="cbg-search"
-            placeholder="Search clipboard history…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            spellCheck={false}
-          />
-          {storageSize != null && storageSize > 0 && (
-            <span className="cbg-storage-size">{formatStorageSize(storageSize)}</span>
-          )}
-          {clearConfirm ? (
-            <div className="cbg-clear-confirm">
-              <span>Clear?</span>
-              <button className="cbg-clear-yes" onClick={handleClearAll} type="button">Yes</button>
-              <button className="cbg-clear-no" onClick={() => setClearConfirm(false)} type="button">No</button>
-            </div>
-          ) : (
-            <button className="cbg-clear-btn" onClick={() => setClearConfirm(true)} type="button" disabled={items.length === 0}>
-              Clear All
-            </button>
-          )}
+    <div className="cbg-panel">
+      {/* ── Toolbar — always full width, independent of preview ── */}
+      <div className="cbg-toolbar">
+        <select className="cbg-app-filter" value={filterApp} onChange={e => setFilterApp(e.target.value)}>
+          <option value="">All Apps</option>
+          {sourceApps.map(app => <option key={app} value={app}>{app}</option>)}
+        </select>
+        <div className="cbg-tag-pills">
+          {ALL_TAGS.map(tag => (
+            <button key={tag} className={`cbg-tag-pill${filterTag === tag ? ' cbg-tag-active' : ''}`}
+              onClick={() => setFilterTag(tag)} type="button">{tag}</button>
+          ))}
         </div>
-
-        <div className="cbg-filters">
-          <select className="cbg-app-filter" value={filterApp} onChange={e => setFilterApp(e.target.value)}>
-            <option value="">All Apps</option>
-            {sourceApps.map(app => <option key={app} value={app}>{app}</option>)}
-          </select>
-          <div className="cbg-tag-pills">
-            {ALL_TAGS.map(tag => (
-              <button key={tag} className={`cbg-tag-pill${filterTag === tag ? ' cbg-tag-active' : ''}`}
-                onClick={() => setFilterTag(tag)} type="button">{tag}</button>
-            ))}
+        <SearchBar
+          className="cbg-search-bar"
+          placeholder="Search clipboard history…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {storageSize != null && storageSize > 0 && (
+          <span className="cbg-storage-size">{formatStorageSize(storageSize)}</span>
+        )}
+        {clearConfirm ? (
+          <div className="cbg-clear-confirm">
+            <span>Clear?</span>
+            <button className="cbg-clear-yes" onClick={handleClearAll} type="button">Yes</button>
+            <button className="cbg-clear-no" onClick={() => setClearConfirm(false)} type="button">No</button>
           </div>
-        </div>
+        ) : (
+          <button className="cbg-clear-btn" onClick={() => setClearConfirm(true)} type="button" disabled={items.length === 0}>
+            Clear All
+          </button>
+        )}
+      </div>
 
+      {/* ── Body: grid (+ preview when an item is selected) ── */}
+      <div className={`cbg-main${selected ? ' cbg-main-split' : ''}`}>
         <div className="cbg-grid-wrap" ref={gridRef} onScroll={handleScroll}>
           {filtered.length === 0 ? (
             <div className="cbg-empty">
@@ -352,16 +591,34 @@ export default function ClipboardPanel() {
           )}
           {loading && <div className="cbg-loading">Loading…</div>}
         </div>
-      </div>
 
-      {/* ── Right: detail pane ── */}
-      {selected && (
+        {/* ── Right: detail pane — shares the body row with the grid ── */}
+        {selected && (
         <>
           <div className="cbg-divider" />
-          <div className="cbg-detail">
+          <div className="cbg-detail" style={{ width: `${effectivePreviewWidth}px` }}>
+            <div
+              className="cbg-detail-resize"
+              onMouseDown={startResize}
+              title="Drag to resize"
+              role="separator"
+              aria-label="Resize preview pane"
+            />
+            <button
+              className="cbg-detail-close"
+              onClick={() => { setSelectedId(null); setEditing(false); }}
+              title="Close preview"
+              type="button"
+            >✕</button>
             <div className="cbg-detail-content">
               {selected.content_type === 'image' ? (
-                <ImageThumb id={selected.id} className="cbg-detail-img" zoomable />
+                <div
+                  className={`cbg-detail-img-wrap cbg-detail-img-${imageZoomMode}`}
+                  onClick={() => setImageZoomMode(m => (m === 'fit' ? 'zoom' : 'fit'))}
+                  title={imageZoomMode === 'fit' ? 'Click to zoom 1:1' : 'Click to fit'}
+                >
+                  <ImageThumb id={selected.id} className="cbg-detail-img" zoomable={false} />
+                </div>
               ) : editing ? (
                 <textarea
                   className="cbg-detail-textarea"
@@ -370,6 +627,12 @@ export default function ClipboardPanel() {
                   autoFocus
                   spellCheck={false}
                 />
+              ) : selected.content_tag === 'Link' ? (
+                <LinkPane url={selected.text_content || selected.preview || ''} />
+              ) : selected.content_tag === 'Email' ? (
+                <EmailPane email={selected.text_content || selected.preview || ''} />
+              ) : selected.content_tag === 'Colour' ? (
+                <ColourPane value={selected.text_content || selected.preview || ''} />
               ) : (
                 <pre className="cbg-detail-text" style={{ fontSize: (() => {
                   const len = (selected.text_content || selected.preview || '').length;
@@ -379,6 +642,117 @@ export default function ClipboardPanel() {
                 })() }}>{selected.text_content || selected.preview || ''}</pre>
               )}
             </div>
+
+            {/* ── Text-type extras (counts, transforms, smart actions) ──    */}
+            {/* Skip when a custom pane is rendering (Link/Email/Colour) — those */}
+            {/* panes already provide tag-appropriate buttons.                    */}
+            {selected.content_type === 'text' && !editing
+              && !['Link', 'Email', 'Colour'].includes(selected.content_tag)
+              && (() => {
+              const fullText = selected.text_content || selected.preview || '';
+              const words = countWords(fullText);
+              const chars = fullText.length;
+              const lines = countLines(fullText);
+              const smart = detectSmartAction(fullText);
+              return (
+                <>
+                  <div className="cbg-detail-counts">
+                    <span>{words} word{words === 1 ? '' : 's'}</span>
+                    <span className="cbg-counts-sep">·</span>
+                    <span>{chars} char{chars === 1 ? '' : 's'}</span>
+                    <span className="cbg-counts-sep">·</span>
+                    <span>{lines} line{lines === 1 ? '' : 's'}</span>
+                  </div>
+                  {fullText.trim() && (
+                    <div className="cbg-transform-pills">
+                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(fullText.toLowerCase(), selected.id)}>lowercase</button>
+                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(fullText.toUpperCase(), selected.id)}>UPPERCASE</button>
+                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(fullText.trim(), selected.id)}>Trimmed</button>
+                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(toPlainAscii(fullText), selected.id)}>Plain</button>
+                    </div>
+                  )}
+                  {smart.kind && (
+                    <div className="cbg-smart-actions">
+                      {smart.kind === 'url' && (
+                        <button className="cbg-dbtn" type="button" onClick={() => window.electronAPI?.openExternal(smart.value)}>Open</button>
+                      )}
+                      {smart.kind === 'email' && (
+                        <button className="cbg-dbtn" type="button" onClick={() => window.electronAPI?.openExternal(`mailto:${smart.value}`)}>Email</button>
+                      )}
+                      {smart.kind === 'phone' && (
+                        <button className="cbg-dbtn" type="button" onClick={() => window.electronAPI?.openExternal(`tel:${smart.digits}`)}>Call</button>
+                      )}
+                      <button
+                        className="cbg-dbtn"
+                        type="button"
+                        onClick={() => { try { navigator.clipboard?.writeText(smart.value); } catch {} }}
+                      >Copy</button>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* ── Image-type extras (OCR, colours, save) ── */}
+            {selected.content_type === 'image' && (
+              <>
+                <div className="cbg-image-actions">
+                  <button
+                    className="cbg-dbtn"
+                    type="button"
+                    onClick={handleRunOcr}
+                    disabled={ocrLoading}
+                  >
+                    {ocrLoading ? 'Extracting…' : 'Extract text'}
+                  </button>
+                  <button
+                    className="cbg-dbtn"
+                    type="button"
+                    onClick={() => window.electronAPI?.saveClipboardImageAs(selected.id, 'png')}
+                  >Save as PNG</button>
+                  <button
+                    className="cbg-dbtn"
+                    type="button"
+                    onClick={() => window.electronAPI?.saveClipboardImageAs(selected.id, 'jpg')}
+                  >Save as JPG</button>
+                </div>
+                {ocrError && (
+                  <div className="cbg-ocr-error">OCR not available on this system.</div>
+                )}
+                {ocrText !== null && !ocrError && (
+                  <div className="cbg-ocr-result">
+                    <div className="cbg-ocr-text">{ocrText.trim() || '(no text detected)'}</div>
+                    {ocrText.trim() && (
+                      <button
+                        className="cbg-dbtn"
+                        type="button"
+                        onClick={() => { try { navigator.clipboard?.writeText(ocrText); setCopyToast('text'); setTimeout(() => setCopyToast(null), 1200); } catch {} }}
+                      >{copyToast === 'text' ? 'Copied!' : 'Copy text'}</button>
+                    )}
+                  </div>
+                )}
+                {imageColors.length > 0 && (
+                  <div className="cbg-color-swatches">
+                    {imageColors.map((rgb, idx) => {
+                      const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="cbg-color-swatch-btn"
+                          style={{ background: hex }}
+                          onClick={() => copyHexToClipboard(hex)}
+                          title={`${hex} — click to copy`}
+                        >
+                          {copyToast === hex && <span className="cbg-swatch-copied">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
             <div className="cbg-detail-meta">
               {selected.source_app && (
                 <>
@@ -410,9 +784,20 @@ export default function ClipboardPanel() {
                 )}
                 {editing && (
                   <>
-                    <button className="cbg-dbtn cbg-dbtn-save" onClick={handleSaveEdit} type="button">Save</button>
+                    <button className="cbg-dbtn cbg-dbtn-save" onClick={handleSaveEdit} type="button" title="Save edit to this clip in the database">Save</button>
+                    <button
+                      className="cbg-dbtn"
+                      onClick={() => handlePasteText(editText, selected.id)}
+                      type="button"
+                      title="Paste the edited text without modifying the original clip"
+                    >Paste edited</button>
                     <button className="cbg-dbtn" onClick={handleCancelEdit} type="button">Cancel</button>
                   </>
+                )}
+                {(selected.paste_count || 0) > 0 && (
+                  <span className="cbg-paste-count">
+                    Pasted {selected.paste_count} time{selected.paste_count === 1 ? '' : 's'}
+                  </span>
                 )}
               </div>
               <div className="cbg-detail-actions-r">
@@ -422,7 +807,8 @@ export default function ClipboardPanel() {
             </div>
           </div>
         </>
-      )}
+        )}
+      </div>
 
       {ctxMenu && (
         <div ref={ctxRef} className="cbg-ctx" style={{ top: ctxMenu.y, left: ctxMenu.x }}>

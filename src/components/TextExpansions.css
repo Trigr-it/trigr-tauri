@@ -2041,21 +2041,23 @@ button.te-col-header:hover {
 .te-type-filter {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .te-type-filter-pill {
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: transparent;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  background: var(--bg-elevated);
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.03em;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
 }
 
 .te-type-filter-pill:hover {

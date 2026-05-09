@@ -84,6 +84,9 @@ enum ClipboardMsg {
         new_text: String,
         reply: mpsc::Sender<Option<String>>, // returns new content_tag on success
     },
+    IncrementPasteCount {
+        id: i64,
+    },
     Prune,
 }
 
@@ -264,6 +267,9 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             // Schema migration: add source_app and content_tag columns if missing
             let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN source_app TEXT NOT NULL DEFAULT ''", []);
             let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN content_tag TEXT NOT NULL DEFAULT 'Text'", []);
+            // paste_count: number of times this entry has been pasted via the main UI.
+            // DEFAULT 0 — existing rows get 0 cleanly, no data loss.
+            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN paste_count INTEGER NOT NULL DEFAULT 0", []);
 
             info!("[Trigr] Clipboard DB ready: {}", db_path.display());
 
@@ -301,6 +307,12 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                     ClipboardMsg::UpdateItem { id, new_text, reply } => {
                         let result = handle_update_item(&conn, id, &new_text);
                         let _ = reply.send(result);
+                    }
+                    ClipboardMsg::IncrementPasteCount { id } => {
+                        let _ = conn.execute(
+                            "UPDATE clipboard_history SET paste_count = paste_count + 1 WHERE id = ?1",
+                            rusqlite::params![id],
+                        );
                     }
                     ClipboardMsg::Prune => handle_prune(&conn),
                 }
@@ -446,6 +458,47 @@ pub fn get_retention() -> u32 {
     retention_days()
 }
 
+/// Extracts up to `n` dominant RGB colours from PNG bytes via the color-thief
+/// crate. Returns empty Vec on decode/extraction failure.
+pub fn dominant_colors(png_bytes: &[u8], n: usize) -> Vec<[u8; 3]> {
+    use color_thief::ColorFormat;
+
+    if png_bytes.is_empty() {
+        return Vec::new();
+    }
+    let img = match image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png) {
+        Ok(i) => i,
+        Err(_) => return Vec::new(),
+    };
+    let rgba = img.to_rgba8();
+    let pixels = rgba.as_raw();
+
+    // color-thief requires count >= 2 and quality 1..=10 (lower = more accurate, slower).
+    let count = n.clamp(2, 10) as u8;
+    let palette = match color_thief::get_palette(pixels, ColorFormat::Rgba, 10, count) {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    palette.into_iter().take(n).map(|c| [c.r, c.g, c.b]).collect()
+}
+
+/// Increments the paste_count for a given clipboard entry. Fire-and-forget —
+/// no reply channel; failures are silently dropped (best-effort counter).
+pub fn increment_paste_count(id: i64) {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(ClipboardMsg::IncrementPasteCount { id });
+        }
+    }
+}
+
+/// Returns the directory containing trigr-clipboard.db (and its WAL/SHM files).
+/// Used by the "Open clipboard folder" settings button so it always opens the
+/// real folder regardless of which AppData root the app picked at init.
+pub fn data_dir() -> Option<std::path::PathBuf> {
+    DB_PATH.get().and_then(|p| p.parent().map(|p| p.to_path_buf()))
+}
+
 pub fn get_storage_size() -> u64 {
     if let Some(path) = DB_PATH.get() {
         // Include WAL and SHM files in total size
@@ -516,7 +569,7 @@ fn handle_get_history(conn: &Connection, page: u32, per_page: u32) -> Value {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag
+            "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count
              FROM clipboard_history ORDER BY pinned DESC, id DESC LIMIT ?1 OFFSET ?2",
         )
         .unwrap();
@@ -534,6 +587,7 @@ fn handle_get_history(conn: &Connection, page: u32, per_page: u32) -> Value {
                 "pinned": row.get::<_, i32>(7).unwrap_or(0) != 0,
                 "source_app": row.get::<_, String>(8).unwrap_or_default(),
                 "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
+                "paste_count": row.get::<_, i64>(10).unwrap_or(0),
             }))
         })
         .unwrap()
@@ -563,10 +617,28 @@ fn handle_delete_item(conn: &Connection, id: i64) -> bool {
 }
 
 fn handle_clear_all(conn: &Connection) -> bool {
-    match conn.execute("DELETE FROM clipboard_history", []) {
-        Ok(_) => { info!("[Trigr] Clipboard history cleared"); true }
-        Err(e) => { error!("[Trigr] Failed to clear clipboard history: {}", e); false }
+    if let Err(e) = conn.execute("DELETE FROM clipboard_history", []) {
+        error!("[Trigr] Failed to clear clipboard history: {}", e);
+        return false;
     }
+    // Reclaim disk space. DELETE alone leaves the file at its high-water mark, and in
+    // WAL mode VACUUM alone leaves the .db-wal file large. Both steps are needed:
+    //   1. VACUUM         — rebuild .db, freeing pages held by deleted rows.
+    //   2. wal_checkpoint — flush WAL into .db and truncate .db-wal back to zero bytes.
+    let mut vacuum_ok = true;
+    if let Err(e) = conn.execute("VACUUM", []) {
+        error!("[Trigr] VACUUM after clear failed: {}", e);
+        vacuum_ok = false;
+    }
+    if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
+        error!("[Trigr] WAL truncate after clear failed: {}", e);
+        vacuum_ok = false;
+    }
+    if vacuum_ok {
+        info!("[Trigr] Clipboard history cleared, database vacuumed and WAL truncated");
+    }
+    // Always return true — the table is empty either way; only file size may not have shrunk.
+    true
 }
 
 fn handle_pin_item(conn: &Connection, id: i64, pinned: bool) -> bool {
@@ -615,7 +687,22 @@ fn handle_prune(conn: &Connection) {
         "DELETE FROM clipboard_history WHERE pinned = 0 AND timestamp < datetime('now', '-{} days')",
         days
     );
-    let _ = conn.execute(&query, []);
+    match conn.execute(&query, []) {
+        Ok(deleted) if deleted > 0 => {
+            info!("[Trigr] Pruned {} expired clipboard items", deleted);
+            // Reclaim space — VACUUM rebuilds .db, wal_checkpoint(TRUNCATE) shrinks .db-wal.
+            // Both are skipped when nothing was deleted (common case — handle_prune runs
+            // after every new clipboard entry).
+            if let Err(e) = conn.execute("VACUUM", []) {
+                error!("[Trigr] VACUUM after prune failed: {}", e);
+            }
+            if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
+                error!("[Trigr] WAL truncate after prune failed: {}", e);
+            }
+        }
+        Ok(_) => {} // nothing pruned — no space to reclaim
+        Err(e) => error!("[Trigr] Prune query failed: {}", e),
+    }
 }
 
 // ── Clipboard image helper ───────────────────────────────────────────────────

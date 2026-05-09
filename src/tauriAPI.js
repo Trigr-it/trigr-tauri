@@ -102,8 +102,9 @@ window.electronAPI = {
 
   // ── Config path & folder ────────────────────────────────────────────────────
   getConfigPath:    () => invoke('get_config_path'),
-  openConfigFolder: () => invoke('open_config_folder'),
-  openLogsFolder:   () => invoke('open_logs_folder'),
+  openConfigFolder:    () => invoke('open_config_folder'),
+  openLogsFolder:      () => invoke('open_logs_folder'),
+  openClipboardFolder: () => invoke('open_clipboard_folder'),
 
   // ── Shared config ──────────────────────────────────────────────────────────
   getSharedConfigPath:   ()     => invoke('get_shared_config_path'),
@@ -182,6 +183,10 @@ window.electronAPI = {
   // ── Clipboard Manager ──────────────────────────────────────────────────────
   getClipboardHistory:    (page, perPage) => invoke('get_clipboard_history', { page, perPage }),
   pasteClipboardItem:     (id)            => invoke('paste_clipboard_item', { id }),
+  pasteText:              (text, sourceId = null) => invoke('paste_text', { text, sourceId }),
+  ocrClipboardImage:      (id)            => invoke('ocr_clipboard_image', { id }),
+  getClipboardImageColors:(id)            => invoke('get_clipboard_image_colors', { id }),
+  saveClipboardImageAs:   (id, format)    => invoke('save_clipboard_image_as', { id, format }),
   deleteClipboardItem:    (id)            => invoke('delete_clipboard_item', { id }),
   clearClipboardHistory:  ()              => invoke('clear_clipboard_history'),
   pinClipboardItem:       (id, pinned)    => invoke('pin_clipboard_item', { id, pinned }),

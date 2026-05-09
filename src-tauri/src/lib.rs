@@ -9,6 +9,7 @@ mod expansions;
 mod foreground;
 mod hotkeys;
 mod licence;
+mod ocr;
 mod tray;
 mod voice;
 
@@ -992,6 +993,19 @@ fn open_logs_folder(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn open_clipboard_folder(_app: tauri::AppHandle) {
+    // Opens the actual folder containing trigr-clipboard.db (+ .db-wal, .db-shm).
+    // Uses clipboard::data_dir() so we get the real path the writer thread is
+    // using — not whatever Tauri's app_local_data_dir() / app_data_dir() guesses.
+    if let Some(dir) = clipboard::data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = opener::open(dir.to_string_lossy().as_ref());
+    } else {
+        log::warn!("[Trigr] open_clipboard_folder: clipboard module not initialised yet");
+    }
+}
+
+#[tauri::command]
 fn open_external(url: String) {
     let _ = opener::open(&url);
 }
@@ -1810,6 +1824,8 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
     let target_hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
 
     std::thread::spawn(move || {
+        // Counter is incremented after the paste path succeeds (set inside the match below).
+        let mut pasted_ok = false;
         // Hide the overlay first so focus transfer is clean
         std::thread::sleep(std::time::Duration::from_millis(30));
 
@@ -1858,6 +1874,7 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
                     if !prev.is_empty() && current.trim() == text.trim() {
                         actions::write_clipboard_pub(&prev);
                     }
+                    pasted_ok = true;
                 }
             }
             "image" => {
@@ -1890,6 +1907,7 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
                         actions::send_vk_key_pub(0xA2, true);
 
                         actions::restore_modifiers(&held);
+                        pasted_ok = true;
                     }
                 }
             }
@@ -1899,7 +1917,145 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
         drop(_suppress); // SUPPRESS_SIMULATED = false (even if image decode panicked)
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(false, std::sync::atomic::Ordering::SeqCst);
+
+        // Increment the paste counter for this entry (best-effort, fire-and-forget).
+        if pasted_ok {
+            clipboard::increment_paste_count(id);
+        }
     });
+}
+
+/// Paste arbitrary text via the standard release-modifiers + write-clipboard + Ctrl+V
+/// pipeline. Used for transformed/edited paste from the clipboard preview pane —
+/// does NOT modify the source clip's stored text. If `source_id` is provided, the
+/// source entry's paste_count is incremented.
+#[tauri::command]
+fn paste_text(text: String, source_id: Option<i64>, _app: tauri::AppHandle) {
+    if text.is_empty() {
+        return;
+    }
+    let target_hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let _suppress = actions::SuppressionGuard::new();
+
+        let held = actions::release_held_modifiers();
+
+        if target_hwnd != 0 {
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
+                    target_hwnd as _,
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let prev = actions::read_clipboard_pub().unwrap_or_default();
+        let pasted_ok = if actions::write_clipboard_pub(&text) {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+
+            // Ctrl+V
+            actions::send_vk_key_pub(0xA2, false);
+            actions::send_vk_key_pub(0x56, false);
+            actions::send_vk_key_pub(0x56, true);
+            actions::send_vk_key_pub(0xA2, true);
+
+            actions::restore_modifiers(&held);
+
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let current = actions::read_clipboard_pub().unwrap_or_default();
+            if !prev.is_empty() && current.trim() == text.trim() {
+                actions::write_clipboard_pub(&prev);
+            }
+            true
+        } else {
+            actions::restore_modifiers(&held);
+            false
+        };
+
+        drop(_suppress);
+        actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+
+        if pasted_ok {
+            if let Some(id) = source_id {
+                clipboard::increment_paste_count(id);
+            }
+        }
+    });
+}
+
+/// Run OCR over a clipboard image. Returns Ok(text) or Err(reason). Runs the
+/// blocking WinRT calls on a separate thread so the IPC caller does not stall.
+#[tauri::command]
+async fn ocr_clipboard_image(id: i64) -> Result<String, String> {
+    let blob = match clipboard::get_image_blob(id) {
+        Some(b) => b,
+        None => return Err("Image not found".to_string()),
+    };
+    // tauri::async_runtime is tokio under the hood — spawn_blocking is the right call.
+    tauri::async_runtime::spawn_blocking(move || ocr::ocr_png_bytes(&blob))
+        .await
+        .map_err(|e| format!("OCR task join failed: {}", e))?
+}
+
+/// Returns up to 5 dominant RGB colours (as [r,g,b] arrays) for a clipboard image.
+#[tauri::command]
+fn get_clipboard_image_colors(id: i64) -> Vec<[u8; 3]> {
+    let blob = match clipboard::get_image_blob(id) {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
+    clipboard::dominant_colors(&blob, 5)
+}
+
+/// Save a clipboard image to a user-selected file path. format: "png" or "jpg".
+/// PNG is written directly from the BLOB; JPG is re-encoded via the image crate.
+#[tauri::command]
+fn save_clipboard_image_as(id: i64, format: String, app: tauri::AppHandle) -> bool {
+    use tauri_plugin_dialog::DialogExt;
+
+    let blob = match clipboard::get_image_blob(id) {
+        Some(b) => b,
+        None => return false,
+    };
+
+    let (default_name, filter_name, filter_exts): (String, &str, &[&str]) = if format == "jpg" {
+        (format!("clipboard-{}.jpg", id), "JPEG", &["jpg", "jpeg"])
+    } else {
+        (format!("clipboard-{}.png", id), "PNG", &["png"])
+    };
+
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title("Save image")
+        .set_file_name(&default_name)
+        .add_filter(filter_name, filter_exts)
+        .blocking_save_file();
+
+    let path = match file_path {
+        Some(p) => match p.into_path() {
+            Ok(pb) => pb,
+            Err(_) => return false,
+        },
+        None => return false,
+    };
+
+    if format == "jpg" {
+        // Re-encode PNG -> JPEG.
+        match image::load_from_memory_with_format(&blob, image::ImageFormat::Png) {
+            Ok(img) => img.save_with_format(&path, image::ImageFormat::Jpeg).is_ok(),
+            Err(_) => false,
+        }
+    } else {
+        // PNG: blob is already PNG-encoded — write straight to disk.
+        std::fs::write(&path, &blob).is_ok()
+    }
 }
 
 /// Write image to clipboard as CF_DIB + PNG stream + CF_UNICODETEXT.
@@ -2573,6 +2729,7 @@ pub fn run() {
             open_help,
             open_config_folder,
             open_logs_folder,
+            open_clipboard_folder,
             open_external,
             log_debug,
             // Overlay
@@ -2605,6 +2762,10 @@ pub fn run() {
             // Clipboard
             get_clipboard_history,
             paste_clipboard_item,
+            paste_text,
+            ocr_clipboard_image,
+            get_clipboard_image_colors,
+            save_clipboard_image_as,
             delete_clipboard_item,
             clear_clipboard_history,
             pin_clipboard_item,

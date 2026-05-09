@@ -4,6 +4,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './MacroPanel.css';
+import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
 
 const ACTION_TYPES = [
@@ -367,8 +368,8 @@ function AppPickerModal({ onSelect, onClose }) {
     <div className="app-picker-overlay" onClick={onClose}>
       <div className="app-picker-modal" onClick={e => e.stopPropagation()}>
         <div className="app-picker-header">
-          <input
-            className="form-input app-picker-search"
+          <SearchBar
+            className="app-picker-search-bar"
             placeholder="Search installed apps..."
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -409,7 +410,7 @@ function AppPickerModal({ onSelect, onClose }) {
   );
 }
 
-function AppForm({ value, onChange }) {
+export function AppForm({ value, onChange }) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   function handlePick(picked) {

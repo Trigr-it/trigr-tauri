@@ -935,57 +935,101 @@
   color: var(--text-primary);
 }
 
-.stp-preset-filter {
-  margin: 6px 12px;
-  padding: 5px 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-accent);
-  border-radius: 5px;
-  color: var(--text-primary);
-  font-size: 12px;
-  font-family: var(--font-body);
-  caret-color: var(--accent);
-  outline: none;
-}
-
-.stp-preset-filter::placeholder {
-  color: var(--text-muted);
+/* Preset picker filter — uses shared <SearchBar /> with this layout wrapper */
+.stp-preset-filter-bar {
+  margin: 8px 12px 4px;
 }
 
 .stp-preset-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0 6px;
+  padding: 8px 12px 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  align-content: start;
 }
 
-.stp-preset-row {
+/* Section headers span full grid width */
+.stp-preset-list .stp-preset-group-header {
+  grid-column: 1 / -1;
+  padding: 6px 2px 0;
+}
+
+/* ── Preset tiles (Raycast-style grid) ─────────────────────────────────── */
+
+.stp-tile {
+  position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
+  padding: 12px;
+  min-height: 108px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.08s;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s, box-shadow 0.12s;
   text-align: left;
   font-family: var(--font-body);
 }
 
-.stp-preset-row:hover {
-  background: var(--bg-active);
+.stp-tile:hover {
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 
-.stp-preset-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
+.stp-tile:focus-visible {
+  outline: none;
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.stp-tile-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: contain;
   flex-shrink: 0;
-  width: 110px;
+  background: var(--bg-active);
+  padding: 3px;
+  box-sizing: border-box;
 }
 
-.stp-preset-trigger {
+.stp-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.stp-tile-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+
+.stp-tile-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.stp-tile-trigger {
+  position: absolute;
+  top: 10px;
+  right: 10px;
   background: var(--bg-active);
   border: 1px solid var(--border-bright);
   border-bottom-width: 2px;
@@ -993,19 +1037,96 @@
   font-size: 10px;
   font-family: var(--font-display);
   font-weight: 700;
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 3px;
   letter-spacing: 0.04em;
-  flex-shrink: 0;
+  pointer-events: none;
 }
 
-.stp-preset-url {
-  font-size: 10px;
+/* Saved-template tile modifiers (active selection, hover delete, letter avatar) */
+
+.stp-tile.active {
+  border-color: var(--border-accent);
+  background: var(--accent-glow);
+  box-shadow: 0 0 0 1px var(--border-accent);
+}
+
+.stp-tile.active:hover {
+  background: var(--accent-glow-strong, var(--accent-glow));
+}
+
+.stp-tile-letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--bg-active);
+  letter-spacing: 0;
+  text-transform: uppercase;
+  padding: 0;
+}
+
+/* Coloured-glyph icon for Quick Actions (uses --glyph-color from inline style) */
+.stp-tile-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--glyph-color, var(--text-muted));
+  background: color-mix(in srgb, var(--glyph-color, var(--text-muted)) 14%, var(--bg-active));
+  padding: 0;
+  line-height: 1;
+}
+
+.stp-tile-del {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+  padding: 0;
+}
+
+.stp-tile:hover .stp-tile-del {
+  opacity: 1;
+}
+
+.stp-tile-del:hover {
+  background: rgba(232, 64, 64, 0.12);
+  color: var(--danger);
+  border-color: rgba(232, 64, 64, 0.3);
+}
+
+/* Saved-templates list as tile grid (modifier on .stp-list) */
+
+.stp-list.stp-list-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 10px 12px;
+  align-content: start;
+}
+
+.stp-list.stp-list-tiles .stp-group-header {
+  grid-column: 1 / -1;
+}
+
+.stp-list.stp-list-tiles .stp-empty-state {
+  grid-column: 1 / -1;
 }
 
 .stp-custom-btn {
@@ -1026,6 +1147,160 @@
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-glow);
+}
+
+/* ── Searchable language picker (Translate To) ──────────────────────────── */
+
+.stp-lang-picker {
+  position: relative;
+  width: 100%;
+}
+
+.stp-lang-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.stp-lang-trigger-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.stp-lang-trigger-code {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-active);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.stp-lang-trigger-caret {
+  color: var(--text-muted);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.stp-lang-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow: hidden;
+  animation: stp-lang-pop-in 0.12s ease-out;
+}
+
+@keyframes stp-lang-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Language combobox search — uses shared <SearchBar /> with this layout wrapper */
+.stp-lang-search-bar {
+  margin: 6px;
+  flex-shrink: 0;
+}
+
+.stp-lang-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 4px 4px;
+  min-height: 0;
+}
+
+.stp-lang-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  font-size: 12px;
+  transition: background 0.06s;
+}
+
+.stp-lang-row.highlight {
+  background: var(--bg-hover);
+}
+
+.stp-lang-row.selected {
+  color: var(--accent);
+}
+
+.stp-lang-row.selected.highlight {
+  background: var(--accent-glow);
+}
+
+.stp-lang-row-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.stp-lang-row-code {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-active);
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.stp-lang-row.selected .stp-lang-row-code {
+  color: var(--accent);
+}
+
+.stp-lang-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.stp-lang-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.stp-lang-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stp-lang-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */

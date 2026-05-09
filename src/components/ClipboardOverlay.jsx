@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import './ClipboardOverlay.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
+import { SearchBar } from './SearchBar';
 
 // ── Lazy image thumbnail loader ─────────────────────────────────────────────
 
@@ -278,14 +279,12 @@ export default function ClipboardOverlay() {
         {/* ── LEFT: list pane ── */}
         <div className="co-left">
           <div className="co-input-row">
-            <span className="co-search-icon">⌕</span>
-            <input
+            <SearchBar
               ref={inputRef}
-              className="co-search"
+              className="co-search-bar"
               placeholder="Search clipboard…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              spellCheck={false}
             />
             <span className="co-esc-hint">Esc</span>
           </div>

@@ -3,6 +3,7 @@ import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY
 import IconPicker from './IconPicker';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
+import { SearchBar } from './SearchBar';
 
 // Use the same radii as the live overlay (INNER_R=80, OUTER_R=130) for WYSIWYG.
 // The editor scales the wheel up via CSS to fill more space.
@@ -568,9 +569,14 @@ export default function RadialEditorView({
                     picks.sort((a, b) => a.label.localeCompare(b.label));
                     return (
                       <div className="rmp-popover-picker">
-                        <input className="form-input rmp-popover-search" placeholder="Search..." value={popover.search || ''}
+                        <SearchBar
+                          className="rmp-popover-search-bar compact"
+                          placeholder="Search..."
+                          value={popover.search || ''}
                           onChange={e => setPopover(p => ({ ...p, search: e.target.value }))}
-                          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setPopover(null); }} autoFocus />
+                          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setPopover(null); }}
+                          autoFocus
+                        />
                         <div className="rmp-popover-list">
                           {picks.length === 0 && <div className="rmp-popover-empty">No matching items</div>}
                           {picks.slice(0, 40).map(p => (

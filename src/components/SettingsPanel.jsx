@@ -520,11 +520,23 @@ export default function SettingsPanel({
             className="settings-action-btn"
             onClick={async () => {
               if (window.confirm('Clear all clipboard history? This cannot be undone.')) {
-                await window.electronAPI?.clearClipboardHistory();
+                const ok = await window.electronAPI?.clearClipboardHistory();
+                if (!ok) {
+                  window.alert('Failed to clear clipboard history. Check the log for details.');
+                }
               }
             }}
           >
             Clear Clipboard History
+          </button>
+
+          <button
+            type="button"
+            className="settings-action-btn"
+            onClick={() => window.electronAPI?.openClipboardFolder()}
+            title="Opens the AppData folder containing trigr-clipboard.db so you can manage the files manually."
+          >
+            Open clipboard folder
           </button>
         </section>
 

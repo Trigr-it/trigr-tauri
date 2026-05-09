@@ -4,6 +4,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './TextExpansions.css';
+import { SearchBar } from './SearchBar';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1352,9 +1353,8 @@ export default function TextExpansions({
                 className={`te-type-filter-pill${typeFilter === 'image' ? ' active' : ''}`}
                 onClick={() => setTypeFilter('image')}
               >Image</button>
-              <input
-                type="text"
-                className="te-search-input"
+              <SearchBar
+                className="te-search-bar"
                 placeholder="Search…"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}

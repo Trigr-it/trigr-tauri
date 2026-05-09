@@ -30,6 +30,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 rusqlite = { version = "0.31", features = ["bundled"] }
 notify = "8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+color-thief = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
@@ -39,6 +40,8 @@ windows = { version = "0.61", features = [
     "Media_SpeechRecognition",
     "Media_Devices",
     "Media_MediaProperties",
+    "Media_Ocr",
+    "Graphics_Imaging",
     "Foundation",
     "Foundation_Collections",
     "Devices_Enumeration",

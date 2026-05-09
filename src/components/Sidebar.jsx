@@ -4,6 +4,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDragg
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './Sidebar.css';
+import { SearchBar } from './SearchBar';
 import { friendlyKeyName } from './keyboardLayout';
 
 const TYPE_META = {
@@ -1059,13 +1060,11 @@ export default function Sidebar({
 
       <div className="sidebar-filter-wrap">
         <div className="sidebar-filter-input-wrap">
-          <input
-            className="sidebar-filter-input"
-            type="text"
+          <SearchBar
+            className="sidebar-filter-bar"
             placeholder="Filter assignments…"
             value={assignFilter}
             onChange={e => setAssignFilter(e.target.value)}
-            spellCheck={false}
           />
           {assignFilter && (
             <button className="sidebar-filter-clear" onClick={() => setAssignFilter('')} type="button">✕</button>

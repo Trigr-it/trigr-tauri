@@ -4,7 +4,9 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './SearchTemplatesPanel.css';
-import { MacroSequenceForm } from './MacroPanel';
+import { MacroSequenceForm, AppForm } from './MacroPanel';
+import { SearchBar } from './SearchBar';
+import { findPresetIconForUrl } from '../utils/presetIcons';
 
 // ── Colour palette (matches TextExpansions) ────────────────────────────────
 
@@ -71,26 +73,136 @@ function SortableCatRow({ id, children }) {
 // ── Bundled presets (with categories for grouped picker) ────────────────────
 
 const PRESETS = [
-  { label: 'Google',            trigger: 'g',      urlTemplate: 'https://www.google.com/search?q={query}',                                       category: 'Search' },
-  { label: 'DuckDuckGo',        trigger: 'ddg',    urlTemplate: 'https://duckduckgo.com/?q={query}',                                              category: 'Search' },
-  { label: 'ChatGPT',           trigger: 'gpt',    urlTemplate: 'https://chatgpt.com/?q={query}',                                                 category: 'AI' },
-  { label: 'Perplexity',        trigger: 'pp',     urlTemplate: 'https://www.perplexity.ai/search?q={query}',                                     category: 'AI' },
-  { label: 'GitHub',            trigger: 'gh',     urlTemplate: 'https://github.com/search?q={query}&type=repositories',                          category: 'Development' },
-  { label: 'Stack Overflow',    trigger: 'so',     urlTemplate: 'https://stackoverflow.com/search?q={query}',                                     category: 'Development' },
-  { label: 'MDN',               trigger: 'mdn',    urlTemplate: 'https://developer.mozilla.org/en-US/search?q={query}',                           category: 'Development' },
-  { label: 'npm',               trigger: 'npm',    urlTemplate: 'https://www.npmjs.com/search?q={query}',                                         category: 'Development' },
-  { label: 'Hacker News',       trigger: 'hn',     urlTemplate: 'https://hn.algolia.com/?q={query}',                                              category: 'Development' },
-  { label: 'YouTube',           trigger: 'yt',     urlTemplate: 'https://www.youtube.com/results?search_query={query}',                           category: 'Media' },
-  { label: 'Reddit',            trigger: 'r',      urlTemplate: 'https://www.reddit.com/search/?q={query}',                                       category: 'Media' },
-  { label: 'Wikipedia',         trigger: 'wiki',   urlTemplate: 'https://en.wikipedia.org/w/index.php?search={query}',                            category: 'Media' },
-  { label: 'Google Maps',       trigger: 'maps',   urlTemplate: 'https://www.google.com/maps/search/{query}',                                     category: 'Maps' },
-  { label: 'Ordnance Survey',   trigger: 'os',     urlTemplate: 'https://osdatahub.os.uk/search?q={query}',                                       category: 'Maps' },
-  { label: 'Companies House',   trigger: 'ch',     urlTemplate: 'https://find-and-update.company-information.service.gov.uk/search?q={query}',    category: 'UK Business' },
-  { label: 'Planning Portal',   trigger: 'plan',   urlTemplate: 'https://www.planningportal.co.uk/planning/search?q={query}',                     category: 'UK Business' },
-  { label: 'BSI Knowledge',     trigger: 'bsi',    urlTemplate: 'https://knowledge.bsigroup.com/search?q={query}',                                 category: 'UK Business' },
+  // ── Search ──
+  { label: 'Google',               trigger: 'g',     urlTemplate: 'https://www.google.com/search?q={query}',                                       category: 'Search',      icon: 'google.png',          description: 'Web search' },
+  { label: 'DuckDuckGo',           trigger: 'ddg',   urlTemplate: 'https://duckduckgo.com/?q={query}',                                              category: 'Search',      icon: 'duckduckgo.png',      description: 'Privacy-focused search' },
+  { label: 'Bing',                 trigger: 'bn',    urlTemplate: 'https://www.bing.com/search?q={query}',                                          category: 'Search',      icon: 'bing.png',            description: 'Microsoft search engine' },
+  { label: 'Brave Search',         trigger: 'bs',    urlTemplate: 'https://search.brave.com/search?q={query}',                                      category: 'Search',      icon: 'brave.png',           description: 'Independent privacy search' },
+  { label: 'Kagi',                 trigger: 'kg',    urlTemplate: 'https://kagi.com/search?q={query}',                                              category: 'Search',      icon: 'kagi.png',            description: 'Premium ad-free search' },
+  { label: 'Ecosia',               trigger: 'eco',   urlTemplate: 'https://www.ecosia.org/search?q={query}',                                        category: 'Search',      icon: 'ecosia.png',          description: 'Search that plants trees' },
+  { label: 'Yahoo',                trigger: 'yah',   urlTemplate: 'https://search.yahoo.com/search?p={query}',                                      category: 'Search',      icon: 'yahoo.png',           description: 'Yahoo web search' },
+  { label: 'Google Translate',     trigger: 'tr',    urlTemplate: 'https://translate.google.com/?sl=auto&tl=en&text={query}&op=translate',          category: 'Search',      icon: 'googletranslate.png', description: 'Translate (auto → English)' },
+
+  // ── AI ──
+  { label: 'ChatGPT',              trigger: 'gpt',   urlTemplate: 'https://chatgpt.com/?q={query}',                                                 category: 'AI',          icon: 'chatgpt.png',         description: 'AI chat assistant' },
+  { label: 'Perplexity',           trigger: 'pp',    urlTemplate: 'https://www.perplexity.ai/search?q={query}',                                     category: 'AI',          icon: 'perplexity.png',      description: 'AI-powered answers' },
+  { label: 'Phind',                trigger: 'phind', urlTemplate: 'https://www.phind.com/search?q={query}',                                         category: 'AI',          icon: null,                  description: 'AI search for developers' },
+  { label: 'You.com',              trigger: 'you',   urlTemplate: 'https://you.com/search?q={query}',                                               category: 'AI',          icon: 'you.png',             description: 'AI-assisted search' },
+  { label: 'Microsoft Copilot',    trigger: 'cop',   urlTemplate: 'https://copilot.microsoft.com/?q={query}',                                       category: 'AI',          icon: 'copilot.png',         description: 'Microsoft AI assistant' },
+
+  // ── Development ──
+  { label: 'GitHub',               trigger: 'gh',    urlTemplate: 'https://github.com/search?q={query}&type=repositories',                          category: 'Development', icon: 'github.png',          description: 'Code & repositories' },
+  { label: 'GitLab',               trigger: 'gl',    urlTemplate: 'https://gitlab.com/search?search={query}',                                       category: 'Development', icon: 'gitlab.png',          description: 'Code repositories' },
+  { label: 'Stack Overflow',       trigger: 'so',    urlTemplate: 'https://stackoverflow.com/search?q={query}',                                     category: 'Development', icon: 'stackoverflow.png',   description: 'Developer Q&A' },
+  { label: 'Server Fault',         trigger: 'sf',    urlTemplate: 'https://serverfault.com/search?q={query}',                                       category: 'Development', icon: 'serverfault.png',     description: 'Sysadmin Q&A' },
+  { label: 'Super User',           trigger: 'su',    urlTemplate: 'https://superuser.com/search?q={query}',                                         category: 'Development', icon: 'superuser.png',       description: 'Power-user Q&A' },
+  { label: 'MDN',                  trigger: 'mdn',   urlTemplate: 'https://developer.mozilla.org/en-US/search?q={query}',                           category: 'Development', icon: 'mdn.png',             description: 'Web docs & references' },
+  { label: 'W3Schools',            trigger: 'w3s',   urlTemplate: 'https://www.w3schools.com/search/search.asp?q={query}',                          category: 'Development', icon: 'w3schools.png',       description: 'Web tutorials' },
+  { label: 'Can I Use',            trigger: 'ciu',   urlTemplate: 'https://caniuse.com/?search={query}',                                            category: 'Development', icon: 'caniuse.png',         description: 'Browser feature support' },
+  { label: 'DevDocs',              trigger: 'dd',    urlTemplate: 'https://devdocs.io/#q={query}',                                                  category: 'Development', icon: 'devdocs.png',         description: 'Developer docs aggregator' },
+  { label: 'CodePen',              trigger: 'cp',    urlTemplate: 'https://codepen.io/search/pens?q={query}',                                       category: 'Development', icon: 'codepen.png',         description: 'Front-end playground' },
+  { label: 'regex101',             trigger: 're',    urlTemplate: 'https://regex101.com/?regex={query}',                                            category: 'Development', icon: 'regex101.png',        description: 'Regex tester' },
+  { label: 'npm',                  trigger: 'npm',   urlTemplate: 'https://www.npmjs.com/search?q={query}',                                         category: 'Development', icon: 'npm.png',             description: 'JavaScript packages' },
+  { label: 'PyPI',                 trigger: 'pip',   urlTemplate: 'https://pypi.org/search/?q={query}',                                             category: 'Development', icon: 'pypi.png',            description: 'Python packages' },
+  { label: 'crates.io',            trigger: 'cr',    urlTemplate: 'https://crates.io/search?q={query}',                                             category: 'Development', icon: 'crates.png',          description: 'Rust packages' },
+  { label: 'pkg.go.dev',           trigger: 'go',    urlTemplate: 'https://pkg.go.dev/search?q={query}',                                            category: 'Development', icon: 'pkggo.png',           description: 'Go packages' },
+  { label: 'NuGet',                trigger: 'nu',    urlTemplate: 'https://www.nuget.org/packages?q={query}',                                       category: 'Development', icon: 'nuget.png',           description: '.NET packages' },
+  { label: 'Packagist',            trigger: 'pkst',  urlTemplate: 'https://packagist.org/?query={query}',                                           category: 'Development', icon: 'packagist.png',       description: 'PHP packages' },
+  { label: 'Docker Hub',           trigger: 'dh',    urlTemplate: 'https://hub.docker.com/search?q={query}',                                        category: 'Development', icon: 'docker.png',          description: 'Container images' },
+  { label: 'Hugging Face',         trigger: 'hf',    urlTemplate: 'https://huggingface.co/search/full-text?q={query}',                              category: 'Development', icon: 'huggingface.png',     description: 'ML models & datasets' },
+  { label: 'Hacker News',          trigger: 'hn',    urlTemplate: 'https://hn.algolia.com/?q={query}',                                              category: 'Development', icon: 'hackernews.svg',      description: 'Tech news & discussion' },
+
+  // ── Reference ──
+  { label: 'Wolfram Alpha',        trigger: 'wa',    urlTemplate: 'https://www.wolframalpha.com/input?i={query}',                                   category: 'Reference',   icon: 'wolframalpha.png',    description: 'Computational answers' },
+  { label: 'Cambridge Dictionary', trigger: 'dict',  urlTemplate: 'https://dictionary.cambridge.org/search/english/?q={query}',                     category: 'Reference',   icon: 'cambridge.png',       description: 'English definitions' },
+  { label: 'Merriam-Webster',      trigger: 'mw',    urlTemplate: 'https://www.merriam-webster.com/dictionary/{query}',                             category: 'Reference',   icon: 'merriamwebster.png',  description: 'US English dictionary' },
+  { label: 'Thesaurus.com',        trigger: 'thes',  urlTemplate: 'https://www.thesaurus.com/browse/{query}',                                       category: 'Reference',   icon: 'thesaurus.png',       description: 'Synonyms & antonyms' },
+  { label: 'Etymonline',           trigger: 'etym',  urlTemplate: 'https://www.etymonline.com/search?q={query}',                                    category: 'Reference',   icon: 'etymonline.png',      description: 'Word etymology' },
+  { label: 'Britannica',           trigger: 'brit',  urlTemplate: 'https://www.britannica.com/search?query={query}',                                category: 'Reference',   icon: 'britannica.png',      description: 'Encyclopedia' },
+  { label: 'Quora',                trigger: 'quora', urlTemplate: 'https://www.quora.com/search?q={query}',                                         category: 'Reference',   icon: 'quora.png',           description: 'Community Q&A' },
+  { label: 'arxiv',                trigger: 'arx',   urlTemplate: 'https://arxiv.org/search/?searchtype=all&query={query}',                         category: 'Reference',   icon: 'arxiv.png',           description: 'Research papers' },
+  { label: 'PubMed',               trigger: 'pm',    urlTemplate: 'https://pubmed.ncbi.nlm.nih.gov/?term={query}',                                  category: 'Reference',   icon: 'pubmed.png',          description: 'Medical research' },
+  { label: 'IEEE Xplore',          trigger: 'ieee',  urlTemplate: 'https://ieeexplore.ieee.org/search/searchresult.jsp?queryText={query}',          category: 'Reference',   icon: null,                  description: 'Engineering papers' },
+  { label: 'Google Scholar',       trigger: 'gs',    urlTemplate: 'https://scholar.google.com/scholar?q={query}',                                   category: 'Reference',   icon: 'scholar.png',         description: 'Academic search' },
+  { label: 'Internet Archive',     trigger: 'ia',    urlTemplate: 'https://archive.org/search?query={query}',                                       category: 'Reference',   icon: 'archive.png',         description: 'Books, video, audio archive' },
+
+  // ── Media ──
+  { label: 'YouTube',              trigger: 'yt',    urlTemplate: 'https://www.youtube.com/results?search_query={query}',                           category: 'Media',       icon: 'youtube.png',         description: 'Video search' },
+  { label: 'Vimeo',                trigger: 'vim',   urlTemplate: 'https://vimeo.com/search?q={query}',                                             category: 'Media',       icon: 'vimeo.png',           description: 'Creator video platform' },
+  { label: 'Twitch',               trigger: 'tw',    urlTemplate: 'https://www.twitch.tv/search?term={query}',                                      category: 'Media',       icon: 'twitch.png',          description: 'Live streaming' },
+  { label: 'TikTok',               trigger: 'tik',   urlTemplate: 'https://www.tiktok.com/search?q={query}',                                        category: 'Media',       icon: 'tiktok.png',          description: 'Short-form video' },
+  { label: 'Reddit',               trigger: 'r',     urlTemplate: 'https://www.reddit.com/search/?q={query}',                                       category: 'Media',       icon: 'reddit.png',          description: 'Communities & posts' },
+  { label: 'X (Twitter)',          trigger: 'x',     urlTemplate: 'https://twitter.com/search?q={query}',                                           category: 'Media',       icon: 'twitter.png',         description: 'Posts & profiles' },
+  { label: 'LinkedIn',             trigger: 'li',    urlTemplate: 'https://www.linkedin.com/search/results/all/?keywords={query}',                  category: 'Media',       icon: 'linkedin.png',        description: 'Professional network' },
+  { label: 'Pinterest',            trigger: 'pin',   urlTemplate: 'https://www.pinterest.com/search/pins/?q={query}',                               category: 'Media',       icon: 'pinterest.png',       description: 'Visual inspiration boards' },
+  { label: 'Wikipedia',            trigger: 'wiki',  urlTemplate: 'https://en.wikipedia.org/w/index.php?search={query}',                            category: 'Media',       icon: 'wikipedia.png',       description: 'Encyclopedia articles' },
+  { label: 'Spotify',              trigger: 'sp',    urlTemplate: 'https://open.spotify.com/search/{query}',                                        category: 'Media',       icon: 'spotify.png',         description: 'Music & podcasts' },
+  { label: 'SoundCloud',           trigger: 'sc',    urlTemplate: 'https://soundcloud.com/search?q={query}',                                        category: 'Media',       icon: 'soundcloud.png',      description: 'Audio & tracks' },
+  { label: 'Bandcamp',             trigger: 'bc',    urlTemplate: 'https://bandcamp.com/search?q={query}',                                          category: 'Media',       icon: 'bandcamp.png',        description: 'Indie music marketplace' },
+  { label: 'IMDB',                 trigger: 'imdb',  urlTemplate: 'https://www.imdb.com/find?q={query}',                                            category: 'Media',       icon: 'imdb.png',            description: 'Movies & TV' },
+  { label: 'Letterboxd',           trigger: 'lbox',  urlTemplate: 'https://letterboxd.com/search/{query}/',                                         category: 'Media',       icon: 'letterboxd.png',      description: 'Film reviews & lists' },
+  { label: 'Goodreads',            trigger: 'gr',    urlTemplate: 'https://www.goodreads.com/search?q={query}',                                     category: 'Media',       icon: 'goodreads.png',       description: 'Book reviews' },
+  { label: 'Steam',                trigger: 'stm',   urlTemplate: 'https://store.steampowered.com/search/?term={query}',                            category: 'Media',       icon: 'steam.png',           description: 'PC game store' },
+  { label: 'Unsplash',             trigger: 'uns',   urlTemplate: 'https://unsplash.com/s/photos/{query}',                                          category: 'Media',       icon: 'unsplash.png',        description: 'Free stock photos' },
+
+  // ── Maps ──
+  { label: 'Google Maps',          trigger: 'maps',  urlTemplate: 'https://www.google.com/maps/search/{query}',                                     category: 'Maps',        icon: 'googlemaps.png',      description: 'Places & directions' },
+  { label: 'Bing Maps',            trigger: 'bm',    urlTemplate: 'https://www.bing.com/maps?q={query}',                                            category: 'Maps',        icon: 'bing.png',            description: 'Microsoft maps' },
+  { label: 'OpenStreetMap',        trigger: 'osm',   urlTemplate: 'https://www.openstreetmap.org/search?query={query}',                             category: 'Maps',        icon: 'openstreetmap.png',   description: 'Open mapping data' },
+  { label: 'Ordnance Survey',      trigger: 'os',    urlTemplate: 'https://osdatahub.os.uk/search?q={query}',                                       category: 'Maps',        icon: 'ordnancesurvey.png',  description: 'UK mapping data' },
+  { label: 'what3words',           trigger: 'w3w',   urlTemplate: 'https://what3words.com/{query}',                                                 category: 'Maps',        icon: 'what3words.png',      description: '3-word location codes' },
+
+  // ── News ──
+  { label: 'BBC',                  trigger: 'bbc',   urlTemplate: 'https://www.bbc.co.uk/search?q={query}',                                         category: 'News',        icon: 'bbc.png',             description: 'BBC news search' },
+  { label: 'Guardian',             trigger: 'gua',   urlTemplate: 'https://www.theguardian.com/search?q={query}',                                   category: 'News',        icon: 'guardian.png',        description: 'Guardian news search' },
+  { label: 'The Telegraph',        trigger: 'tel',   urlTemplate: 'https://www.telegraph.co.uk/search/?q={query}',                                  category: 'News',        icon: 'telegraph.png',       description: 'Telegraph UK news' },
+  { label: 'The Independent',      trigger: 'ind',   urlTemplate: 'https://www.independent.co.uk/search?q={query}',                                 category: 'News',        icon: 'independent.png',     description: 'Independent UK news' },
+  { label: 'Sky News',             trigger: 'sky',   urlTemplate: 'https://news.sky.com/search?query={query}',                                      category: 'News',        icon: 'skynews.png',         description: 'Sky News UK' },
+  { label: 'Financial Times',      trigger: 'ft',    urlTemplate: 'https://www.ft.com/search?q={query}',                                            category: 'News',        icon: null,                  description: 'Financial Times' },
+  { label: 'New York Times',       trigger: 'nyt',   urlTemplate: 'https://www.nytimes.com/search?query={query}',                                   category: 'News',        icon: 'nytimes.png',         description: 'NYT search' },
+  { label: 'Reuters',              trigger: 'reu',   urlTemplate: 'https://www.reuters.com/site-search/?query={query}',                              category: 'News',        icon: 'reuters.png',         description: 'Reuters newswire' },
+  { label: 'AP News',              trigger: 'ap',    urlTemplate: 'https://apnews.com/search?q={query}',                                            category: 'News',        icon: 'apnews.png',          description: 'Associated Press' },
+
+  // ── Shopping ──
+  { label: 'Amazon UK',            trigger: 'amz',   urlTemplate: 'https://www.amazon.co.uk/s?k={query}',                                           category: 'Shopping',    icon: 'amazon.png',          description: 'UK marketplace' },
+  { label: 'eBay UK',              trigger: 'eb',    urlTemplate: 'https://www.ebay.co.uk/sch/i.html?_nkw={query}',                                 category: 'Shopping',    icon: 'ebay.png',            description: 'Auctions & marketplace' },
+  { label: 'Etsy',                 trigger: 'ets',   urlTemplate: 'https://www.etsy.com/search?q={query}',                                          category: 'Shopping',    icon: 'etsy.png',            description: 'Handmade & vintage' },
+  { label: 'IKEA UK',              trigger: 'ikea',  urlTemplate: 'https://www.ikea.com/gb/en/search/?q={query}',                                   category: 'Shopping',    icon: 'ikea.png',            description: 'Furniture & home' },
+  { label: 'John Lewis',           trigger: 'jl',    urlTemplate: 'https://www.johnlewis.com/search?search-term={query}',                            category: 'Shopping',    icon: 'johnlewis.png',       description: 'UK department store' },
+  { label: 'Argos',                trigger: 'arg',   urlTemplate: 'https://www.argos.co.uk/search/{query}/',                                        category: 'Shopping',    icon: 'argos.png',           description: 'UK general retail' },
+  { label: 'ASOS',                 trigger: 'asos',  urlTemplate: 'https://www.asos.com/search/?q={query}',                                         category: 'Shopping',    icon: 'asos.png',            description: 'Online fashion' },
+  { label: 'Booking.com',          trigger: 'book',  urlTemplate: 'https://www.booking.com/searchresults.html?ss={query}',                          category: 'Shopping',    icon: 'booking.png',         description: 'Hotels & stays' },
+  { label: 'Airbnb',               trigger: 'abnb',  urlTemplate: 'https://www.airbnb.com/s/{query}/homes',                                         category: 'Shopping',    icon: 'airbnb.png',          description: 'Holiday rentals' },
+
+  // ── UK Business ──
+  { label: 'Companies House',      trigger: 'ch',    urlTemplate: 'https://find-and-update.company-information.service.gov.uk/search?q={query}',    category: 'UK Business', icon: 'companieshouse.png',  description: 'UK company records' },
+  { label: 'gov.uk',               trigger: 'gov',   urlTemplate: 'https://www.gov.uk/search/all?keywords={query}',                                 category: 'UK Business', icon: 'govuk.png',           description: 'UK government services' },
+  { label: 'Planning Portal',      trigger: 'plan',  urlTemplate: 'https://www.planningportal.co.uk/planning/search?q={query}',                     category: 'UK Business', icon: 'planningportal.png',  description: 'UK planning rules' },
+  { label: 'BSI Knowledge',        trigger: 'bsi',   urlTemplate: 'https://knowledge.bsigroup.com/search?q={query}',                                category: 'UK Business', icon: 'bsi.png',             description: 'UK standards & specs' },
+  { label: 'ICE Knowledge Hub',    trigger: 'ice',   urlTemplate: 'https://www.ice.org.uk/search?q={query}',                                        category: 'UK Business', icon: 'ice.png',             description: 'Civil engineering' },
+  { label: 'RIBA',                 trigger: 'riba',  urlTemplate: 'https://www.architecture.com/search?q={query}',                                  category: 'UK Business', icon: 'riba.png',            description: 'Architecture institute' },
+  { label: 'HSE',                  trigger: 'hse',   urlTemplate: 'https://www.hse.gov.uk/search/search-results.htm?q={query}',                     category: 'UK Business', icon: 'hse.png',             description: 'Health & safety executive' },
+  { label: 'ONS',                  trigger: 'ons',   urlTemplate: 'https://www.ons.gov.uk/search?q={query}',                                        category: 'UK Business', icon: 'ons.png',             description: 'UK national statistics' },
+  { label: 'TfL',                  trigger: 'tfl',   urlTemplate: 'https://tfl.gov.uk/search?query={query}',                                        category: 'UK Business', icon: 'tfl.png',             description: 'Transport for London' },
+  { label: 'Met Office',           trigger: 'met',   urlTemplate: 'https://www.metoffice.gov.uk/search/results?q={query}',                          category: 'UK Business', icon: 'metoffice.png',       description: 'UK weather & climate' },
 ];
 
 const PRESET_CATEGORIES = [...new Set(PRESETS.map(p => p.category))];
+
+// Map preset domains → bundled icon filename. Exported so the shared lookup util
+// (src/utils/presetIcons.js) and other components can map any URL to a brand icon.
+// May contain null values for presets with no icon (Phind/FT/IEEE).
+export const PRESET_ICONS_BY_DOMAIN = (() => {
+  const map = {};
+  for (const p of PRESETS) {
+    if (!p.icon) continue;
+    try {
+      const host = new URL(p.urlTemplate).hostname.replace(/^www\./, '');
+      if (host && !map[host]) map[host] = p.icon;
+    } catch {}
+  }
+  return map;
+})();
 
 // ── Quick Action types (subset of MacroPanel ACTION_TYPES) ─────────────────
 
@@ -100,6 +212,162 @@ const QA_ACTION_TYPES = [
   { id: 'folder', icon: '⬢', label: 'Open Folder',       desc: 'Open a folder in File Explorer',           color: '#40c8a0' },
   { id: 'macro',  icon: '◈', label: 'Macro Sequence',    desc: 'Run a sequence of actions one after another', color: '#ff783c' },
 ];
+
+// ── Google Translate target-language list ──────────────────────────────────
+
+// Full set of Google Translate target languages (sorted alphabetically by name).
+const TRANSLATE_LANGS = [
+  { code: 'af', name: 'Afrikaans' },
+  { code: 'sq', name: 'Albanian' },
+  { code: 'am', name: 'Amharic' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'hy', name: 'Armenian' },
+  { code: 'as', name: 'Assamese' },
+  { code: 'ay', name: 'Aymara' },
+  { code: 'az', name: 'Azerbaijani' },
+  { code: 'bm', name: 'Bambara' },
+  { code: 'eu', name: 'Basque' },
+  { code: 'be', name: 'Belarusian' },
+  { code: 'bn', name: 'Bengali' },
+  { code: 'bho', name: 'Bhojpuri' },
+  { code: 'bs', name: 'Bosnian' },
+  { code: 'bg', name: 'Bulgarian' },
+  { code: 'ca', name: 'Catalan' },
+  { code: 'ceb', name: 'Cebuano' },
+  { code: 'zh-CN', name: 'Chinese (Simplified)' },
+  { code: 'zh-TW', name: 'Chinese (Traditional)' },
+  { code: 'co', name: 'Corsican' },
+  { code: 'hr', name: 'Croatian' },
+  { code: 'cs', name: 'Czech' },
+  { code: 'da', name: 'Danish' },
+  { code: 'dv', name: 'Dhivehi' },
+  { code: 'doi', name: 'Dogri' },
+  { code: 'nl', name: 'Dutch' },
+  { code: 'en', name: 'English' },
+  { code: 'eo', name: 'Esperanto' },
+  { code: 'et', name: 'Estonian' },
+  { code: 'ee', name: 'Ewe' },
+  { code: 'fil', name: 'Filipino (Tagalog)' },
+  { code: 'fi', name: 'Finnish' },
+  { code: 'fr', name: 'French' },
+  { code: 'fy', name: 'Frisian' },
+  { code: 'gl', name: 'Galician' },
+  { code: 'ka', name: 'Georgian' },
+  { code: 'de', name: 'German' },
+  { code: 'el', name: 'Greek' },
+  { code: 'gn', name: 'Guarani' },
+  { code: 'gu', name: 'Gujarati' },
+  { code: 'ht', name: 'Haitian Creole' },
+  { code: 'ha', name: 'Hausa' },
+  { code: 'haw', name: 'Hawaiian' },
+  { code: 'he', name: 'Hebrew' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'hmn', name: 'Hmong' },
+  { code: 'hu', name: 'Hungarian' },
+  { code: 'is', name: 'Icelandic' },
+  { code: 'ig', name: 'Igbo' },
+  { code: 'ilo', name: 'Ilocano' },
+  { code: 'id', name: 'Indonesian' },
+  { code: 'ga', name: 'Irish' },
+  { code: 'it', name: 'Italian' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'jv', name: 'Javanese' },
+  { code: 'kn', name: 'Kannada' },
+  { code: 'kk', name: 'Kazakh' },
+  { code: 'km', name: 'Khmer' },
+  { code: 'rw', name: 'Kinyarwanda' },
+  { code: 'gom', name: 'Konkani' },
+  { code: 'ko', name: 'Korean' },
+  { code: 'kri', name: 'Krio' },
+  { code: 'ku', name: 'Kurdish' },
+  { code: 'ckb', name: 'Kurdish (Sorani)' },
+  { code: 'ky', name: 'Kyrgyz' },
+  { code: 'lo', name: 'Lao' },
+  { code: 'la', name: 'Latin' },
+  { code: 'lv', name: 'Latvian' },
+  { code: 'ln', name: 'Lingala' },
+  { code: 'lt', name: 'Lithuanian' },
+  { code: 'lg', name: 'Luganda' },
+  { code: 'lb', name: 'Luxembourgish' },
+  { code: 'mk', name: 'Macedonian' },
+  { code: 'mai', name: 'Maithili' },
+  { code: 'mg', name: 'Malagasy' },
+  { code: 'ms', name: 'Malay' },
+  { code: 'ml', name: 'Malayalam' },
+  { code: 'mt', name: 'Maltese' },
+  { code: 'mi', name: 'Maori' },
+  { code: 'mr', name: 'Marathi' },
+  { code: 'mni-Mtei', name: 'Meiteilon (Manipuri)' },
+  { code: 'lus', name: 'Mizo' },
+  { code: 'mn', name: 'Mongolian' },
+  { code: 'my', name: 'Myanmar (Burmese)' },
+  { code: 'ne', name: 'Nepali' },
+  { code: 'no', name: 'Norwegian' },
+  { code: 'ny', name: 'Nyanja (Chichewa)' },
+  { code: 'or', name: 'Odia (Oriya)' },
+  { code: 'om', name: 'Oromo' },
+  { code: 'ps', name: 'Pashto' },
+  { code: 'fa', name: 'Persian' },
+  { code: 'pl', name: 'Polish' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'pa', name: 'Punjabi' },
+  { code: 'qu', name: 'Quechua' },
+  { code: 'ro', name: 'Romanian' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'sm', name: 'Samoan' },
+  { code: 'sa', name: 'Sanskrit' },
+  { code: 'gd', name: 'Scots Gaelic' },
+  { code: 'nso', name: 'Sepedi' },
+  { code: 'sr', name: 'Serbian' },
+  { code: 'st', name: 'Sesotho' },
+  { code: 'sn', name: 'Shona' },
+  { code: 'sd', name: 'Sindhi' },
+  { code: 'si', name: 'Sinhala' },
+  { code: 'sk', name: 'Slovak' },
+  { code: 'sl', name: 'Slovenian' },
+  { code: 'so', name: 'Somali' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'su', name: 'Sundanese' },
+  { code: 'sw', name: 'Swahili' },
+  { code: 'sv', name: 'Swedish' },
+  { code: 'tg', name: 'Tajik' },
+  { code: 'ta', name: 'Tamil' },
+  { code: 'tt', name: 'Tatar' },
+  { code: 'te', name: 'Telugu' },
+  { code: 'th', name: 'Thai' },
+  { code: 'ti', name: 'Tigrinya' },
+  { code: 'ts', name: 'Tsonga' },
+  { code: 'tr', name: 'Turkish' },
+  { code: 'tk', name: 'Turkmen' },
+  { code: 'ak', name: 'Twi' },
+  { code: 'uk', name: 'Ukrainian' },
+  { code: 'ur', name: 'Urdu' },
+  { code: 'ug', name: 'Uyghur' },
+  { code: 'uz', name: 'Uzbek' },
+  { code: 'vi', name: 'Vietnamese' },
+  { code: 'cy', name: 'Welsh' },
+  { code: 'xh', name: 'Xhosa' },
+  { code: 'yi', name: 'Yiddish' },
+  { code: 'yo', name: 'Yoruba' },
+  { code: 'zu', name: 'Zulu' },
+];
+
+function isTranslateUrl(url) {
+  return /translate\.google\.com/i.test(url || '');
+}
+
+function getTranslateTargetLang(url) {
+  const m = (url || '').match(/[?&]tl=([a-zA-Z-]+)/);
+  return m ? m[1] : 'en';
+}
+
+function setTranslateTargetLang(url, code) {
+  if (/[?&]tl=/.test(url)) {
+    return url.replace(/([?&])tl=[a-zA-Z-]+/, `$1tl=${code}`);
+  }
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}tl=${code}`;
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +380,133 @@ function buildPreviewUrl(urlTemplate, sampleQuery) {
 function truncateUrl(url, maxLen = 60) {
   if (!url || url.length <= maxLen) return url;
   return url.slice(0, maxLen) + '…';
+}
+
+function extractHost(urlTemplate) {
+  try {
+    return new URL(urlTemplate).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+// ── Searchable language combobox ───────────────────────────────────────────
+
+function TranslateLangPicker({ value, onChange }) {
+  const [open, setOpen]           = useState(false);
+  const [filter, setFilter]       = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const wrapRef  = useRef(null);
+  const inputRef = useRef(null);
+  const listRef  = useRef(null);
+
+  const selected = TRANSLATE_LANGS.find(l => l.code === value) || TRANSLATE_LANGS.find(l => l.code === 'en');
+
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return TRANSLATE_LANGS;
+    return TRANSLATE_LANGS.filter(l =>
+      l.name.toLowerCase().includes(q) || l.code.toLowerCase().includes(q)
+    );
+  }, [filter]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // Reset filter & focus input on open
+  useEffect(() => {
+    if (!open) return;
+    setFilter('');
+    const idx = TRANSLATE_LANGS.findIndex(l => l.code === value);
+    setHighlight(idx === -1 ? 0 : idx);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [open, value]);
+
+  // Reset highlight to top when filter changes
+  useEffect(() => { setHighlight(0); }, [filter]);
+
+  // Scroll highlighted row into view
+  useEffect(() => {
+    if (!open) return;
+    const el = listRef.current?.querySelector(`[data-idx="${highlight}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [highlight, open]);
+
+  function commit(code) {
+    onChange(code);
+    setOpen(false);
+  }
+
+  function handleKey(e) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight(i => Math.min(filtered.length - 1, i + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight(i => Math.max(0, i - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const pick = filtered[highlight];
+      if (pick) commit(pick.code);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div className="stp-lang-picker" ref={wrapRef}>
+      <button
+        type="button"
+        className="stp-input stp-lang-trigger"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="stp-lang-trigger-name">{selected?.name || '—'}</span>
+        <span className="stp-lang-trigger-code">{selected?.code || ''}</span>
+        <span className="stp-lang-trigger-caret">▾</span>
+      </button>
+      {open && (
+        <div className="stp-lang-popover">
+          <SearchBar
+            ref={inputRef}
+            className="stp-lang-search-bar compact"
+            placeholder="Filter languages…"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            onKeyDown={handleKey}
+          />
+          <div className="stp-lang-list" ref={listRef} role="listbox">
+            {filtered.length === 0 ? (
+              <div className="stp-lang-empty">No matches</div>
+            ) : filtered.map((l, idx) => (
+              <button
+                key={l.code}
+                data-idx={idx}
+                type="button"
+                role="option"
+                aria-selected={l.code === value}
+                className={`stp-lang-row${idx === highlight ? ' highlight' : ''}${l.code === value ? ' selected' : ''}`}
+                onMouseEnter={() => setHighlight(idx)}
+                onClick={() => commit(l.code)}
+              >
+                <span className="stp-lang-row-name">{l.name}</span>
+                <span className="stp-lang-row-code">{l.code}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -155,6 +550,8 @@ export default function SearchTemplatesPanel({
   const [formEncode, setFormEncode]         = useState(true);
   const [formSource, setFormSource]         = useState('custom');
   const [formCategory, setFormCategory]     = useState(null);
+  const [formIcon, setFormIcon]             = useState(null);
+  const [formDescription, setFormDescription] = useState('');
   const [triggerError, setTriggerError]     = useState('');
   const [isNew, setIsNew]                   = useState(false);
 
@@ -268,6 +665,8 @@ export default function SearchTemplatesPanel({
     setFormEncode(template.encode_query ?? true);
     setFormSource(template.source || 'custom');
     setFormCategory(template.category || null);
+    setFormIcon(template.icon || null);
+    setFormDescription(template.description || '');
     setTriggerError('');
     setTestQuery('');
     setShowHelp(false);
@@ -295,6 +694,8 @@ export default function SearchTemplatesPanel({
     setFormEncode(true);
     setFormSource('preset');
     setFormCategory(null);
+    setFormIcon(preset.icon || null);
+    setFormDescription(preset.description || '');
     setTriggerError('');
     setTestQuery('');
     setShowHelp(false);
@@ -310,6 +711,8 @@ export default function SearchTemplatesPanel({
     setFormEncode(true);
     setFormSource('custom');
     setFormCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
+    setFormIcon(null);
+    setFormDescription('');
     setTriggerError('');
     setTestQuery('');
     setShowHelp(false);
@@ -334,6 +737,8 @@ export default function SearchTemplatesPanel({
         encode_query: formEncode,
         source: formSource,
         category: formCategory || null,
+        icon: formIcon || null,
+        description: formDescription || null,
       });
       setSelectedId(newId);
       setIsNew(false);
@@ -346,6 +751,8 @@ export default function SearchTemplatesPanel({
         encode_query: formEncode,
         source: formSource,
         category: formCategory || null,
+        icon: formIcon || null,
+        description: formDescription || null,
       });
       onShowNotification?.('Template updated', 'success');
     }
@@ -601,7 +1008,7 @@ export default function SearchTemplatesPanel({
   const qaEditOpen = qaSelectedId !== null || qaIsNew;
   const qaCanSave = !!qaLabel.trim() && (
     (qaType === 'url' && qaFormValue.url?.trim()) ||
-    (qaType === 'app' && qaFormValue.path?.trim()) ||
+    (qaType === 'app' && (qaFormValue.appId || qaFormValue.path?.trim())) ||
     (qaType === 'folder' && qaFormValue.path?.trim()) ||
     (qaType === 'macro' && qaFormValue.steps?.length > 0)
   );
@@ -645,13 +1052,11 @@ export default function SearchTemplatesPanel({
               <span className="stp-presets-title">Choose a preset or create custom</span>
               <button className="stp-back-btn" onClick={() => setShowPresets(false)} type="button">Cancel</button>
             </div>
-            <input
-              className="stp-preset-filter"
-              type="text"
+            <SearchBar
+              className="stp-preset-filter-bar"
               placeholder="Filter presets…"
               value={presetFilter}
               onChange={e => setPresetFilter(e.target.value)}
-              spellCheck={false}
               autoFocus
             />
             <div className="stp-preset-list">
@@ -661,10 +1066,23 @@ export default function SearchTemplatesPanel({
                 }
                 const p = entry.preset;
                 return (
-                  <button key={p.trigger} className="stp-preset-row" onClick={() => openNewFromPreset(p)} type="button">
-                    <span className="stp-preset-label">{p.label}</span>
-                    <span className="stp-preset-trigger">{p.trigger}</span>
-                    <span className="stp-preset-url">{truncateUrl(p.urlTemplate, 50)}</span>
+                  <button key={p.trigger} className="stp-tile" onClick={() => openNewFromPreset(p)} type="button" title={p.urlTemplate}>
+                    <span className="stp-tile-trigger">{p.trigger}</span>
+                    {p.icon ? (
+                      <img
+                        className="stp-tile-icon"
+                        src={`/preset-icons/${p.icon}`}
+                        alt=""
+                        draggable={false}
+                        onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                      />
+                    ) : (
+                      <span className="stp-tile-icon stp-tile-letter">{(p.label || '?').charAt(0).toUpperCase()}</span>
+                    )}
+                    <div className="stp-tile-body">
+                      <div className="stp-tile-label">{p.label}</div>
+                      <div className="stp-tile-desc">{p.description}</div>
+                    </div>
                   </button>
                 );
               })}
@@ -790,7 +1208,7 @@ export default function SearchTemplatesPanel({
 
         {/* ═══ TEMPLATES MODE ═══ */}
         {panelMode === 'templates' && (<>
-        <div className="stp-list">
+        <div className="stp-list stp-list-tiles">
           {searchTemplates.length === 0 && !isNew ? (
             <div className="stp-empty-state">
               <div className="stp-empty-icon">⌕</div>
@@ -812,13 +1230,37 @@ export default function SearchTemplatesPanel({
               }
               const t = entry.template;
               return (
-                <div key={t.id} className={`stp-item${selectedId === t.id ? ' active' : ''}`} onClick={() => selectTemplate(t)}>
-                  <span className="stp-item-trigger">{t.trigger}</span>
-                  <span className="stp-item-label">{t.label}</span>
-                  <span className="stp-item-url">{truncateUrl(t.url_template, 40)}</span>
-                  <div className="stp-item-actions">
-                    <button className="stp-item-del" onClick={e => { e.stopPropagation(); handleDelete(t.id); }} title="Delete" type="button">✕</button>
+                <div
+                  key={t.id}
+                  className={`stp-tile${selectedId === t.id ? ' active' : ''}`}
+                  onClick={() => selectTemplate(t)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); selectTemplate(t); } }}
+                  title={t.url_template}
+                >
+                  <span className="stp-tile-trigger">{t.trigger}</span>
+                  {t.icon ? (
+                    <img
+                      className="stp-tile-icon"
+                      src={`/preset-icons/${t.icon}`}
+                      alt=""
+                      draggable={false}
+                      onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                    />
+                  ) : (
+                    <span className="stp-tile-icon stp-tile-letter">{(t.label || '?').charAt(0).toUpperCase()}</span>
+                  )}
+                  <div className="stp-tile-body">
+                    <div className="stp-tile-label">{t.label}</div>
+                    <div className="stp-tile-desc">{t.description || extractHost(t.url_template)}</div>
                   </div>
+                  <button
+                    className="stp-tile-del"
+                    onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
+                    title="Delete"
+                    type="button"
+                  >✕</button>
                 </div>
               );
             })
@@ -850,6 +1292,16 @@ export default function SearchTemplatesPanel({
                   {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
+              {isTranslateUrl(formUrl) && (
+                <div className="stp-field">
+                  <label className="stp-label">Translate To</label>
+                  <TranslateLangPicker
+                    value={getTranslateTargetLang(formUrl)}
+                    onChange={code => setFormUrl(setTranslateTargetLang(formUrl, code))}
+                  />
+                  <div className="stp-field-hint">Source language is auto-detected from your input</div>
+                </div>
+              )}
               <div className="stp-field">
                 <div className="stp-label-row">
                   <label className="stp-label">URL Template</label>
@@ -893,7 +1345,7 @@ export default function SearchTemplatesPanel({
 
         {/* ═══ QUICK ACTIONS MODE ═══ */}
         {panelMode === 'quickactions' && (<>
-        <div className="stp-list">
+        <div className="stp-list stp-list-tiles">
           {quickActions.length === 0 && !qaIsNew ? (
             <div className="stp-empty-state">
               <div className="stp-empty-icon">⚡</div>
@@ -919,14 +1371,41 @@ export default function SearchTemplatesPanel({
               const preview = a.type === 'macro'
                 ? `Sequence (${a.data?.steps?.length || 0} step${(a.data?.steps?.length || 0) !== 1 ? 's' : ''})`
                 : (a.data?.url || a.data?.path || a.data?.folderPath || a.data?.urlName || a.data?.appName || '');
+              const matchedIcon = a.type === 'url' ? findPresetIconForUrl(a.data?.url) : null;
               return (
-                <div key={a.id} className={`stp-item${qaSelectedId === a.id ? ' active' : ''}`} onClick={() => selectQuickAction(a)}>
-                  <span className="stp-item-type-icon" style={{ color: typeColors[a.type] || '#8a8799' }}>{typeIcons[a.type] || '◈'}</span>
-                  <span className="stp-item-label">{a.label}</span>
-                  <span className="stp-item-url">{truncateUrl(preview, 40)}</span>
-                  <div className="stp-item-actions">
-                    <button className="stp-item-del" onClick={e => { e.stopPropagation(); handleQaDelete(a.id); }} title="Delete" type="button">✕</button>
+                <div
+                  key={a.id}
+                  className={`stp-tile${qaSelectedId === a.id ? ' active' : ''}`}
+                  onClick={() => selectQuickAction(a)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); selectQuickAction(a); } }}
+                  title={preview}
+                >
+                  {matchedIcon ? (
+                    <img
+                      className="stp-tile-icon"
+                      src={`/preset-icons/${matchedIcon}`}
+                      alt=""
+                      draggable={false}
+                      onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                    />
+                  ) : (
+                    <span
+                      className="stp-tile-icon stp-tile-glyph"
+                      style={{ '--glyph-color': typeColors[a.type] || '#8a8799' }}
+                    >{typeIcons[a.type] || '◈'}</span>
+                  )}
+                  <div className="stp-tile-body">
+                    <div className="stp-tile-label">{a.label}</div>
+                    <div className="stp-tile-desc">{truncateUrl(preview, 60)}</div>
                   </div>
+                  <button
+                    className="stp-tile-del"
+                    onClick={e => { e.stopPropagation(); handleQaDelete(a.id); }}
+                    title="Delete"
+                    type="button"
+                  >✕</button>
                 </div>
               );
             })
@@ -974,21 +1453,7 @@ export default function SearchTemplatesPanel({
                   </div>
                 )}
                 {qaType === 'app' && (
-                  <div className="form-section">
-                    <label className="form-label">Application path</label>
-                    <div className="file-input-row">
-                      <input
-                        className="form-input"
-                        placeholder="C:\Program Files\App\app.exe"
-                        value={qaFormValue.path || ''}
-                        readOnly
-                      />
-                      <button className="browse-btn" type="button" onClick={async () => {
-                        const path = await window.electronAPI?.browseForFile();
-                        if (path) setQaFormValue(prev => ({ ...prev, path }));
-                      }}>Browse</button>
-                    </div>
-                  </div>
+                  <AppForm value={qaFormValue} onChange={setQaFormValue} />
                 )}
                 {qaType === 'folder' && (
                   <div className="form-section">
