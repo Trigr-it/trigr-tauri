@@ -6,594 +6,1339 @@
 <title>Trigr — Roadmap</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="description" content="See what's shipped and what's coming next for Trigr — the visual hotkey, macro and text expansion tool for Windows.">
+<script>
+/* Theme: saved → OS preference → light fallback. Runs synchronously to prevent flash. */
+(function(){
+  try {
+    var saved = localStorage.getItem('trigr-site-theme');
+    var theme;
+    if (saved === 'light' || saved === 'dark') {
+      theme = saved;
+    } else {
+      theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Syne:wght@700;800&family=Chakra+Petch:wght@500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Syne:wght@600;700;800&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
 :root {
-  --gold: #e8a020; --gold-light: #f0b942; --gold-dark: #c8860a;
-  --bg: #080B14; --bg-2: #0D1120; --bg-3: #111827;
-  --border-subtle: rgba(255,255,255,0.06);
-  --text: #F1F5F9; --text-muted: #94A3B8; --text-dim: #475569;
+  --gold:#e8a020; --gold-light:#f0b942; --gold-dark:#c8860a;
+  --gold-glow:rgba(232,160,32,0.15); --gold-line:rgba(232,160,32,0.22);
+  --bg:#080B14; --bg-2:#0D1120; --bg-3:#111827;
+  --bg-card:#0E1320; --bg-card-hi:#131829;
+  --hairline:rgba(255,255,255,0.06); --hairline-strong:rgba(255,255,255,0.1); --hairline-gold:rgba(232,160,32,0.18);
+  --text:#F1F5F9; --text-muted:#94A3B8; --text-dim:#475569;
+  --font-display:'Syne',sans-serif;
+  --font-mono:'Rajdhani',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --font-label:'Chakra Petch',sans-serif;
 }
-html { scroll-behavior: smooth; }
-body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+[data-theme="light"] {
+  --bg:#F5F5FA; --bg-2:#FFFFFF; --bg-3:#EEEEF2;
+  --bg-card:#FFFFFF; --bg-card-hi:#FAFAFE;
+  --hairline:rgba(0,0,0,0.07); --hairline-strong:rgba(0,0,0,0.12); --hairline-gold:rgba(232,160,32,0.25);
+  --text:#1A1A2E; --text-muted:#4A4A6A; --text-dim:#9090B0;
+}
+html { scroll-behavior:smooth; }
+body { font-family:var(--font-body); background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; -webkit-font-smoothing:antialiased; }
 body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:0; opacity:0.4; }
+[data-theme="light"] body::before { opacity:0.08; }
 
-/* ── NAV ── */
-nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 40px; height:64px; display:flex; align-items:center; justify-content:space-between; background:rgba(8,11,20,0.85); backdrop-filter:blur(20px); border-bottom:1px solid var(--border-subtle); }
+/* Nav */
+nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; height:64px; display:flex; align-items:center; justify-content:space-between; background:rgba(8,11,20,0.7); backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%); border-bottom:1px solid var(--hairline); }
+[data-theme="light"] nav { background:rgba(245,245,250,0.75); }
 .nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
-.logo-mark { width:32px; height:32px; border-radius:8px; }
+.logo-mark { width:30px; height:30px; border-radius:7px; }
 .logo-mark > svg { width:100%; height:100%; display:block; }
-.nav-wordmark { font-family:'Chakra Petch',sans-serif; font-weight:500; font-size:16px; color:var(--text-muted); letter-spacing:0.08em; }
-.nav-links { display:flex; align-items:center; gap:32px; }
-.nav-links a { font-size:14px; font-weight:500; color:var(--text-muted); text-decoration:none; transition:color 0.2s; }
+.nav-wordmark { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); letter-spacing:0.1em; }
+.nav-links { display:flex; align-items:center; gap:28px; }
+.nav-links a { font-size:13px; font-weight:500; color:var(--text-muted); text-decoration:none; transition:color 0.2s; letter-spacing:0.01em; }
 .nav-links a:hover { color:var(--text); }
-.nav-cta { background:var(--gold)!important; color:#13131a!important; padding:8px 20px; border-radius:8px; font-weight:500!important; }
-.nav-cta:hover { background:var(--gold-dark)!important; }
+.nav-links a.active { color:var(--gold-light); }
+[data-theme="light"] .nav-links a.active { color:var(--gold-dark); }
+.nav-cta { background:var(--gold); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; transition:transform 0.15s, box-shadow 0.2s; }
+.nav-cta:hover { color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,160,32,0.3); }
+[data-theme="light"] .nav-cta { color:#fff; }
+[data-theme="light"] .nav-cta:hover { color:#fff!important; }
+.theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.theme-toggle:hover { color:var(--gold); border-color:var(--hairline-gold); background:var(--gold-glow); }
 
-/* ── HERO ── */
-.hero { position:relative; padding:140px 40px 60px; text-align:center; overflow:hidden; }
-.hero-glow { position:absolute; top:-100px; left:50%; transform:translateX(-50%); width:800px; height:600px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.12) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
-.hero h1 { font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(36px,5vw,56px); line-height:1.1; letter-spacing:-1.5px; color:var(--text); margin-bottom:16px; position:relative; }
-.hero h1 em { font-style:normal; background:linear-gradient(135deg,#f0b942,#e8a020); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-.hero p { font-size:17px; color:var(--text-muted); max-width:560px; margin:0 auto; font-weight:300; line-height:1.7; position:relative; }
-.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.1); border:1px solid rgba(232,160,32,0.3); border-radius:100px; padding:6px 16px; font-size:13px; font-weight:500; color:#f0b942; margin-bottom:28px; position:relative; }
+/* Hero */
+.hero { position:relative; padding:140px 32px 60px; text-align:center; overflow:hidden; }
+.hero-bg { position:absolute; inset:0; pointer-events:none; }
+.hero-bg::before { content:''; position:absolute; top:-180px; left:50%; transform:translateX(-50%); width:1100px; height:600px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.13) 0%,rgba(232,160,32,0.04) 35%,transparent 70%); }
+[data-theme="light"] .hero-bg::before { background:radial-gradient(ellipse at center,rgba(232,160,32,0.09) 0%,rgba(232,160,32,0.02) 35%,transparent 70%); }
+.hero-inner { position:relative; max-width:880px; margin:0 auto; }
+.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.08); border:1px solid var(--hairline-gold); border-radius:100px; padding:6px 14px 6px 10px; font-size:12px; font-weight:500; color:var(--gold-light); margin-bottom:32px; animation:fadeInUp 0.6s ease both; }
+[data-theme="light"] .hero-badge { color:var(--gold-dark); }
+.hero-badge strong { color:var(--text); font-weight:600; }
 .hero-badge-dot { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:pulse 2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.7)} }
+.hero h1 { font-family:var(--font-display); font-weight:800; font-size:clamp(36px,5vw,60px); line-height:1.05; letter-spacing:-0.03em; color:var(--text); margin-bottom:24px; animation:fadeInUp 0.7s 0.1s ease both; }
+.hero h1 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 50%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hero p { font-size:17px; color:var(--text-muted); max-width:580px; margin:0 auto; font-weight:400; line-height:1.6; animation:fadeInUp 0.7s 0.2s ease both; }
+@keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
 
-/* ── STATS ── */
-.stats { display:flex; justify-content:center; gap:48px; padding:0 40px 64px; position:relative; }
-.stat { text-align:center; }
-.stat-val { font-family:'Syne',sans-serif; font-weight:800; font-size:36px; color:var(--gold); line-height:1; }
-.stat-label { font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-top:6px; }
+/* Stats strip */
+.stats-strip { padding:64px 32px; border-top:1px solid var(--hairline); border-bottom:1px solid var(--hairline); position:relative; overflow:hidden; }
+.stats-strip::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 50% 100% at 50% 50%, var(--gold-glow), transparent 70%); pointer-events:none; opacity:0.5; }
+.stats-grid { max-width:1180px; margin:0 auto; display:grid; grid-template-columns:repeat(4,1fr); gap:24px; position:relative; }
+.stat-block { text-align:center; padding:0 12px; }
+.stat-num { font-family:var(--font-display); font-weight:800; font-size:clamp(36px,5vw,60px); line-height:1; letter-spacing:-0.04em; background:linear-gradient(180deg, #f5cb6a 0%, #c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; display:inline-block; }
+.stat-suffix { font-size:0.55em; font-weight:700; }
+.stat-lbl { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); margin-top:12px; }
+@media(max-width:768px){.stats-grid{grid-template-columns:repeat(2,1fr);gap:32px;}}
 
-/* ── TIMELINE ── */
-.timeline-section { max-width:800px; margin:0 auto; padding:0 40px 80px; position:relative; }
-.timeline-section h2 { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--gold); margin-bottom:40px; text-align:center; }
+/* Section base */
+.section { position:relative; padding:100px 32px; }
+.section-inner { max-width:1100px; margin:0 auto; }
+.section-meta { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
+.section-num { font-family:var(--font-display); font-weight:800; font-size:14px; color:var(--gold); letter-spacing:0.1em; padding:4px 12px; border:1px solid var(--hairline-gold); border-radius:6px; background:var(--gold-glow); }
+.section-label { font-family:var(--font-label); font-size:12px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-muted); }
+.section-h2 { font-family:var(--font-display); font-weight:700; font-size:clamp(32px,4.5vw,52px); letter-spacing:-0.025em; line-height:1.05; color:var(--text); margin-bottom:18px; }
+.section-h2 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 60%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.section-sub { font-size:16px; color:var(--text-muted); font-weight:400; max-width:600px; line-height:1.6; }
+.section-divider { height:1px; max-width:1180px; margin:0 auto; background:linear-gradient(90deg,transparent 0%,var(--hairline-strong) 20%,var(--hairline-strong) 80%,transparent 100%); }
 
-.timeline { position:relative; padding-left:32px; }
-.timeline::before { content:''; position:absolute; left:7px; top:0; bottom:0; width:2px; background:linear-gradient(180deg, var(--gold) 0%, rgba(232,160,32,0.2) 100%); }
+/* Reveal */
+.reveal { opacity:0; transform:translateY(28px); transition:opacity 0.7s ease, transform 0.7s ease; }
+.reveal.in { opacity:1; transform:translateY(0); }
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;}}
 
-.phase { position:relative; margin-bottom:48px; }
+/* Filter chips */
+.filter-row { display:flex; flex-wrap:wrap; gap:8px; margin:36px 0 32px; align-items:center; }
+.filter-label { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); margin-right:6px; }
+.filter-chip { padding:7px 14px; background:var(--bg-card); border:1px solid var(--hairline-strong); border-radius:100px; color:var(--text-muted); font-size:13px; font-weight:500; cursor:pointer; transition:all 0.2s; font-family:inherit; }
+[data-theme="light"] .filter-chip { background:var(--bg-2); }
+.filter-chip:hover { color:var(--text); border-color:var(--hairline-gold); }
+.filter-chip.active { background:var(--gold-glow); border-color:var(--hairline-gold); color:var(--gold-light); }
+[data-theme="light"] .filter-chip.active { color:var(--gold-dark); }
+
+/* Timeline */
+.timeline { position:relative; padding-left:40px; margin-top:24px; }
+.timeline::before { content:''; position:absolute; left:8px; top:8px; bottom:8px; width:2px; background:linear-gradient(180deg, var(--gold) 0%, rgba(232,160,32,0.6) 50%, rgba(232,160,32,0.15) 100%); }
+.phase { position:relative; margin-bottom:60px; }
 .phase:last-child { margin-bottom:0; }
+.phase-dot { position:absolute; left:-36px; top:6px; width:18px; height:18px; border-radius:50%; border:3px solid var(--bg); }
+.phase-dot.shipped { background:var(--gold); box-shadow:0 0 14px rgba(232,160,32,0.5); }
+.phase-dot.current { background:var(--gold); box-shadow:0 0 0 3px rgba(232,160,32,0.25), 0 0 24px rgba(232,160,32,0.6); animation:dotPulse 2s infinite; }
+@keyframes dotPulse { 0%,100%{box-shadow:0 0 0 3px rgba(232,160,32,0.25), 0 0 24px rgba(232,160,32,0.6);} 50%{box-shadow:0 0 0 8px rgba(232,160,32,0.1), 0 0 32px rgba(232,160,32,0.85);} }
+.phase-dot.upcoming { background:var(--bg-card); border-color:var(--text-dim); }
+.phase-header { display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.phase-name { font-family:var(--font-display); font-weight:700; font-size:24px; letter-spacing:-0.01em; color:var(--text); }
+.phase-date { font-family:var(--font-mono); font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim); }
+.phase-tag { font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding:4px 12px; border-radius:100px; }
+.tag-shipped { background:rgba(34,197,94,0.1); color:#5cd687; border:1px solid rgba(34,197,94,0.3); }
+[data-theme="light"] .tag-shipped { color:#1f8a4a; background:rgba(80,200,120,0.08); border-color:rgba(80,200,120,0.4); }
+.tag-active { background:rgba(232,160,32,0.15); color:var(--gold-light); border:1px solid rgba(232,160,32,0.4); }
+[data-theme="light"] .tag-active { color:var(--gold-dark); }
+.tag-planned { background:rgba(148,163,184,0.08); color:var(--text-muted); border:1px solid var(--hairline-strong); }
+.we-are-here { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; background:linear-gradient(90deg, var(--gold), var(--gold-dark)); color:#0d0d11; font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; border-radius:100px; box-shadow:0 4px 14px rgba(232,160,32,0.35); }
+.we-are-here svg { width:11px; height:11px; stroke:currentColor; stroke-width:3; fill:none; stroke-linecap:round; stroke-linejoin:round; }
 
-.phase-dot { position:absolute; left:-29px; top:4px; width:14px; height:14px; border-radius:50%; border:2px solid var(--bg); }
-.phase-dot.shipped { background:var(--gold); box-shadow:0 0 12px rgba(232,160,32,0.4); }
-.phase-dot.current { background:var(--bg); border:2px solid var(--gold); box-shadow:0 0 0 4px rgba(232,160,32,0.15); }
-.phase-dot.upcoming { background:var(--bg-3); border:2px solid var(--text-dim); }
+.phase.current-phase { background:linear-gradient(135deg, rgba(232,160,32,0.07) 0%, rgba(232,160,32,0.01) 100%); border:1px solid var(--hairline-gold); border-radius:18px; padding:24px 28px; box-shadow:0 0 60px rgba(232,160,32,0.06); position:relative; }
+.phase.current-phase::before { content:''; position:absolute; top:-1px; left:24px; right:24px; height:1px; background:linear-gradient(90deg, transparent, rgba(232,160,32,0.6), transparent); }
+.phase.current-phase .phase-dot.current { left:-48px; }
 
-.phase-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
-.phase-name { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; color:var(--text); }
-.phase-date { font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }
-.phase-tag { font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; padding:3px 10px; border-radius:100px; }
-.tag-shipped { background:rgba(34,197,94,0.12); color:#22c55e; border:1px solid rgba(34,197,94,0.25); }
-.tag-active { background:rgba(232,160,32,0.12); color:var(--gold-light); border:1px solid rgba(232,160,32,0.25); animation:pulse-border 2s infinite; }
-@keyframes pulse-border { 0%,100%{border-color:rgba(232,160,32,0.25)} 50%{border-color:rgba(232,160,32,0.5)} }
-.tag-planned { background:rgba(148,163,184,0.08); color:var(--text-dim); border:1px solid rgba(148,163,184,0.15); }
+/* Feature cards */
+.feature-grid { display:grid; grid-template-columns:1fr; gap:10px; }
+.feature { display:flex; align-items:flex-start; gap:14px; padding:16px 18px; border-radius:12px; background:var(--bg-card); border:1px solid var(--hairline); transition:border-color 0.2s, transform 0.2s, opacity 0.25s; }
+[data-theme="light"] .feature { background:var(--bg-2); }
+.feature:hover { border-color:var(--hairline-gold); transform:translateX(2px); }
+.feature.hidden { display:none; }
+.feature-icon { width:36px; height:36px; flex-shrink:0; background:var(--gold-glow); border:1px solid var(--hairline-gold); border-radius:9px; display:flex; align-items:center; justify-content:center; }
+.feature-icon svg { width:18px; height:18px; color:var(--gold-light); stroke-width:2; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; }
+[data-theme="light"] .feature-icon svg { color:var(--gold-dark); }
+.feature-body { flex:1; min-width:0; }
+.feature-name { font-size:15px; font-weight:600; color:var(--text); line-height:1.4; display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.feature-desc { font-size:13.5px; color:var(--text-muted); margin-top:5px; line-height:1.55; font-weight:400; }
+.feature-pill { display:inline-flex; align-items:center; font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; padding:2px 8px; border-radius:5px; }
+.pill-free { background:rgba(34,197,94,0.1); color:#5cd687; border:1px solid rgba(34,197,94,0.3); }
+[data-theme="light"] .pill-free { color:#1f8a4a; background:rgba(80,200,120,0.08); border-color:rgba(80,200,120,0.35); }
+.pill-pro { background:var(--gold-glow); color:var(--gold-light); border:1px solid var(--hairline-gold); }
+[data-theme="light"] .pill-pro { color:var(--gold-dark); }
+.pill-exp { background:rgba(255,180,60,0.1); color:#ffd47a; border:1px solid rgba(255,180,60,0.3); }
+[data-theme="light"] .pill-exp { color:#b87000; background:rgba(255,180,60,0.1); border-color:rgba(255,180,60,0.4); }
 
-.feature-grid { display:grid; grid-template-columns:1fr; gap:8px; }
-.feature { display:flex; align-items:flex-start; gap:10px; padding:10px 14px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); transition:border-color 0.2s; }
-.feature:hover { border-color:rgba(232,160,32,0.15); }
-.feature-icon { font-size:16px; margin-top:1px; flex-shrink:0; width:20px; text-align:center; }
-.feature-body { flex:1; }
-.feature-name { font-size:14px; font-weight:500; color:var(--text); line-height:1.4; }
-.feature-desc { font-size:13px; color:var(--text-muted); margin-top:2px; line-height:1.5; font-weight:300; }
-.feature-pill { display:inline-block; font-family:'Rajdhani',sans-serif; font-size:10px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; padding:1px 7px; border-radius:4px; margin-left:6px; vertical-align:middle; }
-.pill-free { background:rgba(34,197,94,0.1); color:#22c55e; }
-.pill-pro { background:rgba(232,160,32,0.1); color:var(--gold-light); }
-.pill-exp { background:rgba(148,163,184,0.1); color:var(--text-muted); }
+.feature.feature-hero { background:linear-gradient(135deg, rgba(232,160,32,0.08), rgba(232,160,32,0.02)); border-color:var(--hairline-gold); padding:18px 22px; }
+[data-theme="light"] .feature.feature-hero { background:linear-gradient(135deg, rgba(232,160,32,0.06), rgba(232,160,32,0.01)); }
+.feature.feature-hero .feature-name { font-size:16px; font-weight:700; }
+.feature.feature-hero .feature-desc { font-size:14px; }
+.feature.feature-hero .feature-icon { width:40px; height:40px; border-radius:10px; background:rgba(232,160,32,0.18); }
+.feature.feature-hero .feature-icon svg { width:20px; height:20px; }
 
-/* Hero feature — standout card per release */
-.feature-hero { background:rgba(232,160,32,0.06)!important; border-color:rgba(232,160,32,0.25)!important; padding:16px 18px!important; }
-.feature-hero .feature-name { font-size:16px; font-weight:600; }
-.feature-hero .feature-desc { font-size:14px; }
-.feature-hero .feature-icon { font-size:22px; }
-
-/* Team section */
-.team-section { max-width:800px; margin:0 auto; padding:0 40px 48px; position:relative; }
-.team-section h2 { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--gold); margin-bottom:24px; text-align:center; }
-.team-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-.team-card { background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:12px; padding:24px; text-align:center; }
-.team-emoji { font-size:36px; margin-bottom:12px; }
-.team-name { font-family:'Syne',sans-serif; font-weight:700; font-size:16px; color:var(--text); margin-bottom:2px; }
-.team-role { font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); margin-bottom:10px; }
-.team-desc { font-size:13px; color:var(--text-muted); line-height:1.6; font-weight:300; }
-.team-footnote { text-align:center; margin-top:18px; font-size:13px; color:var(--text-dim); font-style:italic; line-height:1.6; }
-@media (max-width:640px) { .team-grid { grid-template-columns:1fr; } }
-
-/* Origin blurb */
-.origin-blurb { max-width:800px; margin:0 auto; padding:0 40px 48px; text-align:center; position:relative; }
-.origin-card { background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:12px; padding:28px 32px; }
-.origin-card h3 { font-family:'Syne',sans-serif; font-weight:700; font-size:16px; color:var(--gold); margin-bottom:10px; }
-.origin-card p { font-size:14px; color:var(--text-muted); line-height:1.7; margin:0; font-weight:300; }
-.origin-stats { display:flex; justify-content:center; gap:32px; margin-top:18px; padding-top:16px; border-top:1px solid var(--border-subtle); }
+/* Origin card */
+.origin-card { background:var(--bg-card); border:1px solid var(--hairline-gold); border-radius:18px; padding:32px; }
+[data-theme="light"] .origin-card { background:var(--bg-2); }
+.origin-card h3 { font-family:var(--font-display); font-weight:700; font-size:22px; color:var(--text); margin-bottom:12px; letter-spacing:-0.01em; }
+.origin-card h3 em { font-style:normal; color:var(--gold-light); }
+[data-theme="light"] .origin-card h3 em { color:var(--gold-dark); }
+.origin-card p { font-size:15px; color:var(--text-muted); line-height:1.7; margin:0; font-weight:400; }
+.origin-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-top:24px; padding-top:22px; border-top:1px solid var(--hairline); }
 .origin-stat { text-align:center; }
-.origin-stat strong { font-family:'Syne',sans-serif; font-size:18px; font-weight:800; color:var(--text); display:block; }
-.origin-stat span { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.8px; font-family:'Rajdhani',sans-serif; font-weight:600; }
+.origin-stat strong { font-family:var(--font-display); font-size:18px; font-weight:800; color:var(--text); display:block; letter-spacing:-0.01em; }
+.origin-stat span { font-family:var(--font-mono); font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; font-weight:600; margin-top:6px; display:block; }
+@media(max-width:640px){.origin-stats{grid-template-columns:repeat(2,1fr);}}
 
-/* ── DIVIDER ── */
-.section-divider { max-width:800px; margin:0 auto 64px; padding:0 40px; }
-.section-divider hr { border:none; height:1px; background:linear-gradient(90deg, transparent, rgba(232,160,32,0.2), transparent); }
+/* Team */
+.team-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:32px; }
+.team-card { background:var(--bg-card); border:1px solid var(--hairline); border-radius:16px; padding:28px; text-align:center; transition:border-color 0.2s, transform 0.2s; }
+[data-theme="light"] .team-card { background:var(--bg-2); }
+.team-card:hover { border-color:var(--hairline-gold); transform:translateY(-2px); }
+.team-avatar { width:56px; height:56px; border-radius:50%; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; }
+.team-avatar.tav-founder { background:linear-gradient(135deg, var(--gold-light), var(--gold-dark)); color:#0d0d11; font-family:var(--font-display); font-weight:800; font-size:20px; box-shadow:0 8px 20px rgba(232,160,32,0.3); }
+.team-avatar.tav-claude { background:linear-gradient(135deg, #6b80b5, #2c3a5c); color:#fff; box-shadow:0 8px 20px rgba(74,94,138,0.3); }
+.team-avatar.tav-claude svg { width:26px; height:26px; stroke-width:2; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; }
+.team-name { font-family:var(--font-display); font-weight:700; font-size:18px; color:var(--text); margin-bottom:4px; letter-spacing:-0.01em; }
+.team-role { font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--gold); margin-bottom:14px; }
+[data-theme="light"] .team-role { color:var(--gold-dark); }
+.team-desc { font-size:13.5px; color:var(--text-muted); line-height:1.65; font-weight:400; }
+.team-footnote { text-align:center; margin-top:24px; font-size:13px; color:var(--text-dim); font-style:italic; line-height:1.7; }
+@media(max-width:640px){.team-grid{grid-template-columns:1fr;}}
 
-/* ── CTA ── */
-.cta-section { text-align:center; padding:40px 40px 100px; position:relative; }
-.cta-section h2 { font-family:'Syne',sans-serif; font-weight:800; font-size:28px; color:var(--text); margin-bottom:12px; }
-.cta-section p { font-size:15px; color:var(--text-muted); margin-bottom:28px; font-weight:300; }
-.btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#13131a; text-decoration:none; padding:14px 28px; border-radius:12px; font-size:15px; font-weight:600; transition:all 0.2s; }
-.btn-primary:hover { background:var(--gold-dark); transform:translateY(-1px); box-shadow:0 8px 32px rgba(232,160,32,0.3); }
+/* Buttons */
+.btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; transition:all 0.2s; border:none; cursor:pointer; }
+.btn-primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
+[data-theme="light"] .btn-primary { color:#fff; }
 
-/* ── FOOTER ── */
-footer { text-align:center; padding:32px 40px; border-top:1px solid var(--border-subtle); font-size:13px; color:var(--text-dim); }
-footer a { color:var(--text-muted); text-decoration:none; }
-footer a:hover { color:var(--gold); }
+/* CTA */
+.cta-section { padding:100px 32px 80px; }
+.cta-card { max-width:1180px; margin:0 auto; position:relative; background:linear-gradient(140deg,rgba(232,160,32,0.08) 0%,rgba(232,160,32,0.02) 100%); border:1px solid var(--hairline-gold); border-radius:28px; padding:80px 48px; text-align:center; overflow:hidden; }
+.cta-card::before { content:''; position:absolute; bottom:-200px; left:50%; transform:translateX(-50%); width:900px; height:500px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.15) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
+[data-theme="light"] .cta-card::before { background:radial-gradient(ellipse at center,rgba(232,160,32,0.1) 0%,rgba(232,160,32,0.02) 40%,transparent 70%); }
+.cta-card > * { position:relative; z-index:1; }
+.cta-h2 { font-family:var(--font-display); font-weight:800; font-size:clamp(32px,5vw,52px); letter-spacing:-0.03em; line-height:1.05; color:var(--text); margin-bottom:18px; }
+.cta-h2 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 60%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.cta-sub { font-size:16px; color:var(--text-muted); font-weight:400; max-width:540px; margin:0 auto 32px; line-height:1.6; }
 
-/* ── MOBILE ── */
-@media (max-width:640px) {
-  nav { padding:0 20px; }
-  .hero { padding:120px 20px 48px; }
-  .stats { gap:24px; flex-wrap:wrap; padding:0 20px 48px; }
-  .stat-val { font-size:28px; }
-  .timeline-section { padding:0 20px 60px; }
-  .phase-name { font-size:17px; }
-  .nav-links a:not(.nav-cta) { display:none; }
+/* Footer */
+footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width:1180px; margin:0 auto; }
+.footer-top { display:flex; align-items:flex-start; justify-content:space-between; gap:48px; padding-bottom:36px; border-bottom:1px solid var(--hairline); }
+.footer-brand { max-width:340px; }
+.ft-logo { display:flex; align-items:center; gap:10px; text-decoration:none; margin-bottom:14px; }
+.ft-wm { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); letter-spacing:0.1em; }
+.footer-tagline { font-size:13px; color:var(--text-muted); line-height:1.6; }
+.cmdk-hint { display:inline-flex; align-items:center; gap:8px; padding:6px 12px 6px 14px; background:var(--bg-card); border:1px solid var(--hairline); border-radius:100px; font-size:12px; color:var(--text-muted); cursor:pointer; transition:all 0.2s; margin-top:14px; font-family:inherit; }
+[data-theme="light"] .cmdk-hint { background:var(--bg-2); }
+.cmdk-hint:hover { border-color:var(--hairline-gold); color:var(--text); }
+.cmdk-hint kbd { font-family:var(--font-mono); font-size:10px; padding:2px 7px; border:1px solid var(--hairline-strong); border-radius:4px; background:rgba(255,255,255,0.04); color:var(--text); }
+[data-theme="light"] .cmdk-hint kbd { background:rgba(0,0,0,0.04); }
+.footer-cols { display:grid; grid-template-columns:repeat(3,minmax(120px,auto)); gap:48px; }
+.ft-col h4 { font-family:var(--font-label); font-size:11px; font-weight:600; color:var(--text-muted); letter-spacing:0.18em; text-transform:uppercase; margin-bottom:14px; }
+.ft-col a { display:block; font-size:13px; color:var(--text-muted); text-decoration:none; padding:5px 0; transition:color 0.2s; }
+.ft-col a:hover { color:var(--gold-light); }
+[data-theme="light"] .ft-col a:hover { color:var(--gold-dark); }
+.footer-bottom { display:flex; align-items:center; justify-content:space-between; padding-top:24px; flex-wrap:wrap; gap:12px; }
+.ft-copy { font-size:12px; color:var(--text-dim); }
+.ft-meta { display:flex; gap:16px; }
+.ft-meta a { font-size:12px; color:var(--text-dim); text-decoration:none; transition:color 0.2s; }
+.ft-meta a:hover { color:var(--text-muted); }
+
+/* Ctrl+K */
+.cmdk-overlay { position:fixed; inset:0; z-index:200; background:rgba(8,11,20,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); display:none; align-items:flex-start; justify-content:center; padding-top:14vh; }
+[data-theme="light"] .cmdk-overlay { background:rgba(245,245,250,0.7); }
+.cmdk-overlay.show { display:flex; animation:cmdkFade 0.2s ease; }
+@keyframes cmdkFade { from{opacity:0;} to{opacity:1;} }
+.cmdk-panel { width:92%; max-width:580px; background:var(--bg-card); border:1px solid var(--hairline-gold); border-radius:14px; box-shadow:0 32px 80px rgba(0,0,0,0.55), 0 0 80px rgba(232,160,32,0.1); overflow:hidden; }
+[data-theme="light"] .cmdk-panel { background:var(--bg-2); box-shadow:0 24px 60px rgba(0,0,0,0.18), 0 0 60px rgba(232,160,32,0.08); }
+.cmdk-search { display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid var(--hairline); }
+.cmdk-search svg { width:18px; height:18px; color:var(--text-muted); flex-shrink:0; }
+.cmdk-input { flex:1; background:transparent; border:none; outline:none; font-family:var(--font-body); font-size:15px; color:var(--text); }
+.cmdk-input::placeholder { color:var(--text-dim); }
+.cmdk-esc { font-family:var(--font-mono); font-size:10px; padding:3px 8px; border:1px solid var(--hairline-strong); border-radius:5px; color:var(--text-muted); letter-spacing:0.05em; }
+.cmdk-results { max-height:380px; overflow-y:auto; padding:8px; }
+.cmdk-result { display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:8px; cursor:pointer; text-decoration:none; color:var(--text); transition:background 0.15s; }
+.cmdk-result:hover, .cmdk-result.active { background:var(--gold-glow); }
+.cmdk-result-icon { width:18px; height:18px; color:var(--text-dim); flex-shrink:0; }
+.cmdk-result.active .cmdk-result-icon, .cmdk-result:hover .cmdk-result-icon { color:var(--gold); }
+.cmdk-result-title { flex:1; font-size:14px; }
+.cmdk-result-section { font-family:var(--font-mono); font-size:10px; color:var(--text-muted); padding:2px 8px; border-radius:4px; background:rgba(255,255,255,0.04); letter-spacing:0.05em; text-transform:uppercase; }
+[data-theme="light"] .cmdk-result-section { background:rgba(0,0,0,0.04); }
+.cmdk-empty { padding:32px 20px; text-align:center; color:var(--text-muted); font-size:13px; }
+.cmdk-foot { padding:10px 18px; border-top:1px solid var(--hairline); display:flex; justify-content:space-between; gap:14px; font-size:11px; color:var(--text-dim); flex-wrap:wrap; }
+.cmdk-foot span { display:inline-flex; align-items:center; gap:5px; }
+.cmdk-foot kbd { font-family:var(--font-mono); font-size:10px; padding:1px 6px; border:1px solid var(--hairline-strong); border-radius:4px; color:var(--text-muted); }
+
+/* Shipped sticky-scroll layout */
+.shipped-grid { display:grid; grid-template-columns:1fr 1.15fr; gap:60px; align-items:flex-start; margin-top:8px; }
+.shipped-text { min-width:0; }
+.shipped-visual { position:sticky; top:100px; height:560px; }
+.sv-frame { position:relative; width:100%; height:100%; background:var(--bg-card); border:1px solid var(--hairline-gold); border-radius:18px; overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,0.5), 0 0 60px rgba(232,160,32,0.06); }
+[data-theme="light"] .sv-frame { background:var(--bg-2); box-shadow:0 24px 60px rgba(0,0,0,0.12); }
+.sv-screen { position:absolute; inset:0; padding:24px; opacity:0; transition:opacity 0.5s ease; pointer-events:none; display:flex; flex-direction:column; gap:14px; overflow:hidden; }
+.sv-frame[data-active="v0"]   .sv-screen[data-phase="v0"]   { opacity:1; pointer-events:auto; }
+.sv-frame[data-active="v0.1"] .sv-screen[data-phase="v0.1"] { opacity:1; pointer-events:auto; }
+.sv-frame[data-active="v0.2"] .sv-screen[data-phase="v0.2"] { opacity:1; pointer-events:auto; }
+.sv-frame[data-active="v0.3"] .sv-screen[data-phase="v0.3"] { opacity:1; pointer-events:auto; }
+.sv-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.sv-title { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); }
+.sv-version { font-family:var(--font-mono); font-size:10px; font-weight:700; padding:3px 9px; border:1px solid var(--hairline-gold); border-radius:5px; background:var(--gold-glow); color:var(--gold-light); }
+[data-theme="light"] .sv-version { color:var(--gold-dark); }
+@media(max-width:980px){ .shipped-grid{grid-template-columns:1fr;gap:40px;} .shipped-visual{position:relative;top:0;height:auto;min-height:480px;} }
+
+/* v0 — Visual Keyboard mini-mockup */
+.sv-v0-mod { display:flex; align-items:center; gap:8px; padding:10px 14px; background:rgba(13,17,32,0.5); border:1px solid var(--hairline); border-radius:10px; flex-wrap:wrap; }
+[data-theme="light"] .sv-v0-mod { background:rgba(0,0,0,0.03); }
+.sv-v0-mod-lbl { font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); margin-right:4px; }
+.sv-v0-mb { padding:5px 12px; border-radius:6px; background:rgba(255,255,255,0.04); border:1px solid var(--hairline); color:var(--text-muted); font-family:var(--font-mono); font-size:11px; font-weight:600; }
+[data-theme="light"] .sv-v0-mb { background:#fff; border-color:#dcdce8; color:#4a4a6a; }
+.sv-v0-mb.on { background:rgba(232,160,32,0.18); border-color:rgba(232,160,32,0.5); color:var(--gold-light); }
+[data-theme="light"] .sv-v0-mb.on { color:var(--gold-dark); }
+.sv-v0-kb { background:rgba(13,17,32,0.5); border:1px solid var(--hairline); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:5px; }
+[data-theme="light"] .sv-v0-kb { background:rgba(0,0,0,0.03); }
+.sv-v0-row { display:flex; gap:5px; justify-content:center; }
+.sv-v0-k { width:32px; height:32px; border-radius:5px; background:rgba(255,255,255,0.04); border:1px solid var(--hairline); color:var(--text-muted); font-family:var(--font-mono); font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center; flex-shrink:0; position:relative; }
+[data-theme="light"] .sv-v0-k { background:#fff; border-color:#dcdce8; color:#4a4a6a; }
+.sv-v0-k.asgn { background:rgba(232,160,32,0.1); border-color:rgba(232,160,32,0.4); color:var(--text); }
+.sv-v0-k.asgn::after { content:''; position:absolute; top:3px; right:3px; width:4px; height:4px; border-radius:50%; background:var(--gold); box-shadow:0 0 4px var(--gold); }
+.sv-v0-k.sel { background:rgba(232,160,32,0.32); border-color:var(--gold); color:var(--gold-light); box-shadow:0 0 14px rgba(232,160,32,0.4); }
+[data-theme="light"] .sv-v0-k.sel { color:var(--gold-dark); }
+.sv-v0-action { background:rgba(232,160,32,0.06); border:1px solid var(--hairline-gold); border-radius:10px; padding:14px; display:flex; align-items:flex-start; gap:12px; margin-top:auto; }
+.sv-v0-action-icon { width:32px; height:32px; flex-shrink:0; background:var(--gold-glow); border:1px solid var(--hairline-gold); border-radius:7px; display:flex; align-items:center; justify-content:center; color:var(--gold-light); font-size:14px; }
+[data-theme="light"] .sv-v0-action-icon { color:var(--gold-dark); }
+.sv-v0-action-body { flex:1; min-width:0; }
+.sv-v0-action-title { font-size:13px; font-weight:600; color:var(--text); margin-bottom:4px; }
+.sv-v0-action-desc { font-size:12px; color:var(--text-muted); font-family:var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* v0.1 — Clipboard Manager */
+.sv-clip-search { display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(13,17,32,0.5); border:1px solid var(--hairline); border-radius:10px; }
+[data-theme="light"] .sv-clip-search { background:rgba(0,0,0,0.03); }
+.sv-clip-search svg { width:16px; height:16px; color:var(--text-muted); flex-shrink:0; }
+.sv-clip-search input { flex:1; background:transparent; border:none; outline:none; color:var(--text); font-family:var(--font-body); font-size:13px; }
+.sv-clip-search input::placeholder { color:var(--text-dim); }
+.sv-clip-list { display:flex; flex-direction:column; gap:6px; flex:1; overflow:hidden; }
+.sv-clip-item { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; background:rgba(13,17,32,0.4); border:1px solid var(--hairline); border-radius:8px; }
+[data-theme="light"] .sv-clip-item { background:rgba(0,0,0,0.02); }
+.sv-clip-item.pinned { background:rgba(232,160,32,0.05); border-color:var(--hairline-gold); }
+.sv-clip-pin { color:var(--gold); font-size:14px; line-height:1; flex-shrink:0; margin-top:1px; }
+.sv-clip-body { flex:1; min-width:0; }
+.sv-clip-text { font-size:13px; color:var(--text); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.3; }
+.sv-clip-meta { display:flex; align-items:center; gap:6px; margin-top:4px; font-size:10px; color:var(--text-muted); flex-wrap:wrap; }
+.sv-tag { font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; padding:1px 7px; border-radius:4px; }
+.sv-tag.tag-email  { background:rgba(100,180,255,0.12); color:#7ec5ff; border:1px solid rgba(100,180,255,0.3); }
+[data-theme="light"] .sv-tag.tag-email { color:#3a7fc4; }
+.sv-tag.tag-color  { background:rgba(232,160,32,0.12); color:var(--gold-light); border:1px solid rgba(232,160,32,0.3); }
+[data-theme="light"] .sv-tag.tag-color { color:var(--gold-dark); }
+.sv-tag.tag-link   { background:rgba(80,200,120,0.12); color:#82d8a3; border:1px solid rgba(80,200,120,0.3); }
+[data-theme="light"] .sv-tag.tag-link { color:#1f8a4a; }
+.sv-tag.tag-number { background:rgba(255,120,60,0.12); color:#ff9d72; border:1px solid rgba(255,120,60,0.3); }
+[data-theme="light"] .sv-tag.tag-number { color:#d6601e; }
+.sv-tag.tag-image  { background:rgba(200,100,255,0.12); color:#d4a8ff; border:1px solid rgba(200,100,255,0.3); }
+[data-theme="light"] .sv-tag.tag-image { color:#8a4dc4; }
+.sv-color-chip { display:inline-block; width:10px; height:10px; border-radius:2px; border:1px solid var(--hairline); }
+
+/* v0.2 — Quick Search overlay */
+.sv-search-box { background:rgba(13,17,32,0.6); border:1px solid var(--hairline-gold); border-radius:12px; overflow:hidden; flex:1; display:flex; flex-direction:column; box-shadow:0 12px 32px rgba(0,0,0,0.3), 0 0 40px rgba(232,160,32,0.06); }
+[data-theme="light"] .sv-search-box { background:rgba(255,255,255,0.95); }
+.sv-search-input { display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--hairline); }
+.sv-search-input svg { width:16px; height:16px; color:var(--text-muted); flex-shrink:0; }
+.sv-search-q { font-size:14px; color:var(--text); font-family:var(--font-body); }
+.sv-search-cursor { color:var(--gold); animation:svBlink 1s step-end infinite; font-weight:300; margin-left:1px; }
+@keyframes svBlink{0%,100%{opacity:1}50%{opacity:0}}
+.sv-search-results { display:flex; flex-direction:column; padding:6px; gap:2px; flex:1; overflow:hidden; }
+.sv-search-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px; }
+.sv-search-item.active { background:var(--gold-glow); }
+.sv-search-icon { width:28px; height:28px; flex-shrink:0; background:rgba(255,255,255,0.04); border:1px solid var(--hairline); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--text-muted); }
+[data-theme="light"] .sv-search-icon { background:rgba(0,0,0,0.04); }
+.sv-search-item.active .sv-search-icon { background:rgba(232,160,32,0.2); border-color:var(--hairline-gold); color:var(--gold-light); }
+[data-theme="light"] .sv-search-item.active .sv-search-icon { color:var(--gold-dark); }
+.sv-search-body { flex:1; min-width:0; }
+.sv-search-title { font-size:13px; color:var(--text); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sv-search-title mark { background:rgba(232,160,32,0.3); color:var(--gold-light); padding:1px 3px; border-radius:3px; font-weight:700; }
+[data-theme="light"] .sv-search-title mark { color:var(--gold-dark); }
+.sv-search-sub { font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:3px; letter-spacing:0.04em; }
+.sv-search-shortcut { font-family:var(--font-mono); font-size:10px; padding:2px 7px; border:1px solid var(--hairline-strong); border-radius:4px; color:var(--text-muted); flex-shrink:0; }
+.sv-search-foot { padding:8px 16px; border-top:1px solid var(--hairline); display:flex; gap:14px; font-size:10px; color:var(--text-dim); }
+.sv-search-foot kbd { font-family:var(--font-mono); padding:1px 5px; border:1px solid var(--hairline-strong); border-radius:3px; color:var(--text-muted); margin-right:5px; font-size:9px; }
+
+/* v0.3 — Radial Menu */
+.sv-radial-wrap { flex:1; display:flex; align-items:center; justify-content:center; position:relative; padding:8px; }
+.sv-radial { width:340px; height:340px; max-width:100%; max-height:100%; }
+.sv-rad-seg { fill:rgba(13,17,32,0.7); stroke:rgba(232,160,32,0.18); stroke-width:1.5; transition:fill 0.4s, stroke 0.4s; }
+[data-theme="light"] .sv-rad-seg { fill:rgba(255,255,255,0.96); stroke:rgba(232,160,32,0.22); }
+.sv-rad-seg.active { fill:rgba(232,160,32,0.22); stroke:var(--gold); filter:drop-shadow(0 0 12px rgba(232,160,32,0.4)); }
+.sv-rad-icon { font-size:18px; fill:var(--text-muted); pointer-events:none; }
+[data-theme="light"] .sv-rad-icon { fill:#4a4a6a; }
+.sv-rad-seg.active + .sv-rad-icon { fill:var(--gold-light); }
+[data-theme="light"] .sv-rad-seg.active + .sv-rad-icon { fill:var(--gold-dark); }
+.sv-rad-center { fill:rgba(13,17,32,0.95); stroke:var(--hairline-gold); stroke-width:1.5; }
+[data-theme="light"] .sv-rad-center { fill:#fff; }
+.sv-rad-center-icon { font-size:22px; fill:var(--gold-light); pointer-events:none; }
+[data-theme="light"] .sv-rad-center-icon { fill:var(--gold-dark); }
+.sv-rad-label { font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--gold-light); padding:8px 12px; border:1px solid var(--hairline-gold); border-radius:100px; background:var(--gold-glow); align-self:center; margin-top:auto; }
+[data-theme="light"] .sv-rad-label { color:var(--gold-dark); }
+
+/* Responsive */
+@media(max-width:768px){
+  nav{padding:0 18px;}
+  .nav-links{gap:14px;}
+  .nav-links a:not(.nav-cta):not(.theme-toggle){display:none;}
+  .hero{padding:120px 18px 40px;}
+  .stats-strip{padding:40px 18px;}
+  .section{padding:60px 18px;}
+  .timeline{padding-left:32px;}
+  .phase-dot{left:-30px;}
+  .phase.current-phase{padding:18px 16px;}
+  .phase.current-phase .phase-dot.current{left:-38px;}
+  .footer-top{flex-direction:column;gap:32px;}
+  .footer-cols{grid-template-columns:repeat(2,1fr);gap:24px;}
+  .cta-card{padding:60px 24px;}
+  .sv-radial{width:260px;height:260px;}
 }
+
+/* v0 keyboard refinements — tighter layout to fit full keyboard */
+.sv-v0-kb { padding:10px; gap:4px; }
+.sv-v0-row { gap:3px; }
+.sv-v0-k { width:28px; height:28px; border-radius:4px; font-size:10px; padding:0 2px; }
+.sv-v0-k.sys { opacity:0.55; cursor:default; font-size:9px; line-height:1; white-space:nowrap; overflow:hidden; }
+.sv-v0-k.sys:hover { background:rgba(255,255,255,0.04); }
+[data-theme="light"] .sv-v0-k.sys:hover { background:#fff; }
+.sv-v0-spacer { width:14px; flex-shrink:0; pointer-events:none; }
+
+/* v0.1 clipboard split-pane — list on left, preview on right */
+.sv-clip-grid { display:grid; grid-template-columns:1fr 1.15fr; gap:10px; flex:1; min-height:0; }
+.sv-clip-list { flex:none; min-height:0; overflow:hidden; }
+.sv-clip-item.selected { background:rgba(232,160,32,0.12); border-color:var(--hairline-gold); }
+[data-theme="light"] .sv-clip-item.selected { background:rgba(232,160,32,0.07); border-color:var(--hairline-gold); }
+.sv-clip-preview { background:rgba(13,17,32,0.4); border:1px solid var(--hairline); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:10px; min-height:0; overflow:hidden; }
+[data-theme="light"] .sv-clip-preview { background:rgba(0,0,0,0.02); }
+.sv-clip-preview-tag { font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); }
+.sv-clip-swatch { width:100%; height:64px; border-radius:6px; border:1px solid var(--hairline-strong); position:relative; box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06); }
+.sv-clip-preview-value { font-family:var(--font-mono); font-size:18px; font-weight:700; color:var(--text); letter-spacing:0.04em; }
+.sv-clip-preview-rows { display:flex; flex-direction:column; gap:4px; }
+.sv-cpr-row { display:flex; justify-content:space-between; align-items:center; padding:5px 9px; background:rgba(255,255,255,0.02); border:1px solid var(--hairline); border-radius:5px; }
+[data-theme="light"] .sv-cpr-row { background:rgba(0,0,0,0.02); }
+.sv-cpr-row span { font-family:var(--font-mono); color:var(--text-muted); letter-spacing:0.05em; font-size:9px; font-weight:700; text-transform:uppercase; }
+.sv-cpr-row strong { color:var(--text); font-family:var(--font-mono); font-weight:600; font-size:11px; }
+.sv-clip-preview-meta { display:flex; align-items:center; gap:8px; font-size:10px; color:var(--text-muted); padding-top:8px; border-top:1px solid var(--hairline); margin-top:auto; }
+.sv-clip-preview-source { font-size:10px; color:var(--text-muted); }
+.sv-clip-preview-actions { display:flex; gap:6px; }
+.sv-clip-btn { padding:7px 10px; border-radius:5px; font-size:11px; font-weight:600; cursor:pointer; font-family:var(--font-body); border:1px solid var(--hairline-strong); background:transparent; color:var(--text-muted); transition:border-color 0.15s, color 0.15s; }
+.sv-clip-btn:hover { color:var(--text); border-color:var(--hairline-gold); }
+.sv-clip-btn.primary { background:var(--gold); color:#0d0d11; border-color:var(--gold); flex:1; }
+.sv-clip-btn.primary:hover { background:var(--gold-light); color:#0d0d11; }
+[data-theme="light"] .sv-clip-btn.primary { color:#fff; }
+[data-theme="light"] .sv-clip-btn.primary:hover { color:#fff; }
+
 </style>
 </head>
 <body>
 
 <nav>
   <a class="nav-logo" href="index.html">
-    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Trigr"><defs><linearGradient id="trigr-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="trigr-keytop-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect x="0" y="0" width="64" height="64" rx="9" fill="url(#trigr-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#trigr-keytop-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
-    <span class="nav-wordmark">Trigr</span>
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">TRIGR</span>
   </a>
   <div class="nav-links">
-    <a href="index.html">Home</a>
-    <a href="trigr-help.html">Help Guide</a>
-    <a class="nav-cta" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr-Setup.exe">Download</a>
+    <a href="index.html#features">Features</a>
+    <a href="index.html#how">How it works</a>
+    <a href="trigr-help.html">Guide</a>
+    <a href="roadmap.html" class="active">Roadmap</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest" class="nav-cta">Download</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
   </div>
 </nav>
 
-<!-- ── HERO ── -->
+<!-- HERO -->
 <section class="hero">
-  <div class="hero-glow"></div>
-  <div class="hero-badge"><span class="hero-badge-dot"></span> Updated May 2026</div>
-  <h1>What we've <em>built</em><br>and what's <em>next</em></h1>
-  <p>Development started February 2026. 60+ releases shipped across three major versions. Here's everything that's live, what we're working on now, and where we're headed.</p>
-</section>
-
-<!-- ── STATS ── -->
-<section class="stats">
-  <div class="stat">
-    <div class="stat-val">60+</div>
-    <div class="stat-label">Releases shipped</div>
-  </div>
-  <div class="stat">
-    <div class="stat-val">v0.3</div>
-    <div class="stat-label">Current version</div>
-  </div>
-  <div class="stat">
-    <div class="stat-val">~10MB</div>
-    <div class="stat-label">Installer size</div>
-  </div>
-  <div class="stat">
-    <div class="stat-val">100%</div>
-    <div class="stat-label">Local &mdash; nothing leaves your device</div>
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <div class="hero-badge"><span class="hero-badge-dot"></span><strong>Updated</strong> · May 2026</div>
+    <h1>What we've <em>built</em><br>and what's<br><em>next</em>.</h1>
+    <p>Development started February 2026. 60+ releases shipped across three major versions. Here's everything that's live, what we're working on now, and where we're headed.</p>
   </div>
 </section>
 
-<div class="section-divider"><hr></div>
-
-<!-- ── ORIGIN BLURB ── -->
-<section class="origin-blurb">
-  <div class="origin-card">
-    <h3>Rebuilt from the ground up</h3>
-    <p>Trigr was originally built on Electron — a 77MB installer, 150-250MB RAM, and noticeable battery drain. We rewrote the entire backend in Rust using Tauri v2, keeping the same React UI. The result: native performance, a fraction of the footprint, and a clear path to Mac support. Every feature migrated and verified on both x64 and ARM64 Windows.</p>
-    <div class="origin-stats">
-      <div class="origin-stat"><strong>77MB &rarr; 10MB</strong><span>Installer size</span></div>
-      <div class="origin-stat"><strong>250MB &rarr; 30MB</strong><span>RAM usage</span></div>
-      <div class="origin-stat"><strong>Rust</strong><span>Backend</span></div>
-      <div class="origin-stat"><strong>x64 + ARM64</strong><span>Platforms</span></div>
+<!-- STATS -->
+<section class="stats-strip reveal">
+  <div class="stats-grid">
+    <div class="stat-block">
+      <div class="stat-num"><span class="stat-num-value" data-target="60">0</span><span class="stat-suffix">+</span></div>
+      <div class="stat-lbl">Releases shipped</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-num">v0.3</div>
+      <div class="stat-lbl">Current version</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-num">~10<span class="stat-suffix">MB</span></div>
+      <div class="stat-lbl">Installer size</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-num"><span class="stat-num-value" data-target="100">0</span><span class="stat-suffix">%</span></div>
+      <div class="stat-lbl">Local — nothing leaves your device</div>
     </div>
   </div>
 </section>
 
-<!-- ── THE TEAM ── -->
-<section class="team-section">
-  <h2>The team</h2>
-  <div class="team-grid">
-    <div class="team-card">
-      <div class="team-emoji">👷</div>
-      <div class="team-name">Trigr</div>
-      <div class="team-role">Product &amp; Design</div>
-      <div class="team-desc">builder turned product builder. Designs every feature, writes every spec, tests every release. Has never typed a line of Rust or React in his life. Not once. Not even a semicolon.</div>
+<div class="section-divider"></div>
+
+<!-- 01 — SHIPPED -->
+<section class="section reveal" id="shipped">
+  <div class="section-inner">
+    <div class="section-meta"><span class="section-num">01</span><span class="section-label">Shipped</span></div>
+    <h2 class="section-h2">What we've <em>built</em>.</h2>
+    <p class="section-sub">Four major releases, 60+ patch versions, every feature visible. Filter by tier to focus on what matters.</p>
+
+    <div class="filter-row">
+      <span class="filter-label">Filter</span>
+      <button class="filter-chip active" data-filter="all" onclick="setFilter(this,'all')">All</button>
+      <button class="filter-chip" data-filter="free" onclick="setFilter(this,'free')">Free</button>
+      <button class="filter-chip" data-filter="pro" onclick="setFilter(this,'pro')">Pro</button>
+      <button class="filter-chip" data-filter="exp" onclick="setFilter(this,'exp')">Experimental</button>
     </div>
-    <div class="team-card">
-      <div class="team-emoji">🤖</div>
-      <div class="team-name">Claude Code</div>
-      <div class="team-role">Engineering &amp; CTO</div>
-      <div class="team-desc">Writes every line of code. All 30,000 of them. Rust backend, React frontend, CSS, CI pipelines, this very webpage. Works 24/7. Never complains. Occasionally hallucinates a function that doesn't exist.</div>
+
+    <div class="shipped-grid">
+      <div class="shipped-text">
+    <div class="timeline">
+
+      <!-- v0 -->
+      <div class="phase" data-phase="v0">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0 — The Prototype</span>
+          <span class="phase-date">Feb — Mar 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature feature-hero" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Visual Keyboard UI <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Click any key to assign an action. Full keyboard, modifier bar, arrow keys, numpad, and all 7 mouse buttons. No scripting, no config files. The core idea that started Trigr.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">7 Action Types + Macro Sequences <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Type Text, Send Hotkey (hold/repeat modes), Macro Sequence, Open App/URL/Folder, Focus Window. Chain steps with drag-drop reorder, repeat counters, and Wait for Input.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Text Expansions <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Trigger word + Space fires replacement text anywhere. Fill-in fields, global variables, image expansions, categories with colour-coding and drag-reorder.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">AHK Script Runner <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Paste any AutoHotkey script body as a macro step or standalone action. Bundles AHK — no installation needed. v1 and v2 syntax.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v0.1 -->
+      <div class="phase" data-phase="v0.1">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.1 — The Foundation</span>
+          <span class="phase-date">46 releases · Apr 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature feature-hero" data-tier="free pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Clipboard Manager <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">History, search, pin, edit, auto-tagging (Text/Link/Email/Colour/Number/Image), source app capture, Ctrl+Shift+V quick-paste overlay, scratchpad. Free: 7-day retention. Pro: 30-day retention, source tagging.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">App-Specific Profiles <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Free: up to 3 global profiles. Pro: unlimited profiles, app auto-switching via foreground watcher. Profile export/import, right-click link/unlink, drag-drop reorder.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="6"/><line x1="12" y1="6" x2="12" y2="10"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Mouse Button Remapping <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">All 7 buttons assignable in app-linked profiles. Hold/release mirroring, modifier passthrough, bare key support, double-press detection.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Onboarding + Infrastructure</div>
+              <div class="feature-desc">5-step onboarding tour, starter template packs, list view toggle, macro speed presets, shared config sync via Dropbox/OneDrive, automatic rolling backups.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v0.2 -->
+      <div class="phase" data-phase="v0.2">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.2 — Quick Search Overlay</span>
+          <span class="phase-date">5 releases · Apr 27 — 30</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature feature-hero" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Quick Search Overlay <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Ctrl+Space from anywhere. Instantly search all assignments, expansions (including body text), and search templates. Fire ChatGPT, Perplexity, Google queries with trigger+Space. User categories with colours and drag-reorder.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Analytics Dashboard <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Period summaries (Today/7/14/30 days), activity chart + heatmap, streak tracking, three-column leaderboards, ROI calculator, expansion efficiency ratio. All local.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">UI Overhaul</div>
+              <div class="feature-desc">Keyboard layout rebuilt with arrow keys and nav cluster. Macro panel widened to 450px with inline inputs. Clipboard overlay redesigned. Consistent edit panels across all views.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Smart Case + Sorting</div>
+              <div class="feature-desc">Smart case matching — type "Brb" to get "Be right back", "BRB" for "BE RIGHT BACK". Sortable columns in expansion and assignment lists.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M7 10l5-5 5 5M7 14l5 5 5-5"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Double-Press Hotkeys <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Assign separate actions to single press and double press of the same key. Configurable detection timer (150-500ms). Works for both keyboard and mouse buttons.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Hold Mode + Repeat Mode <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Hold mode: first press holds, second press releases. Repeat mode: first press starts auto-firing at a configurable interval, second press stops. Works for keyboard and mouse targets.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Starter Templates <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Three ready-made packs: General/Office, CAD/Engineering, Sales/BD. One-click import with app-specific profile creation for CAD workflows.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v0.3 -->
+      <div class="phase" data-phase="v0.3">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.3 — Radial Menu</span>
+          <span class="phase-date">10 releases · May 1 — 5</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature feature-hero" data-tier="pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Radial Menu <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Hotkey-triggered SVG wheel at cursor position. 8 segments per ring, folder nesting, per-profile configuration, 1500+ Lucide icons, Simple Icons, custom images, drag-drop reorder. Originally planned for v1.2 — shipped 6 months ahead of schedule.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="exp">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Voice Triggers <span class="feature-pill pill-exp">Experimental</span></div>
+              <div class="feature-desc">Say a phrase, fire an action. WinRT speech recognition with grammar-constrained matching. 100% offline — audio never leaves your device. Per-action voice phrases, mic test with live level meter.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Image Expansions <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Paste PNG or JPEG images via trigger word. Scalable (10-100%), clipboard paste with CF_DIB + PNG stream for compatibility across Office, browsers, and design tools.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Dynamic Tokens <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Date/time tokens with date math ({date:+7d}), clipboard transforms ({clipboard:uppercase}, {clipboard:trim}), cursor placement. Expansions that adapt to context.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Profile Export/Import <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Right-click any profile to export as .json. Share with colleagues or move between machines. Import with copy/overwrite collision handling.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Config Sync <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Point Trigr at a Dropbox or OneDrive folder. Config syncs across machines automatically with file watching, conflict detection, and self-write suppression.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+      </div><!-- /.shipped-text -->
+
+      <div class="shipped-visual">
+        <div class="sv-frame" id="sv-frame" data-active="v0">
+
+          <!-- v0 — Visual Keyboard UI -->
+          <div class="sv-screen" data-phase="v0">
+            <div class="sv-head"><span class="sv-title">Visual Keyboard UI</span><span class="sv-version">v0</span></div>
+            <div class="sv-v0-mod">
+              <span class="sv-v0-mod-lbl">Modifier</span>
+              <span class="sv-v0-mb on">Ctrl</span>
+              <span class="sv-v0-mb">Alt</span>
+              <span class="sv-v0-mb">Shift</span>
+              <span class="sv-v0-mb">Win</span>
+            </div>
+            <div class="sv-v0-kb">
+              <div class="sv-v0-row">
+                <span class="sv-v0-k sys">Esc</span><span class="sv-v0-spacer"></span><span class="sv-v0-k">F1</span><span class="sv-v0-k">F2</span><span class="sv-v0-k">F3</span><span class="sv-v0-k">F4</span><span class="sv-v0-spacer"></span><span class="sv-v0-k">F5</span><span class="sv-v0-k">F6</span><span class="sv-v0-k">F7</span><span class="sv-v0-k">F8</span><span class="sv-v0-spacer"></span><span class="sv-v0-k">F9</span><span class="sv-v0-k">F10</span><span class="sv-v0-k">F11</span><span class="sv-v0-k">F12</span>
+              </div>
+              <div class="sv-v0-row">
+                <span class="sv-v0-k sys">~</span><span class="sv-v0-k">1</span><span class="sv-v0-k">2</span><span class="sv-v0-k">3</span><span class="sv-v0-k">4</span><span class="sv-v0-k">5</span><span class="sv-v0-k">6</span><span class="sv-v0-k">7</span><span class="sv-v0-k">8</span><span class="sv-v0-k">9</span><span class="sv-v0-k">0</span><span class="sv-v0-k sys">-</span><span class="sv-v0-k sys">=</span><span class="sv-v0-k sys" style="width:42px;">⌫</span>
+              </div>
+              <div class="sv-v0-row">
+                <span class="sv-v0-k sys" style="width:40px;">Tab</span><span class="sv-v0-k">Q</span><span class="sv-v0-k">W</span><span class="sv-v0-k asgn">E</span><span class="sv-v0-k">R</span><span class="sv-v0-k">T</span><span class="sv-v0-k">Y</span><span class="sv-v0-k asgn">U</span><span class="sv-v0-k">I</span><span class="sv-v0-k sel">O</span><span class="sv-v0-k">P</span><span class="sv-v0-k sys">[</span><span class="sv-v0-k sys">]</span>
+              </div>
+              <div class="sv-v0-row">
+                <span class="sv-v0-k sys" style="width:48px;">Caps</span><span class="sv-v0-k asgn">A</span><span class="sv-v0-k">S</span><span class="sv-v0-k">D</span><span class="sv-v0-k">F</span><span class="sv-v0-k">G</span><span class="sv-v0-k">H</span><span class="sv-v0-k">J</span><span class="sv-v0-k asgn">K</span><span class="sv-v0-k">L</span><span class="sv-v0-k sys">;</span><span class="sv-v0-k sys">'</span><span class="sv-v0-k sys" style="width:50px;">↵</span>
+              </div>
+              <div class="sv-v0-row">
+                <span class="sv-v0-k sys" style="width:54px;">⇧ Shift</span><span class="sv-v0-k">Z</span><span class="sv-v0-k">X</span><span class="sv-v0-k">C</span><span class="sv-v0-k asgn">V</span><span class="sv-v0-k">B</span><span class="sv-v0-k">N</span><span class="sv-v0-k">M</span><span class="sv-v0-k sys">,</span><span class="sv-v0-k sys">.</span><span class="sv-v0-k sys">/</span><span class="sv-v0-k sys" style="width:62px;">⇧ Shift</span>
+              </div>
+              <div class="sv-v0-row">
+                <span class="sv-v0-k sys" style="width:36px;">Ctrl</span><span class="sv-v0-k sys">⊞</span><span class="sv-v0-k sys" style="width:32px;">Alt</span><span class="sv-v0-k sys" style="width:160px;"></span><span class="sv-v0-k sys" style="width:32px;">Alt</span><span class="sv-v0-k sys">⊞</span><span class="sv-v0-k sys">☰</span><span class="sv-v0-k sys" style="width:36px;">Ctrl</span>
+              </div>
+            </div>
+            <div class="sv-v0-action">
+              <div class="sv-v0-action-icon">✦</div>
+              <div class="sv-v0-action-body">
+                <div class="sv-v0-action-title">Ctrl + O → Type Text</div>
+                <div class="sv-v0-action-desc">"Hello, thanks for reaching out!..."</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- v0.1 — Clipboard Manager -->
+          <div class="sv-screen" data-phase="v0.1">
+            <div class="sv-head"><span class="sv-title">Clipboard Manager</span><span class="sv-version">v0.1</span></div>
+            <div class="sv-clip-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input placeholder="Search clipboard…" disabled>
+            </div>
+            <div class="sv-clip-grid">
+              <div class="sv-clip-list">
+                <div class="sv-clip-item pinned">
+                  <span class="sv-clip-pin">★</span>
+                  <div class="sv-clip-body">
+                    <div class="sv-clip-text">admin@usetrigr.com</div>
+                    <div class="sv-clip-meta"><span class="sv-tag tag-email">Email</span><span>· Outlook · 2m</span></div>
+                  </div>
+                </div>
+                <div class="sv-clip-item selected">
+                  <div class="sv-clip-body">
+                    <div class="sv-clip-text">#e8a020</div>
+                    <div class="sv-clip-meta"><span class="sv-tag tag-color">Colour</span><span class="sv-color-chip" style="background:#e8a020;"></span><span>· VS Code · 14m</span></div>
+                  </div>
+                </div>
+                <div class="sv-clip-item">
+                  <div class="sv-clip-body">
+                    <div class="sv-clip-text">github.com/Trigr-it/trigr-tauri</div>
+                    <div class="sv-clip-meta"><span class="sv-tag tag-link">Link</span><span>· Chrome · 38m</span></div>
+                  </div>
+                </div>
+                <div class="sv-clip-item">
+                  <div class="sv-clip-body">
+                    <div class="sv-clip-text">2,496</div>
+                    <div class="sv-clip-meta"><span class="sv-tag tag-number">Number</span><span>· Excel · 1h</span></div>
+                  </div>
+                </div>
+                <div class="sv-clip-item">
+                  <div class="sv-clip-body">
+                    <div class="sv-clip-text">Screenshot 2026-05-08.png</div>
+                    <div class="sv-clip-meta"><span class="sv-tag tag-image">Image</span><span>· Snipping · 1h</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="sv-clip-preview">
+                <span class="sv-clip-preview-tag">Preview</span>
+                <div class="sv-clip-swatch" style="background:#e8a020;"></div>
+                <div class="sv-clip-preview-value">#e8a020</div>
+                <div class="sv-clip-preview-rows">
+                  <div class="sv-cpr-row"><span>HEX</span><strong>#e8a020</strong></div>
+                  <div class="sv-cpr-row"><span>RGB</span><strong>232, 160, 32</strong></div>
+                  <div class="sv-cpr-row"><span>HSL</span><strong>35°, 81%, 52%</strong></div>
+                </div>
+                <div class="sv-clip-preview-meta">
+                  <span class="sv-tag tag-color">Colour</span>
+                  <span class="sv-clip-preview-source">VS Code · 14m ago</span>
+                </div>
+                <div class="sv-clip-preview-actions">
+                  <button class="sv-clip-btn primary">Copy</button>
+                  <button class="sv-clip-btn">Pin</button>
+                  <button class="sv-clip-btn">Edit</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- v0.2 — Quick Search -->
+          <div class="sv-screen" data-phase="v0.2">
+            <div class="sv-head"><span class="sv-title">Quick Search · Ctrl+Space</span><span class="sv-version">v0.2</span></div>
+            <div class="sv-search-box">
+              <div class="sv-search-input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+                <span class="sv-search-q">sig<span class="sv-search-cursor">|</span></span>
+              </div>
+              <div class="sv-search-results">
+                <div class="sv-search-item active">
+                  <div class="sv-search-icon">✦</div>
+                  <div class="sv-search-body">
+                    <div class="sv-search-title">Email <mark>sig</mark>nature</div>
+                    <div class="sv-search-sub">Text Expansion · /sig</div>
+                  </div>
+                  <span class="sv-search-shortcut">↵</span>
+                </div>
+                <div class="sv-search-item">
+                  <div class="sv-search-icon">⌨</div>
+                  <div class="sv-search-body">
+                    <div class="sv-search-title">Quick <mark>sig</mark>n-off</div>
+                    <div class="sv-search-sub">Macro · Ctrl+Shift+S</div>
+                  </div>
+                </div>
+                <div class="sv-search-item">
+                  <div class="sv-search-icon">⊕</div>
+                  <div class="sv-search-body">
+                    <div class="sv-search-title">Search Google: "<mark>sig</mark>"</div>
+                    <div class="sv-search-sub">Search Template · sig</div>
+                  </div>
+                </div>
+              </div>
+              <div class="sv-search-foot">
+                <span><kbd>↑↓</kbd>navigate</span>
+                <span><kbd>↵</kbd>fire</span>
+                <span><kbd>esc</kbd>close</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- v0.3 — Radial Menu -->
+          <div class="sv-screen" data-phase="v0.3">
+            <div class="sv-head"><span class="sv-title">Radial Menu</span><span class="sv-version">v0.3</span></div>
+            <div class="sv-radial-wrap">
+              <svg viewBox="0 0 400 400" class="sv-radial">
+                <g><path class="sv-rad-seg active" d="M 365,200 A 165,165 0 0 1 316.67,316.67 L 245.96,245.96 A 65,65 0 0 0 265,200 Z"/>
+                <text class="sv-rad-icon" x="306.3" y="244" text-anchor="middle" dominant-baseline="middle">◈</text></g>
+                <g><path class="sv-rad-seg" d="M 316.67,316.67 A 165,165 0 0 1 200,365 L 200,265 A 65,65 0 0 0 245.96,245.96 Z"/>
+                <text class="sv-rad-icon" x="244" y="306.3" text-anchor="middle" dominant-baseline="middle">✦</text></g>
+                <g><path class="sv-rad-seg" d="M 200,365 A 165,165 0 0 1 83.33,316.67 L 154.04,245.96 A 65,65 0 0 0 200,265 Z"/>
+                <text class="sv-rad-icon" x="156" y="306.3" text-anchor="middle" dominant-baseline="middle">⌨</text></g>
+                <g><path class="sv-rad-seg" d="M 83.33,316.67 A 165,165 0 0 1 35,200 L 135,200 A 65,65 0 0 0 154.04,245.96 Z"/>
+                <text class="sv-rad-icon" x="93.7" y="244" text-anchor="middle" dominant-baseline="middle">⊕</text></g>
+                <g><path class="sv-rad-seg" d="M 35,200 A 165,165 0 0 1 83.33,83.33 L 154.04,154.04 A 65,65 0 0 0 135,200 Z"/>
+                <text class="sv-rad-icon" x="93.7" y="156" text-anchor="middle" dominant-baseline="middle">⬡</text></g>
+                <g><path class="sv-rad-seg" d="M 83.33,83.33 A 165,165 0 0 1 200,35 L 200,135 A 65,65 0 0 0 154.04,154.04 Z"/>
+                <text class="sv-rad-icon" x="156" y="93.7" text-anchor="middle" dominant-baseline="middle">⬢</text></g>
+                <g><path class="sv-rad-seg" d="M 200,35 A 165,165 0 0 1 316.67,83.33 L 245.96,154.04 A 65,65 0 0 0 200,135 Z"/>
+                <text class="sv-rad-icon" x="244" y="93.7" text-anchor="middle" dominant-baseline="middle">⟁</text></g>
+                <g><path class="sv-rad-seg" d="M 316.67,83.33 A 165,165 0 0 1 365,200 L 265,200 A 65,65 0 0 0 245.96,154.04 Z"/>
+                <text class="sv-rad-icon" x="306.3" y="156" text-anchor="middle" dominant-baseline="middle">★</text></g>
+                <circle class="sv-rad-center" cx="200" cy="200" r="55"/>
+                <text class="sv-rad-center-icon" x="200" y="200" text-anchor="middle" dominant-baseline="middle">●</text>
+              </svg>
+            </div>
+            <div class="sv-rad-label">8 segments · folder nesting · per-profile</div>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- /.shipped-grid -->
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- 02 — WHAT'S NEXT -->
+<section class="section reveal" id="next">
+  <div class="section-inner">
+    <div class="section-meta"><span class="section-num">02</span><span class="section-label">What's next</span></div>
+    <h2 class="section-h2">Where we're <em>headed</em>.</h2>
+    <p class="section-sub">Beta lands this month. v1.0 in August. Mac in September. Everything dated, everything visible.</p>
+
+    <div class="timeline">
+
+      <!-- BETA — current phase, highlighted -->
+      <div class="phase current-phase">
+        <div class="phase-dot current"></div>
+        <div class="phase-header">
+          <span class="phase-name">Beta</span>
+          <span class="phase-date">May 2026</span>
+          <span class="we-are-here"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>We are here</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Free Beta Keys</div>
+              <div class="feature-desc">LemonSqueezy integration with free licence keys. All Pro features unlocked during beta — experience the full product before paid tiers go live.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Code Signing</div>
+              <div class="feature-desc">Microsoft Azure Trusted Signing. No more SmartScreen warnings on install.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M15.09 14a5 5 0 1 0-6.18 0 4 4 0 0 1 1.09 4h4a4 4 0 0 1 1.09-4z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Save Snippet from Highlight</div>
+              <div class="feature-desc">Highlight text anywhere, open Quick Search, save it directly as a new expansion. One-step snippet creation.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Macro Recorder</div>
+              <div class="feature-desc">Record keystrokes and mouse actions, replay as a macro. Build complex sequences without manual step entry.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.0 -->
+      <div class="phase">
+        <div class="phase-dot upcoming"></div>
+        <div class="phase-header">
+          <span class="phase-name">v1.0 Windows</span>
+          <span class="phase-date">August 2026</span>
+          <span class="phase-tag tag-planned">Planned</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">AHK Importer <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Parse existing .ahk files and convert hotkeys, text replacements and macros to Trigr assignments automatically.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Paid Tiers Live</div>
+              <div class="feature-desc">Free / Pro / Teams pricing activated. Free tier stays generous — unlimited hotkeys, expansions, profiles. Pro unlocks advanced features.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09zM12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2zM9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">ProductHunt Launch</div>
+              <div class="feature-desc">Public launch on ProductHunt. Visual keyboard meets radial menu meets clipboard manager — a new category of Windows automation.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.0 Mac -->
+      <div class="phase">
+        <div class="phase-dot upcoming"></div>
+        <div class="phase-header">
+          <span class="phase-name">v1.0 Mac Beta</span>
+          <span class="phase-date">September 2026</span>
+          <span class="phase-tag tag-planned">Planned</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06zM10 2c1 .5 2 2 2 5"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Mac Support</div>
+              <div class="feature-desc">Same React UI, Rust backend. Tauri makes Mac a platform switch, not a rewrite. All existing features ported. The Keyboard Maestro alternative, from Windows.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.1 -->
+      <div class="phase">
+        <div class="phase-dot upcoming"></div>
+        <div class="phase-header">
+          <span class="phase-name">v1.1</span>
+          <span class="phase-date">October 2026</span>
+          <span class="phase-tag tag-planned">Planned</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">TextExpander + espanso Importers <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Migrate existing TextExpander snippets or espanso YAML configs into Trigr with one click.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Conditional Expansions <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">If/then logic in text expansions. Different output based on context, clipboard content, or time of day.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v2.0 -->
+      <div class="phase">
+        <div class="phase-dot upcoming"></div>
+        <div class="phase-header">
+          <span class="phase-name">v2.0</span>
+          <span class="phase-date">Q1 2027</span>
+          <span class="phase-tag tag-planned">Planned</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Cloud Sync <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Sync profiles, expansions and settings across all your devices. Automatic, no manual export/import.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Teams</div>
+              <div class="feature-desc">Shared snippet libraries, admin dashboard, team analytics, SSO. Deploy consistent automation across your whole organisation.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
-  <div class="team-footnote">Yes, Trigr is 100% AI-built. No, we're not ashamed of it.<br>the founder decides what to build. Claude Code builds it. It works. Ship it.</div>
 </section>
 
-<div class="section-divider"><hr></div>
+<div class="section-divider"></div>
 
-<!-- ══════════════════════════════════════════════════
-     SHIPPED
-═══════════════════════════════════════════════════ -->
-<section class="timeline-section">
-  <h2>What's shipped</h2>
+<!-- ORIGIN + TEAM -->
+<section class="section reveal" id="origin">
+  <div class="section-inner">
+    <div class="section-meta"><span class="section-num">03</span><span class="section-label">The story</span></div>
+    <h2 class="section-h2">Rebuilt from the <em>ground up</em>.</h2>
 
-  <div class="timeline">
-
-    <!-- v0 -->
-    <div class="phase">
-      <div class="phase-dot shipped"></div>
-      <div class="phase-header">
-        <span class="phase-name">v0 — The Prototype</span>
-        <span class="phase-date">Feb — Mar 2026</span>
-        <span class="phase-tag tag-shipped">Shipped</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature feature-hero">
-          <span class="feature-icon">🎯</span>
-          <div class="feature-body">
-            <div class="feature-name">Visual Keyboard UI <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Click any key to assign an action. Full keyboard, modifier bar, arrow keys, numpad, and all 7 mouse buttons. No scripting, no config files. The core idea that started Trigr.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">⚡</span>
-          <div class="feature-body">
-            <div class="feature-name">7 Action Types + Macro Sequences <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Type Text, Send Hotkey (hold/repeat modes), Macro Sequence, Open App/URL/Folder, Focus Window. Chain steps with drag-drop reorder, repeat counters, and Wait for Input.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">📝</span>
-          <div class="feature-body">
-            <div class="feature-name">Text Expansions <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Trigger word + Space fires replacement text anywhere. Fill-in fields, global variables, image expansions, categories with colour-coding and drag-reorder.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">📜</span>
-          <div class="feature-body">
-            <div class="feature-name">AHK Script Runner <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Paste any AutoHotkey script body as a macro step or standalone action. Bundles AHK — no installation needed. v1 and v2 syntax.</div>
-          </div>
-        </div>
+    <div class="origin-card" style="margin-top:32px;">
+      <p>Trigr was originally built on Electron — a 77MB installer, 150-250MB RAM, and noticeable battery drain. We rewrote the entire backend in Rust using Tauri v2, keeping the same React UI. The result: native performance, a fraction of the footprint, and a clear path to Mac support. Every feature migrated and verified on both x64 and ARM64 Windows.</p>
+      <div class="origin-stats">
+        <div class="origin-stat"><strong>77MB → 10MB</strong><span>Installer size</span></div>
+        <div class="origin-stat"><strong>250MB → 30MB</strong><span>RAM usage</span></div>
+        <div class="origin-stat"><strong>Rust</strong><span>Backend</span></div>
+        <div class="origin-stat"><strong>x64 + ARM64</strong><span>Platforms</span></div>
       </div>
     </div>
 
-    <!-- v0.1 -->
-    <div class="phase">
-      <div class="phase-dot shipped"></div>
-      <div class="phase-header">
-        <span class="phase-name">v0.1 — The Foundation</span>
-        <span class="phase-date">46 releases &middot; Apr 2026</span>
-        <span class="phase-tag tag-shipped">Shipped</span>
+    <div class="team-grid">
+      <div class="team-card">
+        <div class="team-avatar tav-founder">RB</div>
+        <div class="team-name">Trigr</div>
+        <div class="team-role">Product &amp; Design</div>
+        <div class="team-desc">builder turned product builder. Designs every feature, writes every spec, tests every release. Has never typed a line of Rust or React in his life. Not once. Not even a semicolon.</div>
       </div>
-      <div class="feature-grid">
-        <div class="feature feature-hero">
-          <span class="feature-icon">📋</span>
-          <div class="feature-body">
-            <div class="feature-name">Clipboard Manager <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">History, search, pin, edit, auto-tagging (Text/Link/Email/Colour/Number/Image), source app capture, Ctrl+Shift+V quick-paste overlay, scratchpad. Free: 7-day retention. Pro: 30-day retention, source tagging.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🔄</span>
-          <div class="feature-body">
-            <div class="feature-name">App-Specific Profiles <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Free: up to 3 global profiles. Pro: unlimited profiles, app auto-switching via foreground watcher. Profile export/import, right-click link/unlink, drag-drop reorder.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🖱️</span>
-          <div class="feature-body">
-            <div class="feature-name">Mouse Button Remapping <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">All 7 buttons assignable in app-linked profiles. Hold/release mirroring, modifier passthrough, bare key support, double-press detection.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🎓</span>
-          <div class="feature-body">
-            <div class="feature-name">Onboarding + Infrastructure</div>
-            <div class="feature-desc">5-step onboarding tour, starter template packs, list view toggle, macro speed presets, shared config sync via Dropbox/OneDrive, automatic rolling backups.</div>
-          </div>
-        </div>
+      <div class="team-card">
+        <div class="team-avatar tav-claude"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg></div>
+        <div class="team-name">Claude Code</div>
+        <div class="team-role">Engineering &amp; CTO</div>
+        <div class="team-desc">Writes every line of code. All 30,000 of them. Rust backend, React frontend, CSS, CI pipelines, this very webpage. Works 24/7. Never complains. Occasionally hallucinates a function that doesn't exist.</div>
       </div>
     </div>
-
-    <!-- v0.2 -->
-    <div class="phase">
-      <div class="phase-dot shipped"></div>
-      <div class="phase-header">
-        <span class="phase-name">v0.2 — Quick Search Overlay</span>
-        <span class="phase-date">5 releases &middot; Apr 27 — 30</span>
-        <span class="phase-tag tag-shipped">Shipped</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature feature-hero">
-          <span class="feature-icon">🔍</span>
-          <div class="feature-body">
-            <div class="feature-name">Quick Search Overlay <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Ctrl+Space from anywhere. Instantly search all assignments, expansions (including body text), and search templates. Fire ChatGPT, Perplexity, Google queries with trigger+Space. User categories with colours and drag-reorder.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">📊</span>
-          <div class="feature-body">
-            <div class="feature-name">Analytics Dashboard <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Period summaries (Today/7/14/30 days), activity chart + heatmap, streak tracking, three-column leaderboards, ROI calculator, expansion efficiency ratio. All local.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🎨</span>
-          <div class="feature-body">
-            <div class="feature-name">UI Overhaul</div>
-            <div class="feature-desc">Keyboard layout rebuilt with arrow keys and nav cluster. Macro panel widened to 450px with inline inputs. Clipboard overlay redesigned. Consistent edit panels across all views.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🔤</span>
-          <div class="feature-body">
-            <div class="feature-name">Smart Case + Sorting</div>
-            <div class="feature-desc">Smart case matching — type "Brb" to get "Be right back", "BRB" for "BE RIGHT BACK". Sortable columns in expansion and assignment lists.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">✌️</span>
-          <div class="feature-body">
-            <div class="feature-name">Double-Press Hotkeys <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Assign separate actions to single press and double press of the same key. Configurable detection timer (150-500ms). Works for both keyboard and mouse buttons.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🔁</span>
-          <div class="feature-body">
-            <div class="feature-name">Hold Mode + Repeat Mode <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Hold mode: first press holds, second press releases. Repeat mode: first press starts auto-firing at a configurable interval, second press stops. Works for keyboard and mouse targets.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">📦</span>
-          <div class="feature-body">
-            <div class="feature-name">Starter Templates <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Three ready-made packs: General/Office, CAD/Engineering, Sales/BD. One-click import with app-specific profile creation for CAD workflows.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- v0.3 -->
-    <div class="phase">
-      <div class="phase-dot shipped"></div>
-      <div class="phase-header">
-        <span class="phase-name">v0.3 — Radial Menu</span>
-        <span class="phase-date">10 releases &middot; May 1 — 5</span>
-        <span class="phase-tag tag-shipped">Shipped</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature feature-hero">
-          <span class="feature-icon">🎡</span>
-          <div class="feature-body">
-            <div class="feature-name">Radial Menu <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Hotkey-triggered SVG wheel at cursor position. 8 segments per ring, folder nesting, per-profile configuration, 1500+ Lucide icons, Simple Icons, custom images, drag-drop reorder. Originally planned for v1.2 — shipped 6 months ahead of schedule.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🎤</span>
-          <div class="feature-body">
-            <div class="feature-name">Voice Triggers <span class="feature-pill pill-exp">Experimental</span></div>
-            <div class="feature-desc">Say a phrase, fire an action. WinRT speech recognition with grammar-constrained matching. 100% offline — audio never leaves your device. Per-action voice phrases, mic test with live level meter.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🖼️</span>
-          <div class="feature-body">
-            <div class="feature-name">Image Expansions <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Paste PNG or JPEG images via trigger word. Scalable (10-100%), clipboard paste with CF_DIB + PNG stream for compatibility across Office, browsers, and design tools.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🕐</span>
-          <div class="feature-body">
-            <div class="feature-name">Dynamic Tokens <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Date/time tokens with date math ({date:+7d}), clipboard transforms ({clipboard:uppercase}, {clipboard:trim}), cursor placement. Expansions that adapt to context.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">📤</span>
-          <div class="feature-body">
-            <div class="feature-name">Profile Export/Import <span class="feature-pill pill-free">Free</span></div>
-            <div class="feature-desc">Right-click any profile to export as .json. Share with colleagues or move between machines. Import with copy/overwrite collision handling.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">☁️</span>
-          <div class="feature-body">
-            <div class="feature-name">Config Sync <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Point Trigr at a Dropbox or OneDrive folder. Config syncs across machines automatically with file watching, conflict detection, and self-write suppression.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
+    <div class="team-footnote">Yes, Trigr is 100% AI-built. No, we're not ashamed of it.<br>the founder decides what to build. Claude Code builds it. It works. Ship it.</div>
   </div>
 </section>
 
-<div class="section-divider"><hr></div>
-
-<!-- ══════════════════════════════════════════════════
-     COMING NEXT
-═══════════════════════════════════════════════════ -->
-<section class="timeline-section">
-  <h2>What's next</h2>
-
-  <div class="timeline">
-
-    <!-- BETA -->
-    <div class="phase">
-      <div class="phase-dot current"></div>
-      <div class="phase-header">
-        <span class="phase-name">Beta</span>
-        <span class="phase-date">May 2026</span>
-        <span class="phase-tag tag-active">In progress</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature">
-          <span class="feature-icon">🔑</span>
-          <div class="feature-body">
-            <div class="feature-name">Free Beta Keys</div>
-            <div class="feature-desc">LemonSqueezy integration with free licence keys. All Pro features unlocked during beta — experience the full product before paid tiers go live.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">✍️</span>
-          <div class="feature-body">
-            <div class="feature-name">Code Signing</div>
-            <div class="feature-desc">Microsoft Azure Trusted Signing. No more SmartScreen warnings on install.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">💡</span>
-          <div class="feature-body">
-            <div class="feature-name">Save Snippet from Highlight</div>
-            <div class="feature-desc">Highlight text anywhere, open Quick Search, save it directly as a new expansion. One-step snippet creation.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🎬</span>
-          <div class="feature-body">
-            <div class="feature-name">Macro Recorder</div>
-            <div class="feature-desc">Record keystrokes and mouse actions, replay as a macro. Build complex sequences without manual step entry.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- v1.0 -->
-    <div class="phase">
-      <div class="phase-dot upcoming"></div>
-      <div class="phase-header">
-        <span class="phase-name">v1.0 Windows</span>
-        <span class="phase-date">August 2026</span>
-        <span class="phase-tag tag-planned">Planned</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature">
-          <span class="feature-icon">📥</span>
-          <div class="feature-body">
-            <div class="feature-name">AHK Importer <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Parse existing .ahk files and convert hotkeys, text replacements and macros to Trigr assignments automatically.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">💳</span>
-          <div class="feature-body">
-            <div class="feature-name">Paid Tiers Live</div>
-            <div class="feature-desc">Free / Pro / Teams pricing activated. Free tier stays generous — unlimited hotkeys, expansions, profiles. Pro unlocks advanced features.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🚀</span>
-          <div class="feature-body">
-            <div class="feature-name">ProductHunt Launch</div>
-            <div class="feature-desc">Public launch on ProductHunt. Visual keyboard meets radial menu meets clipboard manager — a new category of Windows automation.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- v1.0 Mac -->
-    <div class="phase">
-      <div class="phase-dot upcoming"></div>
-      <div class="phase-header">
-        <span class="phase-name">v1.0 Mac Beta</span>
-        <span class="phase-date">September 2026</span>
-        <span class="phase-tag tag-planned">Planned</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature">
-          <span class="feature-icon">🍎</span>
-          <div class="feature-body">
-            <div class="feature-name">Mac Support</div>
-            <div class="feature-desc">Same React UI, Rust backend. Tauri makes Mac a platform switch, not a rewrite. All existing features ported. The Keyboard Maestro alternative, from Windows.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- v1.1 -->
-    <div class="phase">
-      <div class="phase-dot upcoming"></div>
-      <div class="phase-header">
-        <span class="phase-name">v1.1</span>
-        <span class="phase-date">October 2026</span>
-        <span class="phase-tag tag-planned">Planned</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature">
-          <span class="feature-icon">📥</span>
-          <div class="feature-body">
-            <div class="feature-name">TextExpander + espanso Importers <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Migrate existing TextExpander snippets or espanso YAML configs into Trigr with one click.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">🔀</span>
-          <div class="feature-body">
-            <div class="feature-name">Conditional Expansions <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">If/then logic in text expansions. Different output based on context, clipboard content, or time of day.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- v2.0 -->
-    <div class="phase">
-      <div class="phase-dot upcoming"></div>
-      <div class="phase-header">
-        <span class="phase-name">v2.0</span>
-        <span class="phase-date">Q1 2027</span>
-        <span class="phase-tag tag-planned">Planned</span>
-      </div>
-      <div class="feature-grid">
-        <div class="feature">
-          <span class="feature-icon">☁️</span>
-          <div class="feature-body">
-            <div class="feature-name">Cloud Sync <span class="feature-pill pill-pro">Pro</span></div>
-            <div class="feature-desc">Sync profiles, expansions and settings across all your devices. Automatic, no manual export/import.</div>
-          </div>
-        </div>
-        <div class="feature">
-          <span class="feature-icon">👥</span>
-          <div class="feature-body">
-            <div class="feature-name">Teams</div>
-            <div class="feature-desc">Shared snippet libraries, admin dashboard, team analytics, SSO. Deploy consistent automation across your whole organisation.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
+<!-- CTA -->
+<section class="cta-section reveal">
+  <div class="cta-card">
+    <h2 class="cta-h2">Try it <em>today</em>.</h2>
+    <p class="cta-sub">Free download. No sign-up. All Pro features unlocked during alpha.</p>
+    <a class="btn-primary" href="https://github.com/Trigr-it/trigr-tauri/releases/latest">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Download for Windows
+    </a>
   </div>
 </section>
 
-<!-- ── CTA ── -->
-<section class="cta-section">
-  <h2>Try Trigr today</h2>
-  <p>Free download. No sign-up. All Pro features unlocked during alpha.</p>
-  <a class="btn-primary" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr-Setup.exe">Download for Windows</a>
-</section>
-
+<!-- FOOTER -->
 <footer>
-  Trigr &bull; Node Scaffold Design Ltd &bull; <a href="index.html">trigr.it</a>
+  <div class="footer-top">
+    <div class="footer-brand">
+      <a href="index.html" class="ft-logo">
+        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+        <span class="ft-wm">TRIGR</span>
+      </a>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Alpha.</p>
+      <button class="cmdk-hint" onclick="openCmdK()" type="button">Search this page <kbd>Ctrl</kbd><kbd>K</kbd></button>
+    </div>
+    <div class="footer-cols">
+      <div class="ft-col">
+        <h4>Product</h4>
+        <a href="index.html#features">Features</a>
+        <a href="index.html#how">How it works</a>
+        <a href="roadmap.html">Roadmap</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest">Download</a>
+      </div>
+      <div class="ft-col">
+        <h4>Resources</h4>
+        <a href="trigr-help.html">Guide</a>
+        <a href="trigr-alpha-tester-guide.html">Alpha tester guide</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/issues">Report a bug</a>
+      </div>
+      <div class="ft-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:admin@usetrigr.com">admin@usetrigr.com</a>
+        <a href="https://github.com/Trigr-it">@Trigr-it</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span class="ft-copy">© 2026 Trigr · Designed by a human, built by an AI, shipped by both</span>
+    <div class="ft-meta">
+      <a href="trigr-help.html">Privacy</a>
+      <a href="https://github.com/Trigr-it/trigr-tauri/blob/main/LICENSE">License</a>
+    </div>
+  </div>
 </footer>
+
+<!-- Ctrl+K palette -->
+<div class="cmdk-overlay" id="cmdk-overlay" role="dialog" aria-label="Search this page">
+  <div class="cmdk-panel">
+    <div class="cmdk-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" id="cmdk-input" class="cmdk-input" placeholder="Search releases, features, phases..." autocomplete="off">
+      <span class="cmdk-esc">ESC</span>
+    </div>
+    <div class="cmdk-results" id="cmdk-results"></div>
+    <div class="cmdk-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── REVEAL + STATS COUNTER ─────────────────────────────── */
+(function(){
+  function animateCount(el, target, duration){
+    duration = duration || 1500;
+    if(target === 0){ el.textContent = '0'; return; }
+    var start = performance.now();
+    function frame(now){
+      var t = Math.min((now - start) / duration, 1);
+      var eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.floor(target * eased).toLocaleString();
+      if(t < 1) requestAnimationFrame(frame);
+      else el.textContent = target.toLocaleString();
+    }
+    requestAnimationFrame(frame);
+  }
+  if(!('IntersectionObserver' in window)){
+    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
+    document.querySelectorAll('.stat-num-value').forEach(function(el){ el.textContent = parseInt(el.dataset.target,10).toLocaleString(); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        e.target.classList.add('in');
+        if(e.target.classList.contains('stats-strip')){
+          e.target.querySelectorAll('.stat-num-value').forEach(function(el){
+            if(el.dataset.counted) return;
+            el.dataset.counted = '1';
+            animateCount(el, parseInt(el.dataset.target,10));
+          });
+        }
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+})();
+
+/* ── SHIPPED VISUAL STICKY-SCROLL TRACKING ──────────────── */
+(function(){
+  var frame = document.getElementById('sv-frame');
+  if(!frame || !('IntersectionObserver' in window)) return;
+  var phaseObserver = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        var p = e.target.dataset.phase;
+        if(p) frame.setAttribute('data-active', p);
+      }
+    });
+  }, { threshold: 0.45, rootMargin: '-25% 0px -25% 0px' });
+  document.querySelectorAll('#shipped .phase[data-phase]').forEach(function(el){ phaseObserver.observe(el); });
+})();
+
+/* ── FILTER CHIPS ───────────────────────────────────────── */
+function setFilter(btn, tier){
+  document.querySelectorAll('.filter-chip').forEach(function(c){ c.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('#shipped .feature').forEach(function(f){
+    var tiers = (f.dataset.tier || '').split(' ');
+    if(tier === 'all' || tiers.indexOf(tier) >= 0) f.classList.remove('hidden');
+    else f.classList.add('hidden');
+  });
+}
+
+/* ── THEME TOGGLE ───────────────────────────────────────── */
+function toggleTheme(){
+  var html = document.documentElement;
+  var current = html.getAttribute('data-theme') || 'dark';
+  var next = current === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '🌙' : '☀';
+  localStorage.setItem('trigr-site-theme', next);
+}
+/* Sync toggle button to head-resolved theme + listen for live OS theme changes */
+(function(){
+  var btn = document.getElementById('theme-btn');
+  if(btn){
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    btn.textContent = current === 'light' ? '🌙' : '☀';
+  }
+  if(window.matchMedia){
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    var onChange = function(e){
+      if(localStorage.getItem('trigr-site-theme')) return; // respect manual override
+      var theme = e.matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+      var b = document.getElementById('theme-btn');
+      if(b) b.textContent = theme === 'light' ? '🌙' : '☀';
+    };
+    if(mq.addEventListener) mq.addEventListener('change', onChange);
+    else if(mq.addListener) mq.addListener(onChange);
+  }
+})();
+
+/* ── CTRL+K SEARCH PALETTE ──────────────────────────────── */
+var __cmdkOverlay, __cmdkInput, __cmdkResults, __cmdkIndex = [], __cmdkActive = 0, __cmdkResultsCache = [];
+
+function __buildCmdkIndex(){
+  __cmdkIndex = [];
+  document.querySelectorAll('section[id]').forEach(function(sec){
+    var h2 = sec.querySelector('h2');
+    var lbl = sec.querySelector('.section-label');
+    if(h2){
+      __cmdkIndex.push({ title: h2.textContent.replace(/\s+/g,' ').trim(), section: lbl ? lbl.textContent : sec.id, el: sec });
+    }
+  });
+  document.querySelectorAll('.phase-name').forEach(function(p){
+    __cmdkIndex.push({ title: p.textContent.replace(/\s+/g,' ').trim(), section: 'Release', el: p });
+  });
+  document.querySelectorAll('.feature-name').forEach(function(n){
+    var txt = (n.childNodes[0] ? n.childNodes[0].textContent : n.textContent).replace(/\s+/g,' ').trim();
+    if(txt && txt.length < 80){
+      __cmdkIndex.push({ title: txt, section: 'Feature', el: n });
+    }
+  });
+}
+
+function __renderCmdkResults(query){
+  var q = (query || '').toLowerCase().trim();
+  var results = q
+    ? __cmdkIndex.filter(function(i){ return i.title.toLowerCase().indexOf(q) >= 0 || i.section.toLowerCase().indexOf(q) >= 0; })
+    : __cmdkIndex.slice(0, 10);
+  __cmdkActive = 0;
+  __cmdkResultsCache = results;
+  if(results.length === 0){
+    __cmdkResults.innerHTML = '<div class="cmdk-empty">No results for "'+query+'"</div>';
+    return;
+  }
+  __cmdkResults.innerHTML = results.map(function(r, i){
+    return '<div class="cmdk-result'+(i===0?' active':'')+'" data-idx="'+i+'"><svg class="cmdk-result-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg><span class="cmdk-result-title">'+r.title+'</span><span class="cmdk-result-section">'+r.section+'</span></div>';
+  }).join('');
+  Array.from(__cmdkResults.children).forEach(function(el, i){
+    el.addEventListener('click', function(){ __jumpCmdk(results[i]); });
+    el.addEventListener('mouseenter', function(){
+      Array.from(__cmdkResults.children).forEach(function(c){ c.classList.remove('active'); });
+      el.classList.add('active');
+      __cmdkActive = i;
+    });
+  });
+}
+
+function __jumpCmdk(r){
+  if(!r) return;
+  closeCmdK();
+  setTimeout(function(){ r.el.scrollIntoView({behavior:'smooth', block:'start'}); }, 120);
+}
+
+function openCmdK(){
+  if(!__cmdkOverlay){
+    __cmdkOverlay = document.getElementById('cmdk-overlay');
+    __cmdkInput = document.getElementById('cmdk-input');
+    __cmdkResults = document.getElementById('cmdk-results');
+    if(!__cmdkOverlay) return;
+    __buildCmdkIndex();
+    __cmdkInput.addEventListener('input', function(e){ __renderCmdkResults(e.target.value); });
+    __cmdkOverlay.addEventListener('click', function(e){ if(e.target === __cmdkOverlay) closeCmdK(); });
+  }
+  __cmdkOverlay.classList.add('show');
+  setTimeout(function(){ __cmdkInput.focus(); }, 50);
+  __renderCmdkResults('');
+}
+
+function closeCmdK(){
+  if(__cmdkOverlay) __cmdkOverlay.classList.remove('show');
+  if(__cmdkInput) __cmdkInput.value = '';
+}
+
+document.addEventListener('keydown', function(e){
+  if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){
+    e.preventDefault();
+    if(__cmdkOverlay && __cmdkOverlay.classList.contains('show')) closeCmdK();
+    else openCmdK();
+    return;
+  }
+  if(!__cmdkOverlay || !__cmdkOverlay.classList.contains('show')) return;
+  if(e.key === 'Escape'){ e.preventDefault(); closeCmdK(); }
+  else if(e.key === 'ArrowDown'){
+    e.preventDefault();
+    var children = __cmdkResults.children;
+    if(children.length === 0) return;
+    if(children[__cmdkActive]) children[__cmdkActive].classList.remove('active');
+    __cmdkActive = (__cmdkActive + 1) % children.length;
+    children[__cmdkActive].classList.add('active');
+    children[__cmdkActive].scrollIntoView({block:'nearest'});
+  } else if(e.key === 'ArrowUp'){
+    e.preventDefault();
+    var children = __cmdkResults.children;
+    if(children.length === 0) return;
+    if(children[__cmdkActive]) children[__cmdkActive].classList.remove('active');
+    __cmdkActive = (__cmdkActive - 1 + children.length) % children.length;
+    children[__cmdkActive].classList.add('active');
+    children[__cmdkActive].scrollIntoView({block:'nearest'});
+  } else if(e.key === 'Enter'){
+    e.preventDefault();
+    if(__cmdkResultsCache && __cmdkResultsCache[__cmdkActive]) __jumpCmdk(__cmdkResultsCache[__cmdkActive]);
+  }
+});
+</script>
 
 </body>
 </html>
