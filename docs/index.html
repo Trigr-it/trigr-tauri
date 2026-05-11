@@ -380,15 +380,21 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .b-tile-hero .b-desc { font-size:15px; max-width:460px; }
 
 /* Hero tile interior visual: live mini-keyboard preview */
-.b-hero-visual { margin-top:auto; display:flex; align-items:flex-end; gap:18px; }
-.b-mini-kb { background:#0d0d11; border:1px solid #262638; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:5px; flex:1; min-width:0; box-shadow:0 12px 40px rgba(0,0,0,0.4); }
+.b-hero-visual { margin-top:auto; display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; }
+.b-mini-kb { background:#0d0d11; border:1px solid #262638; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:4px; flex:0 1 auto; box-shadow:0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03); }
 .b-mini-row { display:flex; gap:4px; }
-.b-mk { height:28px; min-width:28px; padding:0 7px; border-radius:5px; background:#1e1e2c; border:1px solid #353550; color:#72708c; font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.b-mk-mod { min-width:42px; color:#a8a6c2; }
+.b-mk { height:30px; width:28px; border-radius:4px; background:#1e1e2c; border:1px solid #353550; color:#72708c; font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:inset 0 1px 0 rgba(255,255,255,0.03); }
+.b-mk-1-25 { width:35px; }
+.b-mk-1-5 { width:42px; }
+.b-mk-1-75 { width:49px; }
+.b-mk-2 { width:56px; }
+.b-mk-2-25 { width:63px; }
+.b-mk-2-75 { width:77px; }
+.b-mk-space { width:175px; }
+.b-mk-mod { color:#a8a6c2; }
 .b-mk-asgn { background:#201f0c; border-color:rgba(232,160,32,0.55); color:#f0ede8; position:relative; }
-.b-mk-asgn::after { content:''; position:absolute; top:3px; right:3px; width:5px; height:5px; border-radius:50%; background:var(--gold); box-shadow:0 0 4px var(--gold); }
-.b-mk-sel { background:#1f1a08; border-color:var(--gold); color:var(--gold); box-shadow:0 0 14px rgba(232,160,32,0.3); }
-.b-mk-spacer { flex:1; background:transparent; border-color:transparent; }
+.b-mk-asgn::after { content:''; position:absolute; top:2px; right:2px; width:4px; height:4px; border-radius:50%; background:var(--gold); box-shadow:0 0 4px var(--gold); }
+.b-mk-sel { background:#1f1a08; border-color:var(--gold); color:var(--gold); box-shadow:0 0 12px rgba(232,160,32,0.3); }
 .b-hero-stats { display:flex; flex-direction:column; gap:14px; flex-shrink:0; min-width:170px; }
 .b-stat { background:rgba(13,17,32,0.6); border:1px solid var(--hairline); border-radius:10px; padding:12px 14px; }
 .b-stat-num { font-family:var(--font-display); font-weight:800; font-size:28px; color:var(--gold-light); letter-spacing:-0.02em; line-height:1; }
@@ -402,6 +408,12 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 [data-theme="light"] .b-te-trig { color:var(--gold-dark); }
 .b-te-arrow { color:var(--text-dim); font-size:11px; }
 .b-te-out { color:var(--text-muted); font-family:var(--font-body); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Quick Search tile — reuse demo-section classes for visual consistency */
+.b-tile .demo-interactive-pill { position:absolute; top:18px; right:18px; z-index:2; }
+.b-tile button.demo-press-hint { margin-top:auto; cursor:pointer; width:100%; text-align:left; font-family:inherit; padding:10px 12px!important; font-size:13px!important; transition:background 0.2s, border-color 0.2s, transform 0.2s; }
+.b-tile button.demo-press-hint .demo-code { font-size:12px; padding:1px 8px; }
+.b-tile button.demo-press-hint:hover { background:rgba(232,160,32,0.22); border-color:var(--gold); transform:translateY(-1px); }
 
 /* Macro tile preview */
 .b-macro-steps { display:flex; flex-direction:column; gap:5px; margin-top:auto; }
@@ -895,7 +907,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
     <div class="hero-badge">
       <span class="hero-badge-dot"></span><strong>Alpha</strong> · Windows 10 & 11 · Free
     </div>
-    <h1 class="hero-h1">Stop typing the<br>same things<br><em>twice.</em></h1>
+    <h1 class="hero-h1">Stop doing the<br>same things<br><em>twice.</em></h1>
     <p class="hero-sub">Hotkeys, macros, and text expansions — built visually, not scripted. One install, every app, your whole team. Live in under a minute.</p>
     <div class="hero-actions">
       <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest" class="btn-primary">
@@ -969,7 +981,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
                       <button class="mod-btn" id="mb-Shift" onclick="selMod(this,'Shift')">Shift</button>
                       <button class="mod-btn" id="mb-Win" onclick="selMod(this,'Win')">Win</button>
                       <div class="mod-sep"></div>
-                      <button class="rec-btn" onclick="doRecord()">⏺ Record</button>
+                      <button class="rec-btn" onclick="doRecord()">⏺ Capture</button>
                     </div>
                     <div class="mod-combo" id="mod-combo"><span class="combo-hint">Select a modifier, then click a key</span></div>
                   </div>
@@ -1200,8 +1212,8 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <div class="vs-step">
             <div class="vs-step-n">3</div>
             <div class="vs-step-body">
-              <div class="vs-step-title">Pick "Macro" → record the sequence → Save</div>
-              <div class="vs-step-mock"><span class="vs-mk lit">◈ Macro</span><span class="vs-step-arr">recording…</span></div>
+              <div class="vs-step-title">Pick "Macro" → add steps → Save</div>
+              <div class="vs-step-mock"><span class="vs-mk lit">◈ Macro</span><span class="vs-step-arr">building…</span></div>
               <div class="sm-macro-rows" style="margin-top:2px;">
                 <div class="sm-mrow"><span class="sm-mrow-n">1</span><span class="sm-mrow-label">Open VS Code</span><span class="sm-mrow-time">+0ms</span></div>
                 <div class="sm-mrow"><span class="sm-mrow-n">2</span><span class="sm-mrow-label">Wait 1.5s</span><span class="sm-mrow-time">+1.5s</span></div>
@@ -1238,13 +1250,16 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
         <div class="b-hero-visual">
           <div class="b-mini-kb">
             <div class="b-mini-row">
-              <div class="b-mk">Q</div><div class="b-mk">W</div><div class="b-mk b-mk-asgn">E</div><div class="b-mk">R</div><div class="b-mk">T</div><div class="b-mk">Y</div><div class="b-mk b-mk-asgn">U</div><div class="b-mk">I</div><div class="b-mk b-mk-sel">O</div><div class="b-mk">P</div>
+              <div class="b-mk b-mk-1-5 b-mk-mod">Tab</div><div class="b-mk">Q</div><div class="b-mk">W</div><div class="b-mk b-mk-asgn">E</div><div class="b-mk">R</div><div class="b-mk">T</div><div class="b-mk">Y</div><div class="b-mk b-mk-asgn">U</div><div class="b-mk">I</div><div class="b-mk b-mk-sel">O</div><div class="b-mk">P</div><div class="b-mk">[</div><div class="b-mk">]</div>
             </div>
             <div class="b-mini-row">
-              <div class="b-mk">A</div><div class="b-mk b-mk-asgn">S</div><div class="b-mk">D</div><div class="b-mk">F</div><div class="b-mk">G</div><div class="b-mk">H</div><div class="b-mk">J</div><div class="b-mk b-mk-asgn">K</div><div class="b-mk">L</div>
+              <div class="b-mk b-mk-1-75 b-mk-mod">Caps</div><div class="b-mk">A</div><div class="b-mk b-mk-asgn">S</div><div class="b-mk">D</div><div class="b-mk">F</div><div class="b-mk">G</div><div class="b-mk">H</div><div class="b-mk">J</div><div class="b-mk b-mk-asgn">K</div><div class="b-mk">L</div><div class="b-mk">;</div><div class="b-mk">'</div><div class="b-mk b-mk-2-25 b-mk-mod">↵</div>
             </div>
             <div class="b-mini-row">
-              <div class="b-mk b-mk-mod">Ctrl</div><div class="b-mk b-mk-spacer"></div><div class="b-mk b-mk-mod">Alt</div><div class="b-mk b-mk-mod">Shift</div>
+              <div class="b-mk b-mk-2-25 b-mk-mod">Shift</div><div class="b-mk">Z</div><div class="b-mk">X</div><div class="b-mk">C</div><div class="b-mk">V</div><div class="b-mk">B</div><div class="b-mk">N</div><div class="b-mk">M</div><div class="b-mk">,</div><div class="b-mk">.</div><div class="b-mk">/</div><div class="b-mk b-mk-2-75 b-mk-mod">Shift</div>
+            </div>
+            <div class="b-mini-row">
+              <div class="b-mk b-mk-1-25 b-mk-mod">Ctrl</div><div class="b-mk b-mk-1-25 b-mk-mod">⊞</div><div class="b-mk b-mk-1-25 b-mk-mod">Alt</div><div class="b-mk b-mk-space"></div><div class="b-mk b-mk-1-25 b-mk-mod">Alt</div><div class="b-mk b-mk-1-25 b-mk-mod">⊞</div><div class="b-mk b-mk-1-25 b-mk-mod">Ctrl</div>
             </div>
           </div>
           <div class="b-hero-stats">
@@ -1265,17 +1280,20 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 
       <!-- QUICK SEARCH -->
       <div class="b-tile">
+        <span class="demo-interactive-pill"><span class="demo-int-dot"></span>Interactive · Try it</span>
         <div class="b-icon ic-hk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></div>
         <div class="b-title">Quick Search</div>
         <div class="b-desc">Press <strong style="color:var(--gold-light);font-weight:500">Ctrl+Space</strong> from anywhere. Search every assignment. Fire any action without touching the mouse.</div>
-        <span class="b-tag tag-hk">Command palette</span>
+        <button class="demo-press-hint" onclick="openCmdK()" type="button" aria-label="Try it — open this site's search palette">
+          <span class="demo-hint-pulse"></span>Press <span class="demo-code" style="margin-left:2px;">Ctrl+K</span> to search this page
+        </button>
       </div>
 
       <!-- MACROS -->
       <div class="b-tile b-tile-wide">
         <div class="b-icon ic-mc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
         <div class="b-title">Chain actions into a single trigger.</div>
-        <div class="b-desc">Hit Record. Trigr captures the sequence live. Replay it on any key.</div>
+        <div class="b-desc">Build the sequence step by step — open apps, type text, run hotkeys, add delays. Trigger it from any key.</div>
         <div class="b-macro-steps">
           <div class="b-step"><span class="b-step-n">1</span><span class="b-step-l">Open Terminal</span><span class="b-step-time">+0ms</span></div>
           <div class="b-step"><span class="b-step-n">2</span><span class="b-step-l">Type:</span> <code style="font-family:var(--font-mono);font-size:11px;color:var(--text)">npm run dev</code><span class="b-step-time">+120ms</span></div>
@@ -1868,7 +1886,7 @@ function selMod(el, mod) {
 }
 function doRecord() {
   const b = document.querySelector('.rec-btn');
-  b.textContent = b.textContent === '⏺ Record' ? '⏹ Stop' : '⏺ Record';
+  b.textContent = b.textContent === '⏺ Capture' ? '⏹ Stop' : '⏺ Capture';
 }
 function switchModTab(el, tab) {
   S.modTab = tab;
