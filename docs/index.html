@@ -1501,31 +1501,31 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
     <p class="section-sub">Built solo, shipped solo, supported solo — happy to answer anything else over email.</p>
 
     <div class="faq-list">
-      <details class="faq-item">
+      <details class="faq-item" name="faq">
         <summary class="faq-q">Is it really free?<span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes — fully free during Beta and the core feature set stays free at v1.0. <strong>Pro</strong> and <strong>Teams</strong> licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch.</div>
       </details>
-      <details class="faq-item">
+      <details class="faq-item" name="faq">
         <summary class="faq-q">How is this different from AutoHotkey?<span class="faq-q-icon"></span></summary>
         <div class="faq-body">Trigr ships with AutoHotkey built in — both <code>v1</code> and <code>v2</code> — so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one.</div>
       </details>
-      <details class="faq-item">
+      <details class="faq-item" name="faq">
         <summary class="faq-q">Will my IT team allow it?<span class="faq-q-icon"></span></summary>
         <div class="faq-body">Trigr is a single ~10MB executable. <strong>No installer, no admin rights, no system services, no network calls</strong> outside the optional update check. It runs entirely from your user folder and uninstalls in one click. Most enterprise IT departments approve it as a standard productivity tool — or run it from a network share without ever installing it.</div>
       </details>
-      <details class="faq-item">
+      <details class="faq-item" name="faq">
         <summary class="faq-q">Will it work in Outlook / Excel / Revit / Slack?<span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes. Trigr works at the OS level using low-level keyboard hooks — the same mechanism every Windows shortcut already uses. <strong>If you can type into the app, Trigr works in it.</strong> No per-app integration required.</div>
       </details>
-      <details class="faq-item">
+      <details class="faq-item" name="faq">
         <summary class="faq-q">Does it phone home? Where does my data live?<span class="faq-q-icon"></span></summary>
         <div class="faq-body">Everything stays on your machine. Config, clipboard history, analytics — all in plain JSON and SQLite files in your <code>%LOCALAPPDATA%</code>. <strong>No accounts, no cloud, no telemetry.</strong> Voice commands (currently experimental) run locally via the Windows speech engine — no audio is ever transmitted.</div>
       </details>
-      <details class="faq-item">
+      <details class="faq-item" name="faq">
         <summary class="faq-q">Does it slow my computer down?<span class="faq-q-icon"></span></summary>
         <div class="faq-body">No measurable impact. ~30MB of RAM and effectively 0% CPU when idle. The keyboard hook is callback-driven (no polling) and per-key processing is sub-millisecond. You won't notice it's running.</div>
       </details>
-      <details class="faq-item">
+      <details class="faq-item" name="faq">
         <summary class="faq-q">Can my whole team share configs?<span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes — point Trigr at a shared folder (network drive, OneDrive, Dropbox) and everyone on your team gets the same hotkeys, expansions and macros. Live-synced, file-watcher-backed, conflict-managed. Handy for support teams, ops, or anyone with a shared playbook.</div>
       </details>
