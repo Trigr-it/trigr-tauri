@@ -133,7 +133,7 @@ function ColourPicker({ value, onChange }) {
 
 // ── Rich text editor ───────────────────────────────────────────────────────
 
-function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
+function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade }) {
   const editorRef      = useRef(null);
   const btnRef         = useRef(null);
   const menuRef        = useRef(null);
@@ -327,13 +327,14 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {} }) {
 
   function handleInsertItem(e, item) {
     e.preventDefault();
-    console.log('MENU ITEM CLICKED', item.token);
     if (item.token === '__fillin__') {
-      console.log('FILL-IN ENTRY MODE');
       setFillInEntry(true);
       setFillInLabel('');
       return;
     }
+    // Dynamic tokens (date/time/clipboard/cursor) are Free — gating these would
+    // lose against espanso/FastKeys, which offer them for nothing. The only
+    // expansion-related Pro gate is Global Variables.
     insertTokenHtml(item.token, item.display);
     setShowInsert(false);
   }
@@ -729,6 +730,9 @@ export default function TextExpansions({
   // ── Global Variables
   globalVariables = {},
   onSaveGlobalVariables,
+  // Pro gating
+  isPro = false,
+  onShowUpgrade,
 }) {
   // ── Panel mode (expansions | autocorrect | globalvars) ──
   const [panelMode, setPanelMode] = useState('expansions');
@@ -1208,15 +1212,18 @@ export default function TextExpansions({
           )}
           <button
             className={`te-gv-link${panelMode === 'globalvars' ? ' active' : ''}`}
-            onClick={() => { setPanelMode('globalvars'); setGdEditing(null); }}
+            onClick={() => {
+              if (!isPro) { onShowUpgrade?.('Global variables'); return; }
+              setPanelMode('globalvars'); setGdEditing(null);
+            }}
             type="button"
-            title="Global Variables — reusable values inserted into expansions"
+            title="Global Variables — reusable values inserted into expansions (Pro)"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <rect x="1" y="1" width="10" height="10" rx="2"/>
               <path d="M4 4h1M7 4h1M4 6h4M4 8h3"/>
             </svg>
-            Global Variables
+            Global Variables <span className="pro-badge">PRO</span>
           </button>
         </div>
       </div>
@@ -1606,6 +1613,8 @@ export default function TextExpansions({
                             initialHtml={editorValue.html}
                             onChange={setEditorValue}
                             globalVariables={globalVariables}
+                            isPro={isPro}
+                            onShowUpgrade={onShowUpgrade}
                           />
                         </>
                       ) : (

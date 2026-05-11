@@ -58,6 +58,7 @@ function ProfileAccordion({
   onReorderProfiles, onDuplicateProfile, onSetActiveGlobalProfile,
   onUpdateProfileSettings, onExportProfile, onImportProfile,
   importPrompt, onImportProfileResolve, onImportPromptDismiss,
+  isPro = false, onShowUpgrade,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -326,7 +327,11 @@ function ProfileAccordion({
               />
             </form>
           ) : (
-            <button className="profile-add-btn" type="button" onClick={() => setIsAdding(true)}>
+            <button
+              className="profile-add-btn"
+              type="button"
+              onClick={() => setIsAdding(true)}
+            >
               + Add Profile
             </button>
           )}
@@ -370,12 +375,13 @@ function ProfileAccordion({
             )}
             {!isDefault && isStatic && (
               <button className="profile-ctx-item" onClick={() => {
+                if (!isPro) { onShowUpgrade?.('App-specific profiles'); setContextMenu(null); return; }
                 setLinkPicker(contextMenu.profile);
                 setLinkSelectedExe(null);
                 setLinkWindowTitle('');
                 setContextMenu(null);
               }}>
-                Link to App
+                Link to App <span className="pro-badge">PRO</span>
               </button>
             )}
             {!isStatic && (
@@ -592,6 +598,9 @@ export default function Sidebar({
   // Radial mode props
   activeView = 'keyboard',
   radialMenuItems = [],
+  // Pro gating
+  isPro = false,
+  onShowUpgrade,
 }) {
   const profileEntries = (() => {
     const entries = [];
@@ -686,8 +695,10 @@ export default function Sidebar({
     setActiveTab(sidebarComboFilter || 'All');
   }, [sidebarComboFilter]);
 
-  const allCombos = !combos.includes('BARE') ? [...combos, 'BARE'] : combos;
-  const tabs = ['All', ...allCombos];
+  // Only show modifier-layer tabs for combos that actually have assignments.
+  // Empty layers (including BARE when no bare keys are assigned) stay hidden so
+  // the tab bar doesn't overflow with noise.
+  const tabs = ['All', ...combos];
 
   // Text search filter — matches label, key name, combo, and action type
   const filterQ = assignFilter.trim().toLowerCase();
@@ -838,8 +849,8 @@ export default function Sidebar({
               <>
                 {displayLabel}
                 {doubleOnly
-                  ? <span className="sidebar-double-badge">×2 only <span className="pro-badge">PRO</span></span>
-                  : hasDouble && <span className="sidebar-double-badge">×2 <span className="pro-badge">PRO</span></span>
+                  ? <span className="sidebar-double-badge">×2 only</span>
+                  : hasDouble && <span className="sidebar-double-badge">×2</span>
                 }
               </>
             )}
@@ -923,8 +934,8 @@ export default function Sidebar({
         <div className="grid-card-combo">
           {comboLabel}
           {doubleOnly
-            ? <span className="sidebar-double-badge">×2 only <span className="pro-badge">PRO</span></span>
-            : hasDouble && <span className="sidebar-double-badge">×2 <span className="pro-badge">PRO</span></span>
+            ? <span className="sidebar-double-badge">×2 only</span>
+            : hasDouble && <span className="sidebar-double-badge">×2</span>
           }
         </div>
         <div className="grid-card-label">
@@ -1051,6 +1062,8 @@ export default function Sidebar({
         importPrompt={importPrompt}
         onImportProfileResolve={onImportProfileResolve}
         onImportPromptDismiss={onImportPromptDismiss}
+        isPro={isPro}
+        onShowUpgrade={onShowUpgrade}
       />
 
       <div className="sidebar-header">

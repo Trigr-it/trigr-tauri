@@ -827,8 +827,12 @@ fn handle_clipboard_update() {
         return;
     }
 
-    // Capture source app BEFORE opening clipboard
-    let source_app = get_foreground_process_name();
+    // Capture source app BEFORE opening clipboard (Pro feature — Free users get empty source).
+    let source_app = if crate::licence::is_pro() {
+        get_foreground_process_name()
+    } else {
+        String::new()
+    };
 
     unsafe {
         if OpenClipboard(std::ptr::null_mut()) == 0 {

@@ -26,6 +26,17 @@ fn active_recognizer() -> &'static Mutex<Option<windows::Media::SpeechRecognitio
 /// Start voice recognition with a list of phrases to match against.
 /// Runs on a background thread. Emits "voice-result" or "voice-error" to the overlay.
 pub fn start_recognition(phrases: Vec<String>, app: AppHandle) {
+    // Pro gate: voice triggers require a Pro licence.
+    if !crate::licence::is_pro() {
+        info!("[Voice] Skipping recognition — Pro licence required");
+        if let Some(overlay) = app.get_webview_window("overlay") {
+            let _ = overlay.emit("voice-error", serde_json::json!({
+                "error": "pro-required",
+            }));
+        }
+        return;
+    }
+
     if RECOGNIZING.swap(true, Ordering::SeqCst) {
         warn!("[Voice] Recognition already running, ignoring start");
         return;

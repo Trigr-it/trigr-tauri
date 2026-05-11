@@ -5,6 +5,7 @@
   flex-direction: column;
   height: 100%;
   padding: 0 16px;
+  overflow-x: hidden;
 }
 
 /* Body area below the toolbar. Holds the grid by default; flips to a flex row */
@@ -34,9 +35,10 @@
 
 .cbg-search {
   flex: 1;
-  padding: 7px 12px;
+  height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--border-accent, rgba(232, 160, 32, 0.4));
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-family: var(--font-body);
@@ -52,10 +54,10 @@
 
 .cbg-clear-btn {
   flex-shrink: 0;
-  height: 40px;
+  height: 32px;
   padding: 0 14px;
   border: 1px solid var(--border-bright);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--bg-elevated);
   color: var(--text-secondary);
   font-size: 13px;
@@ -73,7 +75,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
+  height: 32px;
   font-size: 13px;
   color: var(--text-secondary);
 }
@@ -112,10 +114,10 @@
 
 .cbg-app-filter {
   flex-shrink: 0;
-  height: 40px;
+  height: 32px;
   padding: 0 28px 0 12px;
   border: 1px solid var(--border-bright);
-  border-radius: 8px;
+  border-radius: 6px;
   box-sizing: border-box;
   background: var(--bg-elevated);
   color: var(--text-primary);
@@ -137,10 +139,10 @@
 }
 
 .cbg-tag-pill {
-  height: 40px;
+  height: 32px;
   padding: 0 14px;
   border: 1px solid var(--border-bright);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--bg-elevated);
   box-sizing: border-box;
   color: var(--text-secondary);
@@ -159,6 +161,7 @@
 .cbg-grid-wrap {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
 }
 

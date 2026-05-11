@@ -100,6 +100,10 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .hero-h1 .strike::after { content:''; position:absolute; left:-3%; right:-3%; top:50%; height:6px; background:var(--gold); transform:rotate(-3deg); border-radius:3px; opacity:0.85; }
 .hero-sub { font-size:clamp(16px,1.6vw,19px); color:var(--text-muted); max-width:560px; margin:0 auto 44px; font-weight:400; line-height:1.6; animation:fadeInUp 0.7s 0.2s ease both; }
 .hero-actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:center; animation:fadeInUp 0.7s 0.3s ease both; }
+.hero-arm-link { margin-top:14px; font-size:13px; color:var(--text-dim); animation:fadeInUp 0.7s 0.35s ease both; letter-spacing:0.01em; }
+.hero-arm-link a { color:var(--text-muted); text-decoration:underline; text-decoration-color:var(--hairline-strong); text-underline-offset:3px; transition:color 0.2s, text-decoration-color 0.2s; }
+.hero-arm-link a:hover { color:var(--gold-light); text-decoration-color:var(--gold); }
+[data-theme="light"] .hero-arm-link a:hover { color:var(--gold-dark); }
 .btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; transition:all 0.2s; border:none; cursor:pointer; }
 .btn-primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
 [data-theme="light"] .btn-primary { color:#fff; }
@@ -905,7 +909,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   <div class="hero-bg"></div>
   <div class="hero-inner">
     <div class="hero-badge">
-      <span class="hero-badge-dot"></span><strong>Alpha</strong> · Windows 10 & 11 · Free
+      <span class="hero-badge-dot"></span><strong>Early Beta</strong> · Windows 10 & 11 · Free
     </div>
     <h1 class="hero-h1">Stop doing the<br>same things<br><em>twice.</em></h1>
     <p class="hero-sub">Hotkeys, macros, and text expansions — built visually, not scripted. One install, every app, your whole team. Live in under a minute.</p>
@@ -916,7 +920,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       </a>
       <a href="trigr-help.html" class="btn-secondary">See how it works →</a>
     </div>
-    <p class="hero-arm-link"><small>On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe">Download the ARM64 build</a>.</small></p>
+    <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe">Download the ARM64 build</a>.</p>
     <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Fully local — no accounts, no cloud <span>·</span> Latest: <span id="latest-version">v…</span></p>
 
     <!-- ── MOCKUP ── -->
@@ -1499,7 +1503,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
     <div class="faq-list">
       <details class="faq-item">
         <summary class="faq-q">Is it really free?<span class="faq-q-icon"></span></summary>
-        <div class="faq-body">Yes — fully free during Alpha and the core feature set stays free at v1.0. <strong>Pro</strong> and <strong>Teams</strong> licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch.</div>
+        <div class="faq-body">Yes — fully free during Beta and the core feature set stays free at v1.0. <strong>Pro</strong> and <strong>Teams</strong> licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch.</div>
       </details>
       <details class="faq-item">
         <summary class="faq-q">How is this different from AutoHotkey?<span class="faq-q-icon"></span></summary>
@@ -1560,7 +1564,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
         <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
         <span class="ft-wm">TRIGR</span>
       </a>
-      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Alpha.</p>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
       <button class="cmdk-hint" onclick="openCmdK()" type="button">Search this page <kbd>Ctrl</kbd><kbd>K</kbd></button>
     </div>
     <div class="footer-cols">
@@ -1574,7 +1578,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="ft-col">
         <h4>Resources</h4>
         <a href="trigr-help.html">Guide</a>
-        <a href="trigr-alpha-tester-guide.html">Alpha tester guide</a>
+        <a href="trigr-alpha-tester-guide.html">Tester guide</a>
         <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
         <a href="https://github.com/Trigr-it/trigr-tauri/issues">Report a bug</a>
       </div>

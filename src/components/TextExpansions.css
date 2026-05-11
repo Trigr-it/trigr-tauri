@@ -389,16 +389,17 @@
 
 .te-search-input {
   flex: 0 1 160px;
-  height: 22px;
-  padding: 0 8px;
+  height: 32px;
+  padding: 0 10px;
   margin-left: 4px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--bg-surface);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-body);
   outline: none;
+  box-sizing: border-box;
 }
 .te-search-input:focus {
   border-color: var(--border-accent);
@@ -2045,10 +2046,10 @@ button.te-col-header:hover {
 }
 
 .te-type-filter-pill {
-  height: 40px;
+  height: 32px;
   padding: 0 14px;
   border: 1px solid var(--border-bright);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--bg-elevated);
   color: var(--text-secondary);
   cursor: pointer;

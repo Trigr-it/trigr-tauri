@@ -515,6 +515,7 @@ export default function SearchTemplatesPanel({
   searchTemplates = [],
   categories = [],
   isPro = false,
+  onShowUpgrade,
   onAdd,
   onUpdate,
   onDelete,
@@ -679,6 +680,11 @@ export default function SearchTemplatesPanel({
   }
 
   function openNewFromPreset(preset) {
+    if (!isPro && searchTemplates.length >= 5) {
+      onShowUpgrade?.('More than 5 search templates');
+      setShowPresets(false);
+      return;
+    }
     let trigger = preset.trigger;
     const taken = new Set(searchTemplates.map(t => t.trigger.toLowerCase()));
     if (taken.has(trigger)) {
@@ -704,6 +710,11 @@ export default function SearchTemplatesPanel({
   }
 
   function openNewCustom() {
+    if (!isPro && searchTemplates.length >= 5) {
+      onShowUpgrade?.('More than 5 search templates');
+      setShowPresets(false);
+      return;
+    }
     setSelectedId(null);
     setFormLabel('');
     setFormTrigger('');
@@ -774,7 +785,8 @@ export default function SearchTemplatesPanel({
   }
 
   function handleNewClick() {
-    if (atCap) return;
+    // Always allow browsing the preset catalog — Free users see what Pro unlocks.
+    // The cap gate fires on selecting a preset or "Custom", not on opening the browser.
     setPresetFilter('');
     setShowPresets(true);
   }
@@ -1033,11 +1045,12 @@ export default function SearchTemplatesPanel({
         </div>
         <div className="stp-header-right">
           {panelMode === 'templates' ? (
-            atCap ? (
-              <span className="stp-cap-nudge" title="Upgrade to Pro for unlimited templates">5/5 — Upgrade for more</span>
-            ) : (
+            <>
+              {atCap && (
+                <span className="stp-cap-nudge" title="Upgrade to Pro for unlimited templates">5/5 — Pro for more</span>
+              )}
               <button className="stp-add-btn" onClick={handleNewClick} type="button">+ New Template</button>
-            )
+            </>
           ) : (
             <button className="stp-add-btn" onClick={openNewQuickAction} type="button">+ New Action</button>
           )}

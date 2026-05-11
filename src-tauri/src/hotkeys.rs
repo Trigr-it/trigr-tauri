@@ -1840,7 +1840,9 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 
     // Refocus fallback: if the linked app is NOT foreground but the cursor IS
     // over it, detect the profile so we can still fire the remap.
-    let refocus_profile = if !cursor_over_app && !in_dialog {
+    // Pro gate: app-specific profile switching is Pro-only — Free users never
+    // get the refocus switch even when cursor is over a linked app.
+    let refocus_profile = if !cursor_over_app && !in_dialog && crate::licence::is_pro() {
         cursor_over_unfocused_linked_app()
     } else {
         None

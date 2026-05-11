@@ -10,6 +10,7 @@ import SettingsPanel from './components/SettingsPanel';
 import StatusBar from './components/StatusBar';
 import TextExpansions from './components/TextExpansions';
 import WelcomeModal from './components/WelcomeModal';
+import UpgradeModal from './components/UpgradeModal';
 import OnboardingTour from './components/OnboardingTour';
 import QuickTips from './components/QuickTips';
 import AnalyticsPanel from './components/AnalyticsPanel';
@@ -66,6 +67,7 @@ function App() {
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
   const [importPrompt, setImportPrompt]                 = useState(null); // { name, assignments }
   const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null });
+  const [upgradePrompt, setUpgradePrompt]               = useState(null); // feature name string, or null
   const [listViewActive, setListViewActive]             = useState(() => {
     try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
   });
@@ -82,6 +84,9 @@ function App() {
   // Current modifier combo string e.g. "Ctrl+Alt"
   const currentCombo = comboString(activeModifiers);
   const isPro = licenceStatus.is_pro;
+
+  // Show the upgrade modal for a named Pro feature.
+  const showUpgrade = useCallback((featureName) => setUpgradePrompt(featureName), []);
 
   // ── Per-profile radial menu items ──────────────────────────
   const radialMenuItems = radialItemsMap[activeProfile] || [];
@@ -1402,8 +1407,20 @@ function App() {
   // Sidebar combo-tab clicks update the sidebar's display filter only.
   // Modifier state is left untouched so clicking a tab never clears the
   // modifier layer the user selected via the keyboard modifier bar.
-  const handleSelectCombo = useCallback((_comboStr) => {
+  const handleSelectCombo = useCallback((comboStr) => {
     setSelectedKey(null);
+    // Sync the keyboard modifier layer + sidebar combo filter when the user
+    // picks a tab from the assignment-list filter strip. "All" clears both.
+    if (!comboStr || comboStr === 'All') {
+      setActiveModifiers([]);
+      setSidebarComboFilter(null);
+    } else if (comboStr === 'BARE') {
+      setActiveModifiers(['BARE']);
+      setSidebarComboFilter('BARE');
+    } else {
+      setActiveModifiers(comboStr.split('+'));
+      setSidebarComboFilter(comboStr);
+    }
   }, []);
 
   // ── Settings handlers ─────────────────────────────────────
@@ -2327,6 +2344,9 @@ function App() {
       {showWelcome && !showOnboarding && (
         <WelcomeModal onDismiss={handleDismissWelcome} />
       )}
+      {upgradePrompt && (
+        <UpgradeModal featureName={upgradePrompt} onClose={() => setUpgradePrompt(null)} />
+      )}
       {backupRestoredFrom && (
         <div className="backup-restored-banner">
           <span className="backup-restored-icon">⚠</span>
@@ -2474,6 +2494,8 @@ function App() {
             onMoveToProfile={handleMoveToProfile}
             activeView={activeView}
             radialMenuItems={radialMenuItems}
+            isPro={isPro}
+            onShowUpgrade={showUpgrade}
           />
         )}
         <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}${listViewActive && activeArea === 'mapping' ? ' main-area--hidden' : ''}`}>
@@ -2626,6 +2648,7 @@ function App() {
               onReorderQaCategories={handleReorderQaCategories}
               globalInputMethod={globalInputMethod}
               onShowNotification={showNotification}
+              onShowUpgrade={showUpgrade}
             />
           )}
           {activeArea === 'expansions' && (
@@ -2648,6 +2671,8 @@ function App() {
               onDeleteAutocorrect={handleDeleteAutocorrect}
               globalVariables={globalVariables}
               onSaveGlobalVariables={handleSaveGlobalVariables}
+              isPro={isPro}
+              onShowUpgrade={showUpgrade}
             />
           )}
         </main>
@@ -2686,6 +2711,7 @@ function App() {
             isPro={isPro}
             licenceStatus={licenceStatus}
             onLicenceStatusChange={setLicenceStatus}
+            onShowUpgrade={showUpgrade}
           />
         ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
           <MacroPanel
@@ -2713,6 +2739,7 @@ function App() {
             onDuplicate={() => {}}
             isPro={isPro}
             voiceEnabled={voiceEnabled}
+            onShowUpgrade={showUpgrade}
           />
         ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialSegment != null ? (
           <MacroPanel
@@ -2739,6 +2766,7 @@ function App() {
             onDuplicate={() => {}}
             isPro={isPro}
             voiceEnabled={voiceEnabled}
+            onShowUpgrade={showUpgrade}
           />
         ) : activeArea === 'mapping' ? (
           <MacroPanel
@@ -2761,6 +2789,7 @@ function App() {
             onDuplicate={handleDuplicateAssignment}
             isPro={isPro}
             voiceEnabled={voiceEnabled}
+            onShowUpgrade={showUpgrade}
           />
         ) : null}
       </div>

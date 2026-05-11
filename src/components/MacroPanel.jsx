@@ -1415,6 +1415,7 @@ export default function MacroPanel({
   onDuplicate,
   isPro = false,
   voiceEnabled = false,
+  onShowUpgrade,
 }) {
   const [activeType, setActiveType] = useState('text');
   const [formValue, setFormValue] = useState({});
@@ -1648,7 +1649,10 @@ export default function MacroPanel({
           </button>
           <button
             className={`press-mode-btn${pressMode === 'double' ? ' active' : ''}`}
-            onClick={() => setPressMode('double')}
+            onClick={() => {
+              if (!isPro) { onShowUpgrade?.('Double press hotkeys'); return; }
+              setPressMode('double');
+            }}
             type="button"
           >
             ×2 Double Press <span className="pro-badge">PRO</span>

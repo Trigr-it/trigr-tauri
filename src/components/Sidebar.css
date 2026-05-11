@@ -493,7 +493,7 @@
 
 .sidebar-filter-wrap {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
   padding: 4px 10px 6px;
 }
@@ -506,13 +506,13 @@
 
 .sidebar-filter-input {
   width: 100%;
-  height: 26px;
-  padding: 0 24px 0 8px;
+  height: 32px;
+  padding: 0 26px 0 10px;
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-body);
   caret-color: var(--accent);
   outline: none;
@@ -555,15 +555,16 @@
 /* ── Sort select ──────────────────────────────────────────────────────── */
 
 .sidebar-sort-select {
-  flex-shrink: 0;
-  height: 26px;
-  padding: 0 20px 0 7px;
+  width: 100%;
+  height: 32px;
+  padding: 0 28px 0 10px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-body);
+  box-sizing: border-box;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -588,16 +589,12 @@
 
 .sidebar-tabs {
   display: flex;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  justify-content: center;
   border-bottom: 1px solid var(--border);
   padding: 0 6px;
-  gap: 0;
+  gap: 2px 0;
   flex-shrink: 0;
-  scrollbar-width: none;
-}
-
-.sidebar-tabs::-webkit-scrollbar {
-  display: none;
 }
 
 .sidebar-tab {

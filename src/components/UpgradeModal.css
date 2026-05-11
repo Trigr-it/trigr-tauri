@@ -1,0 +1,164 @@
+/* ── Upgrade Modal ─────────────────────────────────────────────────────── */
+
+.upgrade-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2100;
+  animation: upgrade-fade-in 0.18s ease;
+}
+
+@keyframes upgrade-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.upgrade-modal {
+  position: relative;
+  width: 420px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-xl);
+  padding: 36px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(232, 160, 32, 0.14);
+  animation: upgrade-slide-up 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes upgrade-slide-up {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ── Close button ──────────────────────────────────────────────────────── */
+
+.upgrade-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.upgrade-close-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* ── Pro pill ──────────────────────────────────────────────────────────── */
+
+.upgrade-pill {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(232, 160, 32, 0.12);
+  border: 1px solid rgba(232, 160, 32, 0.25);
+  padding: 4px 12px;
+  border-radius: 100px;
+  margin-bottom: 14px;
+}
+
+[data-theme="light"] .upgrade-pill {
+  color: #c8860a;
+  background: rgba(232, 160, 32, 0.1);
+  border-color: rgba(232, 160, 32, 0.3);
+}
+
+/* ── Title & body ──────────────────────────────────────────────────────── */
+
+.upgrade-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin: 0 0 14px;
+  max-width: 320px;
+}
+
+.upgrade-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0 0 12px;
+  max-width: 340px;
+}
+
+.upgrade-body:last-of-type {
+  margin-bottom: 24px;
+}
+
+/* ── CTA ───────────────────────────────────────────────────────────────── */
+
+.upgrade-cta-btn {
+  width: 100%;
+  height: 42px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #0d0d11;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 4px 20px rgba(232, 160, 32, 0.3);
+}
+
+.upgrade-cta-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(232, 160, 32, 0.4);
+}
+
+.upgrade-cta-btn:active {
+  transform: translateY(0);
+}
+
+/* ── Skip ──────────────────────────────────────────────────────────────── */
+
+.upgrade-skip-link {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+
+.upgrade-skip-link:hover {
+  color: var(--text-secondary);
+}
+
+/* ── Light theme ───────────────────────────────────────────────────────── */
+
+[data-theme="light"] .upgrade-modal {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(180, 120, 10, 0.2);
+}

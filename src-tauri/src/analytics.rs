@@ -83,6 +83,25 @@ pub fn init(app_data_dir: PathBuf) {
                 "CREATE TABLE IF NOT EXISTS analytics_meta (key TEXT PRIMARY KEY, value TEXT);"
             );
 
+            // One-time migration (v0.4.0+): drop legacy key-to-key remap rows.
+            // Simple "hotkey" action_type entries are no longer logged at runtime
+            // (see log_action_ext). Existing rows from prior versions are removed
+            // so totals/breakdowns reflect only meaningful automation. Idempotent.
+            let migration_done: Result<String, _> = conn.query_row(
+                "SELECT value FROM analytics_meta WHERE key = 'hotkey_rows_purged'",
+                [],
+                |row| row.get(0),
+            );
+            if migration_done.is_err() {
+                if let Ok(n) = conn.execute("DELETE FROM action_log WHERE action_type = 'hotkey'", []) {
+                    info!("[Trigr] Analytics migration: removed {} legacy hotkey-remap rows", n);
+                }
+                let _ = conn.execute(
+                    "INSERT OR REPLACE INTO analytics_meta (key, value) VALUES ('hotkey_rows_purged', '1')",
+                    [],
+                );
+            }
+
             info!("[Trigr] Analytics DB ready: {}", db_path.display());
 
             for msg in rx {
@@ -152,6 +171,12 @@ pub fn log_action(action_type: &str, char_count: u32, trigger: &str, label: &str
 
 /// Log an action with optional macro step types for accurate time calculation.
 pub fn log_action_ext(action_type: &str, char_count: u32, trigger: &str, label: &str, macro_step_types: Option<Vec<String>>) {
+    // Skip simple key-to-key remaps (action_type "hotkey"). They're a passthrough,
+    // not a meaningful action — counting them inflates totals and dilutes the
+    // signal for macros, expansions, and other real automation.
+    if action_type == "hotkey" {
+        return;
+    }
     let target_app = crate::foreground::get_current_fg_proc();
     if let Some(tx) = ANALYTICS_TX.get() {
         if let Ok(tx) = tx.lock() {

@@ -125,6 +125,13 @@ fn get_window_title(hwnd: isize) -> String {
 // ── Foreground change handler ───────────────────────────────────────────────
 
 fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle) {
+    // Pro gate: app-specific profile auto-switching is Pro-only.
+    // The watcher itself still runs (so linked apps still appear in the UI),
+    // but it won't actually swap the active profile.
+    if !crate::licence::is_pro() {
+        return;
+    }
+
     let name = proc_name
         .to_lowercase()
         .trim_end_matches(".exe")

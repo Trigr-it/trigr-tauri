@@ -47,6 +47,7 @@ export default function SettingsPanel({
   isPro = false,
   licenceStatus = {},
   onLicenceStatusChange,
+  onShowUpgrade,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -215,7 +216,9 @@ export default function SettingsPanel({
           ) : (
             <div className="settings-licence-entry">
               <p className="settings-toggle-sub">
-                Trigr is free to use. To unlock Pro features during beta, email{' '}
+                Trigr is free to use. We're early in beta, so any feedback you have genuinely
+                shapes what ships next. To try Pro features during the 30-day testing window,
+                email{' '}
                 <a href="mailto:admin@usetrigr.com?subject=Trigr%20Pro%20beta%20key%20request">admin@usetrigr.com</a>
                 {' '}and we'll send you a key.
               </p>
@@ -361,7 +364,7 @@ export default function SettingsPanel({
           {/* ── Shared Config ─────────────────────────────── */}
           <div className="settings-shared-config">
             <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Shared config</span>
+              <span className="settings-toggle-label">Shared config <span className="pro-badge">PRO</span></span>
               <span className="settings-toggle-sub">
                 Sync your config across machines via a cloud folder (Google Drive, OneDrive, Dropbox).
                 Trigr reads and writes <code>keyforge-config.json</code> from the folder you choose.
@@ -462,6 +465,7 @@ export default function SettingsPanel({
                 className="settings-action-btn"
                 disabled={sharedConfigBusy}
                 onClick={async () => {
+                  if (!isPro) { onShowUpgrade?.('Shared config (cross-machine sync)'); return; }
                   setSharedConfigError(null);
                   const folder = await window.electronAPI?.browseForFolder();
                   if (!folder) return;
@@ -510,7 +514,7 @@ export default function SettingsPanel({
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">History retention <span className="pro-badge">PRO</span></span>
               <span className="settings-toggle-sub">
-                Days to keep clipboard history. Up to 30 days.
+                Days to keep clipboard history. Free up to 7 days, Pro up to 30.
               </span>
             </div>
             <div className="settings-retention-input">
@@ -518,13 +522,18 @@ export default function SettingsPanel({
                 type="number"
                 className="form-input settings-retention-num"
                 min={1}
-                max={isPro ? 30 : 7}
+                max={30}
                 value={clipboardRetention}
                 onChange={e => {
-                  const maxDays = isPro ? 30 : 7;
                   let v = parseInt(e.target.value, 10);
                   if (isNaN(v)) v = 7;
-                  v = Math.max(1, Math.min(maxDays, v));
+                  v = Math.max(1, Math.min(30, v));
+                  // Pro gate: Free users can request up to 30 but it clamps to 7
+                  // and the upgrade modal explains why.
+                  if (!isPro && v > 7) {
+                    onShowUpgrade?.('Extended clipboard history (up to 30 days)');
+                    v = 7;
+                  }
                   setClipboardRetention(v);
                   window.electronAPI?.setClipboardSettings(v);
                 }}
@@ -595,7 +604,7 @@ export default function SettingsPanel({
 
         {/* ── VOICE COMMANDS ─────────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">VOICE COMMANDS <span className="experimental-badge">EXPERIMENTAL</span></div>
+          <div className="settings-section-title">VOICE COMMANDS <span className="pro-badge">PRO</span> <span className="experimental-badge">EXPERIMENTAL</span></div>
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
@@ -605,7 +614,11 @@ export default function SettingsPanel({
             <button
               type="button"
               className={`settings-toggle${voiceEnabled ? ' on' : ''}`}
-              onClick={() => onToggleVoiceEnabled?.(!voiceEnabled)}
+              onClick={() => {
+                // Allow disabling for everyone. Block enabling for Free.
+                if (!voiceEnabled && !isPro) { onShowUpgrade?.('Voice triggers'); return; }
+                onToggleVoiceEnabled?.(!voiceEnabled);
+              }}
               role="switch"
               aria-checked={voiceEnabled}
               title={voiceEnabled ? 'Disable voice activation' : 'Enable voice activation'}

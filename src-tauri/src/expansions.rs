@@ -867,8 +867,10 @@ fn fire_expansion_with_fillin(
 pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (String, usize) {
     let mut result = text.to_string();
 
-    // Substitute {{varName}} global variables
-    if result.contains("{{") {
+    // Substitute {{varName}} global variables — Pro-only.
+    // (Dynamic tokens — date, time, clipboard, cursor — are unlocked for everyone:
+    // too many free competitors offer them for the gate to be defensible.)
+    if crate::licence::is_pro() && result.contains("{{") {
         for (name, value) in global_vars {
             let token = format!("{{{{{}}}}}", name); // {{name}}
             result = result.replace(&token, value);
