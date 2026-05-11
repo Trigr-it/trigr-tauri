@@ -452,7 +452,7 @@ impl Default for EngineState {
             macro_speed: "safe".to_string(),
             custom_keystroke_delay: 30,
             custom_pre_execution_delay: 150,
-            voice_hotkey: Some((4, 0x20)), // Default: Alt+Space (bits=4=Alt, vk=0x20=Space)
+            voice_hotkey: None, // Voice ships unmapped; user picks a hotkey when they enable voice (Pro-gated).
             clipboard_paste_hotkey: Some((3, 0x56)), // Default: Ctrl+Shift+V (bits=3, vk=0x56)
             radial_menu_hotkey: None, // Set via set_radial_menu_hotkey command
         }

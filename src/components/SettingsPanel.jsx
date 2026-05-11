@@ -37,7 +37,7 @@ export default function SettingsPanel({
   onClearPauseKey,
   voiceEnabled          = false,
   onToggleVoiceEnabled,
-  voiceHotkey           = 'Alt+Space',
+  voiceHotkey           = '',
   onSetVoiceKey,
   onClearVoiceKey,
   onRestartOnboarding,

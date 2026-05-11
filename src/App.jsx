@@ -55,7 +55,7 @@ function App() {
   const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(150);
   const [searchOverlayHotkey,       setSearchOverlayHotkey]       = useState('Ctrl+Space');
   const [voiceEnabled,              setVoiceEnabled]              = useState(false);
-  const [voiceHotkey,               setVoiceHotkey]               = useState('Alt+Space');
+  const [voiceHotkey,               setVoiceHotkey]               = useState('');
   const [voiceMicId,               setVoiceMicId]               = useState('');
   const [overlayShowAll,             setOverlayShowAll]             = useState(true);
   const [overlayCloseAfterFiring,    setOverlayCloseAfterFiring]    = useState(true);
@@ -173,7 +173,7 @@ function App() {
         // Always start on the Mapping view — do not restore last-used view/area
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
         setVoiceEnabled(            config.voiceEnabled             ?? false);
-        setVoiceHotkey(             config.voiceHotkey              || 'Alt+Space');
+        setVoiceHotkey(             config.voiceHotkey              || '');
         setVoiceMicId(              config.voiceMicId               || '');
         setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
         setOverlayShowAll(          config.overlayShowAll            ?? true);
@@ -226,9 +226,13 @@ function App() {
         if (config.globalPauseToggleKey) {
           window.electronAPI?.setPauseHotkey(config.globalPauseToggleKey);
         }
-        // Register voice hotkey with Rust backend only if voice is enabled
+        // Sync voice hotkey with Rust backend. When voice is disabled (or no
+        // hotkey is set), explicitly clear the engine so it can't reach for a
+        // stale default and silently swallow keystrokes the user can't unmap.
         if ((config.voiceEnabled ?? false) && config.voiceHotkey) {
           window.electronAPI?.setVoiceHotkey(config.voiceHotkey);
+        } else {
+          window.electronAPI?.clearVoiceHotkey();
         }
         // Register radial menu hotkey with Rust backend
         if (config.radialMenuHotkey) {
@@ -340,7 +344,7 @@ function App() {
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
         setVoiceEnabled(            config.voiceEnabled             ?? false);
-        setVoiceHotkey(             config.voiceHotkey              || 'Alt+Space');
+        setVoiceHotkey(             config.voiceHotkey              || '');
         setVoiceMicId(              config.voiceMicId               || '');
         setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
         setOverlayShowAll(          config.overlayShowAll            ?? true);
