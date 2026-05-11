@@ -2198,8 +2198,7 @@ fn get_clipboard_settings() -> Value {
 
 #[tauri::command]
 fn set_clipboard_settings(retention_days: u32) {
-    // Alpha/Beta: all users get pro limits. Restore gate when licence system goes live.
-    let max_days = 30; // if licence::is_pro() { 30 } else { 7 };
+    let max_days = if licence::is_pro() { 30 } else { 7 };
     clipboard::set_retention_days(retention_days.min(max_days));
 }
 

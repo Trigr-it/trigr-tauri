@@ -4,10 +4,19 @@ version = "0.1.0"
 description = "Visual Hotkey & Macro Manager"
 authors = ["Trigr"]
 edition = "2021"
+default-run = "trigr"
 
 [lib]
 name = "trigr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "trigr"
+path = "src/main.rs"
+
+[[bin]]
+name = "gen-key"
+path = "src/bin/gen-key.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -29,8 +38,10 @@ png = "0.17"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 notify = "8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 color-thief = "0.2"
+ed25519-dalek = { version = "2", features = ["rand_core", "std"] }
+rand = "0.8"
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trigr — Email Signature</title>
+<style>
+  /* Page chrome — only visible in the browser preview, not in the pasted signature. */
+  body { margin:0; padding:40px 20px; background:#f5f5fa; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; color:#1A1A2E; }
+  .page-wrap { max-width:680px; margin:0 auto; }
+  .preview-label { font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:#9090B0; margin-bottom:8px; font-weight:600; }
+  .sig-card { background:#ffffff; border:1px solid #E5E7EB; border-radius:12px; padding:36px 40px; box-shadow:0 1px 2px rgba(15,23,42,0.04); }
+  .instructions { margin-top:28px; padding:20px 24px; background:#ffffff; border:1px solid #E5E7EB; border-radius:12px; font-size:13px; color:#4A4A6A; line-height:1.65; }
+  .instructions h2 { font-size:13px; letter-spacing:0.16em; text-transform:uppercase; color:#1A1A2E; margin:0 0 12px; font-weight:700; }
+  .instructions ol { margin:0; padding-left:20px; }
+  .instructions li { margin-bottom:6px; }
+  .instructions code { background:#F5F5FA; padding:1px 6px; border-radius:4px; font-family:Menlo,Consolas,monospace; font-size:12px; color:#1A1A2E; }
+  @media (prefers-color-scheme: dark) {
+    body { background:#0D1120; color:#F1F5F9; }
+    .sig-card { background:#FFFFFF; }  /* keep signature card light — that's how it looks pasted into most clients */
+    .instructions { background:#131829; border-color:rgba(255,255,255,0.08); color:#94A3B8; }
+    .instructions h2 { color:#F1F5F9; }
+    .instructions code { background:#0D1120; color:#F1F5F9; }
+    .preview-label { color:#94A3B8; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <div class="preview-label">Preview</div>
+  <div class="sig-card">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         BEGIN EMAIL SIGNATURE
+         To copy:
+           1. Select from the TRIGR wordmark down to the tagline below
+           2. Copy (Ctrl+C)
+           3. Paste into your email client's signature editor
+         All styles are inline so they survive the paste.
+         ════════════════════════════════════════════════════════════════ -->
+    <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+      <tr>
+        <td style="padding:0;">
+
+          <!-- Wordmark -->
+          <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:18px;">
+            <tr>
+              <td style="font-family:Helvetica,Arial,sans-serif;font-weight:700;font-size:17px;letter-spacing:5px;color:#c8860a;line-height:1;">TRIGR</td>
+            </tr>
+          </table>
+
+          <!-- Name -->
+          <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+            <tr>
+              <td style="font-family:Helvetica,Arial,sans-serif;font-weight:700;font-size:16px;color:#1A1A2E;line-height:1.3;padding-bottom:3px;">Trigr</td>
+            </tr>
+            <tr>
+              <td style="font-family:Helvetica,Arial,sans-serif;font-weight:400;font-size:13px;color:#4A4A6A;line-height:1.4;padding-bottom:16px;">Founder &middot; Trigr</td>
+            </tr>
+          </table>
+
+          <!-- Contact -->
+          <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+            <tr>
+              <td style="font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#4A4A6A;line-height:1.5;padding-bottom:16px;">
+                <a href="mailto:admin@usetrigr.com" style="color:#c8860a;text-decoration:none;font-weight:500;">admin@usetrigr.com</a>
+                <span style="color:#9090B0;padding:0 7px;">&middot;</span>
+                <a href="https://usetrigr.com" style="color:#c8860a;text-decoration:none;font-weight:500;">usetrigr.com</a>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Gold accent rule -->
+          <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:10px;">
+            <tr>
+              <td height="2" width="36" bgcolor="#e8a020" style="background-color:#e8a020;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td>
+            </tr>
+          </table>
+
+          <!-- Tagline -->
+          <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+            <tr>
+              <td style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#9090B0;line-height:1.5;font-style:italic;">Productivity automation for Windows. No scripting.</td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+    <!-- ════════════════════════════════════════════════════════════════
+         END EMAIL SIGNATURE
+         ════════════════════════════════════════════════════════════════ -->
+
+  </div>
+
+  <div class="instructions">
+    <h2>How to install this signature</h2>
+    <ol>
+      <li><strong>Gmail (web):</strong> Settings &rarr; See all settings &rarr; <em>General</em> tab &rarr; scroll to <em>Signature</em> &rarr; <em>Create new</em>. Select the preview above, copy (<code>Ctrl+C</code>), paste into the signature editor, save changes.</li>
+      <li><strong>Outlook (web):</strong> Settings cog &rarr; <em>Mail</em> &rarr; <em>Compose and reply</em> &rarr; paste into the signature editor.</li>
+      <li><strong>Outlook (desktop):</strong> <em>File &rarr; Options &rarr; Mail &rarr; Signatures</em>. Paste into the editor. (Outlook for Windows uses Word's HTML renderer — the table layout above is built for it.)</li>
+      <li><strong>Apple Mail:</strong> <em>Mail &rarr; Settings &rarr; Signatures</em>. Drag the preview from the browser into the signature pane, or paste.</li>
+      <li><strong>If links lose their colour</strong> after pasting, your client overrode the inline styles. Re-set them manually using <code>#c8860a</code>.</li>
+    </ol>
+  </div>
+
+</div>
+</body>
+</html>

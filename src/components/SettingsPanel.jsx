@@ -179,6 +179,20 @@ export default function SettingsPanel({
                 Status: {licenceStatus.status || 'unknown'}
                 {licenceStatus.expires_at && ` \u00b7 Expires: ${new Date(licenceStatus.expires_at).toLocaleDateString()}`}
               </div>
+              {licenceStatus.status === 'expired' && (
+                <p className="settings-toggle-sub">
+                  Your beta key has expired. Email{' '}
+                  <a href="mailto:admin@usetrigr.com?subject=Trigr%20beta%20key%20renewal">admin@usetrigr.com</a>
+                  {' '}for a new one.
+                </p>
+              )}
+              {licenceStatus.status === 'invalid' && (
+                <p className="settings-toggle-sub">
+                  This key failed verification. It may be from an older build, or the file may have been edited.
+                  Try entering it again, or email{' '}
+                  <a href="mailto:admin@usetrigr.com?subject=Trigr%20beta%20key%20issue">admin@usetrigr.com</a>.
+                </p>
+              )}
               <button
                 type="button"
                 className="settings-action-btn settings-danger-btn"
@@ -194,18 +208,22 @@ export default function SettingsPanel({
                 }}
                 disabled={licenceDeactivating}
               >
-                {licenceDeactivating ? 'Deactivating...' : 'Deactivate Licence'}
+                {licenceDeactivating ? 'Removing...' : 'Remove Licence'}
               </button>
               {licenceError && <div className="settings-shared-error">{licenceError}</div>}
             </div>
           ) : (
             <div className="settings-licence-entry">
-              <p className="settings-toggle-sub">Enter your licence key to unlock Pro features.</p>
+              <p className="settings-toggle-sub">
+                Trigr is free to use. To unlock Pro features during beta, email{' '}
+                <a href="mailto:admin@usetrigr.com?subject=Trigr%20Pro%20beta%20key%20request">admin@usetrigr.com</a>
+                {' '}and we'll send you a key.
+              </p>
               <div className="settings-licence-input-row">
                 <input
                   type="text"
                   className="form-input settings-licence-input"
-                  placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+                  placeholder="TRIGR-PRO.…"
                   value={licenceKey}
                   onChange={e => { setLicenceKey(e.target.value.trim()); setLicenceError(null); }}
                 />

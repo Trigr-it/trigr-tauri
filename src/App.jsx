@@ -81,8 +81,7 @@ function App() {
 
   // Current modifier combo string e.g. "Ctrl+Alt"
   const currentCombo = comboString(activeModifiers);
-  // Alpha/Beta: all users get pro features. Remove this override when licence system goes live.
-  const isPro = true; // licenceStatus.is_pro;
+  const isPro = licenceStatus.is_pro;
 
   // ── Per-profile radial menu items ──────────────────────────
   const radialMenuItems = radialItemsMap[activeProfile] || [];
