@@ -23,7 +23,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Syne:wght@600;700;800&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
 :root {
@@ -33,7 +33,7 @@
   --bg-card:#0E1320; --bg-card-hi:#131829;
   --hairline:rgba(255,255,255,0.06); --hairline-strong:rgba(255,255,255,0.1); --hairline-gold:rgba(232,160,32,0.18);
   --text:#F1F5F9; --text-muted:#94A3B8; --text-dim:#475569;
-  --font-display:'Syne',sans-serif;
+  --font-display:'Space Grotesk',sans-serif;
   --font-mono:'Rajdhani',sans-serif;
   --font-body:'DM Sans',sans-serif;
   --font-label:'Chakra Petch',sans-serif;
@@ -79,7 +79,7 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .hero-badge strong { color:var(--text); font-weight:600; }
 .hero-badge-dot { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:pulse 2s infinite; }
 @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.7)} }
-.hero h1 { font-family:var(--font-display); font-weight:800; font-size:clamp(36px,5vw,60px); line-height:1.05; letter-spacing:-0.03em; color:var(--text); margin-bottom:24px; animation:fadeInUp 0.7s 0.1s ease both; }
+.hero h1 { font-family:var(--font-display); font-weight:700; font-size:clamp(36px,5vw,60px); line-height:1.05; letter-spacing:-0.03em; color:var(--text); margin-bottom:24px; animation:fadeInUp 0.7s 0.1s ease both; }
 .hero h1 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 50%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .hero p { font-size:17px; color:var(--text-muted); max-width:580px; margin:0 auto; font-weight:400; line-height:1.6; animation:fadeInUp 0.7s 0.2s ease both; }
 @keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
@@ -98,7 +98,7 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .section { position:relative; padding:100px 32px; }
 .section-inner { max-width:1100px; margin:0 auto; }
 .section-meta { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
-.section-num { font-family:var(--font-display); font-weight:800; font-size:14px; color:var(--gold); letter-spacing:0.1em; padding:4px 12px; border:1px solid var(--hairline-gold); border-radius:6px; background:var(--gold-glow); }
+.section-num { font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--gold); letter-spacing:0.1em; padding:4px 12px; border:1px solid var(--hairline-gold); border-radius:6px; background:var(--gold-glow); }
 .section-label { font-family:var(--font-label); font-size:12px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-muted); }
 .section-h2 { font-family:var(--font-display); font-weight:700; font-size:clamp(32px,4.5vw,52px); letter-spacing:-0.025em; line-height:1.05; color:var(--text); margin-bottom:18px; }
 .section-h2 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 60%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
@@ -1184,15 +1184,23 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 (function(){
   var frame = document.getElementById('sv-frame');
   if(!frame || !('IntersectionObserver' in window)) return;
-  var phaseObserver = new IntersectionObserver(function(entries){
-    entries.forEach(function(e){
-      if(e.isIntersecting){
-        var p = e.target.dataset.phase;
-        if(p) frame.setAttribute('data-active', p);
-      }
+  var phases = Array.prototype.slice.call(document.querySelectorAll('#shipped .phase[data-phase]'));
+  if(!phases.length) return;
+  // Track each phase's current intersection ratio. On every observer fire,
+  // pick whichever phase is currently most-visible and mark it active.
+  // (Previous threshold-crossing approach silently skipped phases taller than
+  // the rootMargin band, so v0.2 never activated.)
+  var ratios = new Map();
+  phases.forEach(function(p){ ratios.set(p, 0); });
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ ratios.set(e.target, e.intersectionRatio); });
+    var best = null, bestRatio = 0;
+    ratios.forEach(function(r, el){
+      if(r > bestRatio){ bestRatio = r; best = el.dataset.phase; }
     });
-  }, { threshold: 0.45, rootMargin: '-25% 0px -25% 0px' });
-  document.querySelectorAll('#shipped .phase[data-phase]').forEach(function(el){ phaseObserver.observe(el); });
+    if(best && bestRatio > 0) frame.setAttribute('data-active', best);
+  }, { threshold: [0, 0.1, 0.25, 0.5, 0.75, 1], rootMargin: '-25% 0px -25% 0px' });
+  phases.forEach(function(p){ obs.observe(p); });
 })();
 
 /* ── FILTER CHIPS ───────────────────────────────────────── */
