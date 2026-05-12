@@ -880,6 +880,104 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 [data-theme="light"] .b-te-line { background:rgba(255,255,255,0.7); }
 [data-theme="light"] .b-te-out { color:#4a4a6a; }
 
+/* ════════════════════════════════════════════════════════════
+   SMARTSCREEN BYPASS MODAL (shown after a download click)
+   ════════════════════════════════════════════════════════════ */
+.ss-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(4,6,12,0.78);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: none; align-items: center; justify-content: center;
+  padding: 24px; animation: ss-fade 0.2s ease-out both;
+}
+.ss-overlay.is-open { display: flex; }
+@keyframes ss-fade { from { opacity: 0; } to { opacity: 1; } }
+.ss-modal {
+  width: 720px; max-width: 100%; max-height: 92vh; overflow-y: auto;
+  background: var(--bg-2); border: 1px solid var(--hairline-strong);
+  border-radius: 16px; padding: 32px 32px 28px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(232,160,32,0.08);
+  position: relative;
+  animation: ss-pop 0.28s cubic-bezier(0.2,0.7,0.3,1) both;
+}
+@keyframes ss-pop { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+.ss-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 32px; height: 32px; border-radius: 8px;
+  border: 1px solid var(--hairline); background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.ss-close:hover { color: var(--text); background: var(--hairline); }
+.ss-eyebrow {
+  font-family: var(--font-label); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-light);
+  margin-bottom: 8px;
+}
+[data-theme="light"] .ss-eyebrow { color: var(--gold-dark); }
+.ss-headline {
+  font-family: var(--font-display); font-weight: 700; font-size: 22px;
+  letter-spacing: -0.01em; color: var(--text); margin-bottom: 6px; line-height: 1.25;
+}
+.ss-sub { font-size: 13.5px; color: var(--text-muted); margin-bottom: 22px; line-height: 1.55; }
+.ss-stage {
+  background: #0d1120;
+  border: 1px solid var(--hairline);
+  border-radius: 12px; padding: 0;
+  display: flex; justify-content: center; align-items: center;
+  position: relative; overflow: hidden;
+  margin-bottom: 22px;
+  aspect-ratio: 2286 / 2160;
+  max-height: 60vh;
+}
+.ss-video {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #0d1120;
+}
+.ss-steps {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-bottom: 18px;
+}
+.ss-step {
+  background: var(--bg-card); border: 1px solid var(--hairline);
+  border-radius: 10px; padding: 14px 16px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.ss-step-num {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--gold-glow); border: 1px solid var(--hairline-gold);
+  color: var(--gold-light); font-family: var(--font-mono);
+  font-weight: 700; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+[data-theme="light"] .ss-step-num { color: var(--gold-dark); }
+.ss-step-text { font-size: 13px; color: var(--text); line-height: 1.5; }
+.ss-step-text strong { color: var(--gold-light); font-weight: 600; }
+[data-theme="light"] .ss-step-text strong { color: var(--gold-dark); }
+.ss-foot {
+  font-size: 12px; color: var(--text-dim); line-height: 1.5;
+  border-top: 1px solid var(--hairline); padding-top: 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  flex-wrap: wrap;
+}
+.ss-dismiss {
+  background: var(--gold); color: #0d0d11;
+  border: none; border-radius: 8px;
+  padding: 8px 18px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+}
+.ss-dismiss:hover { background: var(--gold-light); transform: translateY(-1px); }
+[data-theme="light"] .ss-dismiss { color: #fff; }
+@media (max-width: 600px) {
+  .ss-modal { padding: 24px 20px 22px; }
+  .ss-steps { grid-template-columns: 1fr; }
+  .ss-win { width: 100%; }
+  .ss-stage { padding: 20px 12px; min-height: 320px; }
+}
+
 </style>
 </head>
 <body>
@@ -2277,5 +2375,80 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
     if (el) el.textContent = '';
   });
 </script>
+
+<!-- ════════════════════════════════════════════════════════════
+     SMARTSCREEN BYPASS MODAL
+     ════════════════════════════════════════════════════════════ -->
+<div class="ss-overlay" id="ss-overlay" role="dialog" aria-modal="true" aria-labelledby="ss-headline">
+  <div class="ss-modal">
+    <button class="ss-close" aria-label="Close">✕</button>
+    <div class="ss-eyebrow">Your download has started</div>
+    <h2 class="ss-headline" id="ss-headline">Two clicks past the SmartScreen warning</h2>
+    <p class="ss-sub">Windows shows a SmartScreen popup the first time you run any new app. It is not an error, just an extra check. Here is how to get past it.</p>
+
+    <div class="ss-stage">
+      <video class="ss-video" autoplay loop muted playsinline preload="auto" aria-label="Animation showing the two clicks needed to bypass SmartScreen: More info, then Run anyway.">
+        <source src="windows-smartscreen-trigr.mp4" type="video/mp4">
+      </video>
+    </div>
+
+    <div class="ss-steps">
+      <div class="ss-step">
+        <span class="ss-step-num">1</span>
+        <span class="ss-step-text">Click <strong>More info</strong> on the blue SmartScreen popup.</span>
+      </div>
+      <div class="ss-step">
+        <span class="ss-step-num">2</span>
+        <span class="ss-step-text">Click <strong>Run anyway</strong> to launch the installer.</span>
+      </div>
+    </div>
+
+    <div class="ss-foot">
+      <span>Trigr is built by Node Scaffold Design Ltd. The SmartScreen warning clears once Microsoft sees enough installs from our signed builds.</span>
+      <button class="ss-dismiss">Got it</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ────────────────────────────────────────────────────
+// SmartScreen bypass modal
+// Shown after a user clicks any .exe download link.
+// Download still proceeds in the background.
+// ────────────────────────────────────────────────────
+(function () {
+  var overlay = document.getElementById('ss-overlay');
+  if (!overlay) return;
+  var video = overlay.querySelector('.ss-video');
+  var closeBtn = overlay.querySelector('.ss-close');
+  var dismissBtn = overlay.querySelector('.ss-dismiss');
+
+  function openModal() {
+    overlay.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+    if (video) { try { video.currentTime = 0; video.play(); } catch (e) {} }
+  }
+  function closeModal() {
+    overlay.classList.remove('is-open');
+    document.body.style.overflow = '';
+    if (video) { try { video.pause(); } catch (e) {} }
+  }
+  closeBtn && closeBtn.addEventListener('click', closeModal);
+  dismissBtn && dismissBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && overlay.classList.contains('is-open')) closeModal();
+  });
+
+  var links = document.querySelectorAll('a[href*="setup.exe"]');
+  links.forEach(function (a) {
+    a.addEventListener('click', function () {
+      // Do not preventDefault, let the download proceed.
+      setTimeout(openModal, 120);
+    });
+  });
+})();
+</script>
+
 </body>
 </html>
