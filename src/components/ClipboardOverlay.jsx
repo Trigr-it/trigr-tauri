@@ -188,9 +188,8 @@ export default function ClipboardOverlay() {
       if (ch !== null) setSearch(q => q + ch);
     }
 
-    let unlisten;
-    listen('clipboard-overlay-key', handleHookKey).then(fn => { unlisten = fn; });
-    return () => { if (unlisten) unlisten(); };
+    const unlistenPromise = listen('clipboard-overlay-key', handleHookKey);
+    return () => { unlistenPromise.then(fn => fn()); };
   }, [filtered, selected, editing]);
 
   useLayoutEffect(() => {

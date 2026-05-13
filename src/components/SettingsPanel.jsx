@@ -615,8 +615,6 @@ export default function SettingsPanel({
               type="button"
               className={`settings-toggle${voiceEnabled ? ' on' : ''}`}
               onClick={() => {
-                // Allow disabling for everyone. Block enabling for Free.
-                if (!voiceEnabled && !isPro) { onShowUpgrade?.('Voice triggers'); return; }
                 onToggleVoiceEnabled?.(!voiceEnabled);
               }}
               role="switch"
