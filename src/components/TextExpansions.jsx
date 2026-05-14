@@ -3,6 +3,14 @@ import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
+import {
+  Bold as BoldIcon, Italic as ItalicIcon, Underline as UnderlineIcon,
+  List as ListIcon, ListOrdered as ListOrderedIcon,
+  Palette as PaletteIcon, Heading as HeadingIcon,
+  Calendar as CalendarIcon, Clock as ClockIcon, CalendarClock as CalendarClockIcon,
+  Clipboard as ClipboardIcon, TextCursor as TextCursorIcon,
+  Variable as VariableIcon, Keyboard as KeyboardIcon,
+} from 'lucide-react';
 import './TextExpansions.css';
 import { SearchBar } from './SearchBar';
 
@@ -26,35 +34,79 @@ function htmlToPlainText(html) {
     .trim();
 }
 
-// ── Insert token menu definition ───────────────────────────────────────────
+// ── Insert token category menus ────────────────────────────────────────────
+// Each toolbar icon opens its own focused dropdown. Items keep the same token
+// strings and chip styles as before — the engine and storage are unchanged.
 
-const INSERT_MENU = [
-  { type: 'item', token: '{clipboard}',       label: 'Clipboard Contents',  display: 'Clipboard'  },
-  { type: 'item', token: '{clipboard:uppercase}', label: 'Clipboard (UPPERCASE)', display: 'CLIP ▲' },
-  { type: 'item', token: '{clipboard:lowercase}', label: 'Clipboard (lowercase)', display: 'clip ▼' },
-  { type: 'item', token: '{clipboard:trim}',      label: 'Clipboard (trimmed)',   display: 'Clip ✂'  },
-  { type: 'item', token: '{clipboard:urlencode}',  label: 'Clipboard (URL encode)',display: 'Clip %'  },
-  { type: 'sep'  },
-  { type: 'item', token: '{date:DD/MM/YYYY}', label: 'Date (DD/MM/YYYY)',   display: 'DD/MM/YYYY' },
-  { type: 'item', token: '{date:DD/MM/YY}',   label: 'Date (DD/MM/YY)',     display: 'DD/MM/YY'   },
-  { type: 'item', token: '{date:MM/DD/YYYY}', label: 'Date (MM/DD/YYYY)',   display: 'MM/DD/YYYY' },
-  { type: 'item', token: '{date:YYYY-MM-DD}', label: 'Date (YYYY-MM-DD)',   display: 'YYYY-MM-DD' },
-  { type: 'item', token: '{time:HH:MM}',      label: 'Time (HH:MM)',        display: 'HH:MM'      },
-  { type: 'item', token: '{time:HH:MM:SS}',   label: 'Time (HH:MM:SS)',     display: 'HH:MM:SS'   },
-  { type: 'item', token: '{dayofweek}',        label: 'Day of Week',         display: 'Day'        },
-  { type: 'item', token: '{month}',            label: 'Month Name',           display: 'Month'      },
-  { type: 'item', token: '{year}',             label: 'Year (YYYY)',          display: 'Year'       },
-  { type: 'item', token: '{day}',              label: 'Day of Month',         display: 'Day#'       },
-  { type: 'item', token: '{date:D MMMM YYYY}', label: 'Date (1 May 2026)',   display: 'D MMMM YYYY'},
-  { type: 'item', token: '{isodate}',          label: 'ISO 8601 Date+Time',  display: 'ISO Date'   },
-  { type: 'sep'  },
-  { type: 'item', token: '{date:+1d}',         label: 'Tomorrow',             display: '+1 day'     },
-  { type: 'item', token: '{date:-1d}',          label: 'Yesterday',            display: '-1 day'     },
-  { type: 'item', token: '{date:+7d}',          label: 'Next Week',            display: '+7 days'    },
-  { type: 'item', token: '{date:+1m}',          label: 'Next Month',           display: '+1 month'   },
-  { type: 'sep'  },
-  { type: 'item', token: '{cursor}',           label: 'Cursor Position',     display: '↕ Cursor'   },
-  { type: 'item', token: '__fillin__',          label: 'Fill-in Field…',      display: null         },
+const CLIPBOARD_ITEMS = [
+  { type: 'item', token: '{clipboard}',           label: 'Clipboard Contents',     display: 'Clipboard' },
+  { type: 'item', token: '{clipboard:uppercase}', label: 'Clipboard (UPPERCASE)', display: 'CLIP ▲'    },
+  { type: 'item', token: '{clipboard:lowercase}', label: 'Clipboard (lowercase)', display: 'clip ▼'    },
+  { type: 'item', token: '{clipboard:trim}',      label: 'Clipboard (trimmed)',   display: 'Clip ✂'    },
+  { type: 'item', token: '{clipboard:urlencode}', label: 'Clipboard (URL encode)', display: 'Clip %'    },
+];
+
+const DATE_ITEMS = [
+  { type: 'item', token: '{date:DD/MM/YYYY}',  label: 'Date (DD/MM/YYYY)',  display: 'DD/MM/YYYY'  },
+  { type: 'item', token: '{date:DD/MM/YY}',    label: 'Date (DD/MM/YY)',    display: 'DD/MM/YY'    },
+  { type: 'item', token: '{date:MM/DD/YYYY}',  label: 'Date (MM/DD/YYYY)',  display: 'MM/DD/YYYY'  },
+  { type: 'item', token: '{date:YYYY-MM-DD}',  label: 'Date (YYYY-MM-DD)',  display: 'YYYY-MM-DD'  },
+  { type: 'item', token: '{date:D MMMM YYYY}', label: 'Date (1 May 2026)',  display: 'D MMMM YYYY' },
+  { type: 'sep' },
+  { type: 'item', token: '{dayofweek}', label: 'Day of Week',  display: 'Day'   },
+  { type: 'item', token: '{month}',     label: 'Month Name',   display: 'Month' },
+  { type: 'item', token: '{year}',      label: 'Year (YYYY)',  display: 'Year'  },
+  { type: 'item', token: '{day}',       label: 'Day of Month', display: 'Day#'  },
+];
+
+const TIME_ITEMS = [
+  { type: 'item', token: '{time:HH:MM}',    label: 'Time (HH:MM)',       display: 'HH:MM'    },
+  { type: 'item', token: '{time:HH:MM:SS}', label: 'Time (HH:MM:SS)',    display: 'HH:MM:SS' },
+  { type: 'item', token: '{isodate}',       label: 'ISO 8601 Date+Time', display: 'ISO Date' },
+];
+
+const DATE_MATH_ITEMS = [
+  { type: 'item', token: '{date:+1d}', label: 'Tomorrow',   display: '+1 day'    },
+  { type: 'item', token: '{date:-1d}', label: 'Yesterday',  display: '-1 day'    },
+  { type: 'item', token: '{date:+7d}', label: 'Next Week',  display: '+7 days'   },
+  { type: 'item', token: '{date:+1m}', label: 'Next Month', display: '+1 month'  },
+];
+
+const CURSOR_FILLIN_ITEMS = [
+  { type: 'item', token: '{cursor}',    label: 'Cursor Position', display: '↕ Cursor', chipClass: 'cursor' },
+  { type: 'item', token: '__fillin__',  label: 'Fill-in Field…',  display: null,        chipClass: 'fillin' },
+];
+
+const INSERT_CATEGORIES = {
+  clipboard: { items: CLIPBOARD_ITEMS,     label: 'Clipboard',         chipClass: 'clipboard' },
+  date:      { items: DATE_ITEMS,          label: 'Date',              chipClass: 'date' },
+  time:      { items: TIME_ITEMS,          label: 'Time',              chipClass: 'date' },
+  datemath:  { items: DATE_MATH_ITEMS,     label: 'Date Math',         chipClass: 'date' },
+  cursor:    { items: CURSOR_FILLIN_ITEMS, label: 'Cursor & Fill-in',  chipClass: null    },
+};
+
+// ── Text colour swatches (for foreColor) ───────────────────────────────────
+const TEXT_COLOURS = [
+  { hex: '#0F172A', label: 'Default' },
+  { hex: '#475569', label: 'Slate'   },
+  { hex: '#94A3B8', label: 'Grey'    },
+  { hex: '#E84040', label: 'Red'     },
+  { hex: '#E86020', label: 'Orange'  },
+  { hex: '#E8A020', label: 'Amber'   },
+  { hex: '#2ECC71', label: 'Green'   },
+  { hex: '#1ABC9C', label: 'Teal'    },
+  { hex: '#4080E8', label: 'Blue'    },
+  { hex: '#5C6AE8', label: 'Indigo'  },
+  { hex: '#9B59B6', label: 'Purple'  },
+  { hex: '#E840A0', label: 'Pink'    },
+];
+
+// ── Heading levels ─────────────────────────────────────────────────────────
+const HEADING_OPTIONS = [
+  { block: 'h1', label: 'Heading 1', display: 'H1' },
+  { block: 'h2', label: 'Heading 2', display: 'H2' },
+  { block: 'h3', label: 'Heading 3', display: 'H3' },
+  { block: 'p',  label: 'Paragraph', display: 'P'  },
 ];
 
 
@@ -135,7 +187,6 @@ function ColourPicker({ value, onChange }) {
 
 function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade }) {
   const editorRef      = useRef(null);
-  const btnRef         = useRef(null);
   const menuRef        = useRef(null);
   const keyBtnRef      = useRef(null);
   const keyMenuRef     = useRef(null);
@@ -146,6 +197,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   const savedRangeRef  = useRef(null);
 
   const [showInsert, setShowInsert] = useState(false);
+  const [insertCategory, setInsertCategory] = useState(null); // 'clipboard'|'date'|'time'|'datemath'|'cursor'|'variables'
   const [menuPos, setMenuPos] = useState(null);
   const [fillInEntry, setFillInEntry] = useState(false);
   const [fillInLabel, setFillInLabel] = useState('');
@@ -163,6 +215,9 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     if (editorRef.current) {
       editorRef.current.innerHTML = initialHtmlRef.current || '';
     }
+    // Use CSS styles for execCommand output (modern <span style>) instead of legacy <font>.
+    // Target apps (Word/Outlook/Gmail) prefer inline-style HTML.
+    try { document.execCommand('styleWithCSS', false, true); } catch {}
   }, []);
 
   // When fill-in entry mode activates, focus the label input.
@@ -196,11 +251,14 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
 
     function close() {
       setShowInsert(false);
+      setInsertCategory(null);
       setFillInEntry(false);
       setFillInLabel('');
     }
     function onMouseDown(e) {
-      if (!btnRef.current?.contains(e.target) && !menuRef.current?.contains(e.target)) {
+      // Any toolbar icon button click is handled by the button itself — don't close from outside-click
+      if (e.target.closest?.('.rte-toolbar')) return;
+      if (!menuRef.current?.contains(e.target)) {
         close();
       }
     }
@@ -253,10 +311,24 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     onChange({ html, text: htmlToPlainText(html) });
   }, [onChange]);
 
-  function format(cmd) {
+  function format(cmd, value) {
     editorRef.current?.focus();
-    document.execCommand(cmd, false, null);
+    restoreSelection();
+    document.execCommand(cmd, false, value ?? null);
     notify();
+  }
+
+  function applyTextColor(hex) {
+    format('foreColor', hex);
+    setShowInsert(false);
+    setInsertCategory(null);
+  }
+
+  function applyHeading(blockTag) {
+    // Use proper HTML5 block tags. Some browsers want angle brackets.
+    format('formatBlock', blockTag.toUpperCase());
+    setShowInsert(false);
+    setInsertCategory(null);
   }
 
   function isActive(cmd) {
@@ -332,69 +404,164 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
       setFillInLabel('');
       return;
     }
-    // Dynamic tokens (date/time/clipboard/cursor) are Free — gating these would
-    // lose against espanso/FastKeys, which offer them for nothing. The only
-    // expansion-related Pro gate is Global Variables.
     insertTokenHtml(item.token, item.display);
     setShowInsert(false);
+    setInsertCategory(null);
   }
 
   function handleInsertFillIn(e) {
     e.preventDefault();
     const label = fillInLabel.trim() || 'Field';
-    console.log('handleInsertFillIn', { label, savedRange: savedRangeRef.current });
     insertTokenHtml(`{fillIn:${label}}`, `✎ ${label}`);
     setFillInEntry(false);
     setFillInLabel('');
     setShowInsert(false);
+    setInsertCategory(null);
   }
+
+  function openCategoryMenu(e, category) {
+    e.preventDefault();
+    saveSelection();
+    if (showInsert && insertCategory === category) {
+      setShowInsert(false);
+      setInsertCategory(null);
+      setFillInEntry(false);
+      setFillInLabel('');
+      return;
+    }
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenuPos({ top: r.bottom + 4, left: r.left, btnTop: r.top, btnRight: r.right });
+    setInsertCategory(category);
+    setShowInsert(true);
+    setShowKeyPicker(false);
+    setFillInEntry(false);
+    setFillInLabel('');
+  }
+
+  // Flip popup above/leftward when it would overflow the viewport.
+  // Runs after the popup renders so we can measure its actual size.
+  useLayoutEffect(() => {
+    if (!(showInsert && menuPos && menuRef.current)) return;
+    const popup = menuRef.current;
+    const rect = popup.getBoundingClientRect();
+    const margin = 8;
+    let top = menuPos.top;
+    let left = menuPos.left;
+    if (rect.bottom > window.innerHeight - margin) {
+      top = menuPos.btnTop - rect.height - 4;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      left = menuPos.btnRight - rect.width;
+    }
+    popup.style.top = `${Math.max(margin, top)}px`;
+    popup.style.left = `${Math.max(margin, left)}px`;
+  }, [showInsert, insertCategory, menuPos, fillInEntry]);
+
+  useLayoutEffect(() => {
+    if (!(showKeyPicker && keyPickerPos && keyMenuRef.current)) return;
+    const popup = keyMenuRef.current;
+    const rect = popup.getBoundingClientRect();
+    const margin = 8;
+    let top = keyPickerPos.top;
+    let left = keyPickerPos.left;
+    if (rect.bottom > window.innerHeight - margin) {
+      top = keyPickerPos.btnTop - rect.height - 4;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      left = keyPickerPos.btnRight - rect.width;
+    }
+    popup.style.top = `${Math.max(margin, top)}px`;
+    popup.style.left = `${Math.max(margin, left)}px`;
+  }, [showKeyPicker, keyPickerPos, keyPickerCapturing, keyPickerCaptured]);
 
   return (
     <div className="rte-wrap">
       <div className="rte-toolbar">
         <button
           type="button"
-          className={`rte-btn rte-bold${isActive('bold') ? ' rte-btn-on' : ''}`}
+          className={`rte-btn${isActive('bold') ? ' rte-btn-on' : ''}`}
           onMouseDown={e => { e.preventDefault(); format('bold'); }}
           title="Bold"
-        ><b>B</b></button>
+        ><BoldIcon size={14} strokeWidth={2} /></button>
         <button
           type="button"
-          className={`rte-btn rte-italic${isActive('italic') ? ' rte-btn-on' : ''}`}
+          className={`rte-btn${isActive('italic') ? ' rte-btn-on' : ''}`}
           onMouseDown={e => { e.preventDefault(); format('italic'); }}
           title="Italic"
-        ><i>I</i></button>
+        ><ItalicIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${isActive('underline') ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => { e.preventDefault(); format('underline'); }}
+          title="Underline"
+        ><UnderlineIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'color' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'color')}
+          title="Text colour"
+        ><PaletteIcon size={14} strokeWidth={2} /></button>
         <div className="rte-sep" />
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'headings' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'headings')}
+          title="Heading style"
+        ><HeadingIcon size={14} strokeWidth={2} /></button>
         <button
           type="button"
           className="rte-btn"
           onMouseDown={e => { e.preventDefault(); format('insertUnorderedList'); }}
           title="Bullet list"
-        >
-          <svg width="13" height="11" viewBox="0 0 13 11" fill="none">
-            <circle cx="1.5" cy="2" r="1.5" fill="currentColor"/>
-            <circle cx="1.5" cy="6" r="1.5" fill="currentColor"/>
-            <circle cx="1.5" cy="10" r="1.5" fill="currentColor"/>
-            <line x1="5" y1="2" x2="13" y2="2" stroke="currentColor" strokeWidth="1.5"/>
-            <line x1="5" y1="6" x2="13" y2="6" stroke="currentColor" strokeWidth="1.5"/>
-            <line x1="5" y1="10" x2="13" y2="10" stroke="currentColor" strokeWidth="1.5"/>
-          </svg>
-        </button>
+        ><ListIcon size={14} strokeWidth={2} /></button>
         <button
           type="button"
           className="rte-btn"
           onMouseDown={e => { e.preventDefault(); format('insertOrderedList'); }}
           title="Numbered list"
-        >
-          <svg width="13" height="11" viewBox="0 0 13 11" fill="none">
-            <text x="0" y="3.5" fontSize="4" fill="currentColor" fontWeight="700">1.</text>
-            <text x="0" y="7.5" fontSize="4" fill="currentColor" fontWeight="700">2.</text>
-            <text x="0" y="11" fontSize="4" fill="currentColor" fontWeight="700">3.</text>
-            <line x1="5" y1="2" x2="13" y2="2" stroke="currentColor" strokeWidth="1.5"/>
-            <line x1="5" y1="6" x2="13" y2="6" stroke="currentColor" strokeWidth="1.5"/>
-            <line x1="5" y1="10" x2="13" y2="10" stroke="currentColor" strokeWidth="1.5"/>
-          </svg>
-        </button>
+        ><ListOrderedIcon size={14} strokeWidth={2} /></button>
+
+        <div className="rte-sep" />
+
+        {/* ── Category dropdowns ── */}
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'date' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'date')}
+          title="Insert date"
+        ><CalendarIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'time' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'time')}
+          title="Insert time"
+        ><ClockIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'datemath' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'datemath')}
+          title="Date math (tomorrow, next week…)"
+        ><CalendarClockIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'clipboard' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'clipboard')}
+          title="Insert clipboard contents"
+        ><ClipboardIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'cursor' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'cursor')}
+          title="Cursor position & fill-in fields"
+        ><TextCursorIcon size={14} strokeWidth={2} /></button>
+        {Object.keys(globalVariables).length > 0 && (
+          <button
+            type="button"
+            className={`rte-btn${showInsert && insertCategory === 'variables' ? ' rte-btn-on' : ''}`}
+            onMouseDown={e => openCategoryMenu(e, 'variables')}
+            title="Insert global variable"
+          ><VariableIcon size={14} strokeWidth={2} /></button>
+        )}
 
         <div className="rte-sep" />
 
@@ -402,16 +569,16 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         <button
           ref={keyBtnRef}
           type="button"
-          className={`rte-btn rte-insert-btn${showKeyPicker ? ' rte-btn-on' : ''}`}
-          style={{ width: 'auto', minWidth: 'fit-content', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+          className={`rte-btn${showKeyPicker ? ' rte-btn-on' : ''}`}
           onMouseDown={e => {
             e.preventDefault();
             saveSelection();
             if (!showKeyPicker) {
               const r = e.currentTarget.getBoundingClientRect();
-              setKeyPickerPos({ top: r.bottom + 4, left: r.left });
+              setKeyPickerPos({ top: r.bottom + 4, left: r.left, btnTop: r.top, btnRight: r.right });
               setShowKeyPicker(true);
               setShowInsert(false);
+              setInsertCategory(null);
               setKeyPickerCapturing(false);
               setKeyPickerCaptured('');
               setKeyPickerRepeat(1);
@@ -428,38 +595,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             }
           }}
           title="Insert a key press at cursor position"
-        >
-          Press Key <span className="rte-caret">▾</span>
-        </button>
-
-        {/* ── Insert token dropdown ── */}
-        <button
-          ref={btnRef}
-          type="button"
-          className={`rte-btn rte-insert-btn${showInsert ? ' rte-btn-on' : ''}`}
-          style={{ width: 'auto', minWidth: 'fit-content', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-          onMouseDown={e => {
-            e.preventDefault();
-            // Editor is still focused here (preventDefault stops focus moving to button).
-            // Capture selection now — this is the most reliable moment.
-            saveSelection();
-            console.log('INSERT CLICKED', { showInsert, savedRange: !!savedRangeRef.current });
-            if (!showInsert) {
-              const r = e.currentTarget.getBoundingClientRect();
-              console.log('menu pos:', { top: r.bottom + 4, left: r.left });
-              setMenuPos({ top: r.bottom + 4, left: r.left });
-              setShowInsert(true);
-              setShowKeyPicker(false);
-            } else {
-              setShowInsert(false);
-              setFillInEntry(false);
-              setFillInLabel('');
-            }
-          }}
-          title="Insert dynamic field"
-        >
-          Insert <span className="rte-caret">▾</span>
-        </button>
+        ><KeyboardIcon size={14} strokeWidth={2} /></button>
       </div>
 
       <div
@@ -477,7 +613,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             e.preventDefault();
             const { combo, repeat } = parseKeyToken(chip.dataset.token);
             const rect = chip.getBoundingClientRect();
-            setKeyPickerPos({ top: rect.bottom + 4, left: rect.left });
+            setKeyPickerPos({ top: rect.bottom + 4, left: rect.left, btnTop: rect.top, btnRight: rect.right });
             setKeyPickerCaptured(combo);
             setKeyPickerRepeat(repeat);
             setKeyPickerCapturing(false);
@@ -488,7 +624,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         }}
       />
 
-      {showInsert && menuPos && ReactDOM.createPortal(
+      {showInsert && insertCategory && menuPos && ReactDOM.createPortal(
         <div
           ref={menuRef}
           className="rte-insert-menu"
@@ -521,41 +657,39 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
 
           {/* Menu items — hidden while fill-in label input is active */}
           <div style={{ display: fillInEntry ? 'none' : 'contents' }}>
-            <div className="rte-menu-section-label">Dynamic Fields</div>
-            {INSERT_MENU.map((item, i) =>
-              item.type === 'sep' ? (
-                <div key={`sep-${i}`} className="rte-menu-sep" />
-              ) : (
-                <button
-                  key={item.token}
-                  type="button"
-                  className="rte-menu-item"
-                  onMouseDown={e => {
-                    console.log('MENU ITEM CLICKED', item.token, 'fillInEntry:', fillInEntry);
-                    handleInsertItem(e, item);
-                  }}
-                >
-                  <span className={`rte-menu-chip rte-chip-${
-                    item.token.startsWith('{clipboard') ? 'clipboard' :
-                    item.token.startsWith('{date') ? 'date' :
-                    item.token.startsWith('{time') ? 'date' :
-                    item.token === '{dayofweek}'   ? 'date' :
-                    item.token === '{month}'       ? 'date' :
-                    item.token === '{year}'        ? 'date' :
-                    item.token === '{day}'         ? 'date' :
-                    item.token === '{isodate}'     ? 'date' :
-                    item.token === '{cursor}'      ? 'cursor' :
-                    'fillin'
-                  }`}>
-                    {item.display || '✎'}
-                  </span>
-                  {item.label}
-                </button>
-              )
-            )}
-            {Object.keys(globalVariables).length > 0 && (
+            {insertCategory === 'color' ? (
               <>
-                <div className="rte-menu-sep" />
+                <div className="rte-menu-section-label">Text Colour</div>
+                <div className="rte-colour-grid">
+                  {TEXT_COLOURS.map(c => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      className="rte-colour-swatch"
+                      style={{ background: c.hex }}
+                      title={c.label}
+                      onMouseDown={e => { e.preventDefault(); applyTextColor(c.hex); }}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : insertCategory === 'headings' ? (
+              <>
+                <div className="rte-menu-section-label">Heading Style</div>
+                {HEADING_OPTIONS.map(h => (
+                  <button
+                    key={h.block}
+                    type="button"
+                    className="rte-menu-item"
+                    onMouseDown={e => { e.preventDefault(); applyHeading(h.block); }}
+                  >
+                    <span className={`rte-menu-chip rte-chip-heading rte-chip-${h.block}`}>{h.display}</span>
+                    {h.label}
+                  </button>
+                ))}
+              </>
+            ) : insertCategory === 'variables' ? (
+              <>
                 <div className="rte-menu-section-label">Global Variables</div>
                 {Object.entries(globalVariables)
                   .sort(([a], [b]) => a.localeCompare(b))
@@ -568,6 +702,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                         e.preventDefault();
                         insertTokenHtml(`{{${key}}}`, keyToTitle(key));
                         setShowInsert(false);
+                        setInsertCategory(null);
                       }}
                     >
                       <span className="rte-menu-chip rte-chip-globalvar">{keyToTitle(key)}</span>
@@ -575,6 +710,27 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                     </button>
                   ))
                 }
+              </>
+            ) : (
+              <>
+                <div className="rte-menu-section-label">{INSERT_CATEGORIES[insertCategory].label}</div>
+                {INSERT_CATEGORIES[insertCategory].items.map((item, i) =>
+                  item.type === 'sep' ? (
+                    <div key={`sep-${i}`} className="rte-menu-sep" />
+                  ) : (
+                    <button
+                      key={item.token}
+                      type="button"
+                      className="rte-menu-item"
+                      onMouseDown={e => handleInsertItem(e, item)}
+                    >
+                      <span className={`rte-menu-chip rte-chip-${item.chipClass || INSERT_CATEGORIES[insertCategory].chipClass}`}>
+                        {item.display || '✎'}
+                      </span>
+                      {item.label}
+                    </button>
+                  )
+                )}
               </>
             )}
           </div>
@@ -750,7 +906,7 @@ export default function TextExpansions({
   const [imageExists, setImageExists]     = useState(true);
   const [imageDataUri, setImageDataUri]   = useState(null); // base64 data URI for preview
   const [variantOptions, setVariantOptions] = useState([]); // [{label, text}]
-  const [voicePhrase, setVoicePhrase]     = useState('');
+  const [voicePhrases, setVoicePhrases]   = useState([]);
 
   // Load image preview via Rust when imagePath changes
   useEffect(() => {
@@ -867,7 +1023,7 @@ export default function TextExpansions({
     setImageScale(100);
     setImageExists(true);
     setVariantOptions([]);
-    setVoicePhrase('');
+    setVoicePhrases([]);
     setEditing({ isNew: true });
   }
 
@@ -884,7 +1040,7 @@ export default function TextExpansions({
     setImageScale(exp.imageScale ?? 100);
     setImageExists(true);
     setVariantOptions(exp.options || []);
-    setVoicePhrase(exp.voicePhrase || '');
+    setVoicePhrases(Array.isArray(exp.voicePhrases) ? exp.voicePhrases : []);
     setEditing({ isNew: false, originalTrigger: exp.trigger });
   }
 
@@ -899,7 +1055,7 @@ export default function TextExpansions({
     }
     const originalTrigger = editing.isNew ? null : editing.originalTrigger;
     const cleanedVariants = hasVariants ? variantOptions.filter(o => o.text?.trim()) : [];
-    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants, voicePhrase.trim() || null);
+    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants, voicePhrases);
     setEditing(null);
   }
 
@@ -1528,16 +1684,37 @@ export default function TextExpansions({
                       />
                     </div>
                     <div className="te-panel-field">
-                      <label className="form-label">VOICE COMMAND <span className="pro-badge">PRO</span></label>
-                      <input
-                        className="form-input"
-                        placeholder="e.g. my address, email signature"
-                        value={voicePhrase}
-                        onChange={e => setVoicePhrase(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Escape') handleCancel(); }}
-                        spellCheck={false}
-                      />
-                      <span className="form-hint" style={{ marginTop: 2 }}>Hold Ctrl+Space to trigger by voice</span>
+                      <label className="form-label">VOICE COMMANDS <span className="pro-badge">PRO</span></label>
+                      <div className="voice-phrase-list">
+                        {voicePhrases.map((p, i) => (
+                          <div className="voice-phrase-row" key={i}>
+                            <input
+                              className="form-input voice-phrase-input"
+                              placeholder="e.g. my address"
+                              value={p}
+                              onChange={e => {
+                                const next = [...voicePhrases];
+                                next[i] = e.target.value;
+                                setVoicePhrases(next);
+                              }}
+                              onKeyDown={e => { if (e.key === 'Escape') handleCancel(); }}
+                              spellCheck={false}
+                            />
+                            <button
+                              type="button"
+                              className="voice-phrase-remove"
+                              title="Remove phrase"
+                              onClick={() => setVoicePhrases(voicePhrases.filter((_, idx) => idx !== i))}
+                            >×</button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="voice-phrase-add"
+                          onClick={() => setVoicePhrases([...voicePhrases, ''])}
+                        >+ Add voice phrase</button>
+                      </div>
+                      <span className="form-hint" style={{ marginTop: 2 }}>All aliases fire the same expansion when spoken</span>
                     </div>
                     <div className="te-panel-field">
                       <label className="form-label">TRIGGER</label>

@@ -63,6 +63,15 @@ pub static FILL_IN_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// never steals focus from the active app).
 pub static CLIPBOARD_OVERLAY_VISIBLE: AtomicBool = AtomicBool::new(false);
 
+/// HWNDs of the search/voice overlay and clipboard overlay while visible. Set by lib.rs
+/// in show_overlay / show_clipboard_overlay, cleared by the corresponding hide_*.
+/// Used by handle_mouse_down to detect click-outside-bounds dismissal — the blur-based
+/// auto-close path doesn't fire when the window never grabs OS focus on initial show
+/// (clipboard uses WS_EX_NOACTIVATE; search's set_focus can fail silently per Win32
+/// foreground-stealing rules).
+pub static SEARCH_OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
+pub static CLIPBOARD_OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
+
 /// Keystroke captured during injection for later replay.
 pub struct BufferedKey {
     pub vk_code: u32,
@@ -410,9 +419,9 @@ pub(crate) struct EngineState {
     // Capture state
     capture_sole_modifier: Option<String>,
     // Overlay hotkey — parsed as (modifier_bits, vk_code)
-    overlay_hotkey: Option<(u8, u32)>,
+    pub(crate) overlay_hotkey: Option<(u8, u32)>,
     // Global pause hotkey — parsed as (modifier_bits, vk_code)
-    pause_hotkey: Option<(u8, u32)>,
+    pub(crate) pause_hotkey: Option<(u8, u32)>,
     pub(crate) pause_hotkey_str: Option<String>,
     // Global input method — resolved when per-assignment method is "global" or absent
     pub(crate) global_input_method: String,
@@ -422,11 +431,11 @@ pub(crate) struct EngineState {
     pub(crate) custom_keystroke_delay: u64,
     pub(crate) custom_pre_execution_delay: u64,
     // Clipboard quick-paste hotkey — parsed as (modifier_bits, vk_code)
-    clipboard_paste_hotkey: Option<(u8, u32)>,
+    pub(crate) clipboard_paste_hotkey: Option<(u8, u32)>,
     // Voice trigger hotkey — parsed as (modifier_bits, vk_code)
-    voice_hotkey: Option<(u8, u32)>,
+    pub(crate) voice_hotkey: Option<(u8, u32)>,
     // Radial menu hotkey — parsed as (modifier_bits, vk_code)
-    radial_menu_hotkey: Option<(u8, u32)>,
+    pub(crate) radial_menu_hotkey: Option<(u8, u32)>,
 }
 
 use std::sync::Arc;
@@ -1819,7 +1828,48 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
 
 // ── Mouse handlers ──────────────────────────────────────────────────────────
 
+fn check_overlay_outside_click(app: &AppHandle) {
+    use windows_sys::Win32::Foundation::{POINT, RECT};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect};
+
+    let search_hwnd = SEARCH_OVERLAY_HWND.load(Ordering::SeqCst);
+    let clipboard_hwnd = CLIPBOARD_OVERLAY_HWND.load(Ordering::SeqCst);
+    if search_hwnd == 0 && clipboard_hwnd == 0 {
+        return;
+    }
+
+    let mut pt = POINT { x: 0, y: 0 };
+    unsafe { GetCursorPos(&mut pt); }
+
+    let is_outside = |hwnd: isize| -> bool {
+        if hwnd == 0 { return false; }
+        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        unsafe {
+            if GetWindowRect(hwnd as _, &mut rect) == 0 {
+                return false;
+            }
+        }
+        pt.x < rect.left || pt.x >= rect.right || pt.y < rect.top || pt.y >= rect.bottom
+    };
+
+    // Search overlay: skip dismissal while voice recognition is active (the WinRT
+    // recognizer briefly steals focus/cursor in ways that can mimic an outside click).
+    if search_hwnd != 0 && !is_voice_active() && is_outside(search_hwnd) {
+        let _ = app.emit("close-overlay-outside-click", Value::Null);
+    }
+    if clipboard_hwnd != 0 && is_outside(clipboard_hwnd) {
+        let _ = app.emit("close-clipboard-overlay-outside-click", Value::Null);
+    }
+}
+
 fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
+    // Outside-click dismissal for the search/clipboard overlays. The blur-based path
+    // doesn't fire on the first click outside when the overlay never grabbed OS focus
+    // (clipboard is WS_EX_NOACTIVATE; search's set_focus can fail per Win32 rules).
+    // Runs before the input-focus early return so this still fires when the user
+    // hasn't yet clicked into the overlay.
+    check_overlay_outside_click(app);
+
     if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
         return;
     }

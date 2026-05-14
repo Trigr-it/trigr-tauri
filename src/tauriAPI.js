@@ -157,6 +157,7 @@ window.electronAPI = {
   closeOverlay:          ()          => invoke('close_overlay'),
   resizeOverlay:         (height)    => invoke('overlay_resize', { height }),
   voiceOverlayErrorExpand: ()        => invoke('voice_overlay_error_expand'),
+  voiceOverlayExamplesExpand: ()     => invoke('voice_overlay_examples_expand'),
   executeSearchResult:   (result)    => invoke('execute_search_result', { result }),
   updateSearchSettings:  (settings)  => invoke('update_search_settings', { settings }),
 
@@ -212,6 +213,8 @@ window.electronAPI = {
   clearVoiceHotkey:    ()      => invoke('clear_voice_hotkey'),
   startVoiceRecognition:  (phrases) => invoke('start_voice_recognition', { phrases }),
   stopVoiceRecognition:   ()        => invoke('stop_voice_recognition'),
+  startVoiceContinuous:   (phrases) => invoke('start_voice_continuous', { phrases }),
+  stopVoiceContinuous:    ()        => invoke('stop_voice_continuous'),
   setVoiceContinuous:     (on)      => invoke('set_voice_continuous', { on }),
   onVoiceResult: (callback) => {
     listen('voice-result', (event) => callback(event.payload)).then(u => { listeners['voice-result'] = u; });
@@ -228,7 +231,7 @@ window.electronAPI = {
   onVoiceContinuousRestart: (callback) => {
     listen('voice-continuous-restart', () => callback()).then(u => { listeners['voice-continuous-restart'] = u; });
   },
-  checkHotkeyConflict: (combo) => invoke('check_hotkey_conflict', { combo }),
+  checkHotkeyConflict: (combo, fromSlot) => invoke('check_hotkey_conflict', { combo, fromSlot: fromSlot || null }),
 
   // ── Radial Menu ────────────────────────────────────────────────────────────
   getAppIcon:             (path) => invoke('get_app_icon', { path }),

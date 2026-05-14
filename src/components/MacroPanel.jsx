@@ -6,6 +6,7 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './MacroPanel.css';
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
+import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 
 const ACTION_TYPES = [
   {
@@ -1420,7 +1421,7 @@ export default function MacroPanel({
   const [activeType, setActiveType] = useState('text');
   const [formValue, setFormValue] = useState({});
   const [label, setLabel] = useState('');
-  const [voicePhrase, setVoicePhrase] = useState('');
+  const [voicePhrases, setVoicePhrases] = useState([]);
   const [pressMode, setPressMode] = useState('single'); // 'single' | 'double'
   const [reassigning, setReassigning] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
@@ -1436,19 +1437,19 @@ export default function MacroPanel({
       setActiveType(doubleAssignment.type || 'text');
       setFormValue(doubleAssignment.data || {});
       setLabel(doubleAssignment.label || '');
-      setVoicePhrase(doubleAssignment.data?.voicePhrase || '');
+      setVoicePhrases(readVoicePhrases(doubleAssignment.data));
     } else {
       setPressMode('single');
       if (assignment) {
         setActiveType(assignment.type || 'text');
         setFormValue(assignment.data || {});
         setLabel(assignment.label || '');
-        setVoicePhrase(assignment.data?.voicePhrase || '');
+        setVoicePhrases(readVoicePhrases(assignment.data));
       } else {
         setActiveType('text');
         setFormValue({});
         setLabel('');
-        setVoicePhrase('');
+        setVoicePhrases([]);
       }
     }
   }, [selectedKey, assignment, doubleAssignment]);
@@ -1460,24 +1461,24 @@ export default function MacroPanel({
         setActiveType(doubleAssignment.type || 'text');
         setFormValue(doubleAssignment.data || {});
         setLabel(doubleAssignment.label || '');
-        setVoicePhrase(doubleAssignment.data?.voicePhrase || '');
+        setVoicePhrases(readVoicePhrases(doubleAssignment.data));
       } else {
         setActiveType('text');
         setFormValue({});
         setLabel('');
-        setVoicePhrase('');
+        setVoicePhrases([]);
       }
     } else {
       if (assignment) {
         setActiveType(assignment.type || 'text');
         setFormValue(assignment.data || {});
         setLabel(assignment.label || '');
-        setVoicePhrase(assignment.data?.voicePhrase || '');
+        setVoicePhrases(readVoicePhrases(assignment.data));
       } else {
         setActiveType('text');
         setFormValue({});
         setLabel('');
-        setVoicePhrase('');
+        setVoicePhrases([]);
       }
     }
   // eslint-disable-next-line
@@ -1487,8 +1488,8 @@ export default function MacroPanel({
     if (!selectedKey) return;
 
     const data = { ...formValue };
-    if (voicePhrase.trim()) data.voicePhrase = voicePhrase.trim();
-    else delete data.voicePhrase;
+    // Empty list removes both new and legacy voice phrase fields.
+    writeVoicePhrases(data, voicePhrases);
 
     const macro = {
       type: activeType,
@@ -1762,15 +1763,36 @@ export default function MacroPanel({
         {/* Voice command — only visible when voice activation is enabled in Settings */}
         {voiceEnabled && (
         <div className="form-section" style={{ marginTop: 4 }}>
-          <label className="form-label">Voice command <span className="experimental-badge">EXPERIMENTAL</span></label>
-          <input
-            className="form-input"
-            placeholder="e.g. open revit, my shortcut"
-            value={voicePhrase}
-            onChange={e => setVoicePhrase(e.target.value)}
-            onKeyDown={e => e.stopPropagation()}
-          />
-          <span className="form-hint">Hold Ctrl+Space to trigger by voice</span>
+          <label className="form-label">Voice commands <span className="experimental-badge">EXPERIMENTAL</span></label>
+          <div className="voice-phrase-list">
+            {voicePhrases.map((p, i) => (
+              <div className="voice-phrase-row" key={i}>
+                <input
+                  className="form-input voice-phrase-input"
+                  placeholder="e.g. open Revit"
+                  value={p}
+                  onChange={e => {
+                    const next = [...voicePhrases];
+                    next[i] = e.target.value;
+                    setVoicePhrases(next);
+                  }}
+                  onKeyDown={e => e.stopPropagation()}
+                />
+                <button
+                  type="button"
+                  className="voice-phrase-remove"
+                  title="Remove phrase"
+                  onClick={() => setVoicePhrases(voicePhrases.filter((_, idx) => idx !== i))}
+                >×</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="voice-phrase-add"
+              onClick={() => setVoicePhrases([...voicePhrases, ''])}
+            >+ Add voice phrase</button>
+          </div>
+          <span className="form-hint">Trigger any of these phrases by voice (all aliases fire the same action)</span>
         </div>
         )}
       </div>

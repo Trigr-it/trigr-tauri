@@ -274,6 +274,12 @@ pub fn check_space_trigger() -> bool {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        let html = entry
+            .get("data")
+            .and_then(|d| d.get("html"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let trigger_len = s.buffer.len();
         let global_vars = s.global_variables.clone();
         s.buffer.clear();
@@ -281,7 +287,8 @@ pub fn check_space_trigger() -> bool {
 
         info!("[Trigr] Expansion: \"{}\" → \"{}\"", buffer_lower, text);
         let case_pattern = detect_case(&original_buffer);
-        fire_expansion(&buffer_lower, trigger_len, true, &text, &global_vars, case_pattern);
+        let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
+        fire_expansion(&buffer_lower, trigger_len, true, &text, html_opt, &global_vars, case_pattern);
         return true;
     }
 
@@ -305,6 +312,7 @@ pub fn check_immediate_triggers() -> bool {
         trigger: String,
         exp_type: String,
         text: String,
+        html: String,
         image_path: String,
         image_scale: u32,
         options: Option<Vec<serde_json::Value>>,
@@ -325,6 +333,7 @@ pub fn check_immediate_triggers() -> bool {
                 trigger: k["GLOBAL::EXPANSION::".len()..].to_string(),
                 exp_type: data.and_then(|d| d.get("expansionType")).and_then(|v| v.as_str()).unwrap_or("text").to_string(),
                 text: data.and_then(|d| d.get("text")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                html: data.and_then(|d| d.get("html")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 image_path: data.and_then(|d| d.get("imagePath")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 image_scale: data.and_then(|d| d.get("imageScale")).and_then(|v| v.as_u64()).unwrap_or(100) as u32,
                 options: data.and_then(|d| d.get("options")).and_then(|v| v.as_array()).cloned(),
@@ -369,6 +378,7 @@ pub fn check_immediate_triggers() -> bool {
 
             let global_vars = s.global_variables.clone();
             let text = imm.text.clone();
+            let html = imm.html.clone();
             let trigger = imm.trigger.clone();
             // Detect case from the original-case suffix of the buffer.
             // Use .get() to avoid panicking if trigger_len falls mid-char (non-ASCII buffer).
@@ -380,7 +390,8 @@ pub fn check_immediate_triggers() -> bool {
             drop(s);
 
             info!("[Trigr] Expansion (immediate): \"{}\" → \"{}\"", trigger, text);
-            fire_expansion(&trigger, trigger_len, false, &text, &global_vars, case_pattern);
+            let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
+            fire_expansion(&trigger, trigger_len, false, &text, html_opt, &global_vars, case_pattern);
             return true;
         }
     }
@@ -432,14 +443,15 @@ fn fire_expansion(
     trigger_len: usize,
     delete_extra: bool,
     text: &str,
+    html: Option<&str>,
     global_vars: &HashMap<String, String>,
     case_pattern: CasePattern,
 ) {
     // Check for {fillIn:...} tokens — if present, spawn a dedicated thread for the
     // entire fill-in + injection flow so the processor thread is never blocked.
+    // Fill-in flow is plain-text only (rich text inside fill-in fields isn't supported yet).
     let fill_in_fields = extract_fill_in_fields(text);
     if !fill_in_fields.is_empty() {
-        // Prevent concurrent fill-in invocations
         if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
             return;
         }
@@ -456,6 +468,18 @@ fn fire_expansion(
     // No fill-in tokens — resolve and inject directly
     let (resolved, cursor_back) = resolve_tokens(text, global_vars);
     let resolved = apply_case(&resolved, case_pattern);
+
+    // Resolve HTML in parallel. Only used when target app accepts CF_HTML —
+    // CF_UNICODETEXT always wins on plain-text apps via Windows clipboard fallback.
+    // Skip HTML if the expansion uses inline key tokens (those need per-segment
+    // injection that doesn't compose with a single paste).
+    let resolved_html: Option<String> = html.and_then(|h| {
+        if h.is_empty() || h.contains("{key:") {
+            None
+        } else {
+            Some(resolve_tokens_html(h, global_vars))
+        }
+    });
 
     if resolved.is_empty() {
         return;
@@ -537,7 +561,7 @@ fn fire_expansion(
             // Normal path: single inject
             let used_clipboard = should_use_clipboard(&resolved);
             if used_clipboard {
-                inject_via_clipboard(&resolved, target_hwnd);
+                inject_via_clipboard(&resolved, resolved_html.as_deref(), target_hwnd);
             } else {
                 inject_via_sendinput(&resolved, target_hwnd);
             }
@@ -801,7 +825,7 @@ fn fire_expansion_with_fillin(
     } else {
         let used_clipboard = should_use_clipboard(&resolved);
         if used_clipboard {
-            inject_via_clipboard(&resolved, target_hwnd);
+            inject_via_clipboard(&resolved, None, target_hwnd);
         } else {
             inject_via_sendinput(&resolved, target_hwnd);
         }
@@ -1021,15 +1045,70 @@ fn read_clipboard() -> Option<String> {
 }
 
 fn write_clipboard(text: &str) -> bool {
+    write_clipboard_dual(text, None)
+}
+
+/// Cached CF_HTML clipboard format ID (registered once with the OS).
+fn cf_html_format_id() -> u32 {
+    static FORMAT_ID: OnceLock<u32> = OnceLock::new();
+    *FORMAT_ID.get_or_init(|| {
+        let name: Vec<u16> = "HTML Format".encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe { RegisterClipboardFormatW(name.as_ptr()) }
+    })
+}
+
+/// Wrap an HTML fragment in the CF_HTML clipboard format with the required
+/// Version / StartHTML / EndHTML / StartFragment / EndFragment byte offsets.
+fn build_cf_html(fragment: &str) -> Vec<u8> {
+    // Placeholder offsets get patched after we know the actual byte positions
+    let header = "Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+    let prefix = "<html>\r\n<body>\r\n<!--StartFragment-->";
+    let suffix = "<!--EndFragment-->\r\n</body>\r\n</html>";
+
+    let start_html     = header.len();
+    let start_fragment = start_html + prefix.len();
+    let end_fragment   = start_fragment + fragment.len();
+    let end_html       = end_fragment + suffix.len();
+
+    let mut body = String::with_capacity(end_html);
+    body.push_str(header);
+    body.push_str(prefix);
+    body.push_str(fragment);
+    body.push_str(suffix);
+
+    // Patch each "Key:0000000000" placeholder with the real offset
+    let patch = |bytes: &mut Vec<u8>, key: &str, val: usize| {
+        let needle = format!("{}:0000000000", key);
+        if let Some(pos) = bytes.windows(needle.len()).position(|w| w == needle.as_bytes()) {
+            let val_str = format!("{:010}", val);
+            let start = pos + key.len() + 1;
+            for (i, b) in val_str.bytes().enumerate() {
+                bytes[start + i] = b;
+            }
+        }
+    };
+
+    let mut out = body.into_bytes();
+    patch(&mut out, "StartHTML",     start_html);
+    patch(&mut out, "EndHTML",       end_html);
+    patch(&mut out, "StartFragment", start_fragment);
+    patch(&mut out, "EndFragment",   end_fragment);
+    out.push(0); // CF_HTML is a null-terminated ANSI/UTF-8 string
+    out
+}
+
+/// Write plain text to the clipboard as CF_UNICODETEXT. If `html` is provided,
+/// also write CF_HTML so rich-text-aware target apps (Word, Outlook, Gmail,
+/// Slack, Teams) receive formatted content. Target apps that don't accept
+/// CF_HTML fall back to CF_UNICODETEXT automatically — no extra wiring needed.
+fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-    let byte_len = wide.len() * 2;
-    // Set suppress BEFORE touching clipboard so any listener skips this write
+    let text_bytes = wide.len() * 2;
+    let html_blob = html.map(build_cf_html);
+
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    // Retry up to 10 times — clipboard may be briefly held by the clipboard listener
-    // or another process.  Without retry, the write silently fails and Ctrl+V pastes
-    // whatever was already on the clipboard (the bug that makes expansions fire
-    // clipboard content instead of the expansion text).
+
     for attempt in 0..10 {
         unsafe {
             if OpenClipboard(std::ptr::null_mut()) == 0 {
@@ -1038,25 +1117,86 @@ fn write_clipboard(text: &str) -> bool {
             }
             EmptyClipboard();
 
-            let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
-            if h_mem.is_null() {
+            // CF_UNICODETEXT — always written, this is the plain-text fallback
+            let h_text = GlobalAlloc(GMEM_MOVEABLE, text_bytes);
+            if h_text.is_null() {
                 CloseClipboard();
                 return false;
             }
-            let ptr = GlobalLock(h_mem) as *mut u16;
+            let ptr = GlobalLock(h_text) as *mut u16;
             if ptr.is_null() {
                 CloseClipboard();
                 return false;
             }
             std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
-            GlobalUnlock(h_mem);
+            GlobalUnlock(h_text);
+            SetClipboardData(CF_UNICODETEXT, h_text);
 
-            SetClipboardData(CF_UNICODETEXT, h_mem);
+            // CF_HTML — only when caller provided HTML
+            if let Some(ref blob) = html_blob {
+                let h_html = GlobalAlloc(GMEM_MOVEABLE, blob.len());
+                if !h_html.is_null() {
+                    let p = GlobalLock(h_html) as *mut u8;
+                    if !p.is_null() {
+                        std::ptr::copy_nonoverlapping(blob.as_ptr(), p, blob.len());
+                        GlobalUnlock(h_html);
+                        SetClipboardData(cf_html_format_id(), h_html);
+                    }
+                }
+            }
+
             CloseClipboard();
             return true;
         }
     }
     false
+}
+
+/// HTML-escape a string and convert newlines into <br>.
+fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&'  => out.push_str("&amp;"),
+            '<'  => out.push_str("&lt;"),
+            '>'  => out.push_str("&gt;"),
+            '"'  => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            '\n' => out.push_str("<br>"),
+            '\r' => {}
+            _    => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Resolve token chips inside an HTML expansion. Each
+/// `<span class="rte-token" data-token="{...}">display</span>` is replaced
+/// with the HTML-escaped resolved value of its token.
+///
+/// `{cursor}` chips are stripped entirely — the cursor_back count is derived
+/// from the plain-text path which runs alongside.
+fn resolve_tokens_html(html: &str, global_vars: &HashMap<String, String>) -> String {
+    let re = match regex_lite::Regex::new(
+        r#"<span\b[^>]*?\bdata-token="([^"]*)"[^>]*>[^<]*</span>"#
+    ) {
+        Ok(r) => r,
+        Err(_) => return html.to_string(),
+    };
+    let mut result = String::with_capacity(html.len());
+    let mut last_end = 0;
+    for caps in re.captures_iter(html) {
+        let Some(m) = caps.get(0) else { continue };
+        let token = caps.get(1).map(|t| t.as_str()).unwrap_or("");
+        result.push_str(&html[last_end..m.start()]);
+        if token != "{cursor}" {
+            let (resolved, _) = resolve_tokens(token, global_vars);
+            result.push_str(&html_escape(&resolved));
+        }
+        last_end = m.end();
+    }
+    result.push_str(&html[last_end..]);
+    result
 }
 
 // ── Hybrid injection — SendInput for short text, clipboard for long/terminal ─
@@ -1157,13 +1297,16 @@ fn inject_via_sendinput(text: &str, target_hwnd: isize) {
 }
 
 /// Inject text via clipboard paste, restoring clipboard afterwards.
-fn inject_via_clipboard(text: &str, target_hwnd: isize) {
+/// When `html` is provided, also writes CF_HTML so target apps that accept
+/// rich text (Word, Outlook, Gmail, Slack, Teams) receive formatted content.
+/// Apps that don't accept CF_HTML automatically fall back to CF_UNICODETEXT.
+fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
     // Save current clipboard
     let prev = read_clipboard().unwrap_or_default();
 
     // Write replacement to clipboard — if this fails, do NOT paste (would paste old clipboard content)
-    if !write_clipboard(text) {
-        println!("[EXPANSION] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
+    if !write_clipboard_dual(text, html) {
+        log::warn!("[Trigr] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
         return;
     }
 
@@ -1470,7 +1613,7 @@ fn fire_variant_expansion(
     let _guard = guard;
 
     crate::hotkeys::SUPPRESS_SIMULATED.store(true, std::sync::atomic::Ordering::SeqCst);
-    inject_via_clipboard(&resolved, target_hwnd);
+    inject_via_clipboard(&resolved, None, target_hwnd);
 
     if cursor_back > 0 {
         thread::sleep(Duration::from_millis(10));

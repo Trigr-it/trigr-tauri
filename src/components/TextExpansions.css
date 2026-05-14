@@ -1197,6 +1197,28 @@ button.te-col-header:hover {
 .rte-chip-fillin     { background: rgba(200,100,255,0.12); color: #c864ff; border: 1px solid rgba(200,100,255,0.35); }
 .rte-chip-globalvar  { background: rgba(232,160,32,0.12);  color: #e8a020; border: 1px solid rgba(232,160,32,0.35);  }
 .rte-chip-key        { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); }
+.rte-chip-heading    { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); min-width: 22px; justify-content: center; }
+
+/* Text colour swatch grid inside the colour dropdown */
+.rte-colour-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: 6px 8px 8px;
+}
+.rte-colour-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline-strong);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.rte-colour-swatch:hover {
+  transform: scale(1.1);
+  border-color: var(--accent);
+}
 
 /* Section label inside the insert dropdown */
 .rte-menu-section-label {

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import './styles/global.css';
 import './styles/app.css';
+import { readVoicePhrases, writeVoicePhrases } from './voicePhrases';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import KeyboardCanvas, { comboString } from './components/KeyboardCanvas';
@@ -237,6 +238,23 @@ function App() {
         // Register radial menu hotkey with Rust backend
         if (config.radialMenuHotkey) {
           window.electronAPI?.setRadialMenuHotkey(config.radialMenuHotkey);
+        }
+        // One-time conflict notice for pre-existing collisions (e.g., voice +
+        // radial both bound to Ctrl+Alt+W from before validation was added).
+        // The validation now blocks new collisions; this only fires while a
+        // legacy duplicate is still in config, and disappears once the user
+        // reassigns one of the slots. Voice wins in the LL hook firing order.
+        const activeVoice = (config.voiceEnabled ?? false) && config.voiceHotkey;
+        if (activeVoice && config.radialMenuHotkey && config.voiceHotkey === config.radialMenuHotkey) {
+          // Delay slightly so the notification doesn't render before the main
+          // window UI is fully mounted (otherwise the toast slot may not exist
+          // when setNotification fires).
+          setTimeout(() => {
+            showNotification(
+              `Voice and Radial menu both use ${config.voiceHotkey}. Voice wins — please reassign the Radial menu hotkey.`,
+              'info'
+            );
+          }, 1200);
         }
         // If the main process auto-restored from a backup, surface that to the user
         if (config._restoredFrom) setBackupRestoredFrom(config._restoredFrom);
@@ -855,14 +873,14 @@ function App() {
       imagePath: v.data?.imagePath || '',
       imageScale: v.data?.imageScale ?? 100,
       options: v.data?.options || [],
-      voicePhrase: v.data?.voicePhrase || '',
+      voicePhrases: readVoicePhrases(v.data),
     }))
     .sort((a, b) => a.trigger.localeCompare(b.trigger));
 
   // editorValue is { html, text } from the rich text editor.
   // originalTrigger is provided when editing an existing expansion; if it differs
   // from trigger the old key is removed in the same update (single atomic write).
-  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale, variantOptions, voicePhrase) => {
+  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale, variantOptions, voicePhrases) => {
     const newAssignments = { ...assignments };
     if (originalTrigger && originalTrigger !== trigger) {
       delete newAssignments[`GLOBAL::EXPANSION::${originalTrigger}`];
@@ -879,7 +897,9 @@ function App() {
     if (variantOptions && variantOptions.length > 0) {
       data.options = variantOptions;
     }
-    if (voicePhrase) data.voicePhrase = voicePhrase;
+    // Voice phrases: array with read fallback to legacy single string handled
+    // by writeVoicePhrases — empty array deletes both fields so no orphan keys.
+    writeVoicePhrases(data, voicePhrases);
     newAssignments[`GLOBAL::EXPANSION::${trigger}`] = {
       type: 'expansion',
       label: displayName || (expansionType === 'image' ? `Image: ${trigger}` : `Expand: ${trigger}`),

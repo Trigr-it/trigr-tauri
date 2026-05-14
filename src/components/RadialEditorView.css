@@ -511,3 +511,15 @@
   opacity: 0.8;
   letter-spacing: 0.02em;
 }
+
+/* Conflict warning under the radial hotkey capture row. Mirrors the
+   settings-conflict-warn pattern but uses theme tokens instead of hex. */
+.rmp-conflict-warn {
+  margin: 6px 0 0;
+  padding: 5px 10px;
+  background: var(--btn-danger-bg);
+  border: 1px solid var(--btn-danger-border);
+  border-radius: var(--radius-md, 6px);
+  color: var(--btn-danger-text);
+  font-size: 11px;
+}

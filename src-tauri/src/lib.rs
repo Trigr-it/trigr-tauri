@@ -79,6 +79,9 @@ fn save_config(config: Value) -> bool {
     let ok = config::save_config(&merged);
     if ok {
         config::update_last_known_good(&merged);
+        // Voice phrases live inside the assignments blob, which is part of every save.
+        // Pre-warm asynchronously so the next recognition is cache-hit fast.
+        voice::prewarm_from_state();
     }
     ok
 }
@@ -775,6 +778,8 @@ fn update_assignments(assignments: Value, profile: String) {
         .unwrap_or_default();
     hotkeys::update_assignments(map.clone(), profile);
     expansions::update_assignments(map);
+    // Voice phrase grammar may have changed — pre-warm asynchronously
+    voice::prewarm_from_state();
 }
 
 #[tauri::command]
@@ -832,6 +837,8 @@ fn js_key_event(code: String, ctrl: bool, shift: bool, alt: bool, meta: bool, ap
 fn set_active_global_profile(profile: String) {
     foreground::set_active_global_profile(profile.clone());
     hotkeys::set_active_profile(profile);
+    // Active-profile assignments change → grammar changes
+    voice::prewarm_from_state();
 }
 
 #[tauri::command]
@@ -896,14 +903,68 @@ fn start_voice_recognition(phrases: Vec<String>, app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn start_voice_continuous(phrases: Vec<String>, app: tauri::AppHandle) {
+    voice::start_continuous_recognition(phrases, app);
+}
+
+#[tauri::command]
+fn stop_voice_continuous() {
+    voice::stop_continuous_recognition();
+}
+
+#[tauri::command]
 fn stop_voice_recognition() {
     voice::stop_recognition();
 }
 
 #[tauri::command]
-fn check_hotkey_conflict(combo: String) -> Value {
-    let _ = combo;
-    serde_json::json!({ "conflict": false })
+fn check_hotkey_conflict(combo: String, from_slot: Option<String>) -> Value {
+    let parsed = match hotkeys::parse_hotkey_combo(&combo) {
+        Some(p) => p,
+        None => return serde_json::json!({ "conflict": false, "conflictWith": null }),
+    };
+    let from = from_slot.unwrap_or_default();
+    let state = hotkeys::engine_state().lock().unwrap();
+
+    if from != "overlay" && state.overlay_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Quick Search overlay" });
+    }
+    if from != "pause" && state.pause_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Pause hotkey" });
+    }
+    if from != "voice" && state.voice_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Voice hotkey" });
+    }
+    if from != "radial" && state.radial_menu_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Radial menu" });
+    }
+    if from != "clipboard_paste" && state.clipboard_paste_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Clipboard quick paste" });
+    }
+
+    // Regular per-profile assignments — only check active profile single-press
+    // (storage format: ProfileName::Modifier::KeyCode; double-press has an extra
+    // "::double" suffix and can legitimately coexist with single-press).
+    if from != "assignment" {
+        let prefix = format!("{}::", state.active_profile);
+        for (key, value) in state.assignments.iter() {
+            if !key.starts_with(&prefix) { continue; }
+            let parts: Vec<&str> = key.split("::").collect();
+            if parts.len() != 3 { continue; } // skip double-press / malformed
+            let assignment_combo = format!("{}+{}", parts[1], parts[2]);
+            if let Some(p) = hotkeys::parse_hotkey_combo(&assignment_combo) {
+                if p == parsed {
+                    let label = value.get("label").and_then(|v| v.as_str()).unwrap_or("Unnamed");
+                    return serde_json::json!({
+                        "conflict": true,
+                        "conflictWith": format!("Assignment: {}", label),
+                    });
+                }
+            }
+        }
+    }
+
+    serde_json::json!({ "conflict": false, "conflictWith": null })
 }
 
 // ── Window (Phase 3) ────────────────────────────────────────────────────────
@@ -1032,7 +1093,8 @@ fn overlay_show_time() -> &'static StdMutex<Option<StdInstant>> {
     OVERLAY_SHOW_TIME.get_or_init(|| StdMutex::new(None))
 }
 
-/// Whether voice mode is locked in continuous mode (double-tap to activate).
+/// Whether voice mode is locked in continuous mode. Set by the pill click via
+/// the set_voice_continuous Tauri command. Cleared by hide_overlay() on close.
 static VOICE_CONTINUOUS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Timestamp when the voice overlay was opened — used for double-tap detection.
@@ -1114,6 +1176,11 @@ fn show_overlay(app: &tauri::AppHandle) {
     *overlay_show_time().lock().unwrap() = Some(StdInstant::now());
     let _ = overlay.show();
     let _ = overlay.set_focus();
+    // Track HWND so the mouse hook can dismiss on click-outside even when set_focus
+    // didn't actually grab OS focus (foreground-stealing restrictions).
+    if let Ok(hwnd) = overlay.hwnd() {
+        hotkeys::SEARCH_OVERLAY_HWND.store(hwnd.0 as isize, AtomicOrdering::SeqCst);
+    }
 }
 
 fn show_voice_overlay(app: &tauri::AppHandle) {
@@ -1191,6 +1258,7 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
 }
 
 fn hide_overlay(app: &tauri::AppHandle) {
+    hotkeys::SEARCH_OVERLAY_HWND.store(0, AtomicOrdering::SeqCst);
     hotkeys::clear_overlay_opened_flag();
     hotkeys::clear_voice_active();
     VOICE_CONTINUOUS.store(false, AtomicOrdering::SeqCst);
@@ -1267,10 +1335,16 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let _ = win.show();
     // No set_focus() — WS_EX_NOACTIVATE prevents focus steal; keyboard routed via LL hook.
     crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
+    // Track HWND so the mouse hook can dismiss on click-outside (blur won't fire
+    // because WS_EX_NOACTIVATE means the window never receives focus on show).
+    if let Ok(hwnd) = win.hwnd() {
+        crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 fn hide_clipboard_overlay(app: &tauri::AppHandle) {
     crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(false, std::sync::atomic::Ordering::SeqCst);
+    crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
     if let Some(win) = app.get_webview_window("clipboardoverlay") {
         let _ = win.hide();
     }
@@ -1564,6 +1638,26 @@ fn voice_overlay_error_expand(app: tauri::AppHandle) {
             let log_y = pos.y as f64 / scale;
             let adj_x = (log_x - (new_w - 72.0) / 2.0).max(0.0);
             let _ = overlay.set_position(tauri::LogicalPosition::new(adj_x, log_y));
+        }
+        let _ = overlay.set_size(tauri::LogicalSize::new(new_w, new_h));
+    }
+}
+
+/// Expand the voice overlay to fit a no-match examples banner (3 phrase rows).
+/// Re-centres horizontally and grows upward so the pill stays bottom-centre.
+#[tauri::command]
+fn voice_overlay_examples_expand(app: tauri::AppHandle) {
+    let new_w = 340.0_f64;
+    let new_h = 168.0_f64;
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let scale = overlay.scale_factor().unwrap_or(1.0);
+        if let Ok(pos) = overlay.outer_position() {
+            let log_x = pos.x as f64 / scale;
+            let log_y = pos.y as f64 / scale;
+            let adj_x = (log_x - (new_w - 72.0) / 2.0).max(0.0);
+            // Grow upward — keep the pill at the same bottom edge
+            let adj_y = (log_y - (new_h - 72.0)).max(0.0);
+            let _ = overlay.set_position(tauri::LogicalPosition::new(adj_x, adj_y));
         }
         let _ = overlay.set_size(tauri::LogicalSize::new(new_w, new_h));
     }
@@ -2566,6 +2660,20 @@ pub fn run() {
                 }
             });
 
+            // Outside-click dismissal: the mouse hook detects a click outside the
+            // overlay's window rect and emits these events. Needed because the
+            // blur-based path doesn't fire on the first outside click when the
+            // window never grabbed OS focus on show.
+            let app_handle_oc_search = app.handle().clone();
+            app.listen("close-overlay-outside-click", move |_| {
+                hide_overlay(&app_handle_oc_search);
+                restore_overlay_target();
+            });
+            let app_handle_oc_clip = app.handle().clone();
+            app.listen("close-clipboard-overlay-outside-click", move |_| {
+                hide_clipboard_overlay(&app_handle_oc_clip);
+            });
+
             // Listen for radial menu toggle from hotkey system
             let app_handle_radial = app.handle().clone();
             app.listen("toggle-radial-menu", move |_| {
@@ -2698,6 +2806,8 @@ pub fn run() {
             clear_voice_hotkey,
             start_voice_recognition,
             stop_voice_recognition,
+            start_voice_continuous,
+            stop_voice_continuous,
             check_hotkey_conflict,
             // Window
             window_minimize,
@@ -2735,6 +2845,7 @@ pub fn run() {
             close_overlay,
             overlay_resize,
             voice_overlay_error_expand,
+            voice_overlay_examples_expand,
             set_voice_continuous,
             execute_search_result,
             update_search_settings,

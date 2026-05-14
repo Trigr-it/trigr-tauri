@@ -313,6 +313,53 @@ html, body {
   margin: 0 auto;
 }
 
+/* Frame wrapper: examples banner above the pill. When examples are shown the
+   panel widens via .search-voice-examples (selector below). Continuous mode
+   listening is NOT blocked while this banner is visible — session keeps running. */
+.search-voice-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-panel:has(.search-voice-examples) {
+  width: 320px;
+  max-width: 320px;
+  min-width: 320px;
+  border-radius: 12px;
+}
+
+.search-voice-examples {
+  width: 100%;
+  padding: 10px 12px 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.search-voice-examples-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+.search-voice-examples-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-primary);
+}
+.search-voice-examples-dot {
+  color: var(--accent);
+  font-weight: 700;
+}
+.search-voice-examples-phrase {
+  font-style: italic;
+}
+
 /* Expanded error state — widen to fit error text */
 .search-panel:has(.search-voice-error-row) {
   width: 320px;

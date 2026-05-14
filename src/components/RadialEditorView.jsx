@@ -50,6 +50,7 @@ export default function RadialEditorView({
 }) {
   const [capturingKey, setCapturingKey] = useState(false);
   const [capturedKey, setCapturedKey]   = useState(null);
+  const [radialConflict, setRadialConflict] = useState(null);
   const setExpandedFolder = onExpandedFolderChange;
   const [hoveredIndex, setHoveredIndex] = useState(-1);
   const [hoveredOuter, setHoveredOuter] = useState(-1);
@@ -316,9 +317,9 @@ export default function RadialEditorView({
               className="rmp-capture"
               tabIndex={0}
               autoFocus
-              onBlur={() => { setCapturingKey(false); setCapturedKey(null); }}
+              onBlur={() => { setCapturingKey(false); setCapturedKey(null); setRadialConflict(null); }}
               onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
-              onKeyDown={e => {
+              onKeyDown={async e => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
@@ -332,6 +333,8 @@ export default function RadialEditorView({
                 const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                 const combo = [...mods, e.code].join('+');
                 const label = [...mods, keyDisplay].join('+');
+                const result = await window.electronAPI?.checkHotkeyConflict(combo, 'radial');
+                setRadialConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                 setCapturedKey({ combo, label });
               }}
             >
@@ -340,14 +343,15 @@ export default function RadialEditorView({
               ) : (
                 <span className="rmp-waiting">Press combo...</span>
               )}
-              {capturedKey && (
+              {capturedKey && !radialConflict && (
                 <button className="rmp-save-btn" type="button" onMouseDown={e => e.preventDefault()} onClick={() => {
                   onSetRadialMenuHotkey?.(capturedKey.combo);
                   setCapturingKey(false);
                   setCapturedKey(null);
+                  setRadialConflict(null);
                 }}>Save</button>
               )}
-              <button className="rmp-cancel-btn" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setCapturingKey(false); setCapturedKey(null); }}>&#10005;</button>
+              <button className="rmp-cancel-btn" type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setCapturingKey(false); setCapturedKey(null); setRadialConflict(null); }}>&#10005;</button>
             </div>
           ) : radialMenuHotkey ? (
             <>
@@ -367,6 +371,9 @@ export default function RadialEditorView({
           )}
         </div>
       </div>
+      {radialConflict && (
+        <div className="rmp-conflict-warn">{radialConflict}</div>
+      )}
 
       {/* Stats bar */}
       {radialMenuHotkey && (

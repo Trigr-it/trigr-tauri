@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import './SearchOverlay.css';
 import { friendlyKeyName } from './keyboardLayout';
+import { readVoicePhrases } from '../voicePhrases';
 
 // ── Type metadata ──────────────────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ function buildItems(data) {
         assignType: macro.type,
         label:      macro.label || '',
         preview:    buildPreview(macro),
-        voicePhrase: macro.data?.voicePhrase || null,
+        voicePhrases: readVoicePhrases(macro.data),
       });
     } else if (storageKey.startsWith('GLOBAL::EXPANSION::')) {
       const trigger = storageKey.slice('GLOBAL::EXPANSION::'.length);
@@ -109,7 +110,7 @@ function buildItems(data) {
           : (macro.data?.text || '').substring(0, 60),
         text:    macro.data?.text,
         html:    macro.data?.html,
-        voicePhrase: macro.data?.voicePhrase || null,
+        voicePhrases: readVoicePhrases(macro.data),
       });
     } else if (storageKey.startsWith('GLOBAL::QUICKACTION::')) {
       items.push({
@@ -118,7 +119,7 @@ function buildItems(data) {
         assignType: macro.type,
         label:      macro.label || '',
         preview:    buildPreview(macro),
-        voicePhrase: macro.data?.voicePhrase || null,
+        voicePhrases: readVoicePhrases(macro.data),
       });
     } else if (storageKey.startsWith('GLOBAL::AUTOCORRECT::')) {
       if (!includeAutocorrect) continue;
@@ -294,6 +295,7 @@ export default function SearchOverlay() {
   const [voiceState, setVoiceState]         = useState('idle'); // 'idle' | 'listening' | 'matched' | 'no-match' | 'error' | 'unsupported'
   const [interimText, setInterimText]       = useState('');
   const [matchedLabel, setMatchedLabel]     = useState('');
+  const [examplePhrases, setExamplePhrases] = useState([]); // shown after a no-match
   const [voiceContinuous, _setVoiceContinuousState] = useState(false); // double-tap stay-active mode
   const recognitionRef      = useRef(false);  // boolean: is WinRT recognition running
   const voiceTimeoutRef     = useRef(null);
@@ -315,16 +317,45 @@ export default function SearchOverlay() {
   const resultsRef = useRef(null);
   const rowRefs    = useRef([]);
 
-  // ── Voice phrase map (built from items with voicePhrase) ──
+  // ── Voice phrase map (built from items with voicePhrases) ──
+  // One item can map from multiple alias phrases; each alias lookups to the same item.
   const voicePhraseMap = useMemo(() => {
     const map = {};
     for (const item of allItems) {
-      if (item.voicePhrase) {
-        map[item.voicePhrase.toLowerCase().trim()] = item;
+      for (const phrase of (item.voicePhrases || [])) {
+        const k = phrase.toLowerCase().trim();
+        if (k) map[k] = item;
       }
     }
     return map;
   }, [allItems]);
+
+  // Pick N random phrases from the current grammar to surface on a no-match.
+  // Helps users learn what's available without exposing the full list.
+  const pickExamplePhrases = useCallback((count = 3) => {
+    const keys = Object.keys(voicePhraseMapRef.current || {});
+    if (keys.length === 0) return [];
+    // Fisher–Yates partial shuffle to take min(count, keys.length)
+    const out = keys.slice();
+    for (let i = out.length - 1; i > 0 && i >= out.length - count; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out.slice(-Math.min(count, out.length)).reverse();
+  }, []);
+
+  // When example phrases get set, grow the overlay window so the banner fits.
+  // Guarded against firing on stale state by checking voiceState/continuous —
+  // a fresh overlay open with examplePhrases=[] doesn't trigger this, and any
+  // residual state from before the reset can't accidentally resize the window.
+  useEffect(() => {
+    if (examplePhrases.length === 0) return;
+    const isNoMatch = voiceStateRef.current === 'no-match';
+    const isContinuousListening = voiceStateRef.current === 'listening' && voiceContinuousRef.current === true;
+    if (isNoMatch || isContinuousListening) {
+      window.electronAPI?.voiceOverlayExamplesExpand();
+    }
+  }, [examplePhrases]);
 
   const voicePhraseMapRef = useRef(voicePhraseMap);
   voicePhraseMapRef.current = voicePhraseMap;
@@ -359,7 +390,18 @@ export default function SearchOverlay() {
     // Send phrases to Rust WinRT recognizer
     window.electronAPI?.startVoiceRecognition(phrases);
 
-    // Auto-cancel timeout — in continuous mode, restart instead of closing
+    // ── Dual-layer voice timeout (Stage 7 of voice overhaul) ──
+    // WinRT InitialSilenceTimeout fires at 8s when audio frames arrive but the
+    // user stays silent. It does NOT fire if audio frames never arrive at all —
+    // e.g. Bluetooth mic mid-session dropout, exclusive mic capture by another
+    // app (Teams call starting), OS-level permission revocation during recognition,
+    // or USB driver hang. In those edge cases RecognizeAsync.get() blocks
+    // indefinitely on the Rust side.
+    //
+    // This JS-side backstop at 11s (3s past WinRT's 8s) is the only escape from
+    // that hung state — it force-stops the recognizer via stopVoiceRecognition().
+    // DO NOT delete this timer thinking it's redundant with WinRT's silence
+    // timeout; the two layers cover different failure modes.
     voiceTimeoutRef.current = setTimeout(() => {
       stopListening();
       if (voiceContinuousRef.current) {
@@ -372,7 +414,7 @@ export default function SearchOverlay() {
         setInterimText('No speech detected');
         setTimeout(() => window.electronAPI?.closeOverlay(), 1200);
       }
-    }, 8000);
+    }, 11000);
   }, [voicePhraseMap, stopListening]);
 
   // ── Receive data from main process ──
@@ -453,26 +495,37 @@ export default function SearchOverlay() {
       setSelectedIndex(0);
       setDisplayItems([]);
       setMode('voice');
+      // Reset all voice-session-scoped state so nothing leaks between overlay opens.
       setVoiceState('idle');
       setInterimText('');
       setMatchedLabel('');
       setVoiceContinuous(false);
+      setExamplePhrases([]);
+      recognitionRef.current = false;
+      clearTimeout(voiceTimeoutRef.current);
       setReady(true);
     });
   }, []);
 
   // ── Continuous mode: click voice pill to go persistent, click again to close ──
+  // Backed by SpeechContinuousRecognitionSession on the Rust side — one long-running
+  // session emits voice-result events as they happen, no per-utterance restart needed.
+  // Cached recognizer is reused (no constraint re-compile).
   const handleVoicePillClick = useCallback(() => {
     if (voiceContinuousRef.current) {
-      // Already continuous — second click closes the overlay.
-      // Reset state NOW so next session starts with voiceContinuous=false,
-      // regardless of whether onOverlayVoiceData fires before the user clicks again.
       setVoiceContinuous(false);
+      window.electronAPI?.stopVoiceContinuous();
       window.electronAPI?.closeOverlay();
     } else {
-      // First click — enter continuous (stay-alive) mode
       setVoiceContinuous(true);
       window.electronAPI?.setVoiceContinuous(true);
+      window.electronAPI?.stopVoiceRecognition();
+      const phrases = Object.keys(voicePhraseMapRef.current);
+      if (phrases.length > 0) {
+        recognitionRef.current = true;
+        setVoiceState('listening');
+        window.electronAPI?.startVoiceContinuous(phrases);
+      }
     }
   }, []);
 
@@ -499,50 +552,44 @@ export default function SearchOverlay() {
       if (!text) {
         setVoiceState('no-match');
         setInterimText('');
+        setExamplePhrases(pickExamplePhrases(3));
         if (voiceContinuousRef.current) {
-          // Continuous mode: restart after brief pause
           setTimeout(() => {
             setVoiceState('listening');
             setInterimText('');
-            recognitionRef.current = false;
-            startListeningRef.current?.();
           }, 1000);
         } else {
-          setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+          setTimeout(() => window.electronAPI?.closeOverlay(), 3000);
         }
         return;
       }
       setInterimText(text);
-      // WinRT returns an exact match from the phrase list — look it up directly
       const phraseMap = voicePhraseMapRef.current;
       const match = phraseMap[text] || findBestVoiceMatch(text, phraseMap);
       if (match) {
         setVoiceState('matched');
         setMatchedLabel(match.label || match.trigger || '(matched)');
+        setExamplePhrases([]);
         setTimeout(() => {
           fireItemRef.current?.(match);
           if (voiceContinuousRef.current) {
-            // Continuous mode: restart listening after command fires
             setTimeout(() => {
               setVoiceState('listening');
               setInterimText('');
               setMatchedLabel('');
-              recognitionRef.current = false;
-              startListeningRef.current?.();
             }, 600);
           }
         }, 500);
       } else {
         setVoiceState('no-match');
+        setExamplePhrases(pickExamplePhrases(3));
         if (voiceContinuousRef.current) {
           setTimeout(() => {
             setVoiceState('listening');
             setInterimText('');
-            recognitionRef.current = false;
-            startListeningRef.current?.();
           }, 1200);
         } else {
-          setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+          setTimeout(() => window.electronAPI?.closeOverlay(), 3000);
         }
       }
     });
@@ -556,16 +603,22 @@ export default function SearchOverlay() {
       recognitionRef.current = false;
       if (data.error === 'no-speech') {
         if (voiceContinuousRef.current) {
-          // Continuous mode: silently restart on no-speech
+          // Continuous session keeps running on its own — just refresh visual state.
           setVoiceState('listening');
           setInterimText('');
-          setTimeout(() => startListeningRef.current?.(), 300);
         } else {
           setVoiceState('no-match');
           setInterimText('');
-          setTimeout(() => window.electronAPI?.closeOverlay(), 1500);
+          setExamplePhrases(pickExamplePhrases(3));
+          setTimeout(() => window.electronAPI?.closeOverlay(), 3000);
         }
       } else {
+        // Hard error (mic unavailable, permission, session Completed with non-Success).
+        // In continuous mode this means the session died — exit continuous and close.
+        if (voiceContinuousRef.current) {
+          setVoiceContinuous(false);
+          window.electronAPI?.stopVoiceContinuous();
+        }
         setVoiceState('error');
         setInterimText(data.error || 'Voice unavailable');
         window.electronAPI?.voiceOverlayErrorExpand();
@@ -787,8 +840,20 @@ export default function SearchOverlay() {
           </div>
         )}
 
-        {/* Voice mode UI — compact square */}
+        {/* Voice mode UI — compact square + optional examples banner */}
         {mode === 'voice' ? (
+          <div className="search-voice-frame">
+            {examplePhrases.length > 0 && (
+              <div className="search-voice-examples">
+                <div className="search-voice-examples-title">Couldn't catch that — try:</div>
+                {examplePhrases.map((p, i) => (
+                  <div className="search-voice-examples-row" key={i}>
+                    <span className="search-voice-examples-dot">·</span>
+                    <span className="search-voice-examples-phrase">"{p}"</span>
+                  </div>
+                ))}
+              </div>
+            )}
           <div
             className="search-voice-pill"
             onClick={handleVoicePillClick}
@@ -820,6 +885,7 @@ export default function SearchOverlay() {
             {voiceState === 'unsupported' && (
               <span className="search-voice-pill-label">⚠</span>
             )}
+          </div>
           </div>
         ) : (
           <>

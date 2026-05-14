@@ -371,3 +371,57 @@ input:focus, textarea:focus, select:focus {
 .settings-advanced-chevron.open {
   transform: rotate(180deg);
 }
+
+/* ── Voice phrase list editor (shared across MacroPanel, TextExpansions, SearchTemplatesPanel) ── */
+.voice-phrase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.voice-phrase-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.voice-phrase-input.form-input {
+  height: 32px;
+  border-radius: 6px;
+  flex: 1;
+}
+.voice-phrase-remove {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.voice-phrase-remove:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+}
+.voice-phrase-add {
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px dashed var(--border-bright);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 2px;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.voice-phrase-add:hover {
+  color: var(--accent);
+  border-color: var(--border-accent);
+  background: var(--bg-elevated);
+}

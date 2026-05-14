@@ -7,6 +7,7 @@ import './SearchTemplatesPanel.css';
 import { MacroSequenceForm, AppForm } from './MacroPanel';
 import { SearchBar } from './SearchBar';
 import { findPresetIconForUrl } from '../utils/presetIcons';
+import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 
 // ── Colour palette (matches TextExpansions) ────────────────────────────────
 
@@ -563,6 +564,7 @@ export default function SearchTemplatesPanel({
   const [qaType, setQaType]                = useState('url');
   const [qaFormValue, setQaFormValue]      = useState({});
   const [qaCategory, setQaCategory]        = useState(null);
+  const [qaVoicePhrases, setQaVoicePhrases] = useState([]);
 
   // Test state
   const [testQuery, setTestQuery]           = useState('');
@@ -799,6 +801,7 @@ export default function SearchTemplatesPanel({
     setQaType(qa.type || 'app');
     setQaFormValue(qa.data || {});
     setQaCategory(qa.data?.category || null);
+    setQaVoicePhrases(readVoicePhrases(qa.data));
     setQaIsNew(false);
   }
 
@@ -808,6 +811,7 @@ export default function SearchTemplatesPanel({
     setQaType('app');
     setQaFormValue({});
     setQaCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
+    setQaVoicePhrases([]);
     setQaIsNew(true);
   }
 
@@ -819,6 +823,7 @@ export default function SearchTemplatesPanel({
   function handleQaSave() {
     if (!qaLabel.trim()) return;
     const data = { ...qaFormValue, category: qaCategory || null };
+    writeVoicePhrases(data, qaVoicePhrases);
     if (qaIsNew) {
       const newId = crypto.randomUUID();
       onAddQuickAction?.({ id: newId, type: qaType, label: qaLabel.trim(), data });
@@ -1507,6 +1512,40 @@ export default function SearchTemplatesPanel({
                     <option value="">Uncategorised</option>
                     {qaCategories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
                   </select>
+                </div>
+
+                {/* Voice commands */}
+                <div className="form-section" style={{ marginTop: 4 }}>
+                  <label className="form-label">Voice commands <span className="experimental-badge">EXPERIMENTAL</span></label>
+                  <div className="voice-phrase-list">
+                    {qaVoicePhrases.map((p, i) => (
+                      <div className="voice-phrase-row" key={i}>
+                        <input
+                          className="form-input voice-phrase-input"
+                          placeholder="e.g. open Revit"
+                          value={p}
+                          onChange={e => {
+                            const next = [...qaVoicePhrases];
+                            next[i] = e.target.value;
+                            setQaVoicePhrases(next);
+                          }}
+                          onKeyDown={e => e.stopPropagation()}
+                        />
+                        <button
+                          type="button"
+                          className="voice-phrase-remove"
+                          title="Remove phrase"
+                          onClick={() => setQaVoicePhrases(qaVoicePhrases.filter((_, idx) => idx !== i))}
+                        >×</button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="voice-phrase-add"
+                      onClick={() => setQaVoicePhrases([...qaVoicePhrases, ''])}
+                    >+ Add voice phrase</button>
+                  </div>
+                  <span className="form-hint">All aliases fire this quick action when spoken</span>
                 </div>
               </div>
             </div>

@@ -56,6 +56,7 @@ export default function SettingsPanel({
   const [capturingPauseKey, setCapturingPauseKey] = useState(false);
   const [capturingVoiceKey, setCapturingVoiceKey] = useState(false);
   const [capturedVoiceKey, setCapturedVoiceKey]   = useState(null);
+  const [voiceConflict, setVoiceConflict]         = useState(null);
   const [micTesting, setMicTesting]               = useState(false);
   const [micLevel, setMicLevel]                   = useState(0);
   const micTestRef = useRef(null); // { stream, audioCtx, analyser, animFrame }
@@ -635,9 +636,9 @@ export default function SettingsPanel({
                   className="settings-qs-capture"
                   tabIndex={0}
                   autoFocus
-                  onBlur={() => { setCapturingVoiceKey(false); setCapturedVoiceKey(null); }}
+                  onBlur={() => { setCapturingVoiceKey(false); setCapturedVoiceKey(null); setVoiceConflict(null); }}
                   onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
-                  onKeyDown={e => {
+                  onKeyDown={async e => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
@@ -651,6 +652,8 @@ export default function SettingsPanel({
                     const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                     const combo = [...mods, e.code].join('+');
                     const label = [...mods, keyDisplay].join('+');
+                    const result = await window.electronAPI?.checkHotkeyConflict(combo, 'voice');
+                    setVoiceConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                     setCapturedVoiceKey({ combo, label });
                   }}
                 >
@@ -659,7 +662,7 @@ export default function SettingsPanel({
                   ) : (
                     <span className="settings-qs-waiting">Press combo…</span>
                   )}
-                  {capturedVoiceKey && (
+                  {capturedVoiceKey && !voiceConflict && (
                     <button
                       className="settings-qs-save-btn"
                       type="button"
@@ -668,6 +671,7 @@ export default function SettingsPanel({
                         onSetVoiceKey?.(capturedVoiceKey.combo);
                         setCapturingVoiceKey(false);
                         setCapturedVoiceKey(null);
+                        setVoiceConflict(null);
                       }}
                     >
                       Save
@@ -677,7 +681,7 @@ export default function SettingsPanel({
                     className="settings-qs-cancel-btn"
                     type="button"
                     onMouseDown={e => e.preventDefault()}
-                    onClick={() => { setCapturingVoiceKey(false); setCapturedVoiceKey(null); }}
+                    onClick={() => { setCapturingVoiceKey(false); setCapturedVoiceKey(null); setVoiceConflict(null); }}
                   >
                     ✕
                   </button>
@@ -719,6 +723,9 @@ export default function SettingsPanel({
               )}
             </div>
           </div>
+          {voiceConflict && (
+            <div className="settings-conflict-warn">{voiceConflict}</div>
+          )}
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
@@ -772,8 +779,8 @@ export default function SettingsPanel({
                     const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                     const combo = [...mods, e.code].join('+');
                     const label = [...mods, keyDisplay].join('+');
-                    const result = await window.electronAPI?.checkHotkeyConflict(combo);
-                    setPauseConflict(result?.conflict ? `Conflicts with: ${result.with}` : null);
+                    const result = await window.electronAPI?.checkHotkeyConflict(combo, 'pause');
+                    setPauseConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                     setCapturedPauseKey({ combo, label });
                   }}
                 >
