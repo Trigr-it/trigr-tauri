@@ -35,11 +35,52 @@ jobs:
           "SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Output "trusted-signing-cli: $dir\trusted-signing-cli.exe"
           Write-Output "signtool: $($signtool.FullName)"
+      - name: Verify Azure signing connectivity
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          $test = "$env:RUNNER_TEMP\preflight-sign.exe"
+          Copy-Item "$env:RUNNER_TEMP\signing\trusted-signing-cli.exe" $test -Force
+          Write-Output "Pre-flight test file: $test ($((Get-Item $test).Length) bytes)"
+          $stdoutFile = "$env:RUNNER_TEMP\tsc-preflight.log"
+          & trusted-signing-cli -e https://weu.codesigning.azure.net -a nodescaffold-signing -c node-public-trust -d "Preflight" $test *>&1 | Tee-Object -FilePath $stdoutFile
+          $tscExit = $LASTEXITCODE
+          Write-Output "trusted-signing-cli exit code: $tscExit"
+          if ($tscExit -ne 0) {
+            Write-Output "=== Full pre-flight output ==="
+            Get-Content $stdoutFile
+            throw "trusted-signing-cli pre-flight FAILED — Azure auth / connectivity / config issue before the 10-min compile"
+          }
+          & $env:SIGNTOOL_PATH verify /pa /v $test
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify of pre-flight signature failed (exit $LASTEXITCODE)" }
+          Write-Output "Pre-flight signing PASSED — Azure is reachable, cert profile resolves, signature applies cleanly"
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
           shared-key: release-x86_64-pc-windows-msvc
+      - name: Remove stale gen-key.exe from restored cache
+        shell: pwsh
+        run: |
+          # gen-key bin is gated behind the gen-key-tool feature so cargo skips
+          # rebuilding it. But the Swatinem cache restores any gen-key.exe that
+          # was compiled before the feature gate landed. Tauri's bundler then
+          # picks it up and tries to sign+ship it. Defensive scrub keeps the
+          # bundle limited to user-facing binaries.
+          $stale = @(
+            "src-tauri\target\x86_64-pc-windows-msvc\release\gen-key.exe",
+            "src-tauri\target\x86_64-pc-windows-msvc\release\gen-key.pdb"
+          )
+          foreach ($p in $stale) {
+            if (Test-Path $p) { Remove-Item $p -Force; Write-Output "removed: $p" }
+          }
+          Get-ChildItem "src-tauri\target\x86_64-pc-windows-msvc\release\deps\gen_key-*" -ErrorAction SilentlyContinue | ForEach-Object {
+            Remove-Item $_.FullName -Force
+            Write-Output "removed: $($_.FullName)"
+          }
       - name: Install dependencies
         run: npm install
       - name: Build and release
