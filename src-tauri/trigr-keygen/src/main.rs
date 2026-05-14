@@ -52,12 +52,15 @@ fn print_usage() {
     eprintln!(
         r#"Trigr licence key generator
 
+Run from inside src-tauri/trigr-keygen/, or invoke the built binary at
+src-tauri/trigr-keygen/target/release/trigr-keygen.exe directly.
+
 Usage:
-  cargo run --bin gen-key -- init
+  cargo run --release -- init
       Generate a new Ed25519 keypair, save the private key to disk,
       and print the public key to paste into licence.rs.
 
-  cargo run --bin gen-key -- sign --email <e> [--days N] [--tier T] [--no-log]
+  cargo run --release -- sign --email <e> [--days N] [--tier T] [--no-log]
       Sign a new licence key. Defaults: --days 30, --tier pro.
       A row is appended to issued-keys.csv unless --no-log is passed.
 
@@ -177,7 +180,7 @@ fn cmd_sign(args: &[String]) -> ExitCode {
         Ok(b) => b,
         Err(e) => {
             eprintln!("Failed to read private key from {}: {}", path.display(), e);
-            eprintln!("Run `cargo run --bin gen-key -- init` first.");
+            eprintln!("Run `cargo run --release -- init` from src-tauri/trigr-keygen/ first.");
             return ExitCode::FAILURE;
         }
     };
