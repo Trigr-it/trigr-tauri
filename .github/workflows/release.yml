@@ -97,10 +97,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v',''
-          $src = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Trigr_${version}_x64-setup.exe"
+          $bundleDir = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          $installer = Get-ChildItem -Path $bundleDir -Filter "Trigr_*_x64-setup.exe" -ErrorAction Stop | Select-Object -First 1
+          if (-not $installer) { throw "No x64 installer found in $bundleDir" }
           $dst = "Trigr_x64-setup.exe"
-          Copy-Item $src $dst
+          Copy-Item $installer.FullName $dst
+          Write-Output "Uploading $($installer.Name) as $dst"
           gh release upload "${{ github.ref_name }}" $dst --clobber
 
   release-arm64:
@@ -141,8 +143,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v',''
-          $src = "src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/Trigr_${version}_arm64-setup.exe"
+          $bundleDir = "src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis"
+          $installer = Get-ChildItem -Path $bundleDir -Filter "Trigr_*_arm64-setup.exe" -ErrorAction Stop | Select-Object -First 1
+          if (-not $installer) { throw "No arm64 installer found in $bundleDir" }
           $dst = "Trigr_arm64-setup.exe"
-          Copy-Item $src $dst
+          Copy-Item $installer.FullName $dst
+          Write-Output "Uploading $($installer.Name) as $dst"
           gh release upload "${{ github.ref_name }}" $dst --clobber
