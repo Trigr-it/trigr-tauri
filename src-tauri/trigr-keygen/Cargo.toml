@@ -1,0 +1,17 @@
+[package]
+name = "trigr-keygen"
+version = "0.1.0"
+edition = "2021"
+description = "Trigr offline licence key generator (private maintainer tool)"
+publish = false
+
+# Declares this crate as its own workspace root so cargo does not traverse
+# upward and attach itself to src-tauri/Cargo.toml.
+[workspace]
+
+[dependencies]
+base64 = "0.22"
+chrono = "0.4"
+ed25519-dalek = { version = "2", features = ["rand_core", "std"] }
+rand = "0.8"
+serde_json = "1"

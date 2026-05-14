@@ -14,11 +14,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "trigr"
 path = "src/main.rs"
 
-[[bin]]
-name = "gen-key"
-path = "src/bin/gen-key.rs"
-required-features = ["gen-key-tool"]
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -74,4 +69,3 @@ windows-sys = { version = "0.59", features = [
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-gen-key-tool = []

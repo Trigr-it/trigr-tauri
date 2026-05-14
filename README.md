@@ -67,8 +67,9 @@ src-tauri/        Rust backend
     foreground.rs   Foreground watcher, app-profile switching
     analytics.rs    Usage analytics, time saved
     licence.rs      Offline Ed25519 licence verification
-    bin/gen-key.rs  CLI to sign beta licence keys (private to maintainer)
     voice.rs        WinRT speech recognition (experimental)
+
+  trigr-keygen/     Standalone CLI crate to sign beta licence keys (private to maintainer)
 
 src/              React frontend
   App.jsx           Root component, state, persistence

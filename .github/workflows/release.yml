@@ -62,25 +62,6 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           shared-key: release-x86_64-pc-windows-msvc
-      - name: Remove stale gen-key.exe from restored cache
-        shell: pwsh
-        run: |
-          # gen-key bin is gated behind the gen-key-tool feature so cargo skips
-          # rebuilding it. But the Swatinem cache restores any gen-key.exe that
-          # was compiled before the feature gate landed. Tauri's bundler then
-          # picks it up and tries to sign+ship it. Defensive scrub keeps the
-          # bundle limited to user-facing binaries.
-          $stale = @(
-            "src-tauri\target\x86_64-pc-windows-msvc\release\gen-key.exe",
-            "src-tauri\target\x86_64-pc-windows-msvc\release\gen-key.pdb"
-          )
-          foreach ($p in $stale) {
-            if (Test-Path $p) { Remove-Item $p -Force; Write-Output "removed: $p" }
-          }
-          Get-ChildItem "src-tauri\target\x86_64-pc-windows-msvc\release\deps\gen_key-*" -ErrorAction SilentlyContinue | ForEach-Object {
-            Remove-Item $_.FullName -Force
-            Write-Output "removed: $($_.FullName)"
-          }
       - name: Install dependencies
         run: npm install
       - name: Build and release

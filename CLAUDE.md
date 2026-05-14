@@ -39,13 +39,15 @@ src-tauri/
     foreground.rs    # Foreground watcher, app-profile auto-switching (~389 lines)
     analytics.rs     # SQLite action logging, time-saved stats (~913 lines)
     licence.rs       # Offline Ed25519 licence verification (signed beta keys) (~270 lines)
-    bin/gen-key.rs   # CLI to generate keypair (init) and sign licence keys (sign)
     voice.rs         # Voice command recognition via WinRT Speech API (~189 lines)
   Cargo.toml         # Rust dependencies
   tauri.conf.json    # Tauri app config, bundler, updater
   capabilities/
     default.json     # Tauri v2 permissions
   icons/             # App icons (icon.png, icon.ico)
+  trigr-keygen/      # Standalone CLI crate — sign beta licence keys (maintainer-only, isolated from Tauri bundler)
+    Cargo.toml
+    src/main.rs
 
 src/
   main.jsx           # React entry — routes to App, SearchOverlay, FillInWindow, or ClipboardOverlay
