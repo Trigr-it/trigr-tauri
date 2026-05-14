@@ -18,6 +18,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+      - name: Install trusted-signing-cli
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $dir = "$env:RUNNER_TEMP\signing"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/Levminer/trusted-signing-cli/releases/download/0.10.0/trusted-signing-cli.exe" -OutFile "$dir\trusted-signing-cli.exe"
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+          $sdkRoot = Join-Path "${env:ProgramFiles(x86)}" "Windows Kits\10\bin"
+          $signtool = Get-ChildItem -Path $sdkRoot -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found in Windows SDK on this runner" }
+          "SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Output "trusted-signing-cli: $dir\trusted-signing-cli.exe"
+          Write-Output "signtool: $($signtool.FullName)"
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -30,6 +47,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Trigr ${{ github.ref_name }}'
@@ -42,7 +62,7 @@ jobs:
           releaseDraft: false
           generateReleaseNotes: true
           prerelease: false
-          args: --target x86_64-pc-windows-msvc
+          args: --target x86_64-pc-windows-msvc --config src-tauri/tauri.signing.conf.json
       - name: Upload versionless x64 alias
         shell: pwsh
         env:

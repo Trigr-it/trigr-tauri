@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "windows": {
+      "signCommand": "trusted-signing-cli -e https://weu.codesigning.azure.net -a nodescaffold-signing -c node-public-trust -d Trigr %1"
+    }
+  }
+}
