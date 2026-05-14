@@ -35,6 +35,13 @@ jobs:
           "SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Output "trusted-signing-cli: $dir\trusted-signing-cli.exe"
           Write-Output "signtool: $($signtool.FullName)"
+      - name: Add signing script to PATH
+        shell: pwsh
+        run: |
+          $scriptDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri\scripts"
+          if (-not (Test-Path "$scriptDir\trigr-sign.cmd")) { throw "trigr-sign.cmd not found at $scriptDir" }
+          Add-Content -Path $env:GITHUB_PATH -Value $scriptDir
+          Write-Output "Added to PATH: $scriptDir"
       - name: Verify Azure signing connectivity
         shell: pwsh
         env:
