@@ -104,11 +104,15 @@ export default function SettingsPanel({
       } else if (confirmRestore) {
         e.preventDefault(); e.stopPropagation();
         setConfirmRestore(null);
+      } else {
+        // No inline confirmation active — close the whole Settings panel.
+        e.preventDefault(); e.stopPropagation();
+        onClose?.();
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [confirmClearShared, sharedExistsPrompt, confirmRestore]);
+  }, [confirmClearShared, sharedExistsPrompt, confirmRestore, onClose]);
 
   // ── Settings search: filter visible sections by title match (DOM walk,
   // post-render). Keeps JSX intact; toggles a class instead of conditional

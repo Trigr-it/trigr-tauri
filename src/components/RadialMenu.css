@@ -20,6 +20,10 @@
   --font-body:     'DM Sans', sans-serif;
   --backdrop-blur:  blur(20px) saturate(150%);
   --transition-expand: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Accent-tinted surface for wedge hover/folder-expanded fills.
+     Mirrors global.css token — must be redeclared here because the radial
+     window doesn't import global.css (would break window transparency). */
+  --accent-surface: #3d2e10;
 }
 
 [data-theme="light"] {
@@ -36,6 +40,7 @@
   --border-bright: #c8c8dc;
   --border-accent: rgba(232, 160, 32, 0.5);
   --backdrop-blur:  blur(20px) saturate(130%);
+  --accent-surface: #f5e0b0;
 }
 
 /* ── Transparent window reset ─────────────────────────────────────────────── */

@@ -86,6 +86,7 @@
 
 .profile-accordion-list {
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   padding-bottom: 4px;
 }
