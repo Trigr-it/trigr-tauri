@@ -291,3 +291,170 @@
   margin-left: 8px;
   line-height: 1.4;
 }
+
+/* ── Wide modal variant (Step 3 numbered instruction list) ──────────────── */
+
+.onboarding-modal--wide {
+  max-width: 540px;
+}
+
+/* ── Numbered instruction list (Step 3 fire-hotkey) ────────────────────── */
+
+.onboarding-instruction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 6px 0 14px;
+  text-align: left;
+}
+
+.onboarding-instruction-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.onboarding-instruction-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.onboarding-instruction-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  padding-top: 3px;
+}
+
+.onboarding-instruction-text strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ── Pro badge pill (inline + standalone) ──────────────────────────────── */
+
+.onboarding-pro-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.onboarding-pro-badge--inline {
+  margin: 0 6px;
+  transform: translateY(-1px);
+}
+
+/* ── Inline Pro mention (Step 5 — small pro-tagged paragraph) ──────────── */
+
+.onboarding-pro-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.onboarding-pro-inline .onboarding-pro-badge--inline {
+  margin: 0;
+  flex-shrink: 0;
+  transform: translateY(2px);
+}
+
+.onboarding-pro-inline-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.onboarding-pro-inline-text strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Try-it interactive prompt (Step 7) ────────────────────────────────── */
+
+.onboarding-try-it {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  padding: 18px 16px;
+  background: var(--accent-glow);
+  border: 1.5px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(232, 160, 32, 0.18);
+}
+
+.onboarding-try-it-pill {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--accent);
+  padding: 4px 14px;
+  border-radius: 999px;
+}
+
+.onboarding-try-it-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.onboarding-kbd--lg {
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ── Tray illustration (Step 11 Close ≠ Quit) ──────────────────────────── */
+
+.onboarding-tray-illustration {
+  margin: 14px 0 16px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-accent);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+}
+
+.onboarding-tray-arrow {
+  font-size: 22px;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.onboarding-tray-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}

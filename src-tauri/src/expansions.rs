@@ -1,6 +1,7 @@
 use log::info;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -115,6 +116,10 @@ fn state() -> &'static Mutex<ExpansionState> {
 struct ExpansionState {
     buffer: String,
     assignments: HashMap<String, Value>,
+    /// Lowercase exact triggers for space-mode expansions. Used by the LL hook
+    /// to decide whether to pre-swallow a Space keystroke before it leaks to
+    /// the target app. Rebuilt whenever assignments change.
+    space_triggers: HashSet<String>,
     autocorrect_enabled: bool,
     global_variables: HashMap<String, String>,
 }
@@ -124,13 +129,37 @@ impl Default for ExpansionState {
         Self {
             buffer: String::new(),
             assignments: HashMap::new(),
+            space_triggers: HashSet::new(),
             autocorrect_enabled: true,
             global_variables: HashMap::new(),
         }
     }
 }
 
+/// When true, the LL hook will swallow the next bare Space keypress because
+/// the current expansion buffer exactly matches a space-mode trigger. Avoids
+/// the post-hoc "+1 backspace" race that previously caused a leading space
+/// to appear in expansions when the target app processed the space slowly.
+pub static EXPANSION_PENDING_SPACE: AtomicBool = AtomicBool::new(false);
+
+/// Latched by the LL hook when it actually swallows a Space. Read once and
+/// cleared by check_space_trigger to decide whether to skip the extra backspace.
+/// If no expansion ends up matching, the swallowed Space is re-injected.
+pub static SPACE_PRE_SWALLOWED: AtomicBool = AtomicBool::new(false);
+
 // ── Buffer management (called from hotkeys.rs) ─────────────────────────────
+
+/// Recompute EXPANSION_PENDING_SPACE from the current buffer state. Called from
+/// every path that mutates the buffer or the space_triggers set. The flag is
+/// the only thing the LL hook reads to decide whether to pre-swallow a Space.
+fn refresh_pending_flag(s: &ExpansionState) {
+    if s.buffer.is_empty() || s.space_triggers.is_empty() {
+        EXPANSION_PENDING_SPACE.store(false, Ordering::SeqCst);
+        return;
+    }
+    let buf_lower = s.buffer.to_lowercase();
+    EXPANSION_PENDING_SPACE.store(s.space_triggers.contains(&buf_lower), Ordering::SeqCst);
+}
 
 /// Append a character to the buffer. Called for bare (unmodified) key presses.
 pub fn buffer_push(ch: char) {
@@ -140,25 +169,40 @@ pub fn buffer_push(ch: char) {
         let start = s.buffer.len() - MAX_BUFFER_LENGTH;
         s.buffer = s.buffer[start..].to_string();
     }
+    refresh_pending_flag(&s);
 }
 
 /// Remove the last character (Backspace).
 pub fn buffer_pop() {
     let mut s = state().lock().unwrap();
     s.buffer.pop();
+    refresh_pending_flag(&s);
 }
 
 /// Clear the buffer entirely.
 pub fn buffer_clear() {
-    state().lock().unwrap().buffer.clear();
+    let mut s = state().lock().unwrap();
+    s.buffer.clear();
+    refresh_pending_flag(&s);
 }
 
 // ── Trigger detection ───────────────────────────────────────────────────────
 
 /// Called when Space is pressed. Returns true if an expansion/autocorrect fired.
+///
+/// If the LL hook pre-swallowed the Space (SPACE_PRE_SWALLOWED set), we skip
+/// the extra backspace and — if no expansion ends up matching — re-inject the
+/// Space so the user's keystroke isn't lost.
 pub fn check_space_trigger() -> bool {
+    let was_pre_swallowed = SPACE_PRE_SWALLOWED.swap(false, Ordering::SeqCst);
+    let delete_extra = !was_pre_swallowed;
+
     let mut s = state().lock().unwrap();
     if s.buffer.is_empty() {
+        if was_pre_swallowed {
+            drop(s);
+            reinject_swallowed_space();
+        }
         return false;
     }
 
@@ -212,6 +256,10 @@ pub fn check_space_trigger() -> bool {
         // Skip immediate-mode expansions on Space — they already fired
         if trigger_mode == "immediate" {
             s.buffer.clear();
+            drop(s);
+            if was_pre_swallowed {
+                reinject_swallowed_space();
+            }
             return false;
         }
 
@@ -238,7 +286,7 @@ pub fn check_space_trigger() -> bool {
             drop(s);
 
             info!("[Trigr] Image expansion: \"{}\" → \"{}\"", buffer_lower, image_path);
-            fire_image_expansion(&buffer_lower, trigger_len, true, &image_path, image_scale);
+            fire_image_expansion(&buffer_lower, trigger_len, delete_extra, &image_path, image_scale);
             return true;
         }
 
@@ -262,7 +310,7 @@ pub fn check_space_trigger() -> bool {
                     return true;
                 }
                 thread::spawn(move || {
-                    fire_variant_expansion(&trigger_str, trigger_len, true, &opts, &global_vars);
+                    fire_variant_expansion(&trigger_str, trigger_len, delete_extra, &opts, &global_vars);
                 });
                 return true;
             }
@@ -288,12 +336,25 @@ pub fn check_space_trigger() -> bool {
         info!("[Trigr] Expansion: \"{}\" → \"{}\"", buffer_lower, text);
         let case_pattern = detect_case(&original_buffer);
         let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
-        fire_expansion(&buffer_lower, trigger_len, true, &text, html_opt, &global_vars, case_pattern);
+        fire_expansion(&buffer_lower, trigger_len, delete_extra, &text, html_opt, &global_vars, case_pattern);
         return true;
     }
 
     s.buffer.clear();
+    drop(s);
+    if was_pre_swallowed {
+        reinject_swallowed_space();
+    }
     false
+}
+
+/// Re-inject a Space keystroke that the LL hook swallowed pre-emptively but
+/// no expansion ended up consuming. Wrapped in SUPPRESS_SIMULATED so the hook
+/// passes our synthetic event through to the target app without re-swallowing.
+fn reinject_swallowed_space() {
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+    send_vk_tap(VK_SPACE);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
 }
 
 /// Called after each character is added to the buffer. Checks for immediate-mode triggers.
@@ -566,13 +627,11 @@ fn fire_expansion(
                 inject_via_sendinput(&resolved, target_hwnd);
             }
 
-            // Move cursor back if {cursor} was present
+            // Move cursor back if {cursor} was present — single batched
+            // SendInput so the caret snaps instantly instead of walking back.
             if cursor_back > 0 {
                 thread::sleep(Duration::from_millis(10));
-                for _ in 0..cursor_back {
-                    send_vk_tap(VK_LEFT);
-                    thread::sleep(Duration::from_millis(5));
-                }
+                send_left_arrows_batch(cursor_back);
             }
 
             crate::hotkeys::SUPPRESS_SIMULATED
@@ -832,10 +891,7 @@ fn fire_expansion_with_fillin(
 
         if cursor_back > 0 {
             thread::sleep(Duration::from_millis(10));
-            for _ in 0..cursor_back {
-                send_vk_tap(VK_LEFT);
-                thread::sleep(Duration::from_millis(5));
-            }
+            send_left_arrows_batch(cursor_back);
         }
 
         crate::hotkeys::SUPPRESS_SIMULATED
@@ -962,13 +1018,17 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
                     _ => return None,
                 };
 
+                // Default format: DD/MM/YYYY with slashes (UK-style). The
+                // menu's quick tokens (Tomorrow / Yesterday / Next Week / Next
+                // Month) all hit this default. Explicit-format tokens like
+                // {date:+1d:YYYY-MM-DD} keep their requested format.
                 let chrono_fmt = match fmt_suffix {
                     "DD/MM/YYYY" => "%d/%m/%Y",
                     "DD/MM/YY"   => "%d/%m/%y",
                     "MM/DD/YYYY" => "%m/%d/%Y",
                     "YYYY-MM-DD" => "%Y-%m-%d",
                     "D MMMM YYYY" => "%-d %B %Y",
-                    _ => "%Y-%m-%d",
+                    _ => "%d/%m/%Y",
                 };
 
                 let formatted = target_date.format(chrono_fmt).to_string();
@@ -1617,10 +1677,7 @@ fn fire_variant_expansion(
 
     if cursor_back > 0 {
         thread::sleep(Duration::from_millis(10));
-        for _ in 0..cursor_back {
-            send_vk_tap(VK_LEFT);
-            thread::sleep(Duration::from_millis(5));
-        }
+        send_left_arrows_batch(cursor_back);
     }
 
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -2017,6 +2074,49 @@ fn send_vk_tap(vk: u16) {
     send_vk_key(vk, true);
 }
 
+/// Move the cursor back `count` positions instantly via a single batched
+/// SendInput call. Used by the `{cursor}` token so the cursor snaps to its
+/// final position rather than walking back one character at a time.
+fn send_left_arrows_batch(count: usize) {
+    if count == 0 {
+        return;
+    }
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(count * 2);
+    for _ in 0..count {
+        inputs.push(INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_LEFT as _,
+                    wScan: 0,
+                    dwFlags: 0,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        });
+        inputs.push(INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_LEFT as _,
+                    wScan: 0,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        });
+    }
+    unsafe {
+        SendInput(
+            inputs.len() as u32,
+            inputs.as_ptr(),
+            std::mem::size_of::<INPUT>() as i32,
+        );
+    }
+}
+
 // ── Built-in autocorrect dictionary ─────────────────────────────────────────
 
 fn builtin_autocorrect(word: &str) -> Option<&'static str> {
@@ -2092,10 +2192,30 @@ pub fn update_assignments(assignments: HashMap<String, Value>) {
             k.starts_with("GLOBAL::EXPANSION::") || k.starts_with("GLOBAL::AUTOCORRECT::")
         })
         .collect();
+    // Rebuild the space-trigger set used by the LL hook for pre-swallow.
+    // triggerMode defaults to "space" when absent, matching check_space_trigger.
+    s.space_triggers = s
+        .assignments
+        .iter()
+        .filter(|(k, v)| {
+            if !k.starts_with("GLOBAL::EXPANSION::") {
+                return false;
+            }
+            let mode = v
+                .get("data")
+                .and_then(|d| d.get("triggerMode"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("space");
+            mode == "space"
+        })
+        .map(|(k, _)| k["GLOBAL::EXPANSION::".len()..].to_string())
+        .collect();
     info!(
-        "[Trigr] Expansion assignments updated: {} entries",
-        s.assignments.len()
+        "[Trigr] Expansion assignments updated: {} entries ({} space-triggers)",
+        s.assignments.len(),
+        s.space_triggers.len()
     );
+    refresh_pending_flag(&s);
 }
 
 pub fn set_autocorrect_enabled(enabled: bool) {

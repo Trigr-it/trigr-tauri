@@ -23,6 +23,13 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 // Matching private key is held offline by the founder; do not commit the private key.
 const PUBLIC_KEY_B64: &str = "SSYMRvcbW18DXRMoBWt4hdI8rOWg0dXJnW1h92cpZ80";
 
+// ── Trial config ────────────────────────────────────────────────────────────
+//
+// 14-day Pro trial available to every install. Independent of any beta key —
+// trial unlocks Pro features locally without contacting any server. Anti-abuse
+// (uninstall to reset) is intentionally not handled during beta.
+const TRIAL_DURATION_DAYS: i64 = 14;
+
 // ── State ───────────────────────────────────────────────────────────────────
 
 static IS_PRO: AtomicBool = AtomicBool::new(false);
@@ -44,6 +51,17 @@ pub struct LicenceState {
     pub activated_at: Option<String>,
     #[serde(default)]
     pub valid: bool,
+    /// RFC3339 timestamp when the 14-day Pro trial was first started locally.
+    /// Independent of any key; persists across reinstalls only if local settings survive.
+    #[serde(default)]
+    pub trial_started_at: Option<String>,
+    /// True once the trial has been started. Prevents re-starting after expiry.
+    #[serde(default)]
+    pub trial_used: bool,
+    /// True once the post-onboarding/migration trial offer has been shown to
+    /// the user. Prevents the migration popup from firing on every launch.
+    #[serde(default)]
+    pub trial_offer_shown: bool,
 }
 
 /// Returned to the frontend for UI display.
@@ -55,6 +73,14 @@ pub struct LicenceStatus {
     pub product_name: String,
     pub expires_at: Option<String>,
     pub email: Option<String>,
+    /// True while the trial is active (started + not yet 14 days old).
+    pub trial_active: bool,
+    /// Whole days remaining on the trial (0 once expired). Always 0 if trial_active is false.
+    pub trial_days_remaining: i64,
+    /// True once start_trial has been called for this install. Stays true after expiry.
+    pub trial_used: bool,
+    /// True once the post-onboarding trial offer has been shown.
+    pub trial_offer_shown: bool,
 }
 
 #[derive(Deserialize)]
@@ -102,6 +128,10 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
         return Err("This key has expired. Email admin@usetrigr.com for a new one.".to_string());
     }
 
+    let prior = match LICENCE_STATE.get() {
+        Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        None => LicenceState::default(),
+    };
     let state = LicenceState {
         key: Some(trimmed),
         email: Some(payload.email.clone()),
@@ -109,6 +139,9 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
         expires_at: Some(payload.exp.clone()),
         activated_at: Some(chrono::Utc::now().to_rfc3339()),
         valid: true,
+        trial_started_at: prior.trial_started_at,
+        trial_used: prior.trial_used,
+        trial_offer_shown: prior.trial_offer_shown,
     };
     update_state(state.clone());
     info!(
@@ -118,9 +151,59 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
     Ok(build_status(&state))
 }
 
-/// Clear the saved licence and drop back to Free.
+/// Start the 14-day Pro trial. Idempotent-ish: refuses to start if already used
+/// (whether currently active or expired), so users can't reset by uninstalling
+/// the *frontend* state — though full reinstall does reset everything (acceptable
+/// during beta).
+pub async fn start_trial() -> Result<LicenceStatus, String> {
+    let mut state = match LICENCE_STATE.get() {
+        Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        None => LicenceState::default(),
+    };
+
+    if state.trial_used {
+        return Err("Trial has already been used on this install.".to_string());
+    }
+
+    state.trial_started_at = Some(chrono::Utc::now().to_rfc3339());
+    state.trial_used = true;
+    update_state(state.clone());
+    info!(
+        "[Trigr] Pro trial started at {} ({} days)",
+        state.trial_started_at.as_deref().unwrap_or(""),
+        TRIAL_DURATION_DAYS
+    );
+    Ok(build_status(&state))
+}
+
+/// Mark the one-time post-onboarding (or migration) trial offer as shown.
+/// Frontend calls this after displaying ProTrialModal to suppress repeat firings.
+pub async fn mark_trial_offer_shown() -> LicenceStatus {
+    let mut state = match LICENCE_STATE.get() {
+        Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        None => LicenceState::default(),
+    };
+    if !state.trial_offer_shown {
+        state.trial_offer_shown = true;
+        update_state(state.clone());
+        info!("[Trigr] Trial offer marked as shown");
+    }
+    build_status(&state)
+}
+
+/// Clear the saved licence and drop back to Free. Preserves trial state so a
+/// user who removes their key after the trial doesn't get a fresh 14 days.
 pub async fn deactivate_licence() -> Result<LicenceStatus, String> {
-    let state = LicenceState::default();
+    let prior = match LICENCE_STATE.get() {
+        Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        None => LicenceState::default(),
+    };
+    let state = LicenceState {
+        trial_started_at: prior.trial_started_at,
+        trial_used: prior.trial_used,
+        trial_offer_shown: prior.trial_offer_shown,
+        ..LicenceState::default()
+    };
     update_state(state.clone());
     info!("[Trigr] Licence deactivated");
     Ok(build_status(&state))
@@ -152,6 +235,9 @@ pub async fn check_and_revalidate() -> LicenceStatus {
                 expires_at: Some(payload.exp),
                 activated_at: state.activated_at,
                 valid: still_valid,
+                trial_started_at: state.trial_started_at,
+                trial_used: state.trial_used,
+                trial_offer_shown: state.trial_offer_shown,
             };
             update_state(new_state.clone());
             build_status(&new_state)
@@ -228,29 +314,67 @@ fn load_public_key() -> Result<VerifyingKey, String> {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn compute_is_pro(state: &LicenceState) -> bool {
-    if !state.valid {
+    // Real key path: signature verified, not expired, tier=pro.
+    let key_pro = state.valid
+        && state
+            .expires_at
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|d| d.to_utc() > chrono::Utc::now())
+            .unwrap_or(false)
+        && state.tier.as_deref() == Some("pro");
+    if key_pro {
+        return true;
+    }
+    // Trial path: trial started locally and within the 14-day window.
+    is_trial_active(state)
+}
+
+/// True while the 14-day trial is running. Does not require a key.
+fn is_trial_active(state: &LicenceState) -> bool {
+    if !state.trial_used {
         return false;
     }
-    let exp = match state.expires_at.as_deref() {
-        Some(s) => s,
-        None => return false,
+    trial_days_remaining(state) > 0
+}
+
+/// Whole days remaining on the trial; 0 if not started or already expired.
+fn trial_days_remaining(state: &LicenceState) -> i64 {
+    let started = match state
+        .trial_started_at
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    {
+        Some(d) => d.to_utc(),
+        None => return 0,
     };
-    let exp_dt = match chrono::DateTime::parse_from_rfc3339(exp) {
-        Ok(d) => d.to_utc(),
-        Err(_) => return false,
-    };
-    if exp_dt < chrono::Utc::now() {
-        return false;
+    let ends = started + chrono::Duration::days(TRIAL_DURATION_DAYS);
+    let now = chrono::Utc::now();
+    if ends <= now {
+        return 0;
     }
-    state.tier.as_deref() == Some("pro")
+    let remaining = ends - now;
+    // ceil() so "3 hours left" still reads as "1 day remaining" in UI
+    (remaining.num_seconds() as f64 / 86_400.0).ceil() as i64
 }
 
 fn build_status(state: &LicenceState) -> LicenceStatus {
     let is_pro = compute_is_pro(state);
     let key_entered = state.key.as_ref().map(|k| !k.is_empty()).unwrap_or(false);
+    let trial_active = is_trial_active(state);
+    let trial_days = trial_days_remaining(state);
 
+    // Key-derived status takes precedence over trial status when both exist —
+    // the UI's headline state reflects the real licence, the trial fields
+    // sit alongside for the trial-card display.
     let status = if !key_entered {
-        "no_key".to_string()
+        if trial_active {
+            "active".to_string() // Pro via trial
+        } else if state.trial_used {
+            "expired".to_string() // trial expired, no key
+        } else {
+            "no_key".to_string()
+        }
     } else if !state.valid {
         "invalid".to_string()
     } else if is_pro {
@@ -270,6 +394,10 @@ fn build_status(state: &LicenceState) -> LicenceStatus {
         },
         expires_at: state.expires_at.clone(),
         email: state.email.clone(),
+        trial_active,
+        trial_days_remaining: trial_days,
+        trial_used: state.trial_used,
+        trial_offer_shown: state.trial_offer_shown,
     }
 }
 

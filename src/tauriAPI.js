@@ -270,6 +270,8 @@ window.electronAPI = {
   activateLicence:           (key) => invoke('activate_licence', { key }),
   deactivateLicence:         ()    => invoke('deactivate_licence'),
   checkLicenceRevalidation:  ()    => invoke('check_licence_revalidation'),
+  startTrial:                ()    => invoke('start_trial'),
+  markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),
 };
 
 // ── Suppress webview browser accelerators ──────────────────────────────────

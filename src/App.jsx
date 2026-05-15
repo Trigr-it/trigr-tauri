@@ -14,6 +14,7 @@ import TextExpansions from './components/TextExpansions';
 import WelcomeModal from './components/WelcomeModal';
 import UpgradeModal from './components/UpgradeModal';
 import OnboardingTour from './components/OnboardingTour';
+import ProTrialModal from './components/ProTrialModal';
 import QuickTips from './components/QuickTips';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import ClipboardPanel from './components/ClipboardPanel';
@@ -22,6 +23,12 @@ import RadialEditorView from './components/RadialEditorView';
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { friendlyKeyName } from './components/keyboardLayout';
+
+// Bump whenever the onboarding tour changes meaningfully. Existing users whose
+// `onboarding_version_seen` is below this value will see the tour again on
+// their next launch — used so v0.4.4 → v0.4.5 upgraders see the new Pro
+// callouts, app-profile pitch, and trial offer at the end of the tour.
+const ONBOARDING_VERSION = 2;
 
 function App() {
   const [assignments, setAssignments]       = useState({});
@@ -68,8 +75,9 @@ function App() {
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
   const [importPrompt, setImportPrompt]                 = useState(null); // { name, assignments }
-  const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null });
+  const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
   const [upgradePrompt, setUpgradePrompt]               = useState(null); // feature name string, or null
+  const [showProTrialModal, setShowProTrialModal]       = useState(false);
   const [listViewActive, setListViewActive]             = useState(() => {
     try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
   });
@@ -131,6 +139,11 @@ function App() {
       if (!window.electronAPI) return;
       window.electronAPI.getAppVersion().then(v => { if (v) setAppVersion(v); });
       const config = await window.electronAPI.loadConfig();
+      // Hoisted so the migration trial-popup check below can use it. False
+      // by default — a fresh install (no config or all flags off) leaves it
+      // false and the migration popup is suppressed; the onboarding tour
+      // handles the trial offer on Finish instead.
+      let onboardingComplete = false;
       if (config) {
         // Migrate any pre-global expansion keys (Profile::EXPANSION::trigger →
         // GLOBAL::EXPANSION::trigger).  Done once on load; re-saved immediately.
@@ -268,10 +281,17 @@ function App() {
 
         // Onboarding migration: existing users who already saw the welcome
         // should not see the new onboarding tour after updating.
-        let onboardingComplete = config.onboarding_complete;
+        onboardingComplete = config.onboarding_complete;
         if (onboardingComplete === undefined && config.hasSeenWelcome) {
           onboardingComplete = true;
           needsSave = true;
+        }
+        // Re-show onboarding when the tour has been revised since the user
+        // last saw it. v0.4.4 users land here with version_seen=undefined → 0
+        // → triggers a one-time re-tour to surface the new Pro flow.
+        const versionSeen = config.onboarding_version_seen ?? 0;
+        if (onboardingComplete && versionSeen < ONBOARDING_VERSION) {
+          onboardingComplete = false;
         }
 
         if (!onboardingComplete) {
@@ -296,9 +316,23 @@ function App() {
       const status = await window.electronAPI.getEngineStatus();
       setEngineStatus(status);
 
-      // Check licence status (revalidates if >24h since last check)
+      // Check licence status (revalidates if >24h since last check). Also
+      // fires the one-time trial-offer popup for existing v0.4.4 installs
+      // that already finished onboarding before the trial mechanism existed.
       window.electronAPI.checkLicenceRevalidation?.().then(ls => {
-        if (ls) setLicenceStatus(ls);
+        if (!ls) return;
+        setLicenceStatus(ls);
+
+        // Migration popup: only fires for installs where the onboarding tour
+        // has actually been completed. Fresh installs follow the tour-finish
+        // path in handleOnboardingComplete instead and never hit this branch.
+        if (onboardingComplete
+            && !ls.key_entered
+            && !ls.trial_active
+            && !ls.trial_used
+            && !ls.trial_offer_shown) {
+          setShowProTrialModal(true);
+        }
       });
 
 
@@ -2143,8 +2177,21 @@ function App() {
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
-    window.electronAPI?.saveConfig({ onboarding_complete: true, hasSeenWelcome: true });
-  }, []);
+    window.electronAPI?.saveConfig({
+      onboarding_complete: true,
+      hasSeenWelcome: true,
+      onboarding_version_seen: ONBOARDING_VERSION,
+    });
+    // Offer the 14-day Pro trial right after the tour finishes (also fires on
+    // skip). Suppressed if the user already has a real Pro key entered, or
+    // their trial is already active, or they've previously dismissed the offer.
+    if (!licenceStatus?.key_entered
+        && !licenceStatus?.trial_active
+        && !licenceStatus?.trial_used
+        && !licenceStatus?.trial_offer_shown) {
+      setShowProTrialModal(true);
+    }
+  }, [licenceStatus]);
 
   const handleRestartOnboarding = useCallback(() => {
     setShowSettings(false);
@@ -2379,6 +2426,7 @@ function App() {
           onComplete={handleOnboardingComplete}
           onSkip={handleOnboardingComplete}
           onAreaChange={handleSetArea}
+          onShowUpgrade={showUpgrade}
         />
       )}
       {showWelcome && !showOnboarding && (
@@ -2386,6 +2434,23 @@ function App() {
       )}
       {upgradePrompt && (
         <UpgradeModal featureName={upgradePrompt} onClose={() => setUpgradePrompt(null)} />
+      )}
+      {showProTrialModal && (
+        <ProTrialModal
+          onAccept={(status) => {
+            if (status) setLicenceStatus(status);
+            setShowProTrialModal(false);
+            window.electronAPI?.markTrialOfferShown?.().then((s) => {
+              if (s) setLicenceStatus(s);
+            });
+          }}
+          onDismiss={() => {
+            setShowProTrialModal(false);
+            window.electronAPI?.markTrialOfferShown?.().then((s) => {
+              if (s) setLicenceStatus(s);
+            });
+          }}
+        />
       )}
       {backupRestoredFrom && (
         <div className="backup-restored-banner">
@@ -2752,6 +2817,7 @@ function App() {
             licenceStatus={licenceStatus}
             onLicenceStatusChange={setLicenceStatus}
             onShowUpgrade={showUpgrade}
+            onShowProTrial={() => setShowProTrialModal(true)}
           />
         ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
           <MacroPanel

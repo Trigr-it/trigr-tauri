@@ -1181,6 +1181,9 @@ fn show_overlay(app: &tauri::AppHandle) {
     if let Ok(hwnd) = overlay.hwnd() {
         hotkeys::SEARCH_OVERLAY_HWND.store(hwnd.0 as isize, AtomicOrdering::SeqCst);
     }
+    // Notify any listeners (onboarding tour Step 7 waits for this) that Quick
+    // Search was actually fired by the user.
+    let _ = app.emit("search-overlay-shown", serde_json::Value::Null);
 }
 
 fn show_voice_overlay(app: &tauri::AppHandle) {
@@ -2384,6 +2387,19 @@ async fn check_licence_revalidation() -> Value {
     serde_json::to_value(licence::check_and_revalidate().await).unwrap_or(serde_json::json!({}))
 }
 
+#[tauri::command]
+async fn start_trial() -> Value {
+    match licence::start_trial().await {
+        Ok(status) => serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    }
+}
+
+#[tauri::command]
+async fn mark_trial_offer_shown() -> Value {
+    serde_json::to_value(licence::mark_trial_offer_shown().await).unwrap_or(serde_json::json!({}))
+}
+
 // ── App builder ──────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2900,6 +2916,8 @@ pub fn run() {
             activate_licence,
             deactivate_licence,
             check_licence_revalidation,
+            start_trial,
+            mark_trial_offer_shown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,14 +3,15 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import './OnboardingTour.css';
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 12;
 
-export default function OnboardingTour({ assignments, onComplete, onSkip, onAreaChange }) {
+export default function OnboardingTour({ assignments, onComplete, onSkip, onAreaChange, onShowUpgrade }) {
   const [step, setStep] = useState(1);
   const [subStep, setSubStep] = useState('a'); // Step 2 sub-stages: 'a' | 'b' | 'c'
   const [targetRect, setTargetRect] = useState(null);
   const [secondaryRect, setSecondaryRect] = useState(null); // second highlight area
   const [actionFired, setActionFired] = useState(false);
+  const [searchFired, setSearchFired] = useState(false); // Step 7 gate
   const [tooltipPosition, setTooltipPosition] = useState('below');
   const tooltipRef = useRef(null);
   const observerRef = useRef(null);
@@ -242,6 +243,29 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     return () => clearTimeout(tid);
   }, [step]);
 
+  // ── Step 7: listen for search-overlay-shown to unlock Next ──
+  useEffect(() => {
+    if (step !== 7) return;
+    let unlisten = null;
+    let cancelled = false;
+    listen('search-overlay-shown', () => {
+      if (!cancelled) setSearchFired(true);
+    }).then((u) => {
+      if (cancelled) u();
+      else unlisten = u;
+    });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [step]);
+
+  // ── Reset gates when leaving a gated step so re-entry works cleanly ──
+  useEffect(() => {
+    if (step !== 7 && searchFired) setSearchFired(false);
+    if (step !== 3 && actionFired) setActionFired(false);
+  }, [step, searchFired, actionFired]);
+
   // ── Tooltip positioning — deferred to measure after paint ───
   useEffect(() => {
     if (!targetRect) return;
@@ -440,24 +464,47 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 3: Fire the hotkey ─────────────────────────────────
+  // ── Step 3: Fire the hotkey (in a separate app) ─────────────
   if (step === 3) {
     return (
       <div className="onboarding-overlay">
         <div className="onboarding-backdrop" />
         {dragRegion}
-        <div className="onboarding-modal">
+        <div className="onboarding-modal onboarding-modal--wide">
           {!actionFired ? (
             <>
               <div className="onboarding-step-label">Step 3 of {TOTAL_STEPS}</div>
               <p className="onboarding-tooltip-text">
-                Now press your new hotkey anywhere to try it.
+                Now try your new hotkey in another app.
               </p>
-              <p className="onboarding-hint">Minimise Trigr first, then press the hotkey in any app.</p>
+              <div className="onboarding-instruction-list">
+                <div className="onboarding-instruction-item">
+                  <span className="onboarding-instruction-num">1</span>
+                  <span className="onboarding-instruction-text">
+                    Open <strong>any app with a text field</strong> — Notepad, your browser's address bar, an email body, a chat box.
+                  </span>
+                </div>
+                <div className="onboarding-instruction-item">
+                  <span className="onboarding-instruction-num">2</span>
+                  <span className="onboarding-instruction-text">
+                    Click into that text field so your cursor is blinking inside it.
+                  </span>
+                </div>
+                <div className="onboarding-instruction-item">
+                  <span className="onboarding-instruction-num">3</span>
+                  <span className="onboarding-instruction-text">
+                    Press your hotkey. <strong>Hello, World!</strong> will be typed wherever the cursor is.
+                  </span>
+                </div>
+              </div>
+              <p className="onboarding-hint">
+                Trigr stays running in the background — you don't need to bring this window back. As soon as Trigr fires the hotkey, this step will continue.
+              </p>
             </>
           ) : (
             <>
               <p className="onboarding-success-text">You just used Trigr!</p>
+              <p className="onboarding-hint">Your hotkey will work the same way in any app on your PC.</p>
               <button className="onboarding-btn-primary" onClick={() => setStep(4)}>
                 Continue
               </button>
@@ -486,9 +533,12 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <div className="onboarding-feature-item"><strong>Open App / URL / Folder</strong> — launch anything instantly</div>
             <div className="onboarding-feature-item"><strong>Macro Sequence</strong> — chain multiple steps (Press Key, Click Mouse, Wait, and more)</div>
             <div className="onboarding-feature-item"><strong>Run AHK Script</strong> — execute AutoHotkey scripts</div>
+            <div className="onboarding-feature-item">
+              <strong>Double-tap a key</strong> <span className="onboarding-pro-badge onboarding-pro-badge--inline">Pro</span> — tap once for one action, twice quickly for a second
+            </div>
           </div>
           <p className="onboarding-hint">
-            Double-tap a key for a second action. Use the mouse canvas for mouse button mapping.
+            Use the mouse canvas to map mouse buttons the same way.
           </p>
           {stepDots}
           <button className="onboarding-btn-secondary" onClick={() => setStep(5)}>Next</button>
@@ -498,7 +548,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 5: Profiles (still on mapping) ─────────────────────
+  // ── Step 5: Profiles (with app-specific as inline Pro mention) ──
   if (step === 5) {
     return (
       <div className="onboarding-overlay">
@@ -507,11 +557,17 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 5 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            <strong>Profiles</strong> give each app its own hotkeys. Link a profile to an application and Trigr switches automatically when you change focus.
+            <strong>Profiles</strong> group hotkeys, expansions and quick actions together. Switch profiles to load a different set instantly.
           </p>
           <p className="onboarding-hint">
-            Right-click a profile to link it to an app, export it, or duplicate it.
+            Build one for everyday use, another for coding, another for design — keep your most-used shortcuts at your fingertips.
           </p>
+          <div className="onboarding-pro-inline">
+            <span className="onboarding-pro-badge onboarding-pro-badge--inline">Pro</span>
+            <span className="onboarding-pro-inline-text">
+              <strong>App-specific profiles</strong> link a profile to an app — Trigr auto-switches in the background as you change focus. Excel hotkeys when Excel is open, Photoshop hotkeys when Photoshop is open.
+            </span>
+          </div>
           {stepDots}
           <button className="onboarding-btn-secondary" onClick={() => goToStep(6, 'expansions')}>Next</button>
           {skipLink}
@@ -520,7 +576,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 6: Text Expansions ─────────────────────────────────
+  // ── Step 6: Text Expansions (descriptive) ───────────────────
   if (step === 6) {
     return (
       <div className="onboarding-overlay">
@@ -529,10 +585,13 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 6 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            <strong>Text Expansions</strong> replace short triggers with full text — no hotkey needed. Type <strong>;sig</strong> + Space and your email signature appears.
+            <strong>Text Expansions</strong> replace short triggers with full text — no hotkey needed. Type <strong>;sig</strong> + Space anywhere and your email signature appears.
           </p>
           <p className="onboarding-hint">
             Organise with colour-coded categories. Use dynamic fields like dates, clipboard contents, cursor position, and fill-in prompts. Paste images too.
+          </p>
+          <p className="onboarding-hint">
+            <strong>Try it after the tour:</strong> create an expansion in this panel, then open any text field on your PC and type your trigger + Space.
           </p>
           {stepDots}
           <button className="onboarding-btn-secondary" onClick={() => setStep(7)}>Next</button>
@@ -542,7 +601,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 7: Quick Search intro ─────────────────────────────
+  // ── Step 7: Quick Search (interactive — wait for fire) ──────
   if (step === 7) {
     return (
       <div className="onboarding-overlay">
@@ -550,20 +609,35 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {dragRegion}
         <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 7 of {TOTAL_STEPS}</div>
-          <p className="onboarding-tooltip-text">
-            <strong>Quick Search</strong> is your command centre. Press the shortcut below from anywhere on your PC to instantly search and launch any hotkey, expansion, or action.
-          </p>
-          <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
-            <kbd className="onboarding-kbd">Ctrl</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Space</kbd>
-            <span className="onboarding-shortcut-label">Quick Search</span>
-          </div>
-          <p className="onboarding-hint">
-            You can also set up Quick Actions and Search Templates in the Quick Search tab — let's take a look.
-          </p>
+          {!searchFired ? (
+            <>
+              <p className="onboarding-tooltip-text">
+                <strong>Quick Search</strong> is your command centre. Search and launch any hotkey, expansion or action from anywhere on your PC.
+              </p>
+              <div className="onboarding-try-it">
+                <span className="onboarding-try-it-pill">Try it now</span>
+                <div className="onboarding-try-it-shortcut">
+                  <kbd className="onboarding-kbd onboarding-kbd--lg">Ctrl</kbd>
+                  <span className="onboarding-kbd-plus">+</span>
+                  <kbd className="onboarding-kbd onboarding-kbd--lg">Space</kbd>
+                </div>
+              </div>
+              <p className="onboarding-hint">
+                Press the combo above — Trigr's Quick Search overlay will appear. This step continues automatically when it opens.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="onboarding-success-text">Quick Search fired!</p>
+              <p className="onboarding-hint">
+                You'll set up <strong>Quick Actions</strong> and <strong>Search Templates</strong> next — let's take a look at the Quick Search tab.
+              </p>
+              <button className="onboarding-btn-primary" onClick={() => goToStep(8, 'templates')}>
+                Continue
+              </button>
+            </>
+          )}
           {stepDots}
-          <button className="onboarding-btn-secondary" onClick={() => goToStep(8, 'templates')}>Next</button>
           {skipLink}
         </div>
       </div>
@@ -641,7 +715,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 11: You're All Set ─────────────────────────────────
+  // ── Step 11: Closing ≠ Quitting — Trigr lives in the tray ───
   if (step === 11) {
     return (
       <div className="onboarding-overlay">
@@ -650,7 +724,33 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 11 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            You're all set. Here are the shortcuts you'll use most:
+            <strong>Closing Trigr hides it — it doesn't quit it.</strong>
+          </p>
+          <p className="onboarding-hint">
+            When you click the × on the window, Trigr keeps running in the system tray so your hotkeys, expansions and clipboard history all stay active. To fully quit Trigr, right-click the tray icon and choose <strong>Quit</strong>.
+          </p>
+          <div className="onboarding-tray-illustration">
+            <span className="onboarding-tray-arrow">↘</span>
+            <span className="onboarding-tray-label">System tray (bottom-right of your taskbar)</span>
+          </div>
+          {stepDots}
+          <button className="onboarding-btn-secondary" onClick={() => setStep(12)}>Got it</button>
+          {skipLink}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 12: You're All Set — shortcuts cheatsheet ──────────
+  if (step === 12) {
+    return (
+      <div className="onboarding-overlay">
+        <div className="onboarding-backdrop" />
+        {dragRegion}
+        <div className="onboarding-modal onboarding-modal--wide">
+          <div className="onboarding-step-label">Step 12 of {TOTAL_STEPS}</div>
+          <p className="onboarding-tooltip-text">
+            You're all set. Here are the global shortcuts you'll use most:
           </p>
           <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
             <kbd className="onboarding-kbd">Ctrl</kbd>
@@ -666,8 +766,16 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <kbd className="onboarding-kbd">V</kbd>
             <span className="onboarding-shortcut-label">Clipboard popup — paste from history</span>
           </div>
+          <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
+            <kbd className="onboarding-kbd">Ctrl</kbd>
+            <span className="onboarding-kbd-plus">+</span>
+            <kbd className="onboarding-kbd">Alt</kbd>
+            <span className="onboarding-kbd-plus">+</span>
+            <kbd className="onboarding-kbd">Q</kbd>
+            <span className="onboarding-shortcut-label">Global Pause — toggle Trigr on/off</span>
+          </div>
           <p className="onboarding-hint">
-            Check <strong>Analytics</strong> to see your time saved. Explore <strong>Settings</strong> for macro speed, global pause, and more.
+            All three shortcuts are <strong>customisable in Settings</strong>. Check <strong>Analytics</strong> for time saved.
           </p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={finish}>Finish</button>

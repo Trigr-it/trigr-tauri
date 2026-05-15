@@ -1021,6 +1021,69 @@
   background: rgba(232, 64, 64, 0.1) !important;
 }
 
+/* ── Trial card (no-key states above the key-entry form) ──────────────── */
+
+.settings-trial-card {
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-trial-card--offer {
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
+}
+
+.settings-trial-card--active {
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
+}
+
+.settings-trial-card--expired {
+  border-color: var(--border);
+  background: var(--bg-surface);
+}
+
+.settings-trial-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-trial-countdown {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.settings-trial-title {
+  font-family: 'Space Grotesk', var(--font-display), sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+  margin: 0 0 2px;
+}
+
+.settings-action-btn--primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border-color: var(--btn-primary-bg);
+  font-weight: 700;
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
+.settings-action-btn--primary:hover {
+  background: var(--btn-primary-hover) !important;
+  border-color: var(--btn-primary-hover) !important;
+}
+
 .settings-about-credits {
   font-size: 11px;
   color: var(--text-muted);

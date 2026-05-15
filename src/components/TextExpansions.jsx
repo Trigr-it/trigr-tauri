@@ -10,6 +10,7 @@ import {
   Calendar as CalendarIcon, Clock as ClockIcon, CalendarClock as CalendarClockIcon,
   Clipboard as ClipboardIcon, TextCursor as TextCursorIcon,
   Variable as VariableIcon, Keyboard as KeyboardIcon,
+  FormInput as FillInIcon,
 } from 'lucide-react';
 import './TextExpansions.css';
 import { SearchBar } from './SearchBar';
@@ -74,7 +75,7 @@ const DATE_MATH_ITEMS = [
 
 const CURSOR_FILLIN_ITEMS = [
   { type: 'item', token: '{cursor}',    label: 'Cursor Position', display: '↕ Cursor', chipClass: 'cursor' },
-  { type: 'item', token: '__fillin__',  label: 'Fill-in Field…',  display: null,        chipClass: 'fillin' },
+  { type: 'item', token: '__fillin__',  label: 'Fill-in Field…',  display: <FillInIcon size={14} strokeWidth={2} />, chipClass: 'fillin' },
 ];
 
 const INSERT_CATEGORIES = {
@@ -412,7 +413,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   function handleInsertFillIn(e) {
     e.preventDefault();
     const label = fillInLabel.trim() || 'Field';
-    insertTokenHtml(`{fillIn:${label}}`, `✎ ${label}`);
+    insertTokenHtml(`{fillIn:${label}}`, `▭ ${label}`);
     setFillInEntry(false);
     setFillInLabel('');
     setShowInsert(false);

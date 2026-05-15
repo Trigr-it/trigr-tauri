@@ -952,6 +952,29 @@ unsafe extern "system" fn keyboard_hook_proc(
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         match w_param as u32 {
             WM_KEYDOWN | WM_SYSKEYDOWN => {
+                // CRITICAL: for Space pre-swallow, evaluate the swallow decision
+                // and set SPACE_PRE_SWALLOWED *before* send_event posts the
+                // KeyDown event to the processor channel. Otherwise the
+                // processor can race ahead and run check_space_trigger before
+                // the atomic is stored, causing it to take the legacy +1-
+                // backspace path and corrupt the character before the trigger.
+                let space_swallow = if kb.vkCode == 0x20 /* VK_SPACE */ {
+                    let should_swallow = crate::expansions::EXPANSION_PENDING_SPACE.load(Ordering::SeqCst)
+                        && modifier_bits() == 0
+                        && MACROS_ENABLED.load(Ordering::SeqCst)
+                        && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
+                        && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst)
+                        && !IS_CAPTURING_KEY.load(Ordering::SeqCst)
+                        && !CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
+                        && FILLIN_HWND.load(Ordering::SeqCst) == 0;
+                    if should_swallow {
+                        crate::expansions::SPACE_PRE_SWALLOWED.store(true, Ordering::SeqCst);
+                    }
+                    should_swallow
+                } else {
+                    false
+                };
+
                 send_event(HookEvent::KeyDown {
                     vk_code: kb.vkCode,
                     scan_code: kb.scanCode,
@@ -971,6 +994,9 @@ unsafe extern "system" fn keyboard_hook_proc(
                             }
                         }
                     }
+                }
+                if space_swallow {
+                    return 1;
                 }
             }
             WM_KEYUP | WM_SYSKEYUP => {

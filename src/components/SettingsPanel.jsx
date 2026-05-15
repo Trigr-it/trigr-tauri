@@ -49,6 +49,7 @@ export default function SettingsPanel({
   licenceStatus = {},
   onLicenceStatusChange,
   onShowUpgrade,
+  onShowProTrial,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -293,12 +294,53 @@ export default function SettingsPanel({
             </div>
           ) : (
             <div className="settings-licence-entry">
+              {/* Trial card — three mutually exclusive states above the key-entry form. */}
+              {licenceStatus.trial_active ? (
+                <div className="settings-trial-card settings-trial-card--active">
+                  <div className="settings-trial-header">
+                    <span className="settings-licence-badge pro">PRO TRIAL</span>
+                    <span className="settings-trial-countdown">
+                      {licenceStatus.trial_days_remaining} {licenceStatus.trial_days_remaining === 1 ? 'day' : 'days'} left
+                    </span>
+                  </div>
+                  <p className="settings-toggle-sub">
+                    You're using the 14-day Pro trial. All Pro features are unlocked.
+                  </p>
+                  <p className="settings-toggle-sub">
+                    To keep Pro after the trial ends, email{' '}
+                    <a href="mailto:admin@usetrigr.com?subject=Trigr%20Pro%20beta%20key%20request">admin@usetrigr.com</a>
+                    {' '}for a beta key, then activate it below.
+                  </p>
+                </div>
+              ) : licenceStatus.trial_used ? (
+                <div className="settings-trial-card settings-trial-card--expired">
+                  <p className="settings-toggle-sub">
+                    <strong>Your Pro trial has ended.</strong> Trigr has dropped back to Free.
+                  </p>
+                  <p className="settings-toggle-sub">
+                    Email{' '}
+                    <a href="mailto:admin@usetrigr.com?subject=Trigr%20Pro%20beta%20key%20request">admin@usetrigr.com</a>
+                    {' '}for a beta key to continue using Pro features, then activate it below.
+                  </p>
+                </div>
+              ) : (
+                <div className="settings-trial-card settings-trial-card--offer">
+                  <h3 className="settings-trial-title">Try Pro free for 14 days</h3>
+                  <p className="settings-toggle-sub">
+                    Unlock app-specific profiles, double-tap actions, shared config sync and global variables. No card needed — Trigr drops back to Free automatically when the 14 days are up.
+                  </p>
+                  <button
+                    type="button"
+                    className="settings-action-btn settings-action-btn--primary"
+                    onClick={() => onShowProTrial?.()}
+                  >
+                    Start 14-day Pro trial
+                  </button>
+                </div>
+              )}
+
               <p className="settings-toggle-sub">
-                Trigr is free to use. We're early in beta, so any feedback you have genuinely
-                shapes what ships next. To try Pro features during the 30-day testing window,
-                email{' '}
-                <a href="mailto:admin@usetrigr.com?subject=Trigr%20Pro%20beta%20key%20request">admin@usetrigr.com</a>
-                {' '}and we'll send you a key.
+                Have a beta key already? Paste it below to activate.
               </p>
               <div className="settings-licence-input-row">
                 <input
