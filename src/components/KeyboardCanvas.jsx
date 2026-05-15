@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { Disc, Keyboard as KeyboardIcon } from 'lucide-react';
 import './KeyboardCanvas.css';
 import {
   KEYBOARD_ROWS, SYSTEM_KEYS, STATIC_BARE_ALLOWED, KEY_UNIT, KEY_GAP, KEY_HEIGHT,
@@ -86,7 +87,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             onMouseDown={onStartRecord}
             title="Click then press any key combination to select it"
           >
-            ⏺ Record
+            <Disc size={12} strokeWidth={2} fill="currentColor" style={{ marginRight: 4, verticalAlign: -1 }} /> Record
           </button>
         )}
       </div>
@@ -262,7 +263,7 @@ export default function KeyboardCanvas({
       {/* Empty state — shown only when no modifier is selected AND no assignments exist anywhere */}
       {noLayer && !hasAnyAssignments && (
         <div className="keyboard-empty-state">
-          <span className="keyboard-empty-icon">⌨</span>
+          <span className="keyboard-empty-icon" aria-hidden="true"><KeyboardIcon size={36} strokeWidth={1.5} /></span>
           <span className="keyboard-empty-heading">No hotkeys assigned yet</span>
           <span className="keyboard-empty-sub">Select a modifier key above, then click any key on the keyboard to assign your first hotkey</span>
           <span className="keyboard-empty-record-hint">Or press <strong>Record →</strong> to capture a key combo instantly</span>

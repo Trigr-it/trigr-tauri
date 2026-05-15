@@ -3,6 +3,10 @@ import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
+import {
+  Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, FileCode,
+  GripVertical, Copy,
+} from 'lucide-react';
 import './MacroPanel.css';
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
@@ -11,49 +15,49 @@ import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 const ACTION_TYPES = [
   {
     id: 'text',
-    icon: '✦',
+    Icon: Type,
     label: 'Type Text',
     desc: 'Types a text snippet when key is pressed',
     color: '#64b4ff',
   },
   {
     id: 'hotkey',
-    icon: '⌨',
+    Icon: Keyboard,
     label: 'Send Hotkey',
     desc: 'Triggers a key combination like Ctrl+C',
     color: '#c864ff',
   },
   {
     id: 'app',
-    icon: '⬡',
+    Icon: AppWindow,
     label: 'Open App',
     desc: 'Launch an application or file',
     color: '#50c878',
   },
   {
     id: 'url',
-    icon: '⊕',
+    Icon: Globe,
     label: 'Open URL',
     desc: 'Open a website in your browser',
     color: '#ffc832',
   },
   {
     id: 'folder',
-    icon: '⬢',
+    Icon: FolderOpen,
     label: 'Open Folder',
     desc: 'Open a folder in File Explorer',
     color: '#40c8a0',
   },
   {
     id: 'macro',
-    icon: '◈',
+    Icon: Layers,
     label: 'Macro Sequence',
     desc: 'Run a sequence of actions one after another',
     color: '#ff783c',
   },
   {
     id: 'ahk',
-    icon: '⟁',
+    Icon: FileCode,
     label: 'AHK Script',
     desc: 'Run an AutoHotkey v1 or v2 script',
     color: '#4ecdc4',
@@ -941,7 +945,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     >
       {/* Row 1: drag handle, step number, type dropdown, inline value, delete */}
       <div className="macro-step-row">
-        <div className="step-drag-handle" {...attributes} {...listeners} title="Drag to reorder">⠿</div>
+        <div className="step-drag-handle" {...attributes} {...listeners} title="Drag to reorder" aria-label="Drag to reorder">
+          <GripVertical size={14} strokeWidth={1.75} />
+        </div>
         <div className="macro-step-num">{index + 1}</div>
         <select
           className="form-select macro-step-type"
@@ -1033,8 +1039,10 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             />
           </div>
         )}
-        <button className="step-duplicate" onClick={() => duplicateStep(step._id)} type="button" title="Duplicate step">⧉</button>
-        <button className="step-remove" onClick={() => removeStep(step._id)} type="button">✕</button>
+        <button className="step-duplicate" onClick={() => duplicateStep(step._id)} type="button" title="Duplicate step" aria-label="Duplicate step">
+          <Copy size={13} strokeWidth={1.75} />
+        </button>
+        <button className="step-remove" onClick={() => removeStep(step._id)} type="button" aria-label="Remove step">✕</button>
       </div>
 
       {/* Sub-row: Open App — picker + optional args */}
@@ -1249,7 +1257,9 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod }) {
           {activeStep ? (
             <div className="macro-step macro-step-overlay">
               <div className="macro-step-row">
-                <div className="step-drag-handle">⠿</div>
+                <div className="step-drag-handle" aria-hidden="true">
+                  <GripVertical size={14} strokeWidth={1.75} />
+                </div>
                 <div className="macro-step-num">{stepsWithIds.findIndex(s => s._id === activeId) + 1}</div>
                 <span className="macro-step-type" style={{ fontSize: 11 }}>{activeStep.type}</span>
               </div>
@@ -1665,18 +1675,21 @@ export default function MacroPanel({
       <div className="macro-panel-body">
         {/* Action type selector */}
         <div className="type-selector">
-          {ACTION_TYPES.map(type => (
-            <button
-              key={type.id}
-              className={`type-btn ${activeType === type.id ? 'active' : ''}${type.id === 'ahk' ? ' type-btn-wide' : ''}`}
-              style={{ '--type-color': type.color }}
-              onClick={() => { setActiveType(type.id); setFormValue({}); }}
-              type="button"
-            >
-              <span className="type-btn-icon">{type.icon}</span>
-              <span className="type-btn-label">{type.label}</span>
-            </button>
-          ))}
+          {ACTION_TYPES.map(type => {
+            const TypeIcon = type.Icon;
+            return (
+              <button
+                key={type.id}
+                className={`type-btn ${activeType === type.id ? 'active' : ''}${type.id === 'ahk' ? ' type-btn-wide' : ''}`}
+                style={{ '--type-color': type.color }}
+                onClick={() => { setActiveType(type.id); setFormValue({}); }}
+                type="button"
+              >
+                <span className="type-btn-icon"><TypeIcon size={18} strokeWidth={1.75} /></span>
+                <span className="type-btn-label">{type.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Type description */}

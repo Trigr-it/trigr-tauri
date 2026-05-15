@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Pin, PinOff, Link2 } from 'lucide-react';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -125,7 +126,7 @@ function LinkPane({ url, onCopyToast }) {
       <div className="cbg-pane-link-head">
         {iconFile
           ? <img className="cbg-pane-icon" src={`/preset-icons/${iconFile}`} alt="" draggable={false} onError={e => { e.currentTarget.style.display = 'none'; }} />
-          : <span className="cbg-pane-icon-fallback" aria-hidden="true">🔗</span>
+          : <span className="cbg-pane-icon-fallback" aria-hidden="true"><Link2 size={16} strokeWidth={1.75} /></span>
         }
         <div className="cbg-pane-link-url" title={url}>{url}</div>
       </div>
@@ -531,7 +532,11 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
           ) : (
             grouped.map(([label, groupItems]) => (
               <div key={label} className="cbg-timeline-group">
-                <div className="cbg-timeline-header">{label === 'Pinned' ? '📌 Pinned' : label}</div>
+                <div className="cbg-timeline-header">
+                  {label === 'Pinned' ? (
+                    <><Pin size={12} strokeWidth={2} fill="currentColor" style={{ marginRight: 4, verticalAlign: -1 }} />Pinned</>
+                  ) : label}
+                </div>
                 <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`}>
                   {groupItems.map(item => {
                     const isImage = item.content_type === 'image';
@@ -551,7 +556,11 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                         }}
                       >
                         <span className={`cbg-tag cbg-tag-${tag.toLowerCase()}`}>{tag}</span>
-                        {item.pinned && <span className="cbg-card-pin">📌</span>}
+                        {item.pinned && (
+                          <span className="cbg-card-pin" aria-label="Pinned">
+                            <Pin size={11} strokeWidth={2} fill="currentColor" />
+                          </span>
+                        )}
 
                         {isImage ? (
                           <>
@@ -573,7 +582,11 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                         ) : (
                           <>
                             <div className="cbg-card-body">
-                              {isLink && <span className="cbg-link-icon">🔗 </span>}
+                              {isLink && (
+                                <span className="cbg-link-icon" aria-hidden="true">
+                                  <Link2 size={12} strokeWidth={1.75} style={{ verticalAlign: -2, marginRight: 4 }} />
+                                </span>
+                              )}
                               {(item.preview || item.text_content || '').slice(0, 400)}
                             </div>
                             <div className="cbg-card-meta">
@@ -776,8 +789,12 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
             </div>
             <div className="cbg-detail-actions">
               <div className="cbg-detail-actions-l">
-                <button className="cbg-dbtn" onClick={() => handlePin(selected.id, selected.pinned)} type="button">
-                  {selected.pinned ? '📌 Unpin' : '📌 Pin'}
+                <button className="cbg-dbtn cbg-dbtn-icon" onClick={() => handlePin(selected.id, selected.pinned)} type="button">
+                  {selected.pinned ? (
+                    <><PinOff size={13} strokeWidth={1.75} /> Unpin</>
+                  ) : (
+                    <><Pin size={13} strokeWidth={1.75} /> Pin</>
+                  )}
                 </button>
                 {isTextOnly && !editing && (
                   <button className="cbg-dbtn" onClick={() => handleStartEdit(selected)} type="button">Edit</button>

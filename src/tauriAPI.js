@@ -222,6 +222,12 @@ window.electronAPI = {
   onVoiceError: (callback) => {
     listen('voice-error', (event) => callback(event.payload)).then(u => { listeners['voice-error'] = u; });
   },
+  onVoiceSoundStarted: (callback) => {
+    listen('voice-sound-started', () => callback()).then(u => { listeners['voice-sound-started'] = u; });
+  },
+  onVoiceSoundEnded: (callback) => {
+    listen('voice-sound-ended', () => callback()).then(u => { listeners['voice-sound-ended'] = u; });
+  },
   onOverlayVoiceData: (callback) => {
     listen('overlay-voice-data', (event) => callback(event.payload)).then(u => { listeners['overlay-voice-data'] = u; });
   },

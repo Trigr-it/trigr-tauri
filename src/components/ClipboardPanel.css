@@ -849,6 +849,9 @@
 }
 
 .cbg-dbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 5px;

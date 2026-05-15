@@ -1,19 +1,20 @@
 import React from 'react';
+import { Keyboard, Type, AppWindow } from 'lucide-react';
 import './WelcomeModal.css';
 
 const FEATURES = [
   {
-    icon: '⌨',
+    Icon: Keyboard,
     name: 'Triggers',
     desc: 'Assign hotkeys and macros to any key or mouse button',
   },
   {
-    icon: '✦',
+    Icon: Type,
     name: 'Text Expansions',
     desc: 'Type a short trigger word and expand it into full text instantly',
   },
   {
-    icon: '⬡',
+    Icon: AppWindow,
     name: 'Profiles',
     desc: 'Create app-specific profiles that switch automatically',
   },
@@ -40,13 +41,18 @@ export default function WelcomeModal({ onDismiss }) {
 
         {/* Feature cards */}
         <div className="welcome-cards">
-          {FEATURES.map(f => (
-            <div key={f.name} className="welcome-card">
-              <span className="welcome-card-icon">{f.icon}</span>
-              <span className="welcome-card-name">{f.name}</span>
-              <span className="welcome-card-desc">{f.desc}</span>
-            </div>
-          ))}
+          {FEATURES.map(f => {
+            const FeatureIcon = f.Icon;
+            return (
+              <div key={f.name} className="welcome-card">
+                <span className="welcome-card-icon" aria-hidden="true">
+                  <FeatureIcon size={26} strokeWidth={1.5} />
+                </span>
+                <span className="welcome-card-name">{f.name}</span>
+                <span className="welcome-card-desc">{f.desc}</span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Actions */}

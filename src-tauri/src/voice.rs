@@ -52,9 +52,16 @@ fn active_continuous() -> &'static Mutex<Option<windows::Media::SpeechRecognitio
 /// Cached compiled recognizer + the hash of the phrase list it was built from.
 /// Shared by single-shot and continuous paths so we never re-compile the constraint
 /// unless the phrase list actually changed.
+///
+/// `state_subscribed`: whether SpeechRecognizer::StateChanged has been wired up
+/// for this recognizer instance. Subscribed lazily on first use that has an
+/// AppHandle (prewarm builds with None so the flag starts false; first real
+/// recognition will subscribe). Reset to false on cache rebuild so the new
+/// instance gets its own subscription.
 struct CachedRecognizer {
     recognizer: windows::Media::SpeechRecognition::SpeechRecognizer,
     phrase_hash: u64,
+    state_subscribed: bool,
 }
 
 static CACHED_RECOGNIZER: OnceLock<Mutex<Option<CachedRecognizer>>> = OnceLock::new();
@@ -87,7 +94,7 @@ pub fn start_recognition(phrases: Vec<String>, app: AppHandle) {
     if let Err(e) = std::thread::Builder::new()
         .name("trigr-voice".to_string())
         .spawn(move || {
-            let result = run_recognition(&phrases);
+            let result = run_recognition(&phrases, &app);
             RECOGNIZING.store(false, Ordering::SeqCst);
 
             // Clear the in-flight handle (cache survives)
@@ -221,7 +228,11 @@ pub fn prewarm(phrases: Vec<String>) {
                         None => true,
                     };
                     if should_write {
-                        *guard = Some(CachedRecognizer { recognizer: rec, phrase_hash: h });
+                        *guard = Some(CachedRecognizer {
+                            recognizer: rec,
+                            phrase_hash: h,
+                            state_subscribed: false,
+                        });
                         info!("[Voice] Pre-warmed recognizer: {} phrases", phrases.len());
                     }
                 }
@@ -335,19 +346,77 @@ fn build_recognizer(phrases: &[String]) -> Result<windows::Media::SpeechRecognit
     Ok(recognizer)
 }
 
+/// Subscribe a StateChanged handler that emits voice-sound-started /
+/// voice-sound-ended to the overlay window. These power the voice pill's
+/// waveform animation: bars dance between SoundStarted and SoundEnded.
+///
+/// Subscribed once per recognizer instance (tracked via CachedRecognizer
+/// .state_subscribed). The closure captures an owned AppHandle clone so it
+/// outlives the recognition session. The same handler-reference-lifetime
+/// caveat that applies to ResultGenerated applies here — see
+/// [[winrt-speechrecognizer-shared-instance-caveats]].
+fn subscribe_state_changed(
+    recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer,
+    app: AppHandle,
+) -> Result<(), String> {
+    use windows::Foundation::TypedEventHandler;
+    use windows::Media::SpeechRecognition::*;
+
+    let handler = TypedEventHandler::<
+        SpeechRecognizer,
+        SpeechRecognizerStateChangedEventArgs,
+    >::new(move |_sender, args| {
+        if let Some(args) = args.as_ref() {
+            if let Ok(state) = args.State() {
+                let event_name = match state {
+                    SpeechRecognizerState::SoundStarted => Some("voice-sound-started"),
+                    SpeechRecognizerState::SoundEnded => Some("voice-sound-ended"),
+                    _ => None,
+                };
+                if let Some(name) = event_name {
+                    if let Some(overlay) = app.get_webview_window("overlay") {
+                        let _ = overlay.emit(name, serde_json::json!({}));
+                    }
+                }
+            }
+        }
+        Ok(())
+    });
+
+    recognizer
+        .StateChanged(&handler)
+        .map_err(|e| format!("Failed to subscribe StateChanged: {}", e))?;
+    Ok(())
+}
+
 /// Get-or-build a recognizer for the given phrase list. Holds the cache mutex
 /// across the build to serialize concurrent rebuilds (mutex held briefly during
 /// the .get() compile — small race window in practice; concurrent .get() calls
 /// on different recognizer instances are not legal).
-fn get_or_build_cached(phrases: &[String]) -> Result<windows::Media::SpeechRecognition::SpeechRecognizer, String> {
+///
+/// When `app` is Some, also lazily subscribes the StateChanged handler if not
+/// already subscribed on this recognizer instance. Prewarm passes None (no
+/// subscription needed before real use); start_recognition and
+/// start_continuous_recognition pass Some(&app).
+fn get_or_build_cached(
+    phrases: &[String],
+    app: Option<&AppHandle>,
+) -> Result<windows::Media::SpeechRecognition::SpeechRecognizer, String> {
     let h = phrase_hash(phrases);
     let mut guard = cached_recognizer()
         .lock()
         .map_err(|_| "Cache mutex poisoned".to_string())?;
 
-    if let Some(ref cached) = *guard {
+    if let Some(ref mut cached) = *guard {
         if cached.phrase_hash == h {
             info!("[Voice] Cache hit: reusing recognizer ({} phrases)", phrases.len());
+            if let Some(app) = app {
+                if !cached.state_subscribed
+                    && subscribe_state_changed(&cached.recognizer, app.clone()).is_ok()
+                {
+                    cached.state_subscribed = true;
+                }
+            }
             return Ok(cached.recognizer.clone());
         }
         // Hash mismatch — drop old recognizer (best-effort Close).
@@ -359,7 +428,17 @@ fn get_or_build_cached(phrases: &[String]) -> Result<windows::Media::SpeechRecog
 
     info!("[Voice] Cache miss: building recognizer ({} phrases)", phrases.len());
     let rec = build_recognizer(phrases)?;
-    *guard = Some(CachedRecognizer { recognizer: rec.clone(), phrase_hash: h });
+    let mut state_subscribed = false;
+    if let Some(app) = app {
+        if subscribe_state_changed(&rec, app.clone()).is_ok() {
+            state_subscribed = true;
+        }
+    }
+    *guard = Some(CachedRecognizer {
+        recognizer: rec.clone(),
+        phrase_hash: h,
+        state_subscribed,
+    });
     Ok(rec)
 }
 
@@ -367,7 +446,7 @@ fn start_continuous_inner(phrases: Vec<String>, app: AppHandle) -> Result<(), St
     use windows::Foundation::TypedEventHandler;
     use windows::Media::SpeechRecognition::*;
 
-    let recognizer = get_or_build_cached(&phrases)?;
+    let recognizer = get_or_build_cached(&phrases, Some(&app))?;
     let session = recognizer
         .ContinuousRecognitionSession()
         .map_err(|e| format!("Failed to get ContinuousRecognitionSession: {}", e))?;
@@ -451,10 +530,10 @@ fn start_continuous_inner(phrases: Vec<String>, app: AppHandle) -> Result<(), St
     Ok(())
 }
 
-fn run_recognition(phrases: &[String]) -> Result<Option<String>, String> {
+fn run_recognition(phrases: &[String], app: &AppHandle) -> Result<Option<String>, String> {
     use windows::Media::SpeechRecognition::*;
 
-    let recognizer = get_or_build_cached(phrases)?;
+    let recognizer = get_or_build_cached(phrases, Some(app))?;
 
     // Store the in-flight recognizer so stop_recognition() can cancel.
     if let Ok(mut guard) = active_recognizer().lock() {

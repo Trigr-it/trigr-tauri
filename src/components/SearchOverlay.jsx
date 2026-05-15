@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
+import {
+  Mic, Check, X, AlertTriangle, Search, CornerDownLeft,
+  Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, Edit2,
+} from 'lucide-react';
 import './SearchOverlay.css';
 import { friendlyKeyName } from './keyboardLayout';
 import { readVoicePhrases } from '../voicePhrases';
@@ -6,14 +10,14 @@ import { readVoicePhrases } from '../voicePhrases';
 // ── Type metadata ──────────────────────────────────────────────────────────────
 
 const TYPE_META = {
-  text:       { icon: '✦', color: '#64b4ff' },
-  hotkey:     { icon: '⌨', color: '#c864ff' },
-  app:        { icon: '⬡', color: '#50c878' },
-  url:        { icon: '⊕', color: '#ffc832' },
-  folder:     { icon: '⬢', color: '#40c8a0' },
-  macro:      { icon: '◈', color: '#ff783c' },
-  expansion:  { icon: '↩', color: '#ffc832' },
-  autocorrect:{ icon: '✏', color: '#aaaaaa' },
+  text:       { Icon: Type,        color: '#64b4ff' },
+  hotkey:     { Icon: Keyboard,    color: '#c864ff' },
+  app:        { Icon: AppWindow,   color: '#50c878' },
+  url:        { Icon: Globe,       color: '#ffc832' },
+  folder:     { Icon: FolderOpen,  color: '#40c8a0' },
+  macro:      { Icon: Layers,      color: '#ff783c' },
+  expansion:  { Icon: CornerDownLeft, color: '#ffc832' },
+  autocorrect:{ Icon: Edit2,       color: '#aaaaaa' },
 };
 
 const GROUP_ORDER = ['assignment', 'quickaction', 'expansion', 'autocorrect'];
@@ -293,10 +297,12 @@ export default function SearchOverlay() {
 
   // ── Voice mode state ──
   const [voiceState, setVoiceState]         = useState('idle'); // 'idle' | 'listening' | 'matched' | 'no-match' | 'error' | 'unsupported'
+  const [isSpeaking, setIsSpeaking]         = useState(false);  // gated on WinRT SoundStarted/SoundEnded — drives waveform bars
   const [interimText, setInterimText]       = useState('');
   const [matchedLabel, setMatchedLabel]     = useState('');
   const [examplePhrases, setExamplePhrases] = useState([]); // shown after a no-match
   const [voiceContinuous, _setVoiceContinuousState] = useState(false); // double-tap stay-active mode
+  const speakingTailRef     = useRef(null); // setTimeout id for 300ms grace tail after SoundEnded
   const recognitionRef      = useRef(false);  // boolean: is WinRT recognition running
   const voiceTimeoutRef     = useRef(null);
   const voiceContinuousRef  = useRef(false);
@@ -627,6 +633,45 @@ export default function SearchOverlay() {
     });
   }, []);
 
+  // ── Voice waveform gating (WinRT SoundStarted/SoundEnded events) ──
+  // Bars animate only while WinRT reports the user is actively producing sound.
+  // 300ms grace tail prevents flicker on mid-word silences. Cleared by voice-mode
+  // exit and by transitions out of 'listening' state (match/no-match/error).
+  useEffect(() => {
+    if (!window.electronAPI?.onVoiceSoundStarted) return;
+    window.electronAPI.onVoiceSoundStarted(() => {
+      if (modeRef.current !== 'voice') return;
+      if (speakingTailRef.current) {
+        clearTimeout(speakingTailRef.current);
+        speakingTailRef.current = null;
+      }
+      setIsSpeaking(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onVoiceSoundEnded) return;
+    window.electronAPI.onVoiceSoundEnded(() => {
+      if (modeRef.current !== 'voice') return;
+      if (speakingTailRef.current) clearTimeout(speakingTailRef.current);
+      speakingTailRef.current = setTimeout(() => {
+        setIsSpeaking(false);
+        speakingTailRef.current = null;
+      }, 300);
+    });
+  }, []);
+
+  // Clear isSpeaking whenever we leave the listening state (matched/no-match/error/idle).
+  useEffect(() => {
+    if (voiceState !== 'listening') {
+      if (speakingTailRef.current) {
+        clearTimeout(speakingTailRef.current);
+        speakingTailRef.current = null;
+      }
+      setIsSpeaking(false);
+    }
+  }, [voiceState]);
+
   // ── Resize overlay window whenever displayItems or mode change ──
   const panelRef = useRef(null);
   useEffect(() => {
@@ -788,8 +833,9 @@ export default function SearchOverlay() {
         const idx      = rowIdx;
         const isSelected = idx === selectedIndex;
         const meta     = item.type === 'assignment'
-          ? (TYPE_META[item.assignType] || { icon: '◈', color: '#aaa' })
-          : (TYPE_META[item.type]       || { icon: '?', color: '#aaa' });
+          ? (TYPE_META[item.assignType] || { Icon: Layers, color: '#aaa' })
+          : (TYPE_META[item.type]       || { Icon: Layers, color: '#aaa' });
+        const MetaIcon = meta.Icon;
 
         nodes.push(
           <div
@@ -799,7 +845,7 @@ export default function SearchOverlay() {
             ref={el => { rowRefs.current[idx] = el; }}
           >
             <span className="result-type-icon" style={{ color: meta.color }}>
-              {meta.icon}
+              <MetaIcon size={14} strokeWidth={1.75} />
             </span>
             <div className="result-content">
               <div className="result-label">
@@ -855,35 +901,58 @@ export default function SearchOverlay() {
               </div>
             )}
           <div
-            className="search-voice-pill"
+            className={`search-voice-pill${isSpeaking ? ' is-speaking' : ''}`}
             onClick={handleVoicePillClick}
             onKeyDown={handleInputKeyDown}
-            tabIndex={-1}
+            tabIndex={0}
+            role="button"
+            aria-label={voiceContinuous ? 'Voice continuous mode — click to close' : 'Voice listening — click for continuous mode'}
             title={voiceContinuous ? 'Click to close' : 'Click for continuous mode'}
           >
             {voiceContinuous && (
-              <div className="search-voice-continuous-badge">∞</div>
+              <div className="search-voice-continuous-badge" aria-hidden="true">∞</div>
             )}
             {(voiceState === 'listening' || voiceState === 'idle') && (
-              <div className="search-voice-pill-mic">
-                <div className="search-voice-pill-ring" />
-                <span className="search-voice-pill-mic-icon">🎙</span>
-              </div>
+              isSpeaking ? (
+                /* Waveform — bars dance while WinRT reports SoundStarted */
+                <div className="search-voice-bars is-active" aria-hidden="true">
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <span
+                      key={i}
+                      className="search-voice-bar"
+                      style={{ '--bar-i': i }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                /* Static mic — shown when ready / between phrases */
+                <div className="search-voice-pill-mic" aria-hidden="true">
+                  <Mic size={22} strokeWidth={1.75} />
+                </div>
+              )
             )}
             {voiceState === 'matched' && (
-              <span className="search-voice-pill-match-icon">✓</span>
+              <span className="search-voice-pill-match-icon" aria-label="Matched">
+                <Check size={26} strokeWidth={2.25} />
+              </span>
             )}
             {voiceState === 'no-match' && (
-              <span className="search-voice-pill-label">✗</span>
+              <span className="search-voice-pill-label" aria-label="No match">
+                <X size={24} strokeWidth={2} />
+              </span>
             )}
             {voiceState === 'error' && (
               <div className="search-voice-error-row">
-                <span className="search-voice-error-icon">⚠</span>
+                <span className="search-voice-error-icon" aria-hidden="true">
+                  <AlertTriangle size={16} strokeWidth={2} />
+                </span>
                 <span className="search-voice-error-text">{interimText || 'Voice error'}</span>
               </div>
             )}
             {voiceState === 'unsupported' && (
-              <span className="search-voice-pill-label">⚠</span>
+              <span className="search-voice-pill-label" aria-label="Unsupported">
+                <AlertTriangle size={24} strokeWidth={2} />
+              </span>
             )}
           </div>
           </div>
@@ -891,9 +960,13 @@ export default function SearchOverlay() {
           <>
             <div className="search-input-row">
               {mode === 'query' ? (
-                <span className="search-back-hint" title="Esc to go back">←</span>
+                <span className="search-back-hint" title="Esc to go back" aria-label="Back">
+                  <CornerDownLeft size={16} strokeWidth={1.75} />
+                </span>
               ) : (
-                <span className="search-icon">⌕</span>
+                <span className="search-icon" aria-hidden="true">
+                  <Search size={16} strokeWidth={1.75} />
+                </span>
               )}
               <input
                 ref={inputRef}

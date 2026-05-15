@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
+import { GripVertical, Link, Keyboard, Zap, Disc } from 'lucide-react';
 import './Sidebar.css';
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName } from './keyboardLayout';
@@ -40,12 +41,18 @@ function SortableProfileRow({ profile, isActive, isFallback, hasLink, linkedAppN
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
-      <div className="profile-drag-handle" {...attributes} {...listeners}>⠿</div>
+      <div className="profile-drag-handle" {...attributes} {...listeners} aria-label="Drag to reorder">
+        <GripVertical size={12} strokeWidth={1.75} />
+      </div>
       <span className="profile-row-name">
         {isFallback && <span className="profile-fallback-dot" />}
         {profile}
       </span>
-      {hasLink && <span className="profile-row-link" title={linkedAppName + (linkedWindowTitle ? ` (title: ${linkedWindowTitle})` : '')}>⊞</span>}
+      {hasLink && (
+        <span className="profile-row-link" title={linkedAppName + (linkedWindowTitle ? ` (title: ${linkedWindowTitle})` : '')} aria-label="Linked to app">
+          <Link size={11} strokeWidth={1.75} />
+        </span>
+      )}
     </div>
   );
 }
@@ -736,9 +743,9 @@ export default function Sidebar({
   });
 
   const MOUSE_KEY_LABELS = {
-    MOUSE_LEFT: '🖱 Left', MOUSE_RIGHT: '🖱 Right', MOUSE_MIDDLE: '🖱 Mid',
-    MOUSE_SCROLL_UP: '🖱 Scroll↑', MOUSE_SCROLL_DOWN: '🖱 Scroll↓',
-    MOUSE_SIDE1: '🖱 Side1', MOUSE_SIDE2: '🖱 Side2',
+    MOUSE_LEFT: 'Mouse Left', MOUSE_RIGHT: 'Mouse Right', MOUSE_MIDDLE: 'Mouse Mid',
+    MOUSE_SCROLL_UP: 'Mouse Scroll ↑', MOUSE_SCROLL_DOWN: 'Mouse Scroll ↓',
+    MOUSE_SIDE1: 'Mouse Side1', MOUSE_SIDE2: 'Mouse Side2',
   };
 
   function sortEntries(arr) {
@@ -1033,7 +1040,7 @@ export default function Sidebar({
               onMouseDown={() => onStartRecord?.()}
               type="button"
             >
-              ⏺ Record
+              <Disc size={12} strokeWidth={2} fill="currentColor" style={{ marginRight: 4, verticalAlign: -1 }} /> Record
             </button>
           )}
         </div>
@@ -1185,7 +1192,7 @@ export default function Sidebar({
             <div className="sidebar-grid-wrap">
               {profileEntries.length === 0 ? (
                 <div className="sidebar-empty sidebar-empty--grid">
-                  <div className="sidebar-empty-icon">⌨</div>
+                  <div className="sidebar-empty-icon" aria-hidden="true"><Keyboard size={28} strokeWidth={1.5} /></div>
                   <p>No assignments yet. Select a modifier above, then press <strong>Record</strong> to capture your first hotkey.</p>
                 </div>
               ) : gridFiltered.length === 0 ? (
@@ -1222,14 +1229,14 @@ export default function Sidebar({
           <div className="sidebar-list">
             {profileEntries.length === 0 && activeTab !== 'BARE' ? (
               <div className="sidebar-empty">
-                <div className="sidebar-empty-icon">⌨</div>
+                <div className="sidebar-empty-icon" aria-hidden="true"><Keyboard size={28} strokeWidth={1.5} /></div>
                 <p>Select modifiers above the keyboard, then click a key to assign a hotkey</p>
               </div>
             ) : filtered.length === 0 ? (
               <div className="sidebar-empty">
                 {activeTab === 'BARE' ? (
                   <>
-                    <div className="sidebar-empty-icon">⚡</div>
+                    <div className="sidebar-empty-icon" aria-hidden="true"><Zap size={28} strokeWidth={1.5} /></div>
                     <p>No bare key assignments yet. Select <strong>Bare Keys</strong> in the modifier bar, then click a key on the keyboard.</p>
                   </>
                 ) : (

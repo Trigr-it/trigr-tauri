@@ -22,6 +22,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Grid2X2, Edit3 } from 'lucide-react';
 import './FillInWindow.css';
 
 export default function FillInWindow() {
@@ -132,9 +133,9 @@ export default function FillInWindow() {
       <div className="fillin-win-frame">
         <div className="fillin-win" ref={panelRef}>
           <div className="fillin-win-header">
-            <span className="fillin-win-icon">◇</span>
+            <span className="fillin-win-icon" aria-hidden="true"><Grid2X2 size={14} strokeWidth={1.75} /></span>
             <span className="fillin-win-title">Select Variant</span>
-            <button className="fillin-win-close" onClick={cancel} tabIndex={-1}>✕</button>
+            <button className="fillin-win-close" onClick={cancel} tabIndex={-1} aria-label="Cancel">✕</button>
           </div>
           <div className="fillin-variant-list">
             {options.map((label, i) => (
@@ -162,9 +163,9 @@ export default function FillInWindow() {
     <div className="fillin-win-frame">
       <div className="fillin-win" ref={panelRef}>
         <div className="fillin-win-header">
-          <span className="fillin-win-icon">✎</span>
+          <span className="fillin-win-icon" aria-hidden="true"><Edit3 size={14} strokeWidth={1.75} /></span>
           <span className="fillin-win-title">Fill In</span>
-          <button className="fillin-win-close" onClick={cancel} tabIndex={-1}>✕</button>
+          <button className="fillin-win-close" onClick={cancel} tabIndex={-1} aria-label="Cancel">✕</button>
         </div>
         <div className="fillin-win-fields">
           {fields.map((label, i) => (

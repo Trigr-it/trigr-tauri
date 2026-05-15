@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { Type, Link2, Mail, Hash, Star, ExternalLink, Pin } from 'lucide-react';
 import './ClipboardOverlay.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -58,10 +59,10 @@ function groupByTimeline(items) {
 // ── Type icons (matches SearchOverlay's TYPE_META pattern) ──────────────────
 
 const TYPE_ICONS = {
-  Text:   { icon: '✦', color: '#64b4ff' },
-  Link:   { icon: '⊕', color: '#ffc832' },
-  Email:  { icon: '✉', color: '#c864ff' },
-  Number: { icon: '#', color: '#8a8799' },
+  Text:   { Icon: Type,   color: '#64b4ff' },
+  Link:   { Icon: Link2,  color: '#ffc832' },
+  Email:  { Icon: Mail,   color: '#c864ff' },
+  Number: { Icon: Hash,   color: '#8a8799' },
 };
 
 // ── Overlay ─────────────────────────────────────────────────────────────────
@@ -238,9 +239,10 @@ export default function ClipboardOverlay() {
       return <span className="co-row-icon"><span className="co-row-icon-dot" style={{ background: c || 'var(--text-muted)' }} /></span>;
     }
     const meta = TYPE_ICONS[tag] || TYPE_ICONS.Text;
+    const MetaIcon = meta.Icon;
     return (
       <span className="co-row-icon" style={{ color: meta.color }}>
-        {meta.icon}
+        <MetaIcon size={14} strokeWidth={1.75} />
       </span>
     );
   };
@@ -341,7 +343,11 @@ export default function ClipboardOverlay() {
                         </div>
                       </>
                     )}
-                    {item.pinned && <span className="co-row-pin-badge">★</span>}
+                    {item.pinned && (
+                      <span className="co-row-pin-badge" aria-label="Pinned">
+                        <Star size={11} strokeWidth={2} fill="currentColor" />
+                      </span>
+                    )}
                   </div>
                 );
               })

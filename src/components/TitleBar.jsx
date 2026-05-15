@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon } from 'lucide-react';
 import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
 
@@ -191,7 +192,7 @@ export default function TitleBar({
               title="Starter templates — right-click to dismiss"
               type="button"
             >
-              ◈ Templates
+<Sparkles size={13} strokeWidth={1.75} style={{ marginRight: 6, verticalAlign: -2 }} /> Templates
             </button>
             {templatesOpen && (
               <div className="tb-templates-dropdown">
@@ -222,8 +223,11 @@ export default function TitleBar({
             title={listViewActive ? 'Switch to keyboard view' : 'Switch to list view'}
             data-drag="false"
             type="button"
+            aria-label={listViewActive ? 'Switch to keyboard view' : 'Switch to list view'}
           >
-            {listViewActive ? '⌨' : '☰'}
+            {listViewActive
+              ? <KeyboardIcon size={14} strokeWidth={1.75} />
+              : <LayoutGrid size={14} strokeWidth={1.75} />}
           </button>
         )}
         <button
@@ -239,6 +243,7 @@ export default function TitleBar({
           className="theme-toggle-btn"
           onClick={onToggleTheme}
           title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          aria-label={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           data-drag="false"
         >
           {theme === 'dark' ? (
@@ -264,6 +269,7 @@ export default function TitleBar({
           className={`tb-settings-btn${settingsOpen ? ' active' : ''}`}
           onClick={onOpenSettings}
           title="Settings"
+          aria-label="Settings"
           data-drag="false"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -273,13 +279,13 @@ export default function TitleBar({
         </button>
 
         <div className="window-controls">
-          <button className="wc-btn minimize" onClick={handleMinimize}>
+          <button className="wc-btn minimize" onClick={handleMinimize} aria-label="Minimize">
             <svg width="10" height="2" viewBox="0 0 10 2"><rect width="10" height="2" rx="1" fill="currentColor"/></svg>
           </button>
-          <button className="wc-btn maximize" onClick={handleMaximize}>
+          <button className="wc-btn maximize" onClick={handleMaximize} aria-label="Maximize">
             <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
           </button>
-          <button className="wc-btn close" onClick={handleClose}>
+          <button className="wc-btn close" onClick={handleClose} aria-label="Close">
             <svg width="10" height="10" viewBox="0 0 10 10">
               <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

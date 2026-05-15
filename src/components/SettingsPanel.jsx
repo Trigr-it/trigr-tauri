@@ -154,7 +154,7 @@ export default function SettingsPanel({
     <aside className="settings-panel">
       <div className="settings-header">
         <span className="settings-title">Settings</span>
-        <button className="settings-close-btn" onClick={onClose} title="Close settings" type="button">
+        <button className="settings-close-btn" onClick={onClose} title="Close settings" aria-label="Close settings" type="button">
           <svg width="10" height="10" viewBox="0 0 10 10">
             <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

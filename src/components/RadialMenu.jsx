@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Aperture } from 'lucide-react';
 import RadialWheel from './RadialWheel';
 import './RadialMenu.css';
 
@@ -130,7 +131,7 @@ export default function RadialMenu() {
     return (
       <div className="radial-root">
         <div className="radial-empty">
-          <span className="radial-empty-icon">{'\u25ce'}</span>
+          <span className="radial-empty-icon" aria-hidden="true"><Aperture size={42} strokeWidth={1.5} /></span>
           <span className="radial-empty-text">
             No items added.<br />Configure in Settings.
           </span>

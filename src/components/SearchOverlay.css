@@ -399,11 +399,18 @@ html, body {
   outline: none;
   cursor: pointer;
   border-radius: 16px;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .search-voice-pill:hover {
   background: var(--bg-hover, rgba(255,255,255,0.06));
+  transform: scale(1.03);
+  box-shadow: 0 4px 18px rgba(var(--accent-rgb, 232,160,32), 0.18);
+}
+
+.search-voice-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 /* Continuous mode badge — ∞ in top-right corner */
@@ -424,7 +431,7 @@ html, body {
   50%       { opacity: 0.35; }
 }
 
-/* Mic icon with pulsing ring */
+/* Static lucide Mic — shown while listening but not yet hearing sound */
 .search-voice-pill-mic {
   position: relative;
   width: 40px;
@@ -432,31 +439,55 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--accent);
+  opacity: 0.55;
+  transition: opacity var(--transition-micro, 0.12s ease);
 }
 
-.search-voice-pill-mic-icon {
-  font-size: 22px;
-  z-index: 2;
-  animation: voice-mic-bounce 1.2s ease-in-out infinite;
+/* ── Waveform bars — gated on WinRT SoundStarted/SoundEnded ──
+   .is-active is added by SearchOverlay.jsx only while the recognizer
+   reports SoundStarted (with 300ms grace tail after SoundEnded).
+   When .is-active is absent, bars are not rendered at all — replaces
+   the earlier mic-bounce + ring-expand pair, so net infinite-animation
+   count when speaking is 5 bars; when not speaking it is zero. */
+.search-voice-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
 }
 
-.search-voice-pill-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid var(--accent);
-  opacity: 0;
-  animation: voice-ring-expand 1.5s ease-out infinite;
+.search-voice-bar {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transform-origin: center;
+  transform: scaleY(0.3);
 }
 
-@keyframes voice-ring-expand {
-  0%   { transform: scale(0.5); opacity: 0.5; }
-  100% { transform: scale(1.5); opacity: 0; }
+.search-voice-bars.is-active .search-voice-bar {
+  animation: voice-bar-dance 0.9s ease-in-out infinite;
+  animation-delay: calc(var(--bar-i) * 0.08s);
 }
 
-@keyframes voice-mic-bounce {
-  0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.1); }
+@keyframes voice-bar-dance {
+  0%, 100% { transform: scaleY(0.3); }
+  20%      { transform: scaleY(0.85); }
+  40%      { transform: scaleY(0.55); }
+  60%      { transform: scaleY(1.0); }
+  80%      { transform: scaleY(0.45); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-voice-bars.is-active .search-voice-bar {
+    animation: voice-bar-pulse 1.4s ease-in-out infinite;
+    transform: scaleY(0.7);
+  }
+  @keyframes voice-bar-pulse {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+  }
 }
 
 /* Hide text elements in the compact square — icon only */
@@ -464,15 +495,17 @@ html, body {
 .search-voice-pill-interim { display: none; }
 
 .search-voice-pill-label {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-secondary);
-  font-weight: 500;
-  text-align: center;
 }
 
 /* Match state */
 .search-voice-pill-match-icon {
-  font-size: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--accent);
   animation: voice-match-pop 0.25s ease;
 }
