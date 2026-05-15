@@ -1,39 +1,18 @@
-/* ── Upgrade Modal ─────────────────────────────────────────────────────── */
+/* ── Upgrade Modal — layout-only; uses .modal-overlay + .modal-panel base ── */
 
 .upgrade-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* Higher than .modal-overlay default so this modal sits above the welcome modal if both ever render */
   z-index: 2100;
-  animation: upgrade-fade-in 0.18s ease;
-}
-
-@keyframes upgrade-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }
 
 .upgrade-modal {
   position: relative;
   width: 420px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-bright);
-  border-radius: var(--radius-xl);
   padding: 36px 32px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(232, 160, 32, 0.14);
-  animation: upgrade-slide-up 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes upgrade-slide-up {
-  from { opacity: 0; transform: translateY(16px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
 /* ── Close button ──────────────────────────────────────────────────────── */
@@ -112,10 +91,10 @@
 .upgrade-cta-btn {
   width: 100%;
   height: 42px;
-  background: var(--accent);
+  background: var(--btn-primary-bg);
   border: none;
   border-radius: var(--radius-md);
-  color: #0d0d11;
+  color: var(--btn-primary-text);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 800;
@@ -127,13 +106,13 @@
   justify-content: center;
   margin-bottom: 8px;
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: 0 4px 20px rgba(232, 160, 32, 0.3);
+  box-shadow: 0 4px 20px rgba(var(--accent-rgb), 0.3);
 }
 
 .upgrade-cta-btn:hover {
-  background: var(--accent-hover);
+  background: var(--btn-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(232, 160, 32, 0.4);
+  box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.4);
 }
 
 .upgrade-cta-btn:active {
@@ -157,8 +136,4 @@
   color: var(--text-secondary);
 }
 
-/* ── Light theme ───────────────────────────────────────────────────────── */
-
-[data-theme="light"] .upgrade-modal {
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(180, 120, 10, 0.2);
-}
+/* ── Light theme — shadow handled by .modal-panel via --shadow-modal ── */

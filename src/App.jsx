@@ -9,6 +9,7 @@ import MouseCanvas from './components/MouseCanvas';
 import MacroPanel from './components/MacroPanel';
 import SettingsPanel from './components/SettingsPanel';
 import StatusBar from './components/StatusBar';
+import Toaster from './components/Toaster';
 import TextExpansions from './components/TextExpansions';
 import WelcomeModal from './components/WelcomeModal';
 import UpgradeModal from './components/UpgradeModal';
@@ -29,7 +30,7 @@ function App() {
   const [profiles, setProfiles]             = useState(['Default']);
   const [profileSettings, setProfileSettings] = useState({}); // { profileName: { linkedApp: '...' } }
   const [macrosEnabled, setMacrosEnabled]   = useState(true);
-  const [notification, setNotification]     = useState(null);
+  const [toasts, setToasts]                 = useState([]);
   const [activeModifiers, setActiveModifiers] = useState([]);  // e.g. ['Ctrl', 'Alt']
   const [sidebarComboFilter, setSidebarComboFilter] = useState(null); // null = show all, string = filter by combo
   const [engineStatus, setEngineStatus]     = useState({ uiohookAvailable: false, nutjsAvailable: false });
@@ -504,10 +505,25 @@ function App() {
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables: newVars, searchTemplates, searchTemplateCategories, quickActionCategories });
   }, [assignments, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, searchTemplates, searchTemplateCategories, quickActionCategories]);
 
-  // ── Notifications ─────────────────────────────────────────
+  // ── Toasts ────────────────────────────────────────────────
+  // Queue with max 3 visible (oldest dropped on overflow). Each toast has
+  // its own dismiss timer (3.5s for info/success, 5s for warning/error so
+  // users have time to read failure messages).
+  const TOAST_MAX = 3;
+  const dismissToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
   const showNotification = useCallback((msg, type = 'success') => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 2500);
+    const id = Date.now() + Math.random();
+    const duration = (type === 'warning' || type === 'error') ? 5000 : 3500;
+    setToasts(prev => {
+      const next = [...prev, { id, msg, type }];
+      // Drop oldest when over cap
+      return next.length > TOAST_MAX ? next.slice(next.length - TOAST_MAX) : next;
+    });
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, duration);
   }, []);
 
   // ── Search Template CRUD ──────────────────────────────────
@@ -2830,12 +2846,12 @@ function App() {
         currentCombo={currentCombo}
         macrosEnabled={macrosEnabled}
         assignmentCount={profileAssignmentCount}
-        notification={notification}
         engineStatus={engineStatus}
         lastFired={lastFired}
         appVersion={appVersion}
         globalPauseToggleKey={globalPauseToggleKey}
       />
+      <Toaster toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

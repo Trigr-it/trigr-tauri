@@ -87,6 +87,27 @@ export default function SettingsPanel({
     });
   }, []);
 
+  // ESC dismisses the currently-open inline confirmation first; closes the
+  // whole settings panel only if no confirmation is active. Prevents an ESC
+  // press from accidentally exiting Settings mid-flow.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape') return;
+      if (confirmClearShared) {
+        e.preventDefault(); e.stopPropagation();
+        setConfirmClearShared(false);
+      } else if (sharedExistsPrompt) {
+        e.preventDefault(); e.stopPropagation();
+        setSharedExistsPrompt(null);
+      } else if (confirmRestore) {
+        e.preventDefault(); e.stopPropagation();
+        setConfirmRestore(null);
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [confirmClearShared, sharedExistsPrompt, confirmRestore]);
+
   const stopMicTest = useCallback(() => {
     if (micTestRef.current) {
       cancelAnimationFrame(micTestRef.current.animFrame);

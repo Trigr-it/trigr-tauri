@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Keyboard, Type, AppWindow } from 'lucide-react';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import './WelcomeModal.css';
 
 const FEATURES = [
@@ -21,9 +22,12 @@ const FEATURES = [
 ];
 
 export default function WelcomeModal({ onDismiss }) {
+  const panelRef = useRef(null);
+  useModalKeyboard(panelRef, onDismiss);
+
   return (
-    <div className="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
-      <div className="welcome-modal">
+    <div className="modal-overlay welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+      <div className="modal-panel welcome-modal" ref={panelRef}>
 
         {/* Logo mark */}
         <div className="welcome-logo">

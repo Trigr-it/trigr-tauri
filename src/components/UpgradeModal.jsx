@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import './UpgradeModal.css';
 
 // Features that extend into the planned v2.0 Teams tier. The modal shows an
@@ -16,16 +17,18 @@ export default function UpgradeModal({ featureName, onClose }) {
   );
   const mailto = `mailto:admin@usetrigr.com?subject=${subject}&body=${body}`;
   const isTeamsLadder = TEAMS_LADDER_FEATURES.has(featureName);
+  const panelRef = useRef(null);
+  useModalKeyboard(panelRef, onClose);
 
   return (
     <div
-      className="upgrade-overlay"
+      className="modal-overlay upgrade-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upgrade-title"
       onClick={onClose}
     >
-      <div className="upgrade-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-panel upgrade-modal" ref={panelRef} onClick={e => e.stopPropagation()}>
         <button
           className="upgrade-close-btn"
           onClick={onClose}
@@ -58,9 +61,13 @@ export default function UpgradeModal({ featureName, onClose }) {
           free for 30 days. Email us and we'll send one back within a few minutes.
         </p>
 
-        <a href={mailto} className="upgrade-cta-btn">
+        <button
+          className="upgrade-cta-btn"
+          onClick={() => { window.location.href = mailto; }}
+          type="button"
+        >
           Request a Beta Key
-        </a>
+        </button>
         <button
           className="upgrade-skip-link"
           onClick={onClose}

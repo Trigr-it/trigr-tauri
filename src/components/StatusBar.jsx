@@ -2,7 +2,7 @@ import React from 'react';
 import './StatusBar.css';
 import { friendlyKeyName } from './keyboardLayout';
 
-export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, assignmentCount, notification, engineStatus, lastFired, appVersion, globalPauseToggleKey }) {
+export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, assignmentCount, engineStatus, lastFired, appVersion, globalPauseToggleKey }) {
   const { uiohookAvailable, nutjsAvailable, isDemoMode } = engineStatus || {};
 
   function pauseHotkeyLabel(combo) {
@@ -71,11 +71,6 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
         )}
       </div>
 
-      {notification && (
-        <div className={`notification ${notification.type}`}>
-          {notification.msg}
-        </div>
-      )}
     </div>
   );
 }

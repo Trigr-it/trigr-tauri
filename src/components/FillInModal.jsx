@@ -1,14 +1,25 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { Edit3 } from 'lucide-react';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import './FillInModal.css';
 
 export default function FillInModal({ label, onSubmit, onCancel }) {
   const [value, setValue] = useState('');
+  const panelRef = useRef(null);
+  useModalKeyboard(panelRef, onCancel);
 
   return (
-    <div className="fillin-overlay">
-      <div className="fillin-modal">
+    <div
+      className="modal-overlay fillin-overlay"
+      role="dialog"
+      aria-modal="true"
+      onClick={onCancel}
+    >
+      <div className="modal-panel fillin-modal" ref={panelRef} onClick={e => e.stopPropagation()}>
         <div className="fillin-header">
-          <span className="fillin-icon">✎</span>
+          <span className="fillin-icon" aria-hidden="true">
+            <Edit3 size={14} strokeWidth={1.75} />
+          </span>
           <span className="fillin-title">Fill In</span>
         </div>
         <p className="fillin-label">{label}</p>
