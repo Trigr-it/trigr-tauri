@@ -136,7 +136,9 @@ Command names use snake_case. See tauriAPI.js for the full list.
 
 ## Storage & Config
 
-### Files in AppData (`%LOCALAPPDATA%/com.nodescaffold.trigr/`)
+### Files in AppData (`%APPDATA%\com.nodescaffold.trigr\`)
+(That's `C:\Users\<user>\AppData\Roaming\com.nodescaffold.trigr\` — Tauri v2's `app_data_dir()` resolves to Roaming on Windows, NOT Local.)
+
 | File | Purpose |
 |---|---|
 | `keyforge-config.json` | Main config (DO NOT rename) |
