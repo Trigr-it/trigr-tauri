@@ -187,10 +187,22 @@
   gap: 10px;
 }
 
+@media (max-width: 1200px) {
+  .analytics-cards-4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .analytics-cards-4 { grid-template-columns: 1fr; }
+}
+
 .analytics-cards-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .analytics-cards-2 { grid-template-columns: 1fr; }
 }
 
 .analytics-card-sm {
@@ -584,6 +596,11 @@
   z-index: 20;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(232, 160, 32, 0.15);
   animation: tooltip-in 0.12s ease-out;
+}
+
+/* When trigger is too close to the top edge, render below instead of above */
+.analytics-tooltip--below {
+  transform: translate(-50%, 0);
 }
 
 .analytics-tooltip::after {

@@ -74,6 +74,16 @@
   /* ── Modal tokens ────────────────────────────────────────────────────── */
   --backdrop-modal: rgba(0, 0, 0, 0.55);
   --shadow-modal: 0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(232,160,32,0.10);
+
+  /* ── Status colours (semantic, theme-aware) ───────────────────────────── */
+  --status-success: #50c878;
+  --status-success-glow: rgba(80, 200, 120, 0.15);
+  --status-warning: #f59e0b;
+  --status-warning-glow: rgba(245, 158, 11, 0.15);
+
+  /* ── Accent-tinted surface (radial wedge hover, inset rows) ──────────── */
+  --accent-surface: #3d2e10;
+  --accent-surface-hover: #4a3814;
 }
 
 /* ── Light theme ──────────────────────────────────────────── */
@@ -112,6 +122,14 @@
   --btn-primary-text: #1a1a2e;
   --backdrop-modal: rgba(0, 0, 0, 0.35);
   --shadow-modal: 0 16px 48px rgba(0,0,0,0.20), 0 0 0 1px rgba(180,120,10,0.20);
+
+  --status-success: #16a34a;
+  --status-success-glow: rgba(22, 163, 74, 0.12);
+  --status-warning: #ca8a04;
+  --status-warning-glow: rgba(202, 138, 4, 0.12);
+
+  --accent-surface: #f5e0b0;
+  --accent-surface-hover: #f0d090;
 }
 
 html, body, #root {

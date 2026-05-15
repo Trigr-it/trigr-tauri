@@ -230,15 +230,15 @@
 }
 
 .macro-toggle.enabled {
-  background: rgba(80, 200, 120, 0.1);
+  background: var(--status-success-glow);
   border-color: rgba(80, 200, 120, 0.3);
-  color: #50c878;
+  color: var(--status-success);
 }
 
 .macro-toggle.disabled {
   background: rgba(255, 80, 80, 0.08);
   border-color: rgba(255, 80, 80, 0.3);
-  color: #9a9aa8;
+  color: var(--text-muted);
 }
 
 .toggle-dot {
@@ -249,8 +249,8 @@
 }
 
 .macro-toggle.enabled .toggle-dot {
-  background: #50c878;
-  box-shadow: 0 0 6px #50c878;
+  background: var(--status-success);
+  box-shadow: 0 0 6px var(--status-success);
   animation: pulse-green 2s ease infinite;
 }
 
@@ -274,12 +274,13 @@
   justify-content: center;
   color: var(--text-muted);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.12s, color 0.12s, transform 0.12s;
 }
 
 .tb-settings-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  transform: translateY(-1px);
 }
 
 .tb-settings-btn.active {
@@ -299,11 +300,13 @@
   justify-content: center;
   color: var(--text-muted);
   cursor: pointer;
+  transition: background 0.12s, color 0.12s, transform 0.12s;
 }
 
 .theme-toggle-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  transform: translateY(-1px);
 }
 
 .window-controls {

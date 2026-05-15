@@ -31,7 +31,7 @@
 }
 
 .status-indicator.active {
-  color: #50c878;
+  color: var(--status-success);
 }
 
 .status-indicator.inactive {
@@ -47,8 +47,8 @@
 }
 
 .status-indicator.active .status-dot {
-  background: #50c878;
-  box-shadow: 0 0 5px #50c878;
+  background: var(--status-success);
+  box-shadow: 0 0 5px var(--status-success);
   animation: pulse-green 2s ease infinite;
 }
 
@@ -88,9 +88,9 @@
 }
 
 .engine-chip.ok {
-  color: #50c878;
+  color: var(--status-success);
   border-color: rgba(80, 200, 120, 0.2);
-  background: rgba(80, 200, 120, 0.05);
+  background: var(--status-success-glow);
 }
 
 .engine-chip.warn {
@@ -101,7 +101,7 @@
 
 .status-fired {
   font-size: 11px;
-  color: #50c878;
+  color: var(--status-success);
   font-weight: 500;
   animation: fade-in-out 1.5s ease forwards;
 }

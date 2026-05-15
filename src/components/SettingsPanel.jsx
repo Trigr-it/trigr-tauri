@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, SearchX } from 'lucide-react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
 import { friendlyKeyName } from './keyboardLayout';
@@ -76,6 +77,7 @@ export default function SettingsPanel({
   const [sharedConfigError, setSharedConfigError] = useState(null);
   const [confirmClearShared, setConfirmClearShared] = useState(false);
   const [sharedExistsPrompt, setSharedExistsPrompt] = useState(null); // { path } when needs_choice
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     window.electronAPI?.getConfigPath().then(p  => setConfigPath(p || ''));
@@ -107,6 +109,32 @@ export default function SettingsPanel({
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
   }, [confirmClearShared, sharedExistsPrompt, confirmRestore]);
+
+  // ── Settings search: filter visible sections by title match (DOM walk,
+  // post-render). Keeps JSX intact; toggles a class instead of conditional
+  // rendering so React's state tree doesn't reset on every keystroke.
+  useEffect(() => {
+    const root = document.querySelector('.settings-panel .settings-body');
+    if (!root) return;
+    const q = searchQuery.trim().toLowerCase();
+    const sections = root.querySelectorAll(':scope > .settings-section');
+    let visibleCount = 0;
+    sections.forEach(section => {
+      if (!q) {
+        section.classList.remove('settings-section-hidden');
+        visibleCount++;
+        return;
+      }
+      const title = section.querySelector('.settings-section-title')?.textContent?.toLowerCase() || '';
+      const bodyText = section.textContent?.toLowerCase() || '';
+      const match = title.includes(q) || bodyText.includes(q);
+      section.classList.toggle('settings-section-hidden', !match);
+      if (match) visibleCount++;
+    });
+    // Toggle "no results" empty state
+    const empty = root.querySelector('.settings-search-empty');
+    if (empty) empty.style.display = (q && visibleCount === 0) ? 'flex' : 'none';
+  }, [searchQuery]);
 
   const stopMicTest = useCallback(() => {
     if (micTestRef.current) {
@@ -184,6 +212,30 @@ export default function SettingsPanel({
       </div>
 
       <div className="settings-body">
+
+        {/* ── Search ──────────────────────────────────────── */}
+        <div className="settings-search-row">
+          <span className="settings-search-icon" aria-hidden="true">
+            <Search size={14} strokeWidth={1.75} />
+          </span>
+          <input
+            type="text"
+            className="settings-search-input"
+            placeholder="Search settings…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            spellCheck={false}
+            autoCorrect="off"
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="settings-search-empty" style={{ display: 'none' }}>
+          <span className="settings-search-empty-icon" aria-hidden="true">
+            <SearchX size={28} strokeWidth={1.5} />
+          </span>
+          <span className="settings-search-empty-text">No settings match "{searchQuery}"</span>
+        </div>
 
         {/* ── LICENCE ───────────────────────────────────── */}
         <section className="settings-section">

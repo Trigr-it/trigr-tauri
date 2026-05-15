@@ -65,15 +65,13 @@
    live overlay window background is transparent. Semi-transparent fills
    show through to the desktop and look invisible. */
 .rw-wedge--hovered .rw-wedge-path {
-  fill: #3d2e10;
+  fill: var(--accent-surface);
   stroke: rgba(var(--accent-rgb), 0.3);
   stroke-width: 0.5;
   filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
-[data-theme="light"] .rw-wedge--hovered .rw-wedge-path {
-  fill: #f5e0b0;
-}
+/* Light-theme fill now handled by --accent-surface token override */
 
 /* ── Folder wedge ─────────────────────────────────────────────────────────── */
 
@@ -86,16 +84,14 @@
 }
 
 .rw-wedge--folder-expanded .rw-wedge-path {
-  fill: #3d2e10;
+  fill: var(--accent-surface);
   stroke: rgba(var(--accent-rgb), 0.3);
   stroke-width: 0.5;
   stroke-dasharray: none;
   filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
-[data-theme="light"] .rw-wedge--folder-expanded .rw-wedge-path {
-  fill: #f5e0b0;
-}
+/* Light-theme fill now handled by --accent-surface token override */
 
 /* ── Missing/orphaned item ────────────────────────────────────────────────── */
 
@@ -142,13 +138,11 @@
 }
 
 .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
-  fill: #3d2e10;
+  fill: var(--accent-surface);
   stroke: var(--accent);
 }
 
-[data-theme="light"] .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
-  fill: #f5e0b0;
-}
+/* Light-theme fill now handled by --accent-surface token override */
 
 .rw-wedge--outer.rw-wedge--empty .rw-wedge-path {
   fill: rgba(128, 128, 128, 0.18);

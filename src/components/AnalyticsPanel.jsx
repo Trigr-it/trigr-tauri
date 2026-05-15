@@ -52,9 +52,15 @@ export default function AnalyticsPanel({ isPro = false }) {
     clearTimeout(tooltipTimer.current);
     const rect = e.currentTarget.getBoundingClientRect();
     const panelRect = e.currentTarget.closest('.analytics-panel')?.getBoundingClientRect();
+    const yAbove = rect.top - (panelRect?.top || 0) - 4;
+    const yBelow = rect.bottom - (panelRect?.top || 0) + 4;
+    // Approximate tooltip height; flip to below the trigger when there's no room above.
+    const estimatedHeight = Math.max(60, lines.length * 22 + 16);
+    const flipBelow = yAbove < estimatedHeight;
     setTooltip({
       x: rect.left + rect.width / 2 - (panelRect?.left || 0),
-      y: rect.top - (panelRect?.top || 0) - 4,
+      y: flipBelow ? yBelow : yAbove,
+      below: flipBelow,
       lines,
     });
   }
@@ -717,7 +723,7 @@ export default function AnalyticsPanel({ isPro = false }) {
       {/* ── Custom tooltip ── */}
       {tooltip && (
         <div
-          className="analytics-tooltip"
+          className={`analytics-tooltip${tooltip.below ? ' analytics-tooltip--below' : ''}`}
           style={{ left: tooltip.x, top: tooltip.y }}
         >
           {tooltip.lines.map((line, i) => (

@@ -129,7 +129,7 @@
 }
 
 .te-add-btn {
-  height: 24px;
+  height: 28px;
   padding: 0 10px;
   background: var(--accent-glow);
   border: 1px solid var(--border-accent);
@@ -344,7 +344,7 @@
 }
 
 .te-cat-add-input {
-  height: 24px;
+  height: 28px;
   padding: 0 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
@@ -1251,7 +1251,7 @@ button.te-col-header:hover {
 
 .rte-fillin-input {
   flex: 1;
-  height: 24px;
+  height: 28px;
   padding: 0 7px;
   background: var(--bg-surface);
   border: 1px solid var(--border-accent);
@@ -1265,7 +1265,7 @@ button.te-col-header:hover {
 }
 
 .rte-fillin-ok {
-  height: 24px;
+  height: 28px;
   padding: 0 10px;
   background: rgba(200, 100, 255, 0.15);
   border: 1px solid rgba(200, 100, 255, 0.4);
