@@ -21,6 +21,30 @@
   } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
 })();
 </script>
+
+<!-- ════════════════════════════════════════════════════════════
+     GOOGLE ANALYTICS 4 (gtag) + Consent Mode v2
+
+     UK/EEA compliance: all storage types default to 'denied'.
+     Consent is updated to 'granted' only when the user clicks
+     Accept on the cookie banner (see bottom of page).
+
+     The consent default MUST run before gtag('config', ...).
+     ════════════════════════════════════════════════════════════ -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-KBLCKKSZKE"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('consent', 'default', {
+    'analytics_storage': 'denied',
+    'ad_storage': 'denied',
+    'ad_user_data': 'denied',
+    'ad_personalization': 'denied'
+  });
+  gtag('js', new Date());
+  gtag('config', 'G-KBLCKKSZKE');
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -978,6 +1002,73 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   .ss-stage { padding: 20px 12px; min-height: 320px; }
 }
 
+/* ════════════════════════════════════════════════════════════
+   COOKIE CONSENT BANNER
+   z-index sits above nav (100) and below the smartscreen modal
+   so the modal can take focus over the banner if both ever show.
+   ════════════════════════════════════════════════════════════ */
+.cookie-banner {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 150;
+  padding: 18px 32px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--hairline);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.35);
+  font-family: var(--font-body);
+}
+[data-theme="light"] .cookie-banner { box-shadow: 0 -8px 32px rgba(0,0,0,0.08); }
+.cookie-banner[hidden] { display: none; }
+.cookie-banner-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0;
+}
+.cookie-banner-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.cookie-btn {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s, background 0.2s, color 0.2s;
+  border: 1px solid transparent;
+}
+.cookie-btn-accept {
+  background: var(--gold);
+  color: #0d0d11;
+  border-color: var(--gold);
+}
+.cookie-btn-accept:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(232,160,32,0.3); }
+[data-theme="light"] .cookie-btn-accept { color: #fff; }
+.cookie-btn-decline {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--hairline-strong);
+}
+.cookie-btn-decline:hover { color: var(--text); border-color: var(--text-muted); }
+@media (max-width: 640px) {
+  .cookie-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px 20px 18px;
+  }
+  .cookie-banner-actions { justify-content: flex-end; }
+  .cookie-btn { flex: 1; }
+}
+
 </style>
 </head>
 <body>
@@ -995,7 +1086,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
     <a href="#how">How it works</a>
     <a href="trigr-help.html">Guide</a>
     <a href="roadmap.html">Roadmap</a>
-    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta">Download</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
   </div>
 </nav>
@@ -1012,13 +1103,13 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
     <h1 class="hero-h1">Your keyboard<br>can do more<br>than <em>type.</em></h1>
     <p class="hero-sub">Visual hotkeys, macros, and text expansion for Windows. No scripting required.</p>
     <div class="hero-actions">
-      <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="btn-primary">
+      <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="btn-primary" data-loc="hero" data-arch="x64">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
         Download for Windows
       </a>
       <a href="trigr-help.html" class="btn-secondary">See how it works →</a>
     </div>
-    <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe">Download the ARM64 build</a>.</p>
+    <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
     <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Fully local — no accounts, no cloud <span>·</span> Latest: <span id="latest-version">v…</span></p>
 
     <!-- ── MOCKUP ── -->
@@ -1638,11 +1729,11 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   <div class="cta-card">
     <h2 class="cta-h2">Your keyboard.<br><em>Trigr it.</em></h2>
     <p class="cta-sub">Core features are free, always. Pro and Teams licences land at v1.0 — everyone testing now gets a thank-you discount at launch.</p>
-    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="btn-primary" style="font-size:16px;padding:16px 36px;">
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="btn-primary" style="font-size:16px;padding:16px 36px;" data-loc="footer_cta" data-arch="x64">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Download for Windows — Free
     </a>
-    <p class="cta-arm-link" style="margin-top:14px;font-size:13px;opacity:0.72;">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe">Download the ARM64 build</a>.</p>
+    <p class="cta-arm-link" style="margin-top:14px;font-size:13px;opacity:0.72;">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="footer_cta_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
     <div class="cta-meta">
       <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Windows 10 / 11</span>
       <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>~10MB · runtime included</span>
@@ -1671,7 +1762,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
         <a href="#features">Features</a>
         <a href="#how">How it works</a>
         <a href="roadmap.html">Roadmap</a>
-        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe">Download</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
       </div>
       <div class="ft-col">
         <h4>Resources</h4>
@@ -2444,9 +2535,103 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
   var links = document.querySelectorAll('a[href*="setup.exe"]');
   links.forEach(function (a) {
     a.addEventListener('click', function () {
+      // Fire GA4 download_click event. Defaults-denied consent means this
+      // ping is dropped client-side if the user hasn't accepted cookies,
+      // so it's safe to call unconditionally.
+      try {
+        if (typeof gtag === 'function') {
+          gtag('event', 'download_click', {
+            location: a.getAttribute('data-loc') || 'unknown',
+            arch:     a.getAttribute('data-arch') || 'unknown',
+            source:   resolveDownloadSource()
+          });
+        }
+      } catch (e) { /* analytics failure must never block the download */ }
       // Do not preventDefault, let the download proceed.
       setTimeout(openModal, 120);
     });
+  });
+
+  // Source resolver — utm_source query param wins, then referrer hostname,
+  // then 'direct'. Lives at the bottom of the script so it's hoisted for
+  // the click handlers above via function-declaration hoisting.
+  function resolveDownloadSource() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var utm = params.get('utm_source');
+      if (utm) return utm;
+      if (document.referrer) {
+        try {
+          var host = new URL(document.referrer).hostname;
+          if (host) return host;
+        } catch (e) { /* malformed referrer — fall through */ }
+      }
+      return 'direct';
+    } catch (e) {
+      return 'direct';
+    }
+  }
+})();
+</script>
+
+<!-- ════════════════════════════════════════════════════════════
+     COOKIE CONSENT BANNER
+
+     Default consent is denied (set in <head>). This banner gives
+     the user a chance to opt in. Choice is persisted in
+     localStorage under 'trigr_cookie_consent' as 'accepted' or
+     'declined'. Banner only appears when the key is absent.
+     ════════════════════════════════════════════════════════════ -->
+<div class="cookie-banner" id="cookie-banner" role="dialog" aria-label="Cookie consent" hidden>
+  <p class="cookie-banner-text">Trigr uses cookies to understand which channels send us new users. The app itself runs fully offline — your data never leaves your device.</p>
+  <div class="cookie-banner-actions">
+    <button type="button" class="cookie-btn cookie-btn-decline" id="cookie-decline">Decline</button>
+    <button type="button" class="cookie-btn cookie-btn-accept" id="cookie-accept">Accept</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var STORAGE_KEY = 'trigr_cookie_consent';
+  var banner = document.getElementById('cookie-banner');
+  if (!banner) return;
+  var accept = document.getElementById('cookie-accept');
+  var decline = document.getElementById('cookie-decline');
+
+  function grantConsent() {
+    if (typeof gtag === 'function') {
+      gtag('consent', 'update', {
+        'analytics_storage': 'granted',
+        'ad_storage': 'granted',
+        'ad_user_data': 'granted',
+        'ad_personalization': 'granted'
+      });
+    }
+  }
+  function hideBanner() {
+    banner.setAttribute('hidden', '');
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) { /* private mode — banner will reshow each visit, acceptable */ }
+
+  if (saved === 'accepted') {
+    grantConsent();
+    // banner stays hidden
+  } else if (saved === 'declined') {
+    // banner stays hidden, consent stays denied
+  } else {
+    banner.removeAttribute('hidden');
+  }
+
+  accept && accept.addEventListener('click', function () {
+    try { localStorage.setItem(STORAGE_KEY, 'accepted'); } catch (e) {}
+    grantConsent();
+    hideBanner();
+  });
+  decline && decline.addEventListener('click', function () {
+    try { localStorage.setItem(STORAGE_KEY, 'declined'); } catch (e) {}
+    hideBanner();
   });
 })();
 </script>
