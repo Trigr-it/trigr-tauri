@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; font-src 'self'; connect-src 'self' https://github.com https://api.github.com",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://do.featurebase.app; style-src 'self' 'unsafe-inline' https://do.featurebase.app; img-src 'self' data: asset: https://asset.localhost https://*.featurebase.app; font-src 'self' https://do.featurebase.app; connect-src 'self' https://github.com https://api.github.com https://do.featurebase.app https://*.featurebase.app; frame-src https://*.featurebase.app https://do.featurebase.app",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]

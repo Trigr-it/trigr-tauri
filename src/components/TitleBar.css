@@ -215,6 +215,46 @@
   background: var(--accent-glow);
 }
 
+/* ── Feedback pill ───────────────────────────────────────────── */
+/* Solid-gold primary pill, intentionally louder than .tb-templates-btn so
+   beta testers can spot the feedback affordance immediately. Uses the
+   project-wide --btn-primary-* tokens so both themes get high-contrast
+   dark text on gold. */
+.tb-feedback-btn {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 13px;
+  background: var(--btn-primary-bg);
+  border: 1px solid var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.08s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  box-shadow: 0 0 0 0 var(--accent-glow);
+}
+
+.tb-feedback-btn:hover {
+  background: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.tb-feedback-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 0 var(--accent-glow);
+}
+
+.tb-feedback-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow-strong);
+}
+
 .macro-toggle {
   display: flex;
   align-items: center;

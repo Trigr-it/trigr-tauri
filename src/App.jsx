@@ -15,6 +15,7 @@ import WelcomeModal from './components/WelcomeModal';
 import UpgradeModal from './components/UpgradeModal';
 import OnboardingTour from './components/OnboardingTour';
 import ProTrialModal from './components/ProTrialModal';
+import TemplatesCoachmark from './components/TemplatesCoachmark';
 import QuickTips from './components/QuickTips';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import ClipboardPanel from './components/ClipboardPanel';
@@ -78,6 +79,17 @@ function App() {
   const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
   const [upgradePrompt, setUpgradePrompt]               = useState(null); // feature name string, or null
   const [showProTrialModal, setShowProTrialModal]       = useState(false);
+  // Templates coachmark — drops down from the Templates pill once after the
+  // onboarding tour + trial offer have settled. Anchored via templatesPillRef
+  // (passed into TitleBar). openTemplatesSignal is a nonce: incrementing it
+  // tells TitleBar to open its Templates dropdown.
+  const [showTemplatesNudge, setShowTemplatesNudge]     = useState(false);
+  const [templatesNudgeSeen, setTemplatesNudgeSeen]     = useState(true); // default true → don't fire until config loads and tells us otherwise
+  const [templatesPillRect, setTemplatesPillRect]       = useState(null);
+  const [openTemplatesSignal, setOpenTemplatesSignal]   = useState(0);
+  const [licenceChecked, setLicenceChecked]             = useState(false); // true once checkLicenceRevalidation resolves; gates the nudge so it can't race the migration trial popup
+  const templatesPillRef = useRef(null);
+  const onboardingCompleteRef = useRef(false); // set when config load finishes; used by the nudge fire-effect
   const [listViewActive, setListViewActive]             = useState(() => {
     try { return localStorage.getItem('trigr_list_view') === 'true'; } catch { return false; }
   });
@@ -302,6 +314,12 @@ function App() {
           setShowWelcome(true);
         }
 
+        // Templates coachmark seed. Treat existing v0.4.5 users (where the
+        // flag is undefined) as not-yet-seen so they get the nudge once on
+        // their first launch of v0.4.6.
+        setTemplatesNudgeSeen(config.templates_nudge_seen === true);
+        onboardingCompleteRef.current = !!onboardingComplete;
+
         needsSave = needsSave || !config.hasSeenWelcome;
         if (needsSave) {
           window.electronAPI.saveConfig({
@@ -320,7 +338,10 @@ function App() {
       // fires the one-time trial-offer popup for existing v0.4.4 installs
       // that already finished onboarding before the trial mechanism existed.
       window.electronAPI.checkLicenceRevalidation?.().then(ls => {
-        if (!ls) return;
+        if (!ls) {
+          setLicenceChecked(true);
+          return;
+        }
         setLicenceStatus(ls);
 
         // Migration popup: only fires for installs where the onboarding tour
@@ -333,7 +354,10 @@ function App() {
             && !ls.trial_offer_shown) {
           setShowProTrialModal(true);
         }
-      });
+        // Set this AFTER potentially queuing the migration popup so the
+        // templates coachmark effect can't fire ahead of the trial modal.
+        setLicenceChecked(true);
+      }).catch(() => setLicenceChecked(true));
 
 
       window.electronAPI.onEngineStatus((status) => {
@@ -451,6 +475,61 @@ function App() {
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
+
+  // ── Featurebase Feedback Widget init (main window only) ──
+  // The SDK <script> bootstrap lives in index.html and creates a queueing stub
+  // on window.Featurebase. We call initialize_feedback_widget once here so the
+  // widget UI is ready to mount on demand from SettingsPanel.
+  //
+  // App.jsx is only mounted in the main window (main.jsx routes overlay /
+  // fillin / radialmenu / clipboardoverlay windows to dedicated components and
+  // never loads App). The URL-param guard below is defence-in-depth in case
+  // that routing ever changes.
+  //
+  // The effect depends on `theme` so we can lock in the latest theme value at
+  // first run (config load updates theme asynchronously). A ref ensures we
+  // only init once even though theme may change again later — per spec the
+  // widget keeps its boot-time theme.
+  const featurebaseInitedRef = useRef(false);
+  useEffect(() => {
+    if (featurebaseInitedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('overlay') === '1'
+        || params.get('fillin') === '1'
+        || params.get('radialmenu') === '1'
+        || params.get('clipboardoverlay') === '1') {
+      return;
+    }
+    if (typeof window.Featurebase !== 'function') return;
+    featurebaseInitedRef.current = true;
+    try {
+      // Signature: Featurebase('initialize_feedback_widget', options, callback)
+      // The callback receives action payloads from the widget — currently used
+      // as a console-only debug hook so silent submission failures are
+      // traceable from DevTools. No UI toast on success per spec.
+      // Note: `placement` is intentionally omitted. Per Featurebase docs,
+      // setting `placement` is what makes the SDK render its own edge-tab
+      // trigger. We provide a Trigr-branded trigger in the titlebar
+      // (TitleBar.jsx) and in Settings (SettingsPanel.jsx) instead, so the
+      // auto-tab is suppressed by omission.
+      window.Featurebase('initialize_feedback_widget', {
+        organization: 'trigr',
+        theme: theme,
+        defaultBoard: 'feature-requests',
+        locale: 'en',
+      }, (err, action) => {
+        if (err) {
+          console.warn('[Featurebase] error', err);
+          return;
+        }
+        if (action && action.action === 'feedbackSubmitted') {
+          console.log('[Featurebase] feedback submitted', action);
+        }
+      });
+    } catch (e) {
+      console.warn('[Featurebase] init failed', e);
+    }
+  }, [theme]);
 
   // ── UPDATER — DO NOT MODIFY WITHOUT EXPLICIT INSTRUCTION ──
   // Permissions required: updater:allow-check, updater:default (default.json)
@@ -2177,6 +2256,7 @@ function App() {
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
+    onboardingCompleteRef.current = true;
     window.electronAPI?.saveConfig({
       onboarding_complete: true,
       hasSeenWelcome: true,
@@ -2196,13 +2276,71 @@ function App() {
   const handleRestartOnboarding = useCallback(() => {
     setShowSettings(false);
     window.electronAPI?.resetOnboarding();
+    // Reset the templates coachmark so it re-fires after the replayed tour
+    // (and after any trial offer that follows). Mirrors the new-user flow.
+    setTemplatesNudgeSeen(false);
+    window.electronAPI?.saveConfig({ templates_nudge_seen: false });
     setShowOnboarding(true);
+    onboardingCompleteRef.current = false;
   }, []);
 
   const handleDismissTips = useCallback(() => {
     setTipsHidden(true);
     window.electronAPI?.saveConfig({ tipsHidden: true });
   }, []);
+
+  // ── Templates coachmark fire / dismiss ─────────────────────
+  const handleDismissTemplatesNudge = useCallback(() => {
+    setShowTemplatesNudge(false);
+    setTemplatesNudgeSeen(true);
+    window.electronAPI?.saveConfig({ templates_nudge_seen: true });
+  }, []);
+
+  const handleOpenTemplatesFromCoachmark = useCallback(() => {
+    setOpenTemplatesSignal(n => n + 1);
+    handleDismissTemplatesNudge();
+  }, [handleDismissTemplatesNudge]);
+
+  // Fire the coachmark once the user lands on the main UI with the Templates
+  // pill visible. Guard rails:
+  //   - onboarding tour, welcome modal, and trial modal must all be closed
+  //   - user must be on the Triggers (mapping) tab so the pill is rendered
+  //   - the pill itself must not have been right-click-dismissed (localStorage)
+  //   - templates_nudge_seen must be false (one-shot)
+  //   - onboarding_complete must be true (don't fire if user quit mid-tour)
+  useEffect(() => {
+    if (!licenceChecked) return; // wait until any migration trial popup has had a chance to open
+    if (showOnboarding || showWelcome || showProTrialModal) return;
+    if (templatesNudgeSeen || showTemplatesNudge) return;
+    if (activeArea !== 'mapping') return;
+    if (!onboardingCompleteRef.current) return;
+    try {
+      if (localStorage.getItem('trigr_templates_dismissed') === 'true') return;
+    } catch {}
+
+    // Defer one frame + a small beat so the TitleBar pill has laid out (and
+    // any modal close animation has run) before we measure its rect.
+    const t = setTimeout(() => {
+      const el = templatesPillRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return; // not yet rendered
+      setTemplatesPillRect(rect);
+      setShowTemplatesNudge(true);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [licenceChecked, showOnboarding, showWelcome, showProTrialModal, templatesNudgeSeen, showTemplatesNudge, activeArea]);
+
+  // Keep the coachmark's anchor rect in sync with window resizes while it's open.
+  useEffect(() => {
+    if (!showTemplatesNudge) return;
+    function onResize() {
+      const el = templatesPillRef.current;
+      if (el) setTemplatesPillRect(el.getBoundingClientRect());
+    }
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [showTemplatesNudge]);
 
   // ── Template import (additive) ─────────────────────────────
   const handleImportTemplate = useCallback((templateAssignments) => {
@@ -2452,6 +2590,13 @@ function App() {
           }}
         />
       )}
+      {showTemplatesNudge && (
+        <TemplatesCoachmark
+          anchorRect={templatesPillRect}
+          onOpenTemplates={handleOpenTemplatesFromCoachmark}
+          onDismiss={handleDismissTemplatesNudge}
+        />
+      )}
       {backupRestoredFrom && (
         <div className="backup-restored-banner">
           <span className="backup-restored-icon">⚠</span>
@@ -2549,6 +2694,9 @@ function App() {
         onImportTemplate={handleImportTemplate}
         onImportCadTemplate={handleImportCadTemplate}
         onShowNotification={showNotification}
+        templatesPillRef={templatesPillRef}
+        templatesPillPulse={showTemplatesNudge}
+        openTemplatesSignal={openTemplatesSignal}
       />
       <DndContext
         sensors={radialSensors}

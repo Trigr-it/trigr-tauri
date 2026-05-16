@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon } from 'lucide-react';
+import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare } from 'lucide-react';
 import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
+import { openFeedback } from '../utils/feedback';
 
 const AREA_TABS = [
   { key: 'mapping',    label: 'Triggers' },
@@ -26,6 +27,9 @@ export default function TitleBar({
   onImportTemplate,
   onImportCadTemplate,
   onShowNotification,
+  templatesPillRef,
+  templatesPillPulse = false,
+  openTemplatesSignal = 0,
 }) {
   const handleMinimize = () => window.electronAPI?.minimize();
   const handleMaximize = () => window.electronAPI?.maximize();
@@ -57,6 +61,14 @@ export default function TitleBar({
     try { localStorage.setItem('trigr_templates_dismissed', 'true'); } catch {}
     onShowNotification?.('Templates can always be found in Settings', 'info');
   };
+
+  // External "open templates" signal (coachmark "Browse templates" button).
+  // Increments a nonce, so each click re-opens even after manual close.
+  useEffect(() => {
+    if (openTemplatesSignal > 0 && !templatesDismissed) {
+      setTemplatesOpen(true);
+    }
+  }, [openTemplatesSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Responsive tabs → dropdown ──────────────────────────────────────────
   const [tabsCollapsed, setTabsCollapsed] = useState(false);
@@ -186,7 +198,8 @@ export default function TitleBar({
         {activeArea === 'mapping' && !templatesDismissed && (
           <div className="tb-templates-wrap" ref={templatesRef} data-drag="false">
             <button
-              className={`tb-templates-btn${templatesOpen ? ' active' : ''}`}
+              ref={templatesPillRef}
+              className={`tb-templates-btn${templatesOpen ? ' active' : ''}${templatesPillPulse ? ' coachmark-pulse' : ''}`}
               onClick={() => setTemplatesOpen(v => !v)}
               onContextMenu={e => { e.preventDefault(); setTplCtxMenu({ x: e.clientX, y: e.clientY }); }}
               title="Starter templates — right-click to dismiss"
@@ -216,6 +229,16 @@ export default function TitleBar({
             )}
           </div>
         )}
+        <button
+          className="tb-feedback-btn"
+          onClick={openFeedback}
+          title="Send feedback or vote on the roadmap"
+          data-drag="false"
+          type="button"
+          aria-label="Send feedback"
+        >
+          <MessageSquare size={13} strokeWidth={1.75} style={{ marginRight: 6, verticalAlign: -2 }} /> Feedback
+        </button>
         {activeArea === 'mapping' && (
           <button
             className={`tb-list-toggle${listViewActive ? ' active' : ''}`}

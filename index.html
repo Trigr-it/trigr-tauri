@@ -5,6 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Trigr</title>
     <link rel="stylesheet" href="/fonts.css">
+    <!--
+      Featurebase Feedback Widget SDK loader. Creates a queueing stub on
+      window.Featurebase so calls made before the remote script loads (or
+      while offline) are buffered and replayed once it arrives. The actual
+      initialize_feedback_widget call lives in src/App.jsx and only runs in
+      the main window (overlay / fillin / radial / clipboard windows don't
+      load App.jsx, so they never init the widget UI).
+    -->
+    <script>
+      !function (e, t) {
+        var a = "featurebase-sdk";
+        function n() {
+          if (!t.getElementById(a)) {
+            var s = t.createElement("script");
+            s.id = a;
+            s.src = "https://do.featurebase.app/js/sdk.js";
+            s.async = true;
+            var first = t.getElementsByTagName("script")[0];
+            if (first && first.parentNode) {
+              first.parentNode.insertBefore(s, first);
+            } else {
+              t.head.appendChild(s);
+            }
+          }
+        }
+        if (typeof e.Featurebase !== "function") {
+          e.Featurebase = function () {
+            (e.Featurebase.q = e.Featurebase.q || []).push(arguments);
+          };
+        }
+        n();
+      }(window, document);
+    </script>
   </head>
   <body>
     <div id="root"></div>

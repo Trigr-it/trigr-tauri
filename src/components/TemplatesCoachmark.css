@@ -1,0 +1,129 @@
+.tpl-coachmark {
+  position: fixed;
+  z-index: 9000;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 8px;
+  padding: 14px 14px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), 0 0 0 1px var(--accent-glow);
+  animation: tplCoachmarkIn 180ms ease-out;
+}
+
+@keyframes tplCoachmarkIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tpl-coachmark-caret {
+  position: absolute;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-accent);
+  border-left: 1px solid var(--border-accent);
+  transform: rotate(45deg);
+}
+
+.tpl-coachmark-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.tpl-coachmark-close:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.tpl-coachmark-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tpl-coachmark-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.tpl-coachmark-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.tpl-coachmark-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.tpl-coachmark-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.tpl-coachmark-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.tpl-coachmark-btn--secondary {
+  background: transparent;
+  border-color: var(--border-bright);
+  color: var(--text-secondary);
+}
+
+.tpl-coachmark-btn--secondary:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.tpl-coachmark-btn--primary {
+  background: var(--accent);
+  color: #1a1a2e;
+}
+
+.tpl-coachmark-btn--primary:hover {
+  background: var(--accent-hover);
+}
+
+/* ── Pulse on the Templates pill while coachmark is open ─────── */
+
+.tb-templates-btn.coachmark-pulse {
+  border-color: var(--border-accent);
+  color: var(--accent);
+  animation: tplPillPulse 1.6s ease-out 2;
+}
+
+@keyframes tplPillPulse {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow-strong); }
+  60%  { box-shadow: 0 0 0 8px rgba(232, 160, 32, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(232, 160, 32, 0); }
+}
