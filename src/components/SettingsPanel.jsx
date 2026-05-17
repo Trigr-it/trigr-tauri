@@ -28,6 +28,7 @@ export default function SettingsPanel({
   keystrokeDelay    = 30,
   macroTriggerDelay = 150,
   doubleTapWindow   = 300,
+  defaultDateFormat = 'DD/MM/YYYY',
   onUpdateGlobalSettings,
   searchOverlayHotkey      = 'Ctrl+Space',
   overlayShowAll            = true,
@@ -1210,6 +1211,20 @@ export default function SettingsPanel({
               <span className="settings-slider-val">{doubleTapWindow}ms</span>
             </div>
           </div>
+
+          <label className="settings-field-label">Default date format</label>
+          <p className="settings-compat-desc">
+            Used by the bare <code>{'{date}'}</code> token and by Date Math tokens (Tomorrow / Yesterday / Next Week / Next Month). Explicit-format tokens like <code>{'{date:DD/MM/YYYY}'}</code> always use their own format.
+          </p>
+          <select
+            className="settings-select"
+            value={defaultDateFormat}
+            onChange={e => onUpdateGlobalSettings?.({ defaultDateFormat: e.target.value })}
+          >
+            <option value="DD/MM/YYYY">DD/MM/YYYY (UK) — e.g. 31/12/2026</option>
+            <option value="MM/DD/YYYY">MM/DD/YYYY (US) — e.g. 12/31/2026</option>
+            <option value="YYYY-MM-DD">YYYY-MM-DD (ISO) — e.g. 2026-12-31</option>
+          </select>
         </section>
 
         {/* ── BACKUP & RESTORE ───────────────────────────── */}

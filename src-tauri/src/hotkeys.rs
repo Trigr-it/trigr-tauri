@@ -436,6 +436,10 @@ pub(crate) struct EngineState {
     pub(crate) voice_hotkey: Option<(u8, u32)>,
     // Radial menu hotkey — parsed as (modifier_bits, vk_code)
     pub(crate) radial_menu_hotkey: Option<(u8, u32)>,
+    // Default date format for bare {date} token and unformatted Date Math tokens.
+    // One of: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD". Existing v0.4.6 users
+    // with no config field land on DD/MM/YYYY (the prior implicit default).
+    pub(crate) default_date_format: String,
 }
 
 use std::sync::Arc;
@@ -464,6 +468,7 @@ impl Default for EngineState {
             voice_hotkey: None, // Voice ships unmapped; user picks a hotkey when they enable voice (Pro-gated).
             clipboard_paste_hotkey: Some((3, 0x56)), // Default: Ctrl+Shift+V (bits=3, vk=0x56)
             radial_menu_hotkey: None, // Set via set_radial_menu_hotkey command
+            default_date_format: "DD/MM/YYYY".to_string(),
         }
     }
 }
@@ -842,6 +847,44 @@ pub(crate) fn resolve_char(vk: u32, scan: u32) -> Option<char> {
     vk_to_char(vk)
 }
 
+/// Resolve character with Shift state — US/UK layout only. Used by the
+/// expansion buffer so triggers requiring Shift (`:`, `?`, `>`, `<`, `"`,
+/// uppercase letters, shifted digits) match correctly. Non-US layouts still
+/// produce US/UK characters here; a future fix will use ToUnicodeEx.
+pub(crate) fn resolve_char_with_shift(vk: u32, scan: u32, shift: bool) -> Option<char> {
+    if !shift {
+        return resolve_char(vk, scan);
+    }
+    match vk {
+        // Letters → uppercase
+        0x41..=0x5A => Some((b'A' + (vk - 0x41) as u8) as char),
+        // Top-row digits → US/UK shifted symbols
+        0x31 => Some('!'),
+        0x32 => Some('@'),
+        0x33 => Some('#'),
+        0x34 => Some('$'),
+        0x35 => Some('%'),
+        0x36 => Some('^'),
+        0x37 => Some('&'),
+        0x38 => Some('*'),
+        0x39 => Some('('),
+        0x30 => Some(')'),
+        // OEM punctuation (shared between US and UK QWERTY)
+        0xBD => Some('_'),  // - → _
+        0xBB => Some('+'),  // = → +
+        0xDB => Some('{'),  // [ → {
+        0xDD => Some('}'),  // ] → }
+        0xBA => Some(':'),  // ; → :
+        0xDE => Some('"'),  // ' → " (US) / @ on UK — accept US default
+        0xC0 => Some('~'),  // ` → ~
+        0xDC => Some('|'),  // \ → |
+        0xBC => Some('<'),  // , → <
+        0xBE => Some('>'),  // . → >
+        0xBF => Some('?'),  // / → ?
+        _ => None,
+    }
+}
+
 // ── Character map for text expansion buffer ─────────────────────────────────
 // Used as fallback for non-OEM keys.  OEM keys use resolve_char() above.
 
@@ -892,6 +935,17 @@ fn has_any_modifier() -> bool {
 
 fn no_modifiers_held() -> bool {
     !has_any_modifier()
+}
+
+/// True when Shift is the only modifier held — used to route Shift+printable
+/// keystrokes (`:`, `?`, `"`, etc.) into the text-expansion buffer alongside
+/// the unmodified path. Ctrl/Alt/Win combos still go through the modified-
+/// hotkey path only.
+fn has_only_shift() -> bool {
+    MOD_SHIFT.load(Ordering::SeqCst)
+        && !MOD_CTRL.load(Ordering::SeqCst)
+        && !MOD_ALT.load(Ordering::SeqCst)
+        && !MOD_META.load(Ordering::SeqCst)
 }
 
 // ── Hook callbacks (NO I/O — must return within 300ms or Windows removes the hook)
@@ -1259,6 +1313,29 @@ pub fn sync_modifier_state_from_os() {
         MOD_CTRL.store(GetAsyncKeyState(0xA2) < 0 || GetAsyncKeyState(0xA3) < 0, Ordering::SeqCst);
         MOD_ALT.store(GetAsyncKeyState(0xA4) < 0 || GetAsyncKeyState(0xA5) < 0, Ordering::SeqCst);
         MOD_META.store(GetAsyncKeyState(0x5B) < 0 || GetAsyncKeyState(0x5C) < 0, Ordering::SeqCst);
+    }
+}
+
+/// Drive the text-expansion buffer for a bare or Shift-only printable
+/// keystroke. Called once any hotkey-matching is known to have NOT matched.
+/// Skips work if the fill-in window has focus (those keystrokes belong to it).
+fn process_expansion_keystroke(key_id: &str, vk: u32, scan: u32) {
+    if FILLIN_HWND.load(Ordering::SeqCst) != 0 {
+        return;
+    }
+    if key_id == "Backspace" {
+        crate::expansions::buffer_pop();
+    } else if key_id == "Space" {
+        crate::expansions::check_space_trigger();
+        crate::expansions::buffer_clear();
+    } else if key_id == "Enter" || key_id == "Escape" || key_id == "Tab" {
+        crate::expansions::buffer_clear();
+    } else {
+        let shift = MOD_SHIFT.load(Ordering::SeqCst);
+        if let Some(ch) = resolve_char_with_shift(vk, scan, shift) {
+            crate::expansions::buffer_push(ch);
+            crate::expansions::check_immediate_triggers();
+        }
     }
 }
 
@@ -1643,25 +1720,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
         // No bare key match — handle text expansion buffer
         drop(state); // release engine lock before expansion calls
-
-        // Skip expansion buffer while fill-in window is visible — keystrokes are for the fill-in input
-        if FILLIN_HWND.load(Ordering::SeqCst) != 0 {
-            return;
-        }
-
-        if key_id == "Backspace" {
-            crate::expansions::buffer_pop();
-        } else if key_id == "Space" {
-            // Check for expansion/autocorrect trigger
-            crate::expansions::check_space_trigger();
-            crate::expansions::buffer_clear();
-        } else if key_id == "Enter" || key_id == "Escape" || key_id == "Tab" {
-            crate::expansions::buffer_clear();
-        } else if let Some(ch) = resolve_char(vk, scan) {
-            crate::expansions::buffer_push(ch);
-            // Check for immediate-mode triggers after each character
-            crate::expansions::check_immediate_triggers();
-        }
+        process_expansion_keystroke(&key_id, vk, scan);
         return;
     }
 
@@ -1682,7 +1741,13 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         }
     }
 
+    // Track whether a modified hotkey matched. If not, and Shift was the only
+    // modifier held, the keystroke should still drive the expansion buffer
+    // (so triggers like ":kr" work).
+    let mut hotkey_matched = false;
+
     if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
+        hotkey_matched = true;
         crate::expansions::buffer_clear();
         // Check for double-tap variant
         let double_key = format!("{}::double", storage_key);
@@ -1764,6 +1829,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         // No single-press — check for double-only
         let double_key = format!("{}::double", storage_key);
         if state.assignments.contains_key(&double_key) {
+            hotkey_matched = true;
             crate::expansions::buffer_clear();
             let now = Instant::now();
             let dtw = state.double_tap_window_ms;
@@ -1780,6 +1846,16 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             }
             state.last_hotkey_time.insert(storage_key, now);
         }
+    }
+
+    // ── Shift-only fallthrough for text-expansion buffer ────────────────
+    // If no modified hotkey matched and Shift is the only modifier held,
+    // route the keystroke through the expansion buffer so triggers
+    // requiring Shift (":kr", "?help", uppercase letters, etc.) work.
+    // Ctrl/Alt/Win combos do NOT fall through — those are hotkey territory.
+    if !hotkey_matched && has_only_shift() {
+        drop(state);
+        process_expansion_keystroke(&key_id, vk, scan);
     }
 }
 
@@ -2614,6 +2690,12 @@ pub fn update_global_settings(settings: &Value) {
     }
     if let Some(v) = settings.get("macroTriggerDelay").and_then(|v| v.as_u64()) {
         state.custom_pre_execution_delay = v;
+    }
+    if let Some(s) = settings.get("defaultDateFormat").and_then(|v| v.as_str()) {
+        // Whitelist accepted values; unknown strings fall through to existing default.
+        if matches!(s, "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD") {
+            state.default_date_format = s.to_string();
+        }
     }
 }
 

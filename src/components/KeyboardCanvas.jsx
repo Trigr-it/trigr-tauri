@@ -21,7 +21,7 @@ export function comboString(modifiers) {
   return order.filter(m => modifiers.includes(m)).join('+');
 }
 
-export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecording, onStartRecord, onStopRecord, recordCapture }) {
+export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecording, onStartRecord, onStopRecord, recordCapture, selectedKey }) {
   const isBare = activeModifiers.includes('BARE');
   const combo  = comboString(activeModifiers);
   const recordStartTime = useRef(0);
@@ -104,7 +104,11 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             <span className="combo-active-label">Layer:</span>
             <kbd className="combo-key combo-key-bare">Bare</kbd>
             <span className="combo-plus">+</span>
-            <kbd className="combo-key combo-key-target">key</kbd>
+            {selectedKey ? (
+              <kbd className="combo-key combo-key-selected">{friendlyKeyName(selectedKey)}</kbd>
+            ) : (
+              <kbd className="combo-key combo-key-target">key</kbd>
+            )}
             <span className="combo-bare-hint"> — fires only when linked app is focused</span>
           </span>
         ) : (
@@ -117,7 +121,11 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
               </React.Fragment>
             ))}
             <span className="combo-plus">+</span>
-            <kbd className="combo-key combo-key-target">key</kbd>
+            {selectedKey ? (
+              <kbd className="combo-key combo-key-selected">{friendlyKeyName(selectedKey)}</kbd>
+            ) : (
+              <kbd className="combo-key combo-key-target">key</kbd>
+            )}
           </span>
         )}
       </div>
@@ -258,6 +266,7 @@ export default function KeyboardCanvas({
         onStartRecord={onStartRecord}
         onStopRecord={onStopRecord}
         recordCapture={recordCapture}
+        selectedKey={selectedKey}
       />
 
       {/* Empty state — shown only when no modifier is selected AND no assignments exist anywhere */}

@@ -970,6 +970,18 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
 
     // {date:...} and {time:...} tokens
     let now = chrono::Local::now();
+    // Resolve the user's default date format once. Used by bare {date} and by
+    // unformatted Date Math tokens ({date:+1d} etc). Explicit-format variants
+    // below are unaffected.
+    let default_date_format = {
+        let state = crate::hotkeys::engine_state().lock().unwrap();
+        state.default_date_format.clone()
+    };
+    let default_chrono_fmt = match default_date_format.as_str() {
+        "MM/DD/YYYY" => "%m/%d/%Y",
+        "YYYY-MM-DD" => "%Y-%m-%d",
+        _ => "%d/%m/%Y", // DD/MM/YYYY fallback for missing/unknown values
+    };
     result = result.replace("{date:DD/MM/YYYY}", &now.format("%d/%m/%Y").to_string());
     result = result.replace("{date:DD/MM/YY}", &now.format("%d/%m/%y").to_string());
     result = result.replace("{date:MM/DD/YYYY}", &now.format("%m/%d/%Y").to_string());
@@ -982,6 +994,10 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
     result = result.replace("{day}", &now.format("%-d").to_string());
     result = result.replace("{date:D MMMM YYYY}", &now.format("%-d %B %Y").to_string());
     result = result.replace("{isodate}", &now.format("%Y-%m-%dT%H:%M:%S").to_string());
+    // Bare {date} — uses the user's default date format setting. Must run AFTER
+    // the explicit-format variants above so `{date:DD/MM/YYYY}` etc. are
+    // consumed first (otherwise `{date` would prefix-match into them).
+    result = result.replace("{date}", &now.format(default_chrono_fmt).to_string());
 
     // {date:+Nd}, {date:-Nm}, {date:+Ny} — date/time math with optional format suffix
     if result.contains("{date:+") || result.contains("{date:-") {
@@ -1018,17 +1034,17 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
                     _ => return None,
                 };
 
-                // Default format: DD/MM/YYYY with slashes (UK-style). The
-                // menu's quick tokens (Tomorrow / Yesterday / Next Week / Next
-                // Month) all hit this default. Explicit-format tokens like
-                // {date:+1d:YYYY-MM-DD} keep their requested format.
+                // Unformatted Date Math tokens (Tomorrow / Yesterday / Next
+                // Week / Next Month — {date:+1d} etc.) follow the user's
+                // default date format from Settings. Explicit-format variants
+                // like {date:+1d:YYYY-MM-DD} keep their requested format.
                 let chrono_fmt = match fmt_suffix {
                     "DD/MM/YYYY" => "%d/%m/%Y",
                     "DD/MM/YY"   => "%d/%m/%y",
                     "MM/DD/YYYY" => "%m/%d/%Y",
                     "YYYY-MM-DD" => "%Y-%m-%d",
                     "D MMMM YYYY" => "%-d %B %Y",
-                    _ => "%d/%m/%Y",
+                    _ => default_chrono_fmt,
                 };
 
                 let formatted = target_date.format(chrono_fmt).to_string();

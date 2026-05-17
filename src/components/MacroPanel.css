@@ -80,6 +80,65 @@
   letter-spacing: 0.04em;
 }
 
+/* Draft variant — shown when a duplicate has been created but no destination
+   key has been chosen yet. Dashed border + muted colour to read as "pending". */
+.selected-key-badge-draft {
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+/* Banner above the editor in draft mode (post-duplicate, pre-assignment). */
+.draft-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.draft-banner-icon {
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.draft-banner-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.draft-banner-text strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.draft-banner-cancel {
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.draft-banner-cancel:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
 .panel-close {
   width: 26px;
   height: 26px;
@@ -828,7 +887,7 @@
 }
 
 .macro-step-value {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   font-size: 11px;
 }
@@ -973,8 +1032,8 @@
   display: flex;
   align-items: center;
   gap: 3px;
-  height: 32px;
-  padding: 0 8px;
+  min-height: 32px;
+  padding: 4px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   border-radius: 6px;
@@ -983,6 +1042,8 @@
   font-size: 12px;
   outline: none;
   user-select: none;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .key-capture:hover {
@@ -1009,6 +1070,8 @@
   display: flex;
   align-items: center;
   gap: 3px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .key-capture-value kbd {
@@ -1031,91 +1094,94 @@
 
 /* ── Win key manual builder ──────────────────────────────────────────────── */
 
-.win-builder {
+/* Win-key advisory sub-row — sits below .macro-step-row inside .macro-step
+   when the user presses Win during capture (Start menu steals focus) or when
+   Win is already in the stored value. Mirrors the .wfi-config-row pattern:
+   continuous text, no panel border, indented to align with the value field. */
+.step-advisory-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-.win-builder-badge {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 2px 7px;
+  gap: 8px;
+  padding: 2px 30px 6px 48px; /* matches .wfi-config-row indentation */
   font-size: 11px;
-  font-weight: 700;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
-  letter-spacing: 0.04em;
-  line-height: 1.6;
-  flex-shrink: 0;
-}
-
-.win-builder-plus {
   color: var(--text-muted);
-  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Inline variant used inside the Send Hotkey action's form section (no
+   macro-step indentation needed there). */
+.step-advisory-row--inline {
+  padding: 6px 0 0 0;
+}
+
+.step-advisory-icon {
+  color: var(--accent);
+  font-size: 13px;
   flex-shrink: 0;
+  line-height: 1;
 }
 
-.win-builder-select {
-  height: 26px;
-  padding: 0 6px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-bright);
+.step-advisory-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-advisory-dismiss {
+  width: 20px;
+  height: 20px;
   border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 11px;
-  font-family: inherit;
-  outline: none;
-  cursor: pointer;
-  min-width: 70px;
-}
-
-.win-builder-select.win-builder-mod {
-  min-width: 56px;
-}
-
-.win-builder-select:focus {
-  border-color: var(--border-accent);
-}
-
-.win-builder-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  border: 1px solid var(--border-bright);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
   flex-shrink: 0;
   transition: all 0.12s;
 }
 
-.win-builder-confirm:hover {
-  background: var(--accent);
+.step-advisory-dismiss:hover {
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+
+/* +Win toggle pill — lives inside the advisory sub-row. */
+.win-toggle-pill {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-display, inherit);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.win-toggle-pill:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+.win-toggle-pill-on {
+  background: var(--accent-glow);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent);
 }
 
-.win-builder-cancel:hover {
-  background: rgba(255, 80, 80, 0.15);
-  border-color: rgba(255, 80, 80, 0.3);
-  color: var(--danger-hover);
-}
-
-.win-builder-warn {
-  font-size: 9px;
-  color: var(--text-muted);
-  font-style: italic;
-  width: 100%;
-  margin-top: 2px;
+.win-toggle-pill-on:hover {
+  background: var(--accent-glow-strong);
+  color: var(--accent);
 }
 
 /* Footer */

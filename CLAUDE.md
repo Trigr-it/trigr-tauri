@@ -194,6 +194,24 @@ Mouse button:  ProfileName::Modifier::MOUSE_LEFT
 
 ---
 
+## Writing & Copy Rules
+
+**No em-dashes (—) in publication-bound copy.** This includes anything the founder will publish under his name: website copy, in-app strings, Reddit posts, marketing emails, social, FAQ answers, release notes, changelog entries, blog posts.
+
+- **Why:** The em-dash connecting two clauses is the single most recognisable AI-writing tell. Reddit power users and dev-tool buyers clock posts as AI-written within seconds when peppered with em-dashes. Memory cross-ref: `feedback_no_em_dashes`.
+- **Replace with:** full stops (split into two sentences), commas (when the relationship is light), parentheses (for asides), or colons (for definitions). Sometimes just delete the second half — the original sentence often didn't need it.
+- **Allowed:** compound-modifier hyphens (`30-day key`, `x64-setup`, `Win32 hooks`). The rule is about the em-dash specifically, not the hyphen.
+- **Exempt:** CLAUDE.md, memory files, code comments, commit message bodies, this file, internal-only docs. Em-dashes in technical prose are fine — the rule is about user-facing copy.
+
+**Other AI tells to watch for in the same context:**
+- Triple-parallel structures (`"It's X, Y, and Z"`, `"No A, no B, no C"`). Use once per page, not six times.
+- "It's not X — it's Y" framing. Just say what it is.
+- Section-headline template: short statement + line break + `<em>` payoff. Vary the rhythm.
+- Throat-clearing adverbs: "Genuinely", "Honestly", "Frankly", "Effectively", "Essentially".
+- Stat callouts with un-defensible numbers. Per `feedback_website_copy`: stats must be measurable.
+
+---
+
 ## Release Process
 
 1. Read current version from `src-tauri/tauri.conf.json`

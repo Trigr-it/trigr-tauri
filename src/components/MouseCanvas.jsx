@@ -179,6 +179,7 @@ export default function MouseCanvas({
         onStartRecord={onStartRecord}
         onStopRecord={onStopRecord}
         recordCapture={recordCapture}
+        selectedKey={selectedKey}
       />
 
       <div className="mouse-label">

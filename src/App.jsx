@@ -40,6 +40,11 @@ function App() {
   const [macrosEnabled, setMacrosEnabled]   = useState(true);
   const [toasts, setToasts]                 = useState([]);
   const [activeModifiers, setActiveModifiers] = useState([]);  // e.g. ['Ctrl', 'Alt']
+  // Duplicate draft: when the user right-clicks → Duplicate from the sidebar,
+  // the cloned action lives in draftAssignment (plus draftDoubleAssignment)
+  // state until they pick a destination key. See handleDuplicateFromContext.
+  const [draftAssignment, setDraftAssignment] = useState(null);
+  const [draftDoubleAssignment, setDraftDoubleAssignment] = useState(null);
   const [sidebarComboFilter, setSidebarComboFilter] = useState(null); // null = show all, string = filter by combo
   const [engineStatus, setEngineStatus]     = useState({ uiohookAvailable: false, nutjsAvailable: false });
   const [lastFired, setLastFired]           = useState(null);
@@ -61,6 +66,7 @@ function App() {
   const [macrosEnabledOnStartup, setMacrosEnabledOnStartup] = useState(true);
   const [globalInputMethod,  setGlobalInputMethod]  = useState('direct');
   const [macroSpeed,         setMacroSpeed]         = useState('safe');
+  const [defaultDateFormat,  setDefaultDateFormat]  = useState('DD/MM/YYYY');
   const [keystrokeDelay,     setKeystrokeDelay]     = useState(30);
   const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(150);
   const [searchOverlayHotkey,       setSearchOverlayHotkey]       = useState('Ctrl+Space');
@@ -197,6 +203,7 @@ function App() {
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
+        setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
         // Always start on the Mapping view — do not restore last-used view/area
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
         setVoiceEnabled(            config.voiceEnabled             ?? false);
@@ -238,6 +245,7 @@ function App() {
           keystrokeDelay:    config.keystrokeDelay     ?? 30,
           macroTriggerDelay: config.macroTriggerDelay  ?? 150,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
+          defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
         });
         // CRITICAL: updateAssignments MUST be called after config loads on startup.
         // Parameter name must match Rust command signature exactly (was 'incoming',
@@ -380,8 +388,9 @@ function App() {
       window.electronAPI.onHotkeyRecorded?.((data) => {
         setIsRecording(false);
         if (!data) {
-          // Escape — cancelled. Discard any pending duplicate.
-          pendingDuplicateRef.current = null;
+          // Escape — cancelled. Discard any pending duplicate draft.
+          setDraftAssignment(null);
+          setDraftDoubleAssignment(null);
           return;
         }
         const { modifiers, keyId } = data;
@@ -419,6 +428,7 @@ function App() {
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
+        setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
         setVoiceEnabled(            config.voiceEnabled             ?? false);
         setVoiceHotkey(             config.voiceHotkey              || '');
@@ -451,6 +461,7 @@ function App() {
           keystrokeDelay:    config.keystrokeDelay     ?? 30,
           macroTriggerDelay: config.macroTriggerDelay  ?? 150,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
+          defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
         });
         showNotification('Config updated from sync', 'info');
       });
@@ -797,7 +808,19 @@ function App() {
   const handleKeySelect = useCallback((keyId) => {
     if (activeModifiers.length === 0) return; // require a modifier layer
     setSelectedKey(prev => prev === keyId ? null : keyId);
-  }, [activeModifiers]);
+    // If the user picks a key that's already assigned while a duplicate draft
+    // is pending, drop the draft — they're navigating to the occupant, not
+    // assigning the draft. The draft survives only when the picked slot is
+    // empty (and will fill it on save).
+    if (draftAssignment) {
+      const key = `${activeProfile}::${currentCombo}::${keyId}`;
+      const doubleKey = key + '::double';
+      if (assignments[key] || assignments[doubleKey]) {
+        setDraftAssignment(null);
+        setDraftDoubleAssignment(null);
+      }
+    }
+  }, [activeModifiers, draftAssignment, assignments, activeProfile, currentCombo]);
 
   // ── Assignment key format: "Profile::Ctrl+Alt::KeyE" ──────
   const makeAssignmentKey = useCallback((profile, combo, keyId) => {
@@ -813,16 +836,17 @@ function App() {
   const handleAssign = useCallback((keyId, macro) => {
     const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
     const newAssignments = { ...assignments, [key]: macro };
-    // If pending duplicate has a double press, save it too
-    if (pendingDuplicateRef.current?.double) {
+    // If a draft duplicate has a double-press counterpart, save that too
+    if (draftDoubleAssignment) {
       const doubleKey = `${activeProfile}::${currentCombo}::${keyId}::double`;
-      newAssignments[doubleKey] = pendingDuplicateRef.current.double;
+      newAssignments[doubleKey] = draftDoubleAssignment;
     }
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    pendingDuplicateRef.current = null;
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
     showNotification(`Assigned to ${currentCombo}+${keyId}`);
-  }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
+  }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey, draftDoubleAssignment]);
 
   // ── Clear key ─────────────────────────────────────────────
   const handleClearKey = useCallback((keyId) => {
@@ -860,20 +884,25 @@ function App() {
     showNotification(`Cleared ${combo}+${keyId}`, 'info');
   }, [assignments, activeProfile, profiles, saveConfig, syncEngine, selectedKey, showNotification]);
 
-  // ── Duplicate assignment to pending (context menu) ────────
-  const pendingDuplicateRef = useRef(null);
+  // ── Duplicate assignment via draft state ──────────────────
+  // When the user right-clicks → Duplicate, the cloned action lives in
+  // draftAssignment (plus draftDoubleAssignment, declared up top) until they
+  // save it against a real key. No auto-recording — user picks the key on
+  // their own via Record button or by clicking on the keyboard.
+  const clearDraft = useCallback(() => {
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
+  }, []);
 
   const handleDuplicateFromContext = useCallback((combo, keyId) => {
     const key = `${activeProfile}::${combo}::${keyId}`;
     const existing = assignments[key];
     if (!existing) return;
-    // Deep clone single press
     const single = {
       ...existing,
       label: (existing.label || '') + ' (copy)',
       data: JSON.parse(JSON.stringify(existing.data || {})),
     };
-    // Deep clone double press if it exists
     const doubleKey = `${activeProfile}::${combo}::${keyId}::double`;
     const existingDouble = assignments[doubleKey];
     const double = existingDouble ? {
@@ -881,13 +910,12 @@ function App() {
       label: (existingDouble.label || '') + ' (copy)',
       data: JSON.parse(JSON.stringify(existingDouble.data || {})),
     } : null;
-    pendingDuplicateRef.current = { single, double };
-    // Deselect any current key so MacroPanel shows the pending duplicate, not the original
+    setDraftAssignment(single);
+    setDraftDoubleAssignment(double);
+    // Deselect so the editor shows the draft, not the source assignment
     setSelectedKey(null);
-    // Start recording so user picks a new key for the duplicate
-    setIsRecording(true);
-    window.electronAPI?.startHotkeyRecording();
-  }, [assignments, activeProfile]);
+    showNotification('Duplicate ready — pick a key (click Record or any keyboard key)', 'info');
+  }, [assignments, activeProfile, showNotification]);
 
   // ── Double-tap assignment helpers ────────────────────────
   const makeDoubleKey = useCallback((profile, combo, keyId) => {
@@ -925,6 +953,8 @@ function App() {
   const handleProfileChange = useCallback((profile) => {
     setActiveProfile(profile);
     setSelectedKey(null);
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
     saveConfig(assignments, profiles, profile);
     showNotification(`Profile: ${profile}`, 'info');
   }, [assignments, profiles, profileSettings, saveConfig, showNotification]);
@@ -1470,6 +1500,8 @@ function App() {
     setSelectedKey(null);
     setSelectedRadialSegment(null);
     setSelectedRadialChild(null);
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
   }, []);
 
   // ── Hotkey recording ──────────────────────────────────────
@@ -1530,7 +1562,11 @@ function App() {
   // ── Top-level area switching (Mapping ↔ Text Expansions) ──
   const handleSetArea = useCallback((area) => {
     setActiveArea(area);
-    if (area !== 'mapping') setSelectedKey(null);
+    if (area !== 'mapping') {
+      setSelectedKey(null);
+      setDraftAssignment(null);
+      setDraftDoubleAssignment(null);
+    }
   }, []);
 
   // ── Select assignment from sidebar ────────────────────────
@@ -1548,6 +1584,10 @@ function App() {
       // combo is already sorted by comboString(), so splitting and re-sorting is safe
       setActiveModifiers(combo.split('+'));
     }
+    // User is navigating to an existing assignment — discard any pending
+    // duplicate draft so the editor shows the clicked shortcut's data.
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
     setSelectedKey(keyId);
     setSelectedRadialSegment(null);
     setSelectedRadialChild(null);
@@ -1562,6 +1602,8 @@ function App() {
   // modifier layer the user selected via the keyboard modifier bar.
   const handleSelectCombo = useCallback((comboStr) => {
     setSelectedKey(null);
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
     // Sync the keyboard modifier layer + sidebar combo filter when the user
     // picks a tab from the assignment-list filter strip. "All" clears both.
     if (!comboStr || comboStr === 'All') {
@@ -1584,15 +1626,17 @@ function App() {
       keystrokeDelay:     patch.keystrokeDelay     ?? keystrokeDelay,
       macroTriggerDelay:  patch.macroTriggerDelay  ?? macroTriggerDelay,
       doubleTapWindow:    patch.doubleTapWindow     ?? doubleTapWindow,
+      defaultDateFormat:  patch.defaultDateFormat  ?? defaultDateFormat,
     };
     setGlobalInputMethod(next.globalInputMethod);
     setMacroSpeed(next.macroSpeed);
     setKeystrokeDelay(next.keystrokeDelay);
     setMacroTriggerDelay(next.macroTriggerDelay);
     setDoubleTapWindow(next.doubleTapWindow);
+    setDefaultDateFormat(next.defaultDateFormat);
     window.electronAPI?.updateGlobalSettings(next);
     window.electronAPI?.saveConfig(next);
-  }, [globalInputMethod, macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow]);
+  }, [globalInputMethod, macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow, defaultDateFormat]);
 
   // ── Global pause toggle ───────────────────────────────────
   const handleSetPauseKey = useCallback(async (combo) => {
@@ -2943,6 +2987,7 @@ function App() {
             keystrokeDelay={keystrokeDelay}
             macroTriggerDelay={macroTriggerDelay}
             doubleTapWindow={doubleTapWindow}
+            defaultDateFormat={defaultDateFormat}
             onUpdateGlobalSettings={handleUpdateGlobalSettings}
             searchOverlayHotkey={searchOverlayHotkey}
             overlayShowAll={overlayShowAll}
@@ -3027,8 +3072,10 @@ function App() {
             selectedKey={selectedKey}
             activeModifiers={activeModifiers}
             currentCombo={currentCombo}
-            assignment={pendingDuplicateRef.current?.single || (selectedKey ? getKeyAssignment(selectedKey) : null)}
-            doubleAssignment={pendingDuplicateRef.current?.double || (selectedKey ? getDoubleAssignment(selectedKey) : null)}
+            assignment={selectedKey ? getKeyAssignment(selectedKey) : null}
+            doubleAssignment={selectedKey ? getDoubleAssignment(selectedKey) : null}
+            draftAssignment={draftAssignment}
+            draftDoubleAssignment={draftDoubleAssignment}
             assignments={assignments}
             activeProfile={activeProfile}
             profiles={profiles}
@@ -3038,7 +3085,8 @@ function App() {
             onClear={handleClearKey}
             onAssignDouble={handleAssignDouble}
             onClearDouble={handleClearDouble}
-            onClose={() => { pendingDuplicateRef.current = null; setSelectedKey(null); }}
+            onClose={() => { clearDraft(); setSelectedKey(null); }}
+            onCancelDraft={clearDraft}
             onReassign={handleReassign}
             onDuplicate={handleDuplicateAssignment}
             isPro={isPro}

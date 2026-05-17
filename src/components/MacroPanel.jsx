@@ -147,14 +147,9 @@ function hotkeyDataToString(data) {
   return [...(data.modifiers || []), data.key || ''].filter(Boolean).join('+');
 }
 
-// ── Win key manual builder options ────────────────────────────────────────────
-const WIN_BUILDER_KEYS = [
-  { group: 'Letters', keys: 'A B C D E F G H I J K L M N O P Q R S T U V W X Y Z'.split(' ') },
-  { group: 'Numbers', keys: '0 1 2 3 4 5 6 7 8 9'.split(' ') },
-  { group: 'Function Keys', keys: 'F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12'.split(' ') },
-  { group: 'Arrow Keys', keys: ['Left', 'Right', 'Up', 'Down'] },
-  { group: 'Special', keys: ['Space', 'Tab', 'Enter', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'Insert'] },
-];
+// (Inline Win-key builder was removed in favour of the +Win toggle pill that
+// pops out as an advisory panel below the capture field when the user presses
+// the Windows key. See HotkeyCaptureInput / KeyCaptureInput.)
 
 // Parses a captured combo string → hotkey data fields e.g. "Ctrl+Win+F4" → { modifiers: [...], key: 'F4' }
 const HOTKEY_MODS = new Set(['Ctrl', 'Shift', 'Alt', 'Win']);
@@ -168,26 +163,33 @@ function parseHotkeyCapture(str) {
 
 function HotkeyCaptureInput({ value, onChange }) {
   const [capturing, setCapturing] = useState(false);
-  const [winBuilder, setWinBuilder] = useState(false);
-  const [winMod, setWinMod] = useState('');
-  const [winKey, setWinKey] = useState('A');
+  const [winPrompted, setWinPrompted] = useState(false);
   const divRef        = useRef(null);
   const onChangeRef   = useRef(onChange);
   const valueRef      = useRef(value);
   const capturingRef  = useRef(false);
+
+  // Storage is { modifiers: [...], key }. The advisory sub-row owns the Win
+  // representation via the +Win pill, so chips strip it.
+  const hasWin = !!(value.modifiers || []).includes('Win');
+  const hasWinRef = useRef(false);
+  const showWinPanel = winPrompted || hasWin;
+
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { valueRef.current    = value;    }, [value]);
-  // Keep capturingRef in sync so the IPC handler can gate on it
   useEffect(() => { capturingRef.current = capturing; }, [capturing]);
+  useEffect(() => { hasWinRef.current    = hasWin;   }, [hasWin]);
 
-  // IPC path: main process captures keypresses (including Win key) and sends result
   useEffect(() => {
     if (!window.electronAPI?.onKeyCaptured) return;
     const handler = (combo) => {
-      if (!capturingRef.current) return; // guard: only process if this instance is active
-      onChangeRef.current({ ...valueRef.current, ...parseHotkeyCapture(combo) });
+      if (!capturingRef.current) return;
+      const parsed = parseHotkeyCapture(combo);
+      // Preserve a previously-toggled +Win across re-captures.
+      const mods = (parsed.modifiers || []).filter(m => m !== 'Win');
+      if (hasWinRef.current) mods.unshift('Win');
+      onChangeRef.current({ ...valueRef.current, modifiers: mods, key: parsed.key });
       setCapturing(false);
-      setWinBuilder(false);
     };
     window.electronAPI.onKeyCaptured(handler);
     return () => window.electronAPI.removeAllListeners('key-captured');
@@ -195,108 +197,77 @@ function HotkeyCaptureInput({ value, onChange }) {
 
   function startCapture() {
     setCapturing(true);
-    setWinBuilder(false);
     divRef.current?.focus();
     window.electronAPI?.startKeyCapture();
   }
 
   function handleKeyDown(e) {
-    // Detect Win key press — switch to manual builder
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelCapture();
+      return;
+    }
+    // Win opens the Start menu — we can't stop that (WebView2 limitation),
+    // but we keep capture alive so the rest of the combo gets picked up by
+    // the LL hook once Trigr loses focus. The advisory below explains the
+    // +Win toggle for explicit Win-modifier composition.
     if (e.key === 'Meta') {
       e.preventDefault();
       e.stopPropagation();
-      window.electronAPI?.stopKeyCapture();
-      setWinBuilder(true);
-      setWinMod('');
-      setWinKey('A');
+      setWinPrompted(true);
     }
   }
 
   function cancelCapture() {
     window.electronAPI?.stopKeyCapture();
     setCapturing(false);
-    setWinBuilder(false);
     divRef.current?.blur();
   }
 
   function handleBlur(e) {
-    // Don't close if focus moved to the builder dropdown, buttons, or cancel inside
     if (e.currentTarget.contains(e.relatedTarget)) return;
     if (e.relatedTarget?.dataset?.captureCancel) return;
-    // Win key opens Start menu and steals focus — refocus to keep builder visible
-    if (winBuilder) { e.currentTarget.focus(); return; }
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
-      setWinBuilder(false);
     }
   }
 
-  function confirmWinBuilder() {
-    const combo = winMod ? `Win+${winMod}+${winKey}` : `Win+${winKey}`;
-    onChangeRef.current({ ...valueRef.current, ...parseHotkeyCapture(combo) });
-    setCapturing(false);
-    setWinBuilder(false);
+  function toggleWin() {
+    const mods = (value.modifiers || []).filter(m => m !== 'Win');
+    if (!hasWin) mods.unshift('Win');
+    onChange({ ...value, modifiers: mods });
   }
 
-  function cancelWinBuilder() {
-    setWinBuilder(false);
-    // Return to normal capture prompt
-    divRef.current?.focus();
-    window.electronAPI?.startKeyCapture();
-  }
+  // Hide the Win modifier in the chip display since the advisory's pill owns
+  // the visual representation.
+  const baseValue = { ...value, modifiers: (value.modifiers || []).filter(m => m !== 'Win') };
+  const currentCombo = hotkeyDataToString(baseValue);
+  const isMouseValue = MOUSE_CLICK_OPTIONS.some(o => o.value === value.key && (!value.modifiers || value.modifiers.filter(m => m !== 'Win').length === 0));
 
-  const currentCombo = hotkeyDataToString(value);
-  const isMouseValue = MOUSE_CLICK_OPTIONS.some(o => o.value === value.key && (!value.modifiers || value.modifiers.length === 0));
+  function toggleWin() {
+    const mods = (value.modifiers || []).filter(m => m !== 'Win');
+    if (!hasWin) mods.unshift('Win');
+    onChange({ ...value, modifiers: mods });
+  }
 
   return (
     <div className="form-section">
       <label className="form-label">Hotkey</label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
         <div
           ref={divRef}
           className={`key-capture${capturing ? ' key-capture-active' : ''}`}
           tabIndex={0}
           onClick={!capturing ? startCapture : undefined}
-          onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
+          onKeyDown={capturing ? handleKeyDown : undefined}
           onBlur={handleBlur}
           role="button"
           aria-label={capturing ? 'Press your hotkey combination' : currentCombo || 'Click to capture hotkey'}
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 0 }}
         >
-          {capturing && winBuilder ? (
-            <div className="win-builder">
-              <kbd className="win-builder-badge">Win</kbd>
-              <span className="win-builder-plus">+</span>
-              <select
-                className="win-builder-select win-builder-mod"
-                value={winMod}
-                onChange={e => setWinMod(e.target.value)}
-                onClick={e => e.stopPropagation()}
-              >
-                <option value="">None</option>
-                <option value="Ctrl">Ctrl</option>
-                <option value="Shift">Shift</option>
-                <option value="Alt">Alt</option>
-              </select>
-              <span className="win-builder-plus">+</span>
-              <select
-                className="win-builder-select"
-                value={winKey}
-                onChange={e => setWinKey(e.target.value)}
-                onClick={e => e.stopPropagation()}
-              >
-                {WIN_BUILDER_KEYS.map(g => (
-                  <optgroup key={g.group} label={g.group}>
-                    {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-              <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
-              <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
-              <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
-            </div>
-          ) : capturing ? (
+          {capturing ? (
             <span className="key-capture-prompt">Press your hotkey combination…</span>
           ) : isMouseValue ? (
             <span className="key-capture-value"><kbd>{MOUSE_CLICK_OPTIONS.find(o => o.value === value.key)?.label}</kbd></span>
@@ -315,6 +286,31 @@ function HotkeyCaptureInput({ value, onChange }) {
           >Cancel</button>
         )}
       </div>
+      {showWinPanel && (
+        <div className="step-advisory-row step-advisory-row--inline">
+          <span className="step-advisory-icon" aria-hidden="true">ⓘ</span>
+          <span className="step-advisory-text">
+            Windows key can't be captured directly (it opens the Start menu). Toggle to add it as a modifier.
+          </span>
+          <button
+            type="button"
+            className={`win-toggle-pill${hasWin ? ' win-toggle-pill-on' : ''}`}
+            onClick={e => { e.stopPropagation(); toggleWin(); }}
+            title={hasWin ? 'Remove Windows key' : 'Add Windows key'}
+          >
+            {hasWin ? '✓ Win' : '+ Win'}
+          </button>
+          {winPrompted && !hasWin && (
+            <button
+              type="button"
+              className="step-advisory-dismiss"
+              onClick={() => setWinPrompted(false)}
+              title="Dismiss"
+              aria-label="Dismiss"
+            >×</button>
+          )}
+        </div>
+      )}
       <div className="mouse-click-pills">
         {MOUSE_CLICK_OPTIONS.map(opt => (
           <button
@@ -728,25 +724,32 @@ function FocusWindowFields({ focusData, onChange }) {
   );
 }
 
-function KeyCaptureInput({ value, onChange }) {
+function KeyCaptureInput({ value, onChange, onWinPressed }) {
   const [capturing, setCapturing] = useState(false);
-  const [winBuilder, setWinBuilder] = useState(false);
-  const [winMod, setWinMod] = useState('');
-  const [winKey, setWinKey] = useState('A');
   const divRef       = useRef(null);
   const onChangeRef  = useRef(onChange);
   const capturingRef = useRef(false);
+
+  // Storage is always the full combo (e.g. "Win+Ctrl+F4"). The chips display
+  // strips Win+ since the parent's advisory sub-row owns the visual Win
+  // representation via the +Win toggle pill.
+  const hasWin = value === 'Win' || value.startsWith('Win+');
+  const baseValue = hasWin ? value.replace(/^Win\+?/, '') : value;
+  const hasWinRef = useRef(false);
+
   useEffect(() => { onChangeRef.current  = onChange;   }, [onChange]);
   useEffect(() => { capturingRef.current = capturing;  }, [capturing]);
+  useEffect(() => { hasWinRef.current    = hasWin;     }, [hasWin]);
 
-  // IPC path: main process captures keypresses (including Win key) and sends result
   useEffect(() => {
     if (!window.electronAPI?.onKeyCaptured) return;
     const handler = (combo) => {
-      if (!capturingRef.current) return; // guard: only process if this instance is active
-      onChangeRef.current(combo);
+      if (!capturingRef.current) return;
+      // Preserve a previously-toggled +Win across re-captures.
+      const stripped = combo.replace(/^Win\+?/, '');
+      const finalCombo = hasWinRef.current ? (stripped ? `Win+${stripped}` : 'Win') : stripped;
+      onChangeRef.current(finalCombo);
       setCapturing(false);
-      setWinBuilder(false);
     };
     window.electronAPI.onKeyCaptured(handler);
     return () => window.electronAPI.removeAllListeners('key-captured');
@@ -754,109 +757,65 @@ function KeyCaptureInput({ value, onChange }) {
 
   function startCapture() {
     setCapturing(true);
-    setWinBuilder(false);
     divRef.current?.focus();
     window.electronAPI?.startKeyCapture();
   }
 
   function handleKeyDown(e) {
-    // Detect Win key press — switch to manual builder
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelCapture();
+      return;
+    }
+    // Win opens the Start menu — we can't stop that (WebView2 limitation),
+    // but we keep capture alive so the rest of the combo (e.g. Shift+S in
+    // Win+Shift+S) gets picked up by the LL hook once Trigr loses focus.
+    // The advisory below the row tells the user how to add Win explicitly.
     if (e.key === 'Meta') {
       e.preventDefault();
       e.stopPropagation();
-      window.electronAPI?.stopKeyCapture();
-      setWinBuilder(true);
-      setWinMod('');
-      setWinKey('A');
+      onWinPressed?.();
     }
   }
 
   function cancelCapture() {
     window.electronAPI?.stopKeyCapture();
     setCapturing(false);
-    setWinBuilder(false);
     divRef.current?.blur();
   }
 
   function handleBlur(e) {
-    // Don't close if focus moved to the builder dropdown, buttons, or cancel inside
     if (e.currentTarget.contains(e.relatedTarget)) return;
     if (e.relatedTarget?.dataset?.captureCancel) return;
-    // Win key opens Start menu and steals focus — refocus to keep builder visible
-    if (winBuilder) { e.currentTarget.focus(); return; }
     if (capturing) {
       window.electronAPI?.stopKeyCapture();
       setCapturing(false);
-      setWinBuilder(false);
     }
   }
 
-  function confirmWinBuilder() {
-    const combo = winMod ? `Win+${winMod}+${winKey}` : `Win+${winKey}`;
-    onChangeRef.current(combo);
-    setCapturing(false);
-    setWinBuilder(false);
-  }
-
-  function cancelWinBuilder() {
-    setWinBuilder(false);
-    divRef.current?.focus();
-    window.electronAPI?.startKeyCapture();
-  }
-
   const isMouseValue = MOUSE_CLICK_OPTIONS.some(o => o.value === value);
+  const chipsValue = isMouseValue ? value : baseValue;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}>
       <div
         ref={divRef}
         className={`key-capture macro-step-value${capturing ? ' key-capture-active' : ''}`}
         tabIndex={0}
         onClick={!capturing ? startCapture : undefined}
-        onKeyDown={capturing && !winBuilder ? handleKeyDown : undefined}
+        onKeyDown={capturing ? handleKeyDown : undefined}
         onBlur={handleBlur}
         role="button"
         aria-label={capturing ? 'Press a key combination' : value || 'Click to capture key'}
-        style={{ flex: 1 }}
+        style={{ flex: 1, minWidth: 0 }}
       >
-        {capturing && winBuilder ? (
-          <div className="win-builder">
-            <kbd className="win-builder-badge">Win</kbd>
-            <span className="win-builder-plus">+</span>
-            <select
-              className="win-builder-select win-builder-mod"
-              value={winMod}
-              onChange={e => setWinMod(e.target.value)}
-              onClick={e => e.stopPropagation()}
-            >
-              <option value="">None</option>
-              <option value="Ctrl">Ctrl</option>
-              <option value="Shift">Shift</option>
-              <option value="Alt">Alt</option>
-            </select>
-            <span className="win-builder-plus">+</span>
-            <select
-              className="win-builder-select"
-              value={winKey}
-              onChange={e => setWinKey(e.target.value)}
-              onClick={e => e.stopPropagation()}
-            >
-              {WIN_BUILDER_KEYS.map(g => (
-                <optgroup key={g.group} label={g.group}>
-                  {g.keys.map(k => <option key={k} value={k}>{k}</option>)}
-                </optgroup>
-              ))}
-            </select>
-            <button className="win-builder-btn win-builder-confirm" type="button" onClick={e => { e.stopPropagation(); confirmWinBuilder(); }} title="Confirm">✓</button>
-            <button className="win-builder-btn win-builder-cancel" type="button" onClick={e => { e.stopPropagation(); cancelWinBuilder(); }} title="Cancel">✗</button>
-            <span className="win-builder-warn">Win combinations may also trigger Windows shortcuts</span>
-          </div>
-        ) : capturing ? (
+        {capturing ? (
           <span className="key-capture-prompt">Press a key…</span>
         ) : isMouseValue ? (
           <span className="key-capture-value"><kbd>{MOUSE_CLICK_OPTIONS.find(o => o.value === value)?.label}</kbd></span>
-        ) : value ? (
-          <span className="key-capture-value"><KeyChips combo={value} /></span>
+        ) : chipsValue ? (
+          <span className="key-capture-value"><KeyChips combo={chipsValue} /></span>
         ) : (
           <span className="key-capture-placeholder">Click to capture…</span>
         )}
@@ -929,7 +888,25 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Run AHK Script', 'Click at Position'].includes(step.type);
+  // Press Key Win-advisory — the LL hook can't intercept the Win key when
+  // Trigr's own WebView2 has focus (documented Tauri/WebView2 limitation), so
+  // direct Win+X capture isn't possible inside our own UI. The advisory
+  // sub-row is the deliberate alternative: shown whenever Win is in the combo
+  // OR the user just pressed Win during capture.
+  const [winPrompted, setWinPrompted] = useState(false);
+  const stepValue = step.value || '';
+  const stepHasWin = step.type === 'Press Key' && (stepValue === 'Win' || stepValue.startsWith('Win+'));
+  const showWinAdvisory = step.type === 'Press Key' && (winPrompted || stepHasWin);
+
+  function toggleStepWin() {
+    if (stepHasWin) {
+      updateStep({ ...step, value: stepValue.replace(/^Win\+?/, '') });
+    } else {
+      updateStep({ ...step, value: stepValue ? `Win+${stepValue}` : 'Win' });
+    }
+  }
+
+  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Run AHK Script', 'Click at Position'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
   let appData = { kind: 'path', appId: '', appName: '', path: '', args: '' };
@@ -962,6 +939,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
           <KeyCaptureInput
             value={step.value || ''}
             onChange={v => updateStep({ ...step, value: v })}
+            onWinPressed={() => setWinPrompted(true)}
           />
         )}
         {step.type === 'Click Mouse' && (
@@ -1044,6 +1022,34 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         </button>
         <button className="step-remove" onClick={() => removeStep(step._id)} type="button" aria-label="Remove step">✕</button>
       </div>
+
+      {/* Sub-row: Press Key Win-advisory — pops out when user presses Win
+          during capture, or when Win is already in the stored value. */}
+      {showWinAdvisory && (
+        <div className="step-advisory-row">
+          <span className="step-advisory-icon" aria-hidden="true">ⓘ</span>
+          <span className="step-advisory-text">
+            Windows key can't be captured directly (it opens the Start menu). Toggle to add it as a modifier.
+          </span>
+          <button
+            type="button"
+            className={`win-toggle-pill${stepHasWin ? ' win-toggle-pill-on' : ''}`}
+            onClick={toggleStepWin}
+            title={stepHasWin ? 'Remove Windows key' : 'Add Windows key'}
+          >
+            {stepHasWin ? '✓ Win' : '+ Win'}
+          </button>
+          {winPrompted && !stepHasWin && (
+            <button
+              type="button"
+              className="step-advisory-dismiss"
+              onClick={() => setWinPrompted(false)}
+              title="Dismiss"
+              aria-label="Dismiss"
+            >×</button>
+          )}
+        </div>
+      )}
 
       {/* Sub-row: Open App — picker + optional args */}
       {step.type === 'Open App' && (
@@ -1412,6 +1418,8 @@ export default function MacroPanel({
   currentCombo,
   assignment,
   doubleAssignment,
+  draftAssignment = null,
+  draftDoubleAssignment = null,
   assignments,
   activeProfile,
   profiles,
@@ -1422,12 +1430,21 @@ export default function MacroPanel({
   onAssignDouble,
   onClearDouble,
   onClose,
+  onCancelDraft,
   onReassign,
   onDuplicate,
   isPro = false,
   voiceEnabled = false,
   onShowUpgrade,
 }) {
+  // When the user duplicates an assignment from the sidebar context menu, the
+  // cloned action lives in draftAssignment until they pick a destination key.
+  // Use it as a fallback so the editor shows the cloned data even before a key
+  // is selected, AND once they pick an empty key slot (so the new key inherits
+  // the duplicated action).
+  const effectiveAssignment = assignment || draftAssignment;
+  const effectiveDouble     = doubleAssignment || draftDoubleAssignment;
+  const isDraftMode         = !selectedKey && !!draftAssignment;
   const [activeType, setActiveType] = useState('text');
   const [formValue, setFormValue] = useState({});
   const [label, setLabel] = useState('');
@@ -1442,19 +1459,19 @@ export default function MacroPanel({
     setDuplicating(false);
     setPendingMouseSave(null);
     // Auto-switch to double mode when only a double assignment exists
-    if (!assignment && doubleAssignment) {
+    if (!effectiveAssignment && effectiveDouble) {
       setPressMode('double');
-      setActiveType(doubleAssignment.type || 'text');
-      setFormValue(doubleAssignment.data || {});
-      setLabel(doubleAssignment.label || '');
-      setVoicePhrases(readVoicePhrases(doubleAssignment.data));
+      setActiveType(effectiveDouble.type || 'text');
+      setFormValue(effectiveDouble.data || {});
+      setLabel(effectiveDouble.label || '');
+      setVoicePhrases(readVoicePhrases(effectiveDouble.data));
     } else {
       setPressMode('single');
-      if (assignment) {
-        setActiveType(assignment.type || 'text');
-        setFormValue(assignment.data || {});
-        setLabel(assignment.label || '');
-        setVoicePhrases(readVoicePhrases(assignment.data));
+      if (effectiveAssignment) {
+        setActiveType(effectiveAssignment.type || 'text');
+        setFormValue(effectiveAssignment.data || {});
+        setLabel(effectiveAssignment.label || '');
+        setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
         setActiveType('text');
         setFormValue({});
@@ -1462,16 +1479,16 @@ export default function MacroPanel({
         setVoicePhrases([]);
       }
     }
-  }, [selectedKey, assignment, doubleAssignment]);
+  }, [selectedKey, effectiveAssignment, effectiveDouble]);
 
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {
     if (pressMode === 'double') {
-      if (doubleAssignment) {
-        setActiveType(doubleAssignment.type || 'text');
-        setFormValue(doubleAssignment.data || {});
-        setLabel(doubleAssignment.label || '');
-        setVoicePhrases(readVoicePhrases(doubleAssignment.data));
+      if (effectiveDouble) {
+        setActiveType(effectiveDouble.type || 'text');
+        setFormValue(effectiveDouble.data || {});
+        setLabel(effectiveDouble.label || '');
+        setVoicePhrases(readVoicePhrases(effectiveDouble.data));
       } else {
         setActiveType('text');
         setFormValue({});
@@ -1479,11 +1496,11 @@ export default function MacroPanel({
         setVoicePhrases([]);
       }
     } else {
-      if (assignment) {
-        setActiveType(assignment.type || 'text');
-        setFormValue(assignment.data || {});
-        setLabel(assignment.label || '');
-        setVoicePhrases(readVoicePhrases(assignment.data));
+      if (effectiveAssignment) {
+        setActiveType(effectiveAssignment.type || 'text');
+        setFormValue(effectiveAssignment.data || {});
+        setLabel(effectiveAssignment.label || '');
+        setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
         setActiveType('text');
         setFormValue({});
@@ -1557,7 +1574,7 @@ export default function MacroPanel({
     }
   };
 
-  if (!selectedKey) {
+  if (!selectedKey && !isDraftMode) {
     return (
       <div className="macro-panel macro-panel-empty">
         <div className="macro-panel-empty-content">
@@ -1625,13 +1642,17 @@ export default function MacroPanel({
               <span className="badge-plus">+</span>
             </div>
           )}
-          <kbd className="selected-key-badge">
-            {selectedKey?.startsWith('MOUSE_')
-              ? ({ MOUSE_LEFT: 'Left Click', MOUSE_RIGHT: 'Right Click', MOUSE_MIDDLE: 'Middle Click',
-                   MOUSE_SCROLL_UP: 'Scroll ↑', MOUSE_SCROLL_DOWN: 'Scroll ↓',
-                   MOUSE_SIDE1: 'Side 1', MOUSE_SIDE2: 'Side 2' })[selectedKey] ?? selectedKey
-              : friendlyKeyName(selectedKey)}
-          </kbd>
+          {selectedKey ? (
+            <kbd className="selected-key-badge">
+              {selectedKey.startsWith('MOUSE_')
+                ? ({ MOUSE_LEFT: 'Left Click', MOUSE_RIGHT: 'Right Click', MOUSE_MIDDLE: 'Middle Click',
+                     MOUSE_SCROLL_UP: 'Scroll ↑', MOUSE_SCROLL_DOWN: 'Scroll ↓',
+                     MOUSE_SIDE1: 'Side 1', MOUSE_SIDE2: 'Side 2' })[selectedKey] ?? selectedKey
+                : friendlyKeyName(selectedKey)}
+            </kbd>
+          ) : (
+            <kbd className="selected-key-badge selected-key-badge-draft">Pick a key</kbd>
+          )}
         </div>
         <div className="macro-panel-header-actions">
           {assignment && !selectedKey?.startsWith('MOUSE_') && (
@@ -1673,6 +1694,20 @@ export default function MacroPanel({
       )}
 
       <div className="macro-panel-body">
+        {isDraftMode && (
+          <div className="draft-banner" role="note">
+            <span className="draft-banner-icon">⊕</span>
+            <span className="draft-banner-text">
+              Editing a duplicate. Pick a key on the keyboard or record a new combination to save it.
+            </span>
+            <button
+              className="draft-banner-cancel"
+              type="button"
+              onClick={onCancelDraft}
+              title="Discard the duplicate"
+            >Cancel</button>
+          </div>
+        )}
         {/* Action type selector */}
         <div className="type-selector">
           {ACTION_TYPES.map(type => {
@@ -1860,12 +1895,15 @@ export default function MacroPanel({
           <button
             className="btn-save"
             onClick={handleSave}
-            disabled={!isValid()}
+            disabled={!isValid() || !selectedKey}
             type="button"
+            title={!selectedKey ? 'Pick a key first — click Record or any keyboard key' : undefined}
           >
-            {pressMode === 'double'
-              ? (doubleAssignment ? 'Update Double-Tap' : 'Assign Double-Tap')
-              : (assignment ? 'Update' : 'Assign to Key')
+            {!selectedKey
+              ? 'Pick a key to save'
+              : pressMode === 'double'
+                ? (doubleAssignment ? 'Update Double-Tap' : 'Assign Double-Tap')
+                : (assignment ? 'Update' : 'Assign to Key')
             }
           </button>
         )}

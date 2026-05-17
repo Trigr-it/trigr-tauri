@@ -414,6 +414,13 @@
   50%       { opacity: 0.4; }
 }
 
+/* Steady highlight once a key has been selected — no animation */
+.combo-key-selected {
+  color: var(--accent);
+  border-color: var(--border-accent);
+  background: var(--accent-glow);
+}
+
 .combo-plus {
   color: var(--text-muted);
   font-size: 13px;

@@ -256,6 +256,33 @@ pub fn get_repeating_trigger() -> Option<String> {
 const MODIFIER_SETTLE_MS: u64 = 30;
 const KEYSTROKE_DELAY_MS: u64 = 10;
 
+// Open URL launches the default browser via ShellExecute, which is async.
+// Without a settle pause the next macro step targets Trigr's HWND instead of
+// the new browser window. 250ms is enough for warm-cache launches; cold-start
+// browsers may still miss, in which case the user can add an explicit Wait step.
+const OPEN_URL_FOCUS_SETTLE_MS: u64 = 250;
+
+/// Prepend https:// to a URL if no recognised scheme is present.
+/// Windows ShellExecute requires a scheme — bare "google.com" silently no-ops,
+/// while "www.google.com" only works because Windows guesses for that prefix.
+fn normalise_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    // Already has a scheme — pass through unchanged.
+    let lower = trimmed.to_lowercase();
+    let schemes = [
+        "http://", "https://", "ftp://", "file://",
+        "mailto:", "tel:", "sms:", "javascript:", "about:",
+    ];
+    if schemes.iter().any(|s| lower.starts_with(s)) {
+        return trimmed.to_string();
+    }
+    // No scheme — default to https.
+    format!("https://{}", trimmed)
+}
+
 /// Speed presets: (initial_delay, step_settle, foreground_settle, clipboard_restore)
 fn speed_delays() -> (u64, u64, u64, u64) {
     let state = crate::hotkeys::engine_state().lock().unwrap();
@@ -341,7 +368,10 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
 
         "url" => {
             if let Some(url) = data.and_then(|d| d.get("url")).and_then(|v| v.as_str()) {
-                let _ = opener::open(url);
+                let normalised = normalise_url(url);
+                if !normalised.is_empty() {
+                    let _ = opener::open(&normalised);
+                }
             }
         }
 
@@ -391,13 +421,20 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     }
 
                     // After steps that may change focus, re-capture foreground HWND
-                    // so subsequent Type Text / Press Key targets the correct window
-                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Click at Position") {
+                    // so subsequent Type Text / Press Key targets the correct window.
+                    // Open URL is async (ShellExecute → browser launch) so we sleep a
+                    // short stabilisation window before reading the foreground.
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Click at Position" | "Open URL") {
+                        if step_type == "Open URL" {
+                            thread::sleep(Duration::from_millis(OPEN_URL_FOCUS_SETTLE_MS));
+                        }
                         let new_hwnd = unsafe {
                             windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
                         };
-                        if new_hwnd != 0 {
+                        if new_hwnd != 0 && new_hwnd != current_hwnd {
                             current_hwnd = new_hwnd;
+                        } else if step_type == "Open URL" {
+                            warn!("[Trigr] Open URL: foreground HWND unchanged after {}ms settle. Subsequent steps will target the pre-launch window. Add a Wait step if the browser is slow to focus.", OPEN_URL_FOCUS_SETTLE_MS);
                         }
                     }
                 }
@@ -1361,8 +1398,9 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         }
 
         "Open URL" => {
-            if !step_value.is_empty() {
-                let _ = opener::open(step_value);
+            let normalised = normalise_url(step_value);
+            if !normalised.is_empty() {
+                let _ = opener::open(&normalised);
             }
         }
 

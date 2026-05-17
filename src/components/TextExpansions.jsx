@@ -48,6 +48,8 @@ const CLIPBOARD_ITEMS = [
 ];
 
 const DATE_ITEMS = [
+  { type: 'item', token: '{date}',             label: 'Date (your default)', display: 'Default'     },
+  { type: 'sep' },
   { type: 'item', token: '{date:DD/MM/YYYY}',  label: 'Date (DD/MM/YYYY)',  display: 'DD/MM/YYYY'  },
   { type: 'item', token: '{date:DD/MM/YY}',    label: 'Date (DD/MM/YY)',    display: 'DD/MM/YY'    },
   { type: 'item', token: '{date:MM/DD/YYYY}',  label: 'Date (MM/DD/YYYY)',  display: 'MM/DD/YYYY'  },
