@@ -107,7 +107,7 @@
 
 .tpl-coachmark-btn--primary {
   background: var(--accent);
-  color: #1a1a2e;
+  color: var(--btn-primary-text);
 }
 
 .tpl-coachmark-btn--primary:hover {

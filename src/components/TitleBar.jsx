@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare } from 'lucide-react';
+import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare, Sun, Moon, Monitor, Check } from 'lucide-react';
 import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
 import { openFeedback } from '../utils/feedback';
@@ -15,8 +15,11 @@ const AREA_TABS = [
 export default function TitleBar({
   macrosEnabled,
   onToggleMacros,
-  theme = 'dark',
-  onToggleTheme,
+  // theme is the user's chosen mode: 'auto' | 'light' | 'dark'.
+  // resolvedTheme is what's currently rendered: 'light' | 'dark'.
+  theme = 'auto',
+  resolvedTheme = 'dark',
+  onSetTheme,
   onOpenSettings,
   settingsOpen = false,
   activeArea = 'mapping',
@@ -34,6 +37,35 @@ export default function TitleBar({
   const handleMinimize = () => window.electronAPI?.minimize();
   const handleMaximize = () => window.electronAPI?.maximize();
   const handleClose    = () => window.electronAPI?.close();
+
+  // Theme picker popover state
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const themePickerRef = useRef(null);
+  useEffect(() => {
+    if (!themePickerOpen) return;
+    function onDocDown(e) {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target)) {
+        setThemePickerOpen(false);
+      }
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setThemePickerOpen(false);
+    }
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [themePickerOpen]);
+
+  const themeIcon = theme === 'auto' ? Monitor : (theme === 'light' ? Sun : Moon);
+  const ThemeIconComponent = themeIcon;
+  const themeOptions = [
+    { value: 'auto',  label: 'Follow System', Icon: Monitor },
+    { value: 'light', label: 'Light',         Icon: Sun },
+    { value: 'dark',  label: 'Dark',          Icon: Moon },
+  ];
 
   // Templates dropdown
   const [templatesDismissed, setTemplatesDismissed] = useState(() => {
@@ -262,31 +294,41 @@ export default function TitleBar({
           {macrosEnabled ? 'ACTIVE' : 'PAUSED'}
         </button>
 
-        <button
-          className="theme-toggle-btn"
-          onClick={onToggleTheme}
-          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          aria-label={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          data-drag="false"
-        >
-          {theme === 'dark' ? (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2"/>
-              <line x1="12" y1="2"  x2="12" y2="5"  stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="2"  y1="12" x2="5"  y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="4.22"  y1="4.22"  x2="6.34"  y2="6.34"  stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="19.78" y1="4.22"  x2="17.66" y2="6.34"  stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="6.34"  y1="17.66" x2="4.22"  y2="19.78" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+        <div className="theme-picker-wrap" ref={themePickerRef} data-drag="false">
+          <button
+            className="theme-toggle-btn"
+            onClick={() => setThemePickerOpen(v => !v)}
+            title={`Theme: ${theme === 'auto' ? 'Follow System' : theme === 'light' ? 'Light' : 'Dark'}`}
+            aria-label="Change theme"
+            aria-haspopup="true"
+            aria-expanded={themePickerOpen}
+            data-drag="false"
+          >
+            <ThemeIconComponent size={15} strokeWidth={2} />
+          </button>
+          {themePickerOpen && (
+            <div className="theme-picker-popover" role="menu">
+              {themeOptions.map(opt => {
+                const Icon = opt.Icon;
+                const selected = theme === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    className={`theme-picker-option${selected ? ' selected' : ''}`}
+                    onClick={() => { onSetTheme?.(opt.value); setThemePickerOpen(false); }}
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    type="button"
+                  >
+                    <Icon size={13} strokeWidth={2} className="theme-picker-icon" />
+                    <span className="theme-picker-label">{opt.label}</span>
+                    {selected && <Check size={12} strokeWidth={2.5} className="theme-picker-check" />}
+                  </button>
+                );
+              })}
+            </div>
           )}
-        </button>
+        </div>
 
         <button
           className={`tb-settings-btn${settingsOpen ? ' active' : ''}`}

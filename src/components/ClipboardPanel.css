@@ -92,7 +92,7 @@
   box-sizing: border-box;
 }
 
-.cbg-clear-yes:hover { background: var(--accent); border-color: var(--accent); color: var(--bg-base); }
+.cbg-clear-yes:hover { background: var(--accent); border-color: var(--accent); color: var(--btn-primary-text); }
 .cbg-clear-no:hover { border-color: var(--text-primary); color: var(--text-primary); }
 
 /* ── Search bar grows to fill toolbar space ─────────────────────────────── */
@@ -154,7 +154,7 @@
 }
 
 .cbg-tag-pill:hover { border-color: var(--accent); color: var(--accent); }
-.cbg-tag-active { background: var(--accent); border-color: var(--accent); color: var(--bg-base); }
+.cbg-tag-active { background: var(--accent); border-color: var(--accent); color: var(--btn-primary-text); }
 
 /* ── Grid ────────────────────────────────────────────────────────────────── */
 
@@ -869,29 +869,51 @@
   color: var(--accent);
 }
 
-.cbg-dbtn-paste {
+.cbg-dbtn-paste,
+.cbg-dbtn-copy {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--bg-base);
+  color: var(--btn-primary-text);
   font-weight: 600;
 }
 
-.cbg-dbtn-paste:hover {
+.cbg-dbtn-paste:hover,
+.cbg-dbtn-copy:hover {
   filter: brightness(1.1);
-  color: var(--bg-base);
+  color: var(--btn-primary-text);
   border-color: var(--accent);
+}
+
+/* Gold "Create Expansion" pill — same gold fill as Copy but with a soft accent
+   glow on hover so it reads as a secondary primary action distinct from Copy.
+   White text matches the .onboarding-btn-primary / .protrial-card-badge gold-pill
+   convention used elsewhere in the app. */
+.cbg-dbtn-create-expansion {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  font-weight: 600;
+  box-shadow: 0 0 0 0 var(--accent-glow);
+  transition: box-shadow 0.15s, filter 0.15s, border-color 0.15s;
+}
+
+.cbg-dbtn-create-expansion:hover {
+  filter: brightness(1.08);
+  color: var(--btn-primary-text);
+  border-color: var(--btn-primary-bg);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .cbg-dbtn-save {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--bg-base);
+  color: var(--btn-primary-text);
   font-weight: 600;
 }
 
 .cbg-dbtn-save:hover {
   filter: brightness(1.1);
-  color: var(--bg-base);
+  color: var(--btn-primary-text);
   border-color: var(--accent);
 }
 

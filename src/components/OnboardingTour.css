@@ -145,7 +145,7 @@
 .onboarding-btn-primary {
   display: inline-block;
   background: var(--accent);
-  color: #fff;
+  color: var(--btn-primary-text);
   font-size: 14px;
   font-weight: 600;
   border: none;
@@ -298,6 +298,35 @@
   max-width: 540px;
 }
 
+/* ── Inline action badge (Step 2c — points to action-type chip in MacroPanel) ─ */
+/* Mirrors the action-type chip styling so the user can spot the same shape on
+   the right panel and know exactly what to click. */
+.onboarding-action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.onboarding-action-badge strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ── Right-anchored modal (Step 6 radial — keep the wheel visible) ──────── */
+/* Anchors the modal to the right edge of the viewport instead of centring,
+   so the radial wheel canvas remains visible behind/beside the modal. */
+.onboarding-modal--right {
+  left: auto;
+  right: 40px;
+  transform: translate(0, -50%);
+}
+
 /* ── Numbered instruction list (Step 3 fire-hotkey) ────────────────────── */
 
 .onboarding-instruction-list {
@@ -320,7 +349,7 @@
   height: 26px;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--btn-primary-text);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 800;
@@ -349,7 +378,7 @@
   display: inline-block;
   padding: 2px 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--btn-primary-text);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.6px;
@@ -416,7 +445,7 @@
   font-weight: 800;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--btn-primary-text);
   background: var(--accent);
   padding: 4px 14px;
   border-radius: 999px;

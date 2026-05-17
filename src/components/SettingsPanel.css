@@ -892,7 +892,7 @@
   background: var(--accent);
   border: none;
   border-radius: 4px;
-  color: #0d0d11;
+  color: var(--btn-primary-text);
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;

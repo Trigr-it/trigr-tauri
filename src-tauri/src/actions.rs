@@ -601,10 +601,23 @@ fn read_clipboard() -> Option<String> {
 }
 
 fn write_clipboard(text: &str) -> bool {
+    write_clipboard_impl(text, true)
+}
+
+/// Write to the clipboard but let the clipboard listener record this write as a
+/// new history entry (used by Save as New / transform copies where the new text
+/// is a genuinely novel variant the user wants in their history).
+fn write_clipboard_recordable(text: &str) -> bool {
+    write_clipboard_impl(text, false)
+}
+
+fn write_clipboard_impl(text: &str, suppress_listener: bool) -> bool {
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let byte_len = wide.len() * 2;
     // Set suppress BEFORE touching the clipboard so any clipboard listener skips this write
-    SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::SeqCst);
+    if suppress_listener {
+        SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::SeqCst);
+    }
     // Retry up to 10 times — clipboard may be briefly held by the clipboard listener
     for attempt in 0..10 {
         unsafe {
@@ -2102,6 +2115,10 @@ pub fn read_clipboard_pub() -> Option<String> {
 
 pub fn write_clipboard_pub(text: &str) -> bool {
     write_clipboard(text)
+}
+
+pub fn write_clipboard_recordable_pub(text: &str) -> bool {
+    write_clipboard_recordable(text)
 }
 
 pub fn send_vk_key_pub(vk: u16, key_up: bool) {

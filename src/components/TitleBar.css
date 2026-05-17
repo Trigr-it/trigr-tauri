@@ -349,6 +349,66 @@
   transform: translateY(-1px);
 }
 
+/* ── Theme picker popover (Auto / Light / Dark) ──────────────── */
+.theme-picker-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.theme-picker-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.theme-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.theme-picker-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.theme-picker-option.selected {
+  color: var(--accent);
+}
+
+.theme-picker-icon {
+  flex-shrink: 0;
+}
+
+.theme-picker-label {
+  flex: 1;
+}
+
+.theme-picker-check {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
 .window-controls {
   display: flex;
   align-items: center;

@@ -185,6 +185,8 @@ window.electronAPI = {
   getClipboardHistory:    (page, perPage) => invoke('get_clipboard_history', { page, perPage }),
   pasteClipboardItem:     (id)            => invoke('paste_clipboard_item', { id }),
   pasteText:              (text, sourceId = null) => invoke('paste_text', { text, sourceId }),
+  copyClipboardItem:      (id)            => invoke('copy_clipboard_item', { id }),
+  copyText:               (text)          => invoke('copy_text', { text }),
   ocrClipboardImage:      (id)            => invoke('ocr_clipboard_image', { id }),
   getClipboardImageColors:(id)            => invoke('get_clipboard_image_colors', { id }),
   saveClipboardImageAs:   (id, format)    => invoke('save_clipboard_image_as', { id, format }),

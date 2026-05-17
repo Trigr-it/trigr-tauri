@@ -2086,6 +2086,76 @@ fn paste_text(text: String, source_id: Option<i64>, _app: tauri::AppHandle) {
     });
 }
 
+/// Copy a clipboard history item back onto the system clipboard without pasting.
+/// Used by the main clipboard panel (the popup overlay still uses `paste_clipboard_item`
+/// for fast in-place paste). The user is expected to switch to their target app and
+/// paste with Ctrl+V themselves. No focus games, no key injection — sidesteps the
+/// WebView2 input-injection problem when the main window is focused.
+#[tauri::command]
+fn copy_clipboard_item(id: i64) {
+    let item = match clipboard::get_item_full(id) {
+        Some(i) => i,
+        None => return,
+    };
+
+    std::thread::spawn(move || {
+        actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        match item.content_type.as_str() {
+            "text" => {
+                if let Some(text) = &item.text_content {
+                    actions::write_clipboard_pub(text);
+                }
+            }
+            "image" => {
+                if let Some(png_bytes) = &item.image_blob {
+                    if let Ok(img) = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png) {
+                        use image::GenericImageView;
+                        let (width, height) = img.dimensions();
+                        let rgba = img.to_rgba8();
+                        let row_stride = (width * 4) as usize;
+                        let mut bgra = vec![0u8; row_stride * height as usize];
+                        for y in 0..height as usize {
+                            let src_row = &rgba.as_raw()[y * row_stride..(y + 1) * row_stride];
+                            let dst_y = (height as usize - 1) - y;
+                            let dst_row = &mut bgra[dst_y * row_stride..(dst_y + 1) * row_stride];
+                            for x in 0..width as usize {
+                                let si = x * 4;
+                                dst_row[si] = src_row[si + 2];
+                                dst_row[si + 1] = src_row[si + 1];
+                                dst_row[si + 2] = src_row[si];
+                                dst_row[si + 3] = src_row[si + 3];
+                            }
+                        }
+                        write_image_to_clipboard(&bgra, width, height, png_bytes);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
+/// Copy arbitrary (possibly edited / transformed) text onto the system clipboard.
+/// Counterpart to `paste_text` for the main clipboard panel — writes without firing
+/// Ctrl+V. Does not modify any source row.
+///
+/// Uses the recordable write path: the clipboard listener will record this as a
+/// new history entry (the text is a genuinely new variant the user just created).
+#[tauri::command]
+fn copy_text(text: String) {
+    if text.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        actions::write_clipboard_recordable_pub(&text);
+    });
+}
+
 /// Run OCR over a clipboard image. Returns Ok(text) or Err(reason). Runs the
 /// blocking WinRT calls on a separate thread so the IPC caller does not stall.
 #[tauri::command]
@@ -2889,6 +2959,8 @@ pub fn run() {
             get_clipboard_history,
             paste_clipboard_item,
             paste_text,
+            copy_clipboard_item,
+            copy_text,
             ocr_clipboard_image,
             get_clipboard_image_colors,
             save_clipboard_image_as,

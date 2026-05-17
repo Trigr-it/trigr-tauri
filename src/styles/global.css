@@ -19,10 +19,18 @@
 
   --text-primary: #f0ede8;
   --text-secondary: #a8a6c2;
-  --text-muted: #72708c;
+  /* Lifted from #72708c — original failed WCAG AA on darker surfaces (~3.6:1).
+     #9794b3 hits ~5.0:1 on --bg-base and stays AA on --bg-hover / --bg-active. */
+  --text-muted: #9794b3;
 
-  --border: #262638;
-  --border-bright: #3e3e56;
+  /* Middle ground between original near-invisible borders (1.6:1) and strict
+     WCAG 3:1. Trades a small amount of accessibility headroom for the quieter
+     Trigr aesthetic — still clearly visible improvement over the original.
+     Verified vs --bg-base (L=0.00415):
+     - #44445e → ~2.07:1 (general dividers)
+     - #525272 → ~2.60:1 (emphasized borders) */
+  --border: #44445e;
+  --border-bright: #525272;
   --border-accent: rgba(232, 160, 32, 0.4);
 
   --danger: #e05050;
@@ -119,7 +127,9 @@
   --shadow-overlay: 0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06);
   --shadow-overlay-lg: 0 16px 48px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08);
   --backdrop-blur: blur(20px) saturate(130%);
-  --btn-primary-text: #1a1a2e;
+  /* Light theme: white text on gold for buttons/banners. Dark theme keeps the
+     default dark #0d0d11 from :root (high-contrast dark text on gold). */
+  --btn-primary-text: #ffffff;
   --backdrop-modal: rgba(0, 0, 0, 0.35);
   --shadow-modal: 0 16px 48px rgba(0,0,0,0.20), 0 0 0 1px rgba(180,120,10,0.20);
 

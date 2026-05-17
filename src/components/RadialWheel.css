@@ -23,9 +23,8 @@
 
 .rw-centre {
   fill: var(--bg-elevated);
-  stroke: var(--border-accent);
+  stroke: var(--accent);
   stroke-width: 2;
-  filter: drop-shadow(0 0 12px rgba(var(--accent-rgb), 0.15));
 }
 
 .rw-centre-text {
@@ -52,42 +51,42 @@
   transform-origin: 210px 210px;
 }
 
+/* Universal 1px gold trim defines every wedge edge in both the editor and the
+   live overlay. Fill matches the sidebar surface in both themes: --bg-hover
+   in dark mode (lifts above the dark canvas) and --bg-surface in light mode
+   (pure white, matching the sidebar). The two tokens go in opposite directions
+   per theme (dark-hover lighter, light-hover darker), so we override per theme. */
 .rw-wedge .rw-wedge-path {
-  fill: var(--bg-surface);
-  stroke: rgba(var(--accent-rgb), 0.3);
-  stroke-width: 0.5;
+  fill: var(--bg-hover);
+  stroke: var(--accent);
+  stroke-width: 1;
   transition: fill 0.12s, stroke 0.12s, stroke-width 0.12s, filter 0.15s, d 0.1s ease;
+}
+
+[data-theme="light"] .rw-wedge .rw-wedge-path {
+  fill: var(--bg-surface);
 }
 
 /* ── Hovered wedge ────────────────────────────────────────────────────────── */
 
 /* Opaque gold-tinted fills — must NOT use rgba transparency because the
    live overlay window background is transparent. Semi-transparent fills
-   show through to the desktop and look invisible. */
+   show through to the desktop and look invisible. Stroke + width inherit
+   from the base rule (gold 1px). Focus signal is the path-data nudge
+   transition + the fill flip — no drop-shadow glow. */
 .rw-wedge--hovered .rw-wedge-path {
   fill: var(--accent-surface);
-  stroke: rgba(var(--accent-rgb), 0.3);
-  stroke-width: 0.5;
-  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 /* Light-theme fill now handled by --accent-surface token override */
 
 /* ── Folder wedge ─────────────────────────────────────────────────────────── */
 
-.rw-wedge--folder .rw-wedge-path {
-  stroke-dasharray: 6 4;
-}
-
-.rw-wedge--folder.rw-wedge--hovered .rw-wedge-path {
-  stroke-dasharray: none;
-}
+/* Folders share the same gold-trimmed look as regular wedges — the .rw-folder-trim
+   gold arc + folder icon are the type indicators. No dashed border. */
 
 .rw-wedge--folder-expanded .rw-wedge-path {
   fill: var(--accent-surface);
-  stroke: rgba(var(--accent-rgb), 0.3);
-  stroke-width: 0.5;
-  stroke-dasharray: none;
   filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
@@ -132,14 +131,14 @@
   to   { opacity: 1; }
 }
 
+/* Outer-ring children also get the gold trim by inheritance. Only the fill
+   differs. */
 .rw-wedge--outer .rw-wedge-path {
   fill: var(--bg-elevated);
-  stroke: var(--border-bright);
 }
 
 .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
   fill: var(--accent-surface);
-  stroke: var(--accent);
 }
 
 /* Light-theme fill now handled by --accent-surface token override */
@@ -206,8 +205,8 @@
   font-family: var(--font-body);
   font-size: 22px;
   font-weight: 300;
-  fill: var(--text-muted);
-  opacity: 0.5;
+  fill: var(--accent);
+  opacity: 0.8;
 }
 
 .rw-svg--editor .rw-wedge--empty:hover .rw-wedge-plus {
@@ -222,8 +221,6 @@
 }
 
 .rw-wedge--drag-source .rw-wedge-path {
-  stroke: var(--accent);
-  stroke-width: 1;
   stroke-dasharray: 4 4;
 }
 
@@ -231,7 +228,6 @@
 
 .rw-wedge--drop-target .rw-wedge-path {
   fill: var(--accent-glow);
-  stroke: var(--accent);
   stroke-width: 2;
   stroke-dasharray: none;
   filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));

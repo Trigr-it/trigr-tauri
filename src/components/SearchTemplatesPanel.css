@@ -794,7 +794,7 @@
   background: var(--accent);
   border: none;
   border-radius: 6px;
-  color: #0d0d11;
+  color: var(--btn-primary-text);
   font-size: 12px;
   font-weight: 700;
   font-family: var(--font-display);

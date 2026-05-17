@@ -22,6 +22,7 @@ import ClipboardPanel from './components/ClipboardPanel';
 import SearchTemplatesPanel from './components/SearchTemplatesPanel';
 import RadialEditorView from './components/RadialEditorView';
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { friendlyKeyName } from './components/keyboardLayout';
 
@@ -29,7 +30,7 @@ import { friendlyKeyName } from './components/keyboardLayout';
 // `onboarding_version_seen` is below this value will see the tour again on
 // their next launch — used so v0.4.4 → v0.4.5 upgraders see the new Pro
 // callouts, app-profile pitch, and trial offer at the end of the tour.
-const ONBOARDING_VERSION = 2;
+const ONBOARDING_VERSION = 3;
 
 function App() {
   const [assignments, setAssignments]       = useState({});
@@ -48,11 +49,19 @@ function App() {
   const [sidebarComboFilter, setSidebarComboFilter] = useState(null); // null = show all, string = filter by combo
   const [engineStatus, setEngineStatus]     = useState({ uiohookAvailable: false, nutjsAvailable: false });
   const [lastFired, setLastFired]           = useState(null);
-  const [theme, setTheme]                   = useState('dark');
+  // theme: 'auto' | 'light' | 'dark'. 'auto' follows the OS via prefers-color-scheme.
+  // resolvedTheme is the actually-applied theme ('light' or 'dark') used for the
+  // data-theme attribute and any UI that needs to know what's currently shown.
+  const [theme, setTheme]                   = useState('auto');
+  const [resolvedTheme, setResolvedTheme]   = useState('dark');
   const [expansionCategories, setExpansionCategories] = useState([]);
   const [globalVariables, setGlobalVariables]         = useState({});   // { 'my.name': 'Trigr', … }
   const [activeView, setActiveView]                 = useState('keyboard'); // 'keyboard' | 'mouse'
   const [activeArea, setActiveArea]                 = useState('mapping');  // 'mapping' | 'expansions' | 'analytics'
+  // One-shot prefill seed for the text-expansion new-form, set when the user
+  // clicks "Create Expansion" on a clipboard history item. TextExpansions
+  // consumes it on mount and clears it via onPrefillConsumed.
+  const [pendingExpansionPrefill, setPendingExpansionPrefill] = useState(null);
   const [isRecording, setIsRecording]               = useState(false);
   const [recordCapture, setRecordCapture]           = useState(null);
   const [tipsHidden, setTipsHidden]                 = useState(false);
@@ -184,9 +193,13 @@ function App() {
         setActiveProfile(globalProfile);
         setActiveGlobalProfile(globalProfile);
         setProfileSettings(config.profileSettings || {});
-        const savedTheme = config.theme || 'dark';
+        const savedTheme = config.theme || 'auto';
         setTheme(savedTheme);
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        const resolvedInitial = savedTheme === 'auto'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : savedTheme;
+        setResolvedTheme(resolvedInitial);
+        document.documentElement.setAttribute('data-theme', resolvedInitial);
         // Migrate old string[] format to object[] format — treat missing colour as null
         const rawCats = config.expansionCategories || [];
         setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
@@ -295,9 +308,28 @@ function App() {
 
         // Tips — load hidden flag; record first launch date if not yet stored
         setTipsHidden(config.tipsHidden ?? false);
+        const isFirstLaunch = !config.firstLaunchDate;
         const fld = config.firstLaunchDate || new Date().toISOString();
         setFirstLaunchDate(fld);
-        if (!config.firstLaunchDate) needsSave = true;
+        if (isFirstLaunch) needsSave = true;
+
+        // Start with Windows: ON by default for new installs. Existing users
+        // (firstLaunchDate already set) get the bootstrap flag silently without
+        // touching the registry — preserves whatever state they've explicitly
+        // chosen. Bootstrap runs at most once; once the flag is true, the toggle
+        // in Settings is the only thing that changes the registry.
+        if (!config.startupBootstrapped) {
+          if (isFirstLaunch) {
+            window.electronAPI?.setStartupEnabled(true);
+          }
+          needsSave = true;
+        }
+
+        // Maximise on first ever launch so onboarding has the full canvas to
+        // work with. Existing users keep their window habits unchanged.
+        if (isFirstLaunch) {
+          getCurrentWindow().maximize().catch(() => {});
+        }
 
         // Onboarding migration: existing users who already saw the welcome
         // should not see the new onboarding tour after updating.
@@ -336,6 +368,7 @@ function App() {
             hasSeenWelcome: true,
             firstLaunchDate: fld,
             onboarding_complete: onboardingComplete ?? false,
+            startupBootstrapped: true,
           });
         }
       }
@@ -415,9 +448,13 @@ function App() {
         setActiveProfile(globalProfile);
         setActiveGlobalProfile(globalProfile);
         setProfileSettings(config.profileSettings || {});
-        const savedTheme = config.theme || 'dark';
+        const savedTheme = config.theme || 'auto';
         setTheme(savedTheme);
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        const resolvedInitial = savedTheme === 'auto'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : savedTheme;
+        setResolvedTheme(resolvedInitial);
+        document.documentElement.setAttribute('data-theme', resolvedInitial);
         const rawCats = config.expansionCategories || [];
         setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
         setGlobalVariables(config.globalVariables || {});
@@ -1008,15 +1045,37 @@ function App() {
     showNotification(newVal ? 'Macros active' : 'Macros paused', newVal ? 'success' : 'info');
   }, [macrosEnabled, showNotification]);
 
-  // ── Theme toggle ──────────────────────────────────────────
-  const handleToggleTheme = useCallback(() => {
-    setTheme(prev => {
-      const next = prev === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme: next, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
-      return next;
-    });
-  }, [assignments, profiles, activeProfile, profileSettings]);
+  // ── Theme setter (replaces binary toggle with 3-state setter) ──
+  // Accepts 'auto' | 'light' | 'dark'. Resolves auto via matchMedia, applies
+  // data-theme attribute synchronously, persists user's chosen mode (not the
+  // resolved value) so a later OS-theme flip still works in auto mode.
+  const handleSetTheme = useCallback((value) => {
+    if (value !== 'auto' && value !== 'light' && value !== 'dark') return;
+    setTheme(value);
+    const resolved = value === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : value;
+    setResolvedTheme(resolved);
+    document.documentElement.setAttribute('data-theme', resolved);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme: value, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
+  }, [assignments, profiles, activeProfile, profileSettings, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
+
+  // ── Live OS-theme tracking when theme === 'auto' ─────────────
+  // Subscribes to prefers-color-scheme changes so Trigr re-themes if the user
+  // flips Windows light/dark without restarting Trigr. No-op when theme is set
+  // to an explicit value (user override).
+  useEffect(() => {
+    if (theme !== 'auto') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const r = mq.matches ? 'dark' : 'light';
+      setResolvedTheme(r);
+      document.documentElement.setAttribute('data-theme', r);
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [theme]);
 
   // ── Text expansions (global — shared across all profiles) ─
   const expansions = Object.entries(assignments)
@@ -1068,6 +1127,16 @@ function App() {
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Expansion "${trigger}" saved`);
   }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
+
+  // Wired from ClipboardPanel's "Create Expansion" button. Seeds the pending
+  // prefill, then jumps to the Expansions tab — TextExpansions consumes the
+  // prefill on mount and clears it via onPrefillConsumed. The requestedAt
+  // timestamp guarantees the effect re-fires when the same text is sent twice.
+  const handleCreateExpansionFromClip = useCallback((text) => {
+    if (!text) return;
+    setPendingExpansionPrefill({ text, requestedAt: Date.now() });
+    setActiveArea('expansions');
+  }, []);
 
   const handleDeleteExpansion = useCallback((trigger) => {
     const newAssignments = { ...assignments };
@@ -1560,8 +1629,11 @@ function App() {
   }, []);
 
   // ── Top-level area switching (Mapping ↔ Text Expansions) ──
-  const handleSetArea = useCallback((area) => {
+  // Optional `view` param lets callers (e.g. the onboarding tour) jump to a
+  // specific sub-view within the area in one go (e.g. mapping + radial).
+  const handleSetArea = useCallback((area, view) => {
     setActiveArea(area);
+    if (view) setActiveView(view);
     if (area !== 'mapping') {
       setSelectedKey(null);
       setDraftAssignment(null);
@@ -2473,9 +2545,13 @@ function App() {
     setProfiles(cfg.profiles?.length ? cfg.profiles : ['Default']);
     setActiveProfile(cfg.activeProfile || 'Default');
     setProfileSettings(cfg.profileSettings || {});
-    const importedTheme = cfg.theme || 'dark';
+    const importedTheme = cfg.theme || 'auto';
     setTheme(importedTheme);
-    document.documentElement.setAttribute('data-theme', importedTheme);
+    const importedResolved = importedTheme === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : importedTheme;
+    setResolvedTheme(importedResolved);
+    document.documentElement.setAttribute('data-theme', importedResolved);
     setExpansionCategories(cfg.expansionCategories || []);
     const importedAc = cfg.autocorrectEnabled ?? false;
     setAutocorrectEnabled(importedAc);
@@ -2503,9 +2579,13 @@ function App() {
     setProfiles(cfg.profiles?.length ? cfg.profiles : ['Default']);
     setActiveProfile(cfg.activeProfile || 'Default');
     setProfileSettings(cfg.profileSettings || {});
-    const restoredTheme = cfg.theme || 'dark';
+    const restoredTheme = cfg.theme || 'auto';
     setTheme(restoredTheme);
-    document.documentElement.setAttribute('data-theme', restoredTheme);
+    const restoredResolved = restoredTheme === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : restoredTheme;
+    setResolvedTheme(restoredResolved);
+    document.documentElement.setAttribute('data-theme', restoredResolved);
     setExpansionCategories(cfg.expansionCategories || []);
     const restoredAc = cfg.autocorrectEnabled ?? false;
     setAutocorrectEnabled(restoredAc);
@@ -2727,7 +2807,8 @@ function App() {
         macrosEnabled={macrosEnabled}
         onToggleMacros={handleToggleMacros}
         theme={theme}
-        onToggleTheme={handleToggleTheme}
+        resolvedTheme={resolvedTheme}
+        onSetTheme={handleSetTheme}
         onOpenSettings={() => setShowSettings(v => !v)}
         settingsOpen={showSettings}
         activeArea={activeArea}
@@ -2875,6 +2956,7 @@ function App() {
                 setClipboardPreviewWidth(clamped);
                 window.electronAPI?.saveConfig({ clipboardPreviewWidth: clamped });
               }}
+              onCreateExpansion={handleCreateExpansionFromClip}
             />
           )}
           {activeArea === 'mapping' && activeView === 'radial' && (
@@ -2970,6 +3052,8 @@ function App() {
               onSaveGlobalVariables={handleSaveGlobalVariables}
               isPro={isPro}
               onShowUpgrade={showUpgrade}
+              prefill={pendingExpansionPrefill}
+              onPrefillConsumed={() => setPendingExpansionPrefill(null)}
             />
           )}
         </main>

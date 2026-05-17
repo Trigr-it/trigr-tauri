@@ -180,7 +180,7 @@ function ColourPane({ value }) {
   );
 }
 
-export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth }) {
+export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth, onCreateExpansion }) {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -296,18 +296,20 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [editing, selectedId]);
 
-  const handlePaste = async (id) => {
-    await window.electronAPI?.pasteClipboardItem(id);
-    // Optimistic counter bump — Rust increments asynchronously; reconciles on next loadHistory.
-    setItems(prev => prev.map(it => it.id === id ? { ...it, paste_count: (it.paste_count || 0) + 1 } : it));
+  // Copy a history item back onto the system clipboard. The user is expected to
+  // switch to their target app and paste with Ctrl+V themselves — the in-place
+  // paste path can't reliably focus the right window from this panel (WebView2
+  // owns input here), and the popup overlay (Ctrl+Shift+V) remains the fast path.
+  const handleCopy = async (id) => {
+    await window.electronAPI?.copyClipboardItem(id);
   };
 
-  // Paste arbitrary (possibly transformed/edited) text — does NOT modify the source row.
-  // The Rust side increments paste_count for the source clip when sourceId is provided.
+  // Legacy paste-with-Ctrl+V path retained for the transform pills below
+  // (lowercase / UPPERCASE / Trimmed / Plain) — same WebView2 focus caveats apply,
+  // tracked as follow-up.
   const handlePasteText = async (text, sourceId) => {
     if (!text) return;
     await window.electronAPI?.pasteText(text, sourceId ?? null);
-    // Optimistic UI bump so the counter reflects immediately; will reconcile on next loadHistory.
     if (sourceId) {
       setItems(prev => prev.map(it => it.id === sourceId ? { ...it, paste_count: (it.paste_count || 0) + 1 } : it));
     }
@@ -441,6 +443,17 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
   };
 
   const handleCancelEdit = () => {
+    setEditing(false);
+    setEditText('');
+  };
+
+  // Save the edited text as a brand-new clipboard history entry, leaving the
+  // original row untouched. The Rust copy_text command writes to the system
+  // clipboard without suppressing the listener, so the clipboard watcher picks
+  // it up and creates a new DB row + emits clipboard-new-item.
+  const handleSaveAsNew = async () => {
+    if (!editText) return;
+    await window.electronAPI?.copyText(editText);
     setEditing(false);
     setEditText('');
   };
@@ -799,15 +812,18 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                 {isTextOnly && !editing && (
                   <button className="cbg-dbtn" onClick={() => handleStartEdit(selected)} type="button">Edit</button>
                 )}
+                {isTextOnly && !editing && onCreateExpansion && (
+                  <button
+                    className="cbg-dbtn cbg-dbtn-create-expansion"
+                    onClick={() => onCreateExpansion(selected.text_content || selected.preview || '')}
+                    type="button"
+                    title="Save this clip as a text expansion"
+                  >Create Expansion</button>
+                )}
                 {editing && (
                   <>
-                    <button className="cbg-dbtn cbg-dbtn-save" onClick={handleSaveEdit} type="button" title="Save edit to this clip in the database">Save</button>
-                    <button
-                      className="cbg-dbtn"
-                      onClick={() => handlePasteText(editText, selected.id)}
-                      type="button"
-                      title="Paste the edited text without modifying the original clip"
-                    >Paste edited</button>
+                    <button className="cbg-dbtn cbg-dbtn-save" onClick={handleSaveEdit} type="button" title="Overwrite this clip with the edited text">Save</button>
+                    <button className="cbg-dbtn" onClick={handleSaveAsNew} type="button" title="Create a new clipboard entry with the edited text, leaving this one untouched">Save as New</button>
                     <button className="cbg-dbtn" onClick={handleCancelEdit} type="button">Cancel</button>
                   </>
                 )}
@@ -817,10 +833,12 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                   </span>
                 )}
               </div>
-              <div className="cbg-detail-actions-r">
-                <button className="cbg-dbtn cbg-dbtn-del" onClick={() => handleDelete(selected.id)} type="button">Delete</button>
-                <button className="cbg-dbtn cbg-dbtn-paste" onClick={() => handlePaste(selected.id)} type="button">Paste</button>
-              </div>
+              {!editing && (
+                <div className="cbg-detail-actions-r">
+                  <button className="cbg-dbtn cbg-dbtn-del" onClick={() => handleDelete(selected.id)} type="button">Delete</button>
+                  <button className="cbg-dbtn cbg-dbtn-copy" onClick={() => handleCopy(selected.id)} type="button">Copy</button>
+                </div>
+              )}
             </div>
           </div>
         </>

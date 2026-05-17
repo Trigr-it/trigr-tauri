@@ -1068,7 +1068,7 @@ button.te-col-header:hover {
   background: var(--accent);
   border: none;
   border-radius: 6px;
-  color: #0d0d11;
+  color: var(--btn-primary-text);
   font-size: 12px;
   font-weight: 700;
   font-family: var(--font-display);
@@ -1117,7 +1117,7 @@ button.te-col-header:hover {
 .te-trigger-mode-btn.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--btn-primary-text);
 }
 
 /* ── Insert dropdown ────────────────────────────────────────────────────── */
@@ -2095,7 +2095,7 @@ button.te-col-header:hover {
 .te-type-filter-pill.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--bg-base);
+  color: var(--btn-primary-text);
 }
 
 /* ── Image expansion type selector + picker ──────────────────────────────── */

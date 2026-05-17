@@ -1,9 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { Globe } from 'lucide-react';
 import './OnboardingTour.css';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 13;
+
+// Parse an assignment storage key ("Default::Ctrl::E", "Default::BARE::F1",
+// "AppName::Modifier::KEYCODE", optional "::double" suffix) into a friendly
+// hotkey string for display. Returns "" if the format doesn't match.
+function parseAssignmentHotkey(key) {
+  if (!key || typeof key !== 'string') return '';
+  const parts = key.split('::');
+  if (parts.length < 3) return '';
+  const modifier = parts[1];
+  const keyCode = parts[2];
+  if (modifier === 'BARE') return keyCode;
+  // Modifier already a "+"-joined string (e.g. "Ctrl+Shift") in some cases;
+  // normalise the visual separator for kbd-badge rendering at the callsite.
+  return `${modifier.replace(/\+/g, ' + ')} + ${keyCode}`;
+}
 
 export default function OnboardingTour({ assignments, onComplete, onSkip, onAreaChange, onShowUpgrade }) {
   const [step, setStep] = useState(1);
@@ -11,11 +27,18 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
   const [targetRect, setTargetRect] = useState(null);
   const [secondaryRect, setSecondaryRect] = useState(null); // second highlight area
   const [actionFired, setActionFired] = useState(false);
-  const [searchFired, setSearchFired] = useState(false); // Step 7 gate
+  const [searchFired, setSearchFired] = useState(false); // Step 8 gate
   const [tooltipPosition, setTooltipPosition] = useState('below');
+  // Captured hotkey from the assignment the user just created at Step 2c,
+  // displayed back to them at Step 3 as a memory aid before they minimise.
+  // Format: "Ctrl + E" or "BARE + F1" — split by " + " for kbd-badge render.
+  const [userHotkey, setUserHotkey] = useState('');
   const tooltipRef = useRef(null);
   const observerRef = useRef(null);
-  const assignmentCountAtStep2 = useRef(null);
+  // Set of assignment keys present when Step 2 was entered. Used both to gate
+  // the Step 2 → 3 transition (a new key must appear) and to identify which
+  // key the user assigned so we can show it back at Step 3.
+  const assignmentKeysAtStep2 = useRef(null);
 
   // ── Lock window resize on mount, unlock on unmount ───────────
   useEffect(() => {
@@ -37,8 +60,10 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
   }, [onSkip, onAreaChange]);
 
   // ── Navigate to area + advance step ─────────────────────────
-  const goToStep = useCallback((nextStep, area) => {
-    if (area) onAreaChange?.(area);
+  // Optional `view` is forwarded to the area-change handler so a step can
+  // jump to a specific sub-view (e.g. mapping + radial) in one motion.
+  const goToStep = useCallback((nextStep, area, view) => {
+    if (area) onAreaChange?.(area, view);
     // Small delay for tab switch to render before measuring target
     setTimeout(() => setStep(nextStep), area ? 80 : 0);
   }, [onAreaChange]);
@@ -94,21 +119,22 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
       3: null,            // Fire hotkey modal
       4: null,            // Action types modal
       5: '.sidebar',      // Profiles sidebar (still on mapping)
-      6: '.area-tab:nth-child(2)',  // Text Expansion tab
-      7: null,            // Quick Search intro modal
-      8: '.area-tab:nth-child(3)',  // Quick Search tab (Quick Actions)
-      9: '.area-tab:nth-child(3)',  // Quick Search tab (Search Templates)
-      10: '.area-tab:nth-child(4)', // Clipboard tab
-      11: null,           // Finish modal
+      6: '.rev-editor',   // Radial Menu — highlight the wheel canvas (still on mapping, radial view)
+      7: '.area-tab:nth-child(2)',  // Text Expansion tab
+      8: null,            // Quick Search intro modal
+      9: '.area-tab:nth-child(3)',  // Quick Search tab (Quick Actions)
+      10: '.area-tab:nth-child(3)', // Quick Search tab (Search Templates)
+      11: '.area-tab:nth-child(4)', // Clipboard tab
+      12: null,           // Finish modal
     };
     measureTarget(selectors[step] || null);
 
     // Secondary highlight — the main panel area alongside the tab
     const secondarySelectors = {
-      6: '.te-content',   // Text Expansions panel
-      8: '.stp-panel',    // Quick Search panel (Quick Actions)
-      9: '.stp-panel',    // Quick Search panel (Search Templates)
-      10: '.cbg-panel',   // Clipboard panel
+      7: '.te-content',   // Text Expansions panel
+      9: '.stp-panel',    // Quick Search panel (Quick Actions)
+      10: '.stp-panel',   // Quick Search panel (Search Templates)
+      11: '.cbg-panel',   // Clipboard panel
     };
     const secSel = secondarySelectors[step];
     if (secSel) {
@@ -180,22 +206,25 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     return () => clearTimeout(tid);
   }, [step, subStep, measureTarget]);
 
-  // ── Step 2: snapshot assignment count when entering step 2 ──
+  // ── Step 2: snapshot assignment keys when entering step 2 ──
   useEffect(() => {
-    if (step === 2 && assignmentCountAtStep2.current === null) {
-      assignmentCountAtStep2.current = Object.keys(assignments).length;
+    if (step === 2 && assignmentKeysAtStep2.current === null) {
+      assignmentKeysAtStep2.current = new Set(Object.keys(assignments));
     }
     if (step !== 2) {
-      assignmentCountAtStep2.current = null;
+      assignmentKeysAtStep2.current = null;
     }
   }, [step, assignments]);
 
   // ── Step 2c → Step 3: detect when a new assignment is saved ──
+  // Diffs against the entry-time key set to identify WHICH key the user just
+  // assigned, so Step 3 can show their hotkey back to them as a reminder.
   useEffect(() => {
     if (step !== 2 || subStep !== 'c') return;
-    const keys = Object.keys(assignments);
-    const baseline = assignmentCountAtStep2.current ?? 0;
-    if (keys.length > baseline) {
+    const baseline = assignmentKeysAtStep2.current ?? new Set();
+    const newKeys = Object.keys(assignments).filter(k => !baseline.has(k));
+    if (newKeys.length > 0) {
+      setUserHotkey(parseAssignmentHotkey(newKeys[0]));
       setStep(3);
       setSubStep('a');
     }
@@ -234,18 +263,18 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     return () => clearTimeout(tid);
   }, [step]);
 
-  // ── Step 9: click Search Templates pill when entering ──────
+  // ── Step 10: click Search Templates pill when entering ─────
   useEffect(() => {
-    if (step !== 9) return;
+    if (step !== 10) return;
     const tid = setTimeout(() => {
       document.querySelector('.stp-mode-tab:nth-child(2)')?.click();
     }, 120);
     return () => clearTimeout(tid);
   }, [step]);
 
-  // ── Step 7: listen for search-overlay-shown to unlock Next ──
+  // ── Step 8: listen for search-overlay-shown to unlock Next ──
   useEffect(() => {
-    if (step !== 7) return;
+    if (step !== 8) return;
     let unlisten = null;
     let cancelled = false;
     listen('search-overlay-shown', () => {
@@ -262,7 +291,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
 
   // ── Reset gates when leaving a gated step so re-entry works cleanly ──
   useEffect(() => {
-    if (step !== 7 && searchFired) setSearchFired(false);
+    if (step !== 8 && searchFired) setSearchFired(false);
     if (step !== 3 && actionFired) setActionFired(false);
   }, [step, searchFired, actionFired]);
 
@@ -455,7 +484,12 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-tooltip" style={getTooltipStyle()} ref={tooltipRef}>
           <div className="onboarding-step-label">Step 2 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            Choose <strong>Type Text</strong>, enter <strong>Hello, World!</strong> in the text field, then click <strong>Assign to Key</strong>.
+            Choose the{' '}
+            <span className="onboarding-action-badge">
+              <Globe size={14} strokeWidth={2} style={{ color: '#ffc832' }} />
+              <strong>Open URL</strong>
+            </span>
+            {' '}action, enter <strong>www.google.com</strong>, name it <strong>Open Google</strong>, then click <strong>Assign to Key</strong>.
           </p>
           {stepDots}
           {skipLink}
@@ -464,8 +498,9 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 3: Fire the hotkey (in a separate app) ─────────────
+  // ── Step 3: Fire the hotkey (minimise + press → Google opens) ─
   if (step === 3) {
+    const hotkeyParts = userHotkey ? userHotkey.split(' + ') : [];
     return (
       <div className="onboarding-overlay">
         <div className="onboarding-backdrop" />
@@ -475,36 +510,48 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <>
               <div className="onboarding-step-label">Step 3 of {TOTAL_STEPS}</div>
               <p className="onboarding-tooltip-text">
-                Now try your new hotkey in another app.
+                Try your new hotkey now.
               </p>
               <div className="onboarding-instruction-list">
                 <div className="onboarding-instruction-item">
                   <span className="onboarding-instruction-num">1</span>
                   <span className="onboarding-instruction-text">
-                    Open <strong>any app with a text field</strong> — Notepad, your browser's address bar, an email body, a chat box.
+                    <strong>Minimise Trigr</strong> — click the Trigr icon on your taskbar.
                   </span>
                 </div>
                 <div className="onboarding-instruction-item">
                   <span className="onboarding-instruction-num">2</span>
                   <span className="onboarding-instruction-text">
-                    Click into that text field so your cursor is blinking inside it.
+                    Press your hotkey
+                    {hotkeyParts.length > 0 && (
+                      <>
+                        {' — '}
+                        {hotkeyParts.map((part, i) => (
+                          <React.Fragment key={i}>
+                            {i > 0 && <span className="onboarding-kbd-plus">+</span>}
+                            <kbd className="onboarding-kbd">{part}</kbd>
+                          </React.Fragment>
+                        ))}
+                      </>
+                    )}
+                    . Google will open in your browser.
                   </span>
                 </div>
                 <div className="onboarding-instruction-item">
                   <span className="onboarding-instruction-num">3</span>
                   <span className="onboarding-instruction-text">
-                    Press your hotkey. <strong>Hello, World!</strong> will be typed wherever the cursor is.
+                    Come back to Trigr — this step continues automatically.
                   </span>
                 </div>
               </div>
               <p className="onboarding-hint">
-                Trigr stays running in the background — you don't need to bring this window back. As soon as Trigr fires the hotkey, this step will continue.
+                Trigr stays running in the background — your hotkey works anywhere on your PC, in any app.
               </p>
             </>
           ) : (
             <>
               <p className="onboarding-success-text">You just used Trigr!</p>
-              <p className="onboarding-hint">Your hotkey will work the same way in any app on your PC.</p>
+              <p className="onboarding-hint">Your hotkey works the same way in any app on your PC.</p>
               <button className="onboarding-btn-primary" onClick={() => setStep(4)}>
                 Continue
               </button>
@@ -569,21 +616,46 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             </span>
           </div>
           {stepDots}
-          <button className="onboarding-btn-secondary" onClick={() => goToStep(6, 'expansions')}>Next</button>
+          <button className="onboarding-btn-secondary" onClick={() => goToStep(6, 'mapping', 'radial')}>Next</button>
           {skipLink}
         </div>
       </div>
     );
   }
 
-  // ── Step 6: Text Expansions (descriptive) ───────────────────
+  // ── Step 6: Radial Menu (opens radial editor live) ──────────
   if (step === 6) {
     return (
       <div className="onboarding-overlay">
         {renderOverlay()}
         {dragRegion}
-        <div className="onboarding-modal">
+        <div className="onboarding-modal onboarding-modal--right">
           <div className="onboarding-step-label">Step 6 of {TOTAL_STEPS}</div>
+          <p className="onboarding-tooltip-text">
+            The <strong>Radial Menu</strong> is a wheel of actions that pops up wherever your mouse is when you trigger it. Hover a wedge, release, and the action fires.
+          </p>
+          <p className="onboarding-hint">
+            8 inner segments per wheel. <strong>Right-click an empty segment</strong> to make it a folder — folders open an outer ring of 8 more actions. Fill every segment with folders and you get up to <strong>64 actions</strong> in one wheel.
+          </p>
+          <p className="onboarding-hint">
+            <strong>Drag and drop</strong> existing actions from your profile onto segments, or click a segment to <strong>create a new action just for the wheel</strong> using the standard editor. Set the hotkey that triggers the wheel in this panel's top-right.
+          </p>
+          {stepDots}
+          <button className="onboarding-btn-secondary" onClick={() => goToStep(7, 'expansions')}>Next</button>
+          {skipLink}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 7: Text Expansions (descriptive) ───────────────────
+  if (step === 7) {
+    return (
+      <div className="onboarding-overlay">
+        {renderOverlay()}
+        {dragRegion}
+        <div className="onboarding-modal">
+          <div className="onboarding-step-label">Step 7 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
             <strong>Text Expansions</strong> replace short triggers with full text — no hotkey needed. Type <strong>;sig</strong> + Space anywhere and your email signature appears.
           </p>
@@ -594,21 +666,21 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <strong>Try it after the tour:</strong> create an expansion in this panel, then open any text field on your PC and type your trigger + Space.
           </p>
           {stepDots}
-          <button className="onboarding-btn-secondary" onClick={() => setStep(7)}>Next</button>
+          <button className="onboarding-btn-secondary" onClick={() => setStep(8)}>Next</button>
           {skipLink}
         </div>
       </div>
     );
   }
 
-  // ── Step 7: Quick Search (interactive — wait for fire) ──────
-  if (step === 7) {
+  // ── Step 8: Quick Search (interactive — wait for fire) ──────
+  if (step === 8) {
     return (
       <div className="onboarding-overlay">
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 7 of {TOTAL_STEPS}</div>
+          <div className="onboarding-step-label">Step 8 of {TOTAL_STEPS}</div>
           {!searchFired ? (
             <>
               <p className="onboarding-tooltip-text">
@@ -632,7 +704,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
               <p className="onboarding-hint">
                 You'll set up <strong>Quick Actions</strong> and <strong>Search Templates</strong> next — let's take a look at the Quick Search tab.
               </p>
-              <button className="onboarding-btn-primary" onClick={() => goToStep(8, 'templates')}>
+              <button className="onboarding-btn-primary" onClick={() => goToStep(9, 'templates')}>
                 Continue
               </button>
             </>
@@ -644,29 +716,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 8: Quick Actions ───────────────────────────────────
-  if (step === 8) {
-    return (
-      <div className="onboarding-overlay">
-        {renderOverlay()}
-        {dragRegion}
-        <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 8 of {TOTAL_STEPS}</div>
-          <p className="onboarding-tooltip-text">
-            <strong>Quick Actions</strong> let you launch apps, open folders, URLs, or run macros — accessible instantly from Quick Search without assigning a hotkey.
-          </p>
-          <p className="onboarding-hint">
-            Organise with categories. Search by name from the Ctrl+Space overlay.
-          </p>
-          {stepDots}
-          <button className="onboarding-btn-secondary" onClick={() => setStep(9)}>Next</button>
-          {skipLink}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Step 9: Search Templates ────────────────────────────────
+  // ── Step 9: Quick Actions ───────────────────────────────────
   if (step === 9) {
     return (
       <div className="onboarding-overlay">
@@ -675,20 +725,20 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 9 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            <strong>Search Templates</strong> let you search any website from Quick Search. Type a trigger + Space, then your query.
+            <strong>Quick Actions</strong> let you launch apps, open folders, URLs, or run macros — accessible instantly from Quick Search without assigning a hotkey.
           </p>
           <p className="onboarding-hint">
-            Presets include Google, ChatGPT, Perplexity, GitHub, and more. Add your own for any website with a search URL.
+            Organise with categories. Search by name from the Ctrl+Space overlay.
           </p>
           {stepDots}
-          <button className="onboarding-btn-secondary" onClick={() => goToStep(10, 'clipboard')}>Next</button>
+          <button className="onboarding-btn-secondary" onClick={() => setStep(10)}>Next</button>
           {skipLink}
         </div>
       </div>
     );
   }
 
-  // ── Step 10: Clipboard Manager ──────────────────────────────
+  // ── Step 10: Search Templates ───────────────────────────────
   if (step === 10) {
     return (
       <div className="onboarding-overlay">
@@ -696,6 +746,28 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {dragRegion}
         <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 10 of {TOTAL_STEPS}</div>
+          <p className="onboarding-tooltip-text">
+            <strong>Search Templates</strong> let you search any website from Quick Search. Type a trigger + Space, then your query.
+          </p>
+          <p className="onboarding-hint">
+            Presets include Google, ChatGPT, Perplexity, GitHub, and more. Add your own for any website with a search URL.
+          </p>
+          {stepDots}
+          <button className="onboarding-btn-secondary" onClick={() => goToStep(11, 'clipboard')}>Next</button>
+          {skipLink}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 11: Clipboard Manager ──────────────────────────────
+  if (step === 11) {
+    return (
+      <div className="onboarding-overlay">
+        {renderOverlay()}
+        {dragRegion}
+        <div className="onboarding-modal">
+          <div className="onboarding-step-label">Step 11 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
             <strong>Clipboard Manager</strong> saves everything you copy — text and images. Browse, search, pin favourites, and re-paste from any app.
           </p>
@@ -708,21 +780,21 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <span className="onboarding-shortcut-label">Clipboard popup — paste from history anywhere</span>
           </div>
           {stepDots}
-          <button className="onboarding-btn-secondary" onClick={() => setStep(11)}>Next</button>
+          <button className="onboarding-btn-secondary" onClick={() => setStep(12)}>Next</button>
           {skipLink}
         </div>
       </div>
     );
   }
 
-  // ── Step 11: Closing ≠ Quitting — Trigr lives in the tray ───
-  if (step === 11) {
+  // ── Step 12: Closing ≠ Quitting — Trigr lives in the tray ───
+  if (step === 12) {
     return (
       <div className="onboarding-overlay">
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 11 of {TOTAL_STEPS}</div>
+          <div className="onboarding-step-label">Step 12 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
             <strong>Closing Trigr hides it — it doesn't quit it.</strong>
           </p>
@@ -734,21 +806,21 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <span className="onboarding-tray-label">System tray (bottom-right of your taskbar)</span>
           </div>
           {stepDots}
-          <button className="onboarding-btn-secondary" onClick={() => setStep(12)}>Got it</button>
+          <button className="onboarding-btn-secondary" onClick={() => setStep(13)}>Got it</button>
           {skipLink}
         </div>
       </div>
     );
   }
 
-  // ── Step 12: You're All Set — shortcuts cheatsheet ──────────
-  if (step === 12) {
+  // ── Step 13: You're All Set — shortcuts cheatsheet ──────────
+  if (step === 13) {
     return (
       <div className="onboarding-overlay">
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal onboarding-modal--wide">
-          <div className="onboarding-step-label">Step 12 of {TOTAL_STEPS}</div>
+          <div className="onboarding-step-label">Step 13 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
             You're all set. Here are the global shortcuts you'll use most:
           </p>

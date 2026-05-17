@@ -17,6 +17,17 @@ import { SearchBar } from './SearchBar';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// Convert plain text (e.g. clipboard contents seeded from another part of the
+// app) into HTML safe for innerHTML injection into the rich-text editor.
+// Escapes &/</> and preserves line breaks as <br>.
+function plainTextToHtml(text) {
+  const escaped = (text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped.replace(/\n/g, '<br>');
+}
+
 function htmlToPlainText(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html
@@ -892,6 +903,11 @@ export default function TextExpansions({
   // Pro gating
   isPro = false,
   onShowUpgrade,
+  // One-shot prefill from clipboard "Create Expansion" button. Shape:
+  // { text: string, requestedAt: number } — timestamp guarantees re-fire even
+  // when the same text is sent twice in a row.
+  prefill = null,
+  onPrefillConsumed,
 }) {
   // ── Panel mode (expansions | autocorrect | globalvars) ──
   const [panelMode, setPanelMode] = useState('expansions');
@@ -1014,11 +1030,11 @@ export default function TextExpansions({
   }, [renamingCat]);
 
   // ── Expansion handlers ──
-  function openAdd() {
+  function openAdd(prefillHtml = '', prefillText = '') {
     setTrigger('');
     setDisplayName('');
     setTriggerError('');
-    setEditorValue({ html: '', text: '' });
+    setEditorValue({ html: prefillHtml, text: prefillText });
     setCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
     setTriggerMode('space');
     setExpansionType('text');
@@ -1029,6 +1045,16 @@ export default function TextExpansions({
     setVoicePhrases([]);
     setEditing({ isNew: true });
   }
+
+  // Consume a one-shot prefill from the clipboard panel and open the new-expansion
+  // form with the body editor seeded with that text. The parent clears its
+  // prefill state via onPrefillConsumed so subsequent tab switches don't re-fire.
+  useEffect(() => {
+    if (!prefill?.text) return;
+    const html = plainTextToHtml(prefill.text);
+    openAdd(html, prefill.text);
+    onPrefillConsumed?.();
+  }, [prefill]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openEdit(exp) {
     setTrigger(exp.trigger);
@@ -1911,12 +1937,22 @@ export default function TextExpansions({
                   )}
 
                   <div className="te-panel-footer">
-                    <span className="te-paste-note">{expansionType === 'image' ? 'Pastes as image via clipboard' : hasVariants ? 'Shows variant picker on trigger' : 'Pastes as plain text'}</span>
                     <div className="te-form-actions">
-                      <button className="te-cancel-btn" onClick={handleCancel} type="button">Cancel</button>
                       <button className="te-save-btn" onClick={handleSave} disabled={!canSave} type="button">
                         Save
                       </button>
+                      <button className="te-cancel-btn" onClick={handleCancel} type="button">Cancel</button>
+                    </div>
+                    <span className="te-paste-note">{expansionType === 'image' ? 'Pastes as image via clipboard' : hasVariants ? 'Shows variant picker on trigger' : 'Pastes as plain text'}</span>
+                    <div className="te-form-actions">
+                      {!editing.isNew && (
+                        <button
+                          className="te-delete-confirm-btn"
+                          onClick={() => setDeleteConfirm(editing.originalTrigger)}
+                          type="button"
+                          title="Delete this expansion"
+                        >Delete</button>
+                      )}
                     </div>
                   </div>
                 </>
