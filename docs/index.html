@@ -138,6 +138,68 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .hero-meta span { color:var(--text-muted); }
 @keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
 
+/* ── HERO NOTIFY (MailerLite v1.0 signup) ── */
+.hero-notify {
+  margin: 24px auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 380px;
+  animation: fadeInUp 0.6s 0.35s ease both;
+}
+.hero-notify-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.hero-notify-divider::before,
+.hero-notify-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+.hero-notify-prompt {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0 0 2px;
+}
+.hero-notify-prompt strong { color: var(--text); font-weight: 600; }
+.hero-notify-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--hairline-gold);
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 9px 18px;
+  height: 38px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+}
+.hero-notify-btn:hover {
+  background: var(--gold-glow);
+  border-color: var(--gold);
+  color: var(--gold-light);
+  transform: translateY(-1px);
+}
+[data-theme="light"] .hero-notify-btn:hover { color: var(--gold-dark); }
+
 /* ════════════════════════════════════════════════════════════
    MOCKUP — frame restyle (interior preserved)
    ════════════════════════════════════════════════════════════ */
@@ -1110,6 +1172,11 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <a href="trigr-help.html" class="btn-secondary">See how it works →</a>
     </div>
     <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
+    <div class="hero-notify">
+      <div class="hero-notify-divider">or</div>
+      <p class="hero-notify-prompt">Prefer to wait for <strong>v1.0</strong>? Get notified when it ships.</p>
+      <button type="button" class="hero-notify-btn ml-onclick-form" onclick="ml('show', 'EoKSIQ', true)">Notify me when v1.0 ships</button>
+    </div>
     <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Fully local — no accounts, no cloud <span>·</span> Latest: <span id="latest-version">v…</span></p>
 
     <!-- ── MOCKUP ── -->
@@ -2635,6 +2702,16 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
   });
 })();
 </script>
+
+<!-- MailerLite Universal -->
+<script>
+  (function(w,d,e,u,f,l,n){w[f]=w[f]||function(){(w[f].q=w[f].q||[])
+  .push(arguments);},l=d.createElement(e),l.async=1,l.src=u,
+  n=d.getElementsByTagName(e)[0],n.parentNode.insertBefore(l,n);})
+  (window,document,'script','https://assets.mailerlite.com/js/universal.js','ml');
+  ml('account', '2353025');
+</script>
+<!-- End MailerLite Universal -->
 
 </body>
 </html>
