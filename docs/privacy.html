@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Trigr</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="description" content="Trigr Privacy Policy. What personal data Node Group Ltd collects in connection with Trigr and the usetrigr.com website, and what we do not collect.">
+<script>
+/* Theme: saved → OS preference → light fallback. Runs synchronously to prevent flash. */
+(function(){
+  try {
+    var saved = localStorage.getItem('trigr-site-theme');
+    var theme;
+    if (saved === 'light' || saved === 'dark') {
+      theme = saved;
+    } else {
+      theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --gold:#e8a020; --gold-light:#f0b942; --gold-dark:#c8860a;
+  --gold-glow:rgba(232,160,32,0.15); --gold-line:rgba(232,160,32,0.22);
+  --bg:#080B14; --bg-2:#0D1120; --bg-3:#111827;
+  --bg-card:#0E1320; --bg-card-hi:#131829;
+  --hairline:rgba(255,255,255,0.06);
+  --hairline-strong:rgba(255,255,255,0.1);
+  --hairline-gold:rgba(232,160,32,0.18);
+  --text:#F1F5F9; --text-muted:#94A3B8; --text-dim:#475569;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-syne:'Syne',sans-serif;
+  --font-mono:'Rajdhani',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --font-label:'Chakra Petch',sans-serif;
+}
+[data-theme="light"] {
+  --bg:#F5F5FA; --bg-2:#FFFFFF; --bg-3:#EEEEF2;
+  --bg-card:#FFFFFF; --bg-card-hi:#FAFAFE;
+  --hairline:rgba(0,0,0,0.07);
+  --hairline-strong:rgba(0,0,0,0.12);
+  --hairline-gold:rgba(232,160,32,0.25);
+  --text:#1A1A2E; --text-muted:#4A4A6A; --text-dim:#9090B0;
+}
+html { scroll-behavior:smooth; }
+body { font-family:var(--font-body); background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; -webkit-font-smoothing:antialiased; position:relative; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:0; opacity:0.4; }
+[data-theme="light"] body::before { opacity:0.08; }
+img { max-width:100%; display:block; }
+a { color:inherit; }
+
+.grid-bg { position:fixed; inset:0; pointer-events:none; z-index:0; }
+.grid-bg::before { content:''; position:absolute; inset:0; background-image:linear-gradient(rgba(232,160,32,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(232,160,32,0.04) 1px,transparent 1px); background-size:56px 56px; mask-image:radial-gradient(ellipse 70% 50% at 50% 0%,black 0%,transparent 75%); -webkit-mask-image:radial-gradient(ellipse 70% 50% at 50% 0%,black 0%,transparent 75%); }
+.grid-bg::after { content:''; position:absolute; top:-180px; left:50%; transform:translateX(-50%); width:1100px; height:700px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.13) 0%,rgba(232,160,32,0.04) 35%,transparent 70%); }
+[data-theme="light"] .grid-bg::before { background-image:linear-gradient(rgba(26,26,46,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(26,26,46,0.05) 1px,transparent 1px); }
+[data-theme="light"] .grid-bg::after { background:radial-gradient(ellipse at center,rgba(232,160,32,0.09) 0%,rgba(232,160,32,0.02) 35%,transparent 70%); }
+
+nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; height:64px; display:flex; align-items:center; justify-content:space-between; background:rgba(8,11,20,0.7); backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%); border-bottom:1px solid var(--hairline); }
+[data-theme="light"] nav { background:rgba(245,245,250,0.75); }
+.nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.logo-mark { width:30px; height:30px; border-radius:7px; }
+.logo-mark > svg { width:100%; height:100%; display:block; }
+.nav-wordmark { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); letter-spacing:0.1em; }
+.nav-links { display:flex; align-items:center; gap:28px; }
+.nav-links a { font-size:13px; font-weight:500; color:var(--text-muted); text-decoration:none; transition:color 0.2s; letter-spacing:0.01em; }
+.nav-links a:hover { color:var(--text); }
+.nav-cta { background:var(--gold); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; transition:transform 0.15s, box-shadow 0.2s; }
+.nav-cta:hover { color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,160,32,0.3); }
+[data-theme="light"] .nav-cta { color:#fff; }
+.theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.theme-toggle:hover { color:var(--gold); border-color:var(--hairline-gold); background:var(--gold-glow); }
+
+main.legal { position:relative; z-index:1; max-width:760px; padding:140px 24px 80px; margin:0 auto; }
+main.legal h1 { font-family:var(--font-syne); font-weight:800; font-size:48px; letter-spacing:-1.5px; margin-bottom:16px; color:var(--text); line-height:1.1; }
+main.legal .subtitle { font-size:14px; color:var(--text-dim); margin-bottom:48px; }
+main.legal h2 { font-family:var(--font-syne); font-weight:700; font-size:24px; margin:40px 0 16px; color:var(--text); line-height:1.3; }
+main.legal p, main.legal li { font-size:16px; line-height:1.7; color:var(--text-muted); margin-bottom:16px; }
+main.legal a { color:var(--gold); text-decoration:none; transition:text-decoration 0.15s; }
+main.legal a:hover { text-decoration:underline; }
+main.legal ul, main.legal ol { padding-left:24px; margin-bottom:16px; }
+main.legal li { margin-bottom:8px; }
+main.legal strong { color:var(--text); font-weight:600; }
+
+footer { position:relative; z-index:1; border-top:1px solid var(--hairline); padding:32px 24px; max-width:1180px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; }
+.ft-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.ft-logo .logo-mark { width:28px; height:28px; border-radius:6px; background:var(--gold); color:#0d0d11; display:flex; align-items:center; justify-content:center; font-family:var(--font-syne); font-weight:800; font-size:16px; }
+.ft-wm { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); letter-spacing:0.1em; }
+.ft-links { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+.ft-links a { font-size:13px; color:var(--text-muted); text-decoration:none; transition:color 0.2s; }
+.ft-links a:hover { color:var(--gold-light); }
+[data-theme="light"] .ft-links a:hover { color:var(--gold-dark); }
+.ft-copy { font-size:12px; color:var(--text-dim); }
+
+@media (max-width:760px){
+  nav { padding:0 16px; }
+  .nav-links { gap:14px; }
+  .nav-links a:not(.nav-cta):not(.theme-toggle){display:none;}
+  main.legal { padding:120px 20px 60px; }
+  main.legal h1 { font-size:36px; letter-spacing:-1px; }
+  main.legal h2 { font-size:20px; }
+  footer { flex-direction:column; align-items:flex-start; padding:24px 20px; }
+}
+</style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="logo-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="logo-key-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#logo-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#logo-key-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">TRIGR</span>
+  </a>
+  <div class="nav-links">
+    <a href="index.html#features">Features</a>
+    <a href="index.html#how">How it works</a>
+    <a href="trigr-help.html">Guide</a>
+    <a href="roadmap.html">Roadmap</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
+  </div>
+</nav>
+
+<main class="legal">
+  <h1>Privacy Policy</h1>
+  <p class="subtitle">Last updated: [EFFECTIVE_DATE_PLACEHOLDER]</p>
+
+  <h2>1. Who we are</h2>
+  <p>Node Group Ltd ("we", "us", "our") is the data controller for personal data processed in connection with Trigr and the usetrigr.com website. Registered office: [REGISTERED_ADDRESS_PLACEHOLDER]. Company number: [COMPANY_NUMBER_PLACEHOLDER]. Contact: <a href="mailto:[SUPPORT_EMAIL_PLACEHOLDER]">[SUPPORT_EMAIL_PLACEHOLDER]</a>.</p>
+
+  <h2>2. What we collect</h2>
+  <p>We collect the following personal data:</p>
+  <ul>
+    <li><strong>Purchase information:</strong> When you buy a Trigr licence, our payment provider Paddle collects your name, email address, billing address, and payment details. Paddle shares your name and email address with us so we can deliver your licence key and provide support.</li>
+    <li><strong>Licence activation:</strong> When you activate a licence key in Trigr, we record the licence key, the email it is tied to, and the activation timestamp.</li>
+    <li><strong>Update checks:</strong> Trigr periodically checks for updates by requesting our update manifest hosted on GitHub. GitHub may log standard request metadata (IP address, user agent).</li>
+    <li><strong>Support correspondence:</strong> If you email us, we retain the contents of that correspondence to provide support.</li>
+    <li><strong>Website analytics:</strong> usetrigr.com may use privacy-respecting analytics to understand aggregate traffic. No personally identifying information is stored.</li>
+  </ul>
+
+  <h2>3. What we do NOT collect</h2>
+  <ul>
+    <li>Trigr does not transmit your keystrokes, clipboard contents, macro definitions, or text expansions to us or any third party. All such data is stored locally on your device.</li>
+    <li>Trigr's local usage analytics (e.g. macro execution counts) are stored in a local SQLite database on your machine and are not sent to us.</li>
+  </ul>
+
+  <h2>4. Why we process your data</h2>
+  <ul>
+    <li>To deliver your licence and provide the Software (legal basis: contract)</li>
+    <li>To provide customer support (legal basis: legitimate interest)</li>
+    <li>To deliver updates and security fixes (legal basis: legitimate interest)</li>
+    <li>To comply with tax and accounting obligations (legal basis: legal obligation)</li>
+  </ul>
+
+  <h2>5. Third parties</h2>
+  <p>We share limited data with:</p>
+  <ul>
+    <li><strong>Paddle</strong> (<a href="https://www.paddle.com">paddle.com</a>) — payment processing, Merchant of Record</li>
+    <li><strong>GitHub</strong> (<a href="https://github.com">github.com</a>) — software distribution and update delivery</li>
+    <li><strong>Netlify</strong> (<a href="https://www.netlify.com">netlify.com</a>) — website hosting</li>
+    <li><strong>Featurebase</strong> (<a href="https://featurebase.app">featurebase.app</a>) — public feedback and feature requests (only if you choose to participate)</li>
+  </ul>
+
+  <h2>6. Data retention</h2>
+  <p>We retain purchase and licence data for as long as your licence is active, and for up to 7 years thereafter to meet tax and accounting obligations. Support correspondence is retained for up to 3 years.</p>
+
+  <h2>7. International transfers</h2>
+  <p>Some of our processors (e.g. GitHub, Netlify) are based outside the UK. Where personal data is transferred internationally, we rely on appropriate safeguards including standard contractual clauses or adequacy decisions.</p>
+
+  <h2>8. Your rights</h2>
+  <p>Under UK GDPR, you have the right to:</p>
+  <ul>
+    <li>Access the personal data we hold about you</li>
+    <li>Request correction of inaccurate data</li>
+    <li>Request deletion of your data (subject to legal retention requirements)</li>
+    <li>Object to or restrict processing</li>
+    <li>Data portability</li>
+    <li>Lodge a complaint with the Information Commissioner's Office (<a href="https://ico.org.uk">ico.org.uk</a>)</li>
+  </ul>
+  <p>To exercise any of these rights, contact us at <a href="mailto:[SUPPORT_EMAIL_PLACEHOLDER]">[SUPPORT_EMAIL_PLACEHOLDER]</a>.</p>
+
+  <h2>9. Cookies</h2>
+  <p>The usetrigr.com website uses only essential cookies required for the site to function. We do not use tracking or advertising cookies.</p>
+
+  <h2>10. Changes to this policy</h2>
+  <p>We may update this Privacy Policy from time to time. Material changes will be notified via the website or via email if you are a licensed user.</p>
+</main>
+
+<footer>
+  <a href="index.html" class="ft-logo"><div class="logo-mark">T</div><span class="ft-wm">Trigr</span></a>
+  <div class="ft-links">
+    <a href="index.html#features">Features</a>
+    <a href="trigr-help.html">Guide</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+    <a href="terms.html">Terms</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="refund.html">Refunds</a>
+  </div>
+  <span class="ft-copy">© 2026 Node Group Ltd</span>
+</footer>
+
+<script>
+function toggleTheme() {
+  var html = document.documentElement;
+  var current = html.getAttribute('data-theme') || 'dark';
+  var next = current === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '🌙' : '☀';
+  localStorage.setItem('trigr-site-theme', next);
+}
+(function() {
+  var btn = document.getElementById('theme-btn');
+  if (btn) {
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    btn.textContent = current === 'light' ? '🌙' : '☀';
+  }
+})();
+</script>
+</body>
+</html>

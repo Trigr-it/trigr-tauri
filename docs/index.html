@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trigr — Hotkeys, Macros & Text Expansion for Windows. No Scripting.</title>
+<link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="description" content="Your keyboard can do more than type. Visual hotkeys, macros and text expansion for Windows — set up in seconds, no scripting required. Free to download.">
 <script>
 /* Theme: saved → OS preference → light fallback. Runs synchronously to prevent flash. */
@@ -583,22 +587,15 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 /* ════════════════════════════════════════════════════════════
    FOOTER
    ════════════════════════════════════════════════════════════ */
-footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width:1180px; margin:0 auto; }
-.footer-top { display:flex; align-items:flex-start; justify-content:space-between; gap:48px; padding-bottom:36px; border-bottom:1px solid var(--hairline); }
-.footer-brand { max-width:340px; }
-.ft-logo { display:flex; align-items:center; gap:10px; text-decoration:none; margin-bottom:14px; }
+footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; }
+.ft-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.ft-logo .logo-mark { width:28px; height:28px; border-radius:6px; background:var(--gold); color:#0d0d11; display:flex; align-items:center; justify-content:center; font-family:'Syne','Space Grotesk',sans-serif; font-weight:800; font-size:16px; }
 .ft-wm { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); letter-spacing:0.1em; }
-.footer-tagline { font-size:13px; color:var(--text-muted); line-height:1.6; }
-.footer-cols { display:grid; grid-template-columns:repeat(3,minmax(120px,auto)); gap:48px; }
-.ft-col h4 { font-family:var(--font-label); font-size:11px; font-weight:600; color:var(--text-muted); letter-spacing:0.18em; text-transform:uppercase; margin-bottom:14px; }
-.ft-col a { display:block; font-size:13px; color:var(--text-muted); text-decoration:none; padding:5px 0; transition:color 0.2s; }
-.ft-col a:hover { color:var(--gold-light); }
-[data-theme="light"] .ft-col a:hover { color:var(--gold-dark); }
-.footer-bottom { display:flex; align-items:center; justify-content:space-between; padding-top:24px; flex-wrap:wrap; gap:12px; }
+.ft-links { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+.ft-links a { font-size:13px; color:var(--text-muted); text-decoration:none; transition:color 0.2s; }
+.ft-links a:hover { color:var(--gold-light); }
+[data-theme="light"] .ft-links a:hover { color:var(--gold-dark); }
 .ft-copy { font-size:12px; color:var(--text-dim); }
-.ft-meta { display:flex; gap:16px; }
-.ft-meta a { font-size:12px; color:var(--text-dim); text-decoration:none; transition:color 0.2s; }
-.ft-meta a:hover { color:var(--text-muted); }
 
 /* ════════════════════════════════════════════════════════════
    RESPONSIVE
@@ -622,8 +619,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   .nav-links a:not(.nav-cta):not(.theme-toggle){display:none;}
   .section{padding:80px 18px;}
   .demo-panels{grid-template-columns:1fr;}
-  .footer-top{flex-direction:column; gap:32px;}
-  .footer-cols{grid-template-columns:repeat(2,1fr); gap:24px;}
+  footer{flex-direction:column; align-items:flex-start; padding:24px 18px;}
   .cta-card{padding:60px 24px;}
   .b-tile-hero .b-title{font-size:26px;}
   .b-ahk-feats{grid-template-columns:1fr;}
@@ -1814,45 +1810,16 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
      FOOTER
      ════════════════════════════════════════════════════════════ -->
 <footer>
-  <div class="footer-top">
-    <div class="footer-brand">
-      <a href="#" class="ft-logo">
-        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
-        <span class="ft-wm">TRIGR</span>
-      </a>
-      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
-      <button class="cmdk-hint" onclick="openCmdK()" type="button">Search this page <kbd>Ctrl</kbd><kbd>K</kbd></button>
-    </div>
-    <div class="footer-cols">
-      <div class="ft-col">
-        <h4>Product</h4>
-        <a href="#features">Features</a>
-        <a href="#how">How it works</a>
-        <a href="roadmap.html">Roadmap</a>
-        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
-      </div>
-      <div class="ft-col">
-        <h4>Resources</h4>
-        <a href="trigr-help.html">Guide</a>
-        <a href="trigr-alpha-tester-guide.html">Tester guide</a>
-        <a href="https://trigr.featurebase.app" target="_blank" rel="noopener">Feedback &amp; Roadmap</a>
-        <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
-        <a href="https://github.com/Trigr-it/trigr-tauri/issues">Report a bug</a>
-      </div>
-      <div class="ft-col">
-        <h4>Get in touch</h4>
-        <a href="mailto:admin@usetrigr.com">admin@usetrigr.com</a>
-        <a href="https://github.com/Trigr-it">@Trigr-it</a>
-      </div>
-    </div>
+  <a href="index.html" class="ft-logo"><div class="logo-mark">T</div><span class="ft-wm">Trigr</span></a>
+  <div class="ft-links">
+    <a href="index.html#features">Features</a>
+    <a href="trigr-help.html">Guide</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+    <a href="terms.html">Terms</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="refund.html">Refunds</a>
   </div>
-  <div class="footer-bottom">
-    <span class="ft-copy">© 2026 Trigr · Designed by a human, built by an AI, shipped by both</span>
-    <div class="ft-meta">
-      <a href="trigr-help.html">Privacy</a>
-      <a href="https://github.com/Trigr-it/trigr-tauri/blob/main/LICENSE">License</a>
-    </div>
-  </div>
+  <span class="ft-copy">© 2026 Node Group Ltd</span>
 </footer>
 
 <!-- ════════════════════════════════════════════════════════════
