@@ -9,9 +9,9 @@
   --accent-glow: rgba(232, 160, 32, 0.15);
   --text-primary:   #f0ede8;
   --text-secondary: #8a8799;
-  --text-muted:     #4a4860;
-  --border:         #23232f;
-  --border-bright:  #2e2e40;
+  --text-muted:     #9794b3;
+  --border:         #44445e;
+  --border-bright:  #525272;
   --border-accent:  rgba(232, 160, 32, 0.4);
   --font-display: 'Rajdhani', sans-serif;
   --font-body:    'DM Sans', sans-serif;
@@ -34,7 +34,7 @@
   --text-primary:   #1a1a2e;
   --text-secondary: #4a4a6a;
   --text-muted:     #9090b0;
-  --border:         #d4d4e0;
+  --border:         #dcdce8;
   --border-bright:  #c8c8dc;
   --border-accent:  rgba(232, 160, 32, 0.5);
   --shadow-overlay-lg: 0 4px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);

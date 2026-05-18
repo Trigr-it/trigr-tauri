@@ -381,6 +381,14 @@ pub fn get_current_fg_proc() -> String {
     fg_state().lock().unwrap().current_fg_proc.clone()
 }
 
+/// Live lookup: resolve a window HWND to its lowercase process basename
+/// (no `.exe` suffix). Used by expansion injection to pick the right paste
+/// shortcut per target app — Electron+xterm.js terminals need Shift+Insert
+/// because bash readline intercepts raw Ctrl+V as `quoted-insert`.
+pub fn proc_name_for_hwnd(hwnd: isize) -> Option<String> {
+    get_fg_proc_name(hwnd)
+}
+
 /// The HWND the foreground watcher last confirmed as foreground.
 /// Used by the hook to verify the linked app is still focused before
 /// suppressing bare mouse buttons (avoids the 1500ms poll lag).

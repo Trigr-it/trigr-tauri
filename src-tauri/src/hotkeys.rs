@@ -110,6 +110,14 @@ static VOICE_ACTION_VK: std::sync::atomic::AtomicU32 = std::sync::atomic::Atomic
 /// Tracks whether the voice action key is physically held (to suppress key repeat).
 static VOICE_KEY_HELD: AtomicBool = AtomicBool::new(false);
 
+/// Tracks whether the most recent Menu key (VK_APPS, 0x5D) keydown was
+/// suppressed. The matching keyup must also be suppressed, otherwise
+/// DefWindowProc translates the keyup into WM_CONTEXTMENU and the OS context
+/// menu opens alongside the user's mapped action. Set on keydown suppression,
+/// consumed on keyup. Targeted to Menu key only — other keys don't have this
+/// keyup-driven OS behaviour.
+static MENU_KEYDOWN_SUPPRESSED: AtomicBool = AtomicBool::new(false);
+
 /// Tracks whether the radial menu overlay is open (for hold-to-select release detection).
 static RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
 /// Tracks whether the radial action key is physically held (to suppress key repeat).
@@ -382,6 +390,7 @@ fn key_id_to_vk(key_id: &str) -> Option<u32> {
         "Insert" => Some(0x2D), "Delete" => Some(0x2E),
         "Escape" => Some(0x1B), "Enter" => Some(0x0D), "Tab" => Some(0x09),
         "Space" => Some(0x20), "Backspace" => Some(0x08),
+        "ContextMenu" => Some(0x5D),
         "Minus" => Some(0xBD), "Equal" => Some(0xBB),
         "BracketLeft" => Some(0xDB), "BracketRight" => Some(0xDD),
         "Semicolon" => Some(0xBA), "Quote" => Some(0xDE),
@@ -621,6 +630,7 @@ fn vk_to_key_id(vk: u32) -> Option<&'static str> {
         0x91 => Some("ScrollLock"),
         0x2C => Some("PrintScreen"),
         0x13 => Some("Pause"),
+        0x5D => Some("ContextMenu"),
         // Symbols
         0xBD => Some("Minus"),
         0xBB => Some("Equal"),
@@ -997,6 +1007,9 @@ unsafe extern "system" fn keyboard_hook_proc(
             let bits = modifier_bits();
             if let Ok(set) = suppress_keys().try_read() {
                 if set.contains(&(bits, kb.vkCode)) && !(bits == 0 && is_foreground_dialog()) {
+                    if kb.vkCode == 0x5D {
+                        MENU_KEYDOWN_SUPPRESSED.store(true, Ordering::SeqCst);
+                    }
                     return 1;
                 }
             }
@@ -1044,6 +1057,9 @@ unsafe extern "system" fn keyboard_hook_proc(
                             if bits == 0 && is_foreground_dialog() {
                                 // pass through
                             } else {
+                                if kb.vkCode == 0x5D {
+                                    MENU_KEYDOWN_SUPPRESSED.store(true, Ordering::SeqCst);
+                                }
                                 return 1;
                             }
                         }
@@ -1058,6 +1074,16 @@ unsafe extern "system" fn keyboard_hook_proc(
                     vk_code: kb.vkCode,
                     scan_code: kb.scanCode,
                 });
+                // Menu key (VK_APPS, 0x5D) opens the OS context menu via
+                // DefWindowProc on WM_KEYUP — not WM_KEYDOWN. Consume the
+                // matching-keydown flag so the keyup is suppressed ONLY when
+                // we actually suppressed the keydown. Bare Menu presses that
+                // weren't mapped still flow through and open the OS menu.
+                if kb.vkCode == 0x5D
+                    && MENU_KEYDOWN_SUPPRESSED.swap(false, Ordering::SeqCst)
+                {
+                    return 1;
+                }
             }
             _ => {}
         }

@@ -13,6 +13,8 @@ import Toaster from './components/Toaster';
 import TextExpansions from './components/TextExpansions';
 import WelcomeModal from './components/WelcomeModal';
 import UpgradeModal from './components/UpgradeModal';
+import ReservedShortcutModal from './components/ReservedShortcutModal';
+import { findReservedShortcut, formatComboDisplay } from './utils/reservedShortcuts';
 import OnboardingTour from './components/OnboardingTour';
 import ProTrialModal from './components/ProTrialModal';
 import TemplatesCoachmark from './components/TemplatesCoachmark';
@@ -47,6 +49,9 @@ function App() {
   const [draftAssignment, setDraftAssignment] = useState(null);
   const [draftDoubleAssignment, setDraftDoubleAssignment] = useState(null);
   const [sidebarComboFilter, setSidebarComboFilter] = useState(null); // null = show all, string = filter by combo
+  // Reserved Windows shortcut hazard modal — deferred-save pattern. Shape:
+  // { keyId, macro, comboDisplay, osFunction, profileName } or null.
+  const [reservedShortcutPending, setReservedShortcutPending] = useState(null);
   const [engineStatus, setEngineStatus]     = useState({ uiohookAvailable: false, nutjsAvailable: false });
   const [lastFired, setLastFired]           = useState(null);
   // theme: 'auto' | 'light' | 'dark'. 'auto' follows the OS via prefers-color-scheme.
@@ -842,13 +847,10 @@ function App() {
   }, []);
 
   // ── Key selection ─────────────────────────────────────────
-  const handleKeySelect = useCallback((keyId) => {
-    if (activeModifiers.length === 0) return; // require a modifier layer
-    setSelectedKey(prev => prev === keyId ? null : keyId);
-    // If the user picks a key that's already assigned while a duplicate draft
-    // is pending, drop the draft — they're navigating to the occupant, not
-    // assigning the draft. The draft survives only when the picked slot is
-    // empty (and will fill it on save).
+  // Inner select — bypasses the reserved-shortcut hazard check. Used directly
+  // by the modal's onContinue handler after the user accepts the warning.
+  const commitKeySelect = useCallback((keyId) => {
+    setSelectedKey(keyId);
     if (draftAssignment) {
       const key = `${activeProfile}::${currentCombo}::${keyId}`;
       const doubleKey = key + '::double';
@@ -857,7 +859,29 @@ function App() {
         setDraftDoubleAssignment(null);
       }
     }
-  }, [activeModifiers, draftAssignment, assignments, activeProfile, currentCombo]);
+  }, [draftAssignment, assignments, activeProfile, currentCombo]);
+
+  const handleKeySelect = useCallback((keyId) => {
+    if (activeModifiers.length === 0) return; // require a modifier layer
+    // Clicking the currently-selected key deselects — skip the hazard check.
+    if (selectedKey === keyId) {
+      setSelectedKey(null);
+      return;
+    }
+    // Reserved Windows shortcut? Show hazard modal before the user invests
+    // time in the action editor. Cancel leaves selection unchanged.
+    const reserved = findReservedShortcut(currentCombo, keyId);
+    if (reserved) {
+      setReservedShortcutPending({
+        keyId,
+        comboDisplay: formatComboDisplay(currentCombo, keyId),
+        osFunction: reserved.osFunction,
+        profileName: activeProfile,
+      });
+      return;
+    }
+    commitKeySelect(keyId);
+  }, [activeModifiers, currentCombo, activeProfile, selectedKey, commitKeySelect]);
 
   // ── Assignment key format: "Profile::Ctrl+Alt::KeyE" ──────
   const makeAssignmentKey = useCallback((profile, combo, keyId) => {
@@ -2696,6 +2720,18 @@ function App() {
       )}
       {upgradePrompt && (
         <UpgradeModal featureName={upgradePrompt} onClose={() => setUpgradePrompt(null)} />
+      )}
+      {reservedShortcutPending && (
+        <ReservedShortcutModal
+          comboDisplay={reservedShortcutPending.comboDisplay}
+          osFunction={reservedShortcutPending.osFunction}
+          profileName={reservedShortcutPending.profileName}
+          onContinue={() => {
+            commitKeySelect(reservedShortcutPending.keyId);
+            setReservedShortcutPending(null);
+          }}
+          onCancel={() => setReservedShortcutPending(null)}
+        />
       )}
       {showProTrialModal && (
         <ProTrialModal

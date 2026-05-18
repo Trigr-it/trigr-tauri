@@ -15,7 +15,8 @@ use windows_sys::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
+    KEYEVENTF_UNICODE,
 };
 
 const MAX_BUFFER_LENGTH: usize = 50;
@@ -1289,6 +1290,20 @@ fn should_use_clipboard(_resolved_text: &str) -> bool {
     true
 }
 
+/// Apps whose terminals route Ctrl+V through to a child pty where bash readline
+/// interprets it as `quoted-insert` (NOT paste). For these, force Shift+Insert
+/// so the terminal emulator (xterm.js etc.) handles the paste in its renderer
+/// before the keystroke reaches the shell. Add new entries as reports come in.
+fn target_needs_shift_insert(target_hwnd: isize) -> bool {
+    if target_hwnd == 0 {
+        return false;
+    }
+    matches!(
+        crate::foreground::proc_name_for_hwnd(target_hwnd).as_deref(),
+        Some("code"),
+    )
+}
+
 /// Inject text via batched KEYEVENTF_UNICODE SendInput (single call).
 fn inject_via_sendinput(text: &str, target_hwnd: isize) {
     // Release physically held modifiers
@@ -1380,8 +1395,24 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
     // Save current clipboard
     let prev = read_clipboard().unwrap_or_default();
 
+    let needs_shift_insert = target_needs_shift_insert(target_hwnd);
+
+    // For Chromium-terminal hosts (xterm.js in VS Code etc.), include the
+    // trailing space in the clipboard payload. The paste handler is async
+    // (navigator.clipboard.readText() returns a Promise), so a discrete
+    // VK_SPACE keystroke after Shift+Insert races and lands BEFORE the pasted
+    // content reaches the pty — producing " <text>" instead of "<text> ".
+    // Bundling the space into the clipboard write delivers atomically.
+    let payload_text;
+    let payload_text_ref: &str = if needs_shift_insert {
+        payload_text = format!("{} ", text);
+        &payload_text
+    } else {
+        text
+    };
+
     // Write replacement to clipboard — if this fails, do NOT paste (would paste old clipboard content)
-    if !write_clipboard_dual(text, html) {
+    if !write_clipboard_dual(payload_text_ref, html) {
         log::warn!("[Trigr] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
         return;
     }
@@ -1399,8 +1430,7 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
         thread::sleep(Duration::from_millis(10));
     }
 
-    // Check if Ctrl+V is mapped as a hotkey — if so, use Shift+Insert
-    let use_ctrl_v = !is_ctrl_v_mapped();
+    let use_ctrl_v = !is_ctrl_v_mapped() && !needs_shift_insert;
     if use_ctrl_v {
         send_vk_key(0xA2, false); // LCtrl
         send_vk_key(0x56, false); // V
@@ -1408,13 +1438,16 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
         send_vk_key(0xA2, true);
     } else {
         send_vk_key(VK_LSHIFT, false);
-        send_vk_key(VK_INSERT, false);
-        send_vk_key(VK_INSERT, true);
+        send_vk_key_extended(VK_INSERT, false);
+        send_vk_key_extended(VK_INSERT, true);
         send_vk_key(VK_LSHIFT, true);
     }
 
-    // Send trailing space as a synthetic keystroke (not via clipboard — some apps strip trailing whitespace from paste)
-    send_vk_tap(VK_SPACE);
+    // Trailing space only for the Ctrl+V path — Shift+Insert path bundles it
+    // into the clipboard payload above to avoid the async-paste race.
+    if !needs_shift_insert {
+        send_vk_tap(VK_SPACE);
+    }
 
     // Re-press modifiers that were physically held
     crate::actions::restore_modifiers(&held);
@@ -2048,7 +2081,7 @@ fn inject_text_segment(text: &str, target_hwnd: isize) {
         thread::sleep(Duration::from_millis(10));
     }
 
-    let use_ctrl_v = !is_ctrl_v_mapped();
+    let use_ctrl_v = !is_ctrl_v_mapped() && !target_needs_shift_insert(target_hwnd);
     if use_ctrl_v {
         send_vk_key(0xA2, false); // LCtrl down
         send_vk_key(0x56, false); // V down
@@ -2056,8 +2089,8 @@ fn inject_text_segment(text: &str, target_hwnd: isize) {
         send_vk_key(0xA2, true);  // LCtrl up
     } else {
         send_vk_key(VK_LSHIFT, false);
-        send_vk_key(VK_INSERT, false);
-        send_vk_key(VK_INSERT, true);
+        send_vk_key_extended(VK_INSERT, false);
+        send_vk_key_extended(VK_INSERT, true);
         send_vk_key(VK_LSHIFT, true);
     }
 
@@ -2088,6 +2121,33 @@ fn send_vk_key(vk: u16, key_up: bool) {
 fn send_vk_tap(vk: u16) {
     send_vk_key(vk, false);
     send_vk_key(vk, true);
+}
+
+/// SendInput variant that sets KEYEVENTF_EXTENDEDKEY. Required for the "extended"
+/// navigation-cluster keys (Insert, Delete, Home, End, PgUp, PgDn, Arrows) so
+/// Chromium-based targets (xterm.js inside VS Code, etc.) resolve the DOM event
+/// `code` to e.g. "Insert" rather than "Numpad0" — keybinding handlers for
+/// Shift+Insert / paste require this to match.
+fn send_vk_key_extended(vk: u16, key_up: bool) {
+    let mut flags = KEYEVENTF_EXTENDEDKEY;
+    if key_up {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    let input = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk as _,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe {
+        SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+    }
 }
 
 /// Move the cursor back `count` positions instantly via a single batched
