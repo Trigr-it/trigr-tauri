@@ -589,7 +589,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
    ════════════════════════════════════════════════════════════ */
 footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; }
 .ft-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
-.ft-logo .logo-mark { width:28px; height:28px; border-radius:6px; background:var(--gold); color:#0d0d11; display:flex; align-items:center; justify-content:center; font-family:'Syne','Space Grotesk',sans-serif; font-weight:800; font-size:16px; }
+.ft-logo .logo-mark { width:28px; height:28px; }
+.ft-logo .logo-mark > svg { width:100%; height:100%; display:block; }
 .ft-wm { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); letter-spacing:0.1em; }
 .ft-links { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
 .ft-links a { font-size:13px; color:var(--text-muted); text-decoration:none; transition:color 0.2s; }
@@ -1810,7 +1811,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
      FOOTER
      ════════════════════════════════════════════════════════════ -->
 <footer>
-  <a href="index.html" class="ft-logo"><div class="logo-mark">T</div><span class="ft-wm">Trigr</span></a>
+  <a href="index.html" class="ft-logo"><div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="ft-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="ft-key" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#ft-base)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#ft-key)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div><span class="ft-wm">Trigr</span></a>
   <div class="ft-links">
     <a href="index.html#features">Features</a>
     <a href="trigr-help.html">Guide</a>
