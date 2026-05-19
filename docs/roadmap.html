@@ -242,6 +242,13 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 .ft-meta { display:flex; gap:16px; }
 .ft-meta a { font-size:12px; color:var(--text-dim); text-decoration:none; transition:color 0.2s; }
 .ft-meta a:hover { color:var(--text-muted); }
+.betalist-badge { display:inline-flex; align-items:center; line-height:0; flex-shrink:0; transition:opacity 0.15s; }
+.betalist-badge:hover { opacity:0.85; }
+.betalist-badge img { display:block; width:117px; height:40px; }
+.betalist-badge .bl-badge-light { display:none; }
+.betalist-badge .bl-badge-dark { display:block; }
+[data-theme="light"] .betalist-badge .bl-badge-light { display:block; }
+[data-theme="light"] .betalist-badge .bl-badge-dark { display:none; }
 
 /* Ctrl+K */
 .cmdk-overlay { position:fixed; inset:0; z-index:200; background:rgba(8,11,20,0.65); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); display:none; align-items:flex-start; justify-content:center; padding-top:14vh; }
@@ -430,6 +437,13 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 [data-theme="light"] .sv-clip-btn.primary:hover { color:#fff; }
 
 </style>
+
+<!-- Privacy-friendly analytics by Plausible -->
+<script async src="https://plausible.io/js/pa-VJCTdtLxXP7hTgXINlwwm.js"></script>
+<script>
+  window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+  plausible.init()
+</script>
 </head>
 <body>
 
@@ -1126,6 +1140,10 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <a href="trigr-help.html">Privacy</a>
       <a href="https://github.com/Trigr-it/trigr-tauri/blob/main/LICENSE">License</a>
     </div>
+    <a href="https://betalist.com/startups/trigr?utm_campaign=badge-trigr&amp;utm_medium=badge&amp;utm_source=badge-featured" class="betalist-badge" target="_blank" rel="noopener">
+      <img class="bl-badge-light" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=dark">
+      <img class="bl-badge-dark" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=gray">
+    </a>
   </div>
 </footer>
 

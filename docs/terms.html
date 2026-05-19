@@ -105,6 +105,13 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
 .ft-links a:hover { color:var(--gold-light); }
 [data-theme="light"] .ft-links a:hover { color:var(--gold-dark); }
 .ft-copy { font-size:12px; color:var(--text-dim); }
+.betalist-badge { display:inline-flex; align-items:center; line-height:0; flex-shrink:0; transition:opacity 0.15s; }
+.betalist-badge:hover { opacity:0.85; }
+.betalist-badge img { display:block; width:117px; height:40px; }
+.betalist-badge .bl-badge-light { display:none; }
+.betalist-badge .bl-badge-dark { display:block; }
+[data-theme="light"] .betalist-badge .bl-badge-light { display:block; }
+[data-theme="light"] .betalist-badge .bl-badge-dark { display:none; }
 
 @media (max-width:760px){
   nav { padding:0 16px; }
@@ -115,6 +122,13 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
   footer { flex-direction:column; align-items:flex-start; padding:24px 20px; }
 }
 </style>
+
+<!-- Privacy-friendly analytics by Plausible -->
+<script async src="https://plausible.io/js/pa-VJCTdtLxXP7hTgXINlwwm.js"></script>
+<script>
+  window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+  plausible.init()
+</script>
 </head>
 <body>
 
@@ -196,6 +210,10 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
     <a href="refund.html">Refunds</a>
   </div>
   <span class="ft-copy">© 2026 Node Group Ltd</span>
+  <a href="https://betalist.com/startups/trigr?utm_campaign=badge-trigr&amp;utm_medium=badge&amp;utm_source=badge-featured" class="betalist-badge" target="_blank" rel="noopener">
+    <img class="bl-badge-light" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=dark">
+    <img class="bl-badge-dark" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=gray">
+  </a>
 </footer>
 
 <script>
