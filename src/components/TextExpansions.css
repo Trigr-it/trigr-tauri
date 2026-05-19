@@ -147,6 +147,7 @@
   box-shadow: 0 0 8px rgba(232, 160, 32, 0.15);
 }
 
+
 /* ── Content wrapper: sidebar + main ──────────────────────────────────── */
 
 .te-content {
@@ -278,6 +279,23 @@
 .te-cat-new-btn:hover {
   color: var(--accent);
   background: var(--accent-glow);
+}
+
+/* Pack import/export sit below "+ Add Category" in the same column. Subtle
+   top divider on the first one groups them visually as a related pair while
+   keeping "+ Add Category" as the primary action above. */
+.te-cat-pack-btn {
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.te-cat-pack-btn:first-of-type {
+  margin-top: 6px;
+  border-top: 1px solid var(--border-bright);
+  padding-top: 8px;
+  height: auto;
+  min-height: 30px;
 }
 
 /* ── Category inline rename ────────────────────────────────────────────── */
@@ -489,6 +507,7 @@ button.te-col-header:hover {
 .te-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   min-width: 280px;
   display: flex;
   flex-direction: column;
@@ -833,6 +852,30 @@ button.te-col-header:hover {
   color: var(--danger-hover);
 }
 
+.te-item-export {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  flex-shrink: 0;
+  font-family: var(--font-body);
+  padding: 0;
+}
+
+.te-item-export:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+  color: var(--text-secondary);
+}
+
 /* ── Right edit panel ────────────────────────────────────────────────────── */
 
 .te-edit-panel {
@@ -1149,6 +1192,7 @@ button.te-col-header:hover {
   border-radius: var(--radius-md);
   padding: 4px;
   min-width: 220px;
+  max-width: calc(100vw - 16px);
   max-height: 50vh;
   overflow-y: auto;
   box-shadow: var(--shadow-overlay);
@@ -1286,6 +1330,92 @@ button.te-col-header:hover {
 
 .rte-fillin-ok:hover {
   background: rgba(200, 100, 255, 0.25);
+}
+
+/* Reuse chips — appear below the fill-in row when the current editor (or
+   any sibling variant) already contains fill-in fields. Click to insert that
+   field again at the cursor — multiple appearances prompt once at fire time
+   and inject the answer everywhere. */
+.rte-fillin-reuse {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 6px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.rte-fillin-reuse-label {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.rte-fillin-reuse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rte-fillin-reuse-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: rgba(200, 100, 255, 0.08);
+  border: 1px solid rgba(200, 100, 255, 0.3);
+  color: #c864ff;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.rte-fillin-reuse-chip:hover {
+  background: rgba(200, 100, 255, 0.18);
+  border-color: rgba(200, 100, 255, 0.55);
+}
+
+/* Inline rename popover for an existing fill-in chip. Anchored at the
+   chip's bottom-left via inline style. Renames every chip in the current
+   editor that shares the same label so multi-instance fields stay in sync. */
+.rte-fillin-rename {
+  position: fixed;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+  min-width: 240px;
+  max-width: calc(100vw - 16px);
+}
+
+.rte-fillin-rename-label {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ── Key capture popup ───────────────────────────────────────────────────── */
@@ -1827,6 +1957,38 @@ button.te-col-header:hover {
   border-color: rgba(255, 80, 80, 0.6);
 }
 
+/* Import collision dialog reuses .te-delete-dialog frame but neutralises the
+   danger-coloured border + title, and widens for the 3-button action row +
+   the trigger badge wrap. */
+.te-import-dialog {
+  border-color: var(--border-accent);
+  max-width: 460px;
+}
+
+.te-import-dialog .te-delete-title {
+  color: var(--accent);
+}
+
+.te-import-collisions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 6px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.te-import-collisions-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  align-self: center;
+}
+
+.te-import-actions {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* ════════════════════════════════════ GLOBAL VARIABLES ════════════════════════════════ */
 
 .gd-view {
@@ -2211,6 +2373,59 @@ button.te-col-header:hover {
   margin-left: 4px;
 }
 
+/* Variant glyph in trigger column — minimal visual hint that this row has
+   variants. Shown alongside (or instead of) IMG when the row has options. */
+.te-variant-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+/* Variant chip row in preview column. Wraps to a second line if needed —
+   the parent .te-col-preview keeps its 2-line clamp via overflow:hidden,
+   so a third row of chips silently disappears (rare; most expansions have
+   ≤4 variants). */
+.te-col-preview-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  /* Force the chip container to fill the grid track instead of sizing to its
+     single-line content width — flex-wrap only engages when the container
+     has a bounded width, and webkit-box (line-clamp) parent doesn't bound
+     children's intrinsic width. */
+  width: 100%;
+  min-width: 0;
+}
+
+.te-variant-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Variant expansion editor ────────────────────────────────────────────── */
 .te-variant-header {
   display: flex;
@@ -2235,15 +2450,6 @@ button.te-col-header:hover {
   background: var(--accent-glow);
 }
 
-.te-variant-remove {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-.te-variant-remove:hover {
-  background: rgba(224, 80, 80, 0.1);
-}
-
 .te-variant-hint {
   font-size: 11px;
   color: var(--text-muted);
@@ -2251,74 +2457,142 @@ button.te-col-header:hover {
   line-height: 1.4;
 }
 
-.te-variant-list {
+/* Tab row — pill tabs across the top of the editor area. 32px height +
+   6px radius matches the modifier-layer pill standard. */
+.te-variant-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
-.te-variant-item {
+.te-variant-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 4px 0 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 8px;
-}
-
-.te-variant-item-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.te-variant-label-input {
-  flex: 1;
-  height: 26px;
+  color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 600;
-  padding: 0 8px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.12s;
+  max-width: 200px;
 }
 
-.te-variant-remove-btn {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11px;
-  cursor: pointer;
+.te-variant-tab:hover {
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+
+.te-variant-tab--active {
+  background: var(--accent-glow);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.te-variant-tab--active:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.te-variant-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.te-variant-tab-close {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
   flex-shrink: 0;
 }
 
-.te-variant-remove-btn:hover {
-  color: var(--danger);
-  background: rgba(224, 80, 80, 0.1);
+.te-variant-tab:hover .te-variant-tab-close {
+  opacity: 1;
 }
 
-.te-variant-text {
-  min-height: 40px;
+.te-variant-tab-close:hover:not(:disabled) {
+  color: var(--danger-hover);
+  background: rgba(255, 80, 80, 0.12);
+}
+
+.te-variant-tab-close:disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.te-variant-tab-rename-input {
+  height: 22px;
+  padding: 0 6px;
   font-size: 12px;
-  resize: vertical;
+  font-weight: 500;
+  font-family: var(--font-body);
+  background: var(--bg-input, var(--bg-elevated));
+  border: 1px solid var(--border-accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  max-width: 160px;
+  outline: none;
 }
 
-.te-variant-add-btn {
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent);
+.te-variant-tab-add {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
   background: transparent;
   border: 1px dashed var(--border-accent);
   border-radius: 6px;
-  padding: 7px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-body);
   cursor: pointer;
-  width: 100%;
   transition: all 0.15s;
 }
 
-.te-variant-add-btn:hover {
+.te-variant-tab-add:hover {
   background: var(--accent-glow);
+}
+
+/* Small destructive link below the editor — collapse all variants back to
+   single mode. Less prominent than the old top-right button because dropping
+   variants loses content for tabs other than the active one. */
+.te-variant-remove-all-link {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.12s;
+}
+
+.te-variant-remove-all-link:hover {
+  color: var(--danger-hover);
 }

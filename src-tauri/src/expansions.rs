@@ -1768,6 +1768,19 @@ fn fire_variant_expansion(
         opt.get("label").and_then(|v| v.as_str()).unwrap_or("Option").to_string()
     }).collect();
 
+    // Build 1-line plain-text previews for the picker: first non-empty line of
+    // the variant body, hard-truncated to 80 chars. Picker CSS clamps further.
+    let option_previews: Vec<String> = options.iter().map(|opt| {
+        let raw = opt.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        let first_line = raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+        if first_line.chars().count() > 80 {
+            let truncated: String = first_line.chars().take(80).collect();
+            format!("{}…", truncated)
+        } else {
+            first_line.to_string()
+        }
+    }).collect();
+
     // Create response channel — reuse fill_in_tx
     let (tx, rx) = mpsc::channel();
     *fill_in_tx().lock().unwrap() = Some(tx);
@@ -1830,6 +1843,7 @@ fn fire_variant_expansion(
         let _ = win.emit("fill-in-show", serde_json::json!({
             "mode": "variant",
             "options": option_labels,
+            "previews": option_previews,
             "theme": theme,
         }));
     }
@@ -1851,18 +1865,24 @@ fn fire_variant_expansion(
     }
     crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
 
-    // Process selection
-    let selected_text = match response {
+    // Process selection — pull both text and html (html absent in legacy
+    // {label, text} variants; we just paste plain in that case).
+    let (selected_text, selected_html) = match response {
         Ok(Some(values)) => {
             // The fill-in window sends back {"__variant_index": "0"} for variant mode
             if let Some(idx_str) = values.get("__variant_index") {
                 if let Ok(idx) = idx_str.parse::<usize>() {
                     if idx < options.len() {
-                        options[idx]
+                        let t = options[idx]
                             .get("text")
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
-                            .to_string()
+                            .to_string();
+                        let h = options[idx]
+                            .get("html")
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
+                        (t, h)
                     } else {
                         return;
                     }
@@ -1880,10 +1900,85 @@ fn fire_variant_expansion(
         return;
     }
 
-    let (resolved, cursor_back) = resolve_tokens(&selected_text, global_vars);
+    // If the selected variant contains {fillIn:LABEL} tokens, re-prompt the
+    // user for those values before injecting. Mirrors the main expansion
+    // path's fill-in flow (fire_expansion_with_fillin) — variant flow had no
+    // fill-in handling before, so tokens were pasted literally as text.
+    //
+    // Plain-text only when fill-in is involved: matches the main path
+    // (rich text inside fill-in fields isn't supported yet, see line 522).
+    let fill_in_fields = extract_fill_in_fields(&selected_text);
+    let (final_text, final_html) = if !fill_in_fields.is_empty() {
+        // Re-acquire FILL_IN_ACTIVE before re-showing the window
+        crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let (tx2, rx2) = mpsc::channel();
+        *fill_in_tx().lock().unwrap() = Some(tx2);
+
+        if let Some(win) = app.get_webview_window("fillin") {
+            use tauri::Emitter;
+
+            if let Ok(hwnd) = win.hwnd() {
+                crate::hotkeys::FILLIN_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+            }
+
+            let _ = win.show();
+            let _ = win.set_focus();
+
+            let _ = win.emit("fill-in-request-ready", serde_json::json!({}));
+            let (ready_tx, ready_rx) = mpsc::channel();
+            *fill_in_ready_tx().lock().unwrap() = Some(ready_tx);
+            let _ = ready_rx.recv_timeout(Duration::from_secs(5));
+            *fill_in_ready_tx().lock().unwrap() = None;
+
+            let _ = win.emit("fill-in-show", serde_json::json!({
+                "fields": fill_in_fields,
+                "theme": theme,
+            }));
+        }
+
+        let response2 = rx2.recv_timeout(Duration::from_secs(60));
+        *fill_in_tx().lock().unwrap() = None;
+
+        // Clean up window + restore focus before injection
+        crate::hotkeys::FILLIN_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
+        if let Some(win) = app.get_webview_window("fillin") {
+            let _ = win.hide();
+        }
+        if target_hwnd != 0 {
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(target_hwnd as _);
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        let values = match response2 {
+            Ok(Some(v)) => v,
+            _ => return, // user cancelled
+        };
+
+        let substituted = resolve_fill_in_tokens(&selected_text, &values);
+        (substituted, None) // plain-text only when fill-in is involved
+    } else {
+        (selected_text, selected_html)
+    };
+
+    let (resolved, cursor_back) = resolve_tokens(&final_text, global_vars);
     if resolved.is_empty() {
         return;
     }
+
+    // Resolve HTML in parallel when present. Skip if the variant uses inline
+    // key tokens — those need per-segment injection that doesn't compose with
+    // a single paste, same rule as the main expansion path (line 546).
+    let resolved_html: Option<String> = final_html.and_then(|h| {
+        if h.is_empty() || h.contains("{key:") {
+            None
+        } else {
+            Some(resolve_tokens_html(&h, global_vars))
+        }
+    });
 
     crate::analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, trigger, trigger);
 
@@ -1896,7 +1991,7 @@ fn fire_variant_expansion(
     let _guard = guard;
 
     crate::hotkeys::SUPPRESS_SIMULATED.store(true, std::sync::atomic::Ordering::SeqCst);
-    inject_via_clipboard(&resolved, None, target_hwnd);
+    inject_via_clipboard(&resolved, resolved_html.as_deref(), target_hwnd);
 
     if cursor_back > 0 {
         thread::sleep(Duration::from_millis(10));

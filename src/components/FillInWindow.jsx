@@ -30,6 +30,7 @@ export default function FillInWindow() {
   const [fields, setFields] = useState([]);
   const [values, setValues] = useState({});
   const [options, setOptions] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRefs = useRef([]);
   const panelRef = useRef(null);
@@ -49,6 +50,7 @@ export default function FillInWindow() {
         // Variant selection mode
         setMode('variant');
         setOptions(data.options || []);
+        setPreviews(data.previews || []);
         setSelectedIdx(0);
         setFields([]);
         setValues({});
@@ -60,6 +62,7 @@ export default function FillInWindow() {
         (data.fields || []).forEach(f => { init[f] = ''; });
         setValues(init);
         setOptions([]);
+        setPreviews([]);
         setSelectedIdx(0);
         setTimeout(() => inputRefs.current[0]?.focus(), 60);
       }
@@ -146,7 +149,12 @@ export default function FillInWindow() {
                 onMouseEnter={() => setSelectedIdx(i)}
               >
                 <span className="fillin-variant-num">{i + 1}</span>
-                <span className="fillin-variant-label">{label}</span>
+                <div className="fillin-variant-text">
+                  <span className="fillin-variant-label">{label}</span>
+                  {previews[i] && (
+                    <span className="fillin-variant-preview">{previews[i]}</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>

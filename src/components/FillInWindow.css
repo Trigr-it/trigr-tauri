@@ -179,8 +179,15 @@ html, body {
   user-select: text;
 }
 
+/* Border tint on any focus so users still see which field is active; the
+   accent box-shadow only paints after Tab has been pressed (modality class
+   set in main.jsx). Stops the popup loading with a thick orange ring around
+   the auto-focused first input. */
 .fillin-win-input:focus {
   border-color: var(--border-accent);
+}
+
+html.using-keyboard .fillin-win-input:focus-visible {
   box-shadow: 0 0 0 2px var(--accent-glow);
 }
 
@@ -282,6 +289,14 @@ html, body {
   background: rgba(232, 160, 32, 0.1);
 }
 
+.fillin-variant-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .fillin-variant-label {
   font-size: 13px;
   color: var(--text-primary);
@@ -289,6 +304,20 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.fillin-variant-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.fillin-variant-row.selected .fillin-variant-preview {
+  color: var(--text-secondary);
 }
 
 .fillin-variant-hint {

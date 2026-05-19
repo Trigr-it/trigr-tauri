@@ -824,6 +824,33 @@
   text-align: right;
 }
 
+/* Per-slider reset button. Conditionally rendered in JSX only when the
+   value differs from default, so its presence itself reads as "this has
+   been changed from default". */
+.settings-slider-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.settings-slider-reset:hover {
+  color: var(--accent);
+  background: var(--accent-glow);
+  border-color: var(--border-accent);
+}
+
 /* ── Quick Search settings ──────────────────────────────────────────── */
 
 .settings-qs-hotkey-ctrl {

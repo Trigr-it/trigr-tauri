@@ -1,4 +1,4 @@
-import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -44,6 +44,21 @@ function htmlToPlainText(html) {
   return (tmp.textContent || tmp.innerText || '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+// Walk a chunk of editor HTML and return every {fillIn:LABEL} label found.
+// Used to surface reusable fields across the single editor body + variants.
+function extractFillInLabels(html) {
+  if (!html) return [];
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const labels = [];
+  tmp.querySelectorAll('[data-token]').forEach(el => {
+    const t = el.dataset.token || '';
+    const m = t.match(/^\{fillIn:(.+)\}$/);
+    if (m) labels.push(m[1]);
+  });
+  return labels;
 }
 
 // ── Insert token category menus ────────────────────────────────────────────
@@ -199,7 +214,7 @@ function ColourPicker({ value, onChange }) {
 
 // ── Rich text editor ───────────────────────────────────────────────────────
 
-function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade }) {
+function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade, reusableFillInLabels = [] }) {
   const editorRef      = useRef(null);
   const menuRef        = useRef(null);
   const keyBtnRef      = useRef(null);
@@ -216,6 +231,11 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   const [fillInEntry, setFillInEntry] = useState(false);
   const [fillInLabel, setFillInLabel] = useState('');
   const fillInInputRef = useRef(null);
+  // Inline rename popover for fill-in chips clicked in the editor body
+  const [fillInRename, setFillInRename] = useState(null); // { label, x, y }
+  const [fillInRenameValue, setFillInRenameValue] = useState('');
+  const fillInRenameRef = useRef(null);
+  const fillInRenameInputRef = useRef(null);
   const [showKeyPicker, setShowKeyPicker] = useState(false);
   const [keyPickerPos, setKeyPickerPos] = useState(null);
   const [keyPickerCapturing, setKeyPickerCapturing] = useState(false);
@@ -320,6 +340,26 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     };
   }, [showKeyPicker]);
 
+  // Close fill-in rename popover on outside click, Escape, or scroll
+  useEffect(() => {
+    if (!fillInRename) return;
+    function onDown(e) {
+      if (fillInRenameRef.current && !fillInRenameRef.current.contains(e.target)) {
+        cancelFillInRename();
+      }
+    }
+    function onScroll(e) {
+      if (fillInRenameRef.current?.contains(e.target)) return;
+      cancelFillInRename();
+    }
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', onScroll, { capture: true });
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', onScroll, { capture: true });
+    };
+  }, [fillInRename]);
+
   const notify = useCallback(() => {
     const html = editorRef.current.innerHTML;
     onChange({ html, text: htmlToPlainText(html) });
@@ -423,14 +463,46 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     setInsertCategory(null);
   }
 
-  function handleInsertFillIn(e) {
-    e.preventDefault();
-    const label = fillInLabel.trim() || 'Field';
+  function insertFillInToken(label) {
     insertTokenHtml(`{fillIn:${label}}`, `▭ ${label}`);
     setFillInEntry(false);
     setFillInLabel('');
     setShowInsert(false);
     setInsertCategory(null);
+  }
+
+  function commitFillInRename() {
+    if (!fillInRename) return;
+    const oldLabel = fillInRename.label;
+    const newLabel = fillInRenameValue.trim();
+    setFillInRename(null);
+    setFillInRenameValue('');
+    if (!newLabel || newLabel === oldLabel) return;
+    // Update every chip in this editor with the matching label so renaming a
+    // field that appears multiple times stays consistent.
+    const oldToken = `{fillIn:${oldLabel}}`;
+    const newToken = `{fillIn:${newLabel}}`;
+    if (editorRef.current) {
+      const chips = editorRef.current.querySelectorAll('[data-token]');
+      chips.forEach(chip => {
+        if (chip.dataset.token === oldToken) {
+          chip.setAttribute('data-token', newToken);
+          chip.textContent = `▭ ${newLabel}`;
+        }
+      });
+    }
+    notify();
+  }
+
+  function cancelFillInRename() {
+    setFillInRename(null);
+    setFillInRenameValue('');
+  }
+
+  function handleInsertFillIn(e) {
+    e.preventDefault();
+    const label = fillInLabel.trim() || 'Field';
+    insertFillInToken(label);
   }
 
   function openCategoryMenu(e, category) {
@@ -444,7 +516,18 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
       return;
     }
     const r = e.currentTarget.getBoundingClientRect();
-    setMenuPos({ top: r.bottom + 4, left: r.left, btnTop: r.top, btnRight: r.right });
+    // Right-anchor the popup when the button sits in the right half of the
+    // viewport. As the popup widens (e.g. when the fill-in input row appears),
+    // the LEFT edge grows leftward instead of the right edge overflowing.
+    const anchorRight = r.right > window.innerWidth / 2;
+    setMenuPos({
+      top: r.bottom + 4,
+      left: r.left,
+      btnTop: r.top,
+      btnRight: r.right,
+      anchorRight,
+      rightOffset: window.innerWidth - r.right,
+    });
     setInsertCategory(category);
     setShowInsert(true);
     setShowKeyPicker(false);
@@ -452,23 +535,30 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     setFillInLabel('');
   }
 
-  // Flip popup above/leftward when it would overflow the viewport.
-  // Runs after the popup renders so we can measure its actual size.
+  // Flip popup vertically when it would overflow the viewport. Horizontal
+  // overflow is handled at click time by anchoring right vs left in menuPos
+  // (see openCategoryMenu). The right-anchor case naturally grows leftward
+  // when content widens (e.g. fill-in input row appearing) so no measure
+  // correction is needed for it.
   useLayoutEffect(() => {
     if (!(showInsert && menuPos && menuRef.current)) return;
     const popup = menuRef.current;
     const rect = popup.getBoundingClientRect();
     const margin = 8;
     let top = menuPos.top;
-    let left = menuPos.left;
     if (rect.bottom > window.innerHeight - margin) {
       top = menuPos.btnTop - rect.height - 4;
     }
-    if (rect.right > window.innerWidth - margin) {
-      left = menuPos.btnRight - rect.width;
-    }
     popup.style.top = `${Math.max(margin, top)}px`;
-    popup.style.left = `${Math.max(margin, left)}px`;
+
+    if (!menuPos.anchorRight) {
+      // Left-anchored: shift left if content widened past right edge.
+      let left = menuPos.left;
+      if (rect.right > window.innerWidth - margin) {
+        left = menuPos.btnRight - rect.width;
+      }
+      popup.style.left = `${Math.max(margin, left)}px`;
+    }
   }, [showInsert, insertCategory, menuPos, fillInEntry]);
 
   useLayoutEffect(() => {
@@ -622,18 +712,32 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         spellCheck={false}
         data-placeholder="Type replacement text…"
         onClick={e => {
-          const chip = e.target.closest?.('[data-token^="{key:"]');
-          if (chip) {
+          const keyChip = e.target.closest?.('[data-token^="{key:"]');
+          if (keyChip) {
             e.preventDefault();
-            const { combo, repeat } = parseKeyToken(chip.dataset.token);
-            const rect = chip.getBoundingClientRect();
+            const { combo, repeat } = parseKeyToken(keyChip.dataset.token);
+            const rect = keyChip.getBoundingClientRect();
             setKeyPickerPos({ top: rect.bottom + 4, left: rect.left, btnTop: rect.top, btnRight: rect.right });
             setKeyPickerCaptured(combo);
             setKeyPickerRepeat(repeat);
             setKeyPickerCapturing(false);
-            setKeyPickerEditTarget(chip);
+            setKeyPickerEditTarget(keyChip);
             setShowKeyPicker(true);
             setShowInsert(false);
+            return;
+          }
+          const fillinChip = e.target.closest?.('[data-token^="{fillIn:"]');
+          if (fillinChip) {
+            e.preventDefault();
+            const match = fillinChip.dataset.token.match(/^\{fillIn:(.+)\}$/);
+            if (match) {
+              const label = match[1];
+              const rect = fillinChip.getBoundingClientRect();
+              setFillInRename({ label, x: rect.left, y: rect.bottom + 4 });
+              setFillInRenameValue(label);
+              setShowKeyPicker(false);
+              setShowInsert(false);
+            }
           }
         }}
       />
@@ -642,7 +746,10 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         <div
           ref={menuRef}
           className="rte-insert-menu"
-          style={{ top: menuPos.top, left: menuPos.left, maxHeight: window.innerHeight - menuPos.top - 16 }}
+          style={menuPos.anchorRight
+            ? { top: menuPos.top, right: Math.max(8, menuPos.rightOffset), maxHeight: window.innerHeight - menuPos.top - 16 }
+            : { top: menuPos.top, left: menuPos.left, maxHeight: window.innerHeight - menuPos.top - 16 }
+          }
         >
           {/* Fill-in label input — always mounted so ref is always valid,
               toggled visible/hidden via CSS to avoid React render-timing races */}
@@ -668,6 +775,32 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
               onMouseDown={handleInsertFillIn}
             >Insert</button>
           </div>
+
+          {/* Reusable fill-in fields from this editor + sibling variants.
+              Lets users insert the same field multiple times so a single
+              expansion can prompt once and inject the answer at several
+              cursor positions. */}
+          {fillInEntry && reusableFillInLabels.length > 0 && (
+            <div className="rte-fillin-reuse">
+              <span className="rte-fillin-reuse-label">Reuse</span>
+              <div className="rte-fillin-reuse-chips">
+                {reusableFillInLabels.map(label => (
+                  <button
+                    key={label}
+                    type="button"
+                    className="rte-fillin-reuse-chip"
+                    onMouseDown={e => {
+                      e.preventDefault();
+                      insertFillInToken(label);
+                    }}
+                    title={`Insert {fillIn:${label}} at cursor`}
+                  >
+                    ▭ {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Menu items — hidden while fill-in label input is active */}
           <div style={{ display: fillInEntry ? 'none' : 'contents' }}>
@@ -848,6 +981,34 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         </div>,
         document.body
       )}
+
+      {fillInRename && ReactDOM.createPortal(
+        <div
+          ref={fillInRenameRef}
+          className="rte-fillin-rename"
+          style={{ top: fillInRename.y, left: fillInRename.x }}
+        >
+          <span className="rte-fillin-rename-label">Rename field</span>
+          <input
+            ref={fillInRenameInputRef}
+            autoFocus
+            className="rte-fillin-input"
+            value={fillInRenameValue}
+            onChange={e => setFillInRenameValue(e.target.value)}
+            onKeyDown={e => {
+              e.stopPropagation();
+              if (e.key === 'Enter') commitFillInRename();
+              if (e.key === 'Escape') cancelFillInRename();
+            }}
+          />
+          <button
+            type="button"
+            className="rte-fillin-ok"
+            onMouseDown={e => { e.preventDefault(); commitFillInRename(); }}
+          >Rename</button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -908,6 +1069,11 @@ export default function TextExpansions({
   // when the same text is sent twice in a row.
   prefill = null,
   onPrefillConsumed,
+  // Expansion pack export/import
+  onExportExpansions,
+  onImportExpansions,
+  expansionImportPrompt,
+  onExpansionImportResolve,
 }) {
   // ── Panel mode (expansions | autocorrect | globalvars) ──
   const [panelMode, setPanelMode] = useState('expansions');
@@ -924,7 +1090,10 @@ export default function TextExpansions({
   const [imageScale, setImageScale]       = useState(100);
   const [imageExists, setImageExists]     = useState(true);
   const [imageDataUri, setImageDataUri]   = useState(null); // base64 data URI for preview
-  const [variantOptions, setVariantOptions] = useState([]); // [{label, text}]
+  const [variantOptions, setVariantOptions] = useState([]); // [{label, html, text}]
+  const [activeVariantIndex, setActiveVariantIndex] = useState(0);
+  const [renamingVariantIndex, setRenamingVariantIndex] = useState(null);
+  const [variantRenameValue, setVariantRenameValue] = useState('');
   const [voicePhrases, setVoicePhrases]   = useState([]);
 
   // Load image preview via Rust when imagePath changes
@@ -955,6 +1124,13 @@ export default function TextExpansions({
   const [ctxDeleteConfirm, setCtxDeleteConfirm] = useState(false);
   const catContextMenuRef  = useRef(null);
   const catContextTabRef   = useRef(null); // DOM element of the right-clicked tab (for colour picker anchor)
+  // ── Expansion row context menu ──
+  const [itemContextMenu, setItemContextMenu] = useState(null); // { trigger, x, y }
+  const itemContextMenuRef = useRef(null);
+  // Pending edit signal: when a duplicate is created, we set this to the new
+  // trigger and a useEffect picks it up once expansions re-renders, then opens
+  // the edit panel on the new entry.
+  const [pendingEditTrigger, setPendingEditTrigger] = useState(null);
   // ── Category inline rename ──
   const [renamingCat, setRenamingCat]   = useState(null);
   const [renameValue, setRenameValue]   = useState('');
@@ -1024,6 +1200,23 @@ export default function TextExpansions({
     };
   }, [catContextMenu]);
 
+  // Close expansion row context menu on outside click or Escape
+  useEffect(() => {
+    if (!itemContextMenu) return;
+    function onDown(e) {
+      if (itemContextMenuRef.current && !itemContextMenuRef.current.contains(e.target)) {
+        setItemContextMenu(null);
+      }
+    }
+    function onKey(e) { if (e.key === 'Escape') setItemContextMenu(null); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [itemContextMenu]);
+
   // Auto-select all text when inline rename input appears
   useEffect(() => {
     if (renamingCat) renameInputRef.current?.select();
@@ -1042,6 +1235,8 @@ export default function TextExpansions({
     setImageScale(100);
     setImageExists(true);
     setVariantOptions([]);
+    setActiveVariantIndex(0);
+    setRenamingVariantIndex(null);
     setVoicePhrases([]);
     setEditing({ isNew: true });
   }
@@ -1068,7 +1263,16 @@ export default function TextExpansions({
     setImagePath(exp.imagePath || '');
     setImageScale(exp.imageScale ?? 100);
     setImageExists(true);
-    setVariantOptions(exp.options || []);
+    // Legacy variants stored as {label, text} only — synthesise html from text
+    // so the new rich-text tab UI can edit them. New saves write all three.
+    const migratedOptions = (exp.options || []).map(o => ({
+      label: o.label || '',
+      html: o.html || plainTextToHtml(o.text || ''),
+      text: o.text || '',
+    }));
+    setVariantOptions(migratedOptions);
+    setActiveVariantIndex(0);
+    setRenamingVariantIndex(null);
     setVoicePhrases(Array.isArray(exp.voicePhrases) ? exp.voicePhrases : []);
     setEditing({ isNew: false, originalTrigger: exp.trigger });
   }
@@ -1159,6 +1363,64 @@ export default function TextExpansions({
     setCtxDeleteConfirm(false);
   }
 
+  // ── Expansion row context menu handlers ──
+  function handleItemContextMenu(e, trigger) {
+    e.preventDefault();
+    e.stopPropagation();
+    setItemContextMenu({ trigger, x: e.clientX, y: e.clientY });
+  }
+
+  function ctxItemDuplicate() {
+    if (!itemContextMenu) return;
+    const original = expansions.find(e => e.trigger === itemContextMenu.trigger);
+    setItemContextMenu(null);
+    if (!original) return;
+
+    // Find a unique trigger for the copy. "<trigger>-copy" first, then
+    // "-copy-2", "-copy-3" if needed.
+    let copyTrigger = `${original.trigger}-copy`;
+    let counter = 2;
+    while (expansions.some(e => e.trigger === copyTrigger)) {
+      copyTrigger = `${original.trigger}-copy-${counter++}`;
+    }
+
+    const editorVal = { html: original.html || '', text: original.text || '' };
+    onAdd(
+      copyTrigger,
+      editorVal,
+      null, // null originalTrigger → new entry, not a rename
+      original.category || null,
+      original.triggerMode || 'space',
+      original.displayName ? `${original.displayName} (copy)` : null,
+      original.expansionType || 'text',
+      original.imagePath || '',
+      original.imageScale ?? 100,
+      original.options || [],
+      original.voicePhrases || [],
+    );
+
+    // Open the new copy in the edit panel once the expansions list re-renders.
+    setPendingEditTrigger(copyTrigger);
+  }
+
+  function ctxItemDelete() {
+    if (!itemContextMenu) return;
+    const trigger = itemContextMenu.trigger;
+    setItemContextMenu(null);
+    setDeleteConfirm(trigger);
+  }
+
+  // When a duplicate is created, expansions re-renders with the new entry.
+  // Open the edit panel on it, then clear the signal.
+  useEffect(() => {
+    if (!pendingEditTrigger) return;
+    const exp = expansions.find(e => e.trigger === pendingEditTrigger);
+    if (exp) {
+      openEdit(exp);
+      setPendingEditTrigger(null);
+    }
+  }, [pendingEditTrigger, expansions]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Inline rename handlers ──
   function commitCatRename() {
     const trimmed = renameValue.trim();
@@ -1231,6 +1493,18 @@ export default function TextExpansions({
   const normCategories = categories
     .map(c => typeof c === 'string' ? { name: c, colour: null } : c)
     .filter(c => c && c.name);
+
+  // Deduped fill-in field labels across the single-mode editor body and every
+  // variant. Passed to all RichTextEditor instances so users can re-insert a
+  // field they already created without re-typing the label. Same field can
+  // appear at multiple cursor positions in one expansion — the engine prompts
+  // once at fire time and injects the answer everywhere it appears.
+  const reusableFillInLabels = useMemo(() => {
+    const set = new Set();
+    extractFillInLabels(editorValue.html).forEach(l => set.add(l));
+    variantOptions.forEach(v => extractFillInLabels(v.html).forEach(l => set.add(l)));
+    return Array.from(set);
+  }, [editorValue.html, variantOptions]);
 
   // Apply type filter before category/sorting
   const typeFiltered = typeFilter === 'all'
@@ -1381,7 +1655,7 @@ export default function TextExpansions({
             </span>
           )}
           {panelMode === 'expansions' && (
-            <button className="te-add-btn" onClick={openAdd} title="Add expansion" type="button">
+            <button className="te-add-btn" onClick={() => openAdd()} title="Add expansion" type="button">
               + Add
             </button>
           )}
@@ -1521,6 +1795,22 @@ export default function TextExpansions({
                   + Add Category
                 </button>
               )}
+              <button
+                className="te-cat-new-btn te-cat-pack-btn"
+                onClick={() => onImportExpansions?.()}
+                title="Import a category from a pack file (.json)"
+                type="button"
+              >
+                ↓ Import Category
+              </button>
+              <button
+                className="te-cat-new-btn te-cat-pack-btn"
+                onClick={() => onExportExpansions?.('all')}
+                title="Export all text expansions to a pack file"
+                type="button"
+              >
+                ↑ Export All
+              </button>
             </div>
           </div>
 
@@ -1626,6 +1916,7 @@ export default function TextExpansions({
                       key={exp.trigger}
                       className={`te-item${isEditingThis ? ' te-item-editing' : ''}`}
                       onClick={() => openEdit(exp)}
+                      onContextMenu={e => handleItemContextMenu(e, exp.trigger)}
                     >
                       {/* Col 1 — Trigger */}
                       <div className="te-col-trigger">
@@ -1636,18 +1927,38 @@ export default function TextExpansions({
                         {exp.expansionType === 'image' && (
                           <span className="te-img-badge" title="Image expansion">IMG</span>
                         )}
+                        {exp.options && exp.options.length > 0 && (
+                          <span className="te-variant-badge" title={`${exp.options.length} variants — picker shows on trigger`}>▾</span>
+                        )}
                       </div>
                       {/* Col 2 — Name */}
                       <div className="te-col-name">{exp.displayName || exp.trigger}</div>
-                      {/* Col 3 — Preview (plain text, clamped to 2 lines with hover tooltip for the full content) */}
+                      {/* Col 3 — Preview (text body, or variant chips when variants exist) */}
                       <div
                         className="te-col-preview"
-                        title={exp.expansionType === 'image' ? undefined : (exp.text || undefined)}
-                      >
-                        {exp.expansionType === 'image'
-                          ? (exp.imagePath ? exp.imagePath.split(/[/\\]/).pop() : 'No image')
-                          : (exp.text || '').replace(/\s+/g, ' ').trim()
+                        title={
+                          exp.expansionType === 'image' ? undefined
+                            : exp.options && exp.options.length > 0 ? exp.options.map(o => o.label).join(' · ')
+                            : (exp.text || undefined)
                         }
+                      >
+                        {exp.expansionType === 'image' ? (
+                          exp.imagePath ? exp.imagePath.split(/[/\\]/).pop() : 'No image'
+                        ) : exp.options && exp.options.length > 0 ? (
+                          <div className="te-col-preview-variants">
+                            {exp.options.map((opt, idx) => (
+                              <span
+                                key={idx}
+                                className="te-variant-chip"
+                                title={(opt.text || '').replace(/\s+/g, ' ').trim() || (opt.label || `Option ${idx + 1}`)}
+                              >
+                                {opt.label || `Option ${idx + 1}`}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          (exp.text || '').replace(/\s+/g, ' ').trim()
+                        )}
                       </div>
                       {/* Col 4 — Tag */}
                       <div className="te-col-tag">
@@ -1663,6 +1974,14 @@ export default function TextExpansions({
                       </div>
                       {/* Col 5 — Actions */}
                       <div className="te-item-actions">
+                        {exp.expansionType !== 'image' && (
+                          <button
+                            className="te-item-export"
+                            onClick={e => { e.stopPropagation(); onExportExpansions?.('single', exp.trigger); }}
+                            type="button"
+                            title="Export expansion"
+                          >↑</button>
+                        )}
                         <button
                           className="te-item-delete"
                           onClick={e => { e.stopPropagation(); setDeleteConfirm(exp.trigger); }}
@@ -1813,7 +2132,17 @@ export default function TextExpansions({
                         <>
                           <div className="te-variant-header">
                             <label className="form-label">REPLACEMENT</label>
-                            <button type="button" className="te-variant-toggle-btn" onClick={() => setVariantOptions([{ label: 'Option 1', text: editorValue.text || '' }, { label: 'Option 2', text: '' }])}>
+                            <button
+                              type="button"
+                              className="te-variant-toggle-btn"
+                              onClick={() => {
+                                setVariantOptions([
+                                  { label: 'Option 1', html: editorValue.html || '', text: editorValue.text || '' },
+                                  { label: 'Option 2', html: '', text: '' },
+                                ]);
+                                setActiveVariantIndex(0);
+                              }}
+                            >
                               + Add Variants
                             </button>
                           </div>
@@ -1824,59 +2153,129 @@ export default function TextExpansions({
                             globalVariables={globalVariables}
                             isPro={isPro}
                             onShowUpgrade={onShowUpgrade}
+                            reusableFillInLabels={reusableFillInLabels}
                           />
                         </>
                       ) : (
                         <>
                           <div className="te-variant-header">
                             <label className="form-label">VARIANTS</label>
-                            <button type="button" className="te-variant-toggle-btn te-variant-remove" onClick={() => {
-                              if (variantOptions.length > 0 && variantOptions[0].text) {
-                                setEditorValue({ html: variantOptions[0].text, text: variantOptions[0].text });
-                              }
-                              setVariantOptions([]);
-                            }}>
-                              Remove Variants
-                            </button>
                           </div>
                           <p className="te-variant-hint">When triggered, a popup lets the user pick which variant to insert.</p>
-                          <div className="te-variant-list">
-                            {variantOptions.map((opt, i) => (
-                              <div key={i} className="te-variant-item">
-                                <div className="te-variant-item-header">
-                                  <input
-                                    className="form-input te-variant-label-input"
-                                    value={opt.label}
-                                    onChange={e => {
-                                      const next = [...variantOptions];
-                                      next[i] = { ...next[i], label: e.target.value };
-                                      setVariantOptions(next);
-                                    }}
-                                    placeholder={`Option ${i + 1}`}
-                                    onKeyDown={e => e.stopPropagation()}
-                                  />
-                                  <button type="button" className="te-variant-remove-btn" onClick={() => {
-                                    const next = variantOptions.filter((_, j) => j !== i);
-                                    setVariantOptions(next);
-                                  }}>✕</button>
-                                </div>
-                                <textarea
-                                  className="form-textarea te-variant-text"
-                                  value={opt.text}
-                                  onChange={e => {
-                                    const next = [...variantOptions];
-                                    next[i] = { ...next[i], text: e.target.value };
-                                    setVariantOptions(next);
+                          <div className="te-variant-tabs" role="tablist">
+                            {variantOptions.map((opt, i) => {
+                              const isActive   = i === activeVariantIndex;
+                              const isRenaming = i === renamingVariantIndex;
+                              const canClose   = variantOptions.length > 2;
+                              return (
+                                <div
+                                  key={i}
+                                  className={`te-variant-tab${isActive ? ' te-variant-tab--active' : ''}`}
+                                  role="tab"
+                                  aria-selected={isActive}
+                                  onClick={() => { if (!isRenaming) setActiveVariantIndex(i); }}
+                                  onDoubleClick={() => {
+                                    setRenamingVariantIndex(i);
+                                    setVariantRenameValue(opt.label || '');
                                   }}
-                                  placeholder="Replacement text for this variant…"
-                                  rows={2}
-                                  onKeyDown={e => e.stopPropagation()}
-                                />
-                              </div>
-                            ))}
+                                  title={isActive ? 'Double-click to rename' : 'Click to switch, double-click to rename'}
+                                >
+                                  {isRenaming ? (
+                                    <input
+                                      autoFocus
+                                      className="te-variant-tab-rename-input"
+                                      value={variantRenameValue}
+                                      onChange={e => setVariantRenameValue(e.target.value)}
+                                      onClick={e => e.stopPropagation()}
+                                      onBlur={() => {
+                                        const trimmed = variantRenameValue.trim();
+                                        if (trimmed) {
+                                          const next = [...variantOptions];
+                                          next[i] = { ...next[i], label: trimmed };
+                                          setVariantOptions(next);
+                                        }
+                                        setRenamingVariantIndex(null);
+                                      }}
+                                      onKeyDown={e => {
+                                        e.stopPropagation();
+                                        if (e.key === 'Enter') { e.currentTarget.blur(); }
+                                        if (e.key === 'Escape') {
+                                          setRenamingVariantIndex(null);
+                                        }
+                                      }}
+                                    />
+                                  ) : (
+                                    <span className="te-variant-tab-label">{opt.label || `Option ${i + 1}`}</span>
+                                  )}
+                                  {!isRenaming && (
+                                    <button
+                                      type="button"
+                                      className="te-variant-tab-close"
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        if (!canClose) return;
+                                        const next = variantOptions.filter((_, j) => j !== i);
+                                        const newActive = Math.min(activeVariantIndex, next.length - 1);
+                                        setVariantOptions(next);
+                                        setActiveVariantIndex(Math.max(0, newActive));
+                                      }}
+                                      disabled={!canClose}
+                                      title={canClose ? 'Remove this variant' : 'At least 2 variants required'}
+                                      aria-label="Remove variant"
+                                    >✕</button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              className="te-variant-tab-add"
+                              onClick={() => {
+                                const newIdx = variantOptions.length;
+                                setVariantOptions([
+                                  ...variantOptions,
+                                  { label: `Option ${newIdx + 1}`, html: '', text: '' },
+                                ]);
+                                setActiveVariantIndex(newIdx);
+                              }}
+                              title="Add another variant"
+                            >+ Add</button>
                           </div>
-                          <button type="button" className="te-variant-add-btn" onClick={() => setVariantOptions([...variantOptions, { label: `Option ${variantOptions.length + 1}`, text: '' }])}>
-                            + Add Variant
+
+                          {variantOptions[activeVariantIndex] && (
+                            <RichTextEditor
+                              key={`__variant_${editing.isNew ? '__new__' : editing.originalTrigger}_${activeVariantIndex}__`}
+                              initialHtml={variantOptions[activeVariantIndex].html || ''}
+                              onChange={({ html, text }) => {
+                                const next = [...variantOptions];
+                                next[activeVariantIndex] = { ...next[activeVariantIndex], html, text };
+                                setVariantOptions(next);
+                              }}
+                              globalVariables={globalVariables}
+                              isPro={isPro}
+                              onShowUpgrade={onShowUpgrade}
+                              reusableFillInLabels={reusableFillInLabels}
+                            />
+                          )}
+
+                          <button
+                            type="button"
+                            className="te-variant-remove-all-link"
+                            onClick={() => {
+                              const survivor = variantOptions[activeVariantIndex] || variantOptions[0];
+                              if (survivor) {
+                                setEditorValue({
+                                  html: survivor.html || '',
+                                  text: survivor.text || '',
+                                });
+                              }
+                              setVariantOptions([]);
+                              setActiveVariantIndex(0);
+                              setRenamingVariantIndex(null);
+                            }}
+                            title="Drop all variants and keep only the active one"
+                          >
+                            Remove all variants
                           </button>
                         </>
                       )}
@@ -2162,10 +2561,34 @@ export default function TextExpansions({
         >
           <button className="profile-ctx-item" onClick={ctxRename}>Rename</button>
           <button className="profile-ctx-item" onClick={ctxChangeColour}>Change Colour</button>
+          <button
+            className="profile-ctx-item"
+            onClick={() => {
+              const name = catContextMenu.catName;
+              setCatContextMenu(null);
+              onExportExpansions?.('category', name);
+            }}
+          >
+            Export Category
+          </button>
           <div className="profile-ctx-divider" />
           <button className="profile-ctx-item profile-ctx-delete" onClick={ctxDelete}>
             {ctxDeleteConfirm ? 'Confirm Delete?' : 'Delete'}
           </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Expansion row right-click context menu */}
+      {itemContextMenu && ReactDOM.createPortal(
+        <div
+          ref={itemContextMenuRef}
+          className="profile-ctx-menu"
+          style={{ top: itemContextMenu.y, left: itemContextMenu.x }}
+        >
+          <button className="profile-ctx-item" onClick={ctxItemDuplicate}>Duplicate</button>
+          <div className="profile-ctx-divider" />
+          <button className="profile-ctx-item profile-ctx-delete" onClick={ctxItemDelete}>Delete</button>
         </div>,
         document.body
       )}
@@ -2187,6 +2610,56 @@ export default function TextExpansions({
           />
         </div>,
         document.body
+      )}
+
+      {expansionImportPrompt && (
+        <div className="te-delete-overlay">
+          <div className="te-delete-dialog te-import-dialog">
+            <div className="te-delete-title">Import Expansion Pack</div>
+            <p className="te-delete-body">
+              This pack contains <strong>{expansionImportPrompt.totalCount}</strong>{' '}
+              expansion{expansionImportPrompt.totalCount !== 1 ? 's' : ''}.{' '}
+              <strong>{expansionImportPrompt.collisions.length}</strong> trigger
+              {expansionImportPrompt.collisions.length !== 1 ? 's' : ''} already
+              exist{expansionImportPrompt.collisions.length === 1 ? 's' : ''} in your library:
+            </p>
+            <div className="te-import-collisions">
+              {expansionImportPrompt.collisions.slice(0, 8).map(t => (
+                <kbd key={t} className="te-trigger-badge">{t}</kbd>
+              ))}
+              {expansionImportPrompt.collisions.length > 8 && (
+                <span className="te-import-collisions-more">
+                  + {expansionImportPrompt.collisions.length - 8} more
+                </span>
+              )}
+            </div>
+            <div className="te-delete-actions te-import-actions">
+              <button
+                className="te-cancel-btn"
+                onClick={() => onExpansionImportResolve?.('cancel')}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="te-cancel-btn"
+                onClick={() => onExpansionImportResolve?.('skip')}
+                type="button"
+                title="Keep your existing expansions; only import new ones"
+              >
+                Skip Duplicates
+              </button>
+              <button
+                className="te-delete-confirm-btn"
+                onClick={() => onExpansionImportResolve?.('overwrite')}
+                type="button"
+                title="Replace your existing expansions with the ones in this pack"
+              >
+                Overwrite All
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete confirmation dialog */}

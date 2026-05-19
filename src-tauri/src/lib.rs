@@ -2475,6 +2475,21 @@ async fn mark_trial_offer_shown() -> Value {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Single-instance lock — second launches focus the existing main
+        // window and exit immediately. Prevents the WebView2 shared-runtime
+        // blank-window bug (one instance killed via Task Manager would tear
+        // down the shared browser process tree, leaving the survivor without
+        // a renderer) plus double LL hooks / clipboard listeners / SQLite
+        // writers / config watchers / tray icons. Must be registered before
+        // any other plugin per the plugin's own docs. Args are ignored —
+        // future protocol-handler support (trigr://) can add argv parsing.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_log::Builder::new()

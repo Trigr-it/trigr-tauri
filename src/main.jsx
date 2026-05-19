@@ -2,6 +2,27 @@ import './tauriAPI'; // Initialize window.electronAPI bridge before anything els
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 
+// Keyboard-modality flag: focus rings stay hidden until the user presses Tab.
+// First Tab adds .using-keyboard on <html>; first mousedown removes it. CSS
+// rules gate visible :focus styles behind that class so programmatic .focus()
+// calls (e.g. auto-focusing the first fill-in input on open) don't paint a
+// ring before the user has any reason to see one.
+(() => {
+  let usingKeyboard = false;
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab' && !usingKeyboard) {
+      usingKeyboard = true;
+      document.documentElement.classList.add('using-keyboard');
+    }
+  }, true);
+  document.addEventListener('mousedown', () => {
+    if (usingKeyboard) {
+      usingKeyboard = false;
+      document.documentElement.classList.remove('using-keyboard');
+    }
+  }, true);
+})();
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
 const params = new URLSearchParams(window.location.search);

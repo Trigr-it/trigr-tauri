@@ -6,13 +6,13 @@ import { friendlyKeyName } from './keyboardLayout';
 import { openFeedback } from '../utils/feedback';
 
 const GLOBAL_INPUT_METHODS = [
-  { id: 'direct',       label: 'Direct',     hint: 'Simulates real keypresses — works in CAD, games, any app' },
-  { id: 'shift-insert', label: 'Clipboard',  hint: 'Fast for long text — pastes via clipboard' },
+  { id: 'direct',       label: 'Type Each Key',     hint: 'Simulates real key presses. Works in CAD, games, and password fields.' },
+  { id: 'shift-insert', label: 'Paste All at Once', hint: 'Fastest for long text. Sends everything in a single paste.' },
 ];
 
 const MACRO_SPEED_PRESETS = [
-  { id: 'safe',    label: 'Safe',    hint: 'Maximum compatibility — works in all apps',  keystrokeDelay: 30, macroTriggerDelay: 150, doubleTapWindow: 300 },
-  { id: 'fast',    label: 'Fast',    hint: 'Reduced delays — good for most apps',        keystrokeDelay: 15, macroTriggerDelay: 75,  doubleTapWindow: 200 },
+  { id: 'safe',    label: 'Safe',    hint: 'Maximum compatibility. Works in all apps.',  keystrokeDelay: 30, macroTriggerDelay: 150, doubleTapWindow: 300 },
+  { id: 'fast',    label: 'Fast',    hint: 'Reduced delays. Good for most apps.',        keystrokeDelay: 15, macroTriggerDelay: 75,  doubleTapWindow: 200 },
   { id: 'custom',  label: 'Custom',  hint: 'Manual slider control' },
 ];
 
@@ -1108,7 +1108,7 @@ export default function SettingsPanel({
           <div className="settings-section-title">COMPATIBILITY</div>
           <p className="settings-compat-desc">
             Controls how Trigr injects text into other applications.
-            Use <strong>Direct</strong> for CAD software and games.
+            Use <strong>Type Each Key</strong> for CAD software and games.
           </p>
 
           <label className="settings-field-label">Global input method</label>
@@ -1174,6 +1174,15 @@ export default function SettingsPanel({
                   onChange={e => onUpdateGlobalSettings?.({ keystrokeDelay: Number(e.target.value), macroSpeed: 'custom' })}
                 />
                 <span className="settings-slider-val">{keystrokeDelay}ms</span>
+                {keystrokeDelay !== 30 && (
+                  <button
+                    type="button"
+                    className="settings-slider-reset"
+                    onClick={() => onUpdateGlobalSettings?.({ keystrokeDelay: 30, macroSpeed: 'custom' })}
+                    title="Reset to default (30ms)"
+                    aria-label="Reset keystroke delay"
+                  >↺</button>
+                )}
               </div>
             </div>
           )}
@@ -1192,6 +1201,15 @@ export default function SettingsPanel({
                 onChange={e => onUpdateGlobalSettings?.({ macroTriggerDelay: Number(e.target.value), macroSpeed: 'custom' })}
               />
               <span className="settings-slider-val">{macroTriggerDelay}ms</span>
+              {macroTriggerDelay !== 150 && (
+                <button
+                  type="button"
+                  className="settings-slider-reset"
+                  onClick={() => onUpdateGlobalSettings?.({ macroTriggerDelay: 150, macroSpeed: 'custom' })}
+                  title="Reset to default (150ms)"
+                  aria-label="Reset pre-execution delay"
+                >↺</button>
+              )}
             </div>
           </div>
 
@@ -1209,6 +1227,15 @@ export default function SettingsPanel({
                 onChange={e => onUpdateGlobalSettings?.({ doubleTapWindow: Number(e.target.value), macroSpeed: 'custom' })}
               />
               <span className="settings-slider-val">{doubleTapWindow}ms</span>
+              {doubleTapWindow !== 300 && (
+                <button
+                  type="button"
+                  className="settings-slider-reset"
+                  onClick={() => onUpdateGlobalSettings?.({ doubleTapWindow: 300, macroSpeed: 'custom' })}
+                  title="Reset to default (300ms)"
+                  aria-label="Reset double-tap window"
+                >↺</button>
+              )}
             </div>
           </div>
 

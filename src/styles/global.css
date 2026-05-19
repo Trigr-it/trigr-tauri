@@ -196,7 +196,10 @@ button {
   outline: none;
 }
 
-:focus-visible {
+/* Focus rings appear only after the user has pressed Tab — see modality
+   listener in main.jsx. Programmatic .focus() calls (e.g. dialog auto-focus)
+   never trigger the ring on open. */
+html.using-keyboard :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

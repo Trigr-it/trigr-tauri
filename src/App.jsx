@@ -96,6 +96,9 @@ function App() {
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
   const [importPrompt, setImportPrompt]                 = useState(null); // { name, assignments }
+  // Expansion pack import collision prompt. Shape:
+  // { expansions: [{trigger, data}], categories: [{name, colour}], collisions: [trigger,...], totalCount }
+  const [expansionImportPrompt, setExpansionImportPrompt] = useState(null);
   const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
   const [upgradePrompt, setUpgradePrompt]               = useState(null); // feature name string, or null
   const [showProTrialModal, setShowProTrialModal]       = useState(false);
@@ -227,7 +230,12 @@ function App() {
         setVoiceEnabled(            config.voiceEnabled             ?? false);
         setVoiceHotkey(             config.voiceHotkey              || '');
         setVoiceMicId(              config.voiceMicId               || '');
-        setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
+        // Default global pause to Ctrl+Alt+Q on fresh installs (field missing
+        // from config). Existing users who explicitly cleared it have null
+        // stored and keep no hotkey.
+        setGlobalPauseToggleKey(
+          config.globalPauseToggleKey === undefined ? 'Ctrl+Alt+Q' : config.globalPauseToggleKey
+        );
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
@@ -275,9 +283,16 @@ function App() {
         window.electronAPI?.setActiveGlobalProfile(loadProfile);
         // Sync global variables to expansion engine
         window.electronAPI?.updateGlobalVariables(config.globalVariables || {});
-        // Register pause hotkey with Rust backend if one is stored in config
-        if (config.globalPauseToggleKey) {
-          window.electronAPI?.setPauseHotkey(config.globalPauseToggleKey);
+        // Register pause hotkey with Rust backend. Mirror the default-on-fresh
+        // logic above so the Ctrl+Alt+Q default is actually live, not just
+        // shown in the UI.
+        {
+          const effectivePauseKey = config.globalPauseToggleKey === undefined
+            ? 'Ctrl+Alt+Q'
+            : config.globalPauseToggleKey;
+          if (effectivePauseKey) {
+            window.electronAPI?.setPauseHotkey(effectivePauseKey);
+          }
         }
         // Sync voice hotkey with Rust backend. When voice is disabled (or no
         // hotkey is set), explicitly clear the engine so it can't reach for a
@@ -475,7 +490,12 @@ function App() {
         setVoiceEnabled(            config.voiceEnabled             ?? false);
         setVoiceHotkey(             config.voiceHotkey              || '');
         setVoiceMicId(              config.voiceMicId               || '');
-        setGlobalPauseToggleKey(    config.globalPauseToggleKey     ?? null);
+        // Default global pause to Ctrl+Alt+Q on fresh installs (field missing
+        // from config). Existing users who explicitly cleared it have null
+        // stored and keep no hotkey.
+        setGlobalPauseToggleKey(
+          config.globalPauseToggleKey === undefined ? 'Ctrl+Alt+Q' : config.globalPauseToggleKey
+        );
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
@@ -1189,6 +1209,229 @@ function App() {
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Expansion "${trigger}" deleted`, 'info');
   }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
+
+  // ── Expansion pack export / import ────────────────────────
+  // Text-only export. Image expansions are skipped (their imagePath is local
+  // to the exporter's machine). Shape mirrors profile export but with a
+  // different discriminator so import flows can tell pack files apart.
+  const handleExportExpansions = useCallback(async (scope, scopeKey) => {
+    const allExpansions = Object.entries(assignments)
+      .filter(([k]) => k.startsWith('GLOBAL::EXPANSION::'))
+      .map(([k, v]) => ({
+        trigger: k.slice('GLOBAL::EXPANSION::'.length),
+        data: v?.data || {},
+      }));
+
+    let scoped = allExpansions;
+    if (scope === 'category') {
+      scoped = scoped.filter(e => (e.data.category || null) === (scopeKey || null));
+    } else if (scope === 'single') {
+      scoped = scoped.filter(e => e.trigger === scopeKey);
+    }
+
+    const textOnly = scoped.filter(e => (e.data.expansionType || 'text') !== 'image');
+    const skippedImages = scoped.length - textOnly.length;
+
+    if (textOnly.length === 0) {
+      if (scope === 'single') {
+        showNotification('Image expansions cannot be exported', 'info');
+      } else if (scope === 'category') {
+        showNotification(`No text expansions in "${scopeKey}" to export`, 'info');
+      } else {
+        showNotification('No text expansions to export', 'info');
+      }
+      return;
+    }
+
+    // Strip image-only fields defensively in case any leaked through.
+    const cleanedExpansions = textOnly.map(e => {
+      const data = { ...e.data };
+      delete data.expansionType;
+      delete data.imagePath;
+      delete data.imageScale;
+      return { trigger: e.trigger, data };
+    });
+
+    const referencedCats = new Set(
+      cleanedExpansions.map(e => e.data.category).filter(Boolean)
+    );
+    const exportCategories = expansionCategories
+      .filter(c => referencedCats.has(c.name))
+      .map(c => ({ name: c.name, colour: c.colour || null }));
+
+    const name = scope === 'all' ? 'All Expansions' : (scopeKey || 'Expansions');
+    const payload = {
+      trigr_expansion_pack: '1.0',
+      scope,
+      name,
+      exportedAt: new Date().toISOString(),
+      expansions: cleanedExpansions,
+      categories: exportCategories,
+    };
+
+    const slug = (name || 'expansions')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    const filenameHint = `${slug || 'expansions'}-trigr-expansions.json`;
+    const content = JSON.stringify(payload, null, 2);
+
+    try {
+      const result = await window.electronAPI?.exportProfile(filenameHint, content);
+      if (result?.ok) {
+        let msg;
+        if (scope === 'single') {
+          msg = `Expansion "${scopeKey}" exported`;
+        } else {
+          const noun = textOnly.length === 1 ? 'expansion' : 'expansions';
+          msg = `Exported ${textOnly.length} text ${noun}`;
+          if (skippedImages > 0) {
+            const imgNoun = skippedImages === 1 ? 'expansion' : 'expansions';
+            msg += `. ${skippedImages} image ${imgNoun} skipped (images stay on your machine).`;
+          }
+        }
+        showNotification(msg);
+      } else if (result?.error) {
+        showNotification(result.error, 'info');
+      }
+    } catch (e) {
+      console.error('[Trigr] Export expansions failed:', e);
+    }
+  }, [assignments, expansionCategories, showNotification]);
+
+  // Applies an expansion pack to current state. `choice` is 'skip' or
+  // 'overwrite' and controls how triggers that already exist locally are
+  // handled. Categories referenced by the pack are added if missing; existing
+  // categories keep their current colour.
+  const applyExpansionImport = useCallback((packExpansions, packCategories, choice) => {
+    const newAssignments = { ...assignments };
+    let imported = 0;
+    let skipped = 0;
+    let overwritten = 0;
+
+    for (const exp of packExpansions) {
+      const trigger = exp?.trigger;
+      if (!trigger) continue;
+      const key = `GLOBAL::EXPANSION::${trigger}`;
+      const existed = !!newAssignments[key];
+      if (existed && choice === 'skip') { skipped++; continue; }
+
+      const data = exp.data && typeof exp.data === 'object' ? { ...exp.data } : {};
+      // Drop any image fields that snuck in — pack format is text-only.
+      delete data.expansionType;
+      delete data.imagePath;
+      delete data.imageScale;
+
+      const displayName = data.displayName || null;
+      newAssignments[key] = {
+        type: 'expansion',
+        label: displayName || `Expand: ${trigger}`,
+        data,
+      };
+
+      if (existed) overwritten++;
+      else imported++;
+    }
+
+    const existingCatNames = new Set(expansionCategories.map(c => c.name));
+    const newCategories = [...expansionCategories];
+    for (const cat of packCategories || []) {
+      if (cat && cat.name && !existingCatNames.has(cat.name)) {
+        newCategories.push({ name: cat.name, colour: cat.colour || null });
+        existingCatNames.add(cat.name);
+      }
+    }
+
+    setAssignments(newAssignments);
+    setExpansionCategories(newCategories);
+    syncEngine(newAssignments, activeProfile);
+    window.electronAPI?.saveConfig({
+      assignments: newAssignments,
+      profiles, activeProfile, activeGlobalProfile, profileSettings, theme,
+      expansionCategories: newCategories,
+      autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true,
+      globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories,
+    });
+
+    let msg;
+    if (choice === 'skip') {
+      const noun = imported === 1 ? 'expansion' : 'expansions';
+      msg = `Imported ${imported} new ${noun}`;
+      if (skipped > 0) {
+        const sNoun = skipped === 1 ? 'expansion' : 'expansions';
+        msg += `. ${skipped} ${sNoun} skipped (already existed).`;
+      }
+    } else {
+      const total = imported + overwritten;
+      const noun = total === 1 ? 'expansion' : 'expansions';
+      msg = `Imported ${total} ${noun}`;
+      if (overwritten > 0) {
+        const oNoun = overwritten === 1 ? 'expansion' : 'expansions';
+        msg += `. ${overwritten} existing ${oNoun} overwritten.`;
+      }
+    }
+    showNotification(msg);
+  }, [assignments, expansionCategories, syncEngine, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories, showNotification]);
+
+  const handleImportExpansions = useCallback(async () => {
+    try {
+      const result = await window.electronAPI?.importProfile();
+      if (!result?.ok) {
+        if (result?.error) showNotification(result.error, 'info');
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(result.content);
+      } catch {
+        showNotification('Could not parse expansion file', 'info');
+        return;
+      }
+      if (!parsed || !parsed.trigr_expansion_pack) {
+        showNotification('Not a valid Trigr expansion pack', 'info');
+        return;
+      }
+      const packExpansions = Array.isArray(parsed.expansions) ? parsed.expansions : [];
+      const packCategories = Array.isArray(parsed.categories) ? parsed.categories : [];
+      if (packExpansions.length === 0) {
+        showNotification('Expansion pack is empty', 'info');
+        return;
+      }
+
+      const existingTriggers = new Set(
+        Object.keys(assignments)
+          .filter(k => k.startsWith('GLOBAL::EXPANSION::'))
+          .map(k => k.slice('GLOBAL::EXPANSION::'.length))
+      );
+      const collisions = packExpansions
+        .map(e => e?.trigger)
+        .filter(t => t && existingTriggers.has(t));
+
+      if (collisions.length === 0) {
+        // No conflicts — import straight through with overwrite semantics
+        // (no-op overwrite since nothing exists).
+        applyExpansionImport(packExpansions, packCategories, 'overwrite');
+        return;
+      }
+      setExpansionImportPrompt({
+        expansions: packExpansions,
+        categories: packCategories,
+        collisions,
+        totalCount: packExpansions.length,
+      });
+    } catch (e) {
+      console.error('[Trigr] Import expansions failed:', e);
+      showNotification('Expansion import failed', 'info');
+    }
+  }, [assignments, applyExpansionImport, showNotification]);
+
+  const handleExpansionImportResolve = useCallback((choice) => {
+    if (!expansionImportPrompt) return;
+    const { expansions: packExpansions, categories: packCategories } = expansionImportPrompt;
+    setExpansionImportPrompt(null);
+    if (choice === 'cancel') return;
+    applyExpansionImport(packExpansions, packCategories, choice);
+  }, [expansionImportPrompt, applyExpansionImport]);
 
   // ── Expansion categories ──────────────────────────────────
   const handleAddCategory = useCallback((name, colour = null) => {
@@ -3122,6 +3365,10 @@ function App() {
               onShowUpgrade={showUpgrade}
               prefill={pendingExpansionPrefill}
               onPrefillConsumed={() => setPendingExpansionPrefill(null)}
+              onExportExpansions={handleExportExpansions}
+              onImportExpansions={handleImportExpansions}
+              expansionImportPrompt={expansionImportPrompt}
+              onExpansionImportResolve={handleExpansionImportResolve}
             />
           )}
         </main>
