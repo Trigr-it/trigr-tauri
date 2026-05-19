@@ -52,6 +52,10 @@
 
   --font-display: 'Rajdhani', sans-serif;
   --font-body: 'DM Sans', sans-serif;
+  /* Brand wordmark — matches usetrigr.com nav/footer. Used by every "Trigr"
+     wordmark in the app (titlebar, onboarding welcome, WelcomeModal, Settings
+     About). Weight 600 by default; 500 also bundled if a lighter cut is needed. */
+  --font-label: 'Chakra Petch', sans-serif;
 
   --shadow-key: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
   --shadow-key-hover: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);

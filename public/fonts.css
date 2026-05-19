@@ -69,3 +69,19 @@
   font-display: swap;
   src: url('fonts/Syne-800.woff2') format('woff2');
 }
+/* Chakra Petch — Trigr brand wordmark (matches usetrigr.com nav + footer).
+   Latin subset only (~10KB each) — same weights as the website. */
+@font-face {
+  font-family: 'Chakra Petch';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/ChakraPetch-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Chakra Petch';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/ChakraPetch-600.woff2') format('woff2');
+}

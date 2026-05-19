@@ -819,7 +819,7 @@ export default function Sidebar({
     if (isClearing(combo, keyId)) {
       return (
         <div key={`${combo}::${keyId}`} className="sidebar-item sidebar-item-confirm">
-          <span className="sidebar-confirm-text">Clear this key?</span>
+          <span className="sidebar-confirm-text">Delete this key?</span>
           <button className="sidebar-confirm-yes" type="button" onClick={confirmClear}>Yes</button>
           <button className="sidebar-confirm-no" type="button" onClick={() => setClearing(null)}>No</button>
         </div>
@@ -837,9 +837,15 @@ export default function Sidebar({
         onContextMenu={e => handleAssignContextMenu(e, combo, keyId, macro)}
         title={`Edit ${isBareItem ? 'Bare' : combo}+${displayKey}`}
       >
-        <span className="sidebar-key-badge" style={{ borderColor: meta.color + '55', color: meta.color }}>
-          {displayKey}
-        </span>
+        <div className="sidebar-key-stack">
+          <span className="sidebar-key-badge" style={{ borderColor: meta.color + '55', color: meta.color }}>
+            {displayKey}
+          </span>
+          {doubleOnly
+            ? <span className="sidebar-double-badge">×2 only</span>
+            : hasDouble && <span className="sidebar-double-badge">×2</span>
+          }
+        </div>
         <div className="sidebar-item-info">
           <div className="sidebar-item-label">
             {isRenaming(combo, keyId) ? (
@@ -853,13 +859,7 @@ export default function Sidebar({
                 onClick={e => e.stopPropagation()}
               />
             ) : (
-              <>
-                {displayLabel}
-                {doubleOnly
-                  ? <span className="sidebar-double-badge">×2 only</span>
-                  : hasDouble && <span className="sidebar-double-badge">×2</span>
-                }
-              </>
+              displayLabel
             )}
           </div>
           <div className="sidebar-item-type">
@@ -919,7 +919,7 @@ export default function Sidebar({
     if (isClearing(combo, keyId)) {
       return (
         <div key={`${combo}::${keyId}`} className="grid-card grid-card-confirm">
-          <span className="sidebar-confirm-text">Clear this key?</span>
+          <span className="sidebar-confirm-text">Delete this key?</span>
           <div className="sidebar-confirm-btns">
             <button className="sidebar-confirm-yes" type="button" onClick={confirmClear}>Yes</button>
             <button className="sidebar-confirm-no" type="button" onClick={() => setClearing(null)}>No</button>
@@ -1322,7 +1322,7 @@ export default function Sidebar({
             </>
           )}
           <div className="assign-ctx-divider" />
-          <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={handleCtxClear}>Clear</button>
+          <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={handleCtxClear}>Delete</button>
         </div>
       )}
     </aside>

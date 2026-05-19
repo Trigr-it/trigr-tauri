@@ -27,11 +27,11 @@
 /* ── Title & subtitle ──────────────────────────────────────────────────── */
 
 .welcome-title {
-  font-family: var(--font-display);
+  font-family: var(--font-label);
   font-size: 26px;
-  font-weight: 800;
+  font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
   margin: 0 0 8px;
 }
 

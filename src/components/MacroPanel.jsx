@@ -107,9 +107,23 @@ function TextForm({ value, onChange, globalInputMethod }) {
   const inputMethod = value.inputMethod ||
     (value.pasteMethod && value.pasteMethod !== 'shift-insert' ? value.pasteMethod : 'global');
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
+  const selectedHint = INPUT_METHOD_OPTS.find(o => o.id === inputMethod)?.hint || '';
   return (
     <div className="form-section">
-      <label className="form-label">Text to type</label>
+      <label className="form-label">Input method</label>
+      <select
+        className="form-select"
+        value={inputMethod}
+        onChange={e => onChange({ ...value, inputMethod: e.target.value, pasteMethod: undefined })}
+      >
+        {INPUT_METHOD_OPTS.map(opt => (
+          <option key={opt.id} value={opt.id}>
+            {opt.label}{opt.id === 'global' ? ` (${globalLabel})` : ''}
+          </option>
+        ))}
+      </select>
+      {selectedHint && <div className="form-hint">{selectedHint}</div>}
+      <label className="form-label" style={{ marginTop: 12 }}>Text to type</label>
       <textarea
         className="form-textarea"
         placeholder="Enter the text that will be typed when this key is pressed..."
@@ -117,27 +131,6 @@ function TextForm({ value, onChange, globalInputMethod }) {
         onChange={e => onChange({ ...value, text: e.target.value })}
         rows={4}
       />
-      <label className="form-label" style={{ marginTop: 12 }}>Input method</label>
-      <div className="paste-method-group">
-        {INPUT_METHOD_OPTS.map(opt => (
-          <label
-            key={opt.id}
-            className={`paste-method-opt${inputMethod === opt.id ? ' active' : ''}`}
-          >
-            <input
-              type="radio"
-              name="inputMethod"
-              value={opt.id}
-              checked={inputMethod === opt.id}
-              onChange={() => onChange({ ...value, inputMethod: opt.id, pasteMethod: undefined })}
-            />
-            <span className="paste-opt-label">
-              {opt.label}{opt.id === 'global' ? <span className="input-method-global-val"> ({globalLabel})</span> : null}
-            </span>
-            <span className="paste-opt-hint">{opt.hint}</span>
-          </label>
-        ))}
-      </div>
     </div>
   );
 }
@@ -463,13 +456,10 @@ export function AppForm({ value, onChange }) {
           Absolute path — won't work on other devices unless the app is installed at the same location.
         </div>
       )}
-      <label className="form-label" style={{ marginTop: 12 }}>Display name (optional)</label>
-      <input
-        className="form-input"
-        placeholder="My App"
-        value={value.appName || ''}
-        onChange={e => onChange({ ...value, appName: e.target.value })}
-      />
+      {/* Display name is set via the single top-level "Display label" field
+          below this sub-form. Auto-populated `appName` (from the picker) still
+          feeds the Display label placeholder and the Sidebar/SearchOverlay
+          fallback display, so existing assignments are unaffected. */}
       {pickerOpen && <AppPickerModal onSelect={handlePick} onClose={() => setPickerOpen(false)} />}
     </div>
   );
@@ -492,13 +482,6 @@ function FolderForm({ value, onChange }) {
         />
         <button className="browse-btn" type="button" onClick={handleBrowse}>Browse</button>
       </div>
-      <label className="form-label" style={{ marginTop: 12 }}>Display name (optional)</label>
-      <input
-        className="form-input"
-        placeholder="My Documents"
-        value={value.folderName || ''}
-        onChange={e => onChange({ ...value, folderName: e.target.value })}
-      />
       <div className="form-hint">Opens the folder in File Explorer when the key is pressed.</div>
     </div>
   );
@@ -513,13 +496,6 @@ function UrlForm({ value, onChange }) {
         placeholder="https://example.com"
         value={value.url || ''}
         onChange={e => onChange({ ...value, url: e.target.value })}
-      />
-      <label className="form-label" style={{ marginTop: 12 }}>Display name (optional)</label>
-      <input
-        className="form-input"
-        placeholder="My Website"
-        value={value.urlName || ''}
-        onChange={e => onChange({ ...value, urlName: e.target.value })}
       />
     </div>
   );
@@ -1427,6 +1403,7 @@ export default function MacroPanel({
   globalInputMethod = 'direct',
   onAssign,
   onClear,
+  onDelete,
   onAssignDouble,
   onClearDouble,
   onClose,
@@ -1446,35 +1423,67 @@ export default function MacroPanel({
   const effectiveDouble     = doubleAssignment || draftDoubleAssignment;
   const isDraftMode         = !selectedKey && !!draftAssignment;
   const [activeType, setActiveType] = useState('text');
-  const [formValue, setFormValue] = useState({});
+  // Per-type form value drafts. Switching action type no longer wipes the
+  // previous type's data — users can experiment freely (URL → Type Text →
+  // back to URL) without losing what they typed. Only the active type's
+  // entry is saved when the user hits Assign. Resets when the user picks
+  // a different key (via the selectedKey useEffect below).
+  const [formValuesByType, setFormValuesByType] = useState({});
+  const formValue = formValuesByType[activeType] || {};
+  const setFormValue = useCallback((updater) => {
+    setFormValuesByType(prev => {
+      const current = prev[activeType] || {};
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return { ...prev, [activeType]: next };
+    });
+  }, [activeType]);
   const [label, setLabel] = useState('');
   const [voicePhrases, setVoicePhrases] = useState([]);
   const [pressMode, setPressMode] = useState('single'); // 'single' | 'double'
   const [reassigning, setReassigning] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [pendingMouseSave, setPendingMouseSave] = useState(null); // macro pending global-mouse confirmation
+  // Inline confirm step for the destructive footer buttons (Clear Key / Delete).
+  // Value: null | 'clear' | 'delete'. Reset on key change in the effect below.
+  const [confirmingAction, setConfirmingAction] = useState(null);
 
   useEffect(() => {
     setReassigning(false);
     setDuplicating(false);
     setPendingMouseSave(null);
+    setConfirmingAction(null);
+    // Seed formValuesByType from the saved assignment's `drafts` field if
+    // present (persistent multi-type drafts), otherwise fall back to a
+    // single-entry map of the active type's data (backward-compat for
+    // assignments saved before the drafts field existed).
+    const seedDrafts = (entry) => {
+      const t = entry.type || 'text';
+      if (entry.drafts && typeof entry.drafts === 'object') {
+        // Ensure the active type's draft mirrors the saved data even if the
+        // user edited and reverted — the assignment is the source of truth.
+        return { ...entry.drafts, [t]: entry.data || entry.drafts[t] || {} };
+      }
+      return { [t]: entry.data || {} };
+    };
     // Auto-switch to double mode when only a double assignment exists
     if (!effectiveAssignment && effectiveDouble) {
+      const t = effectiveDouble.type || 'text';
       setPressMode('double');
-      setActiveType(effectiveDouble.type || 'text');
-      setFormValue(effectiveDouble.data || {});
+      setActiveType(t);
+      setFormValuesByType(seedDrafts(effectiveDouble));
       setLabel(effectiveDouble.label || '');
       setVoicePhrases(readVoicePhrases(effectiveDouble.data));
     } else {
       setPressMode('single');
       if (effectiveAssignment) {
-        setActiveType(effectiveAssignment.type || 'text');
-        setFormValue(effectiveAssignment.data || {});
+        const t = effectiveAssignment.type || 'text';
+        setActiveType(t);
+        setFormValuesByType(seedDrafts(effectiveAssignment));
         setLabel(effectiveAssignment.label || '');
         setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
         setActiveType('text');
-        setFormValue({});
+        setFormValuesByType({});
         setLabel('');
         setVoicePhrases([]);
       }
@@ -1483,33 +1492,73 @@ export default function MacroPanel({
 
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {
+    const seedDrafts = (entry) => {
+      const t = entry.type || 'text';
+      if (entry.drafts && typeof entry.drafts === 'object') {
+        return { ...entry.drafts, [t]: entry.data || entry.drafts[t] || {} };
+      }
+      return { [t]: entry.data || {} };
+    };
     if (pressMode === 'double') {
       if (effectiveDouble) {
-        setActiveType(effectiveDouble.type || 'text');
-        setFormValue(effectiveDouble.data || {});
+        const t = effectiveDouble.type || 'text';
+        setActiveType(t);
+        setFormValuesByType(seedDrafts(effectiveDouble));
         setLabel(effectiveDouble.label || '');
         setVoicePhrases(readVoicePhrases(effectiveDouble.data));
       } else {
         setActiveType('text');
-        setFormValue({});
+        setFormValuesByType({});
         setLabel('');
         setVoicePhrases([]);
       }
     } else {
       if (effectiveAssignment) {
-        setActiveType(effectiveAssignment.type || 'text');
-        setFormValue(effectiveAssignment.data || {});
+        const t = effectiveAssignment.type || 'text';
+        setActiveType(t);
+        setFormValuesByType(seedDrafts(effectiveAssignment));
         setLabel(effectiveAssignment.label || '');
         setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
         setActiveType('text');
-        setFormValue({});
+        setFormValuesByType({});
         setLabel('');
         setVoicePhrases([]);
       }
     }
   // eslint-disable-next-line
   }, [pressMode]);
+
+  // Reset the current editor: clears the active type's form fields, label
+  // and voice phrases so the user can start the action over from scratch.
+  // Non-destructive — does NOT touch saved assignments or drafts under
+  // other action types. No confirmation needed; the user can retype, and
+  // the saved state is restored on next key reload if they navigate away.
+  const handleClearAction = () => {
+    setFormValuesByType(prev => ({ ...prev, [activeType]: {} }));
+    setLabel('');
+    setVoicePhrases([]);
+  };
+
+  // Returns true if the draft has user-meaningful content for its action type.
+  // Used to skip empty drafts on save (no point persisting `{}`) and to show
+  // the small dot indicator on type buttons that have stashed content.
+  const isDraftFilled = (type, d) => {
+    if (!d || typeof d !== 'object') return false;
+    switch (type) {
+      case 'text':   return !!d.text?.trim();
+      // Bare modifier (Ctrl / Shift / Alt / Win alone) is valid: capture
+      // returns modifiers without a main key, and the backend treats key="" +
+      // non-empty modifiers as a modifier-only chord.
+      case 'hotkey': return !!d.key || (d.modifiers || []).length > 0;
+      case 'app':    return !!(d.path?.trim() || d.appId?.trim());
+      case 'folder': return !!d.path?.trim();
+      case 'url':    return !!d.url?.trim();
+      case 'macro':  return (d.steps || []).length > 0;
+      case 'ahk':    return !!d.script?.trim();
+      default:       return false;
+    }
+  };
 
   const handleSave = () => {
     if (!selectedKey) return;
@@ -1518,11 +1567,26 @@ export default function MacroPanel({
     // Empty list removes both new and legacy voice phrase fields.
     writeVoicePhrases(data, voicePhrases);
 
+    // Persist non-empty drafts for OTHER types so users can switch action
+    // types later without retyping. Strip empties to keep config.json lean.
+    // The active type's draft is omitted here — `data` above is the source
+    // of truth; the seedDrafts helper restores it as drafts[activeType] on
+    // next load.
+    const persistedDrafts = {};
+    for (const [t, v] of Object.entries(formValuesByType)) {
+      if (t !== activeType && isDraftFilled(t, v)) {
+        persistedDrafts[t] = v;
+      }
+    }
+
     const macro = {
       type: activeType,
       label: label || getAutoLabel(),
       data,
     };
+    if (Object.keys(persistedDrafts).length > 0) {
+      macro.drafts = persistedDrafts;
+    }
 
     if (pressMode === 'double') {
       onAssignDouble?.(selectedKey, macro);
@@ -1564,7 +1628,8 @@ export default function MacroPanel({
   const isValid = () => {
     switch (activeType) {
       case 'text':   return !!formValue.text?.trim();
-      case 'hotkey': return !!formValue.key;
+      // Bare modifier (Ctrl / Shift / Alt / Win alone) is valid — see isDraftFilled comment.
+      case 'hotkey': return !!formValue.key || (formValue.modifiers || []).length > 0;
       case 'app':    return !!(formValue.path?.trim() || formValue.appId?.trim());
       case 'folder': return !!formValue.path?.trim();
       case 'url':    return !!formValue.url?.trim();
@@ -1712,16 +1777,21 @@ export default function MacroPanel({
         <div className="type-selector">
           {ACTION_TYPES.map(type => {
             const TypeIcon = type.Icon;
+            // Show a dot when this type has a non-empty draft stashed but isn't
+            // currently active — signals "you have content here" without
+            // forcing the user to click each type to discover it.
+            const hasDraft = type.id !== activeType && isDraftFilled(type.id, formValuesByType[type.id]);
             return (
               <button
                 key={type.id}
                 className={`type-btn ${activeType === type.id ? 'active' : ''}${type.id === 'ahk' ? ' type-btn-wide' : ''}`}
                 style={{ '--type-color': type.color }}
-                onClick={() => { setActiveType(type.id); setFormValue({}); }}
+                onClick={() => setActiveType(type.id)}
                 type="button"
               >
                 <span className="type-btn-icon"><TypeIcon size={18} strokeWidth={1.75} /></span>
                 <span className="type-btn-label">{type.label}</span>
+                {hasDraft && <span className="type-btn-draft-dot" aria-label="Has saved draft" />}
               </button>
             );
           })}
@@ -1730,6 +1800,20 @@ export default function MacroPanel({
         {/* Type description */}
         <div className="type-desc">
           {ACTION_TYPES.find(t => t.id === activeType)?.desc}
+        </div>
+
+        {/* Display label — kept at the top of the editing area so the field
+            lives in the same place regardless of which action type is active.
+            Placeholder shows the auto-derived label for the current type. */}
+        <div className="form-section">
+          <label className="form-label">Display label (optional)</label>
+          <input
+            className="form-input"
+            placeholder={getAutoLabel() || 'Short label for this key...'}
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            onKeyDown={e => e.stopPropagation()}
+          />
         </div>
 
         {/* Dynamic form */}
@@ -1796,18 +1880,6 @@ export default function MacroPanel({
           {activeType === 'ahk'   && <AhkForm value={formValue} onChange={setFormValue} />}
         </div>
 
-        {/* Display label */}
-        <div className="form-section" style={{ marginTop: 4 }}>
-          <label className="form-label">Display label (optional)</label>
-          <input
-            className="form-input"
-            placeholder={getAutoLabel() || 'Short label for this key...'}
-            value={label}
-            onChange={e => setLabel(e.target.value)}
-            onKeyDown={e => e.stopPropagation()}
-          />
-        </div>
-
         {/* Voice command — only visible when voice activation is enabled in Settings */}
         {voiceEnabled && (
         <div className="form-section" style={{ marginTop: 4 }}>
@@ -1845,28 +1917,75 @@ export default function MacroPanel({
         )}
       </div>
 
-      {/* Actions */}
+      {/* Actions — unified footer for single + double press modes.
+          Clear Action is non-destructive (resets editor only). Clear Key and
+          Delete remove saved data and gate behind an inline confirmation row. */}
       <div className="macro-panel-footer">
-        {pressMode === 'double' ? (
-          doubleAssignment && (
+        {(() => {
+          const activeRecord = pressMode === 'double' ? doubleAssignment : assignment;
+          if (!activeRecord) return null;
+          if (confirmingAction) {
+            const confirmText =
+              confirmingAction === 'clear-action'
+                ? 'Reset the editor? Unsaved changes (label, voice phrases, and the active type’s form fields) will be cleared. Saved data is not affected.'
+                : confirmingAction === 'clear'
+                ? (pressMode === 'double'
+                    ? 'Clear the double-press action on this key?'
+                    : 'Clear the single-press action on this key?')
+                : 'Delete both single and double-press actions on this key?';
+            const handleYes = () => {
+              if (confirmingAction === 'clear-action') {
+                handleClearAction();
+              } else if (confirmingAction === 'clear') {
+                if (pressMode === 'double') onClearDouble?.(selectedKey);
+                else onClear?.(selectedKey);
+              } else if (confirmingAction === 'delete') {
+                onDelete?.(selectedKey);
+              }
+              setConfirmingAction(null);
+            };
+            return (
+              <div className="footer-assignment-actions footer-confirm-row">
+                <span className="footer-confirm-text">{confirmText}</span>
+                <button className="btn-confirm-yes" type="button" onClick={handleYes}>Yes</button>
+                <button className="btn-confirm-no" type="button" onClick={() => setConfirmingAction(null)}>Cancel</button>
+              </div>
+            );
+          }
+          const clearKeyTitle = pressMode === 'double'
+            ? 'Remove the double-press action on this key (keeps any single-press action)'
+            : 'Remove the single-press action on this key (keeps any double-press action)';
+          return (
             <div className="footer-assignment-actions">
-              <button className="btn-clear" onClick={() => onClearDouble?.(selectedKey)} type="button">
-                Clear Double
-              </button>
+              <button
+                className="btn-clear-action"
+                onClick={() => setConfirmingAction('clear-action')}
+                type="button"
+                title="Reset the editor (clears the visible form, label and voice phrases). Does not touch saved data — reopen the key to restore."
+              >Clear Action</button>
+              <button
+                className="btn-clear"
+                onClick={() => setConfirmingAction('clear')}
+                type="button"
+                title={clearKeyTitle}
+              >Clear Key</button>
+              <button
+                className="btn-duplicate"
+                onClick={() => setDuplicating(true)}
+                type="button"
+                title="Duplicate this macro to a different hotkey"
+              >Duplicate</button>
+              {onDelete && (
+                <button
+                  className="btn-delete"
+                  onClick={() => setConfirmingAction('delete')}
+                  type="button"
+                  title="Delete both single-press and double-press actions on this key"
+                >Delete</button>
+              )}
             </div>
-          )
-        ) : (
-          assignment && (
-            <div className="footer-assignment-actions">
-              <button className="btn-clear" onClick={() => onClear(selectedKey)} type="button">
-                Clear Key
-              </button>
-              <button className="btn-duplicate" onClick={() => setDuplicating(true)} type="button" title="Duplicate this macro to a different hotkey">
-                Duplicate
-              </button>
-            </div>
-          )
-        )}
+          );
+        })()}
         {pendingMouseSave ? (
           <div className="mouse-save-confirm">
             <div className="mouse-save-confirm-text">

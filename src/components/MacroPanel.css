@@ -399,6 +399,20 @@
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
+  position: relative;
+}
+
+/* Small accent dot in the top-right corner of a type button — signals
+   that this action type has a non-empty saved draft on the current key. */
+.type-btn-draft-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 .type-btn:hover {
@@ -1300,10 +1314,105 @@
   white-space: nowrap;
 }
 
+/* Clear Action — non-destructive editor reset (form fields + label + voice).
+   Neutral styling (no red tint) since it doesn't touch saved data; just resets
+   the visible editor so the user can start the action over from scratch. */
+.btn-clear-action {
+  height: 36px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-clear-action:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+
 .btn-clear:hover {
   border-color: rgba(255, 80, 80, 0.4);
   color: var(--danger-hover);
   background: rgba(255, 80, 80, 0.06);
+}
+
+/* Delete — more destructive than Clear Key (wipes both single + double).
+   Solid red-tinted fill so it visually outranks Clear Key. */
+.btn-delete {
+  height: 36px;
+  padding: 0 14px;
+  background: rgba(255, 80, 80, 0.08);
+  border: 1px solid rgba(255, 80, 80, 0.45);
+  border-radius: 6px;
+  color: var(--danger-hover);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-delete:hover {
+  background: rgba(255, 80, 80, 0.18);
+  border-color: rgba(255, 80, 80, 0.65);
+}
+
+/* Inline confirmation row — replaces the Clear / Duplicate / Delete buttons
+   when the user clicks a destructive button. Lays out as: prompt text,
+   then Yes, then Cancel. */
+.footer-confirm-row {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.footer-confirm-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.btn-confirm-yes,
+.btn-confirm-no {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-confirm-yes {
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.55);
+  color: var(--danger-hover);
+}
+
+.btn-confirm-yes:hover {
+  background: rgba(255, 80, 80, 0.22);
+  border-color: rgba(255, 80, 80, 0.75);
+}
+
+.btn-confirm-no {
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  color: var(--text-secondary);
+}
+
+.btn-confirm-no:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .btn-duplicate {

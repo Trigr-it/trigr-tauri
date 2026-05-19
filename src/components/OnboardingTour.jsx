@@ -40,6 +40,15 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
   // key the user assigned so we can show it back at Step 3.
   const assignmentKeysAtStep2 = useRef(null);
 
+  // Pre-tour gate: if the user already has hotkeys on the keyboard/mouse canvas
+  // (any non-GLOBAL:: assignment), show a brief "Welcome back" modal before
+  // Step 1. Warns them to pick an empty key during Step 2 so the tour can
+  // complete cleanly. Lazy-initialised so it captures the state at tour
+  // start and doesn't re-trigger when assignments change mid-tour.
+  const [showWelcomeBack, setShowWelcomeBack] = useState(() =>
+    Object.keys(assignments).some(k => !k.startsWith('GLOBAL::'))
+  );
+
   // ── Lock window resize on mount, unlock on unmount ───────────
   useEffect(() => {
     invoke('set_window_resizable', { resizable: false });
@@ -416,6 +425,25 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     </div>
   );
 
+  // ── Pre-tour: Welcome back (returning users only) ───────────
+  if (showWelcomeBack) {
+    return (
+      <div className="onboarding-overlay">
+        <div className="onboarding-backdrop" />
+        {dragRegion}
+        <div className="onboarding-modal">
+          <div className="onboarding-modal-title">Welcome back</div>
+          <p className="onboarding-welcome-text">
+            You already have hotkeys set up. This tour will walk you through creating a new one — when prompted, please pick an empty key on the keyboard so the tour can continue cleanly.
+          </p>
+          <button className="onboarding-btn-primary" onClick={() => setShowWelcomeBack(false)}>
+            Start tour
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Step 1: Welcome ─────────────────────────────────────────
   if (step === 1) {
     return (
@@ -423,6 +451,28 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal">
+          {/* Trigr logo — same SVG as the titlebar wordmark, with unique
+              gradient IDs so the two SVGs don't collide on `url(#id)` lookup
+              when both are mounted in the document at once. */}
+          <span className="onboarding-logo" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Trigr">
+              <defs>
+                <linearGradient id="onboarding-trigr-base" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f0b942"/>
+                  <stop offset="100%" stopColor="#c8860a"/>
+                </linearGradient>
+                <linearGradient id="onboarding-trigr-keytop" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ffffff"/>
+                  <stop offset="100%" stopColor="#e8e5dc"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="64" height="64" rx="9" fill="url(#onboarding-trigr-base)"/>
+              <rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#onboarding-trigr-keytop)"/>
+              <rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/>
+              <rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>
+              <rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>
+            </svg>
+          </span>
           <div className="onboarding-brand">Trigr</div>
           <p className="onboarding-welcome-text">Welcome to Trigr — let's take a quick tour of what you can do.</p>
           {stepDots}
@@ -551,7 +601,9 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
           ) : (
             <>
               <p className="onboarding-success-text">You just used Trigr!</p>
-              <p className="onboarding-hint">Your hotkey works the same way in any app on your PC.</p>
+              <p className="onboarding-hint">
+                Your hotkey works the same way in any app on your PC, <strong>except when Trigr itself is the focused window</strong>. Hotkeys are paused while you're in Trigr so you can configure them without firing them by accident.
+              </p>
               <button className="onboarding-btn-primary" onClick={() => setStep(4)}>
                 Continue
               </button>

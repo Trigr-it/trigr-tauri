@@ -1639,8 +1639,11 @@ export default function TextExpansions({
                       </div>
                       {/* Col 2 — Name */}
                       <div className="te-col-name">{exp.displayName || exp.trigger}</div>
-                      {/* Col 3 — Preview (plain text, truncated) */}
-                      <div className="te-col-preview">
+                      {/* Col 3 — Preview (plain text, clamped to 2 lines with hover tooltip for the full content) */}
+                      <div
+                        className="te-col-preview"
+                        title={exp.expansionType === 'image' ? undefined : (exp.text || undefined)}
+                      >
                         {exp.expansionType === 'image'
                           ? (exp.imagePath ? exp.imagePath.split(/[/\\]/).pop() : 'No image')
                           : (exp.text || '').replace(/\s+/g, ' ').trim()

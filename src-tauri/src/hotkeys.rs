@@ -2603,7 +2603,11 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
         if shift { parts.push("Shift".to_string()); }
         if alt { parts.push("Alt".to_string()); }
         if meta { parts.push("Win".to_string()); }
-        parts.push(key_id_to_display(key_id).to_string());
+        // Empty code = sole-modifier capture from the JS keyup listener.
+        // Emit just the modifier name (e.g. "Ctrl") with no trailing key.
+        if !key_id.is_empty() {
+            parts.push(key_id_to_display(key_id).to_string());
+        }
 
         let combo = parts.join("+");
         let _ = app.emit("key-captured", Value::String(combo));

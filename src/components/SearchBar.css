@@ -53,6 +53,16 @@
   color: var(--text-muted);
 }
 
+/* Suppress the global :focus-visible outline (global.css:195) on SearchBar
+   inputs — the wrapper's :focus-within glow above already provides a visible
+   keyboard-focus indicator. Without this override the outline (specificity
+   0,1,0) wins over the generic `input { outline: none }` (specificity 0,0,1)
+   and a 2px gold rectangle appears around the field on Tab focus, stacking
+   awkwardly on top of the wrapper's intended soft glow. */
+.app-search-bar-input:focus-visible {
+  outline: none;
+}
+
 /* Compact variant — for tight popovers (e.g. inline comboboxes) */
 .app-search-bar.compact {
   height: 34px;

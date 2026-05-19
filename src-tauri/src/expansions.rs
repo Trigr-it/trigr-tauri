@@ -8,12 +8,20 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 use windows_sys::Win32::System::DataExchange::{
-    CloseClipboard, GetClipboardData, OpenClipboard, SetClipboardData, EmptyClipboard,
-    RegisterClipboardFormatW,
+    CloseClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardSequenceNumber,
+    OpenClipboard, SetClipboardData, EmptyClipboard, RegisterClipboardFormatW,
 };
 use windows_sys::Win32::System::Memory::{
-    GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
 };
+
+// windows-sys 0.59 omits GlobalFree from Win32::System::Memory. Declare it
+// directly. Only used to free an HGLOBAL after SetClipboardData fails (rare;
+// otherwise Windows takes ownership on success).
+#[link(name = "kernel32")]
+extern "system" {
+    fn GlobalFree(hmem: *mut core::ffi::c_void) -> *mut core::ffi::c_void;
+}
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
     KEYEVENTF_UNICODE,
@@ -586,7 +594,7 @@ fn fire_expansion(
 
         if resolved.contains("{key:") {
             // Inline key-token path: inject each text/key segment in order
-            let prev_clipboard = read_clipboard().unwrap_or_default();
+            let snapshot = snapshot_clipboard();
             let held = crate::actions::release_held_modifiers();
             if target_hwnd != 0 {
                 unsafe {
@@ -611,9 +619,11 @@ fn fire_expansion(
                 }
             }
             crate::actions::restore_modifiers(&held);
+            let post_seq = clipboard_sequence_number();
             thread::sleep(Duration::from_millis(50));
-            if !prev_clipboard.is_empty() {
-                write_clipboard(&prev_clipboard);
+            // Skip restore if user copied something during the paste window.
+            if clipboard_sequence_number() == post_seq {
+                restore_clipboard_snapshot(&snapshot);
             }
             crate::hotkeys::SUPPRESS_SIMULATED
                 .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -849,7 +859,7 @@ fn fire_expansion_with_fillin(
     thread::sleep(Duration::from_millis(10));
 
     if resolved.contains("{key:") {
-        let prev_clipboard = read_clipboard().unwrap_or_default();
+        let snapshot = snapshot_clipboard();
         let held = crate::actions::release_held_modifiers();
         if target_hwnd != 0 {
             unsafe {
@@ -874,9 +884,10 @@ fn fire_expansion_with_fillin(
             }
         }
         crate::actions::restore_modifiers(&held);
+        let post_seq = clipboard_sequence_number();
         thread::sleep(Duration::from_millis(50));
-        if !prev_clipboard.is_empty() {
-            write_clipboard(&prev_clipboard);
+        if clipboard_sequence_number() == post_seq {
+            restore_clipboard_snapshot(&snapshot);
         }
         crate::hotkeys::SUPPRESS_SIMULATED
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -1229,6 +1240,147 @@ fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
     false
 }
 
+// ── Multi-format clipboard snapshot / restore ──────────────────────────────
+//
+// Text-only save/restore (read CF_UNICODETEXT, write CF_UNICODETEXT) silently
+// drops every other format the source app put on the clipboard — most damagingly
+// CF_DIB images from screenshot tools (Snagit, Snipping Tool, ShareX). After a
+// text expansion fires, the image is gone from the Windows clipboard and the
+// user's next Ctrl+V pastes Trigr's expansion text instead of their image.
+//
+// The fix below snapshots every HGLOBAL-backed format present on the clipboard
+// (CF_DIB, CF_DIBV5, CF_HDROP, CF_UNICODETEXT, CF_HTML, RTF, PNG, app-specific
+// registered formats, etc.) into a Vec<(format_id, bytes)>, then restores all
+// of them after paste settles. The caller uses GetClipboardSequenceNumber to
+// skip restoration when the user copied something new during the paste window.
+
+/// Returns true for clipboard formats whose handle is HGLOBAL-backed and safe
+/// to snapshot via GlobalSize/GlobalLock. Excludes formats whose handle is a
+/// GDI object (HBITMAP, HPALETTE, HENHMETAFILE, HMETAFILEPICT), owner-display
+/// formats (source app renders on demand — not transferable), and private /
+/// GDI-object format ranges (app-defined cleanup, not safe to copy generically).
+///
+/// CF_BITMAP / CF_ENHMETAFILE are commonly accompanied by CF_DIB / CF_DIBV5
+/// when an image is on the clipboard, so receiving apps still get a working
+/// bitmap from the snapshot.
+fn is_snapshottable_format(fmt: u32) -> bool {
+    match fmt {
+        2 | 3 | 9 | 14 => false,           // CF_BITMAP, CF_METAFILEPICT, CF_PALETTE, CF_ENHMETAFILE
+        0x80..=0x83 | 0x8E => false,       // CF_OWNERDISPLAY + CF_DSP* variants
+        0x200..=0x2FF => false,            // CF_PRIVATEFIRST..CF_PRIVATELAST (app-defined cleanup)
+        0x300..=0x3FF => false,            // CF_GDIOBJFIRST..CF_GDIOBJLAST (GDI handles)
+        _ => true,
+    }
+}
+
+/// Snapshot every HGLOBAL-backed format currently on the clipboard. Returns an
+/// empty Vec if the clipboard is empty, can't be opened, or contains only
+/// unsupported handle types. Caller restores via `restore_clipboard_snapshot`.
+///
+/// Read-only — does not modify the clipboard, does not touch
+/// `SUPPRESS_NEXT_CLIPBOARD_WRITE` (no WM_CLIPBOARDUPDATE fires from reading).
+pub(crate) fn snapshot_clipboard() -> Vec<(u32, Vec<u8>)> {
+    let mut out: Vec<(u32, Vec<u8>)> = Vec::new();
+
+    // Retry open up to 5 times — clipboard may be briefly held by another process
+    let mut opened = false;
+    for attempt in 0..5 {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                opened = true;
+                break;
+            }
+        }
+        if attempt < 4 { thread::sleep(Duration::from_millis(3)); }
+    }
+    if !opened { return out; }
+
+    unsafe {
+        let mut fmt: u32 = 0;
+        loop {
+            fmt = EnumClipboardFormats(fmt);
+            if fmt == 0 { break; }
+            if !is_snapshottable_format(fmt) { continue; }
+
+            let handle = GetClipboardData(fmt);
+            if handle.is_null() { continue; }
+
+            let size = GlobalSize(handle);
+            if size == 0 { continue; }
+
+            let ptr = GlobalLock(handle) as *const u8;
+            if ptr.is_null() { continue; }
+
+            let data = std::slice::from_raw_parts(ptr, size).to_vec();
+            GlobalUnlock(handle);
+
+            out.push((fmt, data));
+        }
+        CloseClipboard();
+    }
+    out
+}
+
+/// Restore a snapshot by clearing the clipboard and re-writing every captured
+/// format. Sets `SUPPRESS_NEXT_CLIPBOARD_WRITE` true before opening so the
+/// listener ignores the WM_CLIPBOARDUPDATE that fires from EmptyClipboard +
+/// SetClipboardData. Caller is responsible for clearing the suppress flag
+/// after the listener has had a chance to process the event.
+///
+/// An empty snapshot still calls EmptyClipboard — this matches the pre-state
+/// of "clipboard was empty before we wrote our text" and removes Trigr's
+/// expansion text from the Windows clipboard. Returns false if the clipboard
+/// couldn't be opened (clipboard contents are then left as Trigr wrote them).
+pub(crate) fn restore_clipboard_snapshot(snapshot: &[(u32, Vec<u8>)]) -> bool {
+    crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // Retry open up to 10 times — clipboard may be briefly held by the listener
+    let mut opened = false;
+    for attempt in 0..10 {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                opened = true;
+                break;
+            }
+        }
+        if attempt < 9 { thread::sleep(Duration::from_millis(3)); }
+    }
+    if !opened {
+        log::warn!("[Trigr] restore_clipboard_snapshot: OpenClipboard failed after retries");
+        return false;
+    }
+
+    unsafe {
+        EmptyClipboard();
+        for (fmt, data) in snapshot {
+            let h_mem = GlobalAlloc(GMEM_MOVEABLE, data.len());
+            if h_mem.is_null() { continue; }
+            let ptr = GlobalLock(h_mem) as *mut u8;
+            if ptr.is_null() {
+                GlobalFree(h_mem);
+                continue;
+            }
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            GlobalUnlock(h_mem);
+            // SetClipboardData takes ownership of h_mem on success. On failure
+            // we own it and must free, otherwise the HGLOBAL leaks.
+            if SetClipboardData(*fmt, h_mem).is_null() {
+                GlobalFree(h_mem);
+            }
+        }
+        CloseClipboard();
+    }
+    true
+}
+
+/// Wraps `GetClipboardSequenceNumber` for the "did anyone else write to the
+/// clipboard during our paste window?" guard. The OS bumps this every time the
+/// clipboard contents change (any process — Trigr's own writes count too).
+pub(crate) fn clipboard_sequence_number() -> u32 {
+    unsafe { GetClipboardSequenceNumber() }
+}
+
 /// HTML-escape a string and convert newlines into <br>.
 fn html_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -1294,7 +1446,7 @@ fn should_use_clipboard(_resolved_text: &str) -> bool {
 /// interprets it as `quoted-insert` (NOT paste). For these, force Shift+Insert
 /// so the terminal emulator (xterm.js etc.) handles the paste in its renderer
 /// before the keystroke reaches the shell. Add new entries as reports come in.
-fn target_needs_shift_insert(target_hwnd: isize) -> bool {
+pub(crate) fn target_needs_shift_insert(target_hwnd: isize) -> bool {
     if target_hwnd == 0 {
         return false;
     }
@@ -1392,30 +1544,55 @@ fn inject_via_sendinput(text: &str, target_hwnd: isize) {
 /// rich text (Word, Outlook, Gmail, Slack, Teams) receive formatted content.
 /// Apps that don't accept CF_HTML automatically fall back to CF_UNICODETEXT.
 fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
-    // Save current clipboard
-    let prev = read_clipboard().unwrap_or_default();
+    // Snapshot every format currently on the clipboard. Text-only save misses
+    // CF_DIB images (Snagit, Snipping Tool), CF_HDROP file drops, RTF from
+    // Word, and registered formats from Office/Chromium — leaving Trigr's
+    // expansion text on the clipboard when the user's next Ctrl+V expected
+    // the image they had a moment ago.
+    let snapshot = snapshot_clipboard();
 
     let needs_shift_insert = target_needs_shift_insert(target_hwnd);
 
-    // For Chromium-terminal hosts (xterm.js in VS Code etc.), include the
-    // trailing space in the clipboard payload. The paste handler is async
-    // (navigator.clipboard.readText() returns a Promise), so a discrete
-    // VK_SPACE keystroke after Shift+Insert races and lands BEFORE the pasted
-    // content reaches the pty — producing " <text>" instead of "<text> ".
-    // Bundling the space into the clipboard write delivers atomically.
-    let payload_text;
-    let payload_text_ref: &str = if needs_shift_insert {
-        payload_text = format!("{} ", text);
-        &payload_text
-    } else {
-        text
-    };
+    // Always bundle the trailing space into the clipboard payload. Sending it
+    // as a separate VK_SPACE keystroke after the paste keys races against
+    // async paste handlers in Chromium/Electron apps:
+    //   eM Client → keystroke wins the race, lands before paste → " <text>"
+    //   Slack/Notion → keystroke arrives during the post-paste React re-render
+    //                  and is dropped entirely → "<text>" (no space at all)
+    //   Notepad/Word → synchronous paste, keystroke lands after → "<text> "
+    // Bundling into the clipboard makes the space part of the atomic paste
+    // payload — no separate event for any target app to lose or reorder.
+    //
+    // HTML uses &nbsp; rather than a literal space because HTML parsers
+    // (Word, Outlook, eM Client rich-text editor) strip whitespace between
+    // block elements during parse — a literal " " after the closing </p>
+    // never makes it into the rendered document. &nbsp; is a character
+    // node that survives parsing and renders identically to a regular space.
+    //
+    // CRITICAL: &nbsp; must go INSIDE the last closing tag, not after it.
+    // Appending after `</p>` causes Gmail / eM Client / similar rich-text
+    // editors to wrap the stray text node in a new paragraph — producing
+    // an awkward blank line below the expansion with the cursor on it.
+    // Inserting before the close-tag keeps the nbsp in the same block as
+    // the rest of the content so the cursor lands inline at the end.
+    let payload_text = format!("{} ", text);
+    let payload_html: Option<String> = html.map(|h| {
+        let trimmed = h.trim_end();
+        if let Some(idx) = trimmed.rfind("</") {
+            let before = &trimmed[..idx];
+            let close_tag = &trimmed[idx..];
+            format!("{}&nbsp;{}", before, close_tag)
+        } else {
+            format!("{}&nbsp;", trimmed)
+        }
+    });
 
     // Write replacement to clipboard — if this fails, do NOT paste (would paste old clipboard content)
-    if !write_clipboard_dual(payload_text_ref, html) {
+    if !write_clipboard_dual(&payload_text, payload_html.as_deref()) {
         log::warn!("[Trigr] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
         return;
     }
+    let post_write_seq = clipboard_sequence_number();
 
     // Release physically held modifiers
     let held = crate::actions::release_held_modifiers();
@@ -1443,11 +1620,8 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
         send_vk_key(VK_LSHIFT, true);
     }
 
-    // Trailing space only for the Ctrl+V path — Shift+Insert path bundles it
-    // into the clipboard payload above to avoid the async-paste race.
-    if !needs_shift_insert {
-        send_vk_tap(VK_SPACE);
-    }
+    // No separate trailing VK_SPACE — the space is bundled into the clipboard
+    // payload above to avoid the async-paste race in Chromium/Electron targets.
 
     // Re-press modifiers that were physically held
     crate::actions::restore_modifiers(&held);
@@ -1457,11 +1631,11 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
     // queue — slower than most apps. 50ms was not enough, causing Excel to read the
     // restored-old-content instead of the expansion text.
     thread::sleep(Duration::from_millis(150));
-    // Only restore if the clipboard still holds our expansion text — if the user
-    // copied something during injection, leave their new content alone.
-    let current = read_clipboard().unwrap_or_default();
-    if !prev.is_empty() && current.trim() == text.trim() {
-        write_clipboard(&prev);
+    // Only restore if the clipboard still holds our content. If the sequence
+    // number advanced, the user (or another process) copied something new during
+    // the paste window — leave their content alone.
+    if clipboard_sequence_number() == post_write_seq {
+        restore_clipboard_snapshot(&snapshot);
     }
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
         .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -1731,10 +1905,9 @@ fn fire_variant_expansion(
 
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, std::sync::atomic::Ordering::SeqCst);
 
-    // Send trailing space
-    crate::hotkeys::SUPPRESS_SIMULATED.store(true, std::sync::atomic::Ordering::SeqCst);
-    send_vk_tap(VK_SPACE);
-    crate::hotkeys::SUPPRESS_SIMULATED.store(false, std::sync::atomic::Ordering::SeqCst);
+    // Trailing space is bundled into the clipboard payload by inject_via_clipboard
+    // above. No separate VK_SPACE keystroke is needed — sending one here was
+    // redundant (double-space) on top of the bundled space.
 }
 
 /// Fire an image expansion: read image from disk, optionally resize, write to clipboard, paste.
@@ -2128,7 +2301,7 @@ fn send_vk_tap(vk: u16) {
 /// Chromium-based targets (xterm.js inside VS Code, etc.) resolve the DOM event
 /// `code` to e.g. "Insert" rather than "Numpad0" — keybinding handlers for
 /// Shift+Insert / paste require this to match.
-fn send_vk_key_extended(vk: u16, key_up: bool) {
+pub(crate) fn send_vk_key_extended(vk: u16, key_up: bool) {
     let mut flags = KEYEVENTF_EXTENDEDKEY;
     if key_up {
         flags |= KEYEVENTF_KEYUP;

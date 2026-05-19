@@ -34,11 +34,11 @@
 }
 
 .app-name {
-  font-family: var(--font-display);
+  font-family: var(--font-label);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
-  letter-spacing: 0.1em;
+  letter-spacing: normal;
 }
 
 .titlebar-divider {

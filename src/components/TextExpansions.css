@@ -631,8 +631,8 @@ button.te-col-header:hover {
   display: grid;
   grid-template-columns: 120px 180px 1fr 100px 28px;
   align-items: center;
-  height: 36px;
-  padding: 0 4px 0 12px;
+  min-height: 36px;
+  padding: 8px 4px 8px 12px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   transition: background 0.1s;
@@ -670,13 +670,18 @@ button.te-col-header:hover {
   min-width: 0;
 }
 
-/* Col 3 — Preview */
+/* Col 3 — Preview. 2-line clamp lets users skim short and medium-length
+   expansions in the row; the row's `title` attribute (set in JSX) carries
+   the full plain text for hover when an expansion exceeds two lines. */
 .te-col-preview {
   font-size: 12px;
   color: var(--text-muted);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-break: break-word;
+  line-height: 1.4;
   min-width: 0;
   padding-right: 8px;
 }

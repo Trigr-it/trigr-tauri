@@ -832,13 +832,17 @@ function App() {
         else if (base.length >= 3) next = base;
         else next = [...base, modId];
       }
-      // Update sidebar filter to match keyboard modifier selection
+      // Update sidebar filter to match keyboard modifier selection. Must use
+      // comboString() — the canonical Ctrl/Shift/Alt/Win order also used in
+      // assignment storage keys. A plain alphabetical sort would produce e.g.
+      // "Alt+Ctrl" while assignments are keyed "Ctrl+Alt", causing the sidebar
+      // filter to silently never match new multi-modifier assignments.
       if (next.length === 0) {
         setSidebarComboFilter(null);
       } else if (next.includes('BARE')) {
         setSidebarComboFilter('BARE');
       } else {
-        setSidebarComboFilter([...next].sort().join('+'));
+        setSidebarComboFilter(comboString(next));
       }
       return next;
     });
@@ -909,8 +913,24 @@ function App() {
     showNotification(`Assigned to ${currentCombo}+${keyId}`);
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey, draftDoubleAssignment]);
 
-  // ── Clear key ─────────────────────────────────────────────
+  // ── Clear key (single-press only) ────────────────────────
+  // Removes the single-press assignment for this combo+keyId. Double-press
+  // assignment (if present) is preserved. For the "remove both single and
+  // double" semantics, see handleDeleteKey.
   const handleClearKey = useCallback((keyId) => {
+    const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
+    const newAssignments = { ...assignments };
+    delete newAssignments[key];
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    showNotification(`Cleared ${currentCombo}+${keyId}`, 'info');
+  }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
+
+  // ── Delete key (both single + double) ────────────────────
+  // Wipes both single-press and double-press assignments for this combo+keyId
+  // in one action. UI confirmation lives in MacroPanel; this handler trusts
+  // the caller has already confirmed intent.
+  const handleDeleteKey = useCallback((keyId) => {
     const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
     const doubleKey = key + '::double';
     const newAssignments = { ...assignments };
@@ -918,7 +938,7 @@ function App() {
     delete newAssignments[doubleKey];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification(`Cleared ${currentCombo}+${keyId}`, 'info');
+    showNotification(`Deleted ${currentCombo}+${keyId}`, 'info');
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
   // ── Rename assignment label ────────────────────────────────
@@ -2420,6 +2440,18 @@ function App() {
     // (and after any trial offer that follows). Mirrors the new-user flow.
     setTemplatesNudgeSeen(false);
     window.electronAPI?.saveConfig({ templates_nudge_seen: false });
+    // Clear any active modifier layer + sidebar combo filter (same as ESC) so
+    // the tour starts on a clean keyboard canvas. Otherwise the user lands in
+    // Step 2/3 with a pre-selected modifier from before they clicked Restart
+    // Tour, which makes the "press your hotkey" prompt confusing.
+    setActiveModifiers([]);
+    setSidebarComboFilter(null);
+    // Snap back to the keyboard mapping UI. If the user clicked Restart Tour
+    // while on Expansions / Analytics / Mouse / Radial / Clipboard, Step 2
+    // can't render its highlights (modifier bar + keyboard canvas don't
+    // exist outside the mapping/keyboard area) and the tour stalls.
+    setActiveArea('mapping');
+    setActiveView('keyboard');
     setShowOnboarding(true);
     onboardingCompleteRef.current = false;
   }, []);
@@ -3203,6 +3235,7 @@ function App() {
             globalInputMethod={globalInputMethod}
             onAssign={handleAssign}
             onClear={handleClearKey}
+            onDelete={handleDeleteKey}
             onAssignDouble={handleAssignDouble}
             onClearDouble={handleClearDouble}
             onClose={() => { clearDraft(); setSelectedKey(null); }}

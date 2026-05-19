@@ -687,6 +687,18 @@
   padding-top: 1px;
 }
 
+/* Vertical stack: small key badge on top, ×2 / ×2 only badge below it.
+   Decouples the double-press badge from the assignment-label row so a long
+   label can ellipsis cleanly without affecting whether the ×2 is visible. */
+.sidebar-key-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
 .sidebar-key-badge {
   display: inline-block;
   background: var(--bg-elevated);

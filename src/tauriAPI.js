@@ -315,9 +315,24 @@ document.addEventListener('keydown', (e) => {
     }
 
     const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta']);
-    if (!MODIFIER_KEYS.has(e.key)) {
+    if (MODIFIER_KEYS.has(e.key)) {
+      // Bare-modifier capture (sole-mod tracking, mirrors Rust state.capture_sole_modifier
+      // for the LL-hook path). On keydown of a modifier with no other mods held, mark
+      // intent. If a second modifier is pressed, clear intent so Ctrl+Shift etc. doesn't
+      // get captured as a sole modifier. Emit happens on keyup once all mods are released.
+      const otherModsHeld =
+        (e.key !== 'Control' && e.ctrlKey) ||
+        (e.key !== 'Shift'   && e.shiftKey) ||
+        (e.key !== 'Alt'     && e.altKey)   ||
+        (e.key !== 'Meta'    && e.metaKey);
+      window.__trigr_capture_sole_mod = otherModsHeld
+        ? null
+        : (e.key === 'Meta' ? 'Win' : e.key);
+    } else {
       e.preventDefault();
       e.stopPropagation();
+      // Pressing a real key invalidates any pending sole-modifier capture
+      window.__trigr_capture_sole_mod = null;
       invoke('js_key_event', {
         code: e.code,
         ctrl: e.ctrlKey,
@@ -326,5 +341,36 @@ document.addEventListener('keydown', (e) => {
         meta: e.metaKey,
       });
     }
+  }
+}, true);
+
+// Bare-modifier capture — emit on keyup when the user releases the last modifier
+// and the captured intent (set in the keydown listener above) is still valid.
+// Sends js_key_event with code='' + a single modifier flag set; Rust treats an
+// empty code as a sole-modifier capture and emits the modifier name as the
+// captured combo (e.g. "Ctrl"). Gated to __trigr_capturing only — hotkey trigger
+// recording (__trigr_recording) deliberately rejects bare modifiers since they
+// would conflict with normal modifier usage in everyday combos.
+document.addEventListener('keyup', (e) => {
+  if (!window.__trigr_capturing) return;
+  const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta']);
+  if (!MODIFIER_KEYS.has(e.key)) return;
+  // Don't fire when focus is on an editable element (consistency with keydown)
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  const isEditable = document.activeElement?.isContentEditable;
+  if (tag === 'input' || tag === 'textarea' || isEditable) return;
+  // On the LAST modifier keyup, all *Key flags read false (the released one is
+  // excluded; any still-held mods would show true).
+  const noOtherMods = !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
+  const sole = window.__trigr_capture_sole_mod;
+  if (noOtherMods && sole) {
+    window.__trigr_capture_sole_mod = null;
+    invoke('js_key_event', {
+      code: '',
+      ctrl: sole === 'Control',
+      shift: sole === 'Shift',
+      alt: sole === 'Alt',
+      meta: sole === 'Win',
+    });
   }
 }, true);

@@ -396,8 +396,16 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 let (_, settle_ms, _, clip_restore_ms) = speed_delays();
                 info!("[Trigr] Macro sequence: {} step(s), method={}", steps.len(), method);
 
-                // For clipboard method: save once, batch pastes, restore once
-                let saved_clipboard = if uses_clipboard { read_clipboard() } else { None };
+                // For clipboard method: snapshot once, batch pastes, restore once.
+                // Snapshot captures EVERY format (CF_DIB, RTF, CF_HDROP, registered
+                // formats) so non-text clipboard content (e.g. an image from Snagit)
+                // is preserved across the macro — text-only save would silently drop
+                // the image and leak the expansion text into the Windows clipboard.
+                let saved_snapshot = if uses_clipboard {
+                    crate::expansions::snapshot_clipboard()
+                } else {
+                    Vec::new()
+                };
                 let mut clipboard_dirty = false;
 
                 for (i, step) in steps.iter().enumerate() {
@@ -410,10 +418,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         clipboard_paste_core(step_value, current_hwnd);
                         clipboard_dirty = true;
                     } else {
-                        // Restore clipboard before non-Type-Text steps if we dirtied it
+                        // Restore clipboard before non-Type-Text steps if we dirtied it.
+                        // Inter-step restore — no seqnum guard because the macro is a
+                        // controlled sequential flow; the user isn't expected to copy
+                        // something mid-macro.
                         if clipboard_dirty {
                             thread::sleep(Duration::from_millis(clip_restore_ms));
-                            write_clipboard(&saved_clipboard.as_deref().unwrap_or(""));
+                            crate::expansions::restore_clipboard_snapshot(&saved_snapshot);
                             SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
                             clipboard_dirty = false;
                         }
@@ -439,10 +450,14 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     }
                 }
 
-                // Final restore after all steps
+                // Final restore after all steps. Seqnum guard: if the user copied
+                // something during the final paste window, leave their content.
                 if clipboard_dirty {
+                    let post_seq = crate::expansions::clipboard_sequence_number();
                     thread::sleep(Duration::from_millis(clip_restore_ms));
-                    write_clipboard(&saved_clipboard.as_deref().unwrap_or(""));
+                    if crate::expansions::clipboard_sequence_number() == post_seq {
+                        crate::expansions::restore_clipboard_snapshot(&saved_snapshot);
+                    }
                     SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
                 }
             }
@@ -511,12 +526,20 @@ fn output_text(text: &str, method: &str, target_hwnd: isize) {
 // simulated keystrokes and/or log its own clipboard writes.
 
 fn inject_via_clipboard(text: &str, target_hwnd: isize) {
-    let prev = read_clipboard();
+    // Snapshot every clipboard format (CF_DIB, RTF, CF_HDROP, registered formats)
+    // so non-text content (e.g. an image from Snagit) is preserved across the
+    // expansion. Text-only save silently drops the image and leaks the expansion
+    // text into the Windows clipboard for the user's next Ctrl+V.
+    let snapshot = crate::expansions::snapshot_clipboard();
     let (_, _, _, clip_restore_ms) = speed_delays();
     clipboard_paste_core(text, target_hwnd);
-    // Wait for paste to complete, then restore original clipboard
+    // Capture sequence number AFTER our write so we can detect a third-party
+    // (or user) clipboard change during the paste window.
+    let post_write_seq = crate::expansions::clipboard_sequence_number();
     thread::sleep(Duration::from_millis(clip_restore_ms));
-    write_clipboard(&prev.unwrap_or_default());
+    if crate::expansions::clipboard_sequence_number() == post_write_seq {
+        crate::expansions::restore_clipboard_snapshot(&snapshot);
+    }
     SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
 }
 
@@ -542,7 +565,14 @@ fn clipboard_paste_core(text: &str, target_hwnd: isize) {
         if fg_settle_ms > 0 { thread::sleep(Duration::from_millis(fg_settle_ms)); }
     }
 
-    let use_ctrl_v = !is_ctrl_v_mapped();
+    // Per-app override: VS Code WSL terminal (xterm.js) needs Shift+Insert with
+    // KEYEVENTF_EXTENDEDKEY because bash readline treats raw Ctrl+V as
+    // quoted-insert, and xterm.js's paste keybinding only resolves DOM event.code
+    // to "Insert" when the extended-key flag is set. Without this, Send Text
+    // hotkey actions silently fail in VS Code's WSL terminal. See feedback memory
+    // chromium_terminal_paste for the full diagnosis.
+    let needs_shift_insert = crate::expansions::target_needs_shift_insert(target_hwnd);
+    let use_ctrl_v = !needs_shift_insert && !is_ctrl_v_mapped();
     if use_ctrl_v {
         send_vk_key(VK_LCONTROL, false);
         send_vk_key(0x56, false); // V
@@ -550,8 +580,13 @@ fn clipboard_paste_core(text: &str, target_hwnd: isize) {
         send_vk_key(VK_LCONTROL, true);
     } else {
         send_vk_key(VK_LSHIFT, false);
-        send_vk_key(VK_INSERT, false);
-        send_vk_key(VK_INSERT, true);
+        if needs_shift_insert {
+            crate::expansions::send_vk_key_extended(VK_INSERT, false);
+            crate::expansions::send_vk_key_extended(VK_INSERT, true);
+        } else {
+            send_vk_key(VK_INSERT, false);
+            send_vk_key(VK_INSERT, true);
+        }
         send_vk_key(VK_LSHIFT, true);
     }
 
@@ -905,7 +940,17 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             .unwrap_or_default()
     };
 
+    // Bare-modifier mode: when the user captured a sole modifier (Ctrl / Shift
+    // / Alt / Win alone), the frontend sends key="" with non-empty modifiers.
+    // target_vk stays 0 to signal "no main key" — keystroke chains below skip
+    // the main-key tap and only press/release the modifier chord.
     let target_vk: u16 = if is_mouse {
+        0
+    } else if key_name.is_empty() {
+        if modifiers.is_empty() {
+            warn!("[Trigr] Send Hotkey has no key or modifiers — nothing to send");
+            return;
+        }
         0
     } else {
         match display_name_to_vk(key_name) {
@@ -916,6 +961,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             }
         }
     };
+    let has_main_key = !is_mouse && target_vk != 0;
 
     let hold_mode = data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false);
     let repeat_mode = data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -932,7 +978,9 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         })
         .collect();
 
-    let combo_label = if modifiers.is_empty() {
+    let combo_label = if key_name.is_empty() {
+        modifiers.join("+")
+    } else if modifiers.is_empty() {
         key_name.to_string()
     } else {
         format!("{}+{}", modifiers.join("+"), key_name)
@@ -995,8 +1043,11 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 } else {
                     let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks_clone.len() * 2 + 2);
                     for &vk in &mod_vks_clone { inputs.push(make_vk_input(vk, false)); }
-                    inputs.push(make_vk_input(target_vk_copy, false));
-                    inputs.push(make_vk_input(target_vk_copy, true));
+                    // Skip main-key tap when in bare-modifier mode (target_vk == 0).
+                    if target_vk_copy != 0 {
+                        inputs.push(make_vk_input(target_vk_copy, false));
+                        inputs.push(make_vk_input(target_vk_copy, true));
+                    }
                     for &vk in mod_vks_clone.iter().rev() { inputs.push(make_vk_input(vk, true)); }
                     let _guard = SuppressionGuard::new();
                     unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
@@ -1042,7 +1093,10 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 if let Some(ref button) = state.mouse_button {
                     send_mouse_event(button, true);
                 } else {
-                    send_vk_key(state.target_vk, true);
+                    // Skip main-key release for bare-modifier holds (target_vk == 0).
+                    if state.target_vk != 0 {
+                        send_vk_key(state.target_vk, true);
+                    }
                     for &vk in state.mod_vks.iter().rev() {
                         send_vk_key(vk, true);
                     }
@@ -1061,7 +1115,9 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 if let Some(ref button) = state.mouse_button {
                     send_mouse_event(button, true);
                 } else {
-                    send_vk_key(state.target_vk, true);
+                    if state.target_vk != 0 {
+                        send_vk_key(state.target_vk, true);
+                    }
                     for &vk in state.mod_vks.iter().rev() {
                         send_vk_key(vk, true);
                     }
@@ -1081,8 +1137,10 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 for &vk in &mod_vks {
                     send_vk_key(vk, false);
                 }
-                send_vk_key(target_vk, false);
-                // Do NOT send keyup — key stays held
+                if has_main_key {
+                    send_vk_key(target_vk, false);
+                }
+                // Do NOT send keyup — key/modifiers stay held
                 restore_modifiers(&physically_held);
             }
         }
@@ -1142,8 +1200,12 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         let held = release_held_modifiers();
         let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() * 2 + 2);
         for &vk in &mod_vks { inputs.push(make_vk_input(vk, false)); }
-        inputs.push(make_vk_input(target_vk, false));
-        inputs.push(make_vk_input(target_vk, true));
+        // Skip main-key tap when in bare-modifier mode — the modifier chord
+        // itself is the full hotkey (down all, up all in reverse).
+        if has_main_key {
+            inputs.push(make_vk_input(target_vk, false));
+            inputs.push(make_vk_input(target_vk, true));
+        }
         for &vk in mod_vks.iter().rev() { inputs.push(make_vk_input(vk, true)); }
         {
             let _guard = SuppressionGuard::new();
