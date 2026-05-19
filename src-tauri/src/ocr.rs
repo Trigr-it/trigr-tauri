@@ -12,9 +12,14 @@ use windows::Media::Ocr::OcrEngine;
 use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
 use windows_core::Interface;
 
-/// Run OCR over PNG bytes. Blocks until complete. Returns recognised text
-/// (joined whitespace-separated by Windows.Media.Ocr) or a user-friendly
-/// error string.
+/// Run OCR over PNG bytes. Blocks until complete. Returns recognised text or a
+/// user-friendly error string.
+///
+/// Walks `OcrResult.Lines()` instead of using `OcrResult.Text()` so line breaks
+/// in the source image are preserved. Inserts a blank line between consecutive
+/// lines when their vertical gap exceeds the average line height — a rough
+/// paragraph-break heuristic that handles screenshots of articles / emails /
+/// chat logs reasonably without trying to be clever about columns.
 pub fn ocr_png_bytes(png: &[u8]) -> Result<String, String> {
     if png.is_empty() {
         return Err("Empty image data".to_string());
@@ -78,10 +83,80 @@ pub fn ocr_png_bytes(png: &[u8]) -> Result<String, String> {
         .get()
         .map_err(|e| format!("Recognize await failed: {}", e))?;
 
-    let text = result
-        .Text()
-        .map_err(|e| format!("Failed to read OCR text: {}", e))?
-        .to_string();
+    // Step 5: walk lines top-to-bottom. For each line, compute its vertical
+    // extent from its words' bounding rects. Between consecutive lines, if the
+    // gap is wider than the average line height, treat that as a paragraph
+    // break (insert a blank line); otherwise just join with a newline.
+    let lines = result
+        .Lines()
+        .map_err(|e| format!("Failed to read OCR lines: {}", e))?;
+    let line_count = lines
+        .Size()
+        .map_err(|e| format!("Failed to size OCR lines: {}", e))?;
 
-    Ok(text)
+    if line_count == 0 {
+        return Ok(String::new());
+    }
+
+    let mut out = String::new();
+    let mut prev_bottom: Option<f64> = None;
+    let mut prev_height: Option<f64> = None;
+
+    for i in 0..line_count {
+        let line = lines
+            .GetAt(i)
+            .map_err(|e| format!("OCR line {} fetch failed: {}", i, e))?;
+        let text = line
+            .Text()
+            .map_err(|e| format!("OCR line {} text failed: {}", i, e))?
+            .to_string();
+
+        // Compute the line's top/bottom from its words' bounding rects.
+        // Falls back to (0, 0) if Words is empty or read errors — paragraph
+        // detection will degrade to "every line gets a single \n" in that case.
+        let (line_top, line_bottom) = match line.Words() {
+            Ok(words) => match words.Size() {
+                Ok(wc) if wc > 0 => {
+                    let mut top = f64::MAX;
+                    let mut bottom = f64::MIN;
+                    for j in 0..wc {
+                        if let Ok(word) = words.GetAt(j) {
+                            if let Ok(rect) = word.BoundingRect() {
+                                let y = rect.Y as f64;
+                                let h = rect.Height as f64;
+                                if y < top { top = y; }
+                                if y + h > bottom { bottom = y + h; }
+                            }
+                        }
+                    }
+                    if top == f64::MAX { (0.0, 0.0) } else { (top, bottom) }
+                }
+                _ => (0.0, 0.0),
+            },
+            Err(_) => (0.0, 0.0),
+        };
+        let line_height = (line_bottom - line_top).max(1.0);
+
+        if i > 0 {
+            if let (Some(pb), Some(ph)) = (prev_bottom, prev_height) {
+                let gap = line_top - pb;
+                let avg_h = ((line_height + ph) / 2.0).max(1.0);
+                // Threshold of 0.6× average line height empirically separates
+                // standard line-spacing (~0.2-0.3×) from paragraph breaks (~1.0×+).
+                if gap > avg_h * 0.6 {
+                    out.push_str("\n\n");
+                } else {
+                    out.push('\n');
+                }
+            } else {
+                out.push('\n');
+            }
+        }
+        out.push_str(&text);
+
+        prev_bottom = Some(line_bottom);
+        prev_height = Some(line_height);
+    }
+
+    Ok(out)
 }

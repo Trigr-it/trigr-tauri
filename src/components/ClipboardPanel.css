@@ -180,17 +180,56 @@
   margin-bottom: 4px;
 }
 
+/* Matches .te-group-header in TextExpansions.css so the date buckets read as
+   the same kind of section divider users already know from expansions /
+   quick actions. Sticky so the current bucket stays pinned while scrolling. */
 .cbg-timeline-header {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--accent);
-  padding: 10px 0 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-bottom: 6px;
 }
 
-.cbg-timeline-group:first-child .cbg-timeline-header {
-  padding-top: 4px;
+.cbg-timeline-name {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.cbg-timeline-count {
+  font-size: 9px;
+  font-weight: 600;
+  background: var(--bg-active);
+  color: var(--text-muted);
+  padding: 0 5px;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  flex-shrink: 0;
+}
+
+.cbg-timeline-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  margin-left: 4px;
+}
+
+.cbg-timeline-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
 }
 
 .cbg-grid {

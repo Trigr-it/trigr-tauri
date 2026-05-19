@@ -2158,6 +2158,9 @@ fn copy_text(text: String) {
 
 /// Run OCR over a clipboard image. Returns Ok(text) or Err(reason). Runs the
 /// blocking WinRT calls on a separate thread so the IPC caller does not stall.
+/// On success, caches the recognised text back on the image row via
+/// `clipboard::set_ocr_text` so re-selecting the same image returns instantly
+/// without re-running OCR.
 #[tauri::command]
 async fn ocr_clipboard_image(id: i64) -> Result<String, String> {
     let blob = match clipboard::get_image_blob(id) {
@@ -2165,9 +2168,11 @@ async fn ocr_clipboard_image(id: i64) -> Result<String, String> {
         None => return Err("Image not found".to_string()),
     };
     // tauri::async_runtime is tokio under the hood — spawn_blocking is the right call.
-    tauri::async_runtime::spawn_blocking(move || ocr::ocr_png_bytes(&blob))
+    let text = tauri::async_runtime::spawn_blocking(move || ocr::ocr_png_bytes(&blob))
         .await
-        .map_err(|e| format!("OCR task join failed: {}", e))?
+        .map_err(|e| format!("OCR task join failed: {}", e))??;
+    clipboard::set_ocr_text(id, text.clone());
+    Ok(text)
 }
 
 /// Returns up to 5 dominant RGB colours (as [r,g,b] arrays) for a clipboard image.

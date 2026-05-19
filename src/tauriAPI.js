@@ -135,12 +135,20 @@ window.electronAPI = {
   },
 
   // ── Cleanup listeners ──────────────────────────────────────────────────────
-  removeAllListeners: (channel) => {
-    const unlisten = listeners[channel];
-    if (unlisten) {
-      unlisten();
-      delete listeners[channel];
-    }
+  // Accepts both shapes the registration sites use: a resolved unlisten function
+  // (the .then(u => listeners[ch] = u) pattern) or an in-flight Promise<unlisten>
+  // (the listeners[ch] = listen(...) pattern). Awaiting handles the race where
+  // a strict-mode double-mount triggers cleanup before listen() has resolved —
+  // without the await the unlisten handle was getting orphaned and the next
+  // mount stacked a second listener on top, doubling every clipboard event.
+  removeAllListeners: async (channel) => {
+    const entry = listeners[channel];
+    if (!entry) return;
+    delete listeners[channel];
+    try {
+      const unlisten = typeof entry === 'function' ? entry : await entry;
+      if (typeof unlisten === 'function') unlisten();
+    } catch { /* unlisten failure is non-fatal — listener just stays */ }
   },
 
   // ── Key capture ─────────────────────────────────────────────────────────────
@@ -202,7 +210,10 @@ window.electronAPI = {
   closeClipboardOverlay:     ()       => invoke('close_clipboard_overlay'),
   resizeClipboardOverlay:    (width, height) => invoke('clipboard_overlay_resize', { width, height }),
   onClipboardNewItem: (callback) => {
-    listen('clipboard-new-item', (event) => callback(event.payload)).then(u => { listeners['clipboard-new-item'] = u; });
+    // Store the Promise itself (not the resolved unlisten) so removeAllListeners
+    // can await it on cleanup — closes the race where the .then() hadn't fired
+    // yet when an unmount happened and the unlisten handle was lost.
+    listeners['clipboard-new-item'] = listen('clipboard-new-item', (event) => callback(event.payload));
   },
   onClipboardOverlayData: (callback) => {
     listen('clipboard-overlay-data', (event) => callback(event.payload)).then(u => { listeners['clipboard-overlay-data'] = u; });

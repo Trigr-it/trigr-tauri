@@ -259,12 +259,16 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     window.electronAPI?.onClipboardNewItem((item) => {
       setItems(prev => [item, ...prev]);
       setTotal(t => t + 1);
-      if (item.source_app && !sourceApps.includes(item.source_app)) {
-        setSourceApps(prev => [...prev, item.source_app].sort());
+      // Functional setter so the closure doesn't capture a stale sourceApps —
+      // lets this effect run once on mount instead of re-registering the
+      // listener every time sourceApps mutates (which raced with the async
+      // listen() registration and produced duplicate visual rows on copy).
+      if (item.source_app) {
+        setSourceApps(prev => prev.includes(item.source_app) ? prev : [...prev, item.source_app].sort());
       }
     });
     return () => window.electronAPI?.removeAllListeners('clipboard-new-item');
-  }, [sourceApps]);
+  }, []);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -358,7 +362,12 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     setOcrError(null);
     try {
       const text = await window.electronAPI?.ocrClipboardImage(selectedId);
-      setOcrText(text || '');
+      const value = text || '';
+      setOcrText(value);
+      // Mirror the cached value back into the items list so re-selecting the
+      // same image in this session shows the text without re-running OCR
+      // (Rust already persisted it via set_ocr_text).
+      setItems(prev => prev.map(i => i.id === selectedId ? { ...i, ocr_text: value } : i));
     } catch (e) {
       setOcrError(typeof e === 'string' ? e : (e?.message || 'OCR failed'));
     } finally {
@@ -366,10 +375,14 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     }
   };
 
-  // Reset image-pane state whenever selection changes — prevents stale OCR/colours
-  // from a previous image leaking into the next preview.
+  // Reset image-pane state whenever selection changes. If the newly selected
+  // image has cached OCR text from a previous extraction, restore it so the
+  // user sees the text immediately (no need to click Extract again).
+  // Use ?? not || so an empty-string OCR result (image with no readable text)
+  // still counts as cached and doesn't prompt a re-extract.
   useEffect(() => {
-    setOcrText(null);
+    const sel = items.find(i => i.id === selectedId);
+    setOcrText(sel?.ocr_text ?? null);
     setOcrError(null);
     setOcrLoading(false);
     setImageColors([]);
@@ -546,9 +559,14 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
             grouped.map(([label, groupItems]) => (
               <div key={label} className="cbg-timeline-group">
                 <div className="cbg-timeline-header">
-                  {label === 'Pinned' ? (
-                    <><Pin size={12} strokeWidth={2} fill="currentColor" style={{ marginRight: 4, verticalAlign: -1 }} />Pinned</>
-                  ) : label}
+                  {label === 'Pinned' && (
+                    <span className="cbg-timeline-icon">
+                      <Pin size={10} strokeWidth={2} fill="currentColor" />
+                    </span>
+                  )}
+                  <span className="cbg-timeline-name">{label}</span>
+                  <span className="cbg-timeline-count">{groupItems.length}</span>
+                  <span className="cbg-timeline-rule" />
                 </div>
                 <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`}>
                   {groupItems.map(item => {
@@ -729,8 +747,17 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                     onClick={handleRunOcr}
                     disabled={ocrLoading}
                   >
-                    {ocrLoading ? 'Extracting…' : 'Extract text'}
+                    {ocrLoading
+                      ? 'Extracting…'
+                      : (ocrText !== null && !ocrError ? 'Re-extract text' : 'Extract text')}
                   </button>
+                  {ocrText !== null && !ocrError && ocrText.trim() && (
+                    <button
+                      className="cbg-dbtn"
+                      type="button"
+                      onClick={() => { try { navigator.clipboard?.writeText(ocrText); setCopyToast('text'); setTimeout(() => setCopyToast(null), 1200); } catch {} }}
+                    >{copyToast === 'text' ? 'Copied!' : 'Copy text'}</button>
+                  )}
                   <button
                     className="cbg-dbtn"
                     type="button"
@@ -748,13 +775,6 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                 {ocrText !== null && !ocrError && (
                   <div className="cbg-ocr-result">
                     <div className="cbg-ocr-text">{ocrText.trim() || '(no text detected)'}</div>
-                    {ocrText.trim() && (
-                      <button
-                        className="cbg-dbtn"
-                        type="button"
-                        onClick={() => { try { navigator.clipboard?.writeText(ocrText); setCopyToast('text'); setTimeout(() => setCopyToast(null), 1200); } catch {} }}
-                      >{copyToast === 'text' ? 'Copied!' : 'Copy text'}</button>
-                    )}
                   </div>
                 )}
                 {imageColors.length > 0 && (

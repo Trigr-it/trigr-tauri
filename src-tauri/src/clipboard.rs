@@ -84,6 +84,10 @@ enum ClipboardMsg {
         new_text: String,
         reply: mpsc::Sender<Option<String>>, // returns new content_tag on success
     },
+    SetOcrText {
+        id: i64,
+        text: String,
+    },
     IncrementPasteCount {
         id: i64,
     },
@@ -94,6 +98,7 @@ pub struct FullClipItem {
     pub content_type: String,
     pub text_content: Option<String>,
     pub image_blob: Option<Vec<u8>>,
+    pub ocr_text: Option<String>,
 }
 
 // ── App handle for Tauri events ──────────────────────────────────────────────
@@ -270,6 +275,10 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             // paste_count: number of times this entry has been pasted via the main UI.
             // DEFAULT 0 — existing rows get 0 cleanly, no data loss.
             let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN paste_count INTEGER NOT NULL DEFAULT 0", []);
+            // ocr_text: cached OCR result for image rows. NULL until the user runs
+            // Extract Text. Populated by `set_ocr_text` after `ocr_clipboard_image`
+            // succeeds so re-selecting the same image shows the text without re-OCR.
+            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN ocr_text TEXT", []);
 
             info!("[Trigr] Clipboard DB ready: {}", db_path.display());
 
@@ -307,6 +316,12 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                     ClipboardMsg::UpdateItem { id, new_text, reply } => {
                         let result = handle_update_item(&conn, id, &new_text);
                         let _ = reply.send(result);
+                    }
+                    ClipboardMsg::SetOcrText { id, text } => {
+                        let _ = conn.execute(
+                            "UPDATE clipboard_history SET ocr_text = ?1 WHERE id = ?2",
+                            rusqlite::params![text, id],
+                        );
                     }
                     ClipboardMsg::IncrementPasteCount { id } => {
                         let _ = conn.execute(
@@ -440,6 +455,17 @@ pub fn update_item(id: i64, new_text: String) -> Option<String> {
     None
 }
 
+/// Cache OCR text on an image row. Fire-and-forget; failures are logged at the
+/// writer thread but not surfaced — re-running OCR is cheap and the displayed
+/// text is preserved in frontend state for the current session either way.
+pub fn set_ocr_text(id: i64, text: String) {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(ClipboardMsg::SetOcrText { id, text });
+        }
+    }
+}
+
 pub fn set_retention_days(days: u32) {
     let clamped = days.clamp(1, 30);
     if let Some(m) = RETENTION_DAYS.get() {
@@ -569,7 +595,7 @@ fn handle_get_history(conn: &Connection, page: u32, per_page: u32) -> Value {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count
+            "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text
              FROM clipboard_history ORDER BY pinned DESC, id DESC LIMIT ?1 OFFSET ?2",
         )
         .unwrap();
@@ -588,6 +614,7 @@ fn handle_get_history(conn: &Connection, page: u32, per_page: u32) -> Value {
                 "source_app": row.get::<_, String>(8).unwrap_or_default(),
                 "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
                 "paste_count": row.get::<_, i64>(10).unwrap_or(0),
+                "ocr_text": row.get::<_, Option<String>>(11).unwrap_or(None),
             }))
         })
         .unwrap()
@@ -599,13 +626,14 @@ fn handle_get_history(conn: &Connection, page: u32, per_page: u32) -> Value {
 
 fn handle_get_item_full(conn: &Connection, id: i64) -> Option<FullClipItem> {
     conn.query_row(
-        "SELECT content_type, text_content, image_blob FROM clipboard_history WHERE id = ?1",
+        "SELECT content_type, text_content, image_blob, ocr_text FROM clipboard_history WHERE id = ?1",
         rusqlite::params![id],
         |row| {
             Ok(FullClipItem {
                 content_type: row.get::<_, String>(0).unwrap_or_default(),
                 text_content: row.get::<_, Option<String>>(1).unwrap_or(None),
                 image_blob: row.get::<_, Option<Vec<u8>>>(2).unwrap_or(None),
+                ocr_text: row.get::<_, Option<String>>(3).unwrap_or(None),
             })
         },
     )
