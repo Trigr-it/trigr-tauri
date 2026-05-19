@@ -428,14 +428,21 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                             SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
                             clipboard_dirty = false;
                         }
-                        execute_macro_step(step, &mut current_hwnd, &method, app);
+                        let cont = execute_macro_step(step, &mut current_hwnd, &method, app);
+                        if !cont {
+                            info!("[Trigr] Macro aborted at step {}/{} ({})", i + 1, steps.len(), step_type);
+                            // Break out of the steps loop. The post-loop clipboard
+                            // restore (just below this for-block) still runs, so any
+                            // mid-paste state is cleaned up correctly.
+                            break;
+                        }
                     }
 
                     // After steps that may change focus, re-capture foreground HWND
                     // so subsequent Type Text / Press Key targets the correct window.
                     // Open URL is async (ShellExecute → browser launch) so we sleep a
                     // short stabilisation window before reading the foreground.
-                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Click at Position" | "Open URL") {
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Click at Position" | "Open URL") {
                         if step_type == "Open URL" {
                             thread::sleep(Duration::from_millis(OPEN_URL_FOCUS_SETTLE_MS));
                         }
@@ -1389,7 +1396,12 @@ fn send_mouse_click(button: &str) {
 
 // ── Macro sequence step executor ────────────────────────────────────────────
 
-fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: &tauri::AppHandle) {
+/// Returns true to continue the macro, false to abort it (caller breaks out of
+/// the steps loop). Most arms continue unconditionally; only Wait for Window
+/// can request abort, when its target window doesn't appear before the 30s
+/// timeout — letting subsequent steps fire into whatever happens to be focused
+/// is worse than just stopping the macro there.
+fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: &tauri::AppHandle) -> bool {
     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
     let repeat_count = step.get("repeat").and_then(|v| v.as_u64()).unwrap_or(1).max(1).min(99) as u32;
@@ -1424,7 +1436,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                             thread::sleep(Duration::from_millis(settle_ms));
                         }
                     }
-                    return;
+                    return true;
                 }
                 // Parse "Ctrl+Shift+N" style strings
                 let parts: Vec<&str> = step_value.split('+').map(|s| s.trim()).collect();
@@ -1433,7 +1445,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         Some(vk) => vk,
                         None => {
                             warn!("[Trigr] Unknown macro step key: {}", key_name);
-                            return;
+                            return true;
                         }
                     };
 
@@ -1472,6 +1484,120 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             thread::sleep(Duration::from_millis(ms));
         }
 
+        // Ctrl+C / Ctrl+V / Ctrl+A as first-class macro steps. Implemented as
+        // a synthetic LCTRL + letter pulse — same path Press Key takes for the
+        // equivalent chord, but exposed with a clearer label in the editor.
+        // Doesn't touch Trigr's own clipboard write path; the OS handles paste
+        // semantics for whatever was last copied (per feedback_paste_architecture
+        // memory — that rule is about Trigr-injected content, not raw Ctrl+V).
+        "Copy to Clipboard" | "Paste Clipboard" | "Select All" => {
+            const VK_C: u16 = 0x43;
+            const VK_V: u16 = 0x56;
+            const VK_A: u16 = 0x41;
+            let target_vk = match step_type {
+                "Copy to Clipboard" => VK_C,
+                "Paste Clipboard"   => VK_V,
+                _                   => VK_A,
+            };
+            for i in 0..repeat_count {
+                crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                send_vk_key(VK_LCONTROL, false);
+                send_vk_key(target_vk, false);
+                send_vk_key(target_vk, true);
+                send_vk_key(VK_LCONTROL, true);
+                crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                if i + 1 < repeat_count && settle_ms > 0 {
+                    thread::sleep(Duration::from_millis(settle_ms));
+                }
+            }
+            // Copy/Paste need a brief settle so the system clipboard state
+            // stabilises before the next macro step runs (the next step often
+            // reads or modifies the same clipboard).
+            if matches!(step_type, "Copy to Clipboard" | "Paste Clipboard") {
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+
+        // Passive wait until a window matching the given criteria is foreground.
+        // Used for macros that need the user to switch to a particular window
+        // (a specific app, a particular browser tab, a specific document) before
+        // continuing. Match semantics: process basename must match if set, AND
+        // title substring must match if set. At least one of process/title is
+        // required. Returns when match found or timeout expires.
+        "Wait for Window" => {
+            if step_value.is_empty() {
+                warn!("[Trigr] Wait for Window step: empty value");
+                return true;
+            }
+            let parsed: Value = match serde_json::from_str(step_value) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[Trigr] Wait for Window step: invalid JSON: {}", e);
+                    return true;
+                }
+            };
+            let process_raw = parsed.get("process").and_then(|v| v.as_str()).unwrap_or("").trim().to_lowercase();
+            let target_proc = process_raw.trim_end_matches(".exe").to_string();
+            let target_title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_lowercase();
+            if target_proc.is_empty() && target_title.is_empty() {
+                warn!("[Trigr] Wait for Window step: both process and title are empty");
+                return true;
+            }
+            // 30s hardcoded — kept off the UI per design. If a typo or stale
+            // criterion never matches, the macro continues to the next step
+            // instead of hanging Trigr indefinitely.
+            const WAIT_FOR_WINDOW_TIMEOUT_MS: u64 = 30_000;
+            let timeout_ms = WAIT_FOR_WINDOW_TIMEOUT_MS;
+
+            let start = std::time::Instant::now();
+            let poll_interval = Duration::from_millis(150);
+            loop {
+                let hwnd = unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
+                };
+                if hwnd != 0 {
+                    let proc_ok = if target_proc.is_empty() {
+                        true
+                    } else {
+                        crate::foreground::proc_name_for_hwnd(hwnd)
+                            .map(|n| n.trim_end_matches(".exe").eq_ignore_ascii_case(&target_proc))
+                            .unwrap_or(false)
+                    };
+                    let title_ok = if target_title.is_empty() {
+                        true
+                    } else {
+                        // GetWindowTextW into a stack buffer, decode, lowercase,
+                        // substring-match. Mirrors the title check inside the
+                        // EnumWindows callback used by find_window_by_criteria.
+                        let mut buf = [0u16; 512];
+                        let len = unsafe { GetWindowTextW(hwnd as _, buf.as_mut_ptr(), buf.len() as i32) };
+                        if len <= 0 {
+                            false
+                        } else {
+                            let title = String::from_utf16_lossy(&buf[..len as usize]).to_lowercase();
+                            title.contains(&target_title)
+                        }
+                    };
+                    if proc_ok && title_ok {
+                        *target_hwnd = hwnd;
+                        info!(
+                            "[Trigr] Wait for Window: matched (process='{}' title~='{}') after {:?}",
+                            target_proc, target_title, start.elapsed()
+                        );
+                        break;
+                    }
+                }
+                if start.elapsed() >= Duration::from_millis(timeout_ms) {
+                    warn!(
+                        "[Trigr] Wait for Window: timeout ({} ms) waiting for process='{}' title~='{}' — aborting macro",
+                        timeout_ms, target_proc, target_title
+                    );
+                    return false;
+                }
+                thread::sleep(poll_interval);
+            }
+        }
+
         "Open URL" => {
             let normalised = normalise_url(step_value);
             if !normalised.is_empty() {
@@ -1488,13 +1614,13 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         "Open App" => {
             if step_value.is_empty() {
                 warn!("[Trigr] Open App step: empty value");
-                return;
+                return true;
             }
             let parsed: Value = match serde_json::from_str(step_value) {
                 Ok(v) => v,
                 Err(e) => {
                     warn!("[Trigr] Open App step: invalid JSON: {}", e);
-                    return;
+                    return true;
                 }
             };
             let kind = parsed.get("kind").and_then(|v| v.as_str()).unwrap_or("path");
@@ -1507,20 +1633,20 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         "Focus Window" => {
             if step_value.is_empty() {
                 warn!("[Trigr] Focus Window step: empty value");
-                return;
+                return true;
             }
             let parsed: Value = match serde_json::from_str(step_value) {
                 Ok(v) => v,
                 Err(e) => {
                     warn!("[Trigr] Focus Window step: invalid JSON: {}", e);
-                    return;
+                    return true;
                 }
             };
             let process = parsed.get("process").and_then(|v| v.as_str()).unwrap_or("");
             let title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("");
             if process.is_empty() && title.is_empty() {
                 warn!("[Trigr] Focus Window step: both process and title are empty");
-                return;
+                return true;
             }
             match find_window_by_criteria(process, title) {
                 Some(hwnd) => {
@@ -1616,6 +1742,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             warn!("[Trigr] Unknown macro step type: {}", step_type);
         }
     }
+    true
 }
 
 // ── Wait for Input step ─────────────────────────────────────────────────────

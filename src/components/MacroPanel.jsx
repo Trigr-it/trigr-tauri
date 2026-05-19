@@ -74,7 +74,18 @@ const TRIGGER_KEYS = [
   'Up','Down','Left','Right',
 ];
 
-const MACRO_STEP_TYPES = ['Type Text', 'Press Key', 'Click Mouse', 'Click at Position', 'Open App', 'Open URL', 'Open Folder', 'Wait (ms)', 'Wait for Input', 'Focus Window', 'Run AHK Script'];
+// Macro step types grouped for the flyout menu. The list grew past the point
+// where a flat <select> was scannable, so categories collapse it into 4 groups
+// plus a single AHK leaf under a divider. Add new step types into the matching
+// group; the dropdown reads from this structure directly.
+const MACRO_STEP_CATEGORIES = [
+  { kind: 'group', label: 'Type & Keys',   items: ['Type Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
+  { kind: 'group', label: 'Mouse',         items: ['Click Mouse', 'Click at Position'] },
+  { kind: 'group', label: 'Open',          items: ['Open App', 'Open URL', 'Open Folder'] },
+  { kind: 'group', label: 'Wait & Window', items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Focus Window'] },
+  { kind: 'divider' },
+  { kind: 'leaf',  label: 'Run AHK Script' },
+];
 
 const WFI_INPUT_OPTIONS = [
   { value: 'LButton',     label: 'Left Click'   },
@@ -536,10 +547,34 @@ function AhkForm({ value, onChange }) {
   );
 }
 
-// Inline pick button for Click at Position (sits on the step row beside dropdown)
-function ClickPositionPickBtn({ step, updateStep }) {
+// Click-at-Position button selector — sits on the main step row as the inline
+// value. User picks which mouse button fires at the chosen coordinates.
+function ClickPositionButtonSelect({ step, updateStep }) {
   let cp = { x: 0, y: 0, button: 'left', mode: 'absolute' };
   try { cp = { ...cp, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  return (
+    <select
+      className="form-select macro-step-value"
+      value={cp.button}
+      onChange={e => updateStep({ ...step, value: JSON.stringify({ ...cp, button: e.target.value }) })}
+    >
+      <option value="left">Left Click</option>
+      <option value="right">Right Click</option>
+      <option value="middle">Middle Click</option>
+    </select>
+  );
+}
+
+// Click-at-Position sub-row — single row containing Pick Position button +
+// x label + x input + y label + y input. Aligned padding so the row's left
+// edge sits under Left Click's left edge and the y input's right edge sits
+// under Left Click's right edge. Pick Position is intrinsic-width; the x/y
+// inputs flex:1 to share the remaining space, ensuring everything end-to-end
+// matches the button above.
+function ClickPositionFields({ step, updateStep }) {
+  let cp = { x: 0, y: 0, button: 'left', mode: 'absolute' };
+  try { cp = { ...cp, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  const update = (patch) => updateStep({ ...step, value: JSON.stringify({ ...cp, ...patch }) });
   const [picking, setPicking] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
@@ -552,47 +587,32 @@ function ClickPositionPickBtn({ step, updateStep }) {
     setCountdown(0);
     const pos = await window.electronAPI?.getCursorPosition();
     setPicking(false);
-    if (pos) {
-      updateStep({ ...step, value: JSON.stringify({ ...cp, x: pos.x, y: pos.y }) });
-    }
+    if (pos) update({ x: pos.x, y: pos.y });
   };
 
   return (
-    <button type="button" className="browse-btn" onClick={pickPosition} disabled={picking} style={{ flexShrink: 0 }}>
-      {picking ? `${countdown}...` : 'Pick Position'}
-    </button>
-  );
-}
-
-// Sub-row fields for Click at Position (X, Y, button selector)
-function ClickPositionFields({ step, updateStep }) {
-  let cp = { x: 0, y: 0, button: 'left', mode: 'absolute' };
-  try { cp = { ...cp, ...JSON.parse(step.value || '{}') }; } catch (_) {}
-  const update = (patch) => updateStep({ ...step, value: JSON.stringify({ ...cp, ...patch }) });
-
-  return (
-    <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>X</label>
-        <input className="form-input" type="number" style={{ width: 70 }} value={cp.x}
-          onChange={e => update({ x: parseInt(e.target.value) || 0 })}
-          onKeyDown={e => e.stopPropagation()} />
-        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>Y</label>
-        <input className="form-input" type="number" style={{ width: 70 }} value={cp.y}
-          onChange={e => update({ y: parseInt(e.target.value) || 0 })}
-          onKeyDown={e => e.stopPropagation()} />
-        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-          {cp.x || cp.y ? `(${cp.x}, ${cp.y})` : ''}
-        </span>
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <select className="form-select" value={cp.button} style={{ flex: 1 }}
-          onChange={e => update({ button: e.target.value })}>
-          <option value="left">Left Click</option>
-          <option value="right">Right Click</option>
-          <option value="middle">Middle Click</option>
-        </select>
-      </div>
+    // Sub-row mirrors the main row's column structure: drag+num padding (48px)
+    // then a 130px-wide button matching the step-type dropdown's column, then
+    // the x/y inputs filling the inline-value column. Right padding (60px)
+    // matches the main row's dup+del area, so the y input's right edge sits
+    // flush under Left Click's right edge.
+    <div className="wfi-config-row wfi-config-row-columns click-pos-row">
+      <button
+        type="button"
+        className="browse-btn click-pos-pick-btn"
+        onClick={pickPosition}
+        disabled={picking}
+      >
+        {picking ? `${countdown}...` : 'Pick Position'}
+      </button>
+      <label className="click-pos-axis-label">x</label>
+      <input className="form-input click-pos-coord-input" type="number" value={cp.x}
+        onChange={e => update({ x: parseInt(e.target.value) || 0 })}
+        onKeyDown={e => e.stopPropagation()} />
+      <label className="click-pos-axis-label">y</label>
+      <input className="form-input click-pos-coord-input" type="number" value={cp.y}
+        onChange={e => update({ y: parseInt(e.target.value) || 0 })}
+        onKeyDown={e => e.stopPropagation()} />
     </div>
   );
 }
@@ -621,84 +641,6 @@ function KeyChips({ combo }) {
   );
 }
 
-function FocusWindowFields({ focusData, onChange }) {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [windowList, setWindowList] = useState(null); // null = not loaded, [] = empty
-  const dropdownRef = useRef(null);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    function onDown(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [dropdownOpen]);
-
-  const handlePickClick = async () => {
-    if (dropdownOpen) { setDropdownOpen(false); return; }
-    setWindowList(null);
-    setDropdownOpen(true);
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const list = await invoke('list_open_windows');
-      setWindowList(list || []);
-    } catch (e) {
-      console.error('[Trigr] list_open_windows failed:', e);
-      setWindowList([]);
-    }
-  };
-
-  const handleSelect = (win) => {
-    onChange({ process: win.process, title: win.title });
-    setDropdownOpen(false);
-  };
-
-  const handleClear = () => {
-    onChange({ ...focusData, process: '' });
-  };
-
-  return (
-    <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-      <div className="pick-window-row" ref={dropdownRef}>
-        {focusData.process ? (
-          <span className="pick-window-badge">
-            {focusData.process}
-            <button className="pick-window-badge-clear" type="button" onClick={handleClear}>✕</button>
-          </span>
-        ) : null}
-        <button className="browse-btn" type="button" onClick={handlePickClick}>
-          ⊞ Pick Window
-        </button>
-        {dropdownOpen && (
-          <div className="pick-window-dropdown">
-            {windowList === null ? (
-              <div className="pick-window-loading">Loading windows…</div>
-            ) : windowList.length === 0 ? (
-              <div className="pick-window-loading">No open windows found</div>
-            ) : (
-              windowList.map((win, i) => (
-                <div key={i} className="pick-window-item" onClick={() => handleSelect(win)}>
-                  <span className="pick-window-process">{win.process}</span>
-                  <span className="pick-window-title">{win.title}</span>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-      <input
-        className="form-input"
-        placeholder="Window title match (optional)"
-        value={focusData.title}
-        onChange={e => onChange({ ...focusData, title: e.target.value })}
-      />
-    </div>
-  );
-}
 
 function KeyCaptureInput({ value, onChange, onWinPressed }) {
   const [capturing, setCapturing] = useState(false);
@@ -808,6 +750,99 @@ function KeyCaptureInput({ value, onChange, onWinPressed }) {
   );
 }
 
+// Window picker — sits in the macro-step-row's .macro-step-value slot for both
+// Focus Window and Wait for Window steps. Renders the "Pick Window" button
+// (flex-fills the row, end-to-end with where Type Text's input would end) +
+// a clear X + the currently-open-windows dropdown below. The button label
+// reflects what's picked when present, so the user can see at a glance which
+// window will be matched. The title sub-row underneath handles substring tweaks.
+function WindowPicker({ value, onChange }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [windowList, setWindowList] = useState(null);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function onDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [dropdownOpen]);
+
+  const handlePickClick = async () => {
+    if (dropdownOpen) { setDropdownOpen(false); return; }
+    setWindowList(null);
+    setDropdownOpen(true);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke('list_open_windows');
+      setWindowList(list || []);
+    } catch (e) {
+      console.error('[Trigr] list_open_windows failed:', e);
+      setWindowList([]);
+    }
+  };
+
+  const handleSelect = (win) => {
+    // Preserve any non-process/title fields on value (e.g. timeoutMs for
+    // Wait for Window). Focus Window value has only process+title; the spread
+    // is a no-op there.
+    onChange({ ...value, process: win.process, title: win.title });
+    setDropdownOpen(false);
+  };
+
+  const handleClear = (e) => {
+    e.stopPropagation();
+    onChange({ ...value, process: '', title: '' });
+  };
+
+  const hasPick = !!(value.process || value.title);
+  const pickedLabel = hasPick
+    ? (value.process && value.title ? `${value.process} — ${value.title}` : (value.process || value.title))
+    : 'Pick Window';
+
+  return (
+    <div ref={wrapRef} className="window-pick-wrap">
+      <button
+        type="button"
+        className={`window-pick-btn${hasPick ? ' window-pick-btn-picked' : ''}`}
+        onClick={handlePickClick}
+        title={hasPick ? pickedLabel : 'Pick an open window'}
+      >
+        <span className="window-pick-btn-icon" aria-hidden="true">⊞</span>
+        <span className="window-pick-btn-label">{pickedLabel}</span>
+        <span className="window-pick-btn-caret" aria-hidden="true">▾</span>
+      </button>
+      {hasPick && (
+        <button
+          type="button"
+          className="window-pick-clear"
+          onClick={handleClear}
+          aria-label="Clear picked window"
+          title="Clear picked window"
+        >✕</button>
+      )}
+      {dropdownOpen && (
+        <div className="pick-window-dropdown">
+          {windowList === null ? (
+            <div className="pick-window-loading">Loading windows…</div>
+          ) : windowList.length === 0 ? (
+            <div className="pick-window-loading">No open windows found</div>
+          ) : (
+            windowList.map((win, i) => (
+              <div key={i} className="pick-window-item" onClick={() => handleSelect(win)}>
+                <span className="pick-window-process">{win.process}</span>
+                <span className="pick-window-title">{win.title}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Open-App sub-row used inside SortableMacroStep — picker + optional args.
 function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced }) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -827,16 +862,20 @@ function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced })
 
   return (
     <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-      <div className="file-input-row">
-        <input
-          className="form-input"
-          style={{ flex: 1 }}
-          placeholder="Pick an installed app or browse for a file..."
-          value={displayLabel}
-          readOnly
-        />
-        <button className="browse-btn" type="button" onClick={() => setPickerOpen(true)}>Pick app...</button>
-      </div>
+      {/* Single clickable field — shows the picked app's display name (or a
+          placeholder when empty). Click anywhere on the field to reopen the
+          picker. Replaces the separate input + Pick app button. */}
+      <button
+        type="button"
+        className="picker-field"
+        onClick={() => setPickerOpen(true)}
+        title={displayLabel || 'Pick an installed app'}
+      >
+        <span className={`picker-field-value${displayLabel ? '' : ' picker-field-placeholder'}`}>
+          {displayLabel || 'Pick an installed app...'}
+        </span>
+        <span className="picker-field-caret" aria-hidden="true">▾</span>
+      </button>
       {(advancedOpen || appData.args) ? (
         <input
           className="form-input"
@@ -849,6 +888,140 @@ function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced })
       )}
       {pickerOpen && <AppPickerModal onSelect={handlePick} onClose={() => setPickerOpen(false)} />}
     </div>
+  );
+}
+
+// ── Step-type dropdown with category flyouts ───────────────────────────────
+// Replaces a flat <select> that had grown to 11 options. Categories from
+// MACRO_STEP_CATEGORIES open a submenu to the right on hover, mirroring the
+// .assign-ctx-sub pattern in Sidebar. Portal'd to <body> with fixed positioning
+// so the menu and its flyouts don't clip on any ancestor's overflow.
+
+function MacroStepTypeMenu({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const handleToggle = () => {
+    if (open) { setOpen(false); return; }
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen(true);
+    setHovered(null);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e) => {
+      if (menuRef.current?.contains(e.target)) return;
+      if (btnRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    // Close on any ancestor scroll — the menu's fixed position would otherwise
+    // detach from the button when the form/panel scrolls.
+    const onScroll = () => setOpen(false);
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open]);
+
+  const pick = (label) => {
+    onChange(label);
+    setOpen(false);
+  };
+
+  // Which group contains the current value? Used to highlight the parent row
+  // so the user can see at-a-glance where the active step type lives.
+  const currentGroup = MACRO_STEP_CATEGORIES.find(
+    g => g.kind === 'group' && g.items.includes(value)
+  )?.label;
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={`macro-step-type macro-step-type-btn${open ? ' macro-step-type-btn-open' : ''}`}
+        onClick={handleToggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <span className="macro-step-type-label">{value}</span>
+        <span className="macro-step-type-caret" aria-hidden="true">▾</span>
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="macro-type-menu"
+          style={{ top: pos.top, left: pos.left }}
+          role="menu"
+        >
+          {MACRO_STEP_CATEGORIES.map((entry, idx) => {
+            if (entry.kind === 'divider') {
+              return <div key={`div-${idx}`} className="macro-type-divider" />;
+            }
+            if (entry.kind === 'leaf') {
+              return (
+                <button
+                  key={entry.label}
+                  type="button"
+                  className={`macro-type-item${value === entry.label ? ' macro-type-item-current' : ''}`}
+                  onClick={() => pick(entry.label)}
+                  role="menuitem"
+                >
+                  <span>{entry.label}</span>
+                </button>
+              );
+            }
+            // group
+            const isCurrentGroup = entry.label === currentGroup;
+            return (
+              <div
+                key={entry.label}
+                className="macro-type-sub"
+                onMouseEnter={() => setHovered(entry.label)}
+              >
+                <button
+                  type="button"
+                  className={`macro-type-item macro-type-item-parent${isCurrentGroup ? ' macro-type-item-current' : ''}${hovered === entry.label ? ' macro-type-item-hover' : ''}`}
+                  role="menuitem"
+                  aria-haspopup="menu"
+                >
+                  <span>{entry.label}</span>
+                  <span className="macro-type-arrow" aria-hidden="true">▸</span>
+                </button>
+                <div className="macro-type-submenu" role="menu">
+                  {entry.items.map(item => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={`macro-type-item${value === item ? ' macro-type-item-current' : ''}`}
+                      onClick={() => pick(item)}
+                      role="menuitem"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
@@ -882,13 +1055,18 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     }
   }
 
-  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Run AHK Script', 'Click at Position'].includes(step.type) || showWinAdvisory;
+  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
   let appData = { kind: 'path', appId: '', appName: '', path: '', args: '' };
   if (step.type === 'Open App') { try { appData = { ...appData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
   let focusData = { process: '', title: '' };
   if (step.type === 'Focus Window') { try { focusData = { ...focusData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
+  // Wait for Window: stored as { process, title, timeoutMs }. Matches the same
+  // shape as Focus Window plus a timeout. Backend matches on process basename
+  // (if set) AND title substring (if set) — see actions.rs Wait for Window arm.
+  let waitWindowData = { process: '', title: '', timeoutMs: 30000 };
+  if (step.type === 'Wait for Window') { try { waitWindowData = { ...waitWindowData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
 
   return (
     <div
@@ -902,13 +1080,10 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
           <GripVertical size={14} strokeWidth={1.75} />
         </div>
         <div className="macro-step-num">{index + 1}</div>
-        <select
-          className="form-select macro-step-type"
+        <MacroStepTypeMenu
           value={step.type}
-          onChange={e => updateStep({ ...step, type: e.target.value, value: '' })}
-        >
-          {MACRO_STEP_TYPES.map(t => <option key={t}>{t}</option>)}
-        </select>
+          onChange={(t) => updateStep({ ...step, type: t, value: '' })}
+        />
 
         {/* Inline value fields */}
         {step.type === 'Press Key' && (
@@ -969,7 +1144,22 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
           );
         })()}
         {step.type === 'Click at Position' && (
-          <ClickPositionPickBtn step={step} updateStep={updateStep} />
+          <ClickPositionButtonSelect step={step} updateStep={updateStep} />
+        )}
+        {step.type === 'Wait for Window' && (
+          <WindowPicker
+            value={waitWindowData}
+            onChange={next => updateStep({ ...step, value: JSON.stringify(next) })}
+          />
+        )}
+        {step.type === 'Focus Window' && (
+          <WindowPicker
+            value={focusData}
+            onChange={next => updateStep({ ...step, value: JSON.stringify(next) })}
+          />
+        )}
+        {['Copy to Clipboard', 'Paste Clipboard', 'Select All'].includes(step.type) && (
+          <span className="macro-step-hint">No additional settings</span>
         )}
         {(step.type === 'Press Key' || step.type === 'Click Mouse') && (
           <div className="step-repeat">
@@ -1056,12 +1246,35 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         </div>
       )}
 
-      {/* Sub-row: Focus Window — pick process + title */}
+      {/* Sub-row: Focus Window — title input below the picker. Aligned with
+          main-row inline-value start/end so the input ends flush with where
+          Type Text's input would. */}
       {step.type === 'Focus Window' && (
-        <FocusWindowFields
-          focusData={focusData}
-          onChange={next => updateStep({ ...step, value: JSON.stringify(next) })}
-        />
+        <div className="wfi-config-row wfi-config-row-aligned" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <input
+            className="form-input"
+            placeholder="Window title (auto-populated when you pick, or type to match)"
+            value={focusData.title || ''}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...focusData, title: e.target.value }) })}
+          />
+        </div>
+      )}
+
+      {/* Sub-row: Wait for Window — title input (auto-populated by picker,
+          user-editable for substring matching) + hardcoded timeout note.
+          Aligned variant so the title input lines up with the picker above. */}
+      {step.type === 'Wait for Window' && (
+        <div className="wfi-config-row wfi-config-row-aligned" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <input
+            className="form-input"
+            placeholder="Window title (auto-populated when you pick, or type to match)"
+            value={waitWindowData.title || ''}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...waitWindowData, title: e.target.value }) })}
+          />
+          <span className="wait-window-timeout-note">
+            Max wait: 30 seconds (hardcoded). Macro stops if the window doesn't appear in time.
+          </span>
+        </div>
       )}
 
       {/* Sub-row: Wait for Input — trigger + optional specific key */}
@@ -1927,7 +2140,7 @@ export default function MacroPanel({
           if (confirmingAction) {
             const confirmText =
               confirmingAction === 'clear-action'
-                ? 'Reset the editor? Unsaved changes (label, voice phrases, and the active type’s form fields) will be cleared. Saved data is not affected.'
+                ? 'Clear the current action? Editor resets to blank.'
                 : confirmingAction === 'clear'
                 ? (pressMode === 'double'
                     ? 'Clear the double-press action on this key?'
@@ -1961,7 +2174,7 @@ export default function MacroPanel({
                 className="btn-clear-action"
                 onClick={() => setConfirmingAction('clear-action')}
                 type="button"
-                title="Reset the editor (clears the visible form, label and voice phrases). Does not touch saved data — reopen the key to restore."
+                title="Clears the current action and resets the editor to blank. Saved data is not affected."
               >Clear Action</button>
               <button
                 className="btn-clear"
