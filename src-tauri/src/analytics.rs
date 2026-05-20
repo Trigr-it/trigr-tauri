@@ -339,8 +339,9 @@ fn handle_log(conn: &Connection, event: AnalyticsEvent) {
 }
 
 fn handle_get_stats(conn: &Connection) -> serde_json::Value {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-
+    // All windowed queries use SQLite's 'localtime' modifier so "today" and
+    // "last N days" are anchored to the user's local calendar day. Stored
+    // timestamps remain UTC (see handle_log) — only the comparison is local.
     let (total_actions, total_time_saved) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log",
@@ -351,15 +352,17 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
 
     let (actions_today, time_saved_today) = conn
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp LIKE ?1",
-            rusqlite::params![format!("{}%", today)],
+            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
+             WHERE DATE(timestamp, 'localtime') = DATE('now', 'localtime')",
+            [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
         .unwrap_or((0, 0.0));
 
     let (actions_last_7_days, time_saved_last_7_days) = conn
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-7 days')",
+            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
+             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-6 days')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
@@ -367,7 +370,8 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
 
     let (actions_last_14_days, time_saved_last_14_days) = conn
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-14 days')",
+            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
+             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-13 days')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
@@ -375,7 +379,8 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
 
     let (actions_last_30_days, time_saved_last_30_days) = conn
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-30 days')",
+            "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
+             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-29 days')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
@@ -384,7 +389,8 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let best_day = conn
         .query_row(
             "SELECT COALESCE(MAX(day_total), 0.0) FROM (
-                SELECT SUM(time_saved) AS day_total FROM action_log GROUP BY DATE(timestamp)
+                SELECT SUM(time_saved) AS day_total FROM action_log
+                GROUP BY DATE(timestamp, 'localtime')
             )",
             [],
             |row| row.get::<_, f64>(0),
@@ -395,8 +401,9 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
         .query_row(
             "SELECT COALESCE(MAX(window_total), 0.0) FROM (
                 SELECT SUM(a2.time_saved) AS window_total
-                FROM (SELECT DISTINCT DATE(timestamp) AS d FROM action_log) days
-                JOIN action_log a2 ON DATE(a2.timestamp) BETWEEN DATE(days.d, '-6 days') AND days.d
+                FROM (SELECT DISTINCT DATE(timestamp, 'localtime') AS d FROM action_log) days
+                JOIN action_log a2
+                  ON DATE(a2.timestamp, 'localtime') BETWEEN DATE(days.d, '-6 days') AND days.d
                 GROUP BY days.d
             )",
             [],
@@ -450,10 +457,12 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
 // ── Pro analytics handlers ─────────────────────────────────────────────────
 
 fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
+    // Bucket by local calendar day so bar keys match the frontend's local-date
+    // fill-in loop. Window = today + (days-1) prior local days.
     let mut stmt = match conn.prepare(
-        "SELECT DATE(timestamp) AS day, COUNT(*) AS actions, COALESCE(SUM(time_saved), 0.0) AS saved
+        "SELECT DATE(timestamp, 'localtime') AS day, COUNT(*) AS actions, COALESCE(SUM(time_saved), 0.0) AS saved
          FROM action_log
-         WHERE timestamp >= datetime('now', ?1)
+         WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', ?1)
          GROUP BY day
          ORDER BY day ASC"
     ) {
@@ -464,7 +473,7 @@ fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
         }
     };
 
-    let offset = format!("-{} days", days);
+    let offset = format!("-{} days", days.saturating_sub(1));
     let rows: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![offset], |row| {
         Ok(serde_json::json!({
             "date": row.get::<_, String>(0).unwrap_or_default(),
@@ -480,12 +489,15 @@ fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
 }
 
 fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
+    // days=0 → all time; days=N → today + (N-1) prior local calendar days.
     let query = if days == 0 {
         "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log GROUP BY action_type".to_string()
     } else {
         format!(
-            "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log WHERE timestamp >= datetime('now', '-{} days') GROUP BY action_type",
-            days
+            "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
+             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days') \
+             GROUP BY action_type",
+            days - 1
         )
     };
 
@@ -527,6 +539,7 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
 }
 
 fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
+    // days=0 → all time; days=N → today + (N-1) prior local calendar days.
     let (query, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = if days == 0 {
         ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
           FROM action_log WHERE trigger_key != ''
@@ -534,9 +547,10 @@ fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Valu
          vec![])
     } else {
         ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
-          FROM action_log WHERE trigger_key != '' AND timestamp >= datetime('now', ?1)
+          FROM action_log WHERE trigger_key != ''
+          AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', ?1)
           GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
-         vec![Box::new(format!("-{} days", days)) as Box<dyn rusqlite::types::ToSql>])
+         vec![Box::new(format!("-{} days", days - 1)) as Box<dyn rusqlite::types::ToSql>])
     };
 
     let mut stmt = match conn.prepare(query) {
@@ -566,6 +580,7 @@ fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Valu
 }
 
 fn handle_top_apps(conn: &Connection, days: u32) -> serde_json::Value {
+    // days=0 → all time; days=N → today + (N-1) prior local calendar days.
     let query = if days == 0 {
         "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
          FROM action_log WHERE target_app != '' AND LOWER(target_app) != 'trigr'
@@ -574,8 +589,8 @@ fn handle_top_apps(conn: &Connection, days: u32) -> serde_json::Value {
         format!(
             "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
              FROM action_log WHERE target_app != '' AND LOWER(target_app) != 'trigr'
-             AND timestamp >= datetime('now', '-{} days')
-             GROUP BY target_app ORDER BY count DESC LIMIT 20", days
+             AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days')
+             GROUP BY target_app ORDER BY count DESC LIMIT 20", days - 1
         )
     };
 
@@ -632,8 +647,9 @@ fn compute_efficiency(conn: &Connection, where_clause: &str) -> serde_json::Valu
 }
 
 fn handle_expansion_efficiency(conn: &Connection) -> serde_json::Value {
-    let week = compute_efficiency(conn, " AND timestamp >= datetime('now', '-7 days')");
-    let month = compute_efficiency(conn, " AND timestamp >= datetime('now', '-30 days')");
+    // Week/month windows are local calendar days: today + 6/29 prior days.
+    let week = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-6 days')");
+    let month = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-29 days')");
     let all = compute_efficiency(conn, "");
 
     serde_json::json!({
@@ -667,16 +683,18 @@ fn handle_expansion_counts(conn: &Connection) -> serde_json::Value {
 }
 
 fn handle_hourly_heatmap(conn: &Connection, days: u32) -> serde_json::Value {
-    // Returns array of { dow (0=Sun..6=Sat), hour (0-23), count, time_saved }
+    // Returns array of { dow (0=Sun..6=Sat), hour (0-23), count, time_saved }.
+    // Both day-of-week and hour are in local time, and the date window is
+    // today + (days-1) prior local calendar days.
     let query = format!(
-        "SELECT CAST(strftime('%w', timestamp) AS INTEGER) AS dow,
+        "SELECT CAST(strftime('%w', timestamp, 'localtime') AS INTEGER) AS dow,
                 CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) AS hour,
                 COUNT(*) AS count,
                 COALESCE(SUM(time_saved), 0.0) AS saved
          FROM action_log
-         WHERE timestamp >= datetime('now', '-{} days')
+         WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days')
          GROUP BY dow, hour
-         ORDER BY dow, hour", days
+         ORDER BY dow, hour", days.saturating_sub(1)
     );
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
@@ -704,7 +722,7 @@ fn handle_hourly_heatmap(conn: &Connection, days: u32) -> serde_json::Value {
 fn handle_streaks(conn: &Connection) -> serde_json::Value {
     // Get all distinct dates with at least one action, sorted ascending
     let mut stmt = match conn.prepare(
-        "SELECT DISTINCT DATE(timestamp) AS d FROM action_log ORDER BY d ASC"
+        "SELECT DISTINCT DATE(timestamp, 'localtime') AS d FROM action_log ORDER BY d ASC"
     ) {
         Ok(s) => s,
         Err(e) => {
