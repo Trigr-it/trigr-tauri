@@ -214,6 +214,30 @@
   background: var(--accent-glow);
 }
 
+/* Quick Action editor footer: equalise Clear Action + Duplicate widths.
+   .btn-duplicate already flexes via MacroPanel.css; this matches Clear Action
+   to it. Delete is excluded so it keeps its natural width. The :has() guard
+   keeps Clear Action at natural width when it's the only button (new action). */
+.stp-qa-edit .footer-assignment-actions:has(.btn-duplicate) .btn-clear-action {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Quick action pack import/export buttons (sidebar, QA mode only) */
+.stp-cat-pack-btn {
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.stp-cat-pack-btn:first-of-type {
+  margin-top: 6px;
+  border-top: 1px solid var(--border-bright);
+  padding-top: 8px;
+  height: auto;
+  min-height: 30px;
+}
+
 /* ── Category inline rename ──────────────────────────────────────────────── */
 
 .stp-cat-rename-wrap {
@@ -1109,6 +1133,37 @@
   background: rgba(232, 64, 64, 0.12);
   color: var(--danger);
   border-color: rgba(232, 64, 64, 0.3);
+}
+
+/* Quick action per-row export button — sits left of the delete button */
+.stp-tile-export {
+  position: absolute;
+  bottom: 8px;
+  right: 36px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+  padding: 0;
+}
+
+.stp-tile:hover .stp-tile-export {
+  opacity: 1;
+}
+
+.stp-tile-export:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+  color: var(--text-secondary);
 }
 
 /* Saved-templates list as tile grid (modifier on .stp-list) */

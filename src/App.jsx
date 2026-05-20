@@ -99,6 +99,9 @@ function App() {
   // Expansion pack import collision prompt. Shape:
   // { expansions: [{trigger, data}], categories: [{name, colour}], collisions: [trigger,...], totalCount }
   const [expansionImportPrompt, setExpansionImportPrompt] = useState(null);
+  // Quick action pack import collision prompt. Shape:
+  // { actions: [{id, type, label, data}], categories: [{name, colour}], collisions: [{id, label},...], totalCount }
+  const [quickActionImportPrompt, setQuickActionImportPrompt] = useState(null);
   const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
   const [upgradePrompt, setUpgradePrompt]               = useState(null); // feature name string, or null
   const [showProTrialModal, setShowProTrialModal]       = useState(false);
@@ -1432,6 +1435,206 @@ function App() {
     if (choice === 'cancel') return;
     applyExpansionImport(packExpansions, packCategories, choice);
   }, [expansionImportPrompt, applyExpansionImport]);
+
+  // ── Quick Action pack export/import (mirrors expansion pack flow) ──────
+  // Pack envelope is `trigr_quick_action_pack: '1.0'`. Reuses the generic
+  // exportProfile/importProfile Tauri commands (file dialog + JSON r/w).
+  const handleExportQuickActions = useCallback(async (scope, scopeKey) => {
+    const allActions = Object.entries(assignments)
+      .filter(([k]) => k.startsWith('GLOBAL::QUICKACTION::'))
+      .map(([k, v]) => ({
+        id: k.slice('GLOBAL::QUICKACTION::'.length),
+        type: v?.type,
+        label: v?.label || '',
+        data: v?.data || {},
+      }));
+
+    let scoped = allActions;
+    if (scope === 'category') {
+      scoped = scoped.filter(a => (a.data?.category || null) === (scopeKey || null));
+    } else if (scope === 'single') {
+      scoped = scoped.filter(a => a.id === scopeKey);
+    }
+
+    if (scoped.length === 0) {
+      if (scope === 'category') showNotification(`No quick actions in "${scopeKey}" to export`, 'info');
+      else showNotification('No quick actions to export', 'info');
+      return;
+    }
+
+    const referencedCats = new Set(scoped.map(a => a.data?.category).filter(Boolean));
+    const exportCategories = quickActionCategories
+      .filter(c => referencedCats.has(c.name))
+      .map(c => ({ name: c.name, colour: c.colour || null }));
+
+    const name = scope === 'all'
+      ? 'All Quick Actions'
+      : scope === 'category'
+      ? (scopeKey || 'Quick Actions')
+      : (scoped[0]?.label || 'Quick Action');
+    const payload = {
+      trigr_quick_action_pack: '1.0',
+      scope,
+      name,
+      exportedAt: new Date().toISOString(),
+      quickActions: scoped,
+      categories: exportCategories,
+    };
+
+    const slug = (name || 'quick-actions')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    const filenameHint = `${slug || 'quick-actions'}-trigr-quick-actions.json`;
+    const content = JSON.stringify(payload, null, 2);
+
+    try {
+      const result = await window.electronAPI?.exportProfile(filenameHint, content);
+      if (result?.ok) {
+        let msg;
+        if (scope === 'single') {
+          msg = `Quick action "${scoped[0]?.label || 'action'}" exported`;
+        } else {
+          const noun = scoped.length === 1 ? 'quick action' : 'quick actions';
+          msg = `Exported ${scoped.length} ${noun}`;
+        }
+        showNotification(msg);
+      } else if (result?.error) {
+        showNotification(result.error, 'info');
+      }
+    } catch (e) {
+      console.error('[Trigr] Export quick actions failed:', e);
+    }
+  }, [assignments, quickActionCategories, showNotification]);
+
+  // Universal sink for quick-action imports. Returns counts so adapters can
+  // be added later (similar to applyExpansionImport per the future Import
+  // From ▾ dropdown plan).
+  const applyQuickActionImport = useCallback((packActions, packCategories, choice) => {
+    const newAssignments = { ...assignments };
+    let imported = 0;
+    let skipped = 0;
+    let overwritten = 0;
+
+    for (const action of packActions) {
+      if (!action || !action.type || !action.label) continue;
+      // Collide on label within category (id is per-machine; not portable).
+      const cat = action.data?.category || null;
+      const existingEntry = Object.entries(newAssignments).find(([k, v]) =>
+        k.startsWith('GLOBAL::QUICKACTION::') &&
+        v?.label === action.label &&
+        (v?.data?.category || null) === cat
+      );
+
+      if (existingEntry && choice === 'skip') { skipped++; continue; }
+
+      const data = action.data && typeof action.data === 'object' ? { ...action.data } : {};
+      if (existingEntry) {
+        const [existingKey] = existingEntry;
+        newAssignments[existingKey] = { type: action.type, label: action.label, data };
+        overwritten++;
+      } else {
+        const newId = crypto.randomUUID();
+        newAssignments[`GLOBAL::QUICKACTION::${newId}`] = { type: action.type, label: action.label, data };
+        imported++;
+      }
+    }
+
+    const existingCatNames = new Set(quickActionCategories.map(c => c.name));
+    const newCategories = [...quickActionCategories];
+    for (const cat of packCategories || []) {
+      if (cat && cat.name && !existingCatNames.has(cat.name)) {
+        newCategories.push({ name: cat.name, colour: cat.colour || null });
+        existingCatNames.add(cat.name);
+      }
+    }
+
+    setAssignments(newAssignments);
+    setQuickActionCategories(newCategories);
+    saveConfig(newAssignments, profiles, activeProfile);
+    window.electronAPI?.saveConfig({ quickActionCategories: newCategories });
+
+    let msg;
+    if (choice === 'skip') {
+      const noun = imported === 1 ? 'quick action' : 'quick actions';
+      msg = `Imported ${imported} new ${noun}`;
+      if (skipped > 0) {
+        const sNoun = skipped === 1 ? 'quick action' : 'quick actions';
+        msg += `. ${skipped} ${sNoun} skipped (already existed).`;
+      }
+    } else {
+      const total = imported + overwritten;
+      const noun = total === 1 ? 'quick action' : 'quick actions';
+      msg = `Imported ${total} ${noun}`;
+      if (overwritten > 0) {
+        const oNoun = overwritten === 1 ? 'quick action' : 'quick actions';
+        msg += `. ${overwritten} existing ${oNoun} overwritten.`;
+      }
+    }
+    showNotification(msg);
+  }, [assignments, quickActionCategories, profiles, activeProfile, saveConfig, showNotification]);
+
+  const handleImportQuickActions = useCallback(async () => {
+    try {
+      const result = await window.electronAPI?.importProfile();
+      if (!result?.ok) {
+        if (result?.error) showNotification(result.error, 'info');
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(result.content);
+      } catch {
+        showNotification('Could not parse quick action file', 'info');
+        return;
+      }
+      if (!parsed || !parsed.trigr_quick_action_pack) {
+        showNotification('Not a valid Trigr quick action pack', 'info');
+        return;
+      }
+      const packActions = Array.isArray(parsed.quickActions) ? parsed.quickActions : [];
+      const packCategories = Array.isArray(parsed.categories) ? parsed.categories : [];
+      if (packActions.length === 0) {
+        showNotification('Quick action pack is empty', 'info');
+        return;
+      }
+
+      // Collision = same label within the same category.
+      const collisions = [];
+      for (const action of packActions) {
+        if (!action?.label) continue;
+        const cat = action.data?.category || null;
+        const hit = Object.entries(assignments).find(([k, v]) =>
+          k.startsWith('GLOBAL::QUICKACTION::') &&
+          v?.label === action.label &&
+          (v?.data?.category || null) === cat
+        );
+        if (hit) collisions.push({ id: action.id, label: action.label });
+      }
+
+      if (collisions.length === 0) {
+        applyQuickActionImport(packActions, packCategories, 'overwrite');
+        return;
+      }
+      setQuickActionImportPrompt({
+        actions: packActions,
+        categories: packCategories,
+        collisions,
+        totalCount: packActions.length,
+      });
+    } catch (e) {
+      console.error('[Trigr] Import quick actions failed:', e);
+      showNotification('Quick action import failed', 'info');
+    }
+  }, [assignments, applyQuickActionImport, showNotification]);
+
+  const handleQuickActionImportResolve = useCallback((choice) => {
+    if (!quickActionImportPrompt) return;
+    const { actions: packActions, categories: packCategories } = quickActionImportPrompt;
+    setQuickActionImportPrompt(null);
+    if (choice === 'cancel') return;
+    applyQuickActionImport(packActions, packCategories, choice);
+  }, [quickActionImportPrompt, applyQuickActionImport]);
 
   // ── Expansion categories ──────────────────────────────────
   const handleAddCategory = useCallback((name, colour = null) => {
@@ -3336,6 +3539,10 @@ function App() {
               onDeleteQaCategory={handleDeleteQaCategory}
               onUpdateQaCategoryColour={handleUpdateQaCategoryColour}
               onReorderQaCategories={handleReorderQaCategories}
+              onExportQuickActions={handleExportQuickActions}
+              onImportQuickActions={handleImportQuickActions}
+              quickActionImportPrompt={quickActionImportPrompt}
+              onQuickActionImportResolve={handleQuickActionImportResolve}
               globalInputMethod={globalInputMethod}
               onShowNotification={showNotification}
               onShowUpgrade={showUpgrade}

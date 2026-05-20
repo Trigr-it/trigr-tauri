@@ -535,6 +535,10 @@ export default function SearchTemplatesPanel({
   onDeleteQaCategory,
   onUpdateQaCategoryColour,
   onReorderQaCategories,
+  onExportQuickActions,
+  onImportQuickActions,
+  quickActionImportPrompt,
+  onQuickActionImportResolve,
   globalInputMethod,
   onShowNotification,
 }) {
@@ -565,6 +569,10 @@ export default function SearchTemplatesPanel({
   const [qaFormValue, setQaFormValue]      = useState({});
   const [qaCategory, setQaCategory]        = useState(null);
   const [qaVoicePhrases, setQaVoicePhrases] = useState([]);
+  const [qaConfirmAction, setQaConfirmAction] = useState(null); // null | 'clear-action' | 'delete'
+  // Right-click row context menu (Quick Actions): { id, x, y } | null
+  const [qaItemContextMenu, setQaItemContextMenu] = useState(null);
+  const qaItemContextMenuRef = useRef(null);
 
   // Test state
   const [testQuery, setTestQuery]           = useState('');
@@ -631,6 +639,18 @@ export default function SearchTemplatesPanel({
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
   }, [catContextMenu]);
+
+  // Close QA row context menu on outside click or Escape
+  useEffect(() => {
+    if (!qaItemContextMenu) return;
+    function onDown(e) {
+      if (qaItemContextMenuRef.current && !qaItemContextMenuRef.current.contains(e.target)) setQaItemContextMenu(null);
+    }
+    function onKey(e) { if (e.key === 'Escape') setQaItemContextMenu(null); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [qaItemContextMenu]);
 
   // Auto-select rename input text
   useEffect(() => {
@@ -803,6 +823,7 @@ export default function SearchTemplatesPanel({
     setQaCategory(qa.data?.category || null);
     setQaVoicePhrases(readVoicePhrases(qa.data));
     setQaIsNew(false);
+    setQaConfirmAction(null);
   }
 
   function openNewQuickAction() {
@@ -813,11 +834,13 @@ export default function SearchTemplatesPanel({
     setQaCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
     setQaVoicePhrases([]);
     setQaIsNew(true);
+    setQaConfirmAction(null);
   }
 
   function closeQaPanel() {
     setQaSelectedId(null);
     setQaIsNew(false);
+    setQaConfirmAction(null);
   }
 
   function handleQaSave() {
@@ -840,6 +863,66 @@ export default function SearchTemplatesPanel({
     onDeleteQuickAction?.(id);
     if (qaSelectedId === id) closeQaPanel();
     onShowNotification?.('Quick action deleted', 'success');
+  }
+
+  // Reset the editor form to defaults without touching saved state.
+  // Mirrors MacroPanel's Clear Action behaviour.
+  function handleQaClearAction() {
+    setQaLabel('');
+    setQaType('app');
+    setQaFormValue({});
+    setQaCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
+    setQaVoicePhrases([]);
+  }
+
+  // Duplicate a quick action by id. Creates a new entry with " (copy)" suffix
+  // (numbered if needed) and opens it in the editor.
+  function duplicateQuickAction(id) {
+    const original = quickActions.find(a => a.id === id);
+    if (!original) return;
+
+    // Find a unique label
+    const existingLabels = new Set(quickActions.map(a => a.label));
+    let copyLabel = `${original.label} (copy)`;
+    let counter = 2;
+    while (existingLabels.has(copyLabel)) {
+      copyLabel = `${original.label} (copy ${counter++})`;
+    }
+
+    const newId = crypto.randomUUID();
+    const newData = { ...(original.data || {}) };
+    onAddQuickAction?.({ id: newId, type: original.type, label: copyLabel, data: newData });
+
+    // Switch the editor to the new copy immediately.
+    setQaSelectedId(newId);
+    setQaIsNew(false);
+    setQaLabel(copyLabel);
+    setQaType(original.type);
+    setQaFormValue(newData);
+    setQaCategory(newData.category || null);
+    setQaVoicePhrases(readVoicePhrases(newData));
+    setQaConfirmAction(null);
+    onShowNotification?.('Quick action duplicated', 'success');
+  }
+
+  function handleQaItemContextMenu(e, id) {
+    e.preventDefault();
+    e.stopPropagation();
+    setQaItemContextMenu({ id, x: e.clientX, y: e.clientY });
+  }
+
+  function qaCtxItemDuplicate() {
+    if (!qaItemContextMenu) return;
+    const id = qaItemContextMenu.id;
+    setQaItemContextMenu(null);
+    duplicateQuickAction(id);
+  }
+
+  function qaCtxItemDelete() {
+    if (!qaItemContextMenu) return;
+    const id = qaItemContextMenu.id;
+    setQaItemContextMenu(null);
+    handleQaDelete(id);
   }
 
   // ── Category CRUD (matches TextExpansions exactly) ────────────────────
@@ -1221,6 +1304,28 @@ export default function SearchTemplatesPanel({
                 + Add Category
               </button>
             )}
+
+            {/* Quick Action pack import/export — only in quick actions mode */}
+            {panelMode === 'quickactions' && (
+              <>
+                <button
+                  className="stp-cat-new-btn stp-cat-pack-btn"
+                  onClick={() => onImportQuickActions?.()}
+                  title="Import a quick action pack file (.json)"
+                  type="button"
+                >
+                  ↓ Import Pack
+                </button>
+                <button
+                  className="stp-cat-new-btn stp-cat-pack-btn"
+                  onClick={() => onExportQuickActions?.('all')}
+                  title="Export all quick actions to a pack file"
+                  type="button"
+                >
+                  ↑ Export All
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1395,6 +1500,7 @@ export default function SearchTemplatesPanel({
                   key={a.id}
                   className={`stp-tile${qaSelectedId === a.id ? ' active' : ''}`}
                   onClick={() => selectQuickAction(a)}
+                  onContextMenu={e => handleQaItemContextMenu(e, a.id)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); selectQuickAction(a); } }}
@@ -1418,6 +1524,12 @@ export default function SearchTemplatesPanel({
                     <div className="stp-tile-label">{a.label}</div>
                     <div className="stp-tile-desc">{truncateUrl(preview, 60)}</div>
                   </div>
+                  <button
+                    className="stp-tile-export"
+                    onClick={e => { e.stopPropagation(); onExportQuickActions?.('single', a.id); }}
+                    title="Export quick action"
+                    type="button"
+                  >↑</button>
                   <button
                     className="stp-tile-del"
                     onClick={e => { e.stopPropagation(); handleQaDelete(a.id); }}
@@ -1550,9 +1662,51 @@ export default function SearchTemplatesPanel({
               </div>
             </div>
             <div className="macro-panel-footer">
-              {!qaIsNew && (
+              {qaConfirmAction ? (
+                <div className="footer-assignment-actions footer-confirm-row">
+                  <span className="footer-confirm-text">
+                    {qaConfirmAction === 'clear-action'
+                      ? 'Clear the current action? Editor resets to blank.'
+                      : 'Delete this quick action?'}
+                  </span>
+                  <button
+                    className="btn-confirm-yes"
+                    type="button"
+                    onClick={() => {
+                      if (qaConfirmAction === 'clear-action') {
+                        handleQaClearAction();
+                      } else if (qaConfirmAction === 'delete') {
+                        handleQaDelete(qaSelectedId);
+                      }
+                      setQaConfirmAction(null);
+                    }}
+                  >Yes</button>
+                  <button className="btn-confirm-no" type="button" onClick={() => setQaConfirmAction(null)}>Cancel</button>
+                </div>
+              ) : (
                 <div className="footer-assignment-actions">
-                  <button className="btn-clear" onClick={() => handleQaDelete(qaSelectedId)} type="button">Delete</button>
+                  <button
+                    className="btn-clear-action"
+                    onClick={() => setQaConfirmAction('clear-action')}
+                    type="button"
+                    title="Clears the editor and resets it to blank. Saved data is not affected."
+                  >Clear Action</button>
+                  {!qaIsNew && (
+                    <>
+                      <button
+                        className="btn-duplicate"
+                        onClick={() => duplicateQuickAction(qaSelectedId)}
+                        type="button"
+                        title="Create a copy of this quick action"
+                      >Duplicate</button>
+                      <button
+                        className="btn-delete"
+                        onClick={() => setQaConfirmAction('delete')}
+                        type="button"
+                        title="Delete this quick action"
+                      >Delete</button>
+                    </>
+                  )}
                 </div>
               )}
               <button className="btn-save" onClick={handleQaSave} disabled={!qaCanSave} type="button">
@@ -1577,10 +1731,97 @@ export default function SearchTemplatesPanel({
         >
           <button className="profile-ctx-item" onClick={ctxRename}>Rename</button>
           <button className="profile-ctx-item" onClick={ctxChangeColour}>Change Colour</button>
+          {panelMode === 'quickactions' && (
+            <button
+              className="profile-ctx-item"
+              onClick={() => {
+                const name = catContextMenu.catName;
+                setCatContextMenu(null);
+                onExportQuickActions?.('category', name);
+              }}
+            >
+              Export Category
+            </button>
+          )}
           <div className="profile-ctx-divider" />
           <button className="profile-ctx-item profile-ctx-delete" onClick={ctxDelete}>
             {ctxDeleteConfirm ? 'Confirm Delete?' : 'Delete'}
           </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Quick Action row right-click context menu (portal) */}
+      {qaItemContextMenu && ReactDOM.createPortal(
+        <div
+          ref={qaItemContextMenuRef}
+          className="profile-ctx-menu"
+          style={{ top: qaItemContextMenu.y, left: qaItemContextMenu.x }}
+        >
+          <button className="profile-ctx-item" onClick={qaCtxItemDuplicate}>Duplicate</button>
+          <button
+            className="profile-ctx-item"
+            onClick={() => {
+              const id = qaItemContextMenu.id;
+              setQaItemContextMenu(null);
+              onExportQuickActions?.('single', id);
+            }}
+          >
+            Export
+          </button>
+          <div className="profile-ctx-divider" />
+          <button className="profile-ctx-item profile-ctx-delete" onClick={qaCtxItemDelete}>Delete</button>
+        </div>,
+        document.body
+      )}
+
+      {/* Quick action pack import collision dialog */}
+      {quickActionImportPrompt && ReactDOM.createPortal(
+        <div className="te-delete-overlay">
+          <div className="te-delete-dialog te-import-dialog">
+            <div className="te-delete-title">Import Quick Action Pack</div>
+            <p className="te-delete-body">
+              This pack contains <strong>{quickActionImportPrompt.totalCount}</strong>{' '}
+              quick action{quickActionImportPrompt.totalCount !== 1 ? 's' : ''}.{' '}
+              <strong>{quickActionImportPrompt.collisions.length}</strong> already
+              exist{quickActionImportPrompt.collisions.length === 1 ? 's' : ''} with the same label in the same category:
+            </p>
+            <div className="te-import-collisions">
+              {quickActionImportPrompt.collisions.slice(0, 8).map((c, i) => (
+                <kbd key={`${c.id || c.label}-${i}`} className="te-trigger-badge">{c.label}</kbd>
+              ))}
+              {quickActionImportPrompt.collisions.length > 8 && (
+                <span className="te-import-collisions-more">
+                  + {quickActionImportPrompt.collisions.length - 8} more
+                </span>
+              )}
+            </div>
+            <div className="te-delete-actions te-import-actions">
+              <button
+                className="te-cancel-btn"
+                onClick={() => onQuickActionImportResolve?.('cancel')}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="te-cancel-btn"
+                onClick={() => onQuickActionImportResolve?.('skip')}
+                type="button"
+                title="Keep your existing quick actions; only import new ones"
+              >
+                Skip Duplicates
+              </button>
+              <button
+                className="te-delete-confirm-btn"
+                onClick={() => onQuickActionImportResolve?.('overwrite')}
+                type="button"
+                title="Replace your existing quick actions with the ones in this pack"
+              >
+                Overwrite All
+              </button>
+            </div>
+          </div>
         </div>,
         document.body
       )}
