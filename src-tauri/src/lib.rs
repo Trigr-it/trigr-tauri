@@ -181,6 +181,9 @@ async fn set_shared_config_path(app: tauri::AppHandle, path: String, mode: Optio
 fn clear_shared_config_path() -> bool {
     config::stop_config_watcher();
     config::set_shared_config_dir(None);
+    // If the user manually unsets shared config, any grace-period timestamp
+    // is moot — clear it so the banner disappears immediately.
+    let _ = config::set_pro_expired_at(None);
     config::save_local_settings(None)
 }
 
@@ -856,6 +859,11 @@ fn get_foreground_process() -> String {
     foreground::get_current_fg_proc()
 }
 
+#[tauri::command]
+fn set_editing_active(active: bool) {
+    foreground::set_editing_active(active);
+}
+
 // ── Settings (Phase 5) ──────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -884,6 +892,17 @@ fn set_global_pause_key(combo: String) -> Value {
 #[tauri::command]
 fn clear_global_pause_key() {
     hotkeys::clear_pause_hotkey();
+}
+
+#[tauri::command]
+fn set_clipboard_paste_key(combo: String) -> Value {
+    hotkeys::set_clipboard_paste_hotkey(&combo);
+    serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+fn clear_clipboard_paste_key() {
+    hotkeys::clear_clipboard_paste_hotkey();
 }
 
 #[tauri::command]
@@ -2375,6 +2394,16 @@ fn set_clipboard_settings(retention_days: u32) {
 }
 
 #[tauri::command]
+fn set_clipboard_capture_enabled(enabled: bool) {
+    clipboard::set_capture_enabled(enabled);
+}
+
+#[tauri::command]
+fn set_clipboard_excluded_apps(apps: Vec<String>) {
+    clipboard::set_excluded_apps(apps);
+}
+
+#[tauri::command]
 fn get_clipboard_storage_size() -> u64 {
     clipboard::get_storage_size()
 }
@@ -2444,7 +2473,11 @@ fn get_licence_status() -> Value {
 #[tauri::command]
 async fn activate_licence(key: String) -> Value {
     match licence::activate_licence(key).await {
-        Ok(status) => serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) }),
+        Ok(status) => {
+            // Pro restored — cancel any pending shared-config migration.
+            config::check_and_migrate_if_due();
+            serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) })
+        }
         Err(e) => serde_json::json!({ "ok": false, "error": e }),
     }
 }
@@ -2452,20 +2485,62 @@ async fn activate_licence(key: String) -> Value {
 #[tauri::command]
 async fn deactivate_licence() -> Value {
     match licence::deactivate_licence().await {
-        Ok(status) => serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) }),
+        Ok(status) => {
+            // Deactivating a key flips is_pro to false. Drive the grace-period
+            // state machine so a user with shared config gets the banner
+            // immediately, not at the next revalidation tick.
+            config::check_and_migrate_if_due();
+            serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) })
+        }
         Err(e) => serde_json::json!({ "ok": false, "error": e }),
     }
 }
 
 #[tauri::command]
 async fn check_licence_revalidation() -> Value {
-    serde_json::to_value(licence::check_and_revalidate().await).unwrap_or(serde_json::json!({}))
+    let status = licence::check_and_revalidate().await;
+    // Drive the shared-config grace-period state machine on every revalidation.
+    // Idempotent: starts grace on first observation of Pro=false+shared, clears
+    // grace on Pro=true, runs the migration when 7 days have elapsed.
+    config::check_and_migrate_if_due();
+    serde_json::to_value(status).unwrap_or(serde_json::json!({}))
+}
+
+#[tauri::command]
+fn get_grace_period_state() -> Value {
+    let expired_at = config::get_pro_expired_at();
+    let shared_active = config::get_shared_config_dir().is_some();
+    let days_remaining = config::grace_period_days_remaining();
+    let migration_deferred = config::get_migration_deferred();
+    serde_json::json!({
+        "pro_expired_at": expired_at.map(|d| d.to_rfc3339()),
+        "shared_active": shared_active,
+        "days_remaining": days_remaining,
+        "migration_deferred": migration_deferred,
+    })
+}
+
+#[tauri::command]
+fn migrate_shared_to_local_now(app: tauri::AppHandle) -> Value {
+    match config::migrate_shared_to_local() {
+        Ok(()) => {
+            let _ = config::set_pro_expired_at(None);
+            // Frontend listens for this to refresh state + show toast.
+            let _ = app.emit("shared-config-migrated", serde_json::json!({}));
+            serde_json::json!({ "ok": true })
+        }
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    }
 }
 
 #[tauri::command]
 async fn start_trial() -> Value {
     match licence::start_trial().await {
-        Ok(status) => serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) }),
+        Ok(status) => {
+            // Trial gives Pro — cancel any pending shared-config migration.
+            config::check_and_migrate_if_due();
+            serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) })
+        }
         Err(e) => serde_json::json!({ "ok": false, "error": e }),
     }
 }
@@ -2901,6 +2976,7 @@ pub fn run() {
             set_active_global_profile,
             update_profile_settings,
             get_foreground_process,
+            set_editing_active,
             // Settings
             update_global_settings,
             update_autocorrect_enabled,
@@ -2908,6 +2984,8 @@ pub fn run() {
             // Pause
             set_global_pause_key,
             clear_global_pause_key,
+            set_clipboard_paste_key,
+            clear_clipboard_paste_key,
             set_voice_hotkey,
             clear_voice_hotkey,
             start_voice_recognition,
@@ -2992,6 +3070,8 @@ pub fn run() {
             update_clipboard_item,
             get_clipboard_settings,
             set_clipboard_settings,
+            set_clipboard_capture_enabled,
+            set_clipboard_excluded_apps,
             get_clipboard_storage_size,
             close_clipboard_overlay,
             clipboard_overlay_resize,
@@ -3010,6 +3090,8 @@ pub fn run() {
             check_licence_revalidation,
             start_trial,
             mark_trial_offer_shown,
+            get_grace_period_state,
+            migrate_shared_to_local_now,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

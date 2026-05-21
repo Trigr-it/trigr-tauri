@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HANDLE};
 use windows_sys::Win32::System::Threading::{
@@ -23,6 +23,13 @@ const POLL_INTERVAL_MS: u64 = 1500;
 static WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
 static LAST_FG_HWND: AtomicIsize = AtomicIsize::new(0);
 static LAST_FG_TITLE: OnceLock<Mutex<String>> = OnceLock::new();
+
+/// True while the user has an editor surface open (mapping right-panel, expansion
+/// add/edit form, quick action edit form, or radial segment edit via MacroPanel).
+/// When set, the foreground watcher does not auto-switch profiles, so the user
+/// can test their work against another app without the profile snapping away.
+/// Pushed from the frontend via `set_editing_active`.
+static EDITING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 fn last_fg_title() -> &'static Mutex<String> {
     LAST_FG_TITLE.get_or_init(|| Mutex::new(String::new()))
@@ -125,13 +132,6 @@ fn get_window_title(hwnd: isize) -> String {
 // ── Foreground change handler ───────────────────────────────────────────────
 
 fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle) {
-    // Pro gate: app-specific profile auto-switching is Pro-only.
-    // The watcher itself still runs (so linked apps still appear in the UI),
-    // but it won't actually swap the active profile.
-    if !crate::licence::is_pro() {
-        return;
-    }
-
     let name = proc_name
         .to_lowercase()
         .trim_end_matches(".exe")
@@ -145,15 +145,14 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
         return;
     }
 
-    // Suppress auto-switching while Trigr's main window is visible and not minimized —
-    // user may be editing a profile and clicking between apps to test.
-    // Only resume auto-switching when the window is hidden to tray or minimized.
-    if let Some(win) = app.get_webview_window("main") {
-        let visible = win.is_visible().unwrap_or(false);
-        let minimized = win.is_minimized().unwrap_or(false);
-        if visible && !minimized {
-            return;
-        }
+    // Suppress auto-switching while the user is actively editing in any action
+    // editor (mapping right-panel, expansion form, quick action form, radial
+    // segment via MacroPanel). They may be testing their work in another app
+    // and we don't want the profile to snap away mid-build. When no editor is
+    // open, Trigr behaves the same whether the main window is visible (parked
+    // on a side monitor) or hidden — auto-switching runs normally.
+    if EDITING_ACTIVE.load(Ordering::SeqCst) {
+        return;
     }
 
     // Find linked profiles — tuple: (profile_name, app_name, optional_title_filter)
@@ -179,9 +178,11 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
         })
         .collect();
 
-    if linked.is_empty() {
-        return;
-    }
+    // Note: do NOT early-return when `linked` is empty. Free users (no Pro
+    // app-linking) should still snap back to active_global_profile when they
+    // unfocus Trigr after manually clicking a different profile in the sidebar.
+    // Otherwise manual sidebar selection becomes a free workaround for the
+    // Pro auto-switch feature.
 
     // Match foreground process to linked app (+ optional title filter)
     // Note: window_title is already lowercase from get_window_title()
@@ -195,10 +196,19 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
         })
         .map(|(profile, _, _)| profile.clone());
 
-    // Target: matched profile or fallback to global
-    let target = matched
-        .clone()
-        .unwrap_or_else(|| state.active_global_profile.clone());
+    // Target selection:
+    //   - Pro users: matched linked profile, or fallback to active_global_profile.
+    //   - Free users: always fallback to active_global_profile (no linked-app
+    //     activation — preserves Pro gating even if linked apps were configured
+    //     during a lapsed Pro trial). Snap-back to fallback still happens so
+    //     manually-clicked profiles don't stick when the user unfocuses Trigr.
+    let target = if crate::licence::is_pro() {
+        matched
+            .clone()
+            .unwrap_or_else(|| state.active_global_profile.clone())
+    } else {
+        state.active_global_profile.clone()
+    };
 
     // Get current active profile from hotkeys module
     let current_profile = crate::hotkeys::get_active_profile();
@@ -424,6 +434,14 @@ pub fn force_check(app: &AppHandle) {
 pub fn set_active_global_profile(profile: String) {
     let mut state = fg_state().lock().unwrap();
     state.active_global_profile = profile;
+}
+
+/// Toggle the editing-active gate. While true, the foreground watcher suppresses
+/// auto-switching so the user can test profile assignments against another app
+/// without snapping away. Frontend pushes this from App.jsx when any action
+/// editor opens or closes.
+pub fn set_editing_active(active: bool) {
+    EDITING_ACTIVE.store(active, Ordering::SeqCst);
 }
 
 pub fn update_profile_settings(settings: HashMap<String, Value>) {

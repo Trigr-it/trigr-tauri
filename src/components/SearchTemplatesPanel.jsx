@@ -541,6 +541,8 @@ export default function SearchTemplatesPanel({
   onQuickActionImportResolve,
   globalInputMethod,
   onShowNotification,
+  // Suppress foreground auto-switch while the user is mid-edit
+  onEditingChange,
 }) {
   // Panel mode: 'quickactions' | 'templates'
   const [panelMode, setPanelMode]           = useState('quickactions');
@@ -1106,6 +1108,12 @@ export default function SearchTemplatesPanel({
   const editOpen = selectedId !== null || isNew;
   const canSave = formLabel.trim() && formTrigger && !triggerError && formUrl.includes('{query}');
   const qaEditOpen = qaSelectedId !== null || qaIsNew;
+
+  // Push editing state to parent — covers both Template and Quick Action forms.
+  // Suppresses foreground auto-switch so the user can test mid-build.
+  useEffect(() => {
+    onEditingChange?.(editOpen || qaEditOpen);
+  }, [editOpen, qaEditOpen, onEditingChange]);
   const qaCanSave = !!qaLabel.trim() && (
     (qaType === 'url' && qaFormValue.url?.trim()) ||
     (qaType === 'app' && (qaFormValue.appId || qaFormValue.path?.trim())) ||

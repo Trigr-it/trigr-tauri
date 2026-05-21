@@ -16,6 +16,138 @@ const MACRO_SPEED_PRESETS = [
   { id: 'custom',  label: 'Custom',  hint: 'Manual slider control' },
 ];
 
+// ── Excluded-apps editor ────────────────────────────────────────────────────
+// Chips list + manual add + pick-from-open-windows dropdown. Normalization
+// (lowercase, strip .exe, dedupe) is performed by the parent before persisting
+// to Rust, so this component can pass raw strings through.
+function ClipboardExcludedAppsEditor({ apps, onChange }) {
+  const [typed, setTyped]               = useState('');
+  const [pickerOpen, setPickerOpen]     = useState(false);
+  const [openWindows, setOpenWindows]   = useState(null);
+  const pickerRef = useRef(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function onDown(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setPickerOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [pickerOpen]);
+
+  const handleRemove = (app) => {
+    onChange?.((apps || []).filter(a => a !== app));
+  };
+
+  const handleAddTyped = (e) => {
+    e?.preventDefault?.();
+    const v = typed.trim();
+    if (!v) return;
+    onChange?.([...(apps || []), v]);
+    setTyped('');
+  };
+
+  const handleOpenPicker = async () => {
+    if (pickerOpen) { setPickerOpen(false); return; }
+    setOpenWindows(null);
+    setPickerOpen(true);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke('list_open_windows');
+      // Dedupe by process name. We don't care about per-window titles here.
+      const seen = new Set();
+      const unique = [];
+      for (const w of (list || [])) {
+        const p = (w?.process || '').toLowerCase();
+        if (!p || seen.has(p)) continue;
+        seen.add(p);
+        unique.push(w.process);
+      }
+      unique.sort((a, b) => a.localeCompare(b));
+      setOpenWindows(unique);
+    } catch {
+      setOpenWindows([]);
+    }
+  };
+
+  const handlePickProcess = (proc) => {
+    onChange?.([...(apps || []), proc]);
+    setPickerOpen(false);
+  };
+
+  return (
+    <div className="settings-excluded-apps">
+      <div className="settings-excluded-apps-header">
+        <span className="settings-toggle-label">Excluded apps</span>
+        <span className="settings-toggle-sub">
+          Clipboard copies from these apps are silently ignored. Useful for password managers and terminals.
+        </span>
+      </div>
+
+      {(apps && apps.length > 0) ? (
+        <div className="settings-excluded-chips">
+          {apps.map(app => (
+            <span key={app} className="settings-excluded-chip">
+              <span className="settings-excluded-chip-label">{app}</span>
+              <button
+                type="button"
+                className="settings-excluded-chip-x"
+                onClick={() => handleRemove(app)}
+                aria-label={`Remove ${app}`}
+                title={`Remove ${app}`}
+              >×</button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="settings-excluded-empty">No apps excluded.</div>
+      )}
+
+      <form className="settings-excluded-add" onSubmit={handleAddTyped}>
+        <input
+          type="text"
+          className="form-input settings-excluded-input"
+          placeholder="Process name (e.g. keepass)"
+          value={typed}
+          onChange={e => setTyped(e.target.value)}
+        />
+        <button
+          type="submit"
+          className="settings-action-btn settings-excluded-add-btn"
+          disabled={!typed.trim()}
+        >Add</button>
+        <div ref={pickerRef} className="settings-excluded-picker-wrap">
+          <button
+            type="button"
+            className="settings-action-btn settings-excluded-pick-btn"
+            onClick={handleOpenPicker}
+            title="Pick from currently open apps"
+          >
+            Pick from open apps ▾
+          </button>
+          {pickerOpen && (
+            <div className="settings-excluded-picker-dropdown">
+              {openWindows === null ? (
+                <div className="settings-excluded-picker-loading">Loading…</div>
+              ) : openWindows.length === 0 ? (
+                <div className="settings-excluded-picker-loading">No open apps found.</div>
+              ) : (
+                openWindows.map(p => (
+                  <div
+                    key={p}
+                    className="settings-excluded-picker-item"
+                    onClick={() => handlePickProcess(p)}
+                  >{p}</div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function SettingsPanel({
   onClose,
   macrosEnabledOnStartup,
@@ -52,6 +184,13 @@ export default function SettingsPanel({
   onLicenceStatusChange,
   onShowUpgrade,
   onShowProTrial,
+  clipboardCaptureEnabled = true,
+  onToggleClipboardCapture,
+  clipboardExcludedApps = [],
+  onUpdateClipboardExcludedApps,
+  clipboardPasteHotkey = 'Ctrl+Shift+V',
+  onSetClipboardPasteKey,
+  onClearClipboardPasteKey,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -66,6 +205,9 @@ export default function SettingsPanel({
   const micTestRef = useRef(null); // { stream, audioCtx, analyser, animFrame }
   const [capturedPauseKey, setCapturedPauseKey]   = useState(null);
   const [pauseConflict, setPauseConflict]         = useState(null);
+  const [capturingClipPasteKey, setCapturingClipPasteKey] = useState(false);
+  const [capturedClipPasteKey, setCapturedClipPasteKey]   = useState(null);
+  const [clipPasteConflict, setClipPasteConflict]         = useState(null);
   const [backupList, setBackupList]           = useState(null);
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
@@ -89,6 +231,13 @@ export default function SettingsPanel({
     window.electronAPI?.getSharedConfigPath?.().then(p => setSharedConfigPath(p || null));
     window.electronAPI?.getClipboardSettings?.().then(s => {
       if (s?.retention_days) setClipboardRetention(s.retention_days);
+    });
+    // Refresh the shared-config row if the grace-period banner triggers a
+    // migration while this panel is open. Without this, the path display
+    // would stay stale until the user closes + reopens Settings.
+    window.electronAPI?.onSharedConfigMigrated?.(() => {
+      setSharedConfigPath(null);
+      window.electronAPI?.getConfigPath().then(p => setConfigPath(p || ''));
     });
   }, []);
 
@@ -306,7 +455,7 @@ export default function SettingsPanel({
                     </span>
                   </div>
                   <p className="settings-toggle-sub">
-                    You're using the 14-day Pro trial. All Pro features are unlocked.
+                    All Pro features unlocked for the 14-day trial.
                   </p>
                   <p className="settings-toggle-sub">
                     To keep Pro after the trial ends, email{' '}
@@ -329,7 +478,7 @@ export default function SettingsPanel({
                 <div className="settings-trial-card settings-trial-card--offer">
                   <h3 className="settings-trial-title">Try Pro free for 14 days</h3>
                   <p className="settings-toggle-sub">
-                    Unlock app-specific profiles, double-tap actions, shared config sync and global variables. No card needed — Trigr drops back to Free automatically when the 14 days are up.
+                    Unlock app-specific profiles, double-tap actions, shared config sync and global variables. No card needed. Trigr drops back to Free automatically when the trial ends.
                   </p>
                   <button
                     type="button"
@@ -452,8 +601,8 @@ export default function SettingsPanel({
               <span className="settings-about-name">Trigr</span>
               <span className="settings-about-version">{appVersion ? `v${appVersion}` : ''}</span>
             </div>
-            <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect — all stored locally on your device.</p>
-            <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 + v2 (<a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://github.com/AutoHotkey/AutoHotkey'); }}>GPL v2 — source code</a>).</p>
+            <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect. All data stored locally.</p>
+            <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 + v2 (<a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://github.com/AutoHotkey/AutoHotkey'); }}>GPL v2 source code</a>).</p>
           </div>
         </section>
 
@@ -462,7 +611,7 @@ export default function SettingsPanel({
           <div className="settings-section-title">PRIVACY &amp; SECURITY</div>
 
           <div className="settings-privacy-block">
-            <p>All your data is stored locally on this device only. Trigr never transmits your assignments, expansions or keystrokes to any server. Local usage stats are stored on your device only. No data ever leaves your machine.</p>
+            <p>All your data is stored locally on this device. Trigr never transmits assignments, expansions, keystrokes or usage stats to any server. Nothing leaves your machine.</p>
             <p className="settings-config-path-row">
               Config file:
               <code className="settings-config-path" title={configPath}>{configPath || '…'}</code>
@@ -488,8 +637,7 @@ export default function SettingsPanel({
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Shared config <span className="pro-badge">PRO</span></span>
               <span className="settings-toggle-sub">
-                Sync your config across machines via a cloud folder (Google Drive, OneDrive, Dropbox).
-                Trigr reads and writes <code>keyforge-config.json</code> from the folder you choose.
+                Sync your config across machines via a cloud folder (OneDrive, Dropbox, Google Drive). Trigr reads and writes <code>keyforge-config.json</code> there.
               </span>
             </div>
 
@@ -624,7 +772,7 @@ export default function SettingsPanel({
               <line x1="8" y1="7" x2="8" y2="10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               <circle cx="8" cy="12.5" r="0.7" fill="currentColor"/>
             </svg>
-            <span>Avoid storing passwords or sensitive credentials as text expansions. Use a dedicated password manager like Bitwarden or 1Password for that purpose.</span>
+            <span>Avoid storing passwords or sensitive credentials as text expansions. Use a password manager like Bitwarden or 1Password instead.</span>
           </div>
         </section>
 
@@ -634,35 +782,163 @@ export default function SettingsPanel({
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
-              <span className="settings-toggle-label">History retention <span className="pro-badge">PRO</span></span>
+              <span className="settings-toggle-label">Capture clipboard history</span>
               <span className="settings-toggle-sub">
-                Days to keep clipboard history. Free up to 7 days, Pro up to 30.
+                Existing history stays accessible via the quick-paste hotkey. Clear the hotkey below if you want the overlay fully disabled.
               </span>
             </div>
-            <div className="settings-retention-input">
-              <input
-                type="number"
-                className="form-input settings-retention-num"
-                min={1}
-                max={30}
-                value={clipboardRetention}
-                onChange={e => {
-                  let v = parseInt(e.target.value, 10);
-                  if (isNaN(v)) v = 7;
-                  v = Math.max(1, Math.min(30, v));
-                  // Pro gate: Free users can request up to 30 but it clamps to 7
-                  // and the upgrade modal explains why.
-                  if (!isPro && v > 7) {
-                    onShowUpgrade?.('Extended clipboard history (up to 30 days)');
-                    v = 7;
-                  }
-                  setClipboardRetention(v);
-                  window.electronAPI?.setClipboardSettings(v);
-                }}
-              />
-              <span className="settings-retention-unit">days</span>
-            </div>
+            <button
+              type="button"
+              className={`settings-toggle${clipboardCaptureEnabled ? ' on' : ''}`}
+              onClick={() => onToggleClipboardCapture?.(!clipboardCaptureEnabled)}
+              role="switch"
+              aria-checked={clipboardCaptureEnabled}
+              title={clipboardCaptureEnabled ? 'Stop recording clipboard history' : 'Resume recording clipboard history'}
+            />
           </div>
+
+          {clipboardCaptureEnabled && (
+            <>
+              <div className="settings-pause-stack">
+                <div className="settings-toggle-info">
+                  <span className="settings-toggle-label">Quick-paste hotkey</span>
+                  <span className="settings-toggle-sub">Opens the clipboard overlay from any app. Modifier required.</span>
+                </div>
+                <div className="settings-qs-hotkey-ctrl">
+                  {capturingClipPasteKey ? (
+                    <div
+                      className="settings-qs-capture"
+                      tabIndex={0}
+                      autoFocus
+                      onBlur={() => { setCapturingClipPasteKey(false); setCapturedClipPasteKey(null); setClipPasteConflict(null); }}
+                      onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                      onKeyDown={async e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                        const mods = [];
+                        if (e.ctrlKey)  mods.push('Ctrl');
+                        if (e.shiftKey) mods.push('Shift');
+                        if (e.altKey)   mods.push('Alt');
+                        if (e.metaKey)  mods.push('Win');
+                        if (mods.length === 0) return;
+                        mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                        const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                        const combo = [...mods, e.code].join('+');
+                        const label = [...mods, keyDisplay].join('+');
+                        const result = await window.electronAPI?.checkHotkeyConflict(combo, 'clipboard_paste');
+                        setClipPasteConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
+                        setCapturedClipPasteKey({ combo, label });
+                      }}
+                    >
+                      {capturedClipPasteKey ? (
+                        <span className="settings-qs-captured">{capturedClipPasteKey.label}</span>
+                      ) : (
+                        <span className="settings-qs-waiting">Press combo…</span>
+                      )}
+                      {capturedClipPasteKey && !clipPasteConflict && (
+                        <button
+                          className="settings-qs-save-btn"
+                          type="button"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => {
+                            onSetClipboardPasteKey?.(capturedClipPasteKey.combo);
+                            setCapturingClipPasteKey(false);
+                            setCapturedClipPasteKey(null);
+                            setClipPasteConflict(null);
+                          }}
+                        >
+                          Save
+                        </button>
+                      )}
+                      <button
+                        className="settings-qs-cancel-btn"
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => { setCapturingClipPasteKey(false); setCapturedClipPasteKey(null); setClipPasteConflict(null); }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : clipboardPasteHotkey ? (
+                    <>
+                      <span className="settings-qs-hotkey-badge">
+                        {clipboardPasteHotkey.split('+').map((p, i, arr) => (
+                          <React.Fragment key={i}>
+                            <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                            {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                          </React.Fragment>
+                        ))}
+                      </span>
+                      <button
+                        className="settings-action-btn"
+                        type="button"
+                        onClick={() => setCapturingClipPasteKey(true)}
+                      >
+                        Change
+                      </button>
+                      <button
+                        className="settings-action-btn settings-danger-btn"
+                        type="button"
+                        onClick={() => onClearClipboardPasteKey?.()}
+                        title="Remove quick-paste hotkey"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="settings-action-btn"
+                      type="button"
+                      onClick={() => setCapturingClipPasteKey(true)}
+                    >
+                      Set hotkey
+                    </button>
+                  )}
+                </div>
+              </div>
+              {clipPasteConflict && (
+                <div className="settings-conflict-warn">{clipPasteConflict}</div>
+              )}
+
+              <ClipboardExcludedAppsEditor
+                apps={clipboardExcludedApps}
+                onChange={onUpdateClipboardExcludedApps}
+              />
+
+              <div className="settings-toggle-row">
+                <div className="settings-toggle-info">
+                  <span className="settings-toggle-label">History retention <span className="pro-badge">PRO</span></span>
+                  <span className="settings-toggle-sub">
+                    Days to keep history. Free: 7. Pro: 30.
+                  </span>
+                </div>
+                <div className="settings-retention-input">
+                  <input
+                    type="number"
+                    className="form-input settings-retention-num"
+                    min={1}
+                    max={30}
+                    value={clipboardRetention}
+                    onChange={e => {
+                      let v = parseInt(e.target.value, 10);
+                      if (isNaN(v)) v = 7;
+                      v = Math.max(1, Math.min(30, v));
+                      // Pro gate: Free users can request up to 30 but it clamps to 7
+                      // and the upgrade modal explains why.
+                      if (!isPro && v > 7) {
+                        onShowUpgrade?.('Extended clipboard history (up to 30 days)');
+                        v = 7;
+                      }
+                      setClipboardRetention(v);
+                      window.electronAPI?.setClipboardSettings(v);
+                    }}
+                  />
+                  <span className="settings-retention-unit">days</span>
+                </div>
+              </div>
+            </>
+          )}
 
           <button
             type="button"
@@ -696,7 +972,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Start with Windows</span>
-              <span className="settings-toggle-sub">Launch automatically when you log in</span>
+              <span className="settings-toggle-sub">Launch automatically at login</span>
             </div>
             <button
               type="button"
@@ -711,7 +987,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Enable macros on startup</span>
-              <span className="settings-toggle-sub">Macros are active immediately when Trigr launches</span>
+              <span className="settings-toggle-sub">Macros active immediately on launch</span>
             </div>
             <button
               type="button"
@@ -731,7 +1007,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Enable voice activation</span>
-              <span className="settings-toggle-sub">Trigger actions by voice. This feature is experimental and may not work reliably in all environments.</span>
+              <span className="settings-toggle-sub">Trigger actions by voice. Experimental, may not work reliably in all environments.</span>
             </div>
             <button
               type="button"
@@ -749,7 +1025,7 @@ export default function SettingsPanel({
           <div className="settings-pause-stack">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Voice hotkey</span>
-              <span className="settings-toggle-sub">Press this from any app to activate voice mode. Speak a configured voice command to fire an action.</span>
+              <span className="settings-toggle-sub">Activates voice mode. Speak a configured command to fire an action.</span>
             </div>
             <div className="settings-qs-hotkey-ctrl">
               {capturingVoiceKey ? (
@@ -851,7 +1127,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Microphone</span>
-              <span className="settings-toggle-sub">Trigr uses your Windows default recording device. To change it: Windows Settings &gt; System &gt; Sound &gt; Input.</span>
+              <span className="settings-toggle-sub">Uses your Windows default input device. Change via Windows Settings &gt; System &gt; Sound.</span>
             </div>
             <button
               type="button"
@@ -876,7 +1152,7 @@ export default function SettingsPanel({
           <div className="settings-pause-stack">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Pause hotkey</span>
-              <span className="settings-toggle-sub">Press this from any app to toggle Trigr on/off. Must include at least one modifier.</span>
+              <span className="settings-toggle-sub">Toggles Trigr on/off from any app. Modifier required.</span>
             </div>
             <div className="settings-qs-hotkey-ctrl">
               {capturingPauseKey ? (
@@ -983,7 +1259,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Global hotkey</span>
-              <span className="settings-toggle-sub">Press this to open Quick Search from any app</span>
+              <span className="settings-toggle-sub">Opens Quick Search from any app</span>
             </div>
             <div className="settings-qs-hotkey-ctrl">
               {capturingHotkey ? (
@@ -1063,7 +1339,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Show all items when search is empty</span>
-              <span className="settings-toggle-sub">Browse all macros and expansions when nothing is typed</span>
+              <span className="settings-toggle-sub">Browse everything when the search box is empty</span>
             </div>
             <button
               type="button"
@@ -1077,7 +1353,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Close after firing</span>
-              <span className="settings-toggle-sub">Dismiss the overlay immediately when a result is activated</span>
+              <span className="settings-toggle-sub">Dismiss the overlay after activating a result</span>
             </div>
             <button
               type="button"
@@ -1091,7 +1367,7 @@ export default function SettingsPanel({
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Include autocorrect entries</span>
-              <span className="settings-toggle-sub">Search across your autocorrect dictionary (may add many results)</span>
+              <span className="settings-toggle-sub">Include autocorrect in results (can be noisy)</span>
             </div>
             <button
               type="button"
@@ -1107,8 +1383,7 @@ export default function SettingsPanel({
         <section className="settings-section">
           <div className="settings-section-title">COMPATIBILITY</div>
           <p className="settings-compat-desc">
-            Controls how Trigr injects text into other applications.
-            Use <strong>Type Each Key</strong> for CAD software and games.
+            How Trigr injects text into other apps. Use <strong>Type Each Key</strong> for CAD and games.
           </p>
 
           <label className="settings-field-label">Global input method</label>
@@ -1216,7 +1491,7 @@ export default function SettingsPanel({
           <div className="settings-slider-row">
             <div className="settings-slider-info">
               <span className="settings-toggle-label">Double-tap window</span>
-              <span className="settings-toggle-sub">Maximum gap between two presses to count as a double-tap</span>
+              <span className="settings-toggle-sub">Max gap between two presses to register a double-tap</span>
             </div>
             <div className="settings-slider-ctrl">
               <input
@@ -1241,16 +1516,16 @@ export default function SettingsPanel({
 
           <label className="settings-field-label">Default date format</label>
           <p className="settings-compat-desc">
-            Used by the bare <code>{'{date}'}</code> token and by Date Math tokens (Tomorrow / Yesterday / Next Week / Next Month). Explicit-format tokens like <code>{'{date:DD/MM/YYYY}'}</code> always use their own format.
+            Used by bare <code>{'{date}'}</code> and Date Math tokens. Explicit formats like <code>{'{date:DD/MM/YYYY}'}</code> override this.
           </p>
           <select
             className="settings-select"
             value={defaultDateFormat}
             onChange={e => onUpdateGlobalSettings?.({ defaultDateFormat: e.target.value })}
           >
-            <option value="DD/MM/YYYY">DD/MM/YYYY (UK) — e.g. 31/12/2026</option>
-            <option value="MM/DD/YYYY">MM/DD/YYYY (US) — e.g. 12/31/2026</option>
-            <option value="YYYY-MM-DD">YYYY-MM-DD (ISO) — e.g. 2026-12-31</option>
+            <option value="DD/MM/YYYY">DD/MM/YYYY (UK), e.g. 31/12/2026</option>
+            <option value="MM/DD/YYYY">MM/DD/YYYY (US), e.g. 12/31/2026</option>
+            <option value="YYYY-MM-DD">YYYY-MM-DD (ISO), e.g. 2026-12-31</option>
           </select>
         </section>
 
@@ -1258,8 +1533,7 @@ export default function SettingsPanel({
         <section className="settings-section">
           <div className="settings-section-title">BACKUP &amp; RESTORE</div>
           <p className="settings-backup-desc">
-            Export your full config to back it up or transfer to another machine. Import to restore from a file.
-            Trigr also creates automatic backups on every launch and save.
+            Export to back up or move your config to another machine. Import to restore. Trigr also creates automatic backups on every launch and save.
           </p>
           <div className="settings-backup-row">
             <button
@@ -1312,7 +1586,7 @@ export default function SettingsPanel({
                       ? 'Last Known Good'
                       : confirmRestore.replace('keyforge-config-', '').replace('.json', '')
                   }</strong>?</p>
-                  <p className="settings-backup-confirm-sub">This will replace your current config. This cannot be undone.</p>
+                  <p className="settings-backup-confirm-sub">Replaces your current config. Cannot be undone.</p>
                   <div className="settings-backup-confirm-btns">
                     <button type="button" className="settings-action-btn" onClick={() => setConfirmRestore(null)}>Cancel</button>
                     <button type="button" className="settings-action-btn settings-restore-confirm-btn" onClick={() => handleConfirmRestore(confirmRestore)}>Restore</button>

@@ -2824,6 +2824,34 @@ pub fn clear_pause_hotkey() {
     println!("[HOOK] Pause hotkey cleared");
 }
 
+pub fn set_clipboard_paste_hotkey(combo: &str) {
+    if let Some(parsed) = parse_hotkey_combo(combo) {
+        let mut state = engine_state().lock().unwrap();
+        state.clipboard_paste_hotkey = Some(parsed);
+        rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+        rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
+        add_overlay_to_suppress(state.overlay_hotkey);
+        add_pause_to_suppress(state.pause_hotkey);
+        add_clipboard_paste_to_suppress(Some(parsed));
+        add_voice_to_suppress(state.voice_hotkey);
+        add_radial_menu_to_suppress(state.radial_menu_hotkey);
+        println!("[HOOK] Clipboard paste hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+    }
+}
+
+pub fn clear_clipboard_paste_hotkey() {
+    let mut state = engine_state().lock().unwrap();
+    state.clipboard_paste_hotkey = None;
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+    rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
+    add_overlay_to_suppress(state.overlay_hotkey);
+    add_pause_to_suppress(state.pause_hotkey);
+    add_clipboard_paste_to_suppress(None);
+    add_voice_to_suppress(state.voice_hotkey);
+    add_radial_menu_to_suppress(state.radial_menu_hotkey);
+    println!("[HOOK] Clipboard paste hotkey cleared");
+}
+
 pub fn set_radial_menu_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
         let mut state = engine_state().lock().unwrap();

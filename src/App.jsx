@@ -67,6 +67,11 @@ function App() {
   // clicks "Create Expansion" on a clipboard history item. TextExpansions
   // consumes it on mount and clears it via onPrefillConsumed.
   const [pendingExpansionPrefill, setPendingExpansionPrefill] = useState(null);
+  // Sub-panel editing flags lifted from TextExpansions / SearchTemplatesPanel.
+  // Combined with selectedKey / draftAssignment (mapping + radial via MacroPanel)
+  // to suppress foreground auto-switching while the user is mid-edit.
+  const [expansionEditing, setExpansionEditing]     = useState(false);
+  const [quickActionEditing, setQuickActionEditing] = useState(false);
   const [isRecording, setIsRecording]               = useState(false);
   const [recordCapture, setRecordCapture]           = useState(null);
   const [tipsHidden, setTipsHidden]                 = useState(false);
@@ -78,6 +83,10 @@ function App() {
   const [showWelcome, setShowWelcome]               = useState(false);
   const [showOnboarding, setShowOnboarding]         = useState(false);
   const [macrosEnabledOnStartup, setMacrosEnabledOnStartup] = useState(true);
+  // Clipboard privacy controls. Defaults are permissive so existing installs
+  // behave unchanged; users opt in via Settings.
+  const [clipboardCaptureEnabled, setClipboardCaptureEnabled] = useState(true);
+  const [clipboardExcludedApps, setClipboardExcludedApps]     = useState([]);
   const [globalInputMethod,  setGlobalInputMethod]  = useState('direct');
   const [macroSpeed,         setMacroSpeed]         = useState('safe');
   const [defaultDateFormat,  setDefaultDateFormat]  = useState('DD/MM/YYYY');
@@ -95,6 +104,9 @@ function App() {
   const [updateInfo,     setUpdateInfo]     = useState(null);   // { version, percent, ready, dismissed }
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
+  // Clipboard quick-paste overlay hotkey. Defaults to Ctrl+Shift+V; user
+  // remappable in Settings to avoid clashes with other tools they use.
+  const [clipboardPasteHotkey, setClipboardPasteHotkey] = useState('Ctrl+Shift+V');
   const [importPrompt, setImportPrompt]                 = useState(null); // { name, assignments }
   // Expansion pack import collision prompt. Shape:
   // { expansions: [{trigger, data}], categories: [{name, colour}], collisions: [trigger,...], totalCount }
@@ -103,6 +115,12 @@ function App() {
   // { actions: [{id, type, label, data}], categories: [{name, colour}], collisions: [{id, label},...], totalCount }
   const [quickActionImportPrompt, setQuickActionImportPrompt] = useState(null);
   const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
+  // Shared-config grace period state, populated from Rust via getGracePeriodState.
+  // Shape: { pro_expired_at, shared_active, days_remaining, migration_deferred }.
+  // When pro_expired_at is non-null AND shared_active is true, the banner shows.
+  const [gracePeriodState, setGracePeriodState]         = useState(null);
+  // Transient banner shown for one session after auto-migration completes.
+  const [postMigrationNotice, setPostMigrationNotice]   = useState(false);
   const [upgradePrompt, setUpgradePrompt]               = useState(null); // feature name string, or null
   const [showProTrialModal, setShowProTrialModal]       = useState(false);
   // Templates coachmark — drops down from the Templates pill once after the
@@ -222,6 +240,13 @@ function App() {
         }
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
+        // Clipboard privacy controls — defaults preserve existing behaviour.
+        const savedClipboardCapture = config.clipboardCaptureEnabled ?? true;
+        const savedClipboardExcluded = Array.isArray(config.clipboardExcludedApps) ? config.clipboardExcludedApps : [];
+        setClipboardCaptureEnabled(savedClipboardCapture);
+        setClipboardExcludedApps(savedClipboardExcluded);
+        window.electronAPI?.setClipboardCaptureEnabled(savedClipboardCapture);
+        window.electronAPI?.setClipboardExcludedApps(savedClipboardExcluded);
         setGlobalInputMethod(config.globalInputMethod   || 'direct');
         setMacroSpeed(       config.macroSpeed          || 'safe');
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
@@ -239,6 +264,19 @@ function App() {
         setGlobalPauseToggleKey(
           config.globalPauseToggleKey === undefined ? 'Ctrl+Alt+Q' : config.globalPauseToggleKey
         );
+        // Clipboard paste hotkey — defaults to Ctrl+Shift+V on fresh installs,
+        // null means user explicitly cleared and has no hotkey for it.
+        {
+          const cfgClipPaste = config.clipboardPasteHotkey === undefined
+            ? 'Ctrl+Shift+V'
+            : config.clipboardPasteHotkey;
+          setClipboardPasteHotkey(cfgClipPaste || '');
+          if (cfgClipPaste) {
+            window.electronAPI?.setClipboardPasteHotkey(cfgClipPaste);
+          } else {
+            window.electronAPI?.clearClipboardPasteHotkey();
+          }
+        }
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
@@ -408,6 +446,11 @@ function App() {
         }
         setLicenceStatus(ls);
 
+        // Refresh shared-config grace state — the Rust side ran
+        // check_and_migrate_if_due during revalidation, which may have started
+        // or cleared the grace timestamp, or completed the auto-migration.
+        window.electronAPI.getGracePeriodState?.().then(g => setGracePeriodState(g));
+
         // Migration popup: only fires for installs where the onboarding tour
         // has actually been completed. Fresh installs follow the tour-finish
         // path in handleOnboardingComplete instead and never hit this branch.
@@ -422,6 +465,15 @@ function App() {
         // templates coachmark effect can't fire ahead of the trial modal.
         setLicenceChecked(true);
       }).catch(() => setLicenceChecked(true));
+
+      // Listen for auto-migration events from Rust. Fires when the watcher
+      // grace period elapses and the shared file is copied to local. Shows a
+      // one-shot post-migration banner the user can dismiss.
+      window.electronAPI.onSharedConfigMigrated?.(() => {
+        setPostMigrationNotice(true);
+        window.electronAPI.getGracePeriodState?.().then(g => setGracePeriodState(g));
+        showNotification('Shared config moved to local storage. Re-enable Pro any time to resume sync.');
+      });
 
 
       window.electronAPI.onEngineStatus((status) => {
@@ -483,6 +535,12 @@ function App() {
         setGlobalVariables(config.globalVariables || {});
         setAutocorrectEnabled(config.autocorrectEnabled ?? false);
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
+        const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
+        const cfgClipboardExcluded = Array.isArray(config.clipboardExcludedApps) ? config.clipboardExcludedApps : [];
+        setClipboardCaptureEnabled(cfgClipboardCapture);
+        setClipboardExcludedApps(cfgClipboardExcluded);
+        window.electronAPI?.setClipboardCaptureEnabled(cfgClipboardCapture);
+        window.electronAPI?.setClipboardExcludedApps(cfgClipboardExcluded);
         setGlobalInputMethod(config.globalInputMethod   || 'direct');
         setMacroSpeed(       config.macroSpeed          || 'safe');
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
@@ -499,6 +557,19 @@ function App() {
         setGlobalPauseToggleKey(
           config.globalPauseToggleKey === undefined ? 'Ctrl+Alt+Q' : config.globalPauseToggleKey
         );
+        // Clipboard paste hotkey — defaults to Ctrl+Shift+V on fresh installs,
+        // null means user explicitly cleared and has no hotkey for it.
+        {
+          const cfgClipPaste = config.clipboardPasteHotkey === undefined
+            ? 'Ctrl+Shift+V'
+            : config.clipboardPasteHotkey;
+          setClipboardPasteHotkey(cfgClipPaste || '');
+          if (cfgClipPaste) {
+            window.electronAPI?.setClipboardPasteHotkey(cfgClipPaste);
+          } else {
+            window.electronAPI?.clearClipboardPasteHotkey();
+          }
+        }
         setOverlayShowAll(          config.overlayShowAll            ?? true);
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
@@ -541,11 +612,23 @@ function App() {
     };
   }, []);
 
+  // ── Grace state refresh whenever Pro status changes ──
+  // Covers manual Activate/Deactivate from Settings (those don't go through
+  // the revalidation path). The Rust commands already call
+  // check_and_migrate_if_due themselves; this effect just keeps the React
+  // view in sync.
+  useEffect(() => {
+    window.electronAPI?.getGracePeriodState?.().then(g => setGracePeriodState(g));
+  }, [licenceStatus.is_pro]);
+
   // ── Licence re-validation on window focus ──
   useEffect(() => {
     const handleFocus = () => {
       window.electronAPI?.checkLicenceRevalidation?.().then(ls => {
         if (ls) setLicenceStatus(ls);
+        // Grace period state may have changed (timer ticked over while
+        // Trigr was unfocused, or migration just ran).
+        window.electronAPI?.getGracePeriodState?.().then(g => setGracePeriodState(g));
       });
     };
     window.addEventListener('focus', handleFocus);
@@ -683,10 +766,21 @@ function App() {
     window.electronAPI?.updateAssignments(newAssignments, profile);
   }, []);
 
+  // Push aggregated editing state to Rust. The foreground watcher uses this to
+  // suppress auto-switching while any action editor is open — mapping panel
+  // (selectedKey/draftAssignment, also covers radial segments via MacroPanel),
+  // expansion form, and quick action form. When all are closed, Trigr behaves
+  // the same whether the main window is visible (side-monitor parking) or
+  // hidden — auto-switch runs normally.
+  useEffect(() => {
+    const active = !!selectedKey || !!draftAssignment || expansionEditing || quickActionEditing;
+    window.electronAPI?.setEditingActive(active);
+  }, [selectedKey, draftAssignment, expansionEditing, quickActionEditing]);
+
   const saveConfig = useCallback((newAssignments, newProfiles, newProfile) => {
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories, clipboardCaptureEnabled, clipboardExcludedApps });
     syncEngine(newAssignments, newProfile);
-  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories]);
+  }, [syncEngine, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories, clipboardCaptureEnabled, clipboardExcludedApps]);
 
   const handleSaveGlobalVariables = useCallback((newVars) => {
     setGlobalVariables(newVars);
@@ -2129,6 +2223,11 @@ function App() {
       setDraftAssignment(null);
       setDraftDoubleAssignment(null);
     }
+    // Clear stale sub-panel editing flags. The child components remount when
+    // the user navigates back and re-push their actual editing state, so we
+    // just need to drop stale `true` values from a previous visit.
+    if (area !== 'expansions') setExpansionEditing(false);
+    if (area !== 'templates') setQuickActionEditing(false);
   }, []);
 
   // ── Select assignment from sidebar ────────────────────────
@@ -2211,6 +2310,19 @@ function App() {
     setGlobalPauseToggleKey(null);
     window.electronAPI?.clearPauseHotkey();
     window.electronAPI?.saveConfig({ globalPauseToggleKey: null });
+  }, []);
+
+  // ── Clipboard paste hotkey ────────────────────────
+  const handleSetClipboardPasteKey = useCallback(async (combo) => {
+    setClipboardPasteHotkey(combo);
+    await window.electronAPI?.setClipboardPasteHotkey(combo);
+    window.electronAPI?.saveConfig({ clipboardPasteHotkey: combo });
+  }, []);
+
+  const handleClearClipboardPasteKey = useCallback(() => {
+    setClipboardPasteHotkey('');
+    window.electronAPI?.clearClipboardPasteHotkey();
+    window.electronAPI?.saveConfig({ clipboardPasteHotkey: null });
   }, []);
 
   // ── Voice enabled toggle ────────────────────────
@@ -2855,6 +2967,56 @@ function App() {
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup: val, hasSeenWelcome: true });
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled]);
 
+  const handleToggleClipboardCapture = useCallback((enabled) => {
+    setClipboardCaptureEnabled(enabled);
+    window.electronAPI?.setClipboardCaptureEnabled(enabled);
+    window.electronAPI?.saveConfig({
+      assignments, profiles, activeProfile, profileSettings, theme, expansionCategories,
+      autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true,
+      clipboardCaptureEnabled: enabled,
+      clipboardExcludedApps,
+    });
+  }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, clipboardExcludedApps]);
+
+  const handleUpdateClipboardExcludedApps = useCallback((apps) => {
+    // Normalize: lowercase, strip .exe, dedupe, drop empties. Mirrors the
+    // Rust-side normalization in clipboard::normalize_proc_name.
+    const normalized = Array.from(new Set(
+      (apps || [])
+        .map(a => (a || '').toLowerCase().replace(/\.exe$/, '').trim())
+        .filter(Boolean)
+    ));
+    setClipboardExcludedApps(normalized);
+    window.electronAPI?.setClipboardExcludedApps(normalized);
+    window.electronAPI?.saveConfig({
+      assignments, profiles, activeProfile, profileSettings, theme, expansionCategories,
+      autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true,
+      clipboardCaptureEnabled,
+      clipboardExcludedApps: normalized,
+    });
+  }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, clipboardCaptureEnabled]);
+
+  // ── Grace period: manual "Switch to local now" ────────────
+  const handleMigrateSharedToLocalNow = useCallback(async () => {
+    const confirmed = window.confirm(
+      'Switch to local config now?\n\n'
+      + 'Your current shared config will be copied to local storage on this machine. '
+      + 'Your data is preserved. The shared file in your cloud folder is not deleted, '
+      + 'so other machines (if any) can keep using it.'
+    );
+    if (!confirmed) return;
+    const result = await window.electronAPI?.migrateSharedToLocalNow();
+    if (result?.ok) {
+      // Rust emits 'shared-config-migrated' which the existing listener
+      // picks up to refresh state + show the post-migration notice.
+      showNotification('Shared config moved to local storage.');
+    } else {
+      showNotification(result?.error || 'Migration failed. Check the log.', 'error');
+      // Refresh state so the banner reflects deferred mode if applicable.
+      window.electronAPI?.getGracePeriodState?.().then(g => setGracePeriodState(g));
+    }
+  }, [showNotification]);
+
   const handleDismissWelcome = useCallback(() => {
     setShowWelcome(false);
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
@@ -3059,6 +3221,12 @@ function App() {
     setAutocorrectEnabled(importedAc);
     window.electronAPI?.updateAutocorrectEnabled(importedAc);
     setMacrosEnabledOnStartup(cfg.macrosEnabledOnStartup ?? true);
+    const importedClipCapture = cfg.clipboardCaptureEnabled ?? true;
+    const importedClipExcluded = Array.isArray(cfg.clipboardExcludedApps) ? cfg.clipboardExcludedApps : [];
+    setClipboardCaptureEnabled(importedClipCapture);
+    setClipboardExcludedApps(importedClipExcluded);
+    window.electronAPI?.setClipboardCaptureEnabled(importedClipCapture);
+    window.electronAPI?.setClipboardExcludedApps(importedClipExcluded);
     // main.js already wrote the imported config to disk — only sync the engine
     window.electronAPI?.updateAssignments(imported, cfg.activeProfile || 'Default');
     window.electronAPI?.updateProfileSettings(cfg.profileSettings || {});
@@ -3093,6 +3261,12 @@ function App() {
     setAutocorrectEnabled(restoredAc);
     window.electronAPI?.updateAutocorrectEnabled(restoredAc);
     setMacrosEnabledOnStartup(cfg.macrosEnabledOnStartup ?? true);
+    const restoredClipCapture = cfg.clipboardCaptureEnabled ?? true;
+    const restoredClipExcluded = Array.isArray(cfg.clipboardExcludedApps) ? cfg.clipboardExcludedApps : [];
+    setClipboardCaptureEnabled(restoredClipCapture);
+    setClipboardExcludedApps(restoredClipExcluded);
+    window.electronAPI?.setClipboardCaptureEnabled(restoredClipCapture);
+    window.electronAPI?.setClipboardExcludedApps(restoredClipExcluded);
     window.electronAPI?.saveConfig({ ...cfg, hasSeenWelcome: true });
     window.electronAPI?.updateAssignments(restored, cfg.activeProfile || 'Default');
     window.electronAPI?.updateProfileSettings(cfg.profileSettings || {});
@@ -3250,6 +3424,45 @@ function App() {
             className="backup-restored-dismiss"
             onClick={() => setBackupRestoredFrom(null)}
             type="button"
+          >Dismiss</button>
+        </div>
+      )}
+      {gracePeriodState?.pro_expired_at && gracePeriodState?.shared_active && (
+        <div className={`grace-banner${gracePeriodState.migration_deferred ? ' grace-banner--deferred' : (gracePeriodState.days_remaining ?? 7) <= 2 ? ' grace-banner--urgent' : ''}`}>
+          <span className="grace-banner-icon">⚠</span>
+          <span className="grace-banner-text">
+            {gracePeriodState.migration_deferred ? (
+              <>Couldn't reach your shared config file to move it to local right now. Your data is safe — Trigr is using a local snapshot and will keep retrying until the shared file is reachable again. The shared file in your cloud folder is never modified or deleted by Trigr.</>
+            ) : (gracePeriodState.days_remaining ?? 7) <= 0 ? (
+              <>Your Pro grace period has ended. Trigr will move your shared config to local on next restart.</>
+            ) : (
+              <>Pro is required for shared config. Sync continues for {gracePeriodState.days_remaining} more day{gracePeriodState.days_remaining === 1 ? '' : 's'}, then your config will move to local storage automatically.</>
+            )}
+          </span>
+          <div className="grace-banner-actions">
+            <button
+              type="button"
+              className="grace-banner-btn grace-banner-btn--primary"
+              onClick={() => showUpgrade('Shared config (cross-machine sync)')}
+            >Upgrade</button>
+            <button
+              type="button"
+              className="grace-banner-btn"
+              onClick={handleMigrateSharedToLocalNow}
+            >Switch to local now</button>
+          </div>
+        </div>
+      )}
+      {postMigrationNotice && (
+        <div className="grace-banner grace-banner--info">
+          <span className="grace-banner-icon">ⓘ</span>
+          <span className="grace-banner-text">
+            Your shared config has been moved to local storage. Re-enable Pro any time to resume cross-machine sync.
+          </span>
+          <button
+            type="button"
+            className="grace-banner-dismiss"
+            onClick={() => setPostMigrationNotice(false)}
           >Dismiss</button>
         </div>
       )}
@@ -3546,6 +3759,7 @@ function App() {
               globalInputMethod={globalInputMethod}
               onShowNotification={showNotification}
               onShowUpgrade={showUpgrade}
+              onEditingChange={setQuickActionEditing}
             />
           )}
           {activeArea === 'expansions' && (
@@ -3576,6 +3790,7 @@ function App() {
               onImportExpansions={handleImportExpansions}
               expansionImportPrompt={expansionImportPrompt}
               onExpansionImportResolve={handleExpansionImportResolve}
+              onEditingChange={setExpansionEditing}
             />
           )}
         </main>
@@ -3617,6 +3832,13 @@ function App() {
             onLicenceStatusChange={setLicenceStatus}
             onShowUpgrade={showUpgrade}
             onShowProTrial={() => setShowProTrialModal(true)}
+            clipboardCaptureEnabled={clipboardCaptureEnabled}
+            onToggleClipboardCapture={handleToggleClipboardCapture}
+            clipboardExcludedApps={clipboardExcludedApps}
+            onUpdateClipboardExcludedApps={handleUpdateClipboardExcludedApps}
+            clipboardPasteHotkey={clipboardPasteHotkey}
+            onSetClipboardPasteKey={handleSetClipboardPasteKey}
+            onClearClipboardPasteKey={handleClearClipboardPasteKey}
           />
         ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
           <MacroPanel

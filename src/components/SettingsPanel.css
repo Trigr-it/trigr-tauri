@@ -1146,3 +1146,145 @@
   text-decoration: underline;
 }
 
+/* ── Clipboard excluded apps editor ─────────────────────────────────────── */
+
+.settings-excluded-apps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-excluded-apps-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-excluded-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.settings-excluded-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.settings-excluded-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.settings-excluded-chip-label {
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.settings-excluded-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.settings-excluded-chip-x:hover {
+  color: var(--text-primary);
+  background: var(--bg-base);
+}
+
+.settings-excluded-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-excluded-input {
+  flex: 1 1 180px;
+  height: 32px;
+  min-width: 0;
+}
+
+.settings-excluded-add-btn {
+  height: 32px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+}
+
+.settings-excluded-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.settings-excluded-picker-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.settings-excluded-pick-btn {
+  height: 32px;
+  padding: 0 12px;
+}
+
+.settings-excluded-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  min-width: 220px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.settings-excluded-picker-loading {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.settings-excluded-picker-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-excluded-picker-item:last-child {
+  border-bottom: none;
+}
+
+.settings-excluded-picker-item:hover {
+  background: var(--bg-base);
+  color: var(--accent);
+}
+

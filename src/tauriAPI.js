@@ -57,6 +57,10 @@ window.electronAPI = {
     listen('profile-switched', (event) => callback(event.payload)).then(u => { listeners['profile-switched'] = u; });
   },
 
+  onSharedConfigMigrated: (callback) => {
+    listen('shared-config-migrated', (event) => callback(event.payload)).then(u => { listeners['shared-config-migrated'] = u; });
+  },
+
   // ── Fill-in field dialog ────────────────────────────────────────────────────
   onFillInPrompt: (callback) => {
     listen('fill-in-prompt', (event) => callback(event.payload)).then(u => { listeners['fill-in-prompt'] = u; });
@@ -75,6 +79,9 @@ window.electronAPI = {
 
   // ── Active global profile ───────────────────────────────────────────────────
   setActiveGlobalProfile: (profile) => invoke('set_active_global_profile', { profile }),
+
+  // ── Editing-active gate (suppresses foreground auto-switch during edits) ────
+  setEditingActive: (active) => invoke('set_editing_active', { active }),
 
   // ── Input focus state ───────────────────────────────────────────────────────
   notifyInputFocus: (focused) => invoke('input_focus_changed', { focused }),
@@ -206,6 +213,8 @@ window.electronAPI = {
   updateClipboardItem:    (id, newText)   => invoke('update_clipboard_item', { id, newText }),
   getClipboardSettings:   ()              => invoke('get_clipboard_settings'),
   setClipboardSettings:   (retentionDays) => invoke('set_clipboard_settings', { retentionDays }),
+  setClipboardCaptureEnabled: (enabled)   => invoke('set_clipboard_capture_enabled', { enabled }),
+  setClipboardExcludedApps: (apps)        => invoke('set_clipboard_excluded_apps', { apps }),
   getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
   closeClipboardOverlay:     ()       => invoke('close_clipboard_overlay'),
   resizeClipboardOverlay:    (width, height) => invoke('clipboard_overlay_resize', { width, height }),
@@ -222,6 +231,8 @@ window.electronAPI = {
   // ── Global pause toggle ─────────────────────────────────────────────────────
   setPauseHotkey:      (combo) => invoke('set_global_pause_key', { combo }),
   clearPauseHotkey:    ()      => invoke('clear_global_pause_key'),
+  setClipboardPasteHotkey: (combo) => invoke('set_clipboard_paste_key', { combo }),
+  clearClipboardPasteHotkey: ()    => invoke('clear_clipboard_paste_key'),
   setVoiceHotkey:      (combo) => invoke('set_voice_hotkey', { combo }),
   clearVoiceHotkey:    ()      => invoke('clear_voice_hotkey'),
   startVoiceRecognition:  (phrases) => invoke('start_voice_recognition', { phrases }),
@@ -284,6 +295,8 @@ window.electronAPI = {
   deactivateLicence:         ()    => invoke('deactivate_licence'),
   checkLicenceRevalidation:  ()    => invoke('check_licence_revalidation'),
   startTrial:                ()    => invoke('start_trial'),
+  getGracePeriodState:       ()    => invoke('get_grace_period_state'),
+  migrateSharedToLocalNow:   ()    => invoke('migrate_shared_to_local_now'),
   markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),
 };
 

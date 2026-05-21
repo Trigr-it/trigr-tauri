@@ -1074,6 +1074,8 @@ export default function TextExpansions({
   onImportExpansions,
   expansionImportPrompt,
   onExpansionImportResolve,
+  // Suppress foreground auto-switch while the user is mid-edit
+  onEditingChange,
 }) {
   // ── Panel mode (expansions | autocorrect | globalvars) ──
   const [panelMode, setPanelMode] = useState('expansions');
@@ -1095,6 +1097,12 @@ export default function TextExpansions({
   const [renamingVariantIndex, setRenamingVariantIndex] = useState(null);
   const [variantRenameValue, setVariantRenameValue] = useState('');
   const [voicePhrases, setVoicePhrases]   = useState([]);
+
+  // Push editing state to parent so foreground auto-switch is suppressed while
+  // the user is mid-build. Non-null `editing` covers both Add and Edit flows.
+  useEffect(() => {
+    onEditingChange?.(editing !== null);
+  }, [editing, onEditingChange]);
 
   // Load image preview via Rust when imagePath changes
   useEffect(() => {

@@ -53,6 +53,136 @@
   background: rgba(232, 100, 32, 0.15);
 }
 
+/* ── Pro grace-period banner (shared config auto-migrate) ───────────────── */
+
+.grace-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(232, 175, 32, 0.12);
+  border-bottom: 1px solid rgba(232, 175, 32, 0.35);
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.grace-banner--urgent {
+  background: rgba(232, 100, 32, 0.14);
+  border-bottom-color: rgba(232, 100, 32, 0.4);
+}
+
+.grace-banner--deferred {
+  background: rgba(220, 60, 60, 0.14);
+  border-bottom-color: rgba(220, 60, 60, 0.45);
+}
+
+.grace-banner--info {
+  background: rgba(64, 140, 220, 0.12);
+  border-bottom-color: rgba(64, 140, 220, 0.35);
+}
+
+.grace-banner-icon {
+  font-size: 13px;
+  color: #c89318;
+  flex-shrink: 0;
+}
+
+.grace-banner--urgent .grace-banner-icon,
+.grace-banner--deferred .grace-banner-icon {
+  color: #c85818;
+}
+
+.grace-banner--info .grace-banner-icon {
+  color: #3478c8;
+}
+
+.grace-banner-text {
+  flex: 1;
+  font-size: 11px;
+  color: #a07020;
+  line-height: 1.4;
+}
+
+[data-theme="light"] .grace-banner-text {
+  color: #805818;
+}
+
+.grace-banner--urgent .grace-banner-text,
+.grace-banner--deferred .grace-banner-text {
+  color: #a04010;
+}
+
+[data-theme="light"] .grace-banner--urgent .grace-banner-text,
+[data-theme="light"] .grace-banner--deferred .grace-banner-text {
+  color: #803010;
+}
+
+.grace-banner--info .grace-banner-text {
+  color: #2860a0;
+}
+
+[data-theme="light"] .grace-banner--info .grace-banner-text {
+  color: #1c4878;
+}
+
+.grace-banner-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.grace-banner-btn,
+.grace-banner-dismiss {
+  height: 24px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid rgba(232, 175, 32, 0.5);
+  border-radius: 4px;
+  color: #c89318;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.grace-banner-btn:hover,
+.grace-banner-dismiss:hover {
+  background: rgba(232, 175, 32, 0.18);
+}
+
+.grace-banner-btn--primary {
+  background: rgba(232, 175, 32, 0.2);
+}
+
+.grace-banner-btn--primary:hover {
+  background: rgba(232, 175, 32, 0.32);
+}
+
+.grace-banner--urgent .grace-banner-btn,
+.grace-banner--deferred .grace-banner-btn {
+  border-color: rgba(232, 100, 32, 0.5);
+  color: #c85818;
+}
+
+.grace-banner--urgent .grace-banner-btn:hover,
+.grace-banner--deferred .grace-banner-btn:hover {
+  background: rgba(232, 100, 32, 0.18);
+}
+
+.grace-banner--urgent .grace-banner-btn--primary,
+.grace-banner--deferred .grace-banner-btn--primary {
+  background: rgba(232, 100, 32, 0.22);
+}
+
+.grace-banner--info .grace-banner-dismiss {
+  border-color: rgba(64, 140, 220, 0.5);
+  color: #3478c8;
+}
+
+.grace-banner--info .grace-banner-dismiss:hover {
+  background: rgba(64, 140, 220, 0.18);
+}
+
 .app-body {
   display: flex;
   flex: 1;

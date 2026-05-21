@@ -1,12 +1,13 @@
 use log::{error, info};
 use rusqlite::Connection;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
 use tauri::AppHandle;
 
@@ -115,6 +116,37 @@ fn retention_days() -> u32 {
         .and_then(|m| m.lock().ok())
         .map(|g| *g)
         .unwrap_or(DEFAULT_RETENTION_DAYS)
+}
+
+// ── Capture-enabled gate + per-app exclusion list ───────────────────────────
+//
+// Both default to permissive (capture on, no exclusions) so existing installs
+// keep behaving as before. Users opt in via Settings — no apps are excluded
+// out of the box, per the founder's design call.
+
+static CAPTURE_ENABLED: AtomicBool = AtomicBool::new(true);
+static EXCLUDED_APPS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
+
+fn excluded_apps() -> &'static RwLock<HashSet<String>> {
+    EXCLUDED_APPS.get_or_init(|| RwLock::new(HashSet::new()))
+}
+
+/// Normalize a process name for comparison: lowercase + strip `.exe`. Matches
+/// the convention used by foreground.rs so picker output and live foreground
+/// detection compare equal.
+fn normalize_proc_name(name: &str) -> String {
+    name.to_lowercase().trim_end_matches(".exe").to_string()
+}
+
+fn is_app_excluded(proc_name: &str) -> bool {
+    let normalized = normalize_proc_name(proc_name);
+    if normalized.is_empty() {
+        return false;
+    }
+    excluded_apps()
+        .read()
+        .map(|set| set.contains(&normalized))
+        .unwrap_or(false)
 }
 
 // ── Deduplication ────────────────────────────────────────────────────────────
@@ -231,6 +263,16 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             if let Ok(mut g) = RETENTION_DAYS.get().unwrap().lock() {
                 *g = (days as u32).clamp(1, 30);
             }
+        }
+        if let Some(enabled) = cfg.get("clipboardCaptureEnabled").and_then(|v| v.as_bool()) {
+            CAPTURE_ENABLED.store(enabled, Ordering::SeqCst);
+        }
+        if let Some(arr) = cfg.get("clipboardExcludedApps").and_then(|v| v.as_array()) {
+            let apps: Vec<String> = arr
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+            set_excluded_apps(apps);
         }
     }
 
@@ -477,6 +519,21 @@ pub fn set_retention_days(days: u32) {
         if let Ok(tx) = tx.lock() {
             let _ = tx.send(ClipboardMsg::Prune);
         }
+    }
+}
+
+pub fn set_capture_enabled(enabled: bool) {
+    CAPTURE_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub fn set_excluded_apps(apps: Vec<String>) {
+    let normalized: HashSet<String> = apps
+        .into_iter()
+        .map(|a| normalize_proc_name(&a))
+        .filter(|a| !a.is_empty())
+        .collect();
+    if let Ok(mut g) = excluded_apps().write() {
+        *g = normalized;
     }
 }
 
@@ -855,9 +912,26 @@ fn handle_clipboard_update() {
         return;
     }
 
-    // Capture source app BEFORE opening clipboard (Pro feature — Free users get empty source).
+    // Master capture toggle. When off, the listener keeps running so re-enabling
+    // takes effect on the very next clipboard event without restarting Trigr.
+    if !CAPTURE_ENABLED.load(Ordering::SeqCst) {
+        return;
+    }
+
+    // Resolve foreground process once. Used for both the exclusion check and
+    // (Pro only) the per-row source_app column.
+    let fg_proc = get_foreground_process_name();
+
+    // App exclusion list: skip capture when the user has opted out of recording
+    // clipboard from this process. Comparison is case-insensitive and ignores
+    // the `.exe` suffix on both sides.
+    if !fg_proc.is_empty() && is_app_excluded(&fg_proc) {
+        return;
+    }
+
+    // Capture source app for the row (Pro feature — Free users get empty source).
     let source_app = if crate::licence::is_pro() {
-        get_foreground_process_name()
+        fg_proc
     } else {
         String::new()
     };

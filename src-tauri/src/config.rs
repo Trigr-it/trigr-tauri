@@ -138,6 +138,178 @@ pub fn get_shared_config_dir() -> Option<PathBuf> {
     SHARED_CONFIG_DIR.read().ok().and_then(|g| g.clone())
 }
 
+// ── Pro grace period for shared config ──────────────────────────────────────
+//
+// When the user loses Pro status while shared config is active, we don't snap
+// the rug out from under them. Instead we record `pro_expired_at` and run a
+// 7-day grace period during which everything works normally. At expiry we
+// copy the current shared file to local AppData, clear the override, and
+// stop the watcher. Pro re-upgrade at any point clears the timestamp and
+// cancels the migration.
+
+const GRACE_PERIOD_DAYS: i64 = 7;
+
+/// Read the grace-period start timestamp from local settings. None means no
+/// grace period is currently active.
+pub fn get_pro_expired_at() -> Option<chrono::DateTime<chrono::Utc>> {
+    let val = load_local_settings_json();
+    val.get("pro_expired_at")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|d| d.to_utc())
+}
+
+/// Write or clear the grace-period start timestamp. Merge-safe.
+pub fn set_pro_expired_at(ts: Option<chrono::DateTime<chrono::Utc>>) -> bool {
+    let mut val = load_local_settings_json();
+    let obj = val.as_object_mut().unwrap();
+    match ts {
+        Some(t) => {
+            obj.insert("pro_expired_at".to_string(), Value::String(t.to_rfc3339()));
+        }
+        None => {
+            obj.remove("pro_expired_at");
+        }
+    }
+    save_local_settings_json(&val)
+}
+
+/// True if the user has hit the deferred-migration state (shared file was
+/// unreachable when we last tried to migrate). Surfaces a different banner.
+pub fn get_migration_deferred() -> bool {
+    load_local_settings_json()
+        .get("migration_deferred")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+fn set_migration_deferred(deferred: bool) {
+    let mut val = load_local_settings_json();
+    let obj = val.as_object_mut().unwrap();
+    if deferred {
+        obj.insert("migration_deferred".to_string(), Value::Bool(true));
+    } else {
+        obj.remove("migration_deferred");
+    }
+    let _ = save_local_settings_json(&val);
+}
+
+/// Days remaining in the grace period, or None if no grace period is active.
+/// Returns 0 if grace period has expired and migration is pending.
+pub fn grace_period_days_remaining() -> Option<i64> {
+    let expired_at = get_pro_expired_at()?;
+    let elapsed = chrono::Utc::now().signed_duration_since(expired_at);
+    let remaining = GRACE_PERIOD_DAYS - elapsed.num_days();
+    Some(remaining.max(0))
+}
+
+/// Copy the current shared config file to local AppData, then clear the
+/// shared override and stop the file watcher. Atomic on the local side via
+/// temp-file + rename. Returns Err if the shared file is unreachable or
+/// invalid — caller leaves `pro_expired_at` set so we retry next time.
+pub fn migrate_shared_to_local() -> Result<(), String> {
+    let shared_dir = get_shared_config_dir()
+        .ok_or_else(|| "No shared config override set".to_string())?;
+    let shared_file = shared_dir.join("keyforge-config.json");
+    let local_file = app_data_dir().join("keyforge-config.json");
+
+    if !shared_file.exists() {
+        return Err(format!(
+            "Shared config file not found: {}",
+            shared_file.display()
+        ));
+    }
+
+    let content = fs::read_to_string(&shared_file)
+        .map_err(|e| format!("Cannot read shared config: {}", e))?;
+
+    // Sanity-check it parses as JSON before we overwrite local. We don't want
+    // to copy a half-synced or truncated file from OneDrive over the user's
+    // local backup.
+    serde_json::from_str::<Value>(&content)
+        .map_err(|e| format!("Shared config is not valid JSON: {}", e))?;
+
+    // Atomic write: temp file + rename. Avoids partial-write corruption if
+    // Trigr is killed mid-migration.
+    let tmp_path = local_file.with_extension("tmp");
+    fs::write(&tmp_path, &content)
+        .map_err(|e| format!("Cannot write local config temp: {}", e))?;
+    fs::rename(&tmp_path, &local_file)
+        .map_err(|e| format!("Cannot finalize local config: {}", e))?;
+
+    // Clear the shared override AFTER the local copy succeeded, so a failure
+    // mid-migration doesn't leave the user with no config source.
+    set_shared_config_dir(None);
+    save_local_settings(None);
+    stop_config_watcher();
+
+    info!(
+        "[Trigr] Migration complete: {} -> {}",
+        shared_file.display(),
+        local_file.display()
+    );
+    Ok(())
+}
+
+/// Driven by every licence revalidation. Three transitions:
+///   - Pro user with grace timestamp → clear it (cancelling pending migration).
+///   - Non-Pro user with shared config, no timestamp → start the 7-day clock.
+///   - Non-Pro user with shared config, timestamp older than 7 days → migrate.
+pub fn check_and_migrate_if_due() {
+    let is_pro = crate::licence::is_pro();
+    let has_shared = get_shared_config_dir().is_some();
+    let expired_at = get_pro_expired_at();
+
+    if is_pro {
+        if expired_at.is_some() {
+            info!("[Trigr] Pro restored during grace period — cancelling shared migration");
+            let _ = set_pro_expired_at(None);
+            set_migration_deferred(false);
+        }
+        return;
+    }
+
+    if !has_shared {
+        // Nothing to migrate. Clear any stale grace state.
+        if expired_at.is_some() {
+            let _ = set_pro_expired_at(None);
+            set_migration_deferred(false);
+        }
+        return;
+    }
+
+    match expired_at {
+        None => {
+            let now = chrono::Utc::now();
+            let _ = set_pro_expired_at(Some(now));
+            let due = now + chrono::Duration::days(GRACE_PERIOD_DAYS);
+            info!(
+                "[Trigr] Pro grace period started for shared config (migrates at {})",
+                due.to_rfc3339()
+            );
+        }
+        Some(t) => {
+            let elapsed = chrono::Utc::now().signed_duration_since(t);
+            if elapsed.num_days() >= GRACE_PERIOD_DAYS {
+                info!("[Trigr] Pro grace expired, migrating shared config to local");
+                match migrate_shared_to_local() {
+                    Ok(()) => {
+                        let _ = set_pro_expired_at(None);
+                        set_migration_deferred(false);
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[Trigr] Migration deferred — shared file unreachable: {}. Will retry.",
+                            e
+                        );
+                        set_migration_deferred(true);
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── File watcher ────────────────────────────────────────────────────────────
 
 /// Set to true before Trigr writes config, cleared after. Prevents self-reload.
