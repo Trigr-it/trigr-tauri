@@ -2585,21 +2585,56 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
     if (e.key === 'Escape' && overlay.classList.contains('is-open')) closeModal();
   });
 
+  // Map data-loc + data-arch attributes to Plausible-friendly event names.
+  // Each button fires a distinct event so each shows up as its own goal in
+  // the Plausible dashboard. data-loc values like 'hero_arm64' carry the
+  // architecture for legacy GA4 reasons; the map collapses those back so
+  // event names read cleanly as 'Download Hero ARM64' rather than
+  // 'Download Hero_arm64 ARM64'.
+  var PLAUSIBLE_LOC_NAME = {
+    nav:              'Nav',
+    hero:             'Hero',
+    hero_arm64:       'Hero',
+    footer_cta:       'Footer',
+    footer_cta_arm64: 'Footer'
+  };
+  var PLAUSIBLE_ARCH_NAME = { x64: 'x64', arm64: 'ARM64' };
+
   var links = document.querySelectorAll('a[href*="setup.exe"]');
   links.forEach(function (a) {
     a.addEventListener('click', function () {
+      var locKey  = a.getAttribute('data-loc')  || 'unknown';
+      var archKey = a.getAttribute('data-arch') || 'unknown';
+      var source  = resolveDownloadSource();
+
       // Fire GA4 download_click event. Defaults-denied consent means this
       // ping is dropped client-side if the user hasn't accepted cookies,
       // so it's safe to call unconditionally.
       try {
         if (typeof gtag === 'function') {
           gtag('event', 'download_click', {
-            location: a.getAttribute('data-loc') || 'unknown',
-            arch:     a.getAttribute('data-arch') || 'unknown',
-            source:   resolveDownloadSource()
+            location: locKey,
+            arch:     archKey,
+            source:   source
           });
         }
       } catch (e) { /* analytics failure must never block the download */ }
+
+      // Fire a Plausible custom event per button. Plausible doesn't require
+      // cookie consent, so this captures every click (including users who
+      // declined the GA4 cookie banner). One distinct event name per button
+      // means each appears as its own goal/line in the Plausible dashboard.
+      // Source is sent as a prop for referrer breakdown within each button.
+      try {
+        if (typeof window.plausible === 'function') {
+          var locName  = PLAUSIBLE_LOC_NAME[locKey]   || locKey;
+          var archName = PLAUSIBLE_ARCH_NAME[archKey] || archKey;
+          window.plausible('Download ' + locName + ' ' + archName, {
+            props: { source: source }
+          });
+        }
+      } catch (e) { /* analytics failure must never block the download */ }
+
       // Do not preventDefault, let the download proceed.
       setTimeout(openModal, 120);
     });
