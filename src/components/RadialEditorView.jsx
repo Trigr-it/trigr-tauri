@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
 import IconPicker from './IconPicker';
 import { friendlyKeyName } from './keyboardLayout';
@@ -58,6 +58,10 @@ export default function RadialEditorView({
   // ── Right-click context menu ──────────────────────────────────────────
   const [ctxMenu, setCtxMenu] = useState(null); // { type, item, index, folderId?, child?, childIndex?, x, y }
   const ctxRef = useRef(null);
+  // Tracks which Copy-to submenu is hovered. Replaces the CSS-only :hover
+  // gate so a layout effect can flip the submenu when it would clip.
+  const [hoveredCopySub, setHoveredCopySub] = useState(false);
+  const copySubmenuRef = useRef(null);
 
   // ── Copy-to-profile overwrite confirmation ───────────────────────────
   const [copyConfirm, setCopyConfirm] = useState(null); // { targetProfile, index, existingLabel }
@@ -87,6 +91,60 @@ export default function RadialEditorView({
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [iconPicker]);
+
+  // Clamp both popovers inside the viewport — both inherit raw clientX/clientY
+  // from the original right-click, so they overflow when opened near an edge.
+  useLayoutEffect(() => {
+    if (!ctxMenu || !ctxRef.current) return;
+    const el = ctxRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+    // Reset submenu hover so a stale state doesn't render off-screen when the
+    // menu reopens in a different location.
+    setHoveredCopySub(false);
+  }, [ctxMenu]);
+
+  // Flip the Copy-to submenu — shift up if bottom would clip, swap to the left
+  // side if right would clip. Mirrors the macro step-type submenu fix.
+  useLayoutEffect(() => {
+    if (!ctxMenu || !hoveredCopySub || !copySubmenuRef.current) return;
+    const sub = copySubmenuRef.current;
+    sub.style.top = '';
+    sub.style.left = '';
+    sub.style.right = '';
+    const rect = sub.getBoundingClientRect();
+    const margin = 8;
+    const bottomOverflow = rect.bottom - (window.innerHeight - margin);
+    if (bottomOverflow > 0) {
+      let shift = bottomOverflow;
+      const newTop = rect.top - shift;
+      if (newTop < margin) shift -= (margin - newTop);
+      sub.style.top = `${-4 - shift}px`;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      sub.style.left = 'auto';
+      sub.style.right = '100%';
+    }
+  }, [hoveredCopySub, ctxMenu]);
+
+  useLayoutEffect(() => {
+    if (!iconPicker || !iconPickerRef.current) return;
+    const el = iconPickerRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
   }, [iconPicker]);
 
   // ── Popover for interactive forms (rename input, picker) ──────────────
@@ -658,19 +716,25 @@ export default function RadialEditorView({
               {otherProfiles.length > 0 && (
                 <>
                   <div className="assign-ctx-divider" />
-                  <div className="assign-ctx-sub">
+                  <div
+                    className="assign-ctx-sub"
+                    onMouseEnter={() => setHoveredCopySub(true)}
+                    onMouseLeave={() => setHoveredCopySub(false)}
+                  >
                     <button className="assign-ctx-item" type="button">Copy to {'\u25b8'}</button>
-                    <div className="assign-ctx-submenu">
-                      {otherProfiles.map(p => (
-                        <button key={p} className="assign-ctx-item" type="button" onClick={() => {
-                          const result = onCopyRadialSegmentToProfile?.(p, ctxMenu.index);
-                          if (result?.conflict) {
-                            setCopyConfirm({ targetProfile: p, index: ctxMenu.index, existingLabel: result.existingLabel });
-                          }
-                          setCtxMenu(null);
-                        }}>{p}</button>
-                      ))}
-                    </div>
+                    {hoveredCopySub && (
+                      <div className="assign-ctx-submenu" ref={copySubmenuRef}>
+                        {otherProfiles.map(p => (
+                          <button key={p} className="assign-ctx-item" type="button" onClick={() => {
+                            const result = onCopyRadialSegmentToProfile?.(p, ctxMenu.index);
+                            if (result?.conflict) {
+                              setCopyConfirm({ targetProfile: p, index: ctxMenu.index, existingLabel: result.existingLabel });
+                            }
+                            setCtxMenu(null);
+                          }}>{p}</button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -703,19 +767,25 @@ export default function RadialEditorView({
               {otherProfiles.length > 0 && (
                 <>
                   <div className="assign-ctx-divider" />
-                  <div className="assign-ctx-sub">
+                  <div
+                    className="assign-ctx-sub"
+                    onMouseEnter={() => setHoveredCopySub(true)}
+                    onMouseLeave={() => setHoveredCopySub(false)}
+                  >
                     <button className="assign-ctx-item" type="button">Copy to {'\u25b8'}</button>
-                    <div className="assign-ctx-submenu">
-                      {otherProfiles.map(p => (
-                        <button key={p} className="assign-ctx-item" type="button" onClick={() => {
-                          const result = onCopyRadialSegmentToProfile?.(p, ctxMenu.index);
-                          if (result?.conflict) {
-                            setCopyConfirm({ targetProfile: p, index: ctxMenu.index, existingLabel: result.existingLabel });
-                          }
-                          setCtxMenu(null);
-                        }}>{p}</button>
-                      ))}
-                    </div>
+                    {hoveredCopySub && (
+                      <div className="assign-ctx-submenu" ref={copySubmenuRef}>
+                        {otherProfiles.map(p => (
+                          <button key={p} className="assign-ctx-item" type="button" onClick={() => {
+                            const result = onCopyRadialSegmentToProfile?.(p, ctxMenu.index);
+                            if (result?.conflict) {
+                              setCopyConfirm({ targetProfile: p, index: ctxMenu.index, existingLabel: result.existingLabel });
+                            }
+                            setCtxMenu(null);
+                          }}>{p}</button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

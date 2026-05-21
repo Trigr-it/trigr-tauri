@@ -1223,8 +1223,12 @@
   position: relative;
 }
 
+/* Visibility is driven by the parent's hoveredAssignSub state (conditional
+   render in JSX) so a layout effect can measure and flip if the default
+   position would clip the viewport. The CSS-only :hover trigger couldn't
+   reposition. */
 .assign-ctx-submenu {
-  display: none;
+  display: flex;
   position: absolute;
   left: 100%;
   top: -4px;
@@ -1237,10 +1241,6 @@
   flex-direction: column;
   gap: 1px;
   z-index: 1001;
-}
-
-.assign-ctx-sub:hover > .assign-ctx-submenu {
-  display: flex;
 }
 
 /* Inline rename input */

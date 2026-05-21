@@ -760,6 +760,7 @@ function WindowPicker({ value, onChange }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [windowList, setWindowList] = useState(null);
   const wrapRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -769,6 +770,28 @@ function WindowPicker({ value, onChange }) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [dropdownOpen]);
+
+  // Flip the dropdown upward when its default top:100% position would clip the
+  // viewport bottom. The picker often sits in a sub-row near the bottom of the
+  // macro editor, so the default position frequently overflows. Remeasures
+  // when windowList loads (placeholder → real rows changes the height).
+  useLayoutEffect(() => {
+    if (!dropdownOpen || !dropdownRef.current) return;
+    const el = dropdownRef.current;
+    // Clear any prior inline overrides so measurement reflects the default.
+    el.style.top = '';
+    el.style.bottom = '';
+    el.style.marginTop = '';
+    el.style.marginBottom = '';
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = 'auto';
+      el.style.bottom = '100%';
+      el.style.marginTop = '0';
+      el.style.marginBottom = '4px';
+    }
+  }, [dropdownOpen, windowList]);
 
   const handlePickClick = async () => {
     if (dropdownOpen) { setDropdownOpen(false); return; }
@@ -824,7 +847,7 @@ function WindowPicker({ value, onChange }) {
         >✕</button>
       )}
       {dropdownOpen && (
-        <div className="pick-window-dropdown">
+        <div className="pick-window-dropdown" ref={dropdownRef}>
           {windowList === null ? (
             <div className="pick-window-loading">Loading windows…</div>
           ) : windowList.length === 0 ? (
@@ -900,15 +923,18 @@ function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced })
 function MacroStepTypeMenu({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0, btnTop: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
+  // Captures whichever submenu is currently rendered (only one at a time, since
+  // hovered === entry.label gates the JSX render below).
+  const submenuRef = useRef(null);
 
   const handleToggle = () => {
     if (open) { setOpen(false); return; }
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
+      setPos({ top: r.bottom + 4, left: r.left, btnTop: r.top });
     }
     setOpen(true);
     setHovered(null);
@@ -936,6 +962,57 @@ function MacroStepTypeMenu({ value, onChange }) {
       window.removeEventListener('resize', onScroll);
     };
   }, [open]);
+
+  // Reposition parent menu after it renders. Flip above the trigger button if
+  // the menu would clip the viewport bottom; shift left if it would clip the
+  // right edge. Mirrors the pattern in TextExpansions Insert/Key pickers.
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current) return;
+    const popup = menuRef.current;
+    const rect = popup.getBoundingClientRect();
+    const margin = 8;
+    let top = pos.top;
+    let left = pos.left;
+    if (rect.bottom > window.innerHeight - margin) {
+      top = pos.btnTop - rect.height - 4;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      left = window.innerWidth - rect.width - margin;
+    }
+    popup.style.top = `${Math.max(margin, top)}px`;
+    popup.style.left = `${Math.max(margin, left)}px`;
+  }, [open, pos]);
+
+  // Reposition the active submenu when hover changes. Default is top:-4
+  // left:100% (CSS). Shift up by the bottom overflow (clamping so the submenu
+  // top stays inside the viewport); swap to right:100% if the right edge clips.
+  useLayoutEffect(() => {
+    if (!open || !hovered || !submenuRef.current) return;
+    const sub = submenuRef.current;
+    // Clear any prior inline overrides so measurement reflects the default
+    // position before we decide whether to flip.
+    sub.style.top = '';
+    sub.style.left = '';
+    sub.style.right = '';
+    sub.style.marginLeft = '';
+    sub.style.marginRight = '';
+    const rect = sub.getBoundingClientRect();
+    const margin = 8;
+    const bottomOverflow = rect.bottom - (window.innerHeight - margin);
+    if (bottomOverflow > 0) {
+      let shift = bottomOverflow;
+      // Don't push the submenu top above the viewport top.
+      const newTop = rect.top - shift;
+      if (newTop < margin) shift -= (margin - newTop);
+      sub.style.top = `${-4 - shift}px`;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      sub.style.left = 'auto';
+      sub.style.right = '100%';
+      sub.style.marginLeft = '0';
+      sub.style.marginRight = '-1px';
+    }
+  }, [hovered, open]);
 
   const pick = (label) => {
     onChange(label);
@@ -987,34 +1064,38 @@ function MacroStepTypeMenu({ value, onChange }) {
             }
             // group
             const isCurrentGroup = entry.label === currentGroup;
+            const isHovered = hovered === entry.label;
             return (
               <div
                 key={entry.label}
                 className="macro-type-sub"
                 onMouseEnter={() => setHovered(entry.label)}
+                onMouseLeave={() => setHovered(prev => prev === entry.label ? null : prev)}
               >
                 <button
                   type="button"
-                  className={`macro-type-item macro-type-item-parent${isCurrentGroup ? ' macro-type-item-current' : ''}${hovered === entry.label ? ' macro-type-item-hover' : ''}`}
+                  className={`macro-type-item macro-type-item-parent${isCurrentGroup ? ' macro-type-item-current' : ''}${isHovered ? ' macro-type-item-hover' : ''}`}
                   role="menuitem"
                   aria-haspopup="menu"
                 >
                   <span>{entry.label}</span>
                   <span className="macro-type-arrow" aria-hidden="true">▸</span>
                 </button>
-                <div className="macro-type-submenu" role="menu">
-                  {entry.items.map(item => (
-                    <button
-                      key={item}
-                      type="button"
-                      className={`macro-type-item${value === item ? ' macro-type-item-current' : ''}`}
-                      onClick={() => pick(item)}
-                      role="menuitem"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
+                {isHovered && (
+                  <div className="macro-type-submenu" role="menu" ref={submenuRef}>
+                    {entry.items.map(item => (
+                      <button
+                        key={item}
+                        type="button"
+                        className={`macro-type-item${value === item ? ' macro-type-item-current' : ''}`}
+                        onClick={() => pick(item)}
+                        role="menuitem"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

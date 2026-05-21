@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -113,6 +113,21 @@ function ProfileAccordion({
     };
   }, [contextMenu]);
 
+  // Clamp the profile right-click menu inside the viewport — raw clientX/clientY
+  // overflow when right-clicking near the sidebar's bottom or right edge.
+  useLayoutEffect(() => {
+    if (!contextMenu || !ctxRef.current) return;
+    const el = ctxRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+  }, [contextMenu]);
+
   // Close link picker dropdown on outside click
   useEffect(() => {
     if (!linkDropdownOpen) return;
@@ -124,6 +139,21 @@ function ProfileAccordion({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [linkDropdownOpen]);
+
+  // Flip the portal'd link-to-app dropdown above the trigger button when its
+  // default below-button position would clip the viewport. Remeasures on
+  // linkWindowList load so the placeholder→real-rows height change is caught.
+  useLayoutEffect(() => {
+    if (!linkDropdownOpen || !linkDropdownPos || !linkDropdownPortalRef.current) return;
+    const el = linkDropdownPortalRef.current;
+    el.style.top = `${linkDropdownPos.top}px`;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      const flipped = linkDropdownPos.btnTop - rect.height - 4;
+      el.style.top = `${Math.max(margin, flipped)}px`;
+    }
+  }, [linkDropdownOpen, linkDropdownPos, linkWindowList]);
 
   // Dismiss import prompt on outside click or Escape
   useEffect(() => {
@@ -429,7 +459,7 @@ function ProfileAccordion({
                   const rowEl = linkDropdownRef.current;
                   if (rowEl) {
                     const rect = rowEl.getBoundingClientRect();
-                    setLinkDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+                    setLinkDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width, btnTop: rect.top });
                   }
                   setLinkDropdownOpen(true);
                   setLinkWindowList([]);
@@ -684,6 +714,11 @@ export default function Sidebar({
   const [renameVal, setRenameVal] = useState('');
   const [clearing, setClearing] = useState(null); // { combo, keyId }
   const assignCtxRef = useRef(null);
+  // Which assignment-submenu is hovered ('copy' | 'move' | null). Replaces the
+  // old CSS-only :hover trigger so a layout effect can flip the submenu when
+  // its default left:100%/top:-4px position would clip the viewport.
+  const [hoveredAssignSub, setHoveredAssignSub] = useState(null);
+  const assignCtxSubmenuRef = useRef(null);
 
   useEffect(() => {
     if (!assignCtx) return;
@@ -693,6 +728,50 @@ export default function Sidebar({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [assignCtx]);
+
+  // Clamp both right-click context menus inside the viewport. Right-clicks
+  // near the bottom-right corner of the sidebar would otherwise overflow.
+  useLayoutEffect(() => {
+    if (!assignCtx || !assignCtxRef.current) return;
+    const el = assignCtxRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+    // Reset hover state so a stale submenu doesn't render off-screen when the
+    // user re-opens the menu in a different location.
+    setHoveredAssignSub(null);
+  }, [assignCtx]);
+
+  // Flip the active assignment submenu — shift up if bottom would clip, swap
+  // to the left side if right would clip. Mirrors the macro step-type submenu
+  // fix exactly.
+  useLayoutEffect(() => {
+    if (!assignCtx || !hoveredAssignSub || !assignCtxSubmenuRef.current) return;
+    const sub = assignCtxSubmenuRef.current;
+    sub.style.top = '';
+    sub.style.left = '';
+    sub.style.right = '';
+    sub.style.marginLeft = '';
+    sub.style.marginRight = '';
+    const rect = sub.getBoundingClientRect();
+    const margin = 8;
+    const bottomOverflow = rect.bottom - (window.innerHeight - margin);
+    if (bottomOverflow > 0) {
+      let shift = bottomOverflow;
+      const newTop = rect.top - shift;
+      if (newTop < margin) shift -= (margin - newTop);
+      sub.style.top = `${-4 - shift}px`;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      sub.style.left = 'auto';
+      sub.style.right = '100%';
+    }
+  }, [hoveredAssignSub, assignCtx]);
 
   useEffect(() => {
     setActiveTab('All');
@@ -1283,41 +1362,53 @@ export default function Sidebar({
           {otherProfiles.length > 0 && (
             <>
               <div className="assign-ctx-divider" />
-              <div className="assign-ctx-sub">
+              <div
+                className="assign-ctx-sub"
+                onMouseEnter={() => setHoveredAssignSub('copy')}
+                onMouseLeave={() => setHoveredAssignSub(prev => prev === 'copy' ? null : prev)}
+              >
                 <button className="assign-ctx-item" type="button">Copy to ▸</button>
-                <div className="assign-ctx-submenu">
-                  {otherProfiles.map(p => (
-                    <button
-                      key={p}
-                      className="assign-ctx-item"
-                      type="button"
-                      onClick={() => {
-                        onCopyToProfile?.(p, assignCtx.combo, assignCtx.keyId);
-                        setAssignCtx(null);
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
+                {hoveredAssignSub === 'copy' && (
+                  <div className="assign-ctx-submenu" ref={assignCtxSubmenuRef}>
+                    {otherProfiles.map(p => (
+                      <button
+                        key={p}
+                        className="assign-ctx-item"
+                        type="button"
+                        onClick={() => {
+                          onCopyToProfile?.(p, assignCtx.combo, assignCtx.keyId);
+                          setAssignCtx(null);
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="assign-ctx-sub">
+              <div
+                className="assign-ctx-sub"
+                onMouseEnter={() => setHoveredAssignSub('move')}
+                onMouseLeave={() => setHoveredAssignSub(prev => prev === 'move' ? null : prev)}
+              >
                 <button className="assign-ctx-item" type="button">Move to ▸</button>
-                <div className="assign-ctx-submenu">
-                  {otherProfiles.map(p => (
-                    <button
-                      key={p}
-                      className="assign-ctx-item"
-                      type="button"
-                      onClick={() => {
-                        onMoveToProfile?.(p, assignCtx.combo, assignCtx.keyId);
-                        setAssignCtx(null);
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
+                {hoveredAssignSub === 'move' && (
+                  <div className="assign-ctx-submenu" ref={assignCtxSubmenuRef}>
+                    {otherProfiles.map(p => (
+                      <button
+                        key={p}
+                        className="assign-ctx-item"
+                        type="button"
+                        onClick={() => {
+                          onMoveToProfile?.(p, assignCtx.combo, assignCtx.keyId);
+                          setAssignCtx(null);
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

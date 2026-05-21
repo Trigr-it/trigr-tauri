@@ -360,6 +360,21 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     };
   }, [fillInRename]);
 
+  // Flip the fill-in rename popover up / clamp left if its default position
+  // (anchored at the chip's bottom-left) would clip the viewport.
+  useLayoutEffect(() => {
+    if (!fillInRename || !fillInRenameRef.current) return;
+    const el = fillInRenameRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+  }, [fillInRename]);
+
   const notify = useCallback(() => {
     const html = editorRef.current.innerHTML;
     onChange({ html, text: htmlToPlainText(html) });
@@ -1223,6 +1238,49 @@ export default function TextExpansions({
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
+  }, [itemContextMenu]);
+
+  // Flip the category colour popover up / clamp left if its default position
+  // (anchored below the trigger tab) would clip the viewport.
+  useLayoutEffect(() => {
+    if (!catColourPopover || !catColourPopoverRef.current) return;
+    const el = catColourPopoverRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+  }, [catColourPopover]);
+
+  // Clamp both right-click context menus inside the viewport — raw clientX /
+  // clientY overflow when right-clicking near the edge of the panel.
+  useLayoutEffect(() => {
+    if (!catContextMenu || !catContextMenuRef.current) return;
+    const el = catContextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+  }, [catContextMenu]);
+
+  useLayoutEffect(() => {
+    if (!itemContextMenu || !itemContextMenuRef.current) return;
+    const el = itemContextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
   }, [itemContextMenu]);
 
   // Auto-select all text when inline rename input appears

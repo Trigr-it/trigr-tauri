@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Search, SearchX } from 'lucide-react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
@@ -25,6 +25,7 @@ function ClipboardExcludedAppsEditor({ apps, onChange }) {
   const [pickerOpen, setPickerOpen]     = useState(false);
   const [openWindows, setOpenWindows]   = useState(null);
   const pickerRef = useRef(null);
+  const pickerDropdownRef = useRef(null);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -34,6 +35,27 @@ function ClipboardExcludedAppsEditor({ apps, onChange }) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [pickerOpen]);
+
+  // Flip the "Pick from open apps" dropdown upward when its default below-button
+  // position would clip the viewport. The clipboard section sits mid-panel, so
+  // the picker often opens near the bottom of the visible settings area.
+  // Remeasures when openWindows loads (placeholder → real list changes height).
+  useLayoutEffect(() => {
+    if (!pickerOpen || !pickerDropdownRef.current) return;
+    const el = pickerDropdownRef.current;
+    el.style.top = '';
+    el.style.bottom = '';
+    el.style.marginTop = '';
+    el.style.marginBottom = '';
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = 'auto';
+      el.style.bottom = '100%';
+      el.style.marginTop = '0';
+      el.style.marginBottom = '4px';
+    }
+  }, [pickerOpen, openWindows]);
 
   const handleRemove = (app) => {
     onChange?.((apps || []).filter(a => a !== app));
@@ -126,7 +148,7 @@ function ClipboardExcludedAppsEditor({ apps, onChange }) {
             Pick from open apps ▾
           </button>
           {pickerOpen && (
-            <div className="settings-excluded-picker-dropdown">
+            <div className="settings-excluded-picker-dropdown" ref={pickerDropdownRef}>
               {openWindows === null ? (
                 <div className="settings-excluded-picker-loading">Loading…</div>
               ) : openWindows.length === 0 ? (

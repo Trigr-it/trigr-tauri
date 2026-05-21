@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import './TemplatesPanel.css';
 
 // ── Starter template packs ────────────────────────────────────────────────
@@ -91,6 +91,7 @@ export default function TemplatesPanel({ activeProfile, onImportTemplate, onImpo
   const [cadSelectedExe, setCadSelectedExe] = useState(null);
   const [cadDropdownOpen, setCadDropdownOpen] = useState(false);
   const cadDropdownRef = useRef(null);
+  const cadDropdownListRef = useRef(null);
 
   useEffect(() => {
     if (!cadDropdownOpen) return;
@@ -100,6 +101,25 @@ export default function TemplatesPanel({ activeProfile, onImportTemplate, onImpo
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [cadDropdownOpen]);
+
+  // Flip the CAD app-picker upward when its default below-button position
+  // would clip the viewport. Remeasures when cadWindowList loads.
+  useLayoutEffect(() => {
+    if (!cadDropdownOpen || !cadDropdownListRef.current) return;
+    const el = cadDropdownListRef.current;
+    el.style.top = '';
+    el.style.bottom = '';
+    el.style.marginTop = '';
+    el.style.marginBottom = '';
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = 'auto';
+      el.style.bottom = '100%';
+      el.style.marginTop = '0';
+      el.style.marginBottom = '4px';
+    }
+  }, [cadDropdownOpen, cadWindowList]);
 
   return (
     <div className="tpl-panel">
@@ -192,7 +212,7 @@ export default function TemplatesPanel({ activeProfile, onImportTemplate, onImpo
                     </button>
                   )}
                   {cadDropdownOpen && !cadSelectedExe && (
-                    <div className="tpl-pick-dropdown">
+                    <div className="tpl-pick-dropdown" ref={cadDropdownListRef}>
                       {cadWindowList.length === 0 ? (
                         <div className="tpl-pick-loading">Loading windows…</div>
                       ) : (

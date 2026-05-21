@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Disc, Keyboard as KeyboardIcon } from 'lucide-react';
 import './KeyboardCanvas.css';
 import {
@@ -206,6 +206,21 @@ export default function KeyboardCanvas({
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, [keyCtx]);
+
+  // Clamp the right-click context menu inside the viewport — raw clientX /
+  // clientY overflow when right-clicking near the edge of the keyboard canvas.
+  useLayoutEffect(() => {
+    if (!keyCtx || !keyCtxRef.current) return;
+    const el = keyCtxRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
   }, [keyCtx]);
 
   useEffect(() => {

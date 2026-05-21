@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare, Sun, Moon, Monitor, Check } from 'lucide-react';
 import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
@@ -85,6 +85,21 @@ export default function TitleBar({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [templatesOpen, tplCtxMenu]);
+
+  // Clamp the templates right-click context menu inside the viewport — raw
+  // clientX / clientY overflow when right-clicking near the right edge.
+  useLayoutEffect(() => {
+    if (!tplCtxMenu || !tplCtxRef.current) return;
+    const el = tplCtxRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+  }, [tplCtxMenu]);
 
   const handleDismissTemplates = () => {
     setTemplatesOpen(false);

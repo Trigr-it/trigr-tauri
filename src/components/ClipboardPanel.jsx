@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Pin, PinOff, Link2 } from 'lucide-react';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
@@ -277,6 +277,21 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, [ctxMenu]);
+
+  // Clamp the right-click context menu inside the viewport — raw clientX /
+  // clientY overflow when right-clicking near the edge of the panel.
+  useLayoutEffect(() => {
+    if (!ctxMenu || !ctxRef.current) return;
+    const el = ctxRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
   }, [ctxMenu]);
 
   // Cancel edit when selection changes

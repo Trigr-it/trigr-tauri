@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -400,6 +400,7 @@ function TranslateLangPicker({ value, onChange }) {
   const wrapRef  = useRef(null);
   const inputRef = useRef(null);
   const listRef  = useRef(null);
+  const popoverRef = useRef(null);
 
   const selected = TRANSLATE_LANGS.find(l => l.code === value) || TRANSLATE_LANGS.find(l => l.code === 'en');
 
@@ -432,6 +433,21 @@ function TranslateLangPicker({ value, onChange }) {
 
   // Reset highlight to top when filter changes
   useEffect(() => { setHighlight(0); }, [filter]);
+
+  // Flip the language popover upward when its default below-trigger position
+  // would clip the viewport.
+  useLayoutEffect(() => {
+    if (!open || !popoverRef.current) return;
+    const el = popoverRef.current;
+    el.style.top = '';
+    el.style.bottom = '';
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = 'auto';
+      el.style.bottom = 'calc(100% + 4px)';
+    }
+  }, [open, filtered]);
 
   // Scroll highlighted row into view
   useEffect(() => {
@@ -476,7 +492,7 @@ function TranslateLangPicker({ value, onChange }) {
         <span className="stp-lang-trigger-caret">▾</span>
       </button>
       {open && (
-        <div className="stp-lang-popover">
+        <div className="stp-lang-popover" ref={popoverRef}>
           <SearchBar
             ref={inputRef}
             className="stp-lang-search-bar compact"
@@ -652,6 +668,49 @@ export default function SearchTemplatesPanel({
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [qaItemContextMenu]);
+
+  // Flip the category colour popover up / clamp left if its default position
+  // (anchored below the trigger tab) would clip the viewport.
+  useLayoutEffect(() => {
+    if (!catColourPopover || !catColourPopoverRef.current) return;
+    const el = catColourPopoverRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+  }, [catColourPopover]);
+
+  // Clamp both right-click context menus inside the viewport — raw clientX /
+  // clientY overflow when right-clicking near the edge of the panel.
+  useLayoutEffect(() => {
+    if (!catContextMenu || !catContextMenuRef.current) return;
+    const el = catContextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
+  }, [catContextMenu]);
+
+  useLayoutEffect(() => {
+    if (!qaItemContextMenu || !qaItemContextMenuRef.current) return;
+    const el = qaItemContextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    if (rect.right > window.innerWidth - margin) {
+      el.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+    }
   }, [qaItemContextMenu]);
 
   // Auto-select rename input text
