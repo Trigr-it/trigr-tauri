@@ -1,24 +1,55 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import './UpgradeModal.css';
 
-// Features that extend into the planned v2.0 Teams tier. The modal shows an
-// extra paragraph for these, so Pro buyers see the upgrade path early.
+const WEB3FORMS_ACCESS_KEY = '7f4062ca-0332-4b78-a215-04feaf7dc9ba';
+
 const TEAMS_LADDER_FEATURES = new Set([
   'Shared config (cross-machine sync)',
   'App-specific profiles',
   'Global variables',
 ]);
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function UpgradeModal({ featureName, onClose }) {
-  const subject = encodeURIComponent('Trigr Pro beta key request');
-  const body = encodeURIComponent(
-    `Hi,\n\nI'd like a Pro beta key for Trigr. I want to try the Pro features during the 30-day testing window.\n\nThanks`
-  );
-  const mailto = `mailto:admin@usetrigr.com?subject=${subject}&body=${body}`;
   const isTeamsLadder = TEAMS_LADDER_FEATURES.has(featureName);
   const panelRef = useRef(null);
   useModalKeyboard(panelRef, onClose);
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState('idle');
+
+  const emailValid = EMAIL_RE.test(email.trim());
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!emailValid || status === 'submitting') return;
+    setStatus('submitting');
+    try {
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_ACCESS_KEY,
+          subject: `Trigr Pro beta key request from ${email.trim()}`,
+          email: email.trim(),
+          from_name: 'Trigr Beta Request',
+          message: `${email.trim()} requested a Pro beta key from inside the Trigr app.\n\nReply to this email with their TRIGR-PRO key.`,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.success) {
+        setStatus('success');
+      } else {
+        setStatus('error');
+      }
+    } catch (err) {
+      setStatus('error');
+    }
+  }
 
   return (
     <div
@@ -58,22 +89,49 @@ export default function UpgradeModal({ featureName, onClose }) {
         )}
         <p className="upgrade-body">
           We're early in beta and your feedback genuinely shapes what ships next. Beta keys are
-          free for 30 days. Email us and we'll send one back within a few minutes.
+          free for 30 days. Drop your email and we'll send your key shortly.
         </p>
 
-        <button
-          className="upgrade-cta-btn"
-          onClick={() => { window.location.href = mailto; }}
-          type="button"
-        >
-          Request a Beta Key
-        </button>
+        {status === 'success' ? (
+          <div className="upgrade-success" role="status" aria-live="polite">
+            <p>
+              Got it. We'll send your beta key shortly.
+            </p>
+          </div>
+        ) : (
+          <form className="upgrade-form" onSubmit={handleSubmit} noValidate>
+            <input
+              type="email"
+              className="upgrade-email-input"
+              placeholder="you@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              disabled={status === 'submitting'}
+              autoFocus
+              required
+              aria-label="Email address"
+            />
+            <button
+              type="submit"
+              className="upgrade-cta-btn"
+              disabled={!emailValid || status === 'submitting'}
+            >
+              {status === 'submitting' ? 'Sending…' : 'Request a Beta Key'}
+            </button>
+            {status === 'error' && (
+              <p className="upgrade-status-error" role="alert">
+                Couldn't send. Check your connection and try again.
+              </p>
+            )}
+          </form>
+        )}
+
         <button
           className="upgrade-skip-link"
           onClick={onClose}
           type="button"
         >
-          Maybe later
+          {status === 'success' ? 'Close' : 'Maybe later'}
         </button>
       </div>
     </div>

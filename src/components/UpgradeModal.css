@@ -119,6 +119,86 @@
   transform: translateY(0);
 }
 
+.upgrade-cta-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.15);
+}
+
+.upgrade-cta-btn:disabled:hover {
+  transform: none;
+  background: var(--btn-primary-bg);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.15);
+}
+
+/* ── Inline form (email input + submit) ───────────────────────────────── */
+
+.upgrade-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.upgrade-email-input {
+  width: 100%;
+  height: 42px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0 14px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+
+.upgrade-email-input::placeholder {
+  color: var(--text-muted);
+}
+
+.upgrade-email-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
+}
+
+.upgrade-email-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.upgrade-status-error {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: #ef4444;
+  text-align: left;
+  line-height: 1.4;
+}
+
+/* ── Success state ─────────────────────────────────────────────────────── */
+
+.upgrade-success {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.upgrade-success p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  text-align: center;
+}
+
 /* ── Skip ──────────────────────────────────────────────────────────────── */
 
 .upgrade-skip-link {
