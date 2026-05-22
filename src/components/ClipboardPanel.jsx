@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { Pin, PinOff, Link2 } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { Pin, PinOff, Link2, Maximize2 } from 'lucide-react';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -33,6 +34,34 @@ function ImageThumb({ id, className, zoomable }) {
 }
 
 const ALL_TAGS = ['All', 'Text', 'Image', 'Number', 'Link', 'Email', 'Colour'];
+
+// ── Local-date helpers (used by the date-bucket sidebar) ──────────────────
+// SQLite returns `DATE(timestamp, 'localtime')` as 'YYYY-MM-DD'. We mirror
+// that format on the JS side so item.timestamp → localDateKey can be matched
+// against a sidebar selection without timezone drift.
+// Per [[feedback_sqlite_localtime_pattern]] both sides must use local time.
+
+function localDateKeyFromDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function itemLocalDateKey(item) {
+  try { return localDateKeyFromDate(new Date(item.timestamp)); }
+  catch { return ''; }
+}
+
+function formatDateSidebarLabel(dateKey, todayKey) {
+  if (dateKey === todayKey) return 'Today';
+  // Compute yesterday's key from today's key (string math via Date)
+  const t = new Date(todayKey + 'T00:00');
+  const y = new Date(t); y.setDate(t.getDate() - 1);
+  if (dateKey === localDateKeyFromDate(y)) return 'Yesterday';
+  const d = new Date(dateKey + 'T00:00');
+  const month = d.toLocaleString(undefined, { month: 'short' });
+  const day = d.getDate();
+  if (d.getFullYear() !== t.getFullYear()) return `${day} ${month} ${d.getFullYear()}`;
+  return `${day} ${month}`;
+}
 
 // ── Timeline grouping ──────────────────────────────────────────────────────
 
@@ -191,6 +220,13 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
   const [sourceApps, setSourceApps] = useState([]);
   const [filterApp, setFilterApp] = useState('');
   const [filterTag, setFilterTag] = useState('All');
+  // Date sidebar state. selectedDate: 'all' (timeline grouping) | 'pinned'
+  // (all pinned items) | 'YYYY-MM-DD' (single local date).
+  const [dateBuckets, setDateBuckets] = useState({ dates: [], pinned_count: 0 });
+  const [selectedDate, setSelectedDate] = useState('all');
+  // Re-derived once a minute so the "Today" / "Yesterday" labels refresh on
+  // midnight rollover without requiring the user to reopen the panel.
+  const [todayKey, setTodayKey] = useState(() => localDateKeyFromDate(new Date()));
   const [selectedId, setSelectedId] = useState(null);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
@@ -203,7 +239,11 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
   const [ocrLoading, setOcrLoading]   = useState(false);
   const [ocrError, setOcrError]       = useState(null);
   const [imageColors, setImageColors] = useState([]);
-  const [imageZoomMode, setImageZoomMode] = useState('fit'); // 'fit' | 'zoom'
+  // Lightbox state — replaces the previous in-pane fit/zoom toggle. Click the
+  // image in the detail pane to open a full-screen overlay with ZoomableImage
+  // (wheel zoom + drag pan). Close on ESC, backdrop click, or X.
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const [copyToast, setCopyToast]     = useState(null); // for swatch hex-copy feedback
   const ctxRef = useRef(null);
   const gridRef = useRef(null);
@@ -232,10 +272,21 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
 
   const PER_PAGE = 50;
 
-  const loadHistory = useCallback(async (p = 1, append = false) => {
+  // Filter refs so pagination (handleScroll) can read the current toolbar
+  // filter values without re-creating loadHistory whenever they change.
+  const filtersRef = useRef({ date: 'all', app: '', tag: 'All', search: '' });
+
+  const loadHistory = useCallback(async (p = 1, append = false, overrideFilters) => {
     setLoading(true);
     try {
-      const result = await window.electronAPI?.getClipboardHistory(p, PER_PAGE);
+      const f = overrideFilters || filtersRef.current;
+      const filters = {
+        dateFilter: f.date === 'all' ? null : f.date,
+        appFilter: f.app || null,
+        tagFilter: f.tag && f.tag !== 'All' ? f.tag : null,
+        search: f.search?.trim() || null,
+      };
+      const result = await window.electronAPI?.getClipboardHistory(p, PER_PAGE, filters);
       if (result) {
         setItems(prev => append ? [...prev, ...result.items] : result.items);
         setTotal(result.total);
@@ -245,15 +296,57 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     setLoading(false);
   }, []);
 
+  const loadDateBuckets = useCallback(() => {
+    window.electronAPI?.getClipboardDateBuckets?.().then(b => {
+      if (b) setDateBuckets(b);
+    });
+  }, []);
+
   useEffect(() => {
-    loadHistory(1);
+    // One-time mount side effects (source apps, storage size, date buckets).
+    // History loading is owned by the selectedDate effect below — it fires on
+    // mount for the initial 'all' view AND on every sidebar bucket change.
     window.electronAPI?.getDistinctSourceApps?.().then(apps => {
       if (apps) setSourceApps(apps);
     });
     window.electronAPI?.getClipboardStorageSize?.().then(size => {
       if (size != null) setStorageSize(size);
     });
-  }, [loadHistory]);
+    loadDateBuckets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Reload from the backend whenever ANY toolbar filter changes — sidebar
+  // bucket, app dropdown, tag pill, or search input. Without backend filtering
+  // the client-side checks would only see the loaded page, missing matches in
+  // unscrolled history. Search input is debounced ~200ms so each keystroke
+  // doesn't fire its own SQL query.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const next = { date: selectedDate, app: filterApp, tag: filterTag, search };
+      filtersRef.current = next;
+      loadHistory(1, false, next);
+    }, search ? 200 : 0);
+    return () => clearTimeout(timer);
+    // loadHistory is stable; we re-fire on any filter change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, filterApp, filterTag, search]);
+
+  // Midnight rollover: tick every minute, refresh buckets + Today label on
+  // local date change. Counts otherwise stay accurate via the new-item handler.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const k = localDateKeyFromDate(new Date());
+      setTodayKey(prev => {
+        if (prev !== k) {
+          loadDateBuckets();
+          return k;
+        }
+        return prev;
+      });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [loadDateBuckets]);
 
   useEffect(() => {
     window.electronAPI?.onClipboardNewItem((item) => {
@@ -266,6 +359,16 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
       if (item.source_app) {
         setSourceApps(prev => prev.includes(item.source_app) ? prev : [...prev, item.source_app].sort());
       }
+      // Update sidebar bucket counts for the new item's date.
+      setDateBuckets(prev => {
+        const key = itemLocalDateKey(item);
+        if (!key) return prev;
+        const existing = prev.dates.find(d => d.date === key);
+        const dates = existing
+          ? prev.dates.map(d => d.date === key ? { ...d, count: d.count + 1 } : d)
+          : [{ date: key, count: 1 }, ...prev.dates].sort((a, b) => b.date.localeCompare(a.date));
+        return { ...prev, dates };
+      });
     });
     return () => window.electronAPI?.removeAllListeners('clipboard-new-item');
   }, []);
@@ -300,10 +403,16 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     setEditText('');
   }, [selectedId]);
 
-  // Escape key: cancel edit if editing, otherwise deselect
+  // Escape key: close lightbox first if open, then cancel edit, then deselect.
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key !== 'Escape') return;
+      if (lightboxOpen) {
+        setLightboxOpen(false);
+        setLightboxSrc(null);
+        e.stopPropagation();
+        return;
+      }
       if (editing) {
         setEditing(false);
         setEditText('');
@@ -313,7 +422,7 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [editing, selectedId]);
+  }, [editing, selectedId, lightboxOpen]);
 
   // Copy a history item back onto the system clipboard. The user is expected to
   // switch to their target app and paste with Ctrl+V themselves — the in-place
@@ -401,7 +510,8 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     setOcrError(null);
     setOcrLoading(false);
     setImageColors([]);
-    setImageZoomMode('fit');
+    setLightboxOpen(false);
+    setLightboxSrc(null);
   }, [selectedId]);
 
   // Fetch dominant colours when an image is selected.
@@ -421,13 +531,17 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
       setItems(prev => prev.filter(i => i.id !== id));
       setTotal(t => t - 1);
       if (selectedId === id) setSelectedId(null);
+      loadDateBuckets();
     }
     setCtxMenu(null);
   };
 
   const handlePin = async (id, pinned) => {
     const ok = await window.electronAPI?.pinClipboardItem(id, !pinned);
-    if (ok) { setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !pinned } : i)); }
+    if (ok) {
+      setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !pinned } : i));
+      loadDateBuckets();
+    }
     setCtxMenu(null);
   };
 
@@ -435,6 +549,8 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     const ok = await window.electronAPI?.clearClipboardHistory();
     if (ok) {
       setItems([]); setTotal(0); setSelectedId(null);
+      setDateBuckets({ dates: [], pinned_count: 0 });
+      setSelectedDate('all');
       // Refresh storage size so the toolbar reflects post-VACUUM file size,
       // not the stale value cached when the panel mounted.
       const size = await window.electronAPI?.getClipboardStorageSize?.();
@@ -486,14 +602,30 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     setEditText('');
   };
 
+  // Filtering happens on the backend (so it covers the whole history, not
+  // just the loaded page), but every check is mirrored here as a defensive
+  // layer for items arriving via the clipboard-new-item event between
+  // backend reloads. The duplicate cost is negligible vs. a flash of a
+  // wrong-bucket item in a filtered view.
   const filtered = items.filter(i => {
-    if (search.trim() && !(i.preview || '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (selectedDate === 'pinned' && !i.pinned) return false;
+    if (selectedDate !== 'all' && selectedDate !== 'pinned' && itemLocalDateKey(i) !== selectedDate) return false;
     if (filterApp && i.source_app !== filterApp) return false;
     if (filterTag !== 'All' && i.content_tag !== filterTag) return false;
+    if (search.trim() && !(i.preview || '').toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  const grouped = groupByTimeline(filtered);
+  // Timeline grouping only when 'all' is selected. For a single date or pinned
+  // view a flat list under a single header reads cleaner than re-bucketing.
+  const grouped = selectedDate === 'all'
+    ? groupByTimeline(filtered)
+    : (() => {
+        const label = selectedDate === 'pinned'
+          ? 'Pinned'
+          : formatDateSidebarLabel(selectedDate, todayKey);
+        return filtered.length > 0 ? [[label, filtered]] : [];
+      })();
 
   const selected = items.find(i => i.id === selectedId) || null;
 
@@ -529,7 +661,32 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
 
   return (
     <div className="cbg-panel">
-      {/* ── Toolbar — always full width, independent of preview ── */}
+      {/* ── Header (mode pills + actions) — mirrors te-header.
+           Only one pill today ("Clipboard") but the structure leaves room for
+           future siblings like Pinned, Snippets etc. without restructuring. */}
+      <div className="cbg-header">
+        <div className="cbg-mode-tabs">
+          <button className="cbg-mode-tab active" type="button">Clipboard</button>
+        </div>
+        <div className="cbg-header-right">
+          {storageSize != null && storageSize > 0 && (
+            <span className="cbg-storage-size">{formatStorageSize(storageSize)}</span>
+          )}
+          {clearConfirm ? (
+            <div className="cbg-clear-confirm">
+              <span>Clear?</span>
+              <button className="cbg-clear-yes" onClick={handleClearAll} type="button">Yes</button>
+              <button className="cbg-clear-no" onClick={() => setClearConfirm(false)} type="button">No</button>
+            </div>
+          ) : (
+            <button className="cbg-clear-btn" onClick={() => setClearConfirm(true)} type="button" disabled={items.length === 0}>
+              Clear All
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Filter toolbar — app filter, tag pills, search ── */}
       <div className="cbg-toolbar">
         <select className="cbg-app-filter" value={filterApp} onChange={e => setFilterApp(e.target.value)}>
           <option value="">All Apps</option>
@@ -547,23 +704,49 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        {storageSize != null && storageSize > 0 && (
-          <span className="cbg-storage-size">{formatStorageSize(storageSize)}</span>
-        )}
-        {clearConfirm ? (
-          <div className="cbg-clear-confirm">
-            <span>Clear?</span>
-            <button className="cbg-clear-yes" onClick={handleClearAll} type="button">Yes</button>
-            <button className="cbg-clear-no" onClick={() => setClearConfirm(false)} type="button">No</button>
-          </div>
-        ) : (
-          <button className="cbg-clear-btn" onClick={() => setClearConfirm(true)} type="button" disabled={items.length === 0}>
-            Clear All
-          </button>
-        )}
       </div>
 
-      {/* ── Body: grid (+ preview when an item is selected) ── */}
+      {/* ── Body: date sidebar + grid (+ preview when an item is selected) ── */}
+      <div className="cbg-body">
+        <div className="cbg-date-sidebar">
+          <div className="cbg-date-sidebar-list">
+            <button
+              type="button"
+              className={`cbg-date-row${selectedDate === 'all' ? ' cbg-date-row-active' : ''}`}
+              onClick={() => setSelectedDate('all')}
+            >
+              <span className="cbg-date-row-name">All</span>
+              {/* Derived from dateBuckets so it stays constant when the user
+                  picks a single date or Pinned (total gets overwritten by each
+                  filtered backend query). dates excludes pinned rows by
+                  design, so add pinned_count back in to get the true total. */}
+              <span className="cbg-date-count">{dateBuckets.dates.reduce((s, d) => s + d.count, 0) + dateBuckets.pinned_count}</span>
+            </button>
+            {dateBuckets.pinned_count > 0 && (
+              <button
+                type="button"
+                className={`cbg-date-row cbg-date-row-pinned${selectedDate === 'pinned' ? ' cbg-date-row-active' : ''}`}
+                onClick={() => setSelectedDate('pinned')}
+              >
+                <span className="cbg-date-row-icon"><Pin size={10} strokeWidth={2} fill="currentColor" /></span>
+                <span className="cbg-date-row-name">Pinned</span>
+                <span className="cbg-date-count">{dateBuckets.pinned_count}</span>
+              </button>
+            )}
+            {dateBuckets.dates.length > 0 && <div className="cbg-date-divider" />}
+            {dateBuckets.dates.map(b => (
+              <button
+                key={b.date}
+                type="button"
+                className={`cbg-date-row${selectedDate === b.date ? ' cbg-date-row-active' : ''}`}
+                onClick={() => setSelectedDate(b.date)}
+              >
+                <span className="cbg-date-row-name">{formatDateSidebarLabel(b.date, todayKey)}</span>
+                <span className="cbg-date-count">{b.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       <div className={`cbg-main${selected ? ' cbg-main-split' : ''}`}>
         <div className="cbg-grid-wrap" ref={gridRef} onScroll={handleScroll}>
           {filtered.length === 0 ? (
@@ -672,11 +855,21 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
             <div className="cbg-detail-content">
               {selected.content_type === 'image' ? (
                 <div
-                  className={`cbg-detail-img-wrap cbg-detail-img-${imageZoomMode}`}
-                  onClick={() => setImageZoomMode(m => (m === 'fit' ? 'zoom' : 'fit'))}
-                  title={imageZoomMode === 'fit' ? 'Click to zoom 1:1' : 'Click to fit'}
+                  className="cbg-detail-img-wrap"
+                  onClick={async () => {
+                    // Fetch the full image once and hand to the lightbox.
+                    const b64 = await window.electronAPI?.getClipboardImage(selected.id);
+                    if (b64) {
+                      setLightboxSrc(`data:image/png;base64,${b64}`);
+                      setLightboxOpen(true);
+                    }
+                  }}
+                  title="Click to open full image"
                 >
                   <ImageThumb id={selected.id} className="cbg-detail-img" zoomable={false} />
+                  <span className="cbg-detail-img-expand" aria-hidden="true">
+                    <Maximize2 size={14} strokeWidth={2} />
+                  </span>
                 </div>
               ) : editing ? (
                 <textarea
@@ -879,6 +1072,7 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
         </>
         )}
       </div>
+      </div>{/* /cbg-body */}
 
       {ctxMenu && (
         <div ref={ctxRef} className="cbg-ctx" style={{ top: ctxMenu.y, left: ctxMenu.x }}>
@@ -887,6 +1081,27 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
           </button>
           <button className="cbg-ctx-item cbg-ctx-del" onClick={() => handleDelete(ctxMenu.id)} type="button">Delete</button>
         </div>
+      )}
+
+      {lightboxOpen && lightboxSrc && ReactDOM.createPortal(
+        <div
+          className="cbg-lightbox"
+          onClick={() => { setLightboxOpen(false); setLightboxSrc(null); }}
+          role="dialog"
+          aria-label="Image preview"
+        >
+          <button
+            className="cbg-lightbox-close"
+            onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); setLightboxSrc(null); }}
+            type="button"
+            title="Close (Esc)"
+          >✕</button>
+          <div className="cbg-lightbox-stage" onClick={e => e.stopPropagation()}>
+            <ZoomableImage src={lightboxSrc} className="cbg-lightbox-img" />
+          </div>
+          <div className="cbg-lightbox-hint">Scroll to zoom · Drag to pan · Esc / click outside to close</div>
+        </div>,
+        document.body
       )}
     </div>
   );

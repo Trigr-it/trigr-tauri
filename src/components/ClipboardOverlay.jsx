@@ -290,7 +290,7 @@ export default function ClipboardOverlay() {
             <span className="co-esc-hint">Esc</span>
           </div>
           <div className="co-tag-pills">
-            {['All', 'Text', 'Link', 'Email', 'Colour', 'Number', 'Image'].map(tag => (
+            {['All', 'Text', 'Image', 'Number', 'Link', 'Email', 'Colour'].map(tag => (
               <button
                 key={tag}
                 className={`co-tag-pill${filterTag === tag ? ' co-tag-active' : ''}`}
