@@ -1173,7 +1173,9 @@ unsafe extern "system" fn mouse_hook_proc(
                         // Fallback: linked app is NOT foreground but cursor IS over it
                         // (click-to-refocus scenario). Check the global linked-mouse map,
                         // verifying the specific profile under cursor has this button assigned.
-                        if !suppressed {
+                        // Pro gate mirrors the dispatch-side refocus check (~line 2023):
+                        // without this, Free users get clicks swallowed but no remap fires.
+                        if !suppressed && crate::licence::is_pro() {
                             if let Ok(map) = all_linked_mouse().try_read() {
                                 if let Some(profiles) = map.get(&btn_id) {
                                     if let Some(profile_name) = cursor_over_unfocused_linked_app() {
@@ -1694,7 +1696,8 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 crate::expansions::buffer_clear();
                 let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 let double_key_str = format!("{}::double", bare_key);
-                let has_double = state.assignments.contains_key(&double_key_str);
+                // Pro gate: Free users ignore double-tap mappings so single-press fires normally.
+                let has_double = crate::licence::is_pro() && state.assignments.contains_key(&double_key_str);
 
                 // Hotkey actions on bare keys: AHK-style direct passthrough.
                 // keydown → send target keydown only (no up yet).
@@ -1723,8 +1726,9 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             }
 
             // No single-press — check for double-only bare key
+            // Pro gate: Free users skip double-only entirely (config preserved for upgrade).
             let double_key = format!("{}::double", bare_key);
-            if state.assignments.contains_key(&double_key) {
+            if crate::licence::is_pro() && state.assignments.contains_key(&double_key) {
                 crate::expansions::buffer_clear();
                 let now = Instant::now();
                 let dtw = state.double_tap_window_ms;
@@ -1776,8 +1780,9 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         hotkey_matched = true;
         crate::expansions::buffer_clear();
         // Check for double-tap variant
+        // Pro gate: Free users ignore double-tap mappings so single-press fires normally.
         let double_key = format!("{}::double", storage_key);
-        let has_double = state.assignments.contains_key(&double_key);
+        let has_double = crate::licence::is_pro() && state.assignments.contains_key(&double_key);
 
         if has_double {
             let double_macro = state.assignments.get(&double_key).cloned();
@@ -1853,8 +1858,9 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         state.pending_is_bare = false;
     } else {
         // No single-press — check for double-only
+        // Pro gate: Free users skip double-only entirely (config preserved for upgrade).
         let double_key = format!("{}::double", storage_key);
-        if state.assignments.contains_key(&double_key) {
+        if crate::licence::is_pro() && state.assignments.contains_key(&double_key) {
             hotkey_matched = true;
             crate::expansions::buffer_clear();
             let now = Instant::now();
@@ -2194,6 +2200,11 @@ fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
 /// Double-only dispatch for mouse: no single-press action exists.
 /// First click records time, second click within the window fires.
 fn dispatch_double_only(storage_key: &str, double_macro: Option<Value>, app: &AppHandle) {
+    // Pro gate: Free users never fire double-only assignments. Config is preserved
+    // so the action returns when the user upgrades.
+    if !crate::licence::is_pro() {
+        return;
+    }
     let mut state = engine_state().lock().unwrap();
     let now = Instant::now();
     let dtw = state.double_tap_window_ms;
@@ -2215,7 +2226,13 @@ fn dispatch_double_only(storage_key: &str, double_macro: Option<Value>, app: &Ap
 fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Option<String>, app: &AppHandle) {
     let mut state = engine_state().lock().unwrap();
     let double_key = format!("{}::double", storage_key);
-    let double_macro = state.assignments.get(&double_key).cloned();
+    // Pro gate: Free users get single-press only. Double-tap assignments from
+    // a lapsed trial stay in config (data preserved) but never fire until upgrade.
+    let double_macro = if crate::licence::is_pro() {
+        state.assignments.get(&double_key).cloned()
+    } else {
+        None
+    };
 
     if double_macro.is_none() {
         // No double-tap variant — fire immediately

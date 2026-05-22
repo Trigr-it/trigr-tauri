@@ -279,6 +279,16 @@ pub fn check_space_trigger() -> bool {
             .unwrap_or("text");
 
         if expansion_type == "image" {
+            // Pro gate: Free users silently no-op image expansions. Data preserved
+            // in config (imagePath, imageScale) so the expansion returns on upgrade.
+            // No fall-through: there's no text body to substitute.
+            if !crate::licence::is_pro() {
+                s.buffer.clear();
+                drop(s);
+                info!("[Trigr] Image expansion skipped (Free): \"{}\"", buffer_lower);
+                return true;
+            }
+
             let image_path = entry
                 .get("data")
                 .and_then(|d| d.get("imagePath"))
@@ -311,6 +321,24 @@ pub fn check_space_trigger() -> bool {
                 let trigger_len = s.buffer.len();
                 let global_vars = s.global_variables.clone();
                 let trigger_str = buffer_lower.clone();
+
+                // Pro gate: Free users skip the variant picker and silently fire
+                // options[0] as a regular text expansion. Variant data is preserved
+                // in config and the picker returns on upgrade.
+                if !crate::licence::is_pro() {
+                    let first = &opts[0];
+                    let text = first.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let html = first.get("html").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    s.buffer.clear();
+                    drop(s);
+
+                    info!("[Trigr] Variant expansion (Free → options[0]): \"{}\"", trigger_str);
+                    let case_pattern = detect_case(&original_buffer);
+                    let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
+                    fire_expansion(&trigger_str, trigger_len, delete_extra, &text, html_opt, &global_vars, case_pattern);
+                    return true;
+                }
+
                 s.buffer.clear();
                 drop(s);
 
@@ -422,6 +450,26 @@ pub fn check_immediate_triggers() -> bool {
                     let opts = opts.clone();
                     let trigger_str = imm.trigger.clone();
                     let global_vars = s.global_variables.clone();
+
+                    // Pro gate: Free users silently fire options[0] as a regular
+                    // text expansion. Picker returns on upgrade; data preserved.
+                    if !crate::licence::is_pro() {
+                        let first = &opts[0];
+                        let text = first.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let html = first.get("html").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let original_suffix = original_buffer
+                            .get(original_buffer.len().saturating_sub(trigger_len)..)
+                            .unwrap_or(&original_buffer);
+                        let case_pattern = detect_case(original_suffix);
+                        s.buffer.clear();
+                        drop(s);
+
+                        info!("[Trigr] Variant expansion (immediate, Free → options[0]): \"{}\"", trigger_str);
+                        let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
+                        fire_expansion(&trigger_str, trigger_len, false, &text, html_opt, &global_vars, case_pattern);
+                        return true;
+                    }
+
                     s.buffer.clear();
                     drop(s);
 
@@ -436,6 +484,14 @@ pub fn check_immediate_triggers() -> bool {
             }
 
             if imm.exp_type == "image" {
+                // Pro gate: Free users silently no-op image expansions. Data preserved.
+                if !crate::licence::is_pro() {
+                    s.buffer.clear();
+                    drop(s);
+                    info!("[Trigr] Image expansion (immediate) skipped (Free): \"{}\"", imm.trigger);
+                    return true;
+                }
+
                 let image_path = imm.image_path.clone();
                 let image_scale = imm.image_scale;
                 s.buffer.clear();

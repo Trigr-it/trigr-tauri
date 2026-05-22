@@ -944,6 +944,17 @@ button.te-col-header:hover {
   flex-shrink: 0;
 }
 
+/* Scrollable middle region: keeps header pinned at top + footer pinned at bottom,
+   while fields + RTE + image picker scroll vertically when the window is short. */
+.te-panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .te-panel-title {
   font-family: var(--font-display);
   font-size: 11px;
@@ -999,10 +1010,12 @@ button.te-col-header:hover {
   gap: 4px;
 }
 
-/* RTE section — grows to fill remaining vertical space */
+/* RTE section — grows to fill remaining vertical space, but asserts a real
+   minimum so the surrounding .te-panel-scroll engages overflow when the window
+   is short instead of silently shrinking the editor away. */
 .te-panel-rte {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: 280px;
   padding: 10px 14px 0;
   display: flex;
   flex-direction: column;
@@ -1166,6 +1179,20 @@ button.te-col-header:hover {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--btn-primary-text);
+}
+
+/* Pro-locked type toggle (Image button on Free). Fits the inline PRO badge
+   and dulls slightly when inactive. Active+locked stays full opacity because
+   the user is viewing real saved data. */
+.te-trigger-mode-btn.locked {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.te-trigger-mode-btn.locked:not(.active) {
+  opacity: 0.7;
 }
 
 /* ── Insert dropdown ────────────────────────────────────────────────────── */
@@ -2274,12 +2301,12 @@ button.te-col-header:hover {
 }
 
 .te-panel-image {
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 8px 12px;
-  min-height: 0;
+  min-height: 280px;
   overflow-y: auto;
 }
 
@@ -2298,6 +2325,60 @@ button.te-col-header:hover {
 .te-image-pick-btn:hover {
   border-color: var(--accent);
   color: var(--text-primary);
+}
+
+/* Pro-locked image picker button. Click opens UpgradeModal instead of file dialog. */
+.te-image-pick-btn.locked {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.te-image-pick-btn.locked:hover {
+  border-color: var(--accent);
+  opacity: 0.85;
+}
+
+/* Banner shown above the image picker for Free users editing an existing
+   image expansion. Explains why the picker is locked and offers an upgrade CTA. */
+.te-image-pro-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.te-image-pro-banner span:not(.pro-badge) {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.te-image-pro-banner-cta {
+  padding: 4px 10px;
+  background: var(--accent);
+  color: var(--btn-primary-text);
+  border: none;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+
+.te-image-pro-banner-cta:hover {
+  background: var(--accent-hover);
 }
 
 .te-image-preview-wrap {
@@ -2370,6 +2451,16 @@ button.te-col-header:hover {
   letter-spacing: 0.04em;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
+  margin-left: 4px;
+}
+
+/* Dulled IMG badge when the row is gated on Free (paired with .te-list-pro-badge) */
+.te-img-badge.locked {
+  opacity: 0.5;
+  filter: grayscale(0.5);
+}
+
+.te-list-pro-badge {
   margin-left: 4px;
 }
 
@@ -2573,6 +2664,49 @@ button.te-col-header:hover {
 
 .te-variant-tab-add:hover {
   background: var(--accent-glow);
+}
+
+/* Pro-locked variant tabs: Free users can edit Option 1 but tabs 2+ are dulled
+   with a PRO badge. Click opens UpgradeModal. Matches the locked search-template
+   tile pattern. */
+.te-variant-tab--locked {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
+
+.te-variant-tab--locked:hover {
+  opacity: 0.7;
+  filter: grayscale(0.3);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.te-variant-tab-pro {
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.te-variant-tab-add--locked {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+  gap: 6px;
+}
+
+.te-variant-tab-add--locked:hover {
+  opacity: 0.85;
+  background: var(--accent-glow);
+}
+
+/* Locked variant chip in the list view — same dulled treatment so users
+   can see at a glance which variants don't fire on Free. */
+.te-variant-chip.locked {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
+
+/* Locked "+ Add Variants" entry button (state A — no variants yet). */
+.te-variant-toggle-btn.locked {
+  gap: 6px;
 }
 
 /* Small destructive link below the editor — collapse all variants back to

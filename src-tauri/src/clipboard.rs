@@ -55,6 +55,16 @@ enum ClipboardMsg {
     GetHistory {
         page: u32,
         per_page: u32,
+        /// None       → default view (all visible rows in effective window)
+        /// Some("pinned")     → only pinned items, ignoring age
+        /// Some("YYYY-MM-DD") → only rows whose local date matches
+        date_filter: Option<String>,
+        /// Exact match on source_app column (e.g. "chrome.exe"). None = no filter.
+        app_filter: Option<String>,
+        /// Exact match on content_tag column ("Text", "Image", ...). None = no filter.
+        tag_filter: Option<String>,
+        /// Case-insensitive substring match against the preview column. None / empty = no filter.
+        search: Option<String>,
         reply: mpsc::Sender<Value>,
     },
     GetItemFull {
@@ -79,6 +89,9 @@ enum ClipboardMsg {
     },
     GetDistinctSourceApps {
         reply: mpsc::Sender<Vec<String>>,
+    },
+    GetDateBuckets {
+        reply: mpsc::Sender<Value>,
     },
     UpdateItem {
         id: i64,
@@ -116,6 +129,18 @@ fn retention_days() -> u32 {
         .and_then(|m| m.lock().ok())
         .map(|g| *g)
         .unwrap_or(DEFAULT_RETENTION_DAYS)
+}
+
+/// Pro-gated retention: raw stored value clamped by current licence tier.
+/// Free max is 7 days, Pro max is 30. The stored preference (from config)
+/// is preserved as-is so a Pro user who downgrades and then re-upgrades
+/// gets their original setting back automatically. Prune + UI both read
+/// through here, so a runtime licence transition (e.g. trial expiry while
+/// the app is running) takes effect on the next prune cycle without restart.
+fn effective_retention_days() -> u32 {
+    let raw = retention_days();
+    let max = if crate::licence::is_pro() { 30 } else { 7 };
+    raw.min(max)
 }
 
 // ── Capture-enabled gate + per-app exclusion list ───────────────────────────
@@ -327,8 +352,14 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             for msg in rx {
                 match msg {
                     ClipboardMsg::NewEntry(entry) => handle_new_entry(&conn, entry),
-                    ClipboardMsg::GetHistory { page, per_page, reply } => {
-                        let result = handle_get_history(&conn, page, per_page);
+                    ClipboardMsg::GetHistory { page, per_page, date_filter, app_filter, tag_filter, search, reply } => {
+                        let result = handle_get_history(
+                            &conn, page, per_page,
+                            date_filter.as_deref(),
+                            app_filter.as_deref(),
+                            tag_filter.as_deref(),
+                            search.as_deref(),
+                        );
                         let _ = reply.send(result);
                     }
                     ClipboardMsg::GetItemFull { id, reply } => {
@@ -354,6 +385,10 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                     ClipboardMsg::GetDistinctSourceApps { reply } => {
                         let apps = handle_get_distinct_source_apps(&conn);
                         let _ = reply.send(apps);
+                    }
+                    ClipboardMsg::GetDateBuckets { reply } => {
+                        let buckets = handle_get_date_buckets(&conn);
+                        let _ = reply.send(buckets);
                     }
                     ClipboardMsg::UpdateItem { id, new_text, reply } => {
                         let result = handle_update_item(&conn, id, &new_text);
@@ -385,11 +420,21 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-pub fn get_history(page: u32, per_page: u32) -> Value {
+pub fn get_history(
+    page: u32,
+    per_page: u32,
+    date_filter: Option<String>,
+    app_filter: Option<String>,
+    tag_filter: Option<String>,
+    search: Option<String>,
+) -> Value {
     if let Some(tx) = CLIPBOARD_TX.get() {
         if let Ok(tx) = tx.lock() {
             let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetHistory { page, per_page, reply: reply_tx }).is_ok() {
+            if tx.send(ClipboardMsg::GetHistory {
+                page, per_page, date_filter, app_filter, tag_filter, search,
+                reply: reply_tx,
+            }).is_ok() {
                 if let Ok(result) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
                     return result;
                 }
@@ -483,6 +528,20 @@ pub fn get_distinct_source_apps() -> Vec<String> {
     Vec::new()
 }
 
+pub fn get_date_buckets() -> Value {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::GetDateBuckets { reply: reply_tx }).is_ok() {
+                if let Ok(buckets) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return buckets;
+                }
+            }
+        }
+    }
+    serde_json::json!({ "dates": [], "pinned_count": 0 })
+}
+
 pub fn update_item(id: i64, new_text: String) -> Option<String> {
     if let Some(tx) = CLIPBOARD_TX.get() {
         if let Ok(tx) = tx.lock() {
@@ -538,7 +597,7 @@ pub fn set_excluded_apps(apps: Vec<String>) {
 }
 
 pub fn get_retention() -> u32 {
-    retention_days()
+    effective_retention_days()
 }
 
 /// Extracts up to `n` dominant RGB colours from PNG bytes via the color-thief
@@ -644,21 +703,80 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
     }
 }
 
-fn handle_get_history(conn: &Connection, page: u32, per_page: u32) -> Value {
+fn handle_get_history(
+    conn: &Connection,
+    page: u32,
+    per_page: u32,
+    date_filter: Option<&str>,
+    app_filter: Option<&str>,
+    tag_filter: Option<&str>,
+    search: Option<&str>,
+) -> Value {
     let offset = page.saturating_sub(1) * per_page;
+    // Pro-gated visibility window (used by the default + per-date views).
+    // Pinned rows always bypass age. Per [[feedback_sqlite_localtime_pattern]]
+    // we compare local-time dates via DATE(timestamp, 'localtime').
+    let days = effective_retention_days();
+    let date_clause = match date_filter {
+        // Sidebar "Pinned" bucket — every pinned row, ignoring age.
+        Some("pinned") => "pinned = 1".to_string(),
+        // Sidebar single-date bucket — match a specific local calendar date.
+        // No Pro-gate filter here because the bucket query already excluded
+        // dates outside the effective window before listing them.
+        Some(d) if d.len() == 10 && d.chars().nth(4) == Some('-') => {
+            // Input shape is enforced by the date-bucket query that produced it
+            // (YYYY-MM-DD). We strip stray quotes defensively.
+            let safe = d.replace('\'', "");
+            format!("DATE(timestamp, 'localtime') = '{}'", safe)
+        }
+        // Default / unrecognised filter — Pro-gated default view.
+        _ => format!("(pinned = 1 OR timestamp >= datetime('now', '-{} days'))", days),
+    };
+
+    // Toolbar filters (app, tag, search) layer on top of the date clause via
+    // AND-joined predicates with unnumbered `?` placeholders — SQLite binds
+    // them positionally from rusqlite::params_from_iter so we don't have to
+    // track numbering across two queries. User input goes through binds, not
+    // SQL string interpolation. LIKE wildcards in search are escaped so a
+    // literal % or _ in the query doesn't broaden the match.
+    let mut clauses: Vec<String> = vec![format!("({})", date_clause)];
+    let mut where_binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
+        clauses.push("source_app = ?".to_string());
+        where_binds.push(Box::new(app.to_string()));
+    }
+    if let Some(tag) = tag_filter.filter(|s| !s.is_empty() && *s != "All") {
+        clauses.push("content_tag = ?".to_string());
+        where_binds.push(Box::new(tag.to_string()));
+    }
+    if let Some(q) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        let escaped = q.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_");
+        clauses.push("LOWER(preview) LIKE ? ESCAPE '\\'".to_string());
+        where_binds.push(Box::new(format!("%{}%", escaped.to_lowercase())));
+    }
+    let where_clause = clauses.join(" AND ");
+
+    // COUNT — same WHERE, just the toolbar binds.
+    let count_sql = format!("SELECT COUNT(*) FROM clipboard_history WHERE {}", where_clause);
+    let count_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
     let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM clipboard_history", [], |row| row.get(0))
+        .query_row(&count_sql, rusqlite::params_from_iter(count_refs.iter()), |row| row.get(0))
         .unwrap_or(0);
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text
-             FROM clipboard_history ORDER BY pinned DESC, id DESC LIMIT ?1 OFFSET ?2",
-        )
-        .unwrap();
+    // LIST — same WHERE, then LIMIT/OFFSET appended after the toolbar binds.
+    let list_sql = format!(
+        "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text
+         FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC LIMIT ? OFFSET ?",
+        where_clause
+    );
+    let mut list_binds: Vec<Box<dyn rusqlite::ToSql>> = where_binds;
+    list_binds.push(Box::new(per_page as i64));
+    list_binds.push(Box::new(offset as i64));
+    let list_refs: Vec<&dyn rusqlite::ToSql> = list_binds.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = conn.prepare(&list_sql).unwrap();
 
     let items: Vec<Value> = stmt
-        .query_map(rusqlite::params![per_page, offset], |row| {
+        .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, i64>(0).unwrap_or(0),
                 "timestamp": row.get::<_, String>(1).unwrap_or_default(),
@@ -740,13 +858,64 @@ fn handle_get_image_blob(conn: &Connection, id: i64) -> Option<Vec<u8>> {
 }
 
 fn handle_get_distinct_source_apps(conn: &Connection) -> Vec<String> {
-    let mut stmt = conn
-        .prepare("SELECT DISTINCT source_app FROM clipboard_history WHERE source_app != '' ORDER BY source_app ASC")
-        .unwrap();
+    // Mirror the Pro-gated visibility from handle_get_history: only return
+    // source apps that appear in rows the Free user can actually see. Without
+    // this filter, the source-filter dropdown would list apps from hidden rows.
+    let days = effective_retention_days();
+    let sql = format!(
+        "SELECT DISTINCT source_app FROM clipboard_history
+         WHERE source_app != '' AND (pinned = 1 OR timestamp >= datetime('now', '-{} days'))
+         ORDER BY source_app ASC",
+        days
+    );
+    let mut stmt = conn.prepare(&sql).unwrap();
     stmt.query_map([], |row| row.get::<_, String>(0))
         .unwrap()
         .filter_map(|r| r.ok())
         .collect()
+}
+
+/// Returns the date buckets used by the ClipboardPanel sidebar:
+///   { "dates": [{ "date": "YYYY-MM-DD", "count": N }, ...], "pinned_count": M }
+/// One row per distinct local-calendar date that has non-pinned content within
+/// the effective Pro-gated retention window. Pinned items are bucketed
+/// separately (the sidebar shows them under a "Pinned" entry that ignores age),
+/// so they're not counted in the date rows. Per [[feedback_sqlite_localtime_pattern]]
+/// we store UTC and convert with DATE(timestamp, 'localtime') for grouping.
+fn handle_get_date_buckets(conn: &Connection) -> Value {
+    let days = effective_retention_days();
+    let dates_sql = format!(
+        "SELECT DATE(timestamp, 'localtime') AS local_date, COUNT(*) AS cnt
+         FROM clipboard_history
+         WHERE pinned = 0 AND timestamp >= datetime('now', '-{} days')
+         GROUP BY local_date
+         ORDER BY local_date DESC",
+        days
+    );
+
+    let mut stmt = match conn.prepare(&dates_sql) {
+        Ok(s) => s,
+        Err(_) => return serde_json::json!({ "dates": [], "pinned_count": 0 }),
+    };
+    let dates: Vec<Value> = stmt
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "date": row.get::<_, String>(0).unwrap_or_default(),
+                "count": row.get::<_, i64>(1).unwrap_or(0),
+            }))
+        })
+        .map(|iter| iter.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default();
+
+    let pinned_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM clipboard_history WHERE pinned = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    serde_json::json!({ "dates": dates, "pinned_count": pinned_count })
 }
 
 fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<String> {
@@ -767,6 +936,11 @@ fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<Stri
 }
 
 fn handle_prune(conn: &Connection) {
+    // Prune uses the RAW stored preference, not the Pro-gated effective value.
+    // This preserves a downgraded Pro user's data on disk so it reappears on
+    // re-upgrade. The Free user's UI is gated separately at query time below,
+    // so they only see the most recent 7 days even when more rows exist.
+    // Always-Free users still naturally cap at 7 because raw = 7 default.
     let days = retention_days();
     let query = format!(
         "DELETE FROM clipboard_history WHERE pinned = 0 AND timestamp < datetime('now', '-{} days')",

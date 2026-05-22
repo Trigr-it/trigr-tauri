@@ -12,7 +12,7 @@ const TEAMS_LADDER_FEATURES = new Set([
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function UpgradeModal({ featureName, onClose }) {
+export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
   const isTeamsLadder = TEAMS_LADDER_FEATURES.has(featureName);
   const panelRef = useRef(null);
   useModalKeyboard(panelRef, onClose);
@@ -126,6 +126,15 @@ export default function UpgradeModal({ featureName, onClose }) {
           </form>
         )}
 
+        {status !== 'success' && onOpenSettings && (
+          <button
+            className="upgrade-have-key-link"
+            onClick={() => { onClose(); onOpenSettings(); }}
+            type="button"
+          >
+            I already have a key
+          </button>
+        )}
         <button
           className="upgrade-skip-link"
           onClick={onClose}

@@ -3371,7 +3371,11 @@ function App() {
         <WelcomeModal onDismiss={handleDismissWelcome} />
       )}
       {upgradePrompt && (
-        <UpgradeModal featureName={upgradePrompt} onClose={() => setUpgradePrompt(null)} />
+        <UpgradeModal
+          featureName={upgradePrompt}
+          onClose={() => setUpgradePrompt(null)}
+          onOpenSettings={() => setShowSettings(true)}
+        />
       )}
       {reservedShortcutPending && (
         <ReservedShortcutModal

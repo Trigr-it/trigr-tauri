@@ -1079,6 +1079,41 @@
   background: var(--accent-glow-strong, var(--accent-glow));
 }
 
+/* Locked tiles: free users see Pro-only templates dulled. Click opens UpgradeModal. */
+.stp-tile.locked {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
+
+.stp-tile.locked:hover {
+  opacity: 0.7;
+  filter: grayscale(0.3);
+  transform: none;
+  box-shadow: none;
+  border-color: var(--accent);
+}
+
+.stp-tile.locked .stp-tile-trigger {
+  opacity: 0.5;
+}
+
+.stp-tile-lock-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: var(--accent);
+  color: #1a1410;
+  font-size: 9px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .stp-tile-letter {
   display: flex;
   align-items: center;

@@ -1164,6 +1164,12 @@ export default function SearchTemplatesPanel({
   }, [quickActions, qaCategories, activeCategory, qaFilteredList]);
 
   const atCap = !isPro && searchTemplates.length >= 5;
+  // Free users: only the first 5 templates in array order fire in Quick Search.
+  // Anything past index 5 is visibly locked but kept on disk so it returns on upgrade.
+  const lockedIds = useMemo(() => {
+    if (isPro || searchTemplates.length <= 5) return new Set();
+    return new Set(searchTemplates.slice(5).map(t => t.id));
+  }, [isPro, searchTemplates]);
   const editOpen = selectedId !== null || isNew;
   const canSave = formLabel.trim() && formTrigger && !triggerError && formUrl.includes('{query}');
   const qaEditOpen = qaSelectedId !== null || qaIsNew;
@@ -1202,7 +1208,11 @@ export default function SearchTemplatesPanel({
           {panelMode === 'templates' ? (
             <>
               {atCap && (
-                <span className="stp-cap-nudge" title="Upgrade to Pro for unlimited templates">5/5 — Pro for more</span>
+                <span className="stp-cap-nudge" title="Upgrade to Pro for unlimited templates">
+                  {searchTemplates.length > 5
+                    ? `5 active, ${searchTemplates.length - 5} locked`
+                    : '5/5. Pro for unlimited'}
+                </span>
               )}
               <button className="stp-add-btn" onClick={handleNewClick} type="button">+ New Template</button>
             </>
@@ -1419,17 +1429,20 @@ export default function SearchTemplatesPanel({
                 );
               }
               const t = entry.template;
+              const locked = lockedIds.has(t.id);
+              const handleLockedClick = () => onShowUpgrade?.('More than 5 search templates');
               return (
                 <div
                   key={t.id}
-                  className={`stp-tile${selectedId === t.id ? ' active' : ''}`}
-                  onClick={() => selectTemplate(t)}
+                  className={`stp-tile${selectedId === t.id ? ' active' : ''}${locked ? ' locked' : ''}`}
+                  onClick={() => locked ? handleLockedClick() : selectTemplate(t)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); selectTemplate(t); } }}
-                  title={t.url_template}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); locked ? handleLockedClick() : selectTemplate(t); } }}
+                  title={locked ? 'Upgrade to Pro to enable this template' : t.url_template}
                 >
                   <span className="stp-tile-trigger">{t.trigger}</span>
+                  {locked && <span className="stp-tile-lock-badge">Pro</span>}
                   {t.icon ? (
                     <img
                       className="stp-tile-icon"

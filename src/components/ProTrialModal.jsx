@@ -60,34 +60,34 @@ export default function ProTrialModal({ onAccept, onDismiss }) {
         <div className="protrial-pill">14-day free trial</div>
         <h1 className="protrial-title" id="protrial-title">Try Trigr Pro free for 14 days</h1>
         <p className="protrial-subtitle">
-          Unlock everything below. No card needed, no auto-charge — when the 14 days are up, Trigr drops back to Free automatically.
+          Unlock everything below. No card needed. Trigr drops back to Free automatically when the 14 days are up.
         </p>
 
         <div className="protrial-hero-card">
           <span className="protrial-card-badge">Most popular</span>
           <h2 className="protrial-card-title">App-specific profiles</h2>
           <p className="protrial-card-body">
-            The same hotkey fires different actions in different apps — Trigr auto-switches profiles based on whatever's in the foreground. Build one set for Excel, another for Photoshop, another for your IDE.
+            The same hotkey fires different actions in different apps. Trigr auto-switches profiles based on the foreground app. Build one set for Excel, another for Photoshop, another for your IDE.
           </p>
         </div>
 
         <div className="protrial-feature-grid">
           <div className="protrial-feature-card">
-            <h3 className="protrial-feature-title">Double-tap actions</h3>
+            <h3 className="protrial-feature-title">Shared config sync</h3>
             <p className="protrial-feature-body">
-              Tap a key once for one action, twice quickly for another. Effectively doubles every key on your keyboard.
+              Point Trigr at a folder (Dropbox, OneDrive, network share). Your hotkeys and expansions follow you to every machine.
             </p>
           </div>
           <div className="protrial-feature-card">
-            <h3 className="protrial-feature-title">Shared config sync</h3>
+            <h3 className="protrial-feature-title">Double-tap actions</h3>
             <p className="protrial-feature-body">
-              Point Trigr at a folder (Dropbox, OneDrive, network share) and your hotkeys + expansions follow you to every machine.
+              Tap a key once for one action, twice quickly for another. Doubles every key on your keyboard.
             </p>
           </div>
           <div className="protrial-feature-card">
             <h3 className="protrial-feature-title">Global variables</h3>
             <p className="protrial-feature-body">
-              Define values once (name, email, project codes) and reuse them across every expansion. Change once, updates everywhere.
+              Define values once (name, email, project codes), reuse across every expansion. Change once, updates everywhere.
             </p>
           </div>
         </div>

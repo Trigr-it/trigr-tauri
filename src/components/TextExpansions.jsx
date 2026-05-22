@@ -1991,7 +1991,10 @@ export default function TextExpansions({
                           <span className="te-immediate-badge" title="Fires instantly (no Space needed)">⚡</span>
                         )}
                         {exp.expansionType === 'image' && (
-                          <span className="te-img-badge" title="Image expansion">IMG</span>
+                          <>
+                            <span className={`te-img-badge${!isPro ? ' locked' : ''}`} title={!isPro ? 'Image expansion (Pro only — does not fire on Free)' : 'Image expansion'}>IMG</span>
+                            {!isPro && <span className="pro-badge te-list-pro-badge" title="Pro feature">PRO</span>}
+                          </>
                         )}
                         {exp.options && exp.options.length > 0 && (
                           <span className="te-variant-badge" title={`${exp.options.length} variants — picker shows on trigger`}>▾</span>
@@ -2015,7 +2018,7 @@ export default function TextExpansions({
                             {exp.options.map((opt, idx) => (
                               <span
                                 key={idx}
-                                className="te-variant-chip"
+                                className={`te-variant-chip${!isPro && idx > 0 ? ' locked' : ''}`}
                                 title={(opt.text || '').replace(/\s+/g, ' ').trim() || (opt.label || `Option ${idx + 1}`)}
                               >
                                 {opt.label || `Option ${idx + 1}`}
@@ -2072,6 +2075,8 @@ export default function TextExpansions({
                     <button className="te-panel-close" onClick={handleCancel} type="button">✕</button>
                   </div>
 
+                  <div className="te-panel-scroll">
+
                   {/* Expansion type selector */}
                   <div className="te-type-selector">
                     <button
@@ -2081,9 +2086,16 @@ export default function TextExpansions({
                     >Text</button>
                     <button
                       type="button"
-                      className={`te-trigger-mode-btn${expansionType === 'image' ? ' active' : ''}`}
-                      onClick={() => setExpansionType('image')}
-                    >Image</button>
+                      className={`te-trigger-mode-btn${expansionType === 'image' ? ' active' : ''}${!isPro ? ' locked' : ''}`}
+                      onClick={() => {
+                        if (!isPro) { onShowUpgrade?.('Image expansion'); return; }
+                        setExpansionType('image');
+                      }}
+                      title={!isPro ? 'Upgrade to Pro for image expansions' : undefined}
+                    >
+                      Image
+                      {!isPro && <span className="pro-badge">PRO</span>}
+                    </button>
                   </div>
 
                   {/* Fixed-height top fields: name + trigger + mode + category */}
@@ -2200,16 +2212,19 @@ export default function TextExpansions({
                             <label className="form-label">REPLACEMENT</label>
                             <button
                               type="button"
-                              className="te-variant-toggle-btn"
+                              className={`te-variant-toggle-btn${!isPro ? ' locked' : ''}`}
                               onClick={() => {
+                                if (!isPro) { onShowUpgrade?.('Expansion variants'); return; }
                                 setVariantOptions([
                                   { label: 'Option 1', html: editorValue.html || '', text: editorValue.text || '' },
                                   { label: 'Option 2', html: '', text: '' },
                                 ]);
                                 setActiveVariantIndex(0);
                               }}
+                              title={!isPro ? 'Upgrade to Pro to add variants' : undefined}
                             >
                               + Add Variants
+                              {!isPro && <span className="pro-badge">PRO</span>}
                             </button>
                           </div>
                           <RichTextEditor
@@ -2233,18 +2248,25 @@ export default function TextExpansions({
                               const isActive   = i === activeVariantIndex;
                               const isRenaming = i === renamingVariantIndex;
                               const canClose   = variantOptions.length > 2;
+                              // Pro gate: Free users can edit Option 1 (which fires) but
+                              // tabs 2+ are locked behind UpgradeModal. Data preserved on save.
+                              const locked     = !isPro && i > 0;
                               return (
                                 <div
                                   key={i}
-                                  className={`te-variant-tab${isActive ? ' te-variant-tab--active' : ''}`}
+                                  className={`te-variant-tab${isActive ? ' te-variant-tab--active' : ''}${locked ? ' te-variant-tab--locked' : ''}`}
                                   role="tab"
                                   aria-selected={isActive}
-                                  onClick={() => { if (!isRenaming) setActiveVariantIndex(i); }}
+                                  onClick={() => {
+                                    if (locked) { onShowUpgrade?.('Expansion variants'); return; }
+                                    if (!isRenaming) setActiveVariantIndex(i);
+                                  }}
                                   onDoubleClick={() => {
+                                    if (locked) return;
                                     setRenamingVariantIndex(i);
                                     setVariantRenameValue(opt.label || '');
                                   }}
-                                  title={isActive ? 'Double-click to rename' : 'Click to switch, double-click to rename'}
+                                  title={locked ? 'Upgrade to Pro to use this variant' : (isActive ? 'Double-click to rename' : 'Click to switch, double-click to rename')}
                                 >
                                   {isRenaming ? (
                                     <input
@@ -2273,6 +2295,7 @@ export default function TextExpansions({
                                   ) : (
                                     <span className="te-variant-tab-label">{opt.label || `Option ${i + 1}`}</span>
                                   )}
+                                  {locked && <span className="pro-badge te-variant-tab-pro">PRO</span>}
                                   {!isRenaming && (
                                     <button
                                       type="button"
@@ -2295,8 +2318,9 @@ export default function TextExpansions({
                             })}
                             <button
                               type="button"
-                              className="te-variant-tab-add"
+                              className={`te-variant-tab-add${!isPro ? ' te-variant-tab-add--locked' : ''}`}
                               onClick={() => {
+                                if (!isPro) { onShowUpgrade?.('Expansion variants'); return; }
                                 const newIdx = variantOptions.length;
                                 setVariantOptions([
                                   ...variantOptions,
@@ -2304,8 +2328,8 @@ export default function TextExpansions({
                                 ]);
                                 setActiveVariantIndex(newIdx);
                               }}
-                              title="Add another variant"
-                            >+ Add</button>
+                              title={!isPro ? 'Upgrade to Pro to add more variants' : 'Add another variant'}
+                            >+ Add{!isPro && <span className="pro-badge te-variant-tab-pro">PRO</span>}</button>
                           </div>
 
                           {variantOptions[activeVariantIndex] && (
@@ -2348,18 +2372,31 @@ export default function TextExpansions({
                     </div>
                   ) : (
                     <div className="te-panel-image">
+                      {!isPro && (
+                        <div className="te-image-pro-banner">
+                          <span className="pro-badge">PRO</span>
+                          <span>Image expansions don't fire on Free. Upgrade to use this expansion.</span>
+                          <button
+                            type="button"
+                            className="te-image-pro-banner-cta"
+                            onClick={() => onShowUpgrade?.('Image expansion')}
+                          >Upgrade</button>
+                        </div>
+                      )}
                       <label className="form-label">IMAGE</label>
                       <button
                         type="button"
-                        className="te-image-pick-btn"
+                        className={`te-image-pick-btn${!isPro ? ' locked' : ''}`}
                         onClick={async () => {
+                          if (!isPro) { onShowUpgrade?.('Image expansion'); return; }
                           const path = await window.electronAPI?.browseForImage();
                           if (path) {
                             setImagePath(path);
                             setImageExists(true);
                           }
                         }}
-                      >Choose Image…</button>
+                        title={!isPro ? 'Upgrade to Pro to change the image' : undefined}
+                      >Choose Image…{!isPro && <span className="pro-badge">PRO</span>}</button>
                       {imagePath ? (
                         <div className="te-image-preview-wrap">
                           {imageDataUri ? (
@@ -2403,6 +2440,8 @@ export default function TextExpansions({
                       </div>
                     </div>
                   )}
+
+                  </div>{/* /te-panel-scroll */}
 
                   <div className="te-panel-footer">
                     <div className="te-form-actions">

@@ -1173,6 +1173,18 @@ fn show_overlay(app: &tauri::AppHandle) {
 
     // Send search data to the overlay — includes ALL assignments (profile + global)
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    // Pro gate: Free users get the first 5 templates. Anything beyond
+    // is preserved in config and returns when the user upgrades.
+    let search_templates = {
+        let templates = cfg.get("searchTemplates").cloned().unwrap_or_else(|| serde_json::json!([]));
+        if licence::is_pro() {
+            templates
+        } else if let Some(arr) = templates.as_array() {
+            serde_json::Value::Array(arr.iter().take(5).cloned().collect())
+        } else {
+            templates
+        }
+    };
     let search_data = {
         let state = hotkeys::engine_state().lock().unwrap();
         serde_json::json!({
@@ -1180,7 +1192,7 @@ fn show_overlay(app: &tauri::AppHandle) {
             "activeProfile": state.active_profile,
             "globalInputMethod": cfg.get("globalInputMethod").and_then(|v| v.as_str()).unwrap_or("direct"),
             "theme": cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"),
-            "searchTemplates": cfg.get("searchTemplates").cloned().unwrap_or_else(|| serde_json::json!([])),
+            "searchTemplates": search_templates,
             "settings": {
                 "showAll": cfg.get("overlayShowAll").and_then(|v| v.as_bool()).unwrap_or(true),
                 "closeAfterFiring": cfg.get("overlayCloseAfterFiring").and_then(|v| v.as_bool()).unwrap_or(true),
@@ -1344,7 +1356,7 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let _ = win.set_size(tauri::LogicalSize::new(win_w, 500.0));
 
     // Send recent clipboard history + theme to the overlay
-    let history = clipboard::get_history(1, 500);
+    let history = clipboard::get_history(1, 500, None, None, None, None);
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
     let mut payload = history;
@@ -1925,8 +1937,15 @@ fn export_analytics_csv() -> String {
 // ── Clipboard Manager ──────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_clipboard_history(page: u32, per_page: u32) -> Value {
-    clipboard::get_history(page, per_page)
+fn get_clipboard_history(
+    page: u32,
+    per_page: u32,
+    date_filter: Option<String>,
+    app_filter: Option<String>,
+    tag_filter: Option<String>,
+    search: Option<String>,
+) -> Value {
+    clipboard::get_history(page, per_page, date_filter, app_filter, tag_filter, search)
 }
 
 #[tauri::command]
@@ -2375,6 +2394,11 @@ fn get_distinct_source_apps() -> Vec<String> {
 }
 
 #[tauri::command]
+fn get_clipboard_date_buckets() -> Value {
+    clipboard::get_date_buckets()
+}
+
+#[tauri::command]
 fn update_clipboard_item(id: i64, new_text: String) -> Option<String> {
     clipboard::update_item(id, new_text)
 }
@@ -2390,7 +2414,17 @@ fn get_clipboard_settings() -> Value {
 #[tauri::command]
 fn set_clipboard_settings(retention_days: u32) {
     let max_days = if licence::is_pro() { 30 } else { 7 };
-    clipboard::set_retention_days(retention_days.min(max_days));
+    let clamped = retention_days.min(max_days).clamp(1, 30);
+    clipboard::set_retention_days(clamped);
+
+    // Persist to config so the setting survives restart. Without this the
+    // value lived only in the RETENTION_DAYS static and every relaunch fell
+    // back to DEFAULT_RETENTION_DAYS (7), silently undoing the user's choice.
+    let mut cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = cfg.as_object_mut() {
+        obj.insert("clipboardRetentionDays".to_string(), serde_json::json!(clamped));
+        config::save_config(&cfg);
+    }
 }
 
 #[tauri::command]
@@ -3067,6 +3101,7 @@ pub fn run() {
             pin_clipboard_item,
             get_clipboard_image,
             get_distinct_source_apps,
+            get_clipboard_date_buckets,
             update_clipboard_item,
             get_clipboard_settings,
             set_clipboard_settings,

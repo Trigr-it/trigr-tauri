@@ -199,7 +199,28 @@
   text-align: center;
 }
 
-/* ── Skip ──────────────────────────────────────────────────────────────── */
+/* ── Skip + secondary links ────────────────────────────────────────────── */
+
+.upgrade-have-key-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px 8px 4px;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+
+.upgrade-have-key-link:hover {
+  color: var(--gold-light);
+  text-decoration: underline;
+}
+
+[data-theme="light"] .upgrade-have-key-link:hover {
+  color: var(--gold-dark);
+}
 
 .upgrade-skip-link {
   background: transparent;
