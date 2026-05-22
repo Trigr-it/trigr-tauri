@@ -233,7 +233,10 @@ export default function SettingsPanel({
   const [backupList, setBackupList]           = useState(null);
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
-  const [templatesExpanded, setTemplatesExpanded] = useState(false);
+  // Accordion state — keys match the SECTION_IDS list. Empty = all collapsed.
+  // Search query temporarily overrides via isExpanded() so users can find
+  // matches inside collapsed sections.
+  const [expandedSections, setExpandedSections] = useState(() => new Set());
   const [clipboardRetention, setClipboardRetention] = useState(7);
   const [licenceKey, setLicenceKey]             = useState('');
   const [licenceActivating, setLicenceActivating] = useState(false);
@@ -287,6 +290,40 @@ export default function SettingsPanel({
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
   }, [confirmClearShared, sharedExistsPrompt, confirmRestore, onClose]);
+
+  // ── Accordion helpers ─────────────────────────────────────────────────
+  // All settings sections, in JSX render order. Used by expand/collapse all.
+  const SECTION_IDS = [
+    'licence',
+    'help-documentation',
+    'starter-templates',
+    'about',
+    'general',
+    'privacy-security',
+    'global-pause',
+    'quick-search',
+    'clipboard',
+    'voice-commands',
+    'compatibility',
+    'backup-restore',
+  ];
+  const isSearching = searchQuery.trim().length > 0;
+  function isExpanded(id) {
+    return isSearching || expandedSections.has(id);
+  }
+  function toggleSection(id) {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function expandAllSections() {
+    setExpandedSections(new Set(SECTION_IDS));
+  }
+  function collapseAllSections() {
+    setExpandedSections(new Set());
+  }
 
   // ── Settings search: filter visible sections by title match (DOM walk,
   // post-render). Keeps JSX intact; toggles a class instead of conditional
@@ -391,21 +428,35 @@ export default function SettingsPanel({
 
       <div className="settings-body">
 
-        {/* ── Search ──────────────────────────────────────── */}
-        <div className="settings-search-row">
-          <span className="settings-search-icon" aria-hidden="true">
-            <Search size={14} strokeWidth={1.75} />
-          </span>
-          <input
-            type="text"
-            className="settings-search-input"
-            placeholder="Search settings…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            spellCheck={false}
-            autoCorrect="off"
-            autoComplete="off"
-          />
+        {/* ── Search + accordion controls ────────────────── */}
+        <div className="settings-search-bar">
+          <div className="settings-search-row">
+            <span className="settings-search-icon" aria-hidden="true">
+              <Search size={14} strokeWidth={1.75} />
+            </span>
+            <input
+              type="text"
+              className="settings-search-input"
+              placeholder="Search settings…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              spellCheck={false}
+              autoCorrect="off"
+              autoComplete="off"
+            />
+          </div>
+          <button
+            type="button"
+            className="settings-accordion-btn"
+            onClick={expandAllSections}
+            title="Expand all sections"
+          >Expand all</button>
+          <button
+            type="button"
+            className="settings-accordion-btn"
+            onClick={collapseAllSections}
+            title="Collapse all sections"
+          >Collapse all</button>
         </div>
 
         <div className="settings-search-empty" style={{ display: 'none' }}>
@@ -417,7 +468,14 @@ export default function SettingsPanel({
 
         {/* ── LICENCE ───────────────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">LICENCE</div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('licence')}
+          >
+            LICENCE
+            <span className={`settings-accordion-chevron${isExpanded('licence') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('licence') && (<>
           {licenceStatus.key_entered ? (
             <div className="settings-licence-active">
               <div className="settings-licence-status-row">
@@ -500,7 +558,7 @@ export default function SettingsPanel({
                 <div className="settings-trial-card settings-trial-card--offer">
                   <h3 className="settings-trial-title">Try Pro free for 14 days</h3>
                   <p className="settings-toggle-sub">
-                    Unlock app-specific profiles, double-tap actions, shared config sync and global variables. No card needed. Trigr drops back to Free automatically when the trial ends.
+                    Unlock app-specific profiles, shared config sync, double-tap actions and global variables. No card needed. Trigr drops back to Free automatically when the trial ends.
                   </p>
                   <button
                     type="button"
@@ -547,11 +605,19 @@ export default function SettingsPanel({
               {licenceError && <div className="settings-shared-error">{licenceError}</div>}
             </div>
           )}
+          </>)}
         </section>
 
         {/* ── HELP & DOCUMENTATION ───────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">HELP &amp; DOCUMENTATION</div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('help-documentation')}
+          >
+            HELP &amp; DOCUMENTATION
+            <span className={`settings-accordion-chevron${isExpanded('help-documentation') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('help-documentation') && (<>
           <div className="settings-help-row">
             <button
               type="button"
@@ -590,21 +656,22 @@ export default function SettingsPanel({
               Send Feedback
             </button>
           </div>
+          </>)}
         </section>
 
         {/* ── STARTER TEMPLATES (accordion) ─────────────── */}
         <section className="settings-section">
           <div
             className="settings-section-title settings-accordion-header"
-            onClick={() => setTemplatesExpanded(v => !v)}
+            onClick={() => toggleSection('starter-templates')}
           >
             STARTER TEMPLATES
-            <span className={`settings-accordion-chevron${templatesExpanded ? ' open' : ''}`}>▾</span>
+            <span className={`settings-accordion-chevron${isExpanded('starter-templates') ? ' open' : ''}`}>▾</span>
           </div>
-          {!templatesExpanded && (
+          {!isExpanded('starter-templates') && (
             <p className="settings-section-sub">Import pre-built hotkey and expansion packs</p>
           )}
-          {templatesExpanded && (
+          {isExpanded('starter-templates') && (
             <div className="settings-tpl-wrap">
               <TemplatesPanel
                 activeProfile={activeProfile}
@@ -617,7 +684,14 @@ export default function SettingsPanel({
 
         {/* ── ABOUT ──────────────────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">ABOUT</div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('about')}
+          >
+            ABOUT
+            <span className={`settings-accordion-chevron${isExpanded('about') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('about') && (<>
           <div className="settings-about">
             <div className="settings-about-header">
               <span className="settings-about-name">Trigr</span>
@@ -626,11 +700,62 @@ export default function SettingsPanel({
             <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect. All data stored locally.</p>
             <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 + v2 (<a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://github.com/AutoHotkey/AutoHotkey'); }}>GPL v2 source code</a>).</p>
           </div>
+          </>)}
+        </section>
+
+        {/* ── GENERAL ────────────────────────────────────── */}
+        <section className="settings-section">
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('general')}
+          >
+            GENERAL
+            <span className={`settings-accordion-chevron${isExpanded('general') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('general') && (<>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Start with Windows</span>
+              <span className="settings-toggle-sub">Launch automatically at login</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${startWithWindows ? ' on' : ''}`}
+              onClick={() => handleToggleStartup(!startWithWindows)}
+              role="switch"
+              aria-checked={startWithWindows}
+              title={startWithWindows ? 'Disable start with Windows' : 'Enable start with Windows'}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Enable macros on startup</span>
+              <span className="settings-toggle-sub">Macros active immediately on launch</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${macrosEnabledOnStartup ? ' on' : ''}`}
+              onClick={() => onToggleMacrosOnStartup(!macrosEnabledOnStartup)}
+              role="switch"
+              aria-checked={macrosEnabledOnStartup}
+              title={macrosEnabledOnStartup ? 'Disable macros on startup' : 'Enable macros on startup'}
+            />
+          </div>
+          </>)}
         </section>
 
         {/* ── PRIVACY & SECURITY ─────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">PRIVACY &amp; SECURITY</div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('privacy-security')}
+          >
+            PRIVACY &amp; SECURITY
+            <span className={`settings-accordion-chevron${isExpanded('privacy-security') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('privacy-security') && (<>
 
           <div className="settings-privacy-block">
             <p>All your data is stored locally on this device. Trigr never transmits assignments, expansions, keystrokes or usage stats to any server. Nothing leaves your machine.</p>
@@ -796,11 +921,269 @@ export default function SettingsPanel({
             </svg>
             <span>Avoid storing passwords or sensitive credentials as text expansions. Use a password manager like Bitwarden or 1Password instead.</span>
           </div>
+          </>)}
+        </section>
+
+        {/* ── GLOBAL PAUSE ───────────────────────────────── */}
+        <section className="settings-section">
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('global-pause')}
+          >
+            GLOBAL PAUSE
+            <span className={`settings-accordion-chevron${isExpanded('global-pause') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('global-pause') && (<>
+
+          <div className="settings-pause-stack">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Pause hotkey</span>
+              <span className="settings-toggle-sub">Toggles Trigr on/off from any app. Modifier required.</span>
+            </div>
+            <div className="settings-qs-hotkey-ctrl">
+              {capturingPauseKey ? (
+                <div
+                  className="settings-qs-capture"
+                  tabIndex={0}
+                  autoFocus
+                  onBlur={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
+                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onKeyDown={async e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                    const mods = [];
+                    if (e.ctrlKey)  mods.push('Ctrl');
+                    if (e.shiftKey) mods.push('Shift');
+                    if (e.altKey)   mods.push('Alt');
+                    if (e.metaKey)  mods.push('Win');
+                    if (mods.length === 0) return;
+                    mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                    const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                    const combo = [...mods, e.code].join('+');
+                    const label = [...mods, keyDisplay].join('+');
+                    const result = await window.electronAPI?.checkHotkeyConflict(combo, 'pause');
+                    setPauseConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
+                    setCapturedPauseKey({ combo, label });
+                  }}
+                >
+                  {capturedPauseKey ? (
+                    <span className="settings-qs-captured">{capturedPauseKey.label}</span>
+                  ) : (
+                    <span className="settings-qs-waiting">Press combo…</span>
+                  )}
+                  {capturedPauseKey && !pauseConflict && (
+                    <button
+                      className="settings-qs-save-btn"
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        onSetPauseKey?.(capturedPauseKey.combo);
+                        setCapturingPauseKey(false);
+                        setCapturedPauseKey(null);
+                        setPauseConflict(null);
+                      }}
+                    >
+                      Save
+                    </button>
+                  )}
+                  <button
+                    className="settings-qs-cancel-btn"
+                    type="button"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : globalPauseToggleKey ? (
+                <>
+                  <span className="settings-qs-hotkey-badge">
+                    {globalPauseToggleKey.split('+').map((p, i, arr) => (
+                        <React.Fragment key={i}>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                        </React.Fragment>
+                    ))}
+                  </span>
+                  <button
+                    className="settings-action-btn"
+                    type="button"
+                    onClick={() => setCapturingPauseKey(true)}
+                  >
+                    Change
+                  </button>
+                  <button
+                    className="settings-action-btn settings-danger-btn"
+                    type="button"
+                    onClick={() => onClearPauseKey?.()}
+                    title="Remove pause hotkey"
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="settings-action-btn"
+                  type="button"
+                  onClick={() => setCapturingPauseKey(true)}
+                >
+                  Set hotkey
+                </button>
+              )}
+            </div>
+          </div>
+          {pauseConflict && (
+            <div className="settings-conflict-warn">{pauseConflict}</div>
+          )}
+          </>)}
+        </section>
+
+        {/* ── QUICK SEARCH ───────────────────────────────── */}
+        <section className="settings-section">
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('quick-search')}
+          >
+            QUICK SEARCH
+            <span className={`settings-accordion-chevron${isExpanded('quick-search') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('quick-search') && (<>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Global hotkey</span>
+              <span className="settings-toggle-sub">Opens Quick Search from any app</span>
+            </div>
+            <div className="settings-qs-hotkey-ctrl">
+              {capturingHotkey ? (
+                <div
+                  className="settings-qs-capture"
+                  tabIndex={0}
+                  autoFocus
+                  onBlur={() => { setCapturingHotkey(false); setCapturedHotkey(null); }}
+                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onKeyDown={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                    const mods = [];
+                    if (e.ctrlKey)  mods.push('Ctrl');
+                    if (e.shiftKey) mods.push('Shift');
+                    if (e.altKey)   mods.push('Alt');
+                    if (e.metaKey)  mods.push('Win');
+                    if (mods.length === 0) return;
+                    mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                    const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                    const combo = [...mods, e.code].join('+');
+                    const label = [...mods, keyDisplay].join('+');
+                    setCapturedHotkey({ combo, label });
+                  }}
+                >
+                  {capturedHotkey ? (
+                    <span className="settings-qs-captured">{capturedHotkey.label}</span>
+                  ) : (
+                    <span className="settings-qs-waiting">Press combo…</span>
+                  )}
+                  {capturedHotkey && (
+                    <button
+                      className="settings-qs-save-btn"
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        onUpdateSearchSettings?.({ searchOverlayHotkey: capturedHotkey.combo });
+                        setCapturingHotkey(false);
+                        setCapturedHotkey(null);
+                      }}
+                    >
+                      Save
+                    </button>
+                  )}
+                  <button
+                    className="settings-qs-cancel-btn"
+                    type="button"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setCapturingHotkey(false); setCapturedHotkey(null); }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span className="settings-qs-hotkey-badge">
+                    {searchOverlayHotkey.split('+').map((p, i, arr) => (
+                        <React.Fragment key={i}>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                        </React.Fragment>
+                    ))}
+                  </span>
+                  <button
+                    className="settings-action-btn"
+                    type="button"
+                    onClick={() => setCapturingHotkey(true)}
+                  >
+                    Change
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Show all items when search is empty</span>
+              <span className="settings-toggle-sub">Browse everything when the search box is empty</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${overlayShowAll ? ' on' : ''}`}
+              onClick={() => onUpdateSearchSettings?.({ overlayShowAll: !overlayShowAll })}
+              role="switch"
+              aria-checked={overlayShowAll}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Close after firing</span>
+              <span className="settings-toggle-sub">Dismiss the overlay after activating a result</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${overlayCloseAfterFiring ? ' on' : ''}`}
+              onClick={() => onUpdateSearchSettings?.({ overlayCloseAfterFiring: !overlayCloseAfterFiring })}
+              role="switch"
+              aria-checked={overlayCloseAfterFiring}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Include autocorrect entries</span>
+              <span className="settings-toggle-sub">Include autocorrect in results (can be noisy)</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${overlayIncludeAutocorrect ? ' on' : ''}`}
+              onClick={() => onUpdateSearchSettings?.({ overlayIncludeAutocorrect: !overlayIncludeAutocorrect })}
+              role="switch"
+              aria-checked={overlayIncludeAutocorrect}
+            />
+          </div>
+          </>)}
         </section>
 
         {/* ── CLIPBOARD ──────────────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">CLIPBOARD</div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('clipboard')}
+          >
+            CLIPBOARD
+            <span className={`settings-accordion-chevron${isExpanded('clipboard') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('clipboard') && (<>
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
@@ -985,46 +1368,19 @@ export default function SettingsPanel({
           >
             Open clipboard folder
           </button>
-        </section>
-
-        {/* ── GENERAL ────────────────────────────────────── */}
-        <section className="settings-section">
-          <div className="settings-section-title">GENERAL</div>
-
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Start with Windows</span>
-              <span className="settings-toggle-sub">Launch automatically at login</span>
-            </div>
-            <button
-              type="button"
-              className={`settings-toggle${startWithWindows ? ' on' : ''}`}
-              onClick={() => handleToggleStartup(!startWithWindows)}
-              role="switch"
-              aria-checked={startWithWindows}
-              title={startWithWindows ? 'Disable start with Windows' : 'Enable start with Windows'}
-            />
-          </div>
-
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Enable macros on startup</span>
-              <span className="settings-toggle-sub">Macros active immediately on launch</span>
-            </div>
-            <button
-              type="button"
-              className={`settings-toggle${macrosEnabledOnStartup ? ' on' : ''}`}
-              onClick={() => onToggleMacrosOnStartup(!macrosEnabledOnStartup)}
-              role="switch"
-              aria-checked={macrosEnabledOnStartup}
-              title={macrosEnabledOnStartup ? 'Disable macros on startup' : 'Enable macros on startup'}
-            />
-          </div>
+          </>)}
         </section>
 
         {/* ── VOICE COMMANDS ─────────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">VOICE COMMANDS <span className="pro-badge">PRO</span> <span className="experimental-badge">EXPERIMENTAL</span></div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('voice-commands')}
+          >
+            <span>VOICE COMMANDS <span className="pro-badge">PRO</span> <span className="experimental-badge">EXPERIMENTAL</span></span>
+            <span className={`settings-accordion-chevron${isExpanded('voice-commands') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('voice-commands') && (<>
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
@@ -1165,245 +1521,19 @@ export default function SettingsPanel({
             </div>
           )}
           </>)}
-        </section>
-
-        {/* ── GLOBAL PAUSE ───────────────────────────────── */}
-        <section className="settings-section">
-          <div className="settings-section-title">GLOBAL PAUSE</div>
-
-          <div className="settings-pause-stack">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Pause hotkey</span>
-              <span className="settings-toggle-sub">Toggles Trigr on/off from any app. Modifier required.</span>
-            </div>
-            <div className="settings-qs-hotkey-ctrl">
-              {capturingPauseKey ? (
-                <div
-                  className="settings-qs-capture"
-                  tabIndex={0}
-                  autoFocus
-                  onBlur={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
-                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
-                  onKeyDown={async e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
-                    const mods = [];
-                    if (e.ctrlKey)  mods.push('Ctrl');
-                    if (e.shiftKey) mods.push('Shift');
-                    if (e.altKey)   mods.push('Alt');
-                    if (e.metaKey)  mods.push('Win');
-                    if (mods.length === 0) return;
-                    mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
-                    const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-                    const combo = [...mods, e.code].join('+');
-                    const label = [...mods, keyDisplay].join('+');
-                    const result = await window.electronAPI?.checkHotkeyConflict(combo, 'pause');
-                    setPauseConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
-                    setCapturedPauseKey({ combo, label });
-                  }}
-                >
-                  {capturedPauseKey ? (
-                    <span className="settings-qs-captured">{capturedPauseKey.label}</span>
-                  ) : (
-                    <span className="settings-qs-waiting">Press combo…</span>
-                  )}
-                  {capturedPauseKey && !pauseConflict && (
-                    <button
-                      className="settings-qs-save-btn"
-                      type="button"
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => {
-                        onSetPauseKey?.(capturedPauseKey.combo);
-                        setCapturingPauseKey(false);
-                        setCapturedPauseKey(null);
-                        setPauseConflict(null);
-                      }}
-                    >
-                      Save
-                    </button>
-                  )}
-                  <button
-                    className="settings-qs-cancel-btn"
-                    type="button"
-                    onMouseDown={e => e.preventDefault()}
-                    onClick={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : globalPauseToggleKey ? (
-                <>
-                  <span className="settings-qs-hotkey-badge">
-                    {globalPauseToggleKey.split('+').map((p, i, arr) => (
-                        <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
-                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
-                        </React.Fragment>
-                    ))}
-                  </span>
-                  <button
-                    className="settings-action-btn"
-                    type="button"
-                    onClick={() => setCapturingPauseKey(true)}
-                  >
-                    Change
-                  </button>
-                  <button
-                    className="settings-action-btn settings-danger-btn"
-                    type="button"
-                    onClick={() => onClearPauseKey?.()}
-                    title="Remove pause hotkey"
-                  >
-                    Remove
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="settings-action-btn"
-                  type="button"
-                  onClick={() => setCapturingPauseKey(true)}
-                >
-                  Set hotkey
-                </button>
-              )}
-            </div>
-          </div>
-          {pauseConflict && (
-            <div className="settings-conflict-warn">{pauseConflict}</div>
-          )}
-        </section>
-
-        {/* ── QUICK SEARCH ───────────────────────────────── */}
-        <section className="settings-section">
-          <div className="settings-section-title">QUICK SEARCH</div>
-
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Global hotkey</span>
-              <span className="settings-toggle-sub">Opens Quick Search from any app</span>
-            </div>
-            <div className="settings-qs-hotkey-ctrl">
-              {capturingHotkey ? (
-                <div
-                  className="settings-qs-capture"
-                  tabIndex={0}
-                  autoFocus
-                  onBlur={() => { setCapturingHotkey(false); setCapturedHotkey(null); }}
-                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
-                  onKeyDown={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
-                    const mods = [];
-                    if (e.ctrlKey)  mods.push('Ctrl');
-                    if (e.shiftKey) mods.push('Shift');
-                    if (e.altKey)   mods.push('Alt');
-                    if (e.metaKey)  mods.push('Win');
-                    if (mods.length === 0) return;
-                    mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
-                    const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-                    const combo = [...mods, e.code].join('+');
-                    const label = [...mods, keyDisplay].join('+');
-                    setCapturedHotkey({ combo, label });
-                  }}
-                >
-                  {capturedHotkey ? (
-                    <span className="settings-qs-captured">{capturedHotkey.label}</span>
-                  ) : (
-                    <span className="settings-qs-waiting">Press combo…</span>
-                  )}
-                  {capturedHotkey && (
-                    <button
-                      className="settings-qs-save-btn"
-                      type="button"
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => {
-                        onUpdateSearchSettings?.({ searchOverlayHotkey: capturedHotkey.combo });
-                        setCapturingHotkey(false);
-                        setCapturedHotkey(null);
-                      }}
-                    >
-                      Save
-                    </button>
-                  )}
-                  <button
-                    className="settings-qs-cancel-btn"
-                    type="button"
-                    onMouseDown={e => e.preventDefault()}
-                    onClick={() => { setCapturingHotkey(false); setCapturedHotkey(null); }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <span className="settings-qs-hotkey-badge">
-                    {searchOverlayHotkey.split('+').map((p, i, arr) => (
-                        <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
-                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
-                        </React.Fragment>
-                    ))}
-                  </span>
-                  <button
-                    className="settings-action-btn"
-                    type="button"
-                    onClick={() => setCapturingHotkey(true)}
-                  >
-                    Change
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Show all items when search is empty</span>
-              <span className="settings-toggle-sub">Browse everything when the search box is empty</span>
-            </div>
-            <button
-              type="button"
-              className={`settings-toggle${overlayShowAll ? ' on' : ''}`}
-              onClick={() => onUpdateSearchSettings?.({ overlayShowAll: !overlayShowAll })}
-              role="switch"
-              aria-checked={overlayShowAll}
-            />
-          </div>
-
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Close after firing</span>
-              <span className="settings-toggle-sub">Dismiss the overlay after activating a result</span>
-            </div>
-            <button
-              type="button"
-              className={`settings-toggle${overlayCloseAfterFiring ? ' on' : ''}`}
-              onClick={() => onUpdateSearchSettings?.({ overlayCloseAfterFiring: !overlayCloseAfterFiring })}
-              role="switch"
-              aria-checked={overlayCloseAfterFiring}
-            />
-          </div>
-
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Include autocorrect entries</span>
-              <span className="settings-toggle-sub">Include autocorrect in results (can be noisy)</span>
-            </div>
-            <button
-              type="button"
-              className={`settings-toggle${overlayIncludeAutocorrect ? ' on' : ''}`}
-              onClick={() => onUpdateSearchSettings?.({ overlayIncludeAutocorrect: !overlayIncludeAutocorrect })}
-              role="switch"
-              aria-checked={overlayIncludeAutocorrect}
-            />
-          </div>
+          </>)}
         </section>
 
         {/* ── COMPATIBILITY ──────────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">COMPATIBILITY</div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('compatibility')}
+          >
+            COMPATIBILITY
+            <span className={`settings-accordion-chevron${isExpanded('compatibility') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('compatibility') && (<>
           <p className="settings-compat-desc">
             How Trigr injects text into other apps. Use <strong>Type Each Key</strong> for CAD and games.
           </p>
@@ -1549,11 +1679,19 @@ export default function SettingsPanel({
             <option value="MM/DD/YYYY">MM/DD/YYYY (US), e.g. 12/31/2026</option>
             <option value="YYYY-MM-DD">YYYY-MM-DD (ISO), e.g. 2026-12-31</option>
           </select>
+          </>)}
         </section>
 
         {/* ── BACKUP & RESTORE ───────────────────────────── */}
         <section className="settings-section">
-          <div className="settings-section-title">BACKUP &amp; RESTORE</div>
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('backup-restore')}
+          >
+            BACKUP &amp; RESTORE
+            <span className={`settings-accordion-chevron${isExpanded('backup-restore') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('backup-restore') && (<>
           <p className="settings-backup-desc">
             Export to back up or move your config to another machine. Import to restore. Trigr also creates automatic backups on every launch and save.
           </p>
@@ -1657,6 +1795,7 @@ export default function SettingsPanel({
               )}
             </div>
           )}
+          </>)}
         </section>
 
       </div>

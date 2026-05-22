@@ -12,12 +12,23 @@
 
 /* ── Search ──────────────────────────────────────────────────────────── */
 
+/* Wrapper that holds the search pill plus the Expand/Collapse all buttons.
+   Horizontal padding matches the sections' content padding (16px) so the
+   pill and buttons line up cleanly with the section content beneath. */
+.settings-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 0;
+  margin: 0 0 14px;
+}
+
 .settings-search-row {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  margin: 0 0 14px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-pill, 6px);
@@ -27,6 +38,27 @@
 
 .settings-search-row:focus-within {
   border-color: var(--accent);
+}
+
+.settings-accordion-btn {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-pill, 6px);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.settings-accordion-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .settings-search-icon {
@@ -159,9 +191,9 @@
 
 .settings-section-title {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   color: var(--accent);
   text-transform: uppercase;
   margin-bottom: 10px;
@@ -176,16 +208,29 @@
 
 /* ── Accordion header ──────────────────────────────────────────────────── */
 
+/* Header extends to the section's edges so the whole visible bar is clickable.
+   Negative margins pull it up + outwards into the section's padding zone, then
+   the same padding refills the click area. margin-bottom: 0 overrides the
+   title's default 10px, and that spacing now lives inside the header's
+   padding-bottom — keeping the visual gap between header and body identical
+   to the pre-accordion layout. */
 .settings-accordion-header {
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
   user-select: none;
-  transition: color 0.12s;
+  margin: -14px -16px 0;
+  padding: 14px 16px;
+  transition: color 0.12s, background 0.12s;
+}
+
+.settings-section-title.settings-accordion-header {
+  margin-bottom: 0;
 }
 
 .settings-accordion-header:hover {
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
