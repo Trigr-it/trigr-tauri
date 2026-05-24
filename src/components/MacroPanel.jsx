@@ -79,7 +79,7 @@ const TRIGGER_KEYS = [
 // plus a single AHK leaf under a divider. Add new step types into the matching
 // group; the dropdown reads from this structure directly.
 const MACRO_STEP_CATEGORIES = [
-  { kind: 'group', label: 'Type & Keys',   items: ['Type Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
+  { kind: 'group', label: 'Type & Keys',   items: ['Type Text', 'Dynamic Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
   { kind: 'group', label: 'Mouse',         items: ['Click Mouse', 'Click at Position'] },
   { kind: 'group', label: 'Open',          items: ['Open App', 'Open URL', 'Open Folder'] },
   { kind: 'group', label: 'Wait & Window', items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Focus Window'] },
@@ -111,6 +111,44 @@ const INPUT_METHOD_OPTS = [
   { id: 'global',       label: 'Global default',  hint: 'Use the method set in Settings → Compatibility' },
   { id: 'direct',       label: 'Direct',           hint: 'Simulates real keypresses — works in CAD, games, any app' },
   { id: 'shift-insert', label: 'Clipboard',        hint: 'Fast for long text — pastes via clipboard' },
+];
+
+// Dynamic tokens offered by the Dynamic Text macro step. Mirrors the Insert
+// menu in TextExpansions.jsx (kept in sync by convention — these are the
+// runtime tokens resolve_tokens() in expansions.rs can substitute). {cursor}
+// and {{var}} are omitted: cursor positioning isn't honoured by output_text
+// in macro context, and global variables live in their own Pro-gated picker.
+const DYNAMIC_TEXT_TOKEN_GROUPS = [
+  { label: 'Date', items: [
+    { token: '{date}',             label: 'Date (your default)' },
+    { token: '{date:DD/MM/YYYY}',  label: 'DD/MM/YYYY'          },
+    { token: '{date:DD/MM/YY}',    label: 'DD/MM/YY'            },
+    { token: '{date:MM/DD/YYYY}',  label: 'MM/DD/YYYY'          },
+    { token: '{date:YYYY-MM-DD}',  label: 'YYYY-MM-DD'          },
+    { token: '{date:D MMMM YYYY}', label: 'D MMMM YYYY (1 May 2026)' },
+    { token: '{dayofweek}',        label: 'Day of Week'         },
+    { token: '{month}',            label: 'Month Name'          },
+    { token: '{year}',             label: 'Year (YYYY)'         },
+    { token: '{day}',              label: 'Day of Month'        },
+  ]},
+  { label: 'Time', items: [
+    { token: '{time:HH:MM}',    label: 'HH:MM'             },
+    { token: '{time:HH:MM:SS}', label: 'HH:MM:SS'          },
+    { token: '{isodate}',       label: 'ISO 8601 Date+Time' },
+  ]},
+  { label: 'Date Math', items: [
+    { token: '{date:+1d}', label: 'Tomorrow (+1 day)' },
+    { token: '{date:-1d}', label: 'Yesterday (-1 day)' },
+    { token: '{date:+7d}', label: 'Next Week (+7 days)' },
+    { token: '{date:+1m}', label: 'Next Month (+1 month)' },
+  ]},
+  { label: 'Clipboard', items: [
+    { token: '{clipboard}',           label: 'Clipboard Contents'    },
+    { token: '{clipboard:uppercase}', label: 'Clipboard (UPPERCASE)' },
+    { token: '{clipboard:lowercase}', label: 'Clipboard (lowercase)' },
+    { token: '{clipboard:trim}',      label: 'Clipboard (trimmed)'   },
+    { token: '{clipboard:urlencode}', label: 'Clipboard (URL encode)' },
+  ]},
 ];
 
 function TextForm({ value, onChange, globalInputMethod }) {
@@ -541,9 +579,33 @@ function AhkForm({ value, onChange }) {
         onKeyDown={e => e.stopPropagation()}
       />
       <div className="form-hint">
-        Write the script body only — no hotkey labels needed. Trigr handles the trigger.
+        Paste your script as-is. Trigr is the trigger, so hotkey labels like <code>^!j::</code> are stripped automatically.
       </div>
     </div>
+  );
+}
+
+// Dynamic Text macro-step value — single-select of all available dynamic
+// tokens (date, time, clipboard, ...). The stored value is the token string
+// itself (e.g. "{date}"), resolved at runtime by resolve_type_text_tokens
+// in actions.rs — same path Type Text takes for literal text.
+function MacroDynamicTextValue({ value, onChange }) {
+  return (
+    <select
+      className="form-select macro-step-value"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      aria-label="Dynamic value"
+    >
+      <option value="">Pick a dynamic value…</option>
+      {DYNAMIC_TEXT_TOKEN_GROUPS.map(group => (
+        <optgroup key={group.label} label={group.label}>
+          {group.items.map(item => (
+            <option key={item.token} value={item.token}>{item.label}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
   );
 }
 
@@ -1191,6 +1253,12 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             onChange={e => updateStep({ ...step, value: e.target.value })}
           />
         )}
+        {step.type === 'Dynamic Text' && (
+          <MacroDynamicTextValue
+            value={step.value || ''}
+            onChange={v => updateStep({ ...step, value: v })}
+          />
+        )}
         {step.type === 'Wait (ms)' && (
           <input
             className="form-input macro-step-value"
@@ -1410,6 +1478,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
               rows={4}
               onKeyDown={e => e.stopPropagation()}
             />
+            <div className="form-hint" style={{ marginTop: 4 }}>
+              Paste your script as-is. Hotkey labels like <code>^!j::</code> are stripped automatically.
+            </div>
           </div>
         );
       })()}

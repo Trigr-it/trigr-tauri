@@ -355,7 +355,8 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
             if let Some(text) = data.and_then(|d| d.get("text")).and_then(|v| v.as_str()) {
                 if step_settle_ms > 0 { thread::sleep(Duration::from_millis(step_settle_ms)); }
                 let method = resolve_input_method(data);
-                output_text(text, &method, target_hwnd);
+                let resolved = resolve_type_text_tokens(text);
+                output_text(&resolved, &method, target_hwnd);
             }
         }
 
@@ -413,9 +414,10 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
                     info!("[Trigr]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
 
-                    if step_type == "Type Text" && uses_clipboard && !step_value.is_empty() {
+                    if matches!(step_type, "Type Text" | "Dynamic Text") && uses_clipboard && !step_value.is_empty() {
                         if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
-                        clipboard_paste_core(step_value, current_hwnd);
+                        let resolved = resolve_type_text_tokens(step_value);
+                        clipboard_paste_core(&resolved, current_hwnd);
                         clipboard_dirty = true;
                     } else {
                         // Restore clipboard before non-Type-Text steps if we dirtied it.
@@ -510,6 +512,17 @@ fn resolve_input_method(data: Option<&Value>) -> String {
 }
 
 // ── Text output dispatcher ──────────────────────────────────────────────────
+
+/// Resolve dynamic tokens ({date}, {time}, {clipboard}, {{var}}, ...) in
+/// macro Type Text strings. Mirrors the resolution that fire_expansion does
+/// for text expansions, so users get consistent token behaviour across
+/// expansions and macros. {cursor} is resolved (token removed) but cursor
+/// positioning isn't honoured here — output_text has no caret-back hook.
+fn resolve_type_text_tokens(text: &str) -> String {
+    let global_vars = crate::expansions::get_global_variables();
+    let (resolved, _cursor_back) = crate::expansions::resolve_tokens(text, &global_vars);
+    resolved
+}
 
 fn output_text(text: &str, method: &str, target_hwnd: isize) {
     match method {
@@ -1408,10 +1421,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
     let (_, settle_ms, _, _) = speed_delays();
 
     match step_type {
-        "Type Text" => {
+        "Type Text" | "Dynamic Text" => {
             if !step_value.is_empty() {
                 if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
-                output_text(step_value, method, *target_hwnd);
+                let resolved = resolve_type_text_tokens(step_value);
+                output_text(&resolved, method, *target_hwnd);
             }
         }
 
@@ -2104,6 +2118,34 @@ fn ahk_scripts_dir(app: &tauri::AppHandle) -> PathBuf {
         .join("ahk-scripts")
 }
 
+/// Normalise an AHK script body so users can paste scripts copied straight
+/// from existing .ahk files. Trigr is the trigger, so any hotkey labels
+/// (`^!j::`, `F1::`, etc.) would either swallow the body or sit waiting for
+/// a key that never fires. Strips standalone label lines, keeps the body of
+/// one-liner hotkeys, and drops persistence directives that conflict with
+/// the one-shot run model. Scripts pasted without labels pass through unchanged.
+fn normalise_ahk_script(script: &str) -> String {
+    let label_only = regex_lite::Regex::new(r"^\s*[!^+#<>*~\$&\w]+::\s*$").unwrap();
+    let label_with_body = regex_lite::Regex::new(r"^\s*[!^+#<>*~\$&\w]+::(.+)$").unwrap();
+    script
+        .lines()
+        .filter_map(|line| {
+            if label_only.is_match(line) {
+                return None;
+            }
+            if let Some(caps) = label_with_body.captures(line) {
+                return Some(caps.get(1).unwrap().as_str().to_string());
+            }
+            let lc = line.trim().to_lowercase();
+            if lc.starts_with("#persistent") || lc.starts_with("#singleinstance") {
+                return None;
+            }
+            Some(line.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Execute an AHK script (fire-and-forget for standalone actions).
 /// If trigger_key is provided, previous AHK instance for that key is killed first.
 fn execute_ahk_script(script: &str, ahk_version: &str, trigger_key: Option<&str>, app: &tauri::AppHandle) {
@@ -2125,6 +2167,8 @@ fn execute_ahk_script(script: &str, ahk_version: &str, trigger_key: Option<&str>
         .unwrap_or_default()
         .as_millis();
     let script_path = script_dir.join(format!("trigr-ahk-{}.ahk", timestamp));
+
+    let script = normalise_ahk_script(script);
 
     // UTF-8 BOM for AHK v1 Unicode support
     let mut content = vec![0xEF, 0xBB, 0xBF];
@@ -2207,6 +2251,8 @@ fn execute_ahk_script_sync(script: &str, ahk_version: &str, app: &tauri::AppHand
         .unwrap_or_default()
         .as_millis();
     let script_path = script_dir.join(format!("trigr-ahk-{}.ahk", timestamp));
+
+    let script = normalise_ahk_script(script);
 
     let mut content = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
     content.extend_from_slice(script.as_bytes());
