@@ -690,6 +690,46 @@ function App() {
     }
   }, [theme]);
 
+  // ── Featurebase Changelog Widget init (main window only) ──
+  // Surfaces published Trigr Updates inside the app. A "What's New" button
+  // in the titlebar carries the data-featurebase-changelog attribute, which
+  // auto-binds open once init succeeds. Unread count is rendered into
+  // <span id="fb-update-badge"> by the SDK; we also log it for visibility.
+  //
+  // `theme` must be 'dark' or 'light' (strict) — the SDK rejects 'auto', so
+  // we pass resolvedTheme (the computed value) not the raw user preference.
+  const featurebaseChangelogInitedRef = useRef(false);
+  useEffect(() => {
+    if (featurebaseChangelogInitedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('overlay') === '1'
+        || params.get('fillin') === '1'
+        || params.get('radialmenu') === '1'
+        || params.get('clipboardoverlay') === '1') {
+      return;
+    }
+    if (typeof window.Featurebase !== 'function') return;
+    featurebaseChangelogInitedRef.current = true;
+    try {
+      window.Featurebase('init_changelog_widget', {
+        organization: 'trigr',
+        theme: resolvedTheme,
+        popup: { enabled: true, autoOpenForNewUpdates: false },
+        changelogCard: { enabled: true },
+      }, (err, data) => {
+        if (err) {
+          console.warn('[Featurebase] changelog error', err);
+          return;
+        }
+        if (data && data.action === 'unreadChangelogsCountChanged') {
+          console.log('[Featurebase] unread changelogs', data.unreadCount);
+        }
+      });
+    } catch (e) {
+      console.warn('[Featurebase] changelog init failed', e);
+    }
+  }, [resolvedTheme]);
+
   // ── UPDATER — DO NOT MODIFY WITHOUT EXPLICIT INSTRUCTION ──
   // Permissions required: updater:allow-check, updater:default (default.json)
   // process:allow-restart required for relaunch after install

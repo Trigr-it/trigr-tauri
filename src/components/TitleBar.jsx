@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare, Sun, Moon, Monitor, Check } from 'lucide-react';
+import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare, Megaphone, Sun, Moon, Monitor, Check } from 'lucide-react';
 import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
 import { openFeedback } from '../utils/feedback';
@@ -276,6 +276,17 @@ export default function TitleBar({
             )}
           </div>
         )}
+        <button
+          className="tb-whatsnew-btn"
+          onClick={() => window.Featurebase?.('manually_open_changelog_popup')}
+          title="See what's new in Trigr"
+          data-drag="false"
+          type="button"
+          aria-label="What's new"
+        >
+          <Megaphone size={13} strokeWidth={1.75} style={{ marginRight: 6, verticalAlign: -2 }} /> What's New
+          <span id="fb-update-badge" className="tb-whatsnew-badge"></span>
+        </button>
         <button
           className="tb-feedback-btn"
           onClick={openFeedback}

@@ -215,6 +215,74 @@
   background: var(--accent-glow);
 }
 
+/* ── What's New pill ─────────────────────────────────────────── */
+/* Ghost/outline variant of .tb-feedback-btn — same dimensions so they
+   pair cleanly in the titlebar, but quieter so Feedback remains the
+   primary affordance. data-featurebase-changelog auto-binds open via
+   the Featurebase SDK; #fb-update-badge inside is populated by the SDK
+   with the unread count. */
+.tb-whatsnew-btn {
+  position: relative;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 13px;
+  background: transparent;
+  border: 1px solid var(--btn-primary-bg);
+  color: var(--btn-primary-bg);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.08s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tb-whatsnew-btn:hover {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.tb-whatsnew-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 0 var(--accent-glow);
+}
+
+.tb-whatsnew-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow-strong);
+}
+
+/* Featurebase populates this with the unread count number. Hidden when
+   empty; revealed via :not(:empty). Red dot with count, top-right of pill. */
+.tb-whatsnew-badge {
+  display: none;
+}
+
+.tb-whatsnew-badge:not(:empty) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #e84545;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
 /* ── Feedback pill ───────────────────────────────────────────── */
 /* Solid-gold primary pill, intentionally louder than .tb-templates-btn so
    beta testers can spot the feedback affordance immediately. Uses the
