@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to set up custom hotkeys on Windows without writing code — Trigr</title>
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../favicon-192.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="description" content="Step-by-step guide to creating custom Windows hotkeys using a visual keyboard. No scripting required.">
+
+<!-- SEO: canonical -->
+<link rel="canonical" href="https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html">
+
+<!-- Open Graph -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="How to set up custom hotkeys on Windows without writing code">
+<meta property="og:description" content="Step-by-step guide to creating custom Windows hotkeys using a visual keyboard. No scripting required.">
+<meta property="og:url" content="https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html">
+<meta property="og:site_name" content="Trigr">
+<meta property="article:published_time" content="2026-05-26">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="How to set up custom hotkeys on Windows without writing code">
+<meta name="twitter:description" content="Step-by-step guide to creating custom Windows hotkeys using a visual keyboard. No scripting required.">
+
+<script>
+(function(){
+  try {
+    var saved = localStorage.getItem('trigr-site-theme');
+    var theme;
+    if (saved === 'light' || saved === 'dark') { theme = saved; }
+    else { theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="blog.css">
+</head>
+<body>
+
+<nav>
+  <a href="../index.html" class="nav-logo">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="logo-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="logo-key-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#logo-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#logo-key-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">TRIGR</span>
+  </a>
+  <div class="nav-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#how">How it works</a>
+    <a href="../trigr-help.html">Guide</a>
+    <a href="../roadmap.html">Roadmap</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
+  </div>
+</nav>
+
+<main>
+  <div class="blog-container">
+    <article>
+      <header>
+        <span class="eyebrow">Guide</span>
+        <h1>How to set up custom hotkeys on Windows without writing code</h1>
+        <div class="meta-row">
+          <time datetime="2026-05-26">26 May 2026</time>
+          <span class="dot"></span>
+          <span>4 min read</span>
+        </div>
+      </header>
+
+      <div class="prose">
+        <p>Windows is generous with built-in shortcuts and stingy about letting you make new ones. Win+E for Explorer, Win+L to lock, Alt+Tab to switch. Useful, but fixed. The moment you want Ctrl+Alt+J to open your project tracker, or F9 to paste your current Jira ticket reference, the operating system stops helping.</p>
+
+        <p>There are three usual routes out of this. One is light, one is heavy, and one sits in the middle.</p>
+
+        <h2>Route 1: Microsoft PowerToys (light)</h2>
+
+        <p>PowerToys is Microsoft's free utility suite. The Keyboard Manager module lets you remap one key to another, or one shortcut to another shortcut. So you can make CapsLock behave as Esc, or Win+Q fire Ctrl+Shift+T.</p>
+
+        <p>This is genuine functionality and worth installing. The limit is that it only does key-to-key remapping. You cannot bind a shortcut to &ldquo;open this app&rdquo;, &ldquo;paste this block of text&rdquo;, or &ldquo;run a sequence of actions&rdquo;. Anything beyond remapping is out of scope.</p>
+
+        <p>If your need is &ldquo;swap two keys&rdquo;, stop here. PowerToys is the right answer.</p>
+
+        <h2>Route 2: AutoHotkey (heavy)</h2>
+
+        <p>AutoHotkey is the long-standing power-user answer. It is a scripting language with its own runtime, and given enough patience it will do almost anything you can describe in code. A simple example:</p>
+
+        <pre><code>^!j::Run "https://your-jira.atlassian.net"</code></pre>
+
+        <p>That binds Ctrl+Alt+J to open a URL. To go further (variables, GUI windows, file handling) you learn the language.</p>
+
+        <p>The strengths are obvious. Total flexibility, free, decades of community scripts to copy. The weaknesses are the cost of entry (you are learning a small programming language for a productivity tool) and the trust problem (AutoHotkey is increasingly blocked by corporate IT because malware authors use the same runtime to drop payloads). For home use it is fine. For a managed work laptop, often not an option.</p>
+
+        <h2>Route 3: Visual hotkey tools (middle)</h2>
+
+        <p>A newer category of Windows tools gives you the binding flexibility of AutoHotkey through a visual interface, without the scripting language. Trigr is the one we build, so we will use it as the worked example. Others in this space include PhraseExpress and Macro Recorder, with different feature focuses.</p>
+
+        <p>If you already have AutoHotkey scripts you do not want to rewrite, Trigr can run them directly. The AHK Script Runner action wraps your existing v1 or v2 script and ties it to whatever key you choose in the visual UI, no separate AHK install required.</p>
+
+        <p>The flow looks like this in Trigr:</p>
+
+        <ol>
+          <li>Open the app. A picture of a keyboard is on the screen.</li>
+          <li>Click the key you want to use as the trigger. Add a modifier (Ctrl, Alt, Shift) by clicking the modifier bar above the keyboard.</li>
+          <li>Choose an action from the action menu: launch an app, paste text, run a macro, open a URL, open a folder, run a custom script if you really need one.</li>
+          <li>Save. The hotkey is live immediately.</li>
+        </ol>
+
+        <p>No syntax to learn, no compile step, nothing to debug. If you change your mind, you click the key again and edit the binding. If you want the hotkey to behave differently in Excel than in your browser, you create an app-specific profile and Trigr switches automatically based on the focused window.</p>
+
+        <h2>Example use cases</h2>
+
+        <p>A few hotkeys that are worth setting up early:</p>
+
+        <ul>
+          <li><strong>Launch your most-used app.</strong> Ctrl+Alt+O opens Outlook. Ctrl+Alt+S opens Slack. The Win key is reserved for the operating system, so use Ctrl+Alt as your launcher modifier.</li>
+          <li><strong>Paste your email signature.</strong> F8 fires a multi-line block with your name, role, and links. Trigr's text expansions can include rich formatting and even images, so a stamped signature with a logo works.</li>
+          <li><strong>Open a folder you use daily.</strong> Ctrl+Alt+P opens <code>C:\Projects\Current</code>. Useful for anyone working out of a fixed folder tree.</li>
+          <li><strong>Run a macro.</strong> F9 fires a sequence: copy the selection, switch to another window, paste, then press Enter. A three-step routine that took five seconds now takes one keypress.</li>
+        </ul>
+
+        <h2>Beyond key remapping</h2>
+
+        <p>A visual hotkey tool usually covers more than keys. In Trigr's case, the same UI lets you set up:</p>
+
+        <ul>
+          <li><strong>Text expansions.</strong> Type <code>;addr</code> and your full address fills in. Date placeholders, fill-in fields, and rich text are supported.</li>
+          <li><strong>A clipboard manager.</strong> Win+Shift+V pulls up the last 50 things you copied, searchable.</li>
+          <li><strong>Quick search overlay.</strong> Ctrl+Space opens a launcher for apps, URLs, or any defined search template.</li>
+          <li><strong>Voice commands (experimental).</strong> Say &ldquo;open project tracker&rdquo; and the matching action runs.</li>
+        </ul>
+
+        <p>You do not need to use all of these on day one. Most people start with two or three hotkeys and add more once the muscle memory forms.</p>
+
+        <h2>A note on conflicts</h2>
+
+        <p>Windows reserves a long list of shortcuts. Ctrl+Alt+Del is sacred and untouchable. Win+anything mostly belongs to the OS. Function keys are often hijacked by your laptop maker for brightness and volume. The practical advice: pick Ctrl+Alt combinations for launchers, F-keys for one-shot actions, and avoid Win+X.</p>
+
+        <p>If a hotkey appears to do nothing when you press it, the first thing to check is whether another app already claimed it.</p>
+
+        <aside class="cta-card">
+          <h3>Download Trigr free</h3>
+          <p>Visual hotkeys, macros, text expansion, and a clipboard manager in one tool. No scripting. Free during Beta. Windows 10 and 11, x64 and ARM64.</p>
+          <a class="cta-btn" href="https://github.com/Trigr-it/trigr-tauri/releases/latest" data-loc="blog_cta">Download from GitHub</a>
+        </aside>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-top">
+    <div class="footer-brand">
+      <a href="../index.html" class="ft-logo">
+        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+        <span class="ft-wm">TRIGR</span>
+      </a>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
+    </div>
+    <div class="footer-cols">
+      <div class="ft-col">
+        <h4>Product</h4>
+        <a href="../index.html#features">Features</a>
+        <a href="../index.html#how">How it works</a>
+        <a href="../roadmap.html">Roadmap</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
+      </div>
+      <div class="ft-col">
+        <h4>Resources</h4>
+        <a href="../trigr-help.html">Guide</a>
+        <a href="../trigr-alpha-tester-guide.html">Tester guide</a>
+        <a href="https://trigr.featurebase.app" target="_blank" rel="noopener">Feedback &amp; Roadmap</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/issues">Report a bug</a>
+      </div>
+      <div class="ft-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:admin@usetrigr.com">admin@usetrigr.com</a>
+        <a href="https://github.com/Trigr-it">@Trigr-it</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span class="ft-copy">&copy; 2026 Trigr &middot; Designed by a human, built by an AI, shipped by both</span>
+    <div class="ft-meta">
+      <a href="../privacy.html">Privacy</a>
+      <a href="https://github.com/Trigr-it/trigr-tauri/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+function toggleTheme() {
+  var html = document.documentElement;
+  var current = html.getAttribute('data-theme') || 'dark';
+  var next = current === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '🌙' : '☀';
+  localStorage.setItem('trigr-site-theme', next);
+}
+(function() {
+  var btn = document.getElementById('theme-btn');
+  if (btn) {
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    btn.textContent = current === 'light' ? '🌙' : '☀';
+  }
+})();
+</script>
+</body>
+</html>

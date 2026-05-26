@@ -25,6 +25,18 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://usetrigr.com/blog/</loc>
+    <lastmod>2026-05-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html</loc>
+    <lastmod>2026-05-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://usetrigr.com/privacy.html</loc>
     <lastmod>2026-05-26</lastmod>
     <changefreq>yearly</changefreq>
