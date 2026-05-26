@@ -1,10 +1,40 @@
+# ── Build artefacts ────────────────────────────────────────────────────────
 target/
 node_modules/
+dist/
+build/
+
+# ── Secrets / signing material (NEVER commit) ──────────────────────────────
 .env
 .env.local
 .env.*.local
 *.key
-dist/
-build/
+*.pfx
+*.p12
+*.cer
+*.cert
+*.crt
+*.keystore
+*.jks
+
+# ── IDE / editor ───────────────────────────────────────────────────────────
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ── OS junk ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ───────────────────────────────────────────────────────────────────
+*.log
+
+# ── Internal / harness state ───────────────────────────────────────────────
+.claude/scheduled_tasks.lock
+
+# ── Internal planning docs ─────────────────────────────────────────────────
 docs/private/
 docs/windows-smartscreen.mp4
