@@ -736,14 +736,39 @@ function App() {
   // Removing any of these permissions will cause silent failure
   // Test any changes with cargo tauri dev before releasing
   // Both x64 and ARM64 builds required in release.yml matrix
+  // Runs once on mount + every 6h thereafter, so long-running instances
+  // (lid-closers who never restart Trigr) still receive update prompts.
+  // isChecking guard prevents overlap if a prompt is open when the next tick fires.
   useEffect(() => {
+    let isChecking = false;
     async function checkForUpdates() {
+      if (isChecking) return;
+      isChecking = true;
       try {
         const { check } = await import('@tauri-apps/plugin-updater');
         const { relaunch } = await import('@tauri-apps/plugin-process');
         const { confirm } = await import('@tauri-apps/plugin-dialog');
         const update = await check();
         if (update?.available) {
+          // Native Windows toast so lid-closers / hidden-window users get
+          // pinged even when the main window is in the tray. The confirm()
+          // dialog below stays invisible until the window is shown, so the
+          // toast is the signal that actually reaches set-and-forget users.
+          // Failure here must not block the install flow, hence the inner catch.
+          try {
+            const { isPermissionGranted, requestPermission, sendNotification } =
+              await import('@tauri-apps/plugin-notification');
+            let granted = await isPermissionGranted();
+            if (!granted) granted = (await requestPermission()) === 'granted';
+            if (granted) {
+              sendNotification({
+                title: 'Trigr update available',
+                body: `Version ${update.version} is ready. Open Trigr to install.`,
+              });
+            }
+          } catch (notifyErr) {
+            console.error('Update notification failed:', notifyErr);
+          }
           const confirmed = await confirm(
             `Trigr ${update.version} is available. Install now?`,
             { title: 'Update Available', kind: 'info' }
@@ -755,9 +780,14 @@ function App() {
         }
       } catch (e) {
         console.error('Update check failed:', e);
+      } finally {
+        isChecking = false;
       }
     }
     checkForUpdates();
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    const interval = setInterval(checkForUpdates, SIX_HOURS_MS);
+    return () => clearInterval(interval);
   }, []);
 
   // ── Notify main process when a text input has focus ───────
