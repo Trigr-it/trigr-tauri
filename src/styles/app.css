@@ -252,6 +252,14 @@
   letter-spacing: 0.04em;
   cursor: pointer;
   transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-tab-icon {
+  font-size: 13px;
+  line-height: 1;
 }
 
 .view-tab:hover {
@@ -263,6 +271,18 @@
   background: var(--bg-active);
   color: var(--accent);
   border: 1px solid var(--border-accent);
+}
+
+/* Below 1200px, view-switcher tabs collapse to icon-only so the row stays
+   readable when the modifier bar and other controls are competing for
+   horizontal space. title + aria-label keep the buttons accessible. */
+@media (max-width: 1200px) {
+  .view-tab {
+    padding: 0 12px;
+  }
+  .view-tab-label {
+    display: none;
+  }
 }
 
 /* ── Keyboard + numpad slide-out wrapper ───────────────────── */

@@ -564,6 +564,106 @@ fn apply_case(text: &str, pattern: CasePattern) -> String {
 
 // ── Fire expansion ──────────────────────────────────────────────────────────
 
+/// Fire an existing text expansion by trigger word — entry point for the
+/// "Fire Text Expansion" macro step in actions.rs. Mirrors the dispatch logic
+/// in check_space_trigger (image / variant / plain) but uses trigger_len=0 +
+/// delete_extra=false because no characters were typed to consume — the macro
+/// step injects on top of the current caret without erasing anything.
+///
+/// Case detection uses Lower (no typed buffer to read case from). The Pro
+/// gating + missing-trigger handling matches the live-typing path so behaviour
+/// is identical regardless of how the expansion was invoked.
+pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
+    let entry = {
+        let state = crate::hotkeys::engine_state().lock().unwrap();
+        state.assignments
+            .get(&format!("GLOBAL::EXPANSION::{}", trigger))
+            .cloned()
+    };
+    let entry = match entry {
+        Some(e) => e,
+        None => {
+            log::warn!("[Trigr] Fire Text Expansion: trigger \"{}\" not found, skipping", trigger);
+            return;
+        }
+    };
+
+    let expansion_type = entry
+        .get("data")
+        .and_then(|d| d.get("expansionType"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("text");
+
+    if expansion_type == "image" {
+        if !crate::licence::is_pro() {
+            log::info!("[Trigr] Fire Text Expansion (image, Free): \"{}\" — no-op", trigger);
+            return;
+        }
+        let image_path = entry
+            .get("data")
+            .and_then(|d| d.get("imagePath"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let image_scale = entry
+            .get("data")
+            .and_then(|d| d.get("imageScale"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as u32;
+        log::info!("[Trigr] Fire Text Expansion (image): \"{}\" → \"{}\"", trigger, image_path);
+        fire_image_expansion(trigger, 0, false, &image_path, image_scale);
+        return;
+    }
+
+    let options = entry
+        .get("data")
+        .and_then(|d| d.get("options"))
+        .and_then(|v| v.as_array())
+        .cloned();
+
+    let global_vars = get_global_variables();
+
+    if let Some(opts) = options {
+        if !opts.is_empty() {
+            if !crate::licence::is_pro() {
+                let first = &opts[0];
+                let text = first.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let html = first.get("html").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                log::info!("[Trigr] Fire Text Expansion (variant, Free → options[0]): \"{}\"", trigger);
+                let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
+                fire_expansion(trigger, 0, false, &text, html_opt, &global_vars, CasePattern::Lower);
+                return;
+            }
+            if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+                log::info!("[Trigr] Fire Text Expansion (variant): \"{}\" skipped — fill-in already active", trigger);
+                return;
+            }
+            log::info!("[Trigr] Fire Text Expansion (variant): \"{}\" with {} options", trigger, opts.len());
+            let trigger_str = trigger.to_string();
+            thread::spawn(move || {
+                fire_variant_expansion(&trigger_str, 0, false, &opts, &global_vars);
+            });
+            return;
+        }
+    }
+
+    let text = entry
+        .get("data")
+        .and_then(|d| d.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let html = entry
+        .get("data")
+        .and_then(|d| d.get("html"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    log::info!("[Trigr] Fire Text Expansion (text): \"{}\" → \"{}\"", trigger, text);
+    let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
+    fire_expansion(trigger, 0, false, &text, html_opt, &global_vars, CasePattern::Lower);
+}
+
 fn fire_expansion(
     _trigger: &str,
     trigger_len: usize,

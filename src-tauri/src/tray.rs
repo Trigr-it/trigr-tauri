@@ -280,7 +280,51 @@ pub fn rebuild_tray_menu(app: &AppHandle) {
 pub fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
+        // If the window is minimized, restore it before focusing — set_focus
+        // on a minimized window leaves it in the taskbar with no actual focus.
+        if window.is_minimized().unwrap_or(false) {
+            let _ = window.unminimize();
+        }
         let _ = window.set_focus();
+
+        // Windows focus-stealing prevention causes SetForegroundWindow (which
+        // set_focus() calls underneath) to silently fail when our process
+        // isn't already foreground — which it isn't when explorer.exe handled
+        // the tray click. The AttachThreadInput trick temporarily attaches
+        // our input queue to the current foreground thread's, lifting the
+        // restriction. Standard Windows workaround, used by most apps that
+        // surface from the tray.
+        if let Ok(hwnd) = window.hwnd() {
+            unsafe {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    BringWindowToTop, GetForegroundWindow,
+                    GetWindowThreadProcessId, SetForegroundWindow,
+                };
+                use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+
+                let target_hwnd = hwnd.0 as isize;
+                let foreground_hwnd = GetForegroundWindow() as isize;
+                if foreground_hwnd != 0 && foreground_hwnd != target_hwnd {
+                    let mut foreground_pid: u32 = 0;
+                    let foreground_tid = GetWindowThreadProcessId(
+                        foreground_hwnd as _,
+                        &mut foreground_pid,
+                    );
+                    let current_tid = GetCurrentThreadId();
+                    if foreground_tid != 0 && foreground_tid != current_tid {
+                        let attached = AttachThreadInput(current_tid, foreground_tid, 1);
+                        let _ = SetForegroundWindow(target_hwnd as _);
+                        let _ = BringWindowToTop(target_hwnd as _);
+                        if attached != 0 {
+                            AttachThreadInput(current_tid, foreground_tid, 0);
+                        }
+                    } else {
+                        let _ = SetForegroundWindow(target_hwnd as _);
+                        let _ = BringWindowToTop(target_hwnd as _);
+                    }
+                }
+            }
+        }
     }
 }
 

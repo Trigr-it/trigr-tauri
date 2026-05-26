@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Disc, Keyboard as KeyboardIcon } from 'lucide-react';
+import { Disc, Keyboard as KeyboardIcon, Plus } from 'lucide-react';
 import './KeyboardCanvas.css';
 import {
   KEYBOARD_ROWS, SYSTEM_KEYS, STATIC_BARE_ALLOWED, KEY_UNIT, KEY_GAP, KEY_HEIGHT,
@@ -21,7 +21,7 @@ export function comboString(modifiers) {
   return order.filter(m => modifiers.includes(m)).join('+');
 }
 
-export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecording, onStartRecord, onStopRecord, recordCapture, selectedKey }) {
+export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecording, onStartRecord, onStopRecord, recordCapture, selectedKey, onNewShortcut }) {
   const isBare = activeModifiers.includes('BARE');
   const combo  = comboString(activeModifiers);
   const recordStartTime = useRef(0);
@@ -38,59 +38,78 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
     onStopRecord();
   }, [onStopRecord]);
 
+  // Primary row keeps the modifier pills + Bare Keys (the layer-selection
+  // controls). The Secondary group (Record + New Shortcut + combo hint)
+  // wraps below at narrower widths via CSS flex-wrap so the modifier pills
+  // never get cramped on a single line. Auto-list-view kicks in before the
+  // primary itself runs out of room (see App.jsx BREAKPOINT).
   return (
     <div className="modifier-bar">
-      <span className="modifier-bar-label">Modifier Layer</span>
+      <div className="modifier-bar-primary">
+        <span className="modifier-bar-label">Modifier Layer</span>
 
-      <div className="modifier-bar-keys">
-        {MODIFIERS.map(mod => {
-          const isActive = activeModifiers.includes(mod.id);
-          return (
-            <button
-              key={mod.id}
-              className={`mod-layer-btn ${isActive ? 'active' : ''}`}
-              style={isActive ? { '--mod-color': mod.color } : {}}
-              onClick={isRecording ? undefined : () => onToggle(mod.id)}
-              disabled={isRecording}
-            >
-              {mod.label}
-            </button>
-          );
-        })}
+        <div className="modifier-bar-keys">
+          {MODIFIERS.map(mod => {
+            const isActive = activeModifiers.includes(mod.id);
+            return (
+              <button
+                key={mod.id}
+                className={`mod-layer-btn ${isActive ? 'active' : ''}`}
+                style={isActive ? { '--mod-color': mod.color } : {}}
+                onClick={isRecording ? undefined : () => onToggle(mod.id)}
+                disabled={isRecording}
+              >
+                {mod.label}
+              </button>
+            );
+          })}
 
-        <span className="modifier-bar-sep" />
-        <button
-          className={`mod-layer-btn bare-key-btn${isBare ? ' active' : ''}`}
-          style={isBare ? { '--mod-color': '#ff9040' } : {}}
-          onClick={isRecording ? undefined : () => onToggle('BARE')}
-          disabled={isRecording}
-          title={profileLinked
-            ? "Bare key assignments — fire with no modifier held, only when this profile's linked app is focused"
-            : "Bare key assignments — F-keys, numpad, and nav keys only in static profiles"}
-        >
-          Bare Keys
-        </button>
-
-        <span className="modifier-bar-sep" />
-        {isRecording ? (
+          <span className="modifier-bar-sep" />
           <button
-            className="mod-layer-btn record-btn recording"
-            onClick={guardedStopRecord}
-            title="Press any key combination to capture it — click to stop"
+            className={`mod-layer-btn bare-key-btn${isBare ? ' active' : ''}`}
+            style={isBare ? { '--mod-color': '#ff9040' } : {}}
+            onClick={isRecording ? undefined : () => onToggle('BARE')}
+            disabled={isRecording}
+            title={profileLinked
+              ? "Bare key assignments — fire with no modifier held, only when this profile's linked app is focused"
+              : "Bare key assignments — F-keys, numpad, and nav keys only in static profiles"}
           >
-            <span className="record-dot" />
-            Recording…
+            Bare Keys
           </button>
-        ) : (
-          <button
-            className="mod-layer-btn record-btn"
-            onMouseDown={onStartRecord}
-            title="Click then press any key combination to select it"
-          >
-            <Disc size={12} strokeWidth={2} fill="currentColor" style={{ marginRight: 4, verticalAlign: -1 }} /> Record
-          </button>
-        )}
+        </div>
       </div>
+
+      <div className="modifier-bar-secondary">
+        <div className="modifier-bar-actions">
+          {isRecording ? (
+            <button
+              className="mod-layer-btn record-btn recording"
+              onClick={guardedStopRecord}
+              title="Press any key combination to capture it — click to stop"
+            >
+              <span className="record-dot" />
+              Recording…
+            </button>
+          ) : (
+            <button
+              className="mod-layer-btn record-btn"
+              onMouseDown={onStartRecord}
+              title="Click then press any key combination to select it"
+            >
+              <Disc size={12} strokeWidth={2} fill="currentColor" style={{ marginRight: 4, verticalAlign: -1 }} /> Record
+            </button>
+          )}
+          {onNewShortcut && (
+            <button
+              className="mod-layer-btn new-shortcut-btn"
+              onClick={isRecording ? undefined : onNewShortcut}
+              disabled={isRecording}
+              title="Clear the current selection and start a new shortcut from scratch"
+            >
+              <Plus size={12} strokeWidth={2.5} style={{ marginRight: 4, verticalAlign: -1 }} /> New Shortcut
+            </button>
+          )}
+        </div>
 
       <div className="modifier-bar-combo">
         {isRecording ? (
@@ -98,7 +117,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
         ) : recordCapture ? (
           <span className="combo-hint record-captured">Captured: {recordCapture}</span>
         ) : activeModifiers.length === 0 ? (
-          <span className="combo-hint">↑ Select 1–3 modifiers to view that hotkey layer</span>
+          <span className="combo-hint combo-hint-select-mods">↑ Select 1–3 modifiers to view that hotkey layer</span>
         ) : isBare ? (
           <span className="combo-active">
             <span className="combo-active-label">Layer:</span>
@@ -128,6 +147,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             )}
           </span>
         )}
+      </div>
       </div>
     </div>
   );
@@ -186,6 +206,7 @@ export default function KeyboardCanvas({
   onRenameAssignment,
   onClearAssignment,
   onDuplicateFromContext,
+  onNewShortcut,
 }) {
   const [firingKeyId, setFiringKeyId] = useState(null);
   const [scale, setScale]             = useState(1);
@@ -282,6 +303,7 @@ export default function KeyboardCanvas({
         onStopRecord={onStopRecord}
         recordCapture={recordCapture}
         selectedKey={selectedKey}
+        onNewShortcut={onNewShortcut}
       />
 
       {/* Empty state — shown only when no modifier is selected AND no assignments exist anywhere */}

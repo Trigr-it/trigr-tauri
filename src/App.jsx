@@ -2220,9 +2220,34 @@ function App() {
     });
   }, []);
 
-  // ── Auto list view below 800px with state memory ────────────
+  // ── New Shortcut button — wipe selection state so the user gets a clean slate
+  // for creating a new hotkey from scratch. Cheaper than asking the user to
+  // manually deselect each modifier + key. Per Ailin round-1 feedback.
+  const handleNewShortcut = useCallback(() => {
+    setSelectedKey(null);
+    setActiveModifiers([]);
+    setSidebarComboFilter(null);
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
+  }, []);
+
+  // ── Narrow-window tracker (< 1200px) — controls right-panel auto-hide ────
+  // When narrow, the MacroPanel is hidden unless there's an active selection,
+  // freeing horizontal space for the keyboard/mouse/radial view. As soon as
+  // the user clicks a key (or radial segment), MacroPanel slides in.
+  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 1200);
   useEffect(() => {
-    const BREAKPOINT = 800;
+    const onResize = () => setIsNarrow(window.innerWidth < 1200);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // ── Auto list view below ~900px with state memory ───────────
+  // Threshold chosen so the modifier-bar pills (label + 4 mods + Bare Keys)
+  // never get visibly cramped on the primary row. Record + New Shortcut
+  // already wrap to a second row via CSS flex-wrap before this point.
+  useEffect(() => {
+    const BREAKPOINT = 900;
     let lastNarrow = window.innerWidth < BREAKPOINT;
 
     function onResize() {
@@ -3654,22 +3679,31 @@ function App() {
                 className={`view-tab${activeView === 'keyboard' ? ' active' : ''}`}
                 onClick={() => handleSetView('keyboard')}
                 type="button"
+                title="Keyboard"
+                aria-label="Keyboard"
               >
-                ⌨ Keyboard
+                <span className="view-tab-icon" aria-hidden="true">⌨</span>
+                <span className="view-tab-label">Keyboard</span>
               </button>
               <button
                 className={`view-tab${activeView === 'mouse' ? ' active' : ''}`}
                 onClick={() => handleSetView('mouse')}
                 type="button"
+                title="Mouse"
+                aria-label="Mouse"
               >
-                🖱 Mouse
+                <span className="view-tab-icon" aria-hidden="true">🖱</span>
+                <span className="view-tab-label">Mouse</span>
               </button>
               <button
                 className={`view-tab${activeView === 'radial' ? ' active' : ''}`}
                 onClick={() => handleSetView('radial')}
                 type="button"
+                title="Radial"
+                aria-label="Radial"
               >
-                &#x25ce; Radial
+                <span className="view-tab-icon" aria-hidden="true">&#x25ce;</span>
+                <span className="view-tab-label">Radial</span>
               </button>
             </div>
           )}
@@ -3693,6 +3727,7 @@ function App() {
                 onRenameAssignment={handleRenameAssignment}
                 onClearAssignment={handleClearAssignment}
                 onDuplicateFromContext={handleDuplicateFromContext}
+                onNewShortcut={handleNewShortcut}
               />
             </div>
           )}
@@ -3714,6 +3749,7 @@ function App() {
               onStartRecord={handleStartRecord}
               onStopRecord={handleStopRecord}
               recordCapture={recordCapture}
+              onNewShortcut={handleNewShortcut}
             />
           )}
           {activeArea === 'analytics' && (
@@ -3939,7 +3975,11 @@ function App() {
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}
           />
-        ) : activeArea === 'mapping' ? (
+        ) : activeArea === 'mapping' && (!isNarrow || selectedKey != null || draftAssignment != null) ? (
+          // Below 1200px the MacroPanel is hidden until the user picks a key or
+          // starts a draft. The selection / draft check covers the keyboard +
+          // mouse views; the radial branches above have their own guards on
+          // selectedRadialSegment / selectedRadialChild so they're unaffected.
           <MacroPanel
             selectedKey={selectedKey}
             activeModifiers={activeModifiers}

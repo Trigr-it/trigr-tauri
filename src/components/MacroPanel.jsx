@@ -79,13 +79,29 @@ const TRIGGER_KEYS = [
 // plus a single AHK leaf under a divider. Add new step types into the matching
 // group; the dropdown reads from this structure directly.
 const MACRO_STEP_CATEGORIES = [
-  { kind: 'group', label: 'Type & Keys',   items: ['Type Text', 'Dynamic Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
-  { kind: 'group', label: 'Mouse',         items: ['Click Mouse', 'Click at Position'] },
-  { kind: 'group', label: 'Open',          items: ['Open App', 'Open URL', 'Open Folder'] },
-  { kind: 'group', label: 'Wait & Window', items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Focus Window'] },
+  { kind: 'group', label: 'Type & Keys',     items: ['Type Text', 'Dynamic Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
+  { kind: 'group', label: 'Mouse',           items: ['Click Mouse', 'Click at Position'] },
+  { kind: 'group', label: 'Open',            items: ['Open App', 'Open URL', 'Open Folder'] },
+  { kind: 'group', label: 'Wait & Window',   items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Focus Window'] },
+  // "Existing Trigger" — fires an existing assignment or text expansion from
+  // inside a macro. Sub-items display as "Trigger" / "Text Expansion" via the
+  // displayLabel map below, but their step.type values are explicit "Fire …"
+  // strings to avoid collisions with how "trigger" and "text expansion" are
+  // used elsewhere in the codebase. See actions.rs execute_macro_step arms.
+  { kind: 'group', label: 'Existing Trigger', items: ['Fire Trigger', 'Fire Text Expansion'] },
   { kind: 'divider' },
   { kind: 'leaf',  label: 'Run AHK Script' },
 ];
+
+// Override for menu/submenu display. Step.type stays canonical ("Fire Trigger")
+// but the dropdown shows the friendlier label the user picked in the design.
+const MACRO_STEP_DISPLAY_LABEL = {
+  'Fire Trigger': 'Trigger',
+  'Fire Text Expansion': 'Text Expansion',
+};
+function macroStepLabel(stepType) {
+  return MACRO_STEP_DISPLAY_LABEL[stepType] || stepType;
+}
 
 const WFI_INPUT_OPTIONS = [
   { value: 'LButton',     label: 'Left Click'   },
@@ -1097,7 +1113,7 @@ function MacroStepTypeMenu({ value, onChange }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="macro-step-type-label">{value}</span>
+        <span className="macro-step-type-label">{macroStepLabel(value)}</span>
         <span className="macro-step-type-caret" aria-hidden="true">▾</span>
       </button>
       {open && createPortal(
@@ -1153,7 +1169,7 @@ function MacroStepTypeMenu({ value, onChange }) {
                         onClick={() => pick(item)}
                         role="menuitem"
                       >
-                        {item}
+                        {macroStepLabel(item)}
                       </button>
                     ))}
                   </div>
@@ -1168,11 +1184,207 @@ function MacroStepTypeMenu({ value, onChange }) {
   );
 }
 
+// ── Fire-target picker (Trigger / Text Expansion macro steps) ──────────────
+// Centered portal modal. Mode 'trigger' lists every assignment EXCEPT
+// GLOBAL::EXPANSION::* / GLOBAL::AUTOCORRECT::* (those have a separate fire
+// step type). Mode 'expansion' lists only GLOBAL::EXPANSION::* entries.
+// Triggers group by profile/app (first segment of the storage key);
+// expansions group by data.category. Search matches against label + combo
+// for triggers, trigger word + preview text for expansions.
+
+function parseAssignmentKey(key) {
+  // "Profile::Ctrl+Shift::KeyN" → { container, combo, keyId, suffix }
+  // "Profile::BARE::F12" → bare key
+  // "Profile::Ctrl::KeyN::double" → double-press variant
+  const parts = key.split('::');
+  if (parts.length < 3) return null;
+  const container = parts[0];
+  const combo = parts[1];
+  const keyId = parts[2];
+  const suffix = parts[3] || '';
+  return { container, combo, keyId, suffix };
+}
+
+function formatCombo(combo, keyId) {
+  const keyLabel = friendlyKeyName(keyId);
+  if (combo === 'BARE') return keyLabel;
+  return [...combo.split('+'), keyLabel].join('+');
+}
+
+function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose }) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef(null);
+  const panelRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose?.(); } };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Backdrop click closes; clicks inside the panel are ignored
+  const handleBackdrop = (e) => {
+    if (panelRef.current && !panelRef.current.contains(e.target)) onClose?.();
+  };
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (mode === 'expansion') {
+      const items = Object.entries(assignments)
+        .filter(([k]) => k.startsWith('GLOBAL::EXPANSION::'))
+        .map(([k, v]) => {
+          const trigger = k.slice('GLOBAL::EXPANSION::'.length);
+          const d = v?.data || {};
+          const isImage = d.expansionType === 'image';
+          const isVariant = Array.isArray(d.options) && d.options.length > 0;
+          const preview = isImage
+            ? `Image · ${(d.imagePath || '').split(/[\\/]/).pop() || ''}`
+            : isVariant
+              ? `${d.options.length} variants`
+              : ((d.text || '').replace(/\s+/g, ' ').trim().slice(0, 60));
+          const category = d.category || 'Uncategorised';
+          const displayName = d.displayName || '';
+          // Lead with the user's Name when present; trigger drops into the
+          // secondary line alongside the preview. When unnamed, the trigger
+          // takes the primary slot (current behaviour for the no-name case).
+          const primary = displayName || `:${trigger}`;
+          const secondary = displayName
+            ? `:${trigger}${preview ? ` · ${preview}` : ''}`
+            : preview;
+          return {
+            value: trigger,
+            trigger,
+            primary,
+            secondary,
+            group: category,
+            displayName,
+          };
+        })
+        .filter(it => {
+          if (!q) return true;
+          return it.primary.toLowerCase().includes(q)
+              || it.secondary.toLowerCase().includes(q)
+              || it.trigger.toLowerCase().includes(q);
+        })
+        .sort((a, b) => a.primary.localeCompare(b.primary));
+      const byGroup = new Map();
+      for (const it of items) {
+        if (!byGroup.has(it.group)) byGroup.set(it.group, []);
+        byGroup.get(it.group).push(it);
+      }
+      return Array.from(byGroup.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, items]) => ({ name, items }));
+    }
+
+    // mode === 'trigger': every keyboard/mouse assignment. Excludes GLOBAL::*
+    // namespaces (expansions / autocorrect / quick-actions) — those are either
+    // fire-able via the expansion picker (EXPANSION), disabled (AUTOCORRECT),
+    // or surfaced from a different UI (QUICKACTION). May surface QUICKACTION
+    // here in a future iteration if testers ask, but the picker UX would need
+    // a separate group treatment since the storage key has no profile/combo.
+    const items = Object.entries(assignments)
+      .filter(([k]) => !k.startsWith('GLOBAL::'))
+      .map(([k, v]) => {
+        const parsed = parseAssignmentKey(k);
+        if (!parsed) return null;
+        const combo = formatCombo(parsed.combo, parsed.keyId);
+        const dbl = parsed.suffix === 'double' ? ' (double)' : '';
+        const label = v?.label || `${parsed.container} · ${combo}${dbl}`;
+        const macroType = v?.type || '';
+        return {
+          value: k,
+          primary: label,
+          secondary: `${combo}${dbl} · ${macroType}`,
+          group: parsed.container,
+        };
+      })
+      .filter(Boolean)
+      .filter(it => {
+        if (!q) return true;
+        return it.primary.toLowerCase().includes(q)
+            || it.secondary.toLowerCase().includes(q)
+            || it.value.toLowerCase().includes(q);
+      })
+      .sort((a, b) => a.primary.localeCompare(b.primary));
+    const byGroup = new Map();
+    for (const it of items) {
+      if (!byGroup.has(it.group)) byGroup.set(it.group, []);
+      byGroup.get(it.group).push(it);
+    }
+    // Profile groups before app groups (apps contain '.' usually — .exe basename)
+    return Array.from(byGroup.entries())
+      .sort(([a], [b]) => {
+        const aApp = a.includes('.');
+        const bApp = b.includes('.');
+        if (aApp !== bApp) return aApp ? 1 : -1;
+        return a.localeCompare(b);
+      })
+      .map(([name, items]) => ({ name, items }));
+  }, [mode, assignments, query]);
+
+  const totalCount = groups.reduce((sum, g) => sum + g.items.length, 0);
+  const title = mode === 'expansion' ? 'Choose a text expansion to fire' : 'Choose a trigger to fire';
+  const emptyHint = mode === 'expansion'
+    ? 'No text expansions yet. Create one in the Expansions tab.'
+    : 'No triggers yet. Map an action to a key first.';
+
+  return createPortal(
+    <div className="fire-picker-backdrop" onMouseDown={handleBackdrop}>
+      <div ref={panelRef} className="fire-picker" role="dialog" aria-label={title}>
+        <div className="fire-picker-header">
+          <span className="fire-picker-title">{title}</span>
+          <button className="fire-picker-close" type="button" onClick={onClose} aria-label="Close">&#10005;</button>
+        </div>
+        <div className="fire-picker-search-row">
+          <input
+            ref={inputRef}
+            className="fire-picker-search"
+            placeholder={mode === 'expansion'
+              ? 'Search by trigger or preview…'
+              : 'Search by label, combo, or profile…'}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.stopPropagation()}
+          />
+        </div>
+        <div className="fire-picker-list">
+          {totalCount === 0 && (
+            <div className="fire-picker-empty">{query ? 'No matches.' : emptyHint}</div>
+          )}
+          {groups.map(group => (
+            <div key={group.name} className="fire-picker-group">
+              <div className="fire-picker-group-header">{group.name}</div>
+              {group.items.map(it => {
+                const isActive = it.value === currentValue;
+                return (
+                  <button
+                    key={it.value}
+                    type="button"
+                    className={`fire-picker-item${isActive ? ' fire-picker-item-active' : ''}`}
+                    onClick={() => onSelect?.(it.value)}
+                  >
+                    <span className="fire-picker-item-primary">{it.primary}</span>
+                    <span className="fire-picker-item-secondary">{it.secondary}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Sortable step row (extracted for @dnd-kit) ─────────────────────────────
 
 let _nextStepId = 1;
 
-function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep, advancedOpen, toggleAdvanced }) {
+function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep, advancedOpen, toggleAdvanced, assignments }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step._id });
   const style = {
     transform: DndCSS.Transform.toString(transform),
@@ -1186,6 +1398,8 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   // sub-row is the deliberate alternative: shown whenever Win is in the combo
   // OR the user just pressed Win during capture.
   const [winPrompted, setWinPrompted] = useState(false);
+  // Fire-target picker — null when closed, 'trigger' or 'expansion' when open.
+  const [firePickerMode, setFirePickerMode] = useState(null);
   const stepValue = step.value || '';
   const stepHasWin = step.type === 'Press Key' && (stepValue === 'Win' || stepValue.startsWith('Win+'));
   const showWinAdvisory = step.type === 'Press Key' && (winPrompted || stepHasWin);
@@ -1259,6 +1473,45 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             onChange={v => updateStep({ ...step, value: v })}
           />
         )}
+        {(step.type === 'Fire Trigger' || step.type === 'Fire Text Expansion') && (() => {
+          const mode = step.type === 'Fire Trigger' ? 'trigger' : 'expansion';
+          // Resolve the friendly label for the currently selected target.
+          // null result = missing (deleted/renamed) → red chip + warn at runtime.
+          let label = null;
+          let isMissing = false;
+          if (stepValue) {
+            if (mode === 'expansion') {
+              const entry = assignments?.[`GLOBAL::EXPANSION::${stepValue}`];
+              if (entry) {
+                label = entry.data?.displayName || `:${stepValue}`;
+              } else {
+                isMissing = true;
+              }
+            } else {
+              const entry = assignments?.[stepValue];
+              if (entry) {
+                const parsed = parseAssignmentKey(stepValue);
+                label = entry.label || (parsed ? formatCombo(parsed.combo, parsed.keyId) : stepValue);
+              } else {
+                isMissing = true;
+              }
+            }
+          }
+          const placeholder = mode === 'expansion' ? 'Choose a text expansion…' : 'Choose a trigger…';
+          return (
+            <button
+              type="button"
+              className={`fire-target-chip${stepValue ? ' fire-target-chip-set' : ''}${isMissing ? ' fire-target-chip-missing' : ''}`}
+              onClick={() => setFirePickerMode(mode)}
+              title={isMissing ? `Missing: ${stepValue}` : (label || placeholder)}
+            >
+              <span className="fire-target-chip-label">
+                {isMissing ? `Missing: ${stepValue}` : (label || placeholder)}
+              </span>
+              <span className="fire-target-chip-caret" aria-hidden="true">▾</span>
+            </button>
+          );
+        })()}
         {step.type === 'Wait (ms)' && (
           <input
             className="form-input macro-step-value"
@@ -1487,11 +1740,24 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
       {step.type === 'Click at Position' && (
         <ClickPositionFields step={step} updateStep={updateStep} />
       )}
+
+      {firePickerMode && (
+        <FireTargetPicker
+          mode={firePickerMode}
+          assignments={assignments || {}}
+          currentValue={step.value || ''}
+          onSelect={(v) => {
+            updateStep({ ...step, value: v });
+            setFirePickerMode(null);
+          }}
+          onClose={() => setFirePickerMode(null)}
+        />
+      )}
     </div>
   );
 }
 
-export function MacroSequenceForm({ value, onChange, globalInputMethod }) {
+export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments }) {
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
   const [advancedOpen, setAdvancedOpen] = useState({});
@@ -1596,6 +1862,7 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod }) {
                 duplicateStep={duplicateStep}
                 advancedOpen={!!advancedOpen[step._id]}
                 toggleAdvanced={() => setAdvancedOpen(prev => ({ ...prev, [step._id]: !prev[step._id] }))}
+                assignments={assignments}
               />
             ))}
           </div>
@@ -2241,7 +2508,7 @@ export default function MacroPanel({
           {activeType === 'app'    && <AppForm value={formValue} onChange={setFormValue} />}
           {activeType === 'folder' && <FolderForm value={formValue} onChange={setFormValue} />}
           {activeType === 'url'    && <UrlForm value={formValue} onChange={setFormValue} />}
-          {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} />}
+          {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} assignments={assignments} />}
           {activeType === 'ahk'   && <AhkForm value={formValue} onChange={setFormValue} />}
         </div>
 

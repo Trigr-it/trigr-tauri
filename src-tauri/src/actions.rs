@@ -1,5 +1,6 @@
 use log::{info, warn};
 use serde_json::Value;
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use std::sync::Arc;
@@ -28,6 +29,30 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 /// Future clipboard manager checks this flag and skips logging if set.
 pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
+
+// ── Recursion guard for Fire Trigger / Fire Text Expansion macro steps ────
+// Thread-local depth counter — execute_action increments on entry, the Drop
+// guard decrements on exit (including panic). Beyond MAX_FIRE_DEPTH we abort
+// the call so a macro that fires a trigger whose action fires the original
+// (directly or via a chain) can't lock the processor thread.
+//
+// Allowed chain length = MAX_FIRE_DEPTH (initial fire = depth 1, fifth nested
+// fire would set depth=6 which trips the guard). 5 is generous for legitimate
+// chaining but recovers fast from accidental loops.
+
+const MAX_FIRE_DEPTH: u32 = 5;
+
+thread_local! {
+    static FIRE_DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+
+struct DepthGuard;
+
+impl Drop for DepthGuard {
+    fn drop(&mut self) {
+        FIRE_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    }
+}
 
 // ── Suppression guard — ensures SUPPRESS_SIMULATED is always cleared ──────
 // Without this guard, a panic between store(true) and store(false) would
@@ -315,6 +340,23 @@ const VK_INSERT: u16 = 0x2D;
 /// `target_hwnd` = the foreground window HWND captured at hotkey fire time.
 /// `is_altgr` = true if Ctrl+Alt (AltGr) was held — dead character may have leaked.
 pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_altgr: bool, trigger_key: Option<&str>, app: &tauri::AppHandle) {
+    // Recursion guard — increment depth, register Drop to decrement on any exit.
+    // The +1 is captured before the early-return so the guard always pairs with
+    // the increment (the Drop runs regardless of where we return below).
+    let depth = FIRE_DEPTH.with(|d| {
+        let next = d.get() + 1;
+        d.set(next);
+        next
+    });
+    let _depth_guard = DepthGuard;
+    if depth > MAX_FIRE_DEPTH {
+        warn!(
+            "[Trigr] Fire recursion limit hit (depth {}, max {}) — aborting. A trigger or text expansion is calling itself directly or via a chain.",
+            depth, MAX_FIRE_DEPTH
+        );
+        return;
+    }
+
     let macro_type = macro_val
         .get("type")
         .and_then(|v| v.as_str())
@@ -326,7 +368,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
     let data = macro_val.get("data");
 
     println!("[ACTION] Firing: [{}] {} altgr={}", macro_type, label, is_altgr);
-    info!("[Trigr] Firing: [{}] {}", macro_type, label);
+    info!("[Trigr] Firing: [{}] {} (depth {})", macro_type, label, depth);
 
     let (initial_ms, step_settle_ms, _fg_settle_ms, _clip_restore_ms) = speed_delays();
 
@@ -444,7 +486,11 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     // so subsequent Type Text / Press Key targets the correct window.
                     // Open URL is async (ShellExecute → browser launch) so we sleep a
                     // short stabilisation window before reading the foreground.
-                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Click at Position" | "Open URL") {
+                    // Fire Trigger is included because the nested action it invokes
+                    // may itself contain Focus Window / Open App / Open URL — without
+                    // a re-capture, subsequent parent-macro steps would target the
+                    // pre-fire window.
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Click at Position" | "Open URL" | "Fire Trigger" | "Fire Text Expansion") {
                         if step_type == "Open URL" {
                             thread::sleep(Duration::from_millis(OPEN_URL_FOCUS_SETTLE_MS));
                         }
@@ -1007,6 +1053,20 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
     };
 
     // ── Repeat mode ──
+    // Brief sleep inside the SuppressionGuard scope after SendInput. SendInput
+    // returns when events are inserted into the system queue, not when the LL
+    // hook processes them — without this drain window, the guard drops before
+    // the hook finishes, and our synthetic events get treated as real input
+    // (buffer push, modifier atomic churn, and suppress_keys swallow for any
+    // synthetic that matches a Trigr binding). 5ms covers typical dispatch.
+    const SUPPRESS_DRAIN_MS: u64 = 5;
+    // Hold duration between synthetic KEYDOWN and KEYUP. Games poll key state
+    // per-frame (60fps = ~16.67ms, 144fps = ~6.94ms). A back-to-back keydown
+    // and keyup sent in a single SendInput batch finishes in microseconds —
+    // the game's polling loop never sees the key as "down" on any frame, so
+    // the press doesn't register. 15ms covers 1+ frame at 60fps and 2+ at
+    // 144fps. Matches the ballpark of AHK's SetKeyDelay default (~10-20ms).
+    const KEY_HOLD_MS: u64 = 15;
     if repeat_mode {
         let trigger_storage_key = trigger_key.unwrap_or("").to_string();
 
@@ -1054,6 +1114,15 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         info!("[Trigr] Repeat started: {} ({}ms)", combo_label, repeat_interval);
 
         thread::spawn(move || {
+            // Request 1ms timer resolution for the lifetime of this thread.
+            // Without it, thread::sleep on Windows runs at the default scheduler
+            // quantum (~15.625ms), so sleep(100) actually waits 109-125ms and
+            // the configured rate drifts low. timeBeginPeriod is per-process on
+            // Windows 8.1+, so this doesn't impact other apps.
+            unsafe {
+                windows_sys::Win32::Media::timeBeginPeriod(1);
+            }
+
             loop {
                 if stop_clone.load(Ordering::SeqCst) { break; }
                 if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) { break; }
@@ -1061,19 +1130,47 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 if is_mouse_copy {
                     send_mouse_click(&key_name_owned);
                 } else {
-                    let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks_clone.len() * 2 + 2);
-                    for &vk in &mod_vks_clone { inputs.push(make_vk_input(vk, false)); }
-                    // Skip main-key tap when in bare-modifier mode (target_vk == 0).
+                    // Split into separate KEYDOWN and KEYUP batches with a hold
+                    // window between them. Games / DirectInput-style apps poll
+                    // key state per-frame; a fused down+up in one SendInput
+                    // batch finishes in microseconds and the poll never sees
+                    // the key as down. Modifiers wrap around the main key:
+                    // mods-down + key-down → hold → key-up + mods-up-reversed.
+                    let mut down_inputs: Vec<INPUT> = Vec::with_capacity(mod_vks_clone.len() + 1);
+                    for &vk in &mod_vks_clone { down_inputs.push(make_vk_input(vk, false)); }
                     if target_vk_copy != 0 {
-                        inputs.push(make_vk_input(target_vk_copy, false));
-                        inputs.push(make_vk_input(target_vk_copy, true));
+                        down_inputs.push(make_vk_input(target_vk_copy, false));
                     }
-                    for &vk in mod_vks_clone.iter().rev() { inputs.push(make_vk_input(vk, true)); }
+                    let mut up_inputs: Vec<INPUT> = Vec::with_capacity(mod_vks_clone.len() + 1);
+                    if target_vk_copy != 0 {
+                        up_inputs.push(make_vk_input(target_vk_copy, true));
+                    }
+                    for &vk in mod_vks_clone.iter().rev() { up_inputs.push(make_vk_input(vk, true)); }
+
+                    // Hold the SuppressionGuard across both phases plus the
+                    // drain window. SendInput returns when events are queued,
+                    // not when the LL hook has processed them — without the
+                    // drain, the guard drops microseconds after the final
+                    // SendInput and our synthetic events leak into the
+                    // expansion buffer + modifier atomics + (if the synthetic
+                    // key is bound elsewhere) the suppress_keys swallow path.
                     let _guard = SuppressionGuard::new();
-                    unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+                    unsafe { SendInput(down_inputs.len() as u32, down_inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+                    thread::sleep(Duration::from_millis(KEY_HOLD_MS));
+                    unsafe { SendInput(up_inputs.len() as u32, up_inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+                    thread::sleep(Duration::from_millis(SUPPRESS_DRAIN_MS));
                 }
 
-                thread::sleep(Duration::from_millis(repeat_interval));
+                // Subtract in-guard sleeps from the outer sleep so the total
+                // iteration matches the configured interval. saturating_sub
+                // covers any case where the in-guard window exceeds the
+                // configured interval (impossible at the .max(50) floor with
+                // current constants: 15 + 5 = 20 < 50).
+                thread::sleep(Duration::from_millis(
+                    repeat_interval
+                        .saturating_sub(KEY_HOLD_MS)
+                        .saturating_sub(SUPPRESS_DRAIN_MS),
+                ));
             }
             // Cleanup: clear state if this thread's stop flag is still the active one
             {
@@ -1083,6 +1180,9 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                         *rep = None;
                     }
                 }
+            }
+            unsafe {
+                windows_sys::Win32::Media::timeEndPeriod(1);
             }
             crate::tray::update_tray_icon_normal(&app_clone);
         });
@@ -1750,6 +1850,49 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     warn!("[Trigr] Click at Position: invalid JSON");
                 }
             }
+        }
+
+        // Fire an existing hotkey assignment by its storage key. Looks up the
+        // assignment in engine_state and recursively invokes execute_action with
+        // the macro's current target HWND. Depth guard in execute_action prevents
+        // infinite recursion if a trigger fires itself (directly or via a chain).
+        // Missing target = silent no-op + warn (the user may have deleted/renamed
+        // the referenced trigger; the macro continues to the next step).
+        "Fire Trigger" => {
+            if step_value.is_empty() {
+                warn!("[Trigr] Fire Trigger: empty step value, skipping");
+                return true;
+            }
+            let lookup = {
+                let state = crate::hotkeys::engine_state().lock().unwrap();
+                state.assignments.get(step_value).cloned()
+            };
+            match lookup {
+                Some(target_macro) => {
+                    info!("[Trigr] Fire Trigger: invoking \"{}\"", step_value);
+                    if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
+                    // is_bare=false, is_altgr=false — we're firing programmatically,
+                    // not from a real keypress, so no dead character to erase and no
+                    // bare-key handling needed. trigger_key=None for the same reason.
+                    execute_action(&target_macro, false, *target_hwnd, false, None, app);
+                }
+                None => {
+                    warn!("[Trigr] Fire Trigger: assignment \"{}\" not found, skipping", step_value);
+                }
+            }
+        }
+
+        // Fire an existing text expansion by trigger word. Routes through the
+        // shared dispatch in expansions.rs which honours variants / fill-in /
+        // image / tokens / case patterns — same fire paths the space-trigger
+        // and immediate-trigger entry points use, so parity is automatic.
+        "Fire Text Expansion" => {
+            if step_value.is_empty() {
+                warn!("[Trigr] Fire Text Expansion: empty step value, skipping");
+                return true;
+            }
+            if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
+            crate::expansions::fire_expansion_by_trigger(step_value);
         }
 
         _ => {
