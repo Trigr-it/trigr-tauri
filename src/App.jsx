@@ -60,7 +60,7 @@ function App() {
   const [theme, setTheme]                   = useState('auto');
   const [resolvedTheme, setResolvedTheme]   = useState('dark');
   const [expansionCategories, setExpansionCategories] = useState([]);
-  const [globalVariables, setGlobalVariables]         = useState({});   // { 'my.name': 'Trigr', … }
+  const [globalVariables, setGlobalVariables]         = useState({});   // { 'my.name': 'Jane Smith', … }
   const [activeView, setActiveView]                 = useState('keyboard'); // 'keyboard' | 'mouse'
   const [activeArea, setActiveArea]                 = useState('mapping');  // 'mapping' | 'expansions' | 'analytics'
   // One-shot prefill seed for the text-expansion new-form, set when the user

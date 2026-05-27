@@ -2603,7 +2603,7 @@ export default function TextExpansions({
                   <label className="form-label">VALUE</label>
                   <input
                     className="form-input"
-                    placeholder="e.g. Trigr"
+                    placeholder="e.g. Jane Smith"
                     value={gdValue}
                     onChange={e => setGdValue(e.target.value)}
                     onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') handleGdSave(); if (e.key === 'Escape') handleGdCancel(); }}
