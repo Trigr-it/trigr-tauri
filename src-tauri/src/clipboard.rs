@@ -147,7 +147,7 @@ fn effective_retention_days() -> u32 {
 //
 // Both default to permissive (capture on, no exclusions) so existing installs
 // keep behaving as before. Users opt in via Settings — no apps are excluded
-// out of the box, per the founder's design call.
+// out of the box, a deliberate design call.
 
 static CAPTURE_ENABLED: AtomicBool = AtomicBool::new(true);
 static EXCLUDED_APPS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
