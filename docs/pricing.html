@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trigr — Pricing</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="description" content="Trigr pricing. Most features are free forever. Pro is £49 a year. Teams arrives with v1.0. Pro is free for everyone during the Beta.">
+
+<!-- SEO: canonical, Open Graph, Twitter Card -->
+<link rel="canonical" href="https://usetrigr.com/pricing.html">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://usetrigr.com/pricing.html">
+<meta property="og:title" content="Trigr — Pricing">
+<meta property="og:description" content="Most of Trigr is free forever. Pro is £49 a year. Teams arrives with v1.0. Pro is free for everyone during the Beta.">
+<meta property="og:image" content="https://usetrigr.com/favicon-192.png">
+<meta property="og:site_name" content="Trigr">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Trigr — Pricing">
+<meta name="twitter:description" content="Free forever for most features. Pro is £49 a year. Teams arrives with v1.0.">
+<meta name="twitter:image" content="https://usetrigr.com/favicon-192.png">
+
+<script>
+/* Theme: saved → OS preference → light fallback. Runs synchronously to prevent flash. */
+(function(){
+  try {
+    var saved = localStorage.getItem('trigr-site-theme');
+    var theme;
+    if (saved === 'light' || saved === 'dark') {
+      theme = saved;
+    } else {
+      theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --gold:#e8a020; --gold-light:#f0b942; --gold-dark:#c8860a;
+  --gold-glow:rgba(232,160,32,0.15); --gold-line:rgba(232,160,32,0.22);
+  --bg:#080B14; --bg-2:#0D1120; --bg-3:#111827;
+  --bg-card:#0E1320; --bg-card-hi:#131829;
+  --hairline:rgba(255,255,255,0.06); --hairline-strong:rgba(255,255,255,0.1); --hairline-gold:rgba(232,160,32,0.18);
+  --text:#F1F5F9; --text-muted:#94A3B8; --text-dim:#475569;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-mono:'Rajdhani',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --font-label:'Chakra Petch',sans-serif;
+}
+[data-theme="light"] {
+  --bg:#F5F5FA; --bg-2:#FFFFFF; --bg-3:#EEEEF2;
+  --bg-card:#FFFFFF; --bg-card-hi:#FAFAFE;
+  --hairline:rgba(0,0,0,0.07); --hairline-strong:rgba(0,0,0,0.12); --hairline-gold:rgba(232,160,32,0.25);
+  --text:#1A1A2E; --text-muted:#4A4A6A; --text-dim:#9090B0;
+}
+html { scroll-behavior:smooth; }
+body { font-family:var(--font-body); background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; -webkit-font-smoothing:antialiased; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:0; opacity:0.4; }
+[data-theme="light"] body::before { opacity:0.08; }
+
+/* Nav */
+nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; height:64px; display:flex; align-items:center; justify-content:space-between; background:rgba(8,11,20,0.7); backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%); border-bottom:1px solid var(--hairline); }
+[data-theme="light"] nav { background:rgba(245,245,250,0.75); }
+.nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.logo-mark { width:30px; height:30px; border-radius:7px; }
+.logo-mark > svg { width:100%; height:100%; display:block; }
+.nav-wordmark { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); }
+.nav-links { display:flex; align-items:center; gap:28px; }
+.nav-links a { font-size:13px; font-weight:500; color:var(--text-muted); text-decoration:none; transition:color 0.2s; letter-spacing:0.01em; }
+.nav-links a:hover { color:var(--text); }
+.nav-links a.active { color:var(--gold-light); }
+[data-theme="light"] .nav-links a.active { color:var(--gold-dark); }
+.nav-cta { background:var(--gold); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; transition:transform 0.15s, box-shadow 0.2s; }
+.nav-cta:hover { color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,160,32,0.3); }
+[data-theme="light"] .nav-cta { color:#fff; }
+[data-theme="light"] .nav-cta:hover { color:#fff!important; }
+.theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.theme-toggle:hover { color:var(--gold); border-color:var(--hairline-gold); background:var(--gold-glow); }
+
+/* Hero */
+.hero { position:relative; padding:140px 32px 40px; text-align:center; overflow:hidden; z-index:1; }
+.hero-bg { position:absolute; inset:0; pointer-events:none; }
+.hero-bg::before { content:''; position:absolute; top:-180px; left:50%; transform:translateX(-50%); width:1100px; height:600px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.13) 0%,rgba(232,160,32,0.04) 35%,transparent 70%); }
+[data-theme="light"] .hero-bg::before { background:radial-gradient(ellipse at center,rgba(232,160,32,0.09) 0%,rgba(232,160,32,0.02) 35%,transparent 70%); }
+.hero-inner { position:relative; max-width:760px; margin:0 auto; }
+.hero-eyebrow { font-family:var(--font-label); font-size:12px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-muted); margin-bottom:18px; }
+.hero h1 { font-family:var(--font-display); font-weight:700; font-size:clamp(36px,5vw,60px); line-height:1.05; letter-spacing:-0.03em; color:var(--text); margin-bottom:22px; }
+.hero h1 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 50%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; padding-right:0.06em; margin-right:-0.06em; }
+.hero p { font-size:17px; color:var(--text-muted); max-width:600px; margin:0 auto 26px; font-weight:400; line-height:1.6; }
+.beta-pill { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.08); border:1px solid var(--hairline-gold); border-radius:100px; padding:7px 16px 7px 12px; font-size:13px; font-weight:500; color:var(--gold-light); }
+[data-theme="light"] .beta-pill { color:var(--gold-dark); }
+.beta-pill-dot { width:7px; height:7px; background:var(--gold); border-radius:50%; }
+.beta-pill strong { color:var(--text); font-weight:600; }
+
+/* Pricing grid */
+.pricing { position:relative; z-index:1; padding:36px 32px 40px; }
+.currency-switch { display:flex; justify-content:center; gap:4px; max-width:1080px; margin:0 auto 26px; }
+.cur-btn { font-family:var(--font-mono); font-size:12px; font-weight:600; letter-spacing:0.04em; color:var(--text-muted); background:var(--bg-card); border:1px solid var(--hairline); padding:7px 15px; border-radius:8px; cursor:pointer; transition:all 0.15s; }
+.cur-btn:hover { color:var(--text); border-color:var(--hairline-gold); }
+.cur-btn.active { color:#0d0d11; background:var(--gold); border-color:var(--gold); }
+[data-theme="light"] .cur-btn.active { color:#fff; }
+.billed-gbp { font-size:11.5px; color:var(--text-dim); margin:-2px 0 2px; }
+.pricing-grid { max-width:1080px; margin:0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:20px; align-items:stretch; }
+.price-card { position:relative; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--hairline); border-radius:16px; padding:28px 26px; }
+.price-card.featured { border-color:var(--hairline-gold); background:var(--bg-card-hi); box-shadow:0 0 0 1px var(--gold-glow), 0 30px 80px rgba(0,0,0,0.35), 0 0 60px rgba(232,160,32,0.06); }
+[data-theme="light"] .price-card.featured { box-shadow:0 0 0 1px var(--gold-glow), 0 24px 60px rgba(0,0,0,0.12); }
+.price-flag { position:absolute; top:-11px; left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#0d0d11; background:var(--gold); padding:4px 12px; border-radius:6px; white-space:nowrap; }
+.price-name { font-family:var(--font-display); font-weight:700; font-size:22px; letter-spacing:-0.01em; color:var(--text); }
+.price-tagline { font-size:13.5px; color:var(--text-muted); margin-top:6px; min-height:38px; }
+.price-amount-row { display:flex; align-items:baseline; gap:6px; margin:18px 0 4px; }
+.price-amount { font-family:var(--font-display); font-weight:700; font-size:44px; letter-spacing:-0.03em; color:var(--text); line-height:1; }
+.price-period { font-size:14px; color:var(--text-muted); font-weight:500; }
+.price-sub { font-size:12.5px; color:var(--text-dim); min-height:34px; margin-bottom:4px; }
+.price-badge { display:inline-flex; align-items:center; gap:7px; align-self:flex-start; font-size:12px; font-weight:600; padding:5px 11px; border-radius:100px; margin:8px 0 4px; }
+.price-badge.beta { color:var(--gold-light); background:rgba(232,160,32,0.1); border:1px solid var(--hairline-gold); }
+[data-theme="light"] .price-badge.beta { color:var(--gold-dark); }
+.price-badge.soon { color:var(--text-muted); background:var(--bg-3); border:1px solid var(--hairline-strong); }
+.price-badge .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.price-cta { display:flex; align-items:center; justify-content:center; gap:9px; margin:20px 0 8px; padding:13px 20px; border-radius:10px; font-size:14px; font-weight:600; text-decoration:none; transition:all 0.2s; cursor:pointer; border:1px solid transparent; }
+.price-cta.primary { background:var(--gold); color:#0d0d11; }
+.price-cta.primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 10px 28px rgba(232,160,32,0.3); }
+[data-theme="light"] .price-cta.primary { color:#fff; }
+.price-cta.ghost { background:transparent; color:var(--text); border-color:var(--hairline-strong); }
+.price-cta.ghost:hover { border-color:var(--hairline-gold); background:var(--gold-glow); color:var(--gold-light); }
+[data-theme="light"] .price-cta.ghost:hover { color:var(--gold-dark); }
+.price-cta.disabled { background:var(--bg-3); color:var(--text-muted); cursor:default; pointer-events:none; }
+.price-feat-head { font-size:12px; font-weight:600; color:var(--text-dim); letter-spacing:0.02em; margin:14px 0 10px; }
+.price-feats { list-style:none; display:flex; flex-direction:column; gap:9px; }
+.price-feats li { display:flex; align-items:flex-start; gap:10px; font-size:13.5px; color:var(--text-muted); line-height:1.45; }
+.price-feats li svg { width:16px; height:16px; flex-shrink:0; margin-top:2px; color:var(--gold); }
+.price-feats li .exp { font-size:11px; color:var(--text-dim); font-weight:500; }
+.feat-tag { font-size:9.5px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim); border:1px solid var(--hairline-strong); border-radius:4px; padding:0 5px; margin-left:2px; }
+
+/* Compare table */
+.compare { position:relative; z-index:1; padding:60px 32px 40px; }
+.compare-inner { max-width:1080px; margin:0 auto; }
+.compare-head { text-align:center; margin-bottom:36px; }
+.compare-head h2 { font-family:var(--font-display); font-weight:700; font-size:clamp(28px,4vw,40px); letter-spacing:-0.025em; line-height:1.1; }
+.compare-head p { font-size:15px; color:var(--text-muted); margin-top:10px; }
+.compare-scroll { overflow-x:auto; border:1px solid var(--hairline); border-radius:14px; background:var(--bg-card); }
+table.cmp { width:100%; border-collapse:collapse; min-width:560px; }
+table.cmp th, table.cmp td { padding:13px 18px; text-align:left; border-bottom:1px solid var(--hairline); }
+table.cmp thead th { font-family:var(--font-display); font-weight:700; font-size:15px; color:var(--text); }
+table.cmp thead th span { display:block; font-family:var(--font-body); font-size:11px; font-weight:500; color:var(--text-muted); margin-top:2px; }
+table.cmp thead th.col { text-align:center; width:140px; }
+table.cmp thead th.col.pro { color:var(--gold); }
+table.cmp td.col { text-align:center; }
+table.cmp tbody tr:hover { background:var(--gold-glow); }
+table.cmp .grp td { font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text); background:var(--bg-3); padding-top:15px; padding-bottom:9px; box-shadow:inset 3px 0 0 var(--gold); }
+.cmp-feat { font-size:13.5px; color:var(--text); }
+.cmp-feat small { display:block; color:var(--text-dim); font-size:11.5px; font-weight:400; }
+.tick { color:var(--gold); }
+.dash { color:var(--text-dim); }
+.cmp-val { font-size:12px; font-weight:600; color:var(--text-muted); }
+
+/* FAQ */
+.faq { position:relative; z-index:1; padding:60px 32px 40px; }
+.faq-inner { max-width:760px; margin:0 auto; }
+.faq-inner h2 { font-family:var(--font-display); font-weight:700; font-size:clamp(26px,3.5vw,36px); letter-spacing:-0.025em; text-align:center; margin-bottom:32px; }
+.faq-item { border:1px solid var(--hairline); border-radius:12px; background:var(--bg-card); padding:18px 22px; margin-bottom:12px; }
+.faq-q { font-family:var(--font-display); font-weight:700; font-size:16px; color:var(--text); margin-bottom:7px; }
+.faq-a { font-size:14.5px; color:var(--text-muted); line-height:1.6; }
+.faq-a a { color:var(--gold-light); text-decoration:none; }
+[data-theme="light"] .faq-a a { color:var(--gold-dark); }
+.faq-a a:hover { text-decoration:underline; }
+
+/* CTA */
+.cta { position:relative; z-index:1; padding:40px 32px 80px; }
+.cta-card { max-width:1080px; margin:0 auto; border:1px solid var(--hairline-gold); border-radius:18px; background:var(--bg-card-hi); padding:48px 40px; text-align:center; overflow:hidden; position:relative; }
+.cta-card::before { content:''; position:absolute; top:-120px; left:50%; transform:translateX(-50%); width:700px; height:400px; background:radial-gradient(ellipse at center,var(--gold-glow),transparent 70%); pointer-events:none; }
+.cta-card h2 { font-family:var(--font-display); font-weight:700; font-size:clamp(26px,3.5vw,40px); letter-spacing:-0.025em; position:relative; }
+.cta-card p { font-size:15px; color:var(--text-muted); margin:12px auto 26px; max-width:480px; position:relative; }
+.cta-btn { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:15px 30px; border-radius:11px; font-size:15px; font-weight:600; transition:all 0.2s; position:relative; }
+[data-theme="light"] .cta-btn { color:#fff; }
+.cta-btn:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
+.cta-meta { margin-top:16px; font-size:12px; color:var(--text-dim); position:relative; }
+
+/* Footer */
+footer { position:relative; z-index:1; border-top:1px solid var(--hairline); padding:48px 32px 36px; }
+.footer-inner { max-width:1080px; margin:0 auto; display:flex; flex-wrap:wrap; justify-content:space-between; gap:24px; align-items:flex-start; }
+.footer-brand { max-width:300px; }
+.ft-logo { display:flex; align-items:center; gap:9px; text-decoration:none; margin-bottom:12px; }
+.ft-logo .logo-mark { width:28px; height:28px; border-radius:0; }
+.ft-wm { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); }
+.footer-tagline { font-size:13px; color:var(--text-muted); line-height:1.6; }
+.footer-links { display:flex; gap:48px; flex-wrap:wrap; }
+.ft-col h4 { font-family:var(--font-mono); font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-dim); margin-bottom:12px; }
+.ft-col a { display:block; font-size:13px; font-weight:500; color:var(--text-muted); text-decoration:none; margin-bottom:8px; transition:color 0.2s; }
+.ft-col a:hover { color:var(--gold-light); }
+[data-theme="light"] .ft-col a:hover { color:var(--gold-dark); }
+.footer-bottom { max-width:1080px; margin:32px auto 0; padding-top:24px; border-top:1px solid var(--hairline); display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between; }
+.ft-copy { font-size:12px; color:var(--text-dim); }
+.ft-legal { display:flex; gap:18px; }
+.ft-legal a { font-size:12px; color:var(--text-muted); text-decoration:none; transition:color 0.2s; }
+.ft-legal a:hover { color:var(--gold-light); }
+[data-theme="light"] .ft-legal a:hover { color:var(--gold-dark); }
+.betalist-badge { display:inline-flex; align-items:center; line-height:0; flex-shrink:0; transition:opacity 0.15s; }
+.betalist-badge:hover { opacity:0.85; }
+.betalist-badge img { display:block; width:117px; height:40px; }
+.betalist-badge .bl-badge-light { display:none; }
+.betalist-badge .bl-badge-dark { display:block; }
+[data-theme="light"] .betalist-badge .bl-badge-light { display:block; }
+[data-theme="light"] .betalist-badge .bl-badge-dark { display:none; }
+
+/* Reveal */
+.reveal { opacity:0; transform:translateY(24px); transition:opacity 0.7s ease, transform 0.7s ease; }
+.reveal.in { opacity:1; transform:translateY(0); }
+
+@media(max-width:900px){
+  .pricing-grid { grid-template-columns:1fr; max-width:440px; }
+  .price-tagline, .price-sub { min-height:0; }
+}
+@media(max-width:768px){
+  .nav-links{gap:14px;}
+  .nav-links a:not(.nav-cta):not(.theme-toggle){display:none;}
+  .footer-links{gap:32px;}
+}
+</style>
+
+<!-- Privacy-friendly analytics by Plausible -->
+<script async src="https://plausible.io/js/pa-VJCTdtLxXP7hTgXINlwwm.js"></script>
+<script>
+  window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+  plausible.init()
+</script>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="index.html">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">Trigr</span>
+  </a>
+  <div class="nav-links">
+    <a href="index.html#features">Features</a>
+    <a href="index.html#how">How it works</a>
+    <a href="trigr-help.html">Guide</a>
+    <a href="roadmap.html">Roadmap</a>
+    <a href="blog/">Blog</a>
+    <a href="pricing.html" class="active">Pricing</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">Pricing</div>
+    <h1>Simple, <em>honest</em> pricing.</h1>
+    <p>Most of Trigr is free forever. Pro unlocks the power features for <span data-gbp="49">£49</span> a year. Teams is a per-seat plan for organisations and arrives with v1.0.</p>
+    <div class="beta-pill"><span class="beta-pill-dot"></span> <strong>Pro is free for everyone during the Beta.</strong></div>
+  </div>
+</section>
+
+<!-- PRICING CARDS -->
+<section class="pricing">
+  <div class="currency-switch" role="group" aria-label="Display currency">
+    <button class="cur-btn active" data-cur="GBP" type="button">£ GBP</button>
+    <button class="cur-btn" data-cur="USD" type="button">$ USD</button>
+    <button class="cur-btn" data-cur="EUR" type="button">€ EUR</button>
+  </div>
+  <div class="pricing-grid reveal">
+
+    <!-- FREE -->
+    <div class="price-card">
+      <div class="price-name">Free</div>
+      <div class="price-tagline">Everything you need to remap keys and automate the basics.</div>
+      <div class="price-amount-row"><span class="price-amount" data-gbp="0">£0</span><span class="price-period">forever</span></div>
+      <div class="price-sub">No account. Runs fully local on Windows.</div>
+      <a class="price-cta ghost" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="pricing_free" data-arch="x64">Download free</a>
+      <div class="price-feat-head">Includes</div>
+      <ul class="price-feats">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Key and mouse button remapping</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Multi-step macros</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>AutoHotkey script runner (v1 and v2 bundled)</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Text expansion with dynamic tokens</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Fill-in fields</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Quick Search and radial menu</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Clipboard history <span class="exp">(7 days)</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Up to 5 search templates</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Voice commands <span class="feat-tag">Experimental</span></li>
+      </ul>
+    </div>
+
+    <!-- PRO -->
+    <div class="price-card featured">
+      <div class="price-flag">Most popular</div>
+      <div class="price-name">Pro</div>
+      <div class="price-tagline">For power users who live in their setup all day.</div>
+      <div class="price-amount-row"><span class="price-amount" data-gbp="49">£49</span><span class="price-period">/year</span></div>
+      <div class="price-sub">Billed annually. One licence covers up to 3 of your machines.</div>
+      <div class="billed-gbp" style="display:none">Approximate conversion, billed in GBP.</div>
+      <div class="price-badge beta"><span class="dot"></span> Free during Beta</div>
+      <a class="price-cta primary" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="pricing_pro" data-arch="x64">Get Pro free during Beta</a>
+      <div class="price-feat-head">Everything in Free, plus</div>
+      <ul class="price-feats">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>App-specific profiles</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Shared config across machines</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Double-press hotkeys</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Extended clipboard history <span class="exp">(30 days)</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Unlimited search templates</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Expansion variants</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Image expansion</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Global variables</li>
+      </ul>
+    </div>
+
+    <!-- TEAMS -->
+    <div class="price-card">
+      <div class="price-name">Teams</div>
+      <div class="price-tagline">Roll Trigr out across your team with shared setup and central control.</div>
+      <div class="price-amount-row"><span class="price-amount" data-gbp="6">£6</span><span class="price-period">/user/mo</span></div>
+      <div class="price-sub">Billed per seat. Add and remove members as your team changes.</div>
+      <div class="billed-gbp" style="display:none">Approximate conversion, billed in GBP.</div>
+      <div class="price-badge soon"><span class="dot"></span> Coming with v1.0</div>
+      <span class="price-cta disabled">Not available yet</span>
+      <div class="price-feat-head">Everything in Pro, plus</div>
+      <ul class="price-feats">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Shared team profiles and libraries</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Centrally deployed profiles</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Team-wide variables</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Admin console</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Seat management</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- COMPARE -->
+<section class="compare">
+  <div class="compare-inner">
+    <div class="compare-head reveal">
+      <h2>Compare plans</h2>
+      <p>The full breakdown, side by side.</p>
+    </div>
+    <div class="compare-scroll reveal">
+      <table class="cmp">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="col">Free<span><span data-gbp="0">£0</span></span></th>
+            <th class="col pro">Pro<span><span data-gbp="49">£49</span>/yr</span></th>
+            <th class="col">Teams<span>Coming v1.0</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">Core</td></tr>
+          <tr><td class="cmp-feat">Devices per licence</td><td class="col"><span class="cmp-val">Unlimited</span></td><td class="col"><span class="cmp-val">3</span></td><td class="col"><span class="cmp-val">Per seat</span></td></tr>
+          <tr><td class="cmp-feat">Key and mouse remapping</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Multi-step macros</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">AutoHotkey script runner<small>v1 and v2 bundled</small></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Quick Search and radial menu</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Voice commands<small>Experimental</small></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+
+          <tr class="grp"><td colspan="4">Text expansion</td></tr>
+          <tr><td class="cmp-feat">Text expansion with dynamic tokens</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Fill-in fields</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Expansion variants</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Image expansion</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Global variables</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+
+          <tr class="grp"><td colspan="4">Power features</td></tr>
+          <tr><td class="cmp-feat">App-specific profiles</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Shared config across machines</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Double-press hotkeys</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Clipboard history</td><td class="col"><span class="cmp-val">7 days</span></td><td class="col"><span class="cmp-val">30 days</span></td><td class="col"><span class="cmp-val">30 days</span></td></tr>
+          <tr><td class="cmp-feat">Search templates</td><td class="col"><span class="cmp-val">Up to 5</span></td><td class="col"><span class="cmp-val">Unlimited</span></td><td class="col"><span class="cmp-val">Unlimited</span></td></tr>
+
+          <tr class="grp"><td colspan="4">Teams</td></tr>
+          <tr><td class="cmp-feat">Shared team profiles and libraries</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Centrally deployed profiles</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Team-wide variables</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Admin console and seat management</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq">
+  <div class="faq-inner">
+    <h2>Pricing questions</h2>
+    <div class="faq-item reveal">
+      <div class="faq-q">How is Pro billed?</div>
+      <div class="faq-a">£49 a year, billed annually. Every update is included while your subscription is active.</div>
+    </div>
+    <div class="faq-item reveal">
+      <div class="faq-q">How many machines does one Pro licence cover?</div>
+      <div class="faq-a">Up to three. A single Pro licence covers three of your own machines, for example a desktop, a laptop, and a work PC. Shared config syncs across all machines if they have a shared drive.</div>
+    </div>
+    <div class="faq-item reveal">
+      <div class="faq-q">Can I cancel anytime?</div>
+      <div class="faq-a">Yes. You can cancel whenever you like, and Pro stays active until the end of the period you have paid for.</div>
+    </div>
+    <div class="faq-item reveal">
+      <div class="faq-q">Is Pro free right now?</div>
+      <div class="faq-a">Yes. Pro is free for everyone during the Beta. Download Trigr and request a free key from inside the app.</div>
+    </div>
+    <div class="faq-item reveal">
+      <div class="faq-q">When does Teams launch?</div>
+      <div class="faq-a">Teams arrives with Trigr v1.0. It is not available yet. If you want early access for your team, email <a href="mailto:admin@usetrigr.com?subject=Trigr%20Teams%20early%20access">admin@usetrigr.com</a>.</div>
+    </div>
+    <div class="faq-item reveal">
+      <div class="faq-q">Where does my data live?</div>
+      <div class="faq-a">On your machine. Trigr runs fully local on Windows. There is no account to use Free or Pro, and no cloud sync unless you turn on shared config yourself.</div>
+    </div>
+    <div class="faq-item reveal">
+      <div class="faq-q">How do I buy Pro after the Beta?</div>
+      <div class="faq-a">When Trigr reaches v1.0 you will be able to subscribe to Pro directly. Beta users get advance notice before pricing goes live.</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="cta-card reveal">
+    <h2>Try every Pro feature, free</h2>
+    <p>Trigr is in open Beta and Pro is free for everyone right now. Download it, request a key in the app, and tell us what to build next.</p>
+    <a class="cta-btn" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="pricing_cta" data-arch="x64">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Download for Windows
+    </a>
+    <div class="cta-meta">Windows 10 / 11 · x64 and ARM64 · ~10MB · free during Beta</div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <a href="index.html" class="ft-logo">
+        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+        <span class="ft-wm">Trigr</span>
+      </a>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
+    </div>
+    <div class="footer-links">
+      <div class="ft-col">
+        <h4>Product</h4>
+        <a href="index.html#features">Features</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="roadmap.html">Roadmap</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe">Download</a>
+      </div>
+      <div class="ft-col">
+        <h4>Resources</h4>
+        <a href="trigr-help.html">Guide</a>
+        <a href="blog/">Blog</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+      </div>
+      <div class="ft-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:admin@usetrigr.com">admin@usetrigr.com</a>
+        <a href="https://github.com/Trigr-it">@Trigr-it</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span class="ft-copy">© 2026 Node Group Ltd</span>
+    <div class="ft-legal">
+      <a href="terms.html">Terms</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="refund.html">Refunds</a>
+    </div>
+    <a href="https://betalist.com/startups/trigr?utm_campaign=badge-trigr&amp;utm_medium=badge&amp;utm_source=badge-featured" class="betalist-badge" target="_blank" rel="noopener">
+      <img class="bl-badge-light" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=dark">
+      <img class="bl-badge-dark" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=gray">
+    </a>
+  </div>
+</footer>
+
+<script>
+function toggleTheme(){
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('trigr-site-theme', next); } catch(e){}
+  document.getElementById('theme-btn').textContent = next === 'light' ? '☾' : '☀';
+}
+(function(){
+  var btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '☾' : '☀';
+  if (!('IntersectionObserver' in window)) {
+    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+})();
+</script>
+<script>
+/* Currency switcher: GBP source of truth. USD/EUR are indicative; charges are in GBP.
+   Indicative FX as of 2026-05-27 (refresh occasionally): USD 1.27, EUR 1.17.
+   FX_BUFFER adds upward headroom and non-GBP values round UP (ceil), so the
+   indicative USD/EUR figure is never shown below the real conversion as the
+   rate drifts. GBP is always displayed exactly. */
+(function(){
+  var RATES = { GBP:1, USD:1.27, EUR:1.17 };
+  var FX_BUFFER = 1.04; // ~4% headroom on non-GBP display prices
+  var SYMBOLS = { GBP:'£', USD:'$', EUR:'€' };
+  var EUROZONE = ['AT','BE','HR','CY','EE','FI','FR','DE','GR','IE','IT','LV','LT','LU','MT','NL','PT','SK','SI','ES'];
+  function detect(){
+    try {
+      var saved = localStorage.getItem('trigr-currency');
+      if (saved && RATES[saved] != null) return saved;
+      var loc = navigator.language || '';
+      var region = (loc.split('-')[1] || '').toUpperCase();
+      if (region === 'GB') return 'GBP';
+      if (EUROZONE.indexOf(region) !== -1) return 'EUR';
+      return 'USD';
+    } catch(e){ return 'GBP'; }
+  }
+  function render(cur){
+    if (RATES[cur] == null) cur = 'GBP';
+    var rate = RATES[cur], sym = SYMBOLS[cur], nonGbp = cur !== 'GBP';
+    document.querySelectorAll('[data-gbp]').forEach(function(el){
+      var base = parseFloat(el.getAttribute('data-gbp')) || 0;
+      var val;
+      if (base === 0) { val = '0'; }
+      else if (cur === 'GBP') { val = base; }            // exact: GBP is the billed currency
+      else { val = Math.ceil(base * rate * FX_BUFFER); } // round up + buffer: never under-display
+      el.textContent = sym + val;
+    });
+    document.querySelectorAll('.billed-gbp').forEach(function(el){ el.style.display = nonGbp ? 'block' : 'none'; });
+    document.querySelectorAll('.cur-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-cur') === cur); });
+  }
+  document.querySelectorAll('.cur-btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      var cur = b.getAttribute('data-cur');
+      try { localStorage.setItem('trigr-currency', cur); } catch(e){}
+      render(cur);
+      if (window.plausible) window.plausible('Currency switch', { props: { currency: cur } });
+    });
+  });
+  render(detect());
+})();
+</script>
+</body>
+</html>
