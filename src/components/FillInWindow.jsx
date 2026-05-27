@@ -76,7 +76,7 @@ export default function FillInWindow() {
       requestAnimationFrame(() => {
         const el = panelRef.current;
         if (!el) return;
-        const FRAME_PAD = 8; // room for shadow within transparent window
+        const FRAME_PAD = 12; // room for shadow within transparent window (clears the 0 2px 8px panel shadow on all sides; must match .fillin-win-frame padding)
         const windowH = Math.ceil(el.scrollHeight) + FRAME_PAD * 2;
         window.electronAPI?.resizeFillin(windowH);
       });

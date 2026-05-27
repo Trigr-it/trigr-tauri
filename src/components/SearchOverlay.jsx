@@ -686,8 +686,9 @@ export default function SearchOverlay() {
         const scrollH = el.scrollHeight;
         const rect = el.getBoundingClientRect();
         // scrollHeight = full content height (not clipped by overflow)
-        // 9 = top margin, 13 = border + shadow breathing room
-        const windowH = Math.ceil(scrollH + 9 + 13);
+        // 12 = top margin (matches .search-panel margin); 16 = bottom shadow breathing
+        // room — the 0 4px 12px panel shadow reaches ~16px below the panel.
+        const windowH = Math.ceil(scrollH + 12 + 16);
         import('@tauri-apps/api/core').then(({ invoke: inv }) =>
           inv('log_debug', { message: `[OVERLAY-JS] scrollH=${scrollH} rectH=${rect.height} top=${rect.top} → windowH=${windowH}` })
         ).catch(() => {});

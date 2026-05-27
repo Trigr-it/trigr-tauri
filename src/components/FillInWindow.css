@@ -66,7 +66,7 @@ html, body {
 /* ── Frame wrapper — provides padding for shadow to render within window ── */
 
 .fillin-win-frame {
-  padding: 8px;
+  padding: 12px;
   background: transparent;
 }
 

@@ -1349,7 +1349,8 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let log_w = (wa_right - wa_left) as f64 / scale;
     let log_h = (wa_bottom - wa_top) as f64 / scale;
 
-    let win_w = 750.0;
+    // 730px panel + 12px shadow breathing room each side (24px total)
+    let win_w = 754.0;
     let x = log_left + (log_w - win_w) / 2.0;
     let y = log_top + log_h / 3.0;
     let _ = win.set_position(tauri::LogicalPosition::new(x, y));
@@ -1721,7 +1722,39 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 }
             }
         }
-        "expansion" | "autocorrect" => {
+        "expansion" => {
+            // Route through the shared expansion fire path so fill-in fields
+            // ({fillIn:...}), variant pickers, and HTML/rich-text forwarding all
+            // behave identically to live-typed and macro-fired expansions.
+            // Previously this branch pasted the raw stored text directly, which
+            // skipped the fill-in prompt and the variant chooser (and dropped
+            // HTML). The trigger is embedded in the storage key as
+            // GLOBAL::EXPANSION::<trigger>.
+            if let Some(trigger) = result
+                .get("storageKey")
+                .and_then(|v| v.as_str())
+                .and_then(|k| k.strip_prefix("GLOBAL::EXPANSION::"))
+            {
+                // Ensure the target app is foreground before the shared path
+                // captures GetForegroundWindow() for its paste / fill-in flow
+                // (the overlay had focus until execute_search_result hid it).
+                if target_hwnd != 0 {
+                    unsafe {
+                        windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
+                            target_hwnd as _,
+                        );
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                // fire_expansion_by_trigger handles image / variant / fill-in /
+                // plain text and logs analytics in each sub-path itself.
+                expansions::fire_expansion_by_trigger(trigger);
+            }
+        }
+        "autocorrect" => {
+            // Autocorrect entries are simple replacements (no fill-in, no
+            // variants) keyed under a different namespace, so keep the direct
+            // token-resolve + clipboard-paste path here.
             if let Some(raw_text) = result.get("text").and_then(|v| v.as_str()) {
                 // Resolve dynamic tokens ({date:...}, {time:...}, {clipboard}, {cursor}, etc.)
                 let global_vars = expansions::get_global_variables();
@@ -2474,7 +2507,7 @@ fn fill_in_ready() {
 fn fillin_resize(height: f64, app: tauri::AppHandle) {
     let h = height.max(150.0).min(600.0);
     if let Some(win) = app.get_webview_window("fillin") {
-        let _ = win.set_size(tauri::LogicalSize::new(440.0, h));
+        let _ = win.set_size(tauri::LogicalSize::new(448.0, h));
     }
 }
 
@@ -2720,6 +2753,7 @@ pub fn run() {
                 .skip_taskbar(true)
                 .resizable(false)
                 .visible(false)
+                .shadow(false)
                 .center()
                 .build()?;
 

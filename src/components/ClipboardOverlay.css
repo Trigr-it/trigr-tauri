@@ -69,7 +69,8 @@ html, body {
   top: 0; left: 0; right: 0; bottom: 0;
   display: flex;
   justify-content: center;
-  padding: 4px 8px 8px;
+  /* 12px sides/top; 16px bottom clears the 0 4px 12px panel shadow (reaches ~16px down) */
+  padding: 12px 12px 16px;
 }
 
 .co-panel {
