@@ -2,7 +2,7 @@
 
 **Version 1.0, 12 May 2026**
 
-Copyright (c) 2026 Node Scaffold Design Ltd, trading as Trigr.
+Copyright (c) 2026 Node Group Ltd, trading as Trigr.
 Registered in England and Wales. All rights reserved.
 
 SPDX-License-Identifier: LicenseRef-Trigr-Source-Available-1.0
@@ -19,7 +19,7 @@ This licence sets out what you may and may not do with the source code in this r
 
 - **"Source"** means all files in this repository (`Trigr-it/trigr-tauri`), including code, assets, documentation, and configuration.
 - **"You"** means any person or organisation accessing the Source.
-- **"Licensor"** means Node Scaffold Design Ltd.
+- **"Licensor"** means Node Group Ltd.
 - **"Trigr Application"** means the compiled binary built from the Source and distributed by the Licensor via official channels (GitHub Releases under `Trigr-it/trigr-tauri`, or links published on usetrigr.com).
 
 ## What you may do
@@ -38,7 +38,7 @@ You may not, without prior written permission from the Licensor:
 1. **Redistribute** the Source, in whole or in part, modified or unmodified, by any means. This includes, without limitation, mirroring the repository, publishing forks as standalone projects, embedding the Source in other projects, or sharing the Source files with third parties outside the contribution workflow described above.
 2. **Distribute a derivative work.** A derivative work means any software, library, application, or product that is substantially based on, includes, or is built from the Source, including any software that visually, functionally, or architecturally mimics the Trigr Application to the extent that an ordinary user would consider it the same product.
 3. **Sell, license, or sublicense** the Source or derivative works to any third party, whether for a fee or otherwise.
-4. **Remove, alter, or obscure** the Trigr name, "Trigr" trademark, Node Scaffold Design Ltd attribution, copyright notices, or licence files contained in the Source.
+4. **Remove, alter, or obscure** the Trigr name, "Trigr" trademark, Node Group Ltd attribution, copyright notices, or licence files contained in the Source.
 5. **Circumvent licensing functionality.** The Source contains code that verifies Pro tier licence keys and gates premium features behind that verification. You may not modify, disable, patch around, or distribute modified versions that circumvent this verification, for personal use or otherwise.
 6. **Use the Source to train** machine learning models, large language models, or any other automated system intended to reproduce, generate, or substitute for similar software.
 7. **Reverse engineer the compiled Trigr Application** beyond what is reasonably necessary for the audit purposes described above, or beyond what is expressly permitted by applicable law (including section 50B of the UK Copyright, Designs and Patents Act 1988 for the purposes of interoperability).
@@ -61,7 +61,7 @@ The Licensor is under no obligation to accept any contribution.
 
 ## Trademark
 
-"Trigr" and the Trigr logo are trademarks of Node Scaffold Design Ltd. This licence does not grant any rights to use these trademarks, except to identify the unmodified Trigr Application and Source in accordance with normal fair-use trademark conventions (for example, in reviews, articles, or compatibility statements).
+"Trigr" and the Trigr logo are trademarks of Node Group Ltd. This licence does not grant any rights to use these trademarks, except to identify the unmodified Trigr Application and Source in accordance with normal fair-use trademark conventions (for example, in reviews, articles, or compatibility statements).
 
 ## Warranty and liability
 
