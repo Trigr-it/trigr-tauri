@@ -191,6 +191,22 @@ pub async fn mark_trial_offer_shown() -> LicenceStatus {
     build_status(&state)
 }
 
+/// DEV/TEST ONLY: clear the local trial state (started / used / offer-shown) so
+/// the 14-day trial and its post-onboarding announcement can be re-triggered.
+/// Preserves any entered licence key. Exposed only via a dev-build button.
+pub async fn reset_trial() -> LicenceStatus {
+    let mut state = match LICENCE_STATE.get() {
+        Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        None => LicenceState::default(),
+    };
+    state.trial_started_at = None;
+    state.trial_used = false;
+    state.trial_offer_shown = false;
+    update_state(state.clone());
+    info!("[Trigr] Trial state reset (dev)");
+    build_status(&state)
+}
+
 /// Clear the saved licence and drop back to Free. Preserves trial state so a
 /// user who removes their key after the trial doesn't get a fresh 14 days.
 pub async fn deactivate_licence() -> Result<LicenceStatus, String> {

@@ -14,6 +14,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
   const isTeamsLadder = TEAMS_LADDER_FEATURES.has(featureName);
+  const isRenewal = featureName === 'Keep Trigr Pro';
   const panelRef = useRef(null);
   useModalKeyboard(panelRef, onClose);
   const [email, setEmail] = useState('');
@@ -72,13 +73,13 @@ export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
           </svg>
         </button>
 
-        <div className="upgrade-pill">Pro feature</div>
+        <div className="upgrade-pill">{isRenewal ? 'Trigr Pro' : 'Pro feature'}</div>
         <h1 className="upgrade-title" id="upgrade-title">{featureName}</h1>
 
         <p className="upgrade-body">
-          {featureName} is part of Trigr Pro. Most of Trigr stays free forever; Pro adds the
-          features power users reach for daily, including syncing your setup across every
-          machine you work on.
+          {isRenewal
+            ? "Your trial unlocked everything in Trigr Pro. Most of Trigr stays free forever; a beta key keeps the Pro features you've been using."
+            : `${featureName} is part of Trigr Pro. Most of Trigr stays free forever; Pro adds the features power users reach for daily, including syncing your setup across every machine you work on.`}
         </p>
         {isTeamsLadder && (
           <p className="upgrade-body upgrade-teams-note">

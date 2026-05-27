@@ -459,7 +459,12 @@ function App() {
             && !ls.trial_active
             && !ls.trial_used
             && !ls.trial_offer_shown) {
+          // Auto-activate the trial for existing installs that predate the
+          // trial mechanism, then announce it (announcement, not an offer).
           setShowProTrialModal(true);
+          window.electronAPI?.startTrial?.().then((r) => {
+            if (r?.status) setLicenceStatus(r.status);
+          });
         }
         // Set this AFTER potentially queuing the migration popup so the
         // templates coachmark effect can't fire ahead of the trial modal.
@@ -3125,14 +3130,19 @@ function App() {
       hasSeenWelcome: true,
       onboarding_version_seen: ONBOARDING_VERSION,
     });
-    // Offer the 14-day Pro trial right after the tour finishes (also fires on
-    // skip). Suppressed if the user already has a real Pro key entered, or
-    // their trial is already active, or they've previously dismissed the offer.
+    // Auto-activate the 14-day Pro trial right after the tour finishes (also
+    // fires on skip), then announce it. Suppressed if the user already has a
+    // real Pro key entered, their trial is already active, or it was already
+    // started/announced before. The modal is an announcement now, not an offer:
+    // start_trial runs here, not on a button click.
     if (!licenceStatus?.key_entered
         && !licenceStatus?.trial_active
         && !licenceStatus?.trial_used
         && !licenceStatus?.trial_offer_shown) {
       setShowProTrialModal(true);
+      window.electronAPI?.startTrial?.().then((r) => {
+        if (r?.status) setLicenceStatus(r.status);
+      });
     }
   }, [licenceStatus]);
 
@@ -3486,14 +3496,7 @@ function App() {
       )}
       {showProTrialModal && (
         <ProTrialModal
-          onAccept={(status) => {
-            if (status) setLicenceStatus(status);
-            setShowProTrialModal(false);
-            window.electronAPI?.markTrialOfferShown?.().then((s) => {
-              if (s) setLicenceStatus(s);
-            });
-          }}
-          onDismiss={() => {
+          onClose={() => {
             setShowProTrialModal(false);
             window.electronAPI?.markTrialOfferShown?.().then((s) => {
               if (s) setLicenceStatus(s);
@@ -3941,7 +3944,17 @@ function App() {
             licenceStatus={licenceStatus}
             onLicenceStatusChange={setLicenceStatus}
             onShowUpgrade={showUpgrade}
-            onShowProTrial={() => setShowProTrialModal(true)}
+            onShowProTrial={() => {
+              setShowProTrialModal(true);
+              window.electronAPI?.startTrial?.().then((r) => {
+                if (r?.status) setLicenceStatus(r.status);
+              });
+            }}
+            onResetTrial={() => {
+              window.electronAPI?.resetTrial?.().then((s) => {
+                if (s) setLicenceStatus(s);
+              });
+            }}
             clipboardCaptureEnabled={clipboardCaptureEnabled}
             onToggleClipboardCapture={handleToggleClipboardCapture}
             clipboardExcludedApps={clipboardExcludedApps}

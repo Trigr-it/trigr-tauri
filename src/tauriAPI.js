@@ -302,6 +302,7 @@ window.electronAPI = {
   deactivateLicence:         ()    => invoke('deactivate_licence'),
   checkLicenceRevalidation:  ()    => invoke('check_licence_revalidation'),
   startTrial:                ()    => invoke('start_trial'),
+  resetTrial:                ()    => invoke('reset_trial'),
   getGracePeriodState:       ()    => invoke('get_grace_period_state'),
   migrateSharedToLocalNow:   ()    => invoke('migrate_shared_to_local_now'),
   markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),

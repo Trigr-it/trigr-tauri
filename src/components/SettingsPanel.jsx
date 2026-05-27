@@ -206,6 +206,7 @@ export default function SettingsPanel({
   onLicenceStatusChange,
   onShowUpgrade,
   onShowProTrial,
+  onResetTrial,
   clipboardCaptureEnabled = true,
   onToggleClipboardCapture,
   clipboardExcludedApps = [],
@@ -538,10 +539,15 @@ export default function SettingsPanel({
                     All Pro features unlocked for the 14-day trial.
                   </p>
                   <p className="settings-toggle-sub">
-                    To keep Pro after the trial ends, email{' '}
-                    <a href="mailto:admin@usetrigr.com?subject=Trigr%20Pro%20beta%20key%20request">admin@usetrigr.com</a>
-                    {' '}for a beta key, then activate it below.
+                    To keep Pro after the trial ends, request a free beta key, then activate it below.
                   </p>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    onClick={() => onShowUpgrade?.('Keep Trigr Pro')}
+                  >
+                    Request a beta key
+                  </button>
                 </div>
               ) : licenceStatus.trial_used ? (
                 <div className="settings-trial-card settings-trial-card--expired">
@@ -549,10 +555,15 @@ export default function SettingsPanel({
                     <strong>Your Pro trial has ended.</strong> Trigr has dropped back to Free.
                   </p>
                   <p className="settings-toggle-sub">
-                    Email{' '}
-                    <a href="mailto:admin@usetrigr.com?subject=Trigr%20Pro%20beta%20key%20request">admin@usetrigr.com</a>
-                    {' '}for a beta key to continue using Pro features, then activate it below.
+                    Request a free beta key to continue using Pro features, then activate it below.
                   </p>
+                  <button
+                    type="button"
+                    className="settings-action-btn settings-action-btn--primary"
+                    onClick={() => onShowUpgrade?.('Keep Trigr Pro')}
+                  >
+                    Request a beta key
+                  </button>
                 </div>
               ) : (
                 <div className="settings-trial-card settings-trial-card--offer">
@@ -568,6 +579,16 @@ export default function SettingsPanel({
                     Start 14-day Pro trial
                   </button>
                 </div>
+              )}
+
+              {import.meta.env.DEV && (
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={() => onResetTrial?.()}
+                >
+                  Reset Pro trial (dev)
+                </button>
               )}
 
               <p className="settings-toggle-sub">

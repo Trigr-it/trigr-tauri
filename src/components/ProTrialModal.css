@@ -82,12 +82,20 @@
   max-width: 460px;
 }
 
-/* ── Hero card ─────────────────────────────────────────────────────────── */
+/* ── Hero cards (top row: two side-by-side) ────────────────────────────── */
+
+.protrial-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 14px;
+  box-sizing: border-box;
+}
 
 .protrial-hero-card {
   width: 100%;
   padding: 18px 20px;
-  margin-bottom: 14px;
   background: var(--accent-glow);
   border: 1px solid var(--accent-dim);
   border-radius: 10px;
@@ -159,16 +167,6 @@
   margin: 0;
 }
 
-/* ── Error message ─────────────────────────────────────────────────────── */
-
-.protrial-error {
-  width: 100%;
-  font-size: 12px;
-  color: var(--text-error, #d44);
-  margin: 0 0 10px;
-  text-align: center;
-}
-
 /* ── CTAs ──────────────────────────────────────────────────────────────── */
 
 .protrial-cta-btn {
@@ -205,21 +203,6 @@
 .protrial-cta-btn:disabled {
   opacity: 0.6;
   cursor: default;
-}
-
-.protrial-skip-link {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 4px;
-  transition: color 0.12s;
-}
-
-.protrial-skip-link:hover {
-  color: var(--text-secondary);
 }
 
 .protrial-footnote {

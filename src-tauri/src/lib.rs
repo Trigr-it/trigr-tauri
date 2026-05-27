@@ -2617,6 +2617,11 @@ async fn mark_trial_offer_shown() -> Value {
     serde_json::to_value(licence::mark_trial_offer_shown().await).unwrap_or(serde_json::json!({}))
 }
 
+#[tauri::command]
+async fn reset_trial() -> Value {
+    serde_json::to_value(licence::reset_trial().await).unwrap_or(serde_json::json!({}))
+}
+
 // ── App builder ──────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -3160,6 +3165,7 @@ pub fn run() {
             check_licence_revalidation,
             start_trial,
             mark_trial_offer_shown,
+            reset_trial,
             get_grace_period_state,
             migrate_shared_to_local_now,
         ])

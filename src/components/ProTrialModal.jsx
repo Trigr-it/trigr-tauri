@@ -1,40 +1,20 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import './ProTrialModal.css';
 
 /**
- * Post-onboarding (or migration) Pro trial offer.
+ * Post-onboarding (or migration) Pro trial announcement.
  *
- * - `onAccept(status)`: called after start_trial succeeds. `status` is the
- *   updated LicenceStatus payload returned by the backend.
- * - `onDismiss()`: called when the user picks "Maybe later" or closes.
+ * The 14-day trial is auto-activated by the parent (App.jsx) BEFORE this modal
+ * is shown, so this is an announcement, not an offer: it tells the user the
+ * trial is live and highlights what's now unlocked. There is no accept/decline.
  *
- * The parent is responsible for calling markTrialOfferShown after either
- * outcome so the modal never re-fires on subsequent launches.
+ * - `onClose()`: called when the user dismisses (button, close icon, ESC, or
+ *   backdrop click). The parent calls markTrialOfferShown so it never re-fires.
  */
-export default function ProTrialModal({ onAccept, onDismiss }) {
+export default function ProTrialModal({ onClose }) {
   const panelRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  useModalKeyboard(panelRef, onDismiss);
-
-  const handleStart = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await window.electronAPI?.startTrial?.();
-      if (result?.ok) {
-        onAccept?.(result.status);
-      } else {
-        setError(result?.error || 'Could not start the trial. Try again from Settings.');
-        setBusy(false);
-      }
-    } catch (e) {
-      setError(String(e));
-      setBusy(false);
-    }
-  };
+  useModalKeyboard(panelRef, onClose);
 
   return (
     <div
@@ -42,12 +22,12 @@ export default function ProTrialModal({ onAccept, onDismiss }) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="protrial-title"
-      onClick={onDismiss}
+      onClick={onClose}
     >
       <div className="modal-panel protrial-modal" ref={panelRef} onClick={(e) => e.stopPropagation()}>
         <button
           className="protrial-close-btn"
-          onClick={onDismiss}
+          onClick={onClose}
           type="button"
           aria-label="Close"
         >
@@ -57,27 +37,30 @@ export default function ProTrialModal({ onAccept, onDismiss }) {
           </svg>
         </button>
 
-        <div className="protrial-pill">14-day free trial</div>
-        <h1 className="protrial-title" id="protrial-title">Try Trigr Pro free for 14 days</h1>
+        <div className="protrial-pill">Pro trial active</div>
+        <h1 className="protrial-title" id="protrial-title">You're on Trigr Pro, free for 14 days</h1>
         <p className="protrial-subtitle">
-          Unlock everything below. No card needed. Trigr drops back to Free automatically when the 14 days are up.
+          Everything below is unlocked, starting now. No card needed. Trigr drops back to Free automatically when the 14 days are up.
         </p>
 
-        <div className="protrial-hero-card">
-          <span className="protrial-card-badge">Most popular</span>
-          <h2 className="protrial-card-title">App-specific profiles</h2>
-          <p className="protrial-card-body">
-            The same hotkey fires different actions in different apps. Trigr auto-switches profiles based on the foreground app. Build one set for Excel, another for Photoshop, another for your IDE.
-          </p>
+        <div className="protrial-hero-grid">
+          <div className="protrial-hero-card">
+            <span className="protrial-card-badge">Most popular</span>
+            <h2 className="protrial-card-title">App-specific profiles</h2>
+            <p className="protrial-card-body">
+              The same hotkey fires different actions in different apps. Trigr auto-switches profiles based on the foreground app. Build one set for Excel, another for Photoshop, another for your IDE.
+            </p>
+          </div>
+          <div className="protrial-hero-card">
+            <span className="protrial-card-badge">Most popular</span>
+            <h2 className="protrial-card-title">Shared config sync</h2>
+            <p className="protrial-card-body">
+              Point Trigr at a folder (Dropbox, OneDrive, network share). Your hotkeys and expansions sync across all 3 machines your licence covers.
+            </p>
+          </div>
         </div>
 
         <div className="protrial-feature-grid">
-          <div className="protrial-feature-card">
-            <h3 className="protrial-feature-title">Shared config sync</h3>
-            <p className="protrial-feature-body">
-              Point Trigr at a folder (Dropbox, OneDrive, network share). Your hotkeys and expansions follow you to every machine.
-            </p>
-          </div>
           <div className="protrial-feature-card">
             <h3 className="protrial-feature-title">Double-tap actions</h3>
             <p className="protrial-feature-body">
@@ -90,27 +73,23 @@ export default function ProTrialModal({ onAccept, onDismiss }) {
               Define values once (name, email, project codes), reuse across every expansion. Change once, updates everywhere.
             </p>
           </div>
+          <div className="protrial-feature-card">
+            <h3 className="protrial-feature-title">Expansion variants</h3>
+            <p className="protrial-feature-body">
+              Give one text expansion several options, then pick which to insert from a quick popup when you type it.
+            </p>
+          </div>
         </div>
-
-        {error && <p className="protrial-error">{error}</p>}
 
         <button
           className="protrial-cta-btn"
-          onClick={handleStart}
-          type="button"
-          disabled={busy}
-        >
-          {busy ? 'Starting your trial…' : 'Start 14-day Pro trial'}
-        </button>
-        <button
-          className="protrial-skip-link"
-          onClick={onDismiss}
+          onClick={onClose}
           type="button"
         >
-          Maybe later
+          Let's go
         </button>
         <p className="protrial-footnote">
-          Available later from Settings if you change your mind.
+          Track your remaining days anytime in Settings.
         </p>
       </div>
     </div>
