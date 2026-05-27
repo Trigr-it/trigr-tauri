@@ -94,7 +94,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .hero-bg::before { content:''; position:absolute; top:-180px; left:50%; transform:translateX(-50%); width:1100px; height:600px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.13) 0%,rgba(232,160,32,0.04) 35%,transparent 70%); }
 [data-theme="light"] .hero-bg::before { background:radial-gradient(ellipse at center,rgba(232,160,32,0.09) 0%,rgba(232,160,32,0.02) 35%,transparent 70%); }
 .hero-inner { position:relative; max-width:880px; margin:0 auto; }
-.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.08); border:1px solid var(--hairline-gold); border-radius:100px; padding:6px 14px 6px 10px; font-size:12px; font-weight:500; color:var(--gold-light); margin-bottom:32px; animation:fadeInUp 0.6s ease both; }
+.hero-eyebrow { font-family:var(--font-label); font-size:12px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-muted); margin-bottom:18px; animation:fadeInUp 0.6s ease both; }
+.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.08); border:1px solid var(--hairline-gold); border-radius:100px; padding:6px 14px 6px 10px; font-size:12px; font-weight:500; color:var(--gold-light); margin-top:28px; animation:fadeInUp 0.6s ease both; }
 [data-theme="light"] .hero-badge { color:var(--gold-dark); }
 .hero-badge strong { color:var(--text); font-weight:600; }
 .hero-badge-dot { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:pulse 2s infinite; }
@@ -483,9 +484,10 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 <section class="hero">
   <div class="hero-bg"></div>
   <div class="hero-inner">
-    <div class="hero-badge"><span class="hero-badge-dot"></span><strong>Updated</strong> · May 2026</div>
+    <div class="hero-eyebrow">Roadmap</div>
     <h1>What we've <em>built</em><br>and what's<br><em>next</em>.</h1>
     <p>Development started February 2026. 60+ releases shipped across three major versions. Here's everything that's live, what we're working on now, and where we're headed.</p>
+    <div class="hero-badge"><span class="hero-badge-dot"></span><strong>Updated</strong> · May 2026</div>
   </div>
 </section>
 

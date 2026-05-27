@@ -67,9 +67,12 @@ main { position:relative; z-index:1; padding:104px 24px 80px; }
    BLOG INDEX
    ════════════════════════════════════════════════════════════ */
 .blog-hero { text-align:left; margin-bottom:56px; }
-.blog-hero .eyebrow { display:inline-block; font-family:var(--font-label); font-size:11px; color:var(--gold); letter-spacing:0.18em; text-transform:uppercase; margin-bottom:18px; padding:5px 12px; background:var(--gold-glow); border:1px solid var(--hairline-gold); border-radius:100px; }
+.blog-hero .eyebrow { display:inline-block; font-family:var(--font-label); font-size:12px; font-weight:600; color:var(--text-muted); letter-spacing:0.18em; text-transform:uppercase; margin-bottom:18px; }
 .blog-hero h1 { font-family:var(--font-display); font-weight:600; font-size:clamp(36px,5vw,52px); line-height:1.1; letter-spacing:-0.02em; margin-bottom:14px; }
 .blog-hero .lede { font-size:17px; color:var(--text-muted); max-width:560px; line-height:1.7; }
+.blog-hero .hero-badge { display:inline-flex; align-items:center; gap:8px; margin-top:22px; background:var(--gold-glow); border:1px solid var(--hairline-gold); border-radius:100px; padding:6px 14px 6px 10px; font-size:12px; font-weight:500; color:var(--gold-light); }
+[data-theme="light"] .blog-hero .hero-badge { color:var(--gold-dark); }
+.blog-hero .hero-badge .bdot { width:6px; height:6px; border-radius:50%; background:var(--gold); }
 .post-list { display:flex; flex-direction:column; gap:18px; }
 .post-card { display:block; padding:28px 30px; background:var(--bg-card); border:1px solid var(--hairline); border-radius:14px; text-decoration:none; color:inherit; transition:border-color 0.2s, transform 0.2s, background 0.2s; }
 .post-card:hover { border-color:var(--hairline-gold); background:var(--bg-card-hi); transform:translateY(-2px); }
