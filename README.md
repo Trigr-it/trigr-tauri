@@ -122,6 +122,6 @@ For commercial licensing, OEM, or anything else: **admin@usetrigr.com**.
 
 ## About
 
-Trigr is built by Node Scaffold Design Ltd, a small studio in London. the founder is the maintainer.
+Trigr is built by a small studio in London. the founder is the maintainer.
 
 *Set it. Trigr it.*
