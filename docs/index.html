@@ -1243,7 +1243,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       <p class="hero-notify-prompt">Prefer to wait for <strong>v1.0</strong>? Get notified when it ships.</p>
       <button type="button" class="hero-notify-btn ml-onclick-form" onclick="ml('show', 'EoKSIQ', true)">Notify me when v1.0 ships</button>
     </div>
-    <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Fully local — no accounts, no cloud <span>·</span> Latest: <span id="latest-version">v…</span></p>
+    <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Fully local — no accounts, no cloud <span>·</span> Latest: <span class="js-latest-version">v0.4.22</span></p>
 
     <!-- ── MOCKUP ── -->
     <div class="mockup-wrap">
@@ -1347,7 +1347,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
                 </div>
                 <div class="s-right">
                   <span class="s-chip">Hotkeys OK</span>
-                  <span class="s-info">v0.3.17</span>
+                  <span class="s-info js-latest-version">v0.4.22</span>
                 </div>
               </div>
 
@@ -2568,13 +2568,9 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
   .then(r => r.json())
   .then(data => {
     if (!data || !data.tag_name) return;
-    const el = document.getElementById('latest-version');
-    if (el) el.textContent = data.tag_name;
+    document.querySelectorAll('.js-latest-version').forEach(el => { el.textContent = data.tag_name; });
   })
-  .catch(() => {
-    const el = document.getElementById('latest-version');
-    if (el) el.textContent = '';
-  });
+  .catch(() => {}); // on failure keep the hardcoded fallback version in the markup
 </script>
 
 <!-- ════════════════════════════════════════════════════════════

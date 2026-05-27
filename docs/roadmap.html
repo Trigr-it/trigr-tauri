@@ -499,7 +499,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="stat-lbl">Releases shipped</div>
     </div>
     <div class="stat-block">
-      <div class="stat-num">v0.3</div>
+      <div class="stat-num js-latest-version">v0.4.22</div>
       <div class="stat-lbl">Current version</div>
     </div>
     <div class="stat-block">
@@ -1285,6 +1285,15 @@ function toggleTheme(){
     else if(mq.addListener) mq.addListener(onChange);
   }
 })();
+
+/* ── LATEST VERSION (from GitHub, updates .js-latest-version) ── */
+fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
+  .then(r => r.json())
+  .then(data => {
+    if (!data || !data.tag_name) return;
+    document.querySelectorAll('.js-latest-version').forEach(el => { el.textContent = data.tag_name; });
+  })
+  .catch(() => {}); // on failure keep the hardcoded fallback version in the markup
 
 /* ── CTRL+K SEARCH PALETTE ──────────────────────────────── */
 var __cmdkOverlay, __cmdkInput, __cmdkResults, __cmdkIndex = [], __cmdkActive = 0, __cmdkResultsCache = [];
