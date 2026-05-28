@@ -79,29 +79,6 @@
 })();
 </script>
 
-<!-- ════════════════════════════════════════════════════════════
-     GOOGLE ANALYTICS 4 (gtag) + Consent Mode v2
-
-     UK/EEA compliance: all storage types default to 'denied'.
-     Consent is updated to 'granted' only when the user clicks
-     Accept on the cookie banner (see bottom of page).
-
-     The consent default MUST run before gtag('config', ...).
-     ════════════════════════════════════════════════════════════ -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-KBLCKKSZKE"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('consent', 'default', {
-    'analytics_storage': 'denied',
-    'ad_storage': 'denied',
-    'ad_user_data': 'denied',
-    'ad_personalization': 'denied'
-  });
-  gtag('js', new Date());
-  gtag('config', 'G-KBLCKKSZKE');
-</script>
-
 <!-- Privacy-friendly analytics by Plausible -->
 <script async src="https://plausible.io/js/pa-VJCTdtLxXP7hTgXINlwwm.js"></script>
 <script>
@@ -1126,73 +1103,6 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .ss-steps { grid-template-columns: 1fr; }
   .ss-win { width: 100%; }
   .ss-stage { padding: 20px 12px; min-height: 320px; }
-}
-
-/* ════════════════════════════════════════════════════════════
-   COOKIE CONSENT BANNER
-   z-index sits above nav (100) and below the smartscreen modal
-   so the modal can take focus over the banner if both ever show.
-   ════════════════════════════════════════════════════════════ */
-.cookie-banner {
-  position: fixed;
-  left: 0; right: 0; bottom: 0;
-  z-index: 150;
-  padding: 18px 32px;
-  background: var(--bg-2);
-  border-top: 1px solid var(--hairline);
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  box-shadow: 0 -8px 32px rgba(0,0,0,0.35);
-  font-family: var(--font-body);
-}
-[data-theme="light"] .cookie-banner { box-shadow: 0 -8px 32px rgba(0,0,0,0.08); }
-.cookie-banner[hidden] { display: none; }
-.cookie-banner-text {
-  flex: 1;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--text-muted);
-  margin: 0;
-}
-.cookie-banner-actions {
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
-}
-.cookie-btn {
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 9px 18px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.2s, background 0.2s, color 0.2s;
-  border: 1px solid transparent;
-}
-.cookie-btn-accept {
-  background: var(--gold);
-  color: #0d0d11;
-  border-color: var(--gold);
-}
-.cookie-btn-accept:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(232,160,32,0.3); }
-[data-theme="light"] .cookie-btn-accept { color: #fff; }
-.cookie-btn-decline {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--hairline-strong);
-}
-.cookie-btn-decline:hover { color: var(--text); border-color: var(--text-muted); }
-@media (max-width: 640px) {
-  .cookie-banner {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    padding: 16px 20px 18px;
-  }
-  .cookie-banner-actions { justify-content: flex-end; }
-  .cookie-btn { flex: 1; }
 }
 
 </style>
@@ -2659,24 +2569,10 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
       var archKey = a.getAttribute('data-arch') || 'unknown';
       var source  = resolveDownloadSource();
 
-      // Fire GA4 download_click event. Defaults-denied consent means this
-      // ping is dropped client-side if the user hasn't accepted cookies,
-      // so it's safe to call unconditionally.
-      try {
-        if (typeof gtag === 'function') {
-          gtag('event', 'download_click', {
-            location: locKey,
-            arch:     archKey,
-            source:   source
-          });
-        }
-      } catch (e) { /* analytics failure must never block the download */ }
-
-      // Fire a Plausible custom event per button. Plausible doesn't require
-      // cookie consent, so this captures every click (including users who
-      // declined the GA4 cookie banner). One distinct event name per button
-      // means each appears as its own goal/line in the Plausible dashboard.
-      // Source is sent as a prop for referrer breakdown within each button.
+      // Fire a Plausible custom event per button. Plausible is cookie-free,
+      // so this captures every click without needing consent. One distinct
+      // event name per button means each appears as its own goal/line in the
+      // Plausible dashboard. Source is sent as a prop for referrer breakdown.
       try {
         if (typeof window.plausible === 'function') {
           var locName  = PLAUSIBLE_LOC_NAME[locKey]   || locKey;
@@ -2711,68 +2607,6 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
       return 'direct';
     }
   }
-})();
-</script>
-
-<!-- ════════════════════════════════════════════════════════════
-     COOKIE CONSENT BANNER
-
-     Default consent is denied (set in <head>). This banner gives
-     the user a chance to opt in. Choice is persisted in
-     localStorage under 'trigr_cookie_consent' as 'accepted' or
-     'declined'. Banner only appears when the key is absent.
-     ════════════════════════════════════════════════════════════ -->
-<div class="cookie-banner" id="cookie-banner" role="dialog" aria-label="Cookie consent" hidden>
-  <p class="cookie-banner-text">Trigr uses cookies to understand which channels send us new users. The app itself runs fully offline — your data never leaves your device.</p>
-  <div class="cookie-banner-actions">
-    <button type="button" class="cookie-btn cookie-btn-decline" id="cookie-decline">Decline</button>
-    <button type="button" class="cookie-btn cookie-btn-accept" id="cookie-accept">Accept</button>
-  </div>
-</div>
-
-<script>
-(function () {
-  var STORAGE_KEY = 'trigr_cookie_consent';
-  var banner = document.getElementById('cookie-banner');
-  if (!banner) return;
-  var accept = document.getElementById('cookie-accept');
-  var decline = document.getElementById('cookie-decline');
-
-  function grantConsent() {
-    if (typeof gtag === 'function') {
-      gtag('consent', 'update', {
-        'analytics_storage': 'granted',
-        'ad_storage': 'granted',
-        'ad_user_data': 'granted',
-        'ad_personalization': 'granted'
-      });
-    }
-  }
-  function hideBanner() {
-    banner.setAttribute('hidden', '');
-  }
-
-  var saved = null;
-  try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) { /* private mode — banner will reshow each visit, acceptable */ }
-
-  if (saved === 'accepted') {
-    grantConsent();
-    // banner stays hidden
-  } else if (saved === 'declined') {
-    // banner stays hidden, consent stays denied
-  } else {
-    banner.removeAttribute('hidden');
-  }
-
-  accept && accept.addEventListener('click', function () {
-    try { localStorage.setItem(STORAGE_KEY, 'accepted'); } catch (e) {}
-    grantConsent();
-    hideBanner();
-  });
-  decline && decline.addEventListener('click', function () {
-    try { localStorage.setItem(STORAGE_KEY, 'declined'); } catch (e) {}
-    hideBanner();
-  });
 })();
 </script>
 
