@@ -346,11 +346,46 @@ fn add_voice_to_suppress(voice: Option<(u8, u32)>) {
 }
 
 /// Insert the clipboard paste hotkey into the suppress set.
+///
+/// Skipped entirely when clipboard capture is disabled, so the combo
+/// (default Ctrl+Shift+V) passes through to the OS instead of being
+/// hijacked by Trigr. The suppress add is re-applied automatically when
+/// capture is re-enabled via `refresh_clipboard_paste_suppress`.
 fn add_clipboard_paste_to_suppress(combo: Option<(u8, u32)>) {
+    if !crate::clipboard::is_capture_enabled() {
+        return;
+    }
     if let Some(combo) = combo {
         if let Ok(mut w) = suppress_keys().write() {
             w.insert(combo);
         }
+    }
+}
+
+/// Remove the clipboard paste hotkey from the suppress set. Used when
+/// clipboard capture is toggled off so the combo passes through to the OS.
+fn remove_clipboard_paste_from_suppress(combo: Option<(u8, u32)>) {
+    if let Some(combo) = combo {
+        if let Ok(mut w) = suppress_keys().write() {
+            w.remove(&combo);
+        }
+    }
+}
+
+/// Re-sync the clipboard paste hotkey in the suppress set against the
+/// current capture-enabled state. Called from `clipboard::set_capture_enabled`
+/// whenever the toggle flips, so the hotkey is atomically freed (when
+/// disabled) or reclaimed (when re-enabled) without restarting hooks.
+pub fn refresh_clipboard_paste_suppress() {
+    let combo = engine_state().lock().unwrap().clipboard_paste_hotkey;
+    if crate::clipboard::is_capture_enabled() {
+        if let Some(c) = combo {
+            if let Ok(mut w) = suppress_keys().write() {
+                w.insert(c);
+            }
+        }
+    } else {
+        remove_clipboard_paste_from_suppress(combo);
     }
 }
 
@@ -1536,7 +1571,14 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     }
 
     // ── Clipboard quick-paste hotkey check ─────────────────────────────
-    if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
+    // Gated on `clipboard::is_capture_enabled` so the popup never fires when
+    // the user has disabled clipboard, even if the combo somehow slips past
+    // the suppress set. The suppress set is also refreshed on the toggle in
+    // `clipboard::set_capture_enabled`, so this is defence-in-depth.
+    if MACROS_ENABLED.load(Ordering::SeqCst)
+        && has_any_modifier()
+        && crate::clipboard::is_capture_enabled()
+    {
         let state = engine_state().lock().unwrap();
         if let Some((mod_bits, vk)) = state.clipboard_paste_hotkey {
             let current_bits = modifier_bits();

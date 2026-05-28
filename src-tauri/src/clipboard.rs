@@ -581,8 +581,17 @@ pub fn set_retention_days(days: u32) {
     }
 }
 
+pub fn is_capture_enabled() -> bool {
+    CAPTURE_ENABLED.load(Ordering::SeqCst)
+}
+
 pub fn set_capture_enabled(enabled: bool) {
     CAPTURE_ENABLED.store(enabled, Ordering::SeqCst);
+    // Sync the clipboard paste hotkey in the hook suppress set so the combo
+    // (default Ctrl+Shift+V) is freed for normal OS use when capture is
+    // disabled, and reclaimed when it is re-enabled. Without this the user
+    // could turn off clipboard but the hotkey would still be hijacked.
+    crate::hotkeys::refresh_clipboard_paste_suppress();
 }
 
 pub fn set_excluded_apps(apps: Vec<String>) {
