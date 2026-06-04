@@ -26,6 +26,7 @@ import RadialEditorView from './components/RadialEditorView';
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MAX_SLOTS } from './components/RadialWheel';
+import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/IconPicker';
 import { friendlyKeyName } from './components/keyboardLayout';
 
 // Bump whenever the onboarding tour changes meaningfully. Existing users whose
@@ -165,8 +166,13 @@ function App() {
   const activeProfileRef = useRef(activeProfile);
   activeProfileRef.current = activeProfile;
 
-  // Drop-in wrapper: updates the per-profile map and syncs the flat
-  // radialMenuItems key that Rust reads on overlay show.
+  // Drop-in wrapper: updates the per-profile map. The legacy flat
+  // radialMenuItems key is no longer written — Rust resolves items from
+  // radialMenuItemsByProfile[activeProfile] directly (flat is read only for
+  // pre-per-profile configs). Writing it duplicated up to 1MB of icon data
+  // per save, and the old sync-on-profile-switch effect here caused a full
+  // config write to the (possibly shared/synced) file on every alt-tab —
+  // the write-storm behind the shared-config clobber hazard.
   // Stable identity (empty deps) — reads activeProfile from ref at call time.
   const setRadialMenuItems = useCallback((updater) => {
     setRadialItemsMap(map => {
@@ -175,19 +181,73 @@ function App() {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       if (next === prev) return map;
       const newMap = { ...map, [profile]: next };
-      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap, radialMenuItems: next });
+      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap });
       return newMap;
     });
   }, []);
 
-  // Sync flat radialMenuItems to config when profile switches (for Rust overlay)
-  const prevRadialProfileRef = useRef(activeProfile);
-  useEffect(() => {
-    if (prevRadialProfileRef.current === activeProfile) return;
-    prevRadialProfileRef.current = activeProfile;
-    const items = radialItemsMap[activeProfile] || [];
-    window.electronAPI?.saveConfig({ radialMenuItems: items });
-  }, [activeProfile, radialItemsMap]);
+  // One-time config hygiene after load: downscale custom icons stored as
+  // full-resolution images (the pre-2026-06 picker stored raw files — a
+  // single photo could be ~1MB of base64), and blank the legacy flat
+  // radialMenuItems field once the per-profile map exists (Rust never reads
+  // it then, but a stale copy duplicated up to 1MB of icon data on disk).
+  // Saves at most once; no-op when the config is already clean.
+  const cleanupRadialConfig = useCallback((map, config) => {
+    const oversized = [];
+    for (const prof of Object.keys(map)) {
+      (map[prof] || []).forEach((item, idx) => {
+        if (!item) return;
+        if (typeof item.icon === 'string' && item.icon.startsWith('custom:') && item.icon.length > ICON_DOWNSCALE_THRESHOLD) {
+          oversized.push({ prof, idx, child: -1, dataUrl: item.icon.slice('custom:'.length) });
+        }
+        (item.children || []).forEach((c, ci) => {
+          if (c && typeof c.icon === 'string' && c.icon.startsWith('custom:') && c.icon.length > ICON_DOWNSCALE_THRESHOLD) {
+            oversized.push({ prof, idx, child: ci, dataUrl: c.icon.slice('custom:'.length) });
+          }
+        });
+      });
+    }
+    const staleFlat = !!config.radialMenuItemsByProfile
+      && Array.isArray(config.radialMenuItems) && config.radialMenuItems.length > 0;
+    if (oversized.length === 0 && !staleFlat) return;
+
+    const finish = (newMap) => {
+      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap, radialMenuItems: [] });
+      if (oversized.length > 0) setRadialItemsMap(newMap);
+    };
+
+    if (oversized.length === 0) {
+      finish(map);
+      return;
+    }
+
+    let remaining = oversized.length;
+    const results = new Map();
+    oversized.forEach((entry, i) => {
+      downscaleIconDataUrl(entry.dataUrl, (scaled) => {
+        results.set(i, scaled);
+        remaining -= 1;
+        if (remaining === 0) {
+          const newMap = { ...map };
+          oversized.forEach((e, j) => {
+            const items = [...(newMap[e.prof] || [])];
+            const item = { ...items[e.idx] };
+            const scaledUrl = 'custom:' + results.get(j);
+            if (e.child < 0) {
+              item.icon = scaledUrl;
+            } else {
+              const children = [...(item.children || [])];
+              children[e.child] = { ...children[e.child], icon: scaledUrl };
+              item.children = children;
+            }
+            items[e.idx] = item;
+            newMap[e.prof] = items;
+          });
+          finish(newMap);
+        }
+      });
+    });
+  }, []);
 
   // ── Load config on mount ──────────────────────────────────
   useEffect(() => {
@@ -299,10 +359,14 @@ function App() {
             }
           }
           if (migrated) {
-            const flat = map[globalProfile] || [];
-            window.electronAPI?.saveConfig({ radialMenuItemsByProfile: map, radialMenuItems: flat });
+            window.electronAPI?.saveConfig({ radialMenuItemsByProfile: map });
           }
           setRadialItemsMap(map);
+          // One-time cleanup: downscale oversized custom icons (raw photos
+          // could be ~1MB each in base64) and blank the legacy flat field
+          // once the per-profile map exists (it's never read again, but a
+          // stale copy could hold an extra ~1MB of duplicated icon data).
+          cleanupRadialConfig(map, config);
         }
         setRadialMenuHotkey(config.radialMenuHotkey || null);
         // Sync new settings to engine on load
@@ -2890,8 +2954,7 @@ function App() {
     newTarget[segmentIndex] = copied;
     const newMap = { ...radialItemsMap, [targetProfile]: newTarget };
     setRadialItemsMap(newMap);
-    const flatItems = newMap[activeProfile] || [];
-    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap, radialMenuItems: flatItems });
+    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap });
     showNotification(`Copied to "${targetProfile}"`);
     return null;
   }, [radialItemsMap, activeProfile, showNotification]);
@@ -2909,8 +2972,7 @@ function App() {
     newTarget[segmentIndex] = copied;
     const newMap = { ...radialItemsMap, [targetProfile]: newTarget };
     setRadialItemsMap(newMap);
-    const flatItems = newMap[activeProfile] || [];
-    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap, radialMenuItems: flatItems });
+    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap });
     showNotification(`Copied to "${targetProfile}" (overwritten)`);
   }, [radialItemsMap, activeProfile, showNotification]);
 

@@ -3,6 +3,34 @@ import * as AllLucide from 'lucide-react';
 import * as SimpleIcons from 'simple-icons';
 import './IconPicker.css';
 
+// ── Custom icon downscaling ────────────────────────────────────────────────
+// The radial wheel renders icons at ~32px; 64px PNG gives 2x retina headroom.
+// Data URLs below the threshold (and all SVGs) are stored as-is.
+export const ICON_MAX_DIM = 64;
+export const ICON_DOWNSCALE_THRESHOLD = 20 * 1024;
+
+// Downscale an image data URL to fit ICON_MAX_DIM, preserving aspect ratio.
+// Calls cb with the scaled PNG data URL, or the original on any failure
+// (never blocks an icon pick on a decode error).
+export function downscaleIconDataUrl(dataUrl, cb) {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const scale = Math.min(ICON_MAX_DIM / img.width, ICON_MAX_DIM / img.height, 1);
+      if (scale >= 1) { cb(dataUrl); return; }
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      cb(canvas.toDataURL('image/png'));
+    } catch {
+      cb(dataUrl);
+    }
+  };
+  img.onerror = () => cb(dataUrl);
+  img.src = dataUrl;
+}
+
 // ── Build deduplicated Lucide icon map ────────────────────────────────────
 // Lucide exports aliases (e.g. Cog ↔ Settings) — same component, different
 // name.  We keep only one name per unique component reference.
@@ -146,7 +174,17 @@ export default function IconPicker({ onSelect, onClose, currentIcon }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      onSelect?.(`custom:${reader.result}`);
+      const dataUrl = reader.result;
+      // SVGs are vectors (tiny + infinitely scalable) — store as-is. Small
+      // rasters pass through untouched. Anything larger gets downscaled:
+      // the radial wheel renders icons at ~32px, so 64px PNG keeps 2x
+      // retina headroom while turning a raw photo (~1MB in base64, stored
+      // verbatim in the config until 2026-06) into a few KB.
+      if (file.type === 'image/svg+xml' || dataUrl.length < ICON_DOWNSCALE_THRESHOLD) {
+        onSelect?.(`custom:${dataUrl}`);
+      } else {
+        downscaleIconDataUrl(dataUrl, (scaled) => onSelect?.(`custom:${scaled}`));
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = ''; // reset so same file can be re-selected

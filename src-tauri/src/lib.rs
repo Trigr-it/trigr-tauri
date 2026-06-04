@@ -1472,12 +1472,18 @@ fn show_radial_menu(app: &tauri::AppHandle) {
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
     let state = hotkeys::engine_state().lock().unwrap();
     let active_profile = state.active_profile.clone();
-    let radial_items = cfg
-        .get("radialMenuItemsByProfile")
-        .and_then(|m| m.get(&active_profile))
-        .cloned()
-        .or_else(|| cfg.get("radialMenuItems").cloned())
-        .unwrap_or_else(|| serde_json::json!([]));
+    // Per-profile map is the source of truth. The legacy flat radialMenuItems
+    // field is read ONLY when the map is entirely absent (pre-per-profile
+    // configs). Falling back per-profile would show stale items for profiles
+    // the user never configured — the editor shows them an empty wheel, the
+    // live overlay must match. The frontend no longer writes the flat field.
+    let radial_items = match cfg.get("radialMenuItemsByProfile") {
+        Some(m) => m.get(&active_profile).cloned().unwrap_or_else(|| serde_json::json!([])),
+        None => cfg
+            .get("radialMenuItems")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([])),
+    };
     let resolve_item = |item: &Value| -> Option<Value> {
         // Check if this is a folder item (has type: "folder")
         let is_folder = item
