@@ -1111,6 +1111,7 @@ export default function TextExpansions({
   const [activeVariantIndex, setActiveVariantIndex] = useState(0);
   const [renamingVariantIndex, setRenamingVariantIndex] = useState(null);
   const [variantRenameValue, setVariantRenameValue] = useState('');
+  const [variantRemoveConfirm, setVariantRemoveConfirm] = useState(null); // index of variant pending "collapse to single" confirm
   const [voicePhrases, setVoicePhrases]   = useState([]);
 
   // Push editing state to parent so foreground auto-switch is suppressed while
@@ -1303,6 +1304,7 @@ export default function TextExpansions({
     setVariantOptions([]);
     setActiveVariantIndex(0);
     setRenamingVariantIndex(null);
+    setVariantRemoveConfirm(null);
     setVoicePhrases([]);
     setEditing({ isNew: true });
   }
@@ -1339,6 +1341,7 @@ export default function TextExpansions({
     setVariantOptions(migratedOptions);
     setActiveVariantIndex(0);
     setRenamingVariantIndex(null);
+    setVariantRemoveConfirm(null);
     setVoicePhrases(Array.isArray(exp.voicePhrases) ? exp.voicePhrases : []);
     setEditing({ isNew: false, originalTrigger: exp.trigger });
   }
@@ -2247,7 +2250,6 @@ export default function TextExpansions({
                             {variantOptions.map((opt, i) => {
                               const isActive   = i === activeVariantIndex;
                               const isRenaming = i === renamingVariantIndex;
-                              const canClose   = variantOptions.length > 2;
                               // Pro gate: Free users can edit Option 1 (which fires) but
                               // tabs 2+ are locked behind UpgradeModal. Data preserved on save.
                               const locked     = !isPro && i > 0;
@@ -2302,14 +2304,19 @@ export default function TextExpansions({
                                       className="te-variant-tab-close"
                                       onClick={e => {
                                         e.stopPropagation();
-                                        if (!canClose) return;
-                                        const next = variantOptions.filter((_, j) => j !== i);
-                                        const newActive = Math.min(activeVariantIndex, next.length - 1);
-                                        setVariantOptions(next);
-                                        setActiveVariantIndex(Math.max(0, newActive));
+                                        if (variantOptions.length > 2) {
+                                          // Plenty left — remove this variant directly.
+                                          const next = variantOptions.filter((_, j) => j !== i);
+                                          const newActive = Math.min(activeVariantIndex, next.length - 1);
+                                          setVariantOptions(next);
+                                          setActiveVariantIndex(Math.max(0, newActive));
+                                        } else {
+                                          // Only 2 left — removing one drops variants entirely.
+                                          // Confirm first; the other option survives as the body.
+                                          setVariantRemoveConfirm(i);
+                                        }
                                       }}
-                                      disabled={!canClose}
-                                      title={canClose ? 'Remove this variant' : 'At least 2 variants required'}
+                                      title={variantOptions.length > 2 ? 'Remove this variant' : 'Remove this variant (keeps the other as the body)'}
                                       aria-label="Remove variant"
                                     >✕</button>
                                   )}
@@ -2796,6 +2803,44 @@ export default function TextExpansions({
           </div>
         </div>
       )}
+
+      {/* Collapse-to-single confirmation — fired by ✕ when only 2 variants remain */}
+      {variantRemoveConfirm !== null && (() => {
+        const survivorIdx   = variantRemoveConfirm === 0 ? 1 : 0;
+        const survivor      = variantOptions[survivorIdx];
+        const survivorLabel = survivor?.label || `Option ${survivorIdx + 1}`;
+        return (
+          <div className="te-delete-overlay">
+            <div className="te-delete-dialog">
+              <div className="te-delete-title">Remove all variants</div>
+              <p className="te-delete-body">
+                Variants need at least two options, so removing this one drops them entirely.{' '}
+                <strong>{survivorLabel}</strong> is kept as the body and the picker will no longer appear on trigger.
+              </p>
+              <div className="te-delete-actions">
+                <button className="te-cancel-btn" type="button" onClick={() => setVariantRemoveConfirm(null)}>
+                  Cancel
+                </button>
+                <button
+                  className="te-delete-confirm-btn"
+                  type="button"
+                  onClick={() => {
+                    if (survivor) {
+                      setEditorValue({ html: survivor.html || '', text: survivor.text || '' });
+                    }
+                    setVariantOptions([]);
+                    setActiveVariantIndex(0);
+                    setRenamingVariantIndex(null);
+                    setVariantRemoveConfirm(null);
+                  }}
+                >
+                  Remove all variants
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
