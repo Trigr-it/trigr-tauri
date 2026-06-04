@@ -1113,7 +1113,12 @@ fn fire_expansion_with_fillin(
 // ── Token resolution ────────────────────────────────────────────────────────
 
 pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (String, usize) {
-    let mut result = text.to_string();
+    // Strip rich-text-editor artifacts baked into saved expansion text: ZWSP
+    // cursor anchors (U+200B, inserted after every token chip) and the NBSPs
+    // (U+00A0) contenteditable substitutes for spaces next to chips. The editor
+    // now strips these on save, but fire-time stripping covers expansions saved
+    // by older versions without a config migration.
+    let mut result = text.replace('\u{200B}', "").replace('\u{00A0}', " ");
 
     // Substitute {{varName}} global variables — Pro-only.
     // (Dynamic tokens — date, time, clipboard, cursor — are unlocked for everyone:
@@ -1640,7 +1645,11 @@ fn resolve_tokens_html(html: &str, global_vars: &HashMap<String, String>) -> Str
         last_end = m.end();
     }
     result.push_str(&html[last_end..]);
-    result
+    // Literal ZWSPs sit in the fragment text between chips (editor cursor
+    // anchors serialized by innerHTML). Strip them so rich-paste targets don't
+    // receive invisible characters; &nbsp; entities are left alone — they're
+    // ASCII-safe and render correctly.
+    result.replace('\u{200B}', "")
 }
 
 // ── Hybrid injection — SendInput for short text, clipboard for long/terminal ─

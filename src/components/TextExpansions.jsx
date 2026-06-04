@@ -42,6 +42,8 @@ function htmlToPlainText(html) {
     el.replaceWith(document.createTextNode(el.dataset.token));
   });
   return (tmp.textContent || tmp.innerText || '')
+    .replace(/\u200B/g, '')  // ZWSP cursor anchors after token chips — editor-internal, never inject
+    .replace(/\u00A0/g, ' ')     // &nbsp; contenteditable inserts next to chips → plain space
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
