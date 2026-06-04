@@ -71,14 +71,28 @@ fn save_config(config: Value) -> bool {
         config.clone()
     };
 
-    // Significant change? Back up existing first
-    if config::is_significant_change(&config, &existing) {
+    // Back up the existing config first if this is a significant change OR a
+    // destructive regression (radial/assignments going from populated to empty).
+    // The latter is the cross-device clobber signature — we always want a
+    // recoverable snapshot of the good state before it lands.
+    let destructive = config::is_destructive_regression(&merged, &existing);
+    if config::is_significant_change(&config, &existing) || destructive {
         config::create_timestamped_backup(&existing);
+    }
+    if destructive {
+        log::warn!(
+            "[Trigr] save_config: incoming change zeroes-out a previously-populated radial layout or assignment set. Backed up prior state; leaving last-known-good untouched so it stays recoverable."
+        );
     }
 
     let ok = config::save_config(&merged);
     if ok {
-        config::update_last_known_good(&merged);
+        // Don't poison last-known-good with a destructive regression — otherwise
+        // the one "known good" snapshot becomes the wiped state (which is exactly
+        // how the radial-wipe bug defeated recovery).
+        if !destructive {
+            config::update_last_known_good(&merged);
+        }
         // Voice phrases live inside the assignments blob, which is part of every save.
         // Pre-warm asynchronously so the next recognition is cache-hit fast.
         voice::prewarm_from_state();

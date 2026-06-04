@@ -1783,7 +1783,8 @@ export default function SettingsPanel({
                         <span className="settings-backup-item-summary">
                           {backupList.lastKnownGood.profileCount} profile{backupList.lastKnownGood.profileCount !== 1 ? 's' : ''},
                           {' '}{backupList.lastKnownGood.assignmentCount} assignment{backupList.lastKnownGood.assignmentCount !== 1 ? 's' : ''},
-                          {' '}{backupList.lastKnownGood.expansionCount} expansion{backupList.lastKnownGood.expansionCount !== 1 ? 's' : ''}
+                          {' '}{backupList.lastKnownGood.expansionCount} expansion{backupList.lastKnownGood.expansionCount !== 1 ? 's' : ''},
+                          {' '}{backupList.lastKnownGood.radialCount ?? 0} radial
                         </span>
                       </div>
                       <button type="button" className="settings-backup-restore-btn" onClick={() => setConfirmRestore(backupList.lastKnownGood.filename)}>Restore</button>
@@ -1802,7 +1803,8 @@ export default function SettingsPanel({
                           <span className="settings-backup-item-summary">
                             {b.profileCount} profile{b.profileCount !== 1 ? 's' : ''},
                             {' '}{b.assignmentCount} assignment{b.assignmentCount !== 1 ? 's' : ''},
-                            {' '}{b.expansionCount} expansion{b.expansionCount !== 1 ? 's' : ''}
+                            {' '}{b.expansionCount} expansion{b.expansionCount !== 1 ? 's' : ''},
+                            {' '}{b.radialCount ?? 0} radial
                           </span>
                         )}
                         {b.invalid && <span className="settings-backup-item-invalid-label">Unreadable</span>}

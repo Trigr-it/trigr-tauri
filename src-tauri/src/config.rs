@@ -491,6 +491,9 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
                             // Validate the config
                             match serde_json::from_str::<Value>(&content) {
                                 Ok(cfg) if is_valid_config(&cfg) => {
+                                    // Protect against a cross-device clobber that
+                                    // empties the radial layout before we apply it.
+                                    guard_destructive_sync(&cfg);
                                     info!("[Trigr] Config watcher: valid config change detected — emitting reload event");
                                     if let Err(e) = app_handle.emit("config-reloaded-from-sync", &cfg) {
                                         error!("[Trigr] Failed to emit config reload event: {}", e);
@@ -772,6 +775,75 @@ fn prune_backups() {
 
 // ── Significant change detection ────────────────────────────────────────────
 
+/// Count non-null radial layout segments across all profiles in a config.
+/// Empty/null slots (placeholder segments) are not counted.
+fn radial_item_count(cfg: &Value) -> usize {
+    let mut n = 0;
+    if let Some(by_prof) = cfg
+        .get("radialMenuItemsByProfile")
+        .and_then(|v| v.as_object())
+    {
+        for arr in by_prof.values() {
+            if let Some(a) = arr.as_array() {
+                n += a.iter().filter(|x| !x.is_null()).count();
+            }
+        }
+    }
+    // Legacy flat array fallback (pre per-profile migration).
+    if n == 0 {
+        if let Some(a) = cfg.get("radialMenuItems").and_then(|v| v.as_array()) {
+            n += a.iter().filter(|x| !x.is_null()).count();
+        }
+    }
+    n
+}
+
+/// True if `merged` zeroes-out a radial layout or assignment set that was
+/// populated in `existing`. This is the signature of the cross-device shared-
+/// config clobber that silently wiped radial menus: the layout (or all
+/// assignments) goes from populated to empty in a single write. Callers use
+/// this to force a protective backup and to refuse poisoning last-known-good.
+/// It deliberately does NOT block the write — a genuine "remove everything"
+/// is still allowed, just made recoverable.
+pub fn is_destructive_regression(merged: &Value, existing: &Value) -> bool {
+    if radial_item_count(existing) > 0 && radial_item_count(merged) == 0 {
+        return true;
+    }
+    let ex_assign = existing
+        .get("assignments")
+        .and_then(|v| v.as_object())
+        .map(|o| o.len())
+        .unwrap_or(0);
+    let mg_assign = merged
+        .get("assignments")
+        .and_then(|v| v.as_object())
+        .map(|o| o.len())
+        .unwrap_or(0);
+    ex_assign > 0 && mg_assign == 0
+}
+
+/// Watcher guard: a synced change that drops a previously-populated radial
+/// layout to zero is almost always a cross-device clobber rather than an
+/// intentional clear. Snapshot the current last-known-good to a timestamped
+/// backup so the good radial stays recoverable on every machine that sees the
+/// regression. Additive and best-effort — never blocks the reload.
+fn guard_destructive_sync(incoming: &Value) {
+    let lkg_path = backup_dir().join("keyforge-config-last-known-good.json");
+    let lkg = fs::read_to_string(&lkg_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    if let Some(lkg) = lkg {
+        let good = radial_item_count(&lkg);
+        if good > 0 && radial_item_count(incoming) == 0 {
+            warn!(
+                "[Trigr] Config watcher: synced change drops radial layout from {} segments to 0 — snapshotting last-known-good before applying (possible cross-device clobber)",
+                good
+            );
+            create_timestamped_backup(&lkg);
+        }
+    }
+}
+
 pub fn is_significant_change(incoming: &Value, existing: &Value) -> bool {
     // Check if profile list changed
     if let (Some(in_p), Some(ex_p)) = (
@@ -811,12 +883,21 @@ pub fn is_significant_change(incoming: &Value, existing: &Value) -> bool {
         }
     }
 
+    // Radial layout: any change to radialMenuItemsByProfile is significant, so a
+    // backup is always taken before the radial menu is altered. The layout was
+    // otherwise invisible to this heuristic and could be lost without a snapshot.
+    if incoming.get("radialMenuItemsByProfile").is_some()
+        && incoming.get("radialMenuItemsByProfile") != existing.get("radialMenuItemsByProfile")
+    {
+        return true;
+    }
+
     false
 }
 
 // ── Config summary ──────────────────────────────────────────────────────────
 
-pub fn config_summary(cfg: &Value) -> (usize, usize, usize) {
+pub fn config_summary(cfg: &Value) -> (usize, usize, usize, usize) {
     let profile_count = cfg
         .get("profiles")
         .and_then(|v| v.as_array())
@@ -835,7 +916,11 @@ pub fn config_summary(cfg: &Value) -> (usize, usize, usize) {
         .filter(|k| !k.contains("::EXPANSION::") && !k.contains("::AUTOCORRECT::"))
         .count();
 
-    (profile_count, assignment_count, expansion_count)
+    // Radial layout segment count — surfaced in the backup list so a wiped
+    // radial menu is visible at a glance when choosing a restore point.
+    let radial_count = radial_item_count(cfg);
+
+    (profile_count, assignment_count, expansion_count, radial_count)
 }
 
 // ── List backups ────────────────────────────────────────────────────────────
@@ -875,13 +960,14 @@ pub fn list_backups() -> Value {
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
             }) {
                 Ok(cfg) => {
-                    let (pc, ac, ec) = config_summary(&cfg);
+                    let (pc, ac, ec, rc) = config_summary(&cfg);
                     timestamped.push(serde_json::json!({
                         "filename": filename,
                         "date": date,
                         "profileCount": pc,
                         "assignmentCount": ac,
                         "expansionCount": ec,
+                        "radialCount": rc,
                     }));
                 }
                 Err(_) => {
@@ -906,7 +992,7 @@ pub fn list_backups() -> Value {
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
         }) {
             Ok(cfg) => {
-                let (pc, ac, ec) = config_summary(&cfg);
+                let (pc, ac, ec, rc) = config_summary(&cfg);
                 let date = fs::metadata(&lkg_path)
                     .and_then(|m| m.modified())
                     .ok()
@@ -921,6 +1007,7 @@ pub fn list_backups() -> Value {
                     "profileCount": pc,
                     "assignmentCount": ac,
                     "expansionCount": ec,
+                    "radialCount": rc,
                     "isLkg": true,
                 })
             }
