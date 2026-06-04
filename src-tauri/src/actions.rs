@@ -250,7 +250,16 @@ pub fn is_key_held() -> bool {
 /// If the hold action hasn't stored its state yet (race with fire_macro's spawned
 /// thread), we set `pending_mouse_release` so the hold action can release
 /// immediately when it finishes — no sleep/retry needed.
-pub fn release_held_if_mouse_trigger(mouse_id: &str) -> Option<String> {
+///
+/// `allow_pending` must be true ONLY when the released button actually has a
+/// hold-mode assignment (caller checks the engine state). Without that gate,
+/// every ordinary click recorded a pending release — spamming the log AND
+/// clobbering the single pending slot, which could leave a genuinely
+/// hold-mapped button's synthetic key stuck down (its setup thread would find
+/// the wrong button in the slot and never release). The gate deliberately does
+/// NOT apply to the release path above it: a matching held key must always be
+/// releasable, even if its assignment was deleted mid-hold.
+pub fn release_held_if_mouse_trigger(mouse_id: &str, allow_pending: bool) -> Option<String> {
     let mut mgr = HELD_KEY.lock().unwrap();
     let matches = mgr.key.as_ref()
         .and_then(|s| s.trigger_mouse_id.as_deref())
@@ -271,10 +280,12 @@ pub fn release_held_if_mouse_trigger(mouse_id: &str) -> Option<String> {
         info!("[Trigr] Released held key on mouse-up: {}", state.label);
         Some(state.label)
     } else {
-        // Hold not stored yet — record that the button was released so the hold
-        // action can release immediately when it finishes setting up.
-        info!("[Trigr] Mouse-up for {} but no held key yet — setting pending release", mouse_id);
-        mgr.pending_mouse_release = Some(mouse_id.to_string());
+        if allow_pending {
+            // Hold not stored yet — record that the button was released so the
+            // hold action can release immediately when it finishes setting up.
+            info!("[Trigr] Mouse-up for {} but no held key yet — setting pending release", mouse_id);
+            mgr.pending_mouse_release = Some(mouse_id.to_string());
+        }
         None
     }
 }

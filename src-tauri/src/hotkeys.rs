@@ -2185,12 +2185,34 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 }
 
 fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
-    // Release held key if this mouse button was the trigger (press-hold mirroring)
+    // Release held key if this mouse button was the trigger (press-hold mirroring).
+    // The pending-release fallback (for the fast-click race where mouse-up beats
+    // the hold thread's setup) is only allowed for buttons that actually have a
+    // hold-mode assignment — otherwise every ordinary click would record a
+    // pending release, spamming the log and clobbering the slot a genuinely
+    // hold-mapped button may be relying on.
     let mouse_id = mouse_button_to_key_id(button);
-    if let Some(label) = crate::actions::release_held_if_mouse_trigger(mouse_id) {
+    let allow_pending = button_has_hold_assignment(mouse_id);
+    if let Some(label) = crate::actions::release_held_if_mouse_trigger(mouse_id, allow_pending) {
         crate::tray::update_tray_icon_normal(app);
         info!("[Trigr] Mouse-up released hold: {}", label);
     }
+}
+
+/// True if any assignment (any profile, any modifier combo, incl. ::double)
+/// is triggered by this mouse button with holdMode enabled. Cheap map scan on
+/// the processor thread — NOT called from the hook callbacks.
+fn button_has_hold_assignment(mouse_id: &str) -> bool {
+    let single_suffix = format!("::{}", mouse_id);
+    let double_suffix = format!("::{}::double", mouse_id);
+    let state = engine_state().lock().unwrap();
+    state.assignments.iter().any(|(k, v)| {
+        (k.ends_with(&single_suffix) || k.ends_with(&double_suffix))
+            && v.get("data")
+                .and_then(|d| d.get("holdMode"))
+                .and_then(|h| h.as_bool())
+                .unwrap_or(false)
+    })
 }
 
 fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
