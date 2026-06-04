@@ -61,6 +61,12 @@ window.electronAPI = {
     listen('shared-config-migrated', (event) => callback(event.payload)).then(u => { listeners['shared-config-migrated'] = u; });
   },
 
+  // Fired when the main window is hidden to the tray (X button / tray toggle).
+  // Renderer clears its selection so reopening shows a blank slate.
+  onResetEditingOnHide: (callback) => {
+    listen('reset-editing-on-hide', () => callback()).then(u => { listeners['reset-editing-on-hide'] = u; });
+  },
+
   // ── Fill-in field dialog ────────────────────────────────────────────────────
   onFillInPrompt: (callback) => {
     listen('fill-in-prompt', (event) => callback(event.payload)).then(u => { listeners['fill-in-prompt'] = u; });

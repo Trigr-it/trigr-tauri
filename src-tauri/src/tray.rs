@@ -332,6 +332,16 @@ pub fn hide_window_to_tray(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
 
+        // Hiding to the tray (X button or tray toggle) means "I'm done" — unlike
+        // minimising or navigating to another app, which keep the editing lock so
+        // the user can test their work. Drop the editing lock so the foreground
+        // watcher resumes auto-switching, and tell the renderer to clear its
+        // selection so the window reopens to a blank slate (no key/action open).
+        // Minimise / focus-loss never call this path, so the test-in-another-app
+        // flow keeps its profile lock as designed.
+        crate::foreground::set_editing_active(false);
+        let _ = window.emit("reset-editing-on-hide", ());
+
         // One-time log on first hide
         if !HAS_SHOWN_BALLOON.swap(true, Ordering::Relaxed) {
             info!("[Trigr] Window hidden to tray");

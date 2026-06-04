@@ -495,6 +495,18 @@ function App() {
         setActiveProfile(profile);
         setSelectedKey(null);
       });
+      // Window hidden to tray (X / tray toggle) — clear the open editor so the
+      // window reopens to a blank slate. The editing-active effect then re-pushes
+      // setEditingActive(false), and Rust already dropped the lock on hide, so the
+      // foreground watcher resumes auto-switching. Minimise / navigate-away never
+      // fire this, so the test-in-another-app flow keeps its lock.
+      window.electronAPI.onResetEditingOnHide?.(() => {
+        setSelectedKey(null);
+        setActiveModifiers([]);
+        setSidebarComboFilter(null);
+        setDraftAssignment(null);
+        setDraftDoubleAssignment(null);
+      });
       window.electronAPI.onOverlayFired?.((data) => {
         showNotification(`⚡ ${data.label || 'Macro fired'}`);
       });
@@ -612,6 +624,7 @@ function App() {
       window.electronAPI?.removeAllListeners('macro-fired');
       window.electronAPI?.removeAllListeners('engine-status');
       window.electronAPI?.removeAllListeners('profile-switched');
+      window.electronAPI?.removeAllListeners('reset-editing-on-hide');
       window.electronAPI?.removeAllListeners('overlay-fired');
       window.electronAPI?.removeAllListeners('hotkey-recorded');
     };
