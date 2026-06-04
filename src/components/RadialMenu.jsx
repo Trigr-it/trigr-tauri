@@ -9,6 +9,8 @@ export default function RadialMenu() {
   const [hoveredOuterIndex, setHoveredOuterIndex] = useState(-1);
   const [expandedFolder, setExpandedFolder] = useState(null);
   const [animKey, setAnimKey] = useState(0);
+  const [missingNotice, setMissingNotice] = useState(false);
+  const missingTimer = useRef(null);
 
   const itemsRef = useRef([]);
   const expandedFolderRef = useRef(null);
@@ -24,18 +26,31 @@ export default function RadialMenu() {
       setHoveredIndex(-1);
       setHoveredOuterIndex(-1);
       setExpandedFolder(null);
+      setMissingNotice(false);
       setAnimKey(k => k + 1);
     });
 
     // Close on window blur (clicking outside the window entirely)
     const onBlur = () => window.electronAPI?.closeRadialMenu();
     window.addEventListener('blur', onBlur);
-    return () => window.removeEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      if (missingTimer.current) clearTimeout(missingTimer.current);
+    };
   }, []);
 
   // ── Fire an item ───────────────────────────────────────────────────────
   const fireItem = useCallback((item) => {
-    if (!item || !item.exists) return;
+    if (!item) return;
+    if (!item.exists) {
+      // The linked source was renamed or deleted — the wedge renders faded
+      // (40% opacity, easy to miss) and firing would be a silent no-op.
+      // Tell the user instead; keep the wheel open so they can read it.
+      setMissingNotice(true);
+      if (missingTimer.current) clearTimeout(missingTimer.current);
+      missingTimer.current = setTimeout(() => setMissingNotice(false), 2500);
+      return;
+    }
     const payload = { type: item.type, storageKey: item.storageKey, label: item.label };
     if (item.data?.text != null) payload.text = item.data.text;
     if (item.data?.html != null) payload.html = item.data.html;
@@ -155,6 +170,12 @@ export default function RadialMenu() {
         onFolderChildClick={handleFolderChildClick}
         onBackgroundClick={handleBackgroundClick}
       />
+      {missingNotice && (
+        <div className="radial-missing-notice">
+          This action's source was renamed or deleted.<br />
+          Re-link it in the Radial editor.
+        </div>
+      )}
     </div>
   );
 }

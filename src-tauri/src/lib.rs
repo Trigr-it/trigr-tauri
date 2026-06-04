@@ -1723,6 +1723,16 @@ fn voice_overlay_examples_expand(app: tauri::AppHandle) {
 fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle) {
     let result_type = result.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
+    // Entry log: the click → action chain previously had five silent failure
+    // gates with no log output, making "clicked a segment, nothing happened"
+    // reports undiagnosable. Every no-op gate below now warns.
+    log::info!(
+        "[Trigr] Execute item: type=\"{}\" storageKey=\"{}\" label=\"{}\"",
+        result_type,
+        result.get("storageKey").and_then(|v| v.as_str()).unwrap_or("-"),
+        result.get("label").and_then(|v| v.as_str()).unwrap_or("-")
+    );
+
     match result_type {
         "assignment" | "quickaction" => {
             if let Some(storage_key) = result.get("storageKey").and_then(|v| v.as_str()) {
@@ -1739,7 +1749,14 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                             .map(|arr| arr.iter().filter_map(|s| s.get("type").and_then(|v| v.as_str()).map(String::from)).collect())
                     } else { None };
                     analytics::log_action_ext(at, 0, storage_key, label, macro_steps);
+                } else {
+                    log::warn!(
+                        "[Trigr] Execute item no-op: storageKey \"{}\" not found in engine state (source renamed/deleted, or assignments not synced)",
+                        storage_key
+                    );
                 }
+            } else {
+                log::warn!("[Trigr] Execute item no-op: {} payload has no storageKey", result_type);
             }
         }
         "expansion" => {
@@ -1769,6 +1786,8 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 // fire_expansion_by_trigger handles image / variant / fill-in /
                 // plain text and logs analytics in each sub-path itself.
                 expansions::fire_expansion_by_trigger(trigger);
+            } else {
+                log::warn!("[Trigr] Execute item no-op: expansion payload missing GLOBAL::EXPANSION:: storageKey");
             }
         }
         "autocorrect" => {
@@ -1825,6 +1844,8 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 actions::write_clipboard_pub(&prev);
                 actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
                     .store(false, std::sync::atomic::Ordering::Relaxed);
+            } else {
+                log::warn!("[Trigr] Execute item no-op: autocorrect payload has no text field");
             }
         }
         "search_template" => {
@@ -1843,9 +1864,13 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 let final_url = url_template.replace("{query}", &encoded_query);
                 let _ = opener::open(&final_url);
                 analytics::log_action("search_template", 0, trigger, label);
+            } else {
+                log::warn!("[Trigr] Execute item no-op: search_template missing url_template or query");
             }
         }
-        _ => {}
+        other => {
+            log::warn!("[Trigr] Execute item no-op: unknown type \"{}\"", other);
+        }
     }
 }
 
@@ -1881,6 +1906,11 @@ fn execute_radial_menu_item(result: Value, app: tauri::AppHandle) {
     restore_radial_menu_target();
 
     let target_hwnd = RADIAL_MENU_TARGET_HWND.load(std::sync::atomic::Ordering::SeqCst);
+    if target_hwnd == 0 {
+        // Gate 5: text-output actions (Type Text, Press Key, paste) silently
+        // no-op without a target window. Open URL / Open App still work.
+        log::warn!("[Trigr] Radial fire with no target window captured — text-output actions will no-op");
+    }
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(180));

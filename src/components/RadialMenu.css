@@ -111,3 +111,28 @@ html, body {
   text-align: center;
   line-height: 1.5;
 }
+
+/* ── Missing-link notice (faded wedge clicked) ───────────────────────────────
+   Shown in the wheel's centre hole when the user clicks a segment whose
+   linked action no longer exists (source renamed or deleted). Previously a
+   silent no-op — the #1 "radial click does nothing" report. */
+
+.radial-missing-notice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 130px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-primary);
+  text-align: center;
+  line-height: 1.45;
+  pointer-events: none;
+  animation: radial-appear 150ms ease-out both;
+  z-index: 5;
+}
