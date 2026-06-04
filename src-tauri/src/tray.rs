@@ -427,6 +427,17 @@ pub fn get_startup_enabled() -> bool {
 
 fn set_startup_enabled_impl(enable: bool) {
     if enable {
+        // Never register a debug build for Windows startup. current_exe()
+        // would be the target\debug binary, and every boot would then launch
+        // a stale dev build instead of the installed app — whichever starts
+        // first wins the single-instance mutex, so the user can unknowingly
+        // run old code all day. Found live on the dev machine 2026-06-04
+        // (the startup bootstrap had pinned the dev exe path in HKCU Run).
+        // Disabling (the else branch) stays allowed in debug builds.
+        if cfg!(debug_assertions) {
+            info!("[Trigr] Startup registration skipped (debug build — would pin the dev exe path)");
+            return;
+        }
         // Get the current exe path
         if let Ok(exe) = std::env::current_exe() {
             let exe_str = exe.to_string_lossy();
