@@ -818,25 +818,25 @@ fn input_focus_changed(focused: bool) {
 
 #[tauri::command]
 fn start_hotkey_recording() {
-    println!("[CAPTURE] start_hotkey_recording called");
+    log::info!("[CAPTURE] start_hotkey_recording called");
     hotkeys::set_recording(true);
 }
 
 #[tauri::command]
 fn stop_hotkey_recording() {
-    println!("[CAPTURE] stop_hotkey_recording called");
+    log::info!("[CAPTURE] stop_hotkey_recording called");
     hotkeys::set_recording(false);
 }
 
 #[tauri::command]
 fn start_key_capture() {
-    println!("[CAPTURE] start_key_capture called");
+    log::info!("[CAPTURE] start_key_capture called");
     hotkeys::set_capturing(true);
 }
 
 #[tauri::command]
 fn stop_key_capture() {
-    println!("[CAPTURE] stop_key_capture called");
+    log::info!("[CAPTURE] stop_key_capture called");
     hotkeys::set_capturing(false);
 }
 
@@ -1107,7 +1107,7 @@ fn open_external(url: String) {
 /// Generic JS→Rust debug logging — prints to terminal from any webview window.
 #[tauri::command]
 fn log_debug(message: String) {
-    println!("{}", message);
+    log::debug!("{}", message);
 }
 
 // ── Overlay / Quick Search (Phase 9) ────────────────────────────────────────

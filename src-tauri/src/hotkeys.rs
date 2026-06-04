@@ -280,7 +280,7 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
             }
         }
     }
-    println!("[HOOK] Rebuilt suppress set: {} key combos, {} bare mouse (before overlay)", set.len(), mouse_set.len());
+    log::info!("[HOOK] Rebuilt suppress set: {} key combos, {} bare mouse (before overlay)", set.len(), mouse_set.len());
     if let Ok(mut w) = suppress_keys().write() {
         *w = set;
     }
@@ -322,7 +322,7 @@ fn add_overlay_to_suppress(overlay: Option<(u8, u32)>) {
     if let Some(combo) = overlay {
         if let Ok(mut w) = suppress_keys().write() {
             w.insert(combo);
-            println!("[HOOK] Overlay hotkey added to suppress set: bits={} vk=0x{:02X} (total {} combos)", combo.0, combo.1, w.len());
+            log::info!("[HOOK] Overlay hotkey added to suppress set: bits={} vk=0x{:02X} (total {} combos)", combo.0, combo.1, w.len());
         }
     }
 }
@@ -1261,7 +1261,7 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
     thread::Builder::new()
         .name("trigr-event-processor".to_string())
         .spawn(move || {
-            println!("[PROC] Event processor started");
+            log::info!("[PROC] Event processor started");
             info!("[Trigr] Event processor started");
             let mut last_heartbeat_count: isize = 0;
             while let Ok(event) = receiver.recv() {
@@ -1293,7 +1293,7 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                                         let profile = state.active_profile.clone();
                                         drop(state);
                                         MACROS_ENABLED.store(true, Ordering::SeqCst);
-                                        println!("[PAUSE] Unpaused via hotkey");
+                                        log::info!("[PAUSE] Unpaused via hotkey");
                                         crate::tray::rebuild_tray_menu(&app);
                                         crate::tray::update_tray_icon(&app, true);
                                         let _ = app.emit("engine-status", serde_json::json!({
@@ -1449,7 +1449,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
     // ── Release any held key on physical keypress ───────────────────────
     if crate::actions::is_key_held() {
-        println!("[DEBUG] HELD RELEASE: firing before pause check, key_id={}", key_id);
+        log::debug!("[DEBUG] HELD RELEASE: firing before pause check, key_id={}", key_id);
         crate::actions::release_held_key();
         crate::tray::update_tray_icon_normal(app);
     }
@@ -1643,9 +1643,9 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         if let Some((mod_bits, vk)) = state.pause_hotkey {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
-            println!("[DEBUG] PAUSE CHECK: has_any_modifier=true, current_bits={}, mod_bits={}, key_vk={:?}, vk={}, key_id={}", current_bits, mod_bits, key_vk, vk, key_id);
+            log::debug!("[DEBUG] PAUSE CHECK: has_any_modifier=true, current_bits={}, mod_bits={}, key_vk={:?}, vk={}, key_id={}", current_bits, mod_bits, key_vk, vk, key_id);
             if current_bits == mod_bits && key_vk == Some(vk) {
-                println!("[DEBUG] PAUSE MATCH: firing pause");
+                log::debug!("[DEBUG] PAUSE MATCH: firing pause");
                 drop(state);
                 let was_enabled = MACROS_ENABLED.load(Ordering::SeqCst);
                 if was_enabled {
@@ -1653,7 +1653,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 }
                 MACROS_ENABLED.store(!was_enabled, Ordering::SeqCst);
                 let now_enabled = !was_enabled;
-                println!("[PAUSE] Global pause toggled: macros={}", now_enabled);
+                log::info!("[PAUSE] Global pause toggled: macros={}", now_enabled);
                 // Rebuild tray menu and notify frontend
                 crate::tray::rebuild_tray_menu(app);
                 crate::tray::update_tray_icon(app, now_enabled);
@@ -1726,7 +1726,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             // Stop repeat if this key is the repeat trigger
             if crate::actions::is_repeating() {
                 if let Some(trigger) = crate::actions::get_repeating_trigger() {
-                    println!("[DEBUG] REPEAT STOP CHECK (bare): incoming={}, trigger={}", bare_key, trigger);
+                    log::debug!("[DEBUG] REPEAT STOP CHECK (bare): incoming={}, trigger={}", bare_key, trigger);
                     if trigger == bare_key {
                         crate::actions::stop_repeating_key();
                         crate::tray::update_tray_icon_normal(app);
@@ -1804,7 +1804,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // Stop repeat if this key is the repeat trigger
     if crate::actions::is_repeating() {
         if let Some(trigger) = crate::actions::get_repeating_trigger() {
-            println!("[DEBUG] REPEAT STOP CHECK (modified): incoming={}, trigger={}", storage_key, trigger);
+            log::debug!("[DEBUG] REPEAT STOP CHECK (modified): incoming={}, trigger={}", storage_key, trigger);
             if trigger == storage_key {
                 crate::actions::stop_repeating_key();
                 crate::tray::update_tray_icon_normal(app);
@@ -2371,9 +2371,9 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
     // will be cleared by the time execute_action runs.
     let is_altgr = MOD_CTRL.load(Ordering::SeqCst) && MOD_ALT.load(Ordering::SeqCst);
     if is_altgr {
-        println!("[FIRE] AltGr combo detected — will erase dead character");
+        log::info!("[FIRE] AltGr combo detected — will erase dead character");
     }
-    println!("[FIRE] Captured target HWND: 0x{:X}", target_hwnd);
+    log::info!("[FIRE] Captured target HWND: 0x{:X}", target_hwnd);
 
     // Execute the action on a separate thread to avoid blocking the event processor
     let macro_clone = macro_val.clone();
@@ -2508,7 +2508,7 @@ fn spawn_hook_thread() {
                 RADIAL_ACTION_VK.store(0, Ordering::SeqCst);
                 info!("[Trigr] Hook reinstall: shared atomics reset to safe defaults");
 
-                println!("[HOOK] Input hooks installed (dedicated thread, high priority)");
+                log::info!("[HOOK] Input hooks installed (dedicated thread, high priority)");
 
                 // PeekMessageW polling loop — actively pumps LL hook messages.
                 // Unlike GetMessageW which blocks, this polls with a 1ms yield
@@ -2561,7 +2561,7 @@ pub fn start_hooks(app: AppHandle) {
                     thread::sleep(Duration::from_secs(15));
                     let recheck = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                     if recheck == last_heartbeat {
-                        println!("[HOOK] Heartbeat stale for 30s — reinstalling hooks");
+                        log::warn!("[HOOK] Heartbeat stale for 30s — reinstalling hooks");
                         let tid = HOOK_THREAD_ID.load(Ordering::SeqCst);
                         if tid != 0 {
                             unsafe { PostThreadMessageW(tid as u32, WM_QUIT, 0, 0); }
@@ -2579,7 +2579,7 @@ pub fn start_hooks(app: AppHandle) {
                             add_voice_to_suppress(state.voice_hotkey);
                             add_radial_menu_to_suppress(state.radial_menu_hotkey);
                         }
-                        println!("[HOOK] Hooks reinstalled, suppress set rebuilt");
+                        log::info!("[HOOK] Hooks reinstalled, suppress set rebuilt");
                         thread::sleep(Duration::from_secs(5));
                         last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                         continue;
@@ -2859,7 +2859,7 @@ pub fn set_overlay_hotkey(combo: &str) {
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         add_voice_to_suppress(state.voice_hotkey);
         add_radial_menu_to_suppress(state.radial_menu_hotkey);
-        println!("[HOOK] Overlay hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+        log::info!("[HOOK] Overlay hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
 
@@ -2874,7 +2874,7 @@ pub fn set_pause_hotkey(combo: &str) {
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         add_voice_to_suppress(state.voice_hotkey);
         add_radial_menu_to_suppress(state.radial_menu_hotkey);
-        println!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+        log::info!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
 
@@ -2889,7 +2889,7 @@ pub fn set_voice_hotkey(combo: &str) {
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         add_voice_to_suppress(Some(parsed));
         add_radial_menu_to_suppress(state.radial_menu_hotkey);
-        println!("[HOOK] Voice hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+        log::info!("[HOOK] Voice hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
 
@@ -2903,7 +2903,7 @@ pub fn clear_voice_hotkey() {
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
     add_radial_menu_to_suppress(state.radial_menu_hotkey);
-    println!("[HOOK] Voice hotkey cleared");
+    log::info!("[HOOK] Voice hotkey cleared");
 }
 
 pub fn clear_pause_hotkey() {
@@ -2915,7 +2915,7 @@ pub fn clear_pause_hotkey() {
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
     add_radial_menu_to_suppress(state.radial_menu_hotkey);
-    println!("[HOOK] Pause hotkey cleared");
+    log::info!("[HOOK] Pause hotkey cleared");
 }
 
 pub fn set_clipboard_paste_hotkey(combo: &str) {
@@ -2929,7 +2929,7 @@ pub fn set_clipboard_paste_hotkey(combo: &str) {
         add_clipboard_paste_to_suppress(Some(parsed));
         add_voice_to_suppress(state.voice_hotkey);
         add_radial_menu_to_suppress(state.radial_menu_hotkey);
-        println!("[HOOK] Clipboard paste hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+        log::info!("[HOOK] Clipboard paste hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
 
@@ -2943,7 +2943,7 @@ pub fn clear_clipboard_paste_hotkey() {
     add_clipboard_paste_to_suppress(None);
     add_voice_to_suppress(state.voice_hotkey);
     add_radial_menu_to_suppress(state.radial_menu_hotkey);
-    println!("[HOOK] Clipboard paste hotkey cleared");
+    log::info!("[HOOK] Clipboard paste hotkey cleared");
 }
 
 pub fn set_radial_menu_hotkey(combo: &str) {
@@ -2957,7 +2957,7 @@ pub fn set_radial_menu_hotkey(combo: &str) {
         add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
         add_voice_to_suppress(state.voice_hotkey);
         add_radial_menu_to_suppress(Some(parsed));
-        println!("[HOOK] Radial menu hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+        log::info!("[HOOK] Radial menu hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
     }
 }
 
@@ -2969,7 +2969,7 @@ pub fn clear_radial_menu_hotkey() {
     add_pause_to_suppress(state.pause_hotkey);
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
-    println!("[HOOK] Radial menu hotkey cleared");
+    log::info!("[HOOK] Radial menu hotkey cleared");
 }
 
 /// Returns true while the radial menu hotkey is physically held (keydown fired, keyup hasn't).

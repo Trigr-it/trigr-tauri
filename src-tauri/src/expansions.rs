@@ -938,7 +938,7 @@ fn fire_expansion_with_fillin(
     let app = match APP_HANDLE.get() {
         Some(a) => a,
         None => {
-            println!("[EXP] No app handle — cannot show fill-in window");
+            log::error!("[EXP] No app handle — cannot show fill-in window");
             return;
         }
     };

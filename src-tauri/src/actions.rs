@@ -425,7 +425,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
         .unwrap_or("(unlabelled)");
     let data = macro_val.get("data");
 
-    println!("[ACTION] Firing: [{}] {} altgr={}", macro_type, label, is_altgr);
+    log::info!("[ACTION] Firing: [{}] {} altgr={}", macro_type, label, is_altgr);
     info!("[Trigr] Firing: [{}] {} (depth {})", macro_type, label, depth);
 
     let (initial_ms, step_settle_ms, _fg_settle_ms, _clip_restore_ms) = speed_delays();
@@ -783,24 +783,24 @@ fn write_clipboard_impl(text: &str, suppress_listener: bool) -> bool {
             if OpenClipboard(std::ptr::null_mut()) == 0 {
                 if attempt < 9 { thread::sleep(Duration::from_millis(3)); continue; }
                 let err = windows_sys::Win32::Foundation::GetLastError();
-                println!("[CLIP] OpenClipboard failed after retries, GetLastError={}", err);
+                log::warn!("[CLIP] OpenClipboard failed after retries, GetLastError={}", err);
                 return false;
             }
             if EmptyClipboard() == 0 {
                 let err = windows_sys::Win32::Foundation::GetLastError();
-                println!("[CLIP] EmptyClipboard failed, GetLastError={}", err);
+                log::warn!("[CLIP] EmptyClipboard failed, GetLastError={}", err);
                 CloseClipboard();
                 return false;
             }
             let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
             if h_mem.is_null() {
-                println!("[CLIP] GlobalAlloc failed for {} bytes", byte_len);
+                log::warn!("[CLIP] GlobalAlloc failed for {} bytes", byte_len);
                 CloseClipboard();
                 return false;
             }
             let ptr = GlobalLock(h_mem) as *mut u16;
             if ptr.is_null() {
-                println!("[CLIP] GlobalLock failed");
+                log::warn!("[CLIP] GlobalLock failed");
                 CloseClipboard();
                 return false;
             }
@@ -809,7 +809,7 @@ fn write_clipboard_impl(text: &str, suppress_listener: bool) -> bool {
             let result = SetClipboardData(CF_UNICODETEXT, h_mem);
             if result.is_null() {
                 let err = windows_sys::Win32::Foundation::GetLastError();
-                println!("[CLIP] SetClipboardData failed, GetLastError={}", err);
+                log::warn!("[CLIP] SetClipboardData failed, GetLastError={}", err);
                 CloseClipboard();
                 return false;
             }
@@ -1318,7 +1318,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         }
 
         // Hold the new key/button
-        println!("[ACTION] Send Hotkey HOLD: {}", combo_label);
+        log::info!("[ACTION] Send Hotkey HOLD: {}", combo_label);
         {
             let _guard = SuppressionGuard::new();
             if is_mouse {
@@ -1996,7 +1996,7 @@ fn wait_for_input(config_json: &str) {
         _ => "",
     };
 
-    println!(
+    log::info!(
         "[WAIT] Wait for Input: type={} trigger={} key={}",
         input_type, trigger, wanted_key
     );
@@ -2016,13 +2016,13 @@ fn wait_for_input(config_json: &str) {
         // Check timeout
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
-            println!("[WAIT] Timed out after 30s");
+            log::warn!("[WAIT] Timed out after 30s");
             break;
         }
 
         // Check if macros were disabled
         if !hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
-            println!("[WAIT] Cancelled — macros disabled");
+            log::info!("[WAIT] Cancelled — macros disabled");
             break;
         }
 
@@ -2061,22 +2061,22 @@ fn wait_for_input(config_json: &str) {
                     let is_down = matches!(event, WaitEvent::KeyDown { .. } | WaitEvent::MouseDown { .. });
                     if phase == "down" && is_down {
                         phase = "up"; // Got the press, now wait for release
-                        println!("[WAIT] pressRelease phase 1: press detected, waiting for release");
+                        log::debug!("[WAIT] pressRelease phase 1: press detected, waiting for release");
                         continue;
                     } else if phase == "up" && !is_down {
-                        println!("[WAIT] pressRelease phase 2: release detected, done");
+                        log::debug!("[WAIT] pressRelease phase 2: release detected, done");
                         break; // Got the release, done
                     }
                     continue; // Not the right phase
                 }
 
                 // Simple press or release trigger
-                println!("[WAIT] Input detected: {:?}", event);
+                log::debug!("[WAIT] Input detected: {:?}", event);
                 break;
             }
             Err(RecvTimeoutError::Timeout) => continue, // Poll loop
             Err(RecvTimeoutError::Disconnected) => {
-                println!("[WAIT] Channel disconnected");
+                log::warn!("[WAIT] Channel disconnected");
                 break;
             }
         }
@@ -2084,7 +2084,7 @@ fn wait_for_input(config_json: &str) {
 
     // Always clear the waiter on exit
     hotkeys::clear_wait_for_input();
-    println!("[WAIT] Wait for Input complete");
+    log::info!("[WAIT] Wait for Input complete");
 }
 
 // ── Low-level VK key simulation ─────────────────────────────────────────────
