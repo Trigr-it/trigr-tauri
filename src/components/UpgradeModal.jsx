@@ -83,7 +83,7 @@ export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
         </p>
         {isTeamsLadder && (
           <p className="upgrade-body upgrade-teams-note">
-            {featureName} also extends into Trigr Teams (planned for v2.0): shared libraries,
+            {featureName} also extends into Trigr Teams (planned for v1.0): shared libraries,
             centrally deployed profiles, and team-wide variables. Pro users get the upgrade
             path when it ships.
           </p>
