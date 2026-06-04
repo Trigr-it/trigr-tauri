@@ -1389,11 +1389,63 @@ fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
                 }
             }
 
+            // Keep Trigr's injected text out of Windows Clipboard History (Win+V)
+            // and Cloud Clipboard. Target apps still read CF_UNICODETEXT/CF_HTML
+            // normally — these marker formats are only read by the OS clipboard
+            // monitor. Must be set while the clipboard is open, after the content.
+            mark_clipboard_excluded();
+
             CloseClipboard();
+            // Record the seqnum this write produced so the listener skips it even
+            // if the WM_CLIPBOARDUPDATE arrives after the suppress flag is cleared.
+            crate::actions::record_self_clipboard_write();
             return true;
         }
     }
     false
+}
+
+/// Mark the currently-open clipboard so Windows Clipboard History (Win+V) and
+/// Cloud Clipboard skip Trigr's own injected content. MUST be called while the
+/// clipboard is OPEN and AFTER the real content formats have been set. Best
+/// effort: any failure is ignored (paste still works; the payload just isn't
+/// excluded). Pasting is unaffected — apps read the content formats, not these.
+///
+/// Three documented registered formats:
+/// - `ExcludeClipboardContentFromMonitorProcessing` — presence alone excludes the
+///   payload from clipboard monitors / history.
+/// - `CanIncludeInClipboardHistory` — DWORD 0 opts out of Win+V history.
+/// - `CanUploadToCloudClipboard` — DWORD 0 opts out of cross-device cloud sync.
+pub(crate) unsafe fn mark_clipboard_excluded() {
+    const NAMES: [&str; 3] = [
+        "ExcludeClipboardContentFromMonitorProcessing",
+        "CanIncludeInClipboardHistory",
+        "CanUploadToCloudClipboard",
+    ];
+    for name in NAMES {
+        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        let id = RegisterClipboardFormatW(wide.as_ptr());
+        if id == 0 {
+            continue;
+        }
+        // Each format takes a small HGLOBAL holding a DWORD 0. For the Exclude*
+        // format the value is ignored (presence is the signal); the Can* formats
+        // read 0 as "no".
+        let h = GlobalAlloc(GMEM_MOVEABLE, 4);
+        if h.is_null() {
+            continue;
+        }
+        let p = GlobalLock(h) as *mut u32;
+        if p.is_null() {
+            GlobalFree(h);
+            continue;
+        }
+        *p = 0;
+        GlobalUnlock(h);
+        if SetClipboardData(id, h).is_null() {
+            GlobalFree(h);
+        }
+    }
 }
 
 // ── Multi-format clipboard snapshot / restore ──────────────────────────────
@@ -1525,7 +1577,14 @@ pub(crate) fn restore_clipboard_snapshot(snapshot: &[(u32, Vec<u8>)]) -> bool {
                 GlobalFree(h_mem);
             }
         }
+        // The restore is a mechanical re-write of the user's prior content, not a
+        // fresh user copy — keep it out of Win+V (the original is already in
+        // history from when the user first copied it; this also avoids a
+        // duplicate and protects sensitive originals we couldn't fully snapshot).
+        mark_clipboard_excluded();
         CloseClipboard();
+        // Record the seqnum so the listener skips this restore's update event.
+        crate::actions::record_self_clipboard_write();
     }
     true
 }
@@ -1878,7 +1937,11 @@ fn write_clipboard_image(pixels: &[u8], width: u32, height: u32, raw_png_bytes: 
             }
         }
 
+        // Keep Trigr's injected image out of Win+V / Cloud Clipboard (same as text).
+        mark_clipboard_excluded();
         CloseClipboard();
+        // Record the seqnum so the listener skips this image write's update event.
+        crate::actions::record_self_clipboard_write();
         true
     }
 }

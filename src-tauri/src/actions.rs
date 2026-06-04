@@ -1,7 +1,7 @@
 use log::{info, warn};
 use serde_json::Value;
 use std::cell::Cell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tauri::Manager;
 use std::sync::Arc;
 use std::thread;
@@ -29,6 +29,53 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 /// Future clipboard manager checks this flag and skips logging if set.
 pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
+
+// ── Self-write clipboard suppression (robust to async WM_CLIPBOARDUPDATE) ────
+// SUPPRESS_NEXT_CLIPBOARD_WRITE is a level flag — it's cleared synchronously
+// after a write/restore, but Windows delivers WM_CLIPBOARDUPDATE asynchronously,
+// so the listener can process the event AFTER the flag is cleared and record
+// Trigr's own injected text into history (the H3 leak). To fix this precisely,
+// every internal write records the resulting clipboard sequence number here; the
+// listener skips any update whose seqnum we produced. This is exact: a real user
+// copy (or a `Copy to Clipboard` macro step, which the target app performs) gets
+// a seqnum we never recorded, so it is always still captured.
+static SELF_CLIPBOARD_SEQNUMS: LazyLock<Mutex<VecDeque<u32>>> =
+    LazyLock::new(|| Mutex::new(VecDeque::new()));
+
+/// Record the current clipboard sequence number as a Trigr-internal write so the
+/// listener won't log it. Call immediately after CloseClipboard on any internal
+/// write/restore. Best-effort — on lock failure the level flag still covers the
+/// synchronous window.
+pub(crate) fn record_self_clipboard_write() {
+    let seq = crate::expansions::clipboard_sequence_number();
+    if let Ok(mut q) = SELF_CLIPBOARD_SEQNUMS.lock() {
+        if !q.contains(&seq) {
+            q.push_back(seq);
+        }
+        // Cap — seqnums are monotonic so stale ones never match a future event.
+        while q.len() > 64 {
+            q.pop_front();
+        }
+    }
+}
+
+/// True if `seq` was produced by a Trigr-internal write. Consumes the match so a
+/// single internal write is only ever skipped once.
+pub(crate) fn is_self_clipboard_seq(seq: u32) -> bool {
+    if let Ok(mut q) = SELF_CLIPBOARD_SEQNUMS.lock() {
+        if let Some(pos) = q.iter().position(|&s| s == seq) {
+            q.remove(pos);
+            return true;
+        }
+    }
+    false
+}
+
+/// Number of action/macro executions currently in flight (inc/dec in fire_macro's
+/// thread). >1 means overlapping fires (re-entrancy) — fire_macro logs a warn when
+/// that happens, a lightweight guard-rail for the rare macro-freeze report whose
+/// re-entrancy path (H1) we could not reproduce in dev.
+pub static ACTIVE_FIRE_COUNT: AtomicU32 = AtomicU32::new(0);
 
 // ── Recursion guard for Fire Trigger / Fire Text Expansion macro steps ────
 // Thread-local depth counter — execute_action increments on entry, the Drop
@@ -124,7 +171,7 @@ fn shell_launch_app(kind: &str, path: &str, app_id: &str, args: &str) {
 
 // ── AHK Script Runner process tracking ─────────────────────────────────────
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::{Mutex, LazyLock};
@@ -755,7 +802,20 @@ fn write_clipboard_impl(text: &str, suppress_listener: bool) -> bool {
                 CloseClipboard();
                 return false;
             }
+            // For Trigr's own paste writes (suppress_listener = true), keep the
+            // injected text out of Windows Clipboard History (Win+V) and Cloud
+            // Clipboard. Recordable writes (Save as New etc.) pass false and are
+            // deliberately left visible. Target apps read CF_UNICODETEXT either
+            // way — paste is unaffected.
+            if suppress_listener {
+                crate::expansions::mark_clipboard_excluded();
+            }
             CloseClipboard();
+            // Record the seqnum so the listener skips our own write even if the
+            // WM_CLIPBOARDUPDATE arrives after SUPPRESS_NEXT is cleared.
+            if suppress_listener {
+                record_self_clipboard_write();
+            }
             return true;
         }
     }

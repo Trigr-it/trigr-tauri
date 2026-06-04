@@ -2357,6 +2357,17 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
     let macro_clone = macro_val.clone();
     let app_clone = app.clone();
     thread::spawn(move || {
+        // Overlap guard-rail: warn if a macro fires while another is still running.
+        // Re-entrancy (H1) is the leading suspect for the rare macro-freeze report
+        // but could not be reproduced in dev — this keeps a cheap signal in the log
+        // (only emits on an actual overlap, never per-fire) to catch it in the wild.
+        let active = crate::actions::ACTIVE_FIRE_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+        if active > 1 {
+            let ty = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("?");
+            let trig = trigger_key.as_deref().unwrap_or("");
+            log::warn!("[Trigr] Overlapping macro fire: {} concurrent (type={} trigger={}) — possible re-entrancy", active, ty, trig);
+        }
+
         crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, trigger_key.as_deref(), &app_clone);
 
         // Log analytics — pass actual action type and macro step types for time calculation
@@ -2379,6 +2390,8 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
                 "type": macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or(""),
             }),
         );
+
+        crate::actions::ACTIVE_FIRE_COUNT.fetch_sub(1, Ordering::SeqCst);
     });
 }
 

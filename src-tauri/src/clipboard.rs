@@ -1091,7 +1091,17 @@ unsafe extern "system" fn clipboard_wnd_proc(
 }
 
 fn handle_clipboard_update() {
-    if crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE.load(Ordering::SeqCst) {
+    // Skip Trigr's own injected writes. Two layers: the level flag covers the
+    // synchronous write window, and the per-write sequence-number record covers
+    // the async tail (a WM_CLIPBOARDUPDATE delivered after the flag was cleared —
+    // the H3 leak). A real user copy, or a `Copy to Clipboard` macro step (the
+    // target app performs that copy), has a seqnum Trigr never recorded, so it is
+    // always still captured. Checked first so the self-seqnum is consumed even
+    // when a later gate (capture-off / excluded app) would return early.
+    let cur_seq = crate::expansions::clipboard_sequence_number();
+    if crate::actions::is_self_clipboard_seq(cur_seq)
+        || crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE.load(Ordering::SeqCst)
+    {
         return;
     }
 
