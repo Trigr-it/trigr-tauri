@@ -621,12 +621,12 @@ fn output_text(text: &str, method: &str, target_hwnd: isize) {
     match method {
         "send-input" | "direct" => {
             // Character-by-character fallback for apps that don't support paste
-            println!("[ACTION] SendInput char-by-char: {} chars", text.chars().count());
+            info!("[Trigr] Output text (sendinput): \"{}\"", crate::expansions::log_preview(text));
             send_unicode_text(text, target_hwnd);
         }
         _ => {
             // Default: clipboard paste (instant)
-            println!("[ACTION] Clipboard paste: {} chars", text.chars().count());
+            info!("[Trigr] Output text (clipboard): \"{}\"", crate::expansions::log_preview(text));
             inject_via_clipboard(text, target_hwnd);
         }
     }
@@ -660,9 +660,9 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
 /// Does NOT save/restore the clipboard — caller is responsible for that.
 fn clipboard_paste_core(text: &str, target_hwnd: isize) {
     let write_ok = write_clipboard(text);
-    println!("[CLIP] write_clipboard({} chars) → {}", text.chars().count(), write_ok);
+    info!("[Trigr] Clipboard write (actions, ok={}): \"{}\"", write_ok, crate::expansions::log_preview(text));
     if !write_ok {
-        println!("[CLIP] Skipping paste — clipboard write failed, would paste wrong content");
+        warn!("[Trigr] Skipping paste — clipboard write failed, would paste wrong content");
         return;
     }
 

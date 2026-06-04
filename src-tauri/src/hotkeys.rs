@@ -2713,7 +2713,7 @@ pub fn set_input_focused(focused: bool) {
 }
 
 pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) {
-    println!("[ENGINE] update_assignments called: {} entries for profile '{}'", assignments.len(), profile);
+    log::info!("[Trigr] update_assignments: {} entries for profile '{}'", assignments.len(), profile);
     let mut state = engine_state().lock().unwrap();
     state.assignments = assignments;
     state.active_profile = profile;
@@ -2724,7 +2724,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
     add_radial_menu_to_suppress(state.radial_menu_hotkey);
-    println!("[ENGINE] Assignments stored: {} entries", state.assignments.len());
+    log::info!("[Trigr] Assignments stored: {} entries", state.assignments.len());
 }
 
 pub fn set_active_profile(profile: String) {

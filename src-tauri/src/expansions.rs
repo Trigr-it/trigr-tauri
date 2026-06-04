@@ -60,6 +60,110 @@ impl Drop for InjectionGuard {
     }
 }
 
+/// Truncated single-line preview of injected/written text for log lines.
+/// 40 chars max, newlines flattened, so the log never floods or breaks lines.
+pub(crate) fn log_preview(s: &str) -> String {
+    let mut p: String = s.chars().take(40).collect();
+    p = p.replace('\r', "").replace('\n', "\\n");
+    if s.chars().count() > 40 {
+        p.push_str("...");
+    }
+    p
+}
+
+/// Hard circuit breaker on expansion fire rate. If fires arrive faster than
+/// any human could plausibly trigger them, the engine is being fed its own
+/// output (feedback loop) — refuse to fire rather than flood the target app
+/// and clipboard. 8 fires inside a rolling 2s window is well above legitimate
+/// burst use (fast typist with short triggers ≈ 2-3/s) and cuts a runaway
+/// (observed at ~34/s on 2026-06-04) within a fraction of a second.
+fn fire_rate_ok(context: &str) -> bool {
+    static FIRE_TIMES: std::sync::Mutex<Vec<std::time::Instant>> =
+        std::sync::Mutex::new(Vec::new());
+    let now = std::time::Instant::now();
+    let mut times = FIRE_TIMES.lock().unwrap();
+    times.retain(|t| now.duration_since(*t) < Duration::from_secs(2));
+    if times.len() >= 8 {
+        log::error!(
+            "[Trigr] FIRE-RATE BREAKER: {} fires in 2s — suppressing \"{}\" (feedback loop suspected)",
+            times.len(),
+            context
+        );
+        return false;
+    }
+    times.push(now);
+    true
+}
+
+/// Replay keystrokes that were buffered while an injection was in progress,
+/// then re-run trigger checks. Takes ownership of the injection guard so the
+/// re-checks provably run AFTER it drops.
+///
+/// Two loop-prevention rules, both learned from the 2026-06-04 runaway:
+/// 1. SUPPRESS_SIMULATED must stay true until the LL hook has drained the
+///    replayed events. Clearing it immediately after SendInput let the tail
+///    of the replay re-enter the injection buffer (the hook buffers when
+///    INJECTION_IN_PROGRESS && !SUPPRESS_SIMULATED, and the guard is still
+///    held here) and replay again — self-sustaining. Same bug class as the
+///    v0.4.20 repeat-mode SUPPRESS_DRAIN_MS fix.
+/// 2. check_immediate_triggers/check_space_trigger must run AFTER the guard
+///    drops. Firing inside the guard made the new fire's wait-loop block on
+///    this thread's own INJECTION_IN_PROGRESS — a self-deadlock only broken
+///    by the 5s watchdog force-clear.
+fn replay_buffered_and_recheck(guard: InjectionGuard) {
+    let buffered: Vec<crate::hotkeys::BufferedKey> =
+        crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
+
+    if !buffered.is_empty() {
+        log::info!("[Trigr] Replaying {} buffered keystrokes", buffered.len());
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        for key in &buffered {
+            send_vk_key(key.vk_code as u16, !key.is_keydown);
+            thread::sleep(Duration::from_millis(2));
+        }
+        // Drain: give the LL hook time to process every replayed event while
+        // SUPPRESS_SIMULATED is still true (rule 1 above).
+        thread::sleep(Duration::from_millis(30));
+        crate::hotkeys::SUPPRESS_SIMULATED
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    // Sync modifier atomics with actual physical key state after replay
+    crate::hotkeys::sync_modifier_state_from_os();
+
+    // Injection complete — release the guard BEFORE trigger re-checks (rule 2).
+    drop(guard);
+
+    if buffered.is_empty() {
+        return;
+    }
+
+    // Feed replayed keystrokes into the expansion buffer and re-check triggers.
+    let last_was_space = buffered.last()
+        .map(|k| k.vk_code == 0x20 && k.is_keydown)
+        .unwrap_or(false);
+    for key in &buffered {
+        if !key.is_keydown { continue; }
+        if key.vk_code == 0x20 { continue; } // Space handled after loop
+        if key.vk_code == 0x08 { buffer_pop(); continue; } // Backspace
+        if key.vk_code == 0x0D || key.vk_code == 0x1B || key.vk_code == 0x09 {
+            // Enter, Escape, Tab — clear buffer and stop
+            buffer_clear();
+            break;
+        }
+        if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
+        if let Some(ch) = crate::hotkeys::resolve_char(key.vk_code, key.scan_code) {
+            buffer_push(ch);
+            check_immediate_triggers();
+        }
+    }
+    if last_was_space {
+        check_space_trigger();
+        buffer_clear();
+    }
+}
+
 // ── App handle for fill-in IPC ──────────────────────────────────────────────
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
@@ -673,6 +777,9 @@ fn fire_expansion(
     global_vars: &HashMap<String, String>,
     case_pattern: CasePattern,
 ) {
+    if !fire_rate_ok(_trigger) {
+        return;
+    }
     // Check for {fillIn:...} tokens — if present, spawn a dedicated thread for the
     // entire fill-in + injection flow so the processor thread is never blocked.
     // Fill-in flow is plain-text only (rich text inside fill-in fields isn't supported yet).
@@ -809,48 +916,9 @@ fn fire_expansion(
             }
         }
 
-        // Replay any keystrokes that were buffered during injection
-        let buffered: Vec<crate::hotkeys::BufferedKey> =
-            crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
-        if !buffered.is_empty() {
-            crate::hotkeys::SUPPRESS_SIMULATED
-                .store(true, std::sync::atomic::Ordering::SeqCst);
-            for key in &buffered {
-                send_vk_key(key.vk_code as u16, !key.is_keydown);
-                thread::sleep(Duration::from_millis(2));
-            }
-            crate::hotkeys::SUPPRESS_SIMULATED
-                .store(false, std::sync::atomic::Ordering::SeqCst);
-
-            // Feed replayed keystrokes into the expansion buffer
-            let last_was_space = buffered.last()
-                .map(|k| k.vk_code == 0x20 && k.is_keydown)
-                .unwrap_or(false);
-            for key in &buffered {
-                if !key.is_keydown { continue; }
-                if key.vk_code == 0x20 { continue; } // Space handled after loop
-                if key.vk_code == 0x08 { buffer_pop(); continue; } // Backspace
-                if key.vk_code == 0x0D || key.vk_code == 0x1B || key.vk_code == 0x09 {
-                    // Enter, Escape, Tab — clear buffer and stop
-                    buffer_clear();
-                    break;
-                }
-                if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
-                if let Some(ch) = crate::hotkeys::resolve_char(key.vk_code, key.scan_code) {
-                    buffer_push(ch);
-                    check_immediate_triggers();
-                }
-            }
-            if last_was_space {
-                check_space_trigger();
-                buffer_clear();
-            }
-        }
-
-        // Sync modifier atomics with actual physical key state after replay
-        crate::hotkeys::sync_modifier_state_from_os();
-
-        // _guard drops here → INJECTION_IN_PROGRESS = false
+        // Replay buffered keystrokes and re-check triggers. The helper takes
+        // the guard and releases it BEFORE the re-checks — see its doc comment.
+        replay_buffered_and_recheck(_guard);
     });
 }
 
@@ -1070,44 +1138,9 @@ fn fire_expansion_with_fillin(
         }
     }
 
-    // Replay any keystrokes that were buffered during injection
-    let buffered: Vec<crate::hotkeys::BufferedKey> =
-        crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
-    if !buffered.is_empty() {
-        crate::hotkeys::SUPPRESS_SIMULATED
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        for key in &buffered {
-            send_vk_key(key.vk_code as u16, !key.is_keydown);
-            thread::sleep(Duration::from_millis(2));
-        }
-        crate::hotkeys::SUPPRESS_SIMULATED
-            .store(false, std::sync::atomic::Ordering::SeqCst);
-
-        let last_was_space = buffered.last()
-            .map(|k| k.vk_code == 0x20 && k.is_keydown)
-            .unwrap_or(false);
-        for key in &buffered {
-            if !key.is_keydown { continue; }
-            if key.vk_code == 0x20 { continue; }
-            if key.vk_code == 0x08 { buffer_pop(); continue; }
-            if key.vk_code == 0x0D || key.vk_code == 0x1B || key.vk_code == 0x09 {
-                buffer_clear();
-                break;
-            }
-            if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
-            if let Some(ch) = crate::hotkeys::resolve_char(key.vk_code, key.scan_code) {
-                buffer_push(ch);
-                check_immediate_triggers();
-            }
-        }
-        if last_was_space {
-            check_space_trigger();
-            buffer_clear();
-        }
-    }
-
-    crate::hotkeys::sync_modifier_state_from_os();
-    // _guard drops here → INJECTION_IN_PROGRESS = false
+    // Replay buffered keystrokes and re-check triggers. The helper takes
+    // the guard and releases it BEFORE the re-checks — see its doc comment.
+    replay_buffered_and_recheck(_guard);
 }
 
 // ── Token resolution ────────────────────────────────────────────────────────
@@ -1351,6 +1384,11 @@ fn build_cf_html(fragment: &str) -> Vec<u8> {
 /// Slack, Teams) receive formatted content. Target apps that don't accept
 /// CF_HTML fall back to CF_UNICODETEXT automatically — no extra wiring needed.
 fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
+    log::info!(
+        "[Trigr] Clipboard write (expansions{}): \"{}\"",
+        if html.is_some() { ", +html" } else { "" },
+        log_preview(text)
+    );
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let text_bytes = wide.len() * 2;
     let html_blob = html.map(build_cf_html);
@@ -1545,6 +1583,7 @@ pub(crate) fn snapshot_clipboard() -> Vec<(u32, Vec<u8>)> {
 /// expansion text from the Windows clipboard. Returns false if the clipboard
 /// couldn't be opened (clipboard contents are then left as Trigr wrote them).
 pub(crate) fn restore_clipboard_snapshot(snapshot: &[(u32, Vec<u8>)]) -> bool {
+    log::info!("[Trigr] Clipboard restore: {} formats", snapshot.len());
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
         .store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -1682,6 +1721,7 @@ pub(crate) fn target_needs_shift_insert(target_hwnd: isize) -> bool {
 
 /// Inject text via batched KEYEVENTF_UNICODE SendInput (single call).
 fn inject_via_sendinput(text: &str, target_hwnd: isize) {
+    log::info!("[Trigr] Inject (sendinput): \"{}\"", log_preview(text));
     // Release physically held modifiers
     let held = crate::actions::release_held_modifiers();
 
@@ -1768,6 +1808,7 @@ fn inject_via_sendinput(text: &str, target_hwnd: isize) {
 /// rich text (Word, Outlook, Gmail, Slack, Teams) receive formatted content.
 /// Apps that don't accept CF_HTML automatically fall back to CF_UNICODETEXT.
 fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
+    log::info!("[Trigr] Inject (clipboard): \"{}\"", log_preview(text));
     // Snapshot every format currently on the clipboard. Text-only save misses
     // CF_DIB images (Snagit, Snipping Tool), CF_HDROP file drops, RTF from
     // Word, and registered formats from Office/Chromium — leaving Trigr's
@@ -1963,6 +2004,9 @@ fn fire_variant_expansion(
     options: &[serde_json::Value],
     global_vars: &HashMap<String, String>,
 ) {
+    if !fire_rate_ok(trigger) {
+        return;
+    }
     crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
     let app = match APP_HANDLE.get() {
@@ -2241,6 +2285,9 @@ fn fire_image_expansion(
     image_path: &str,
     image_scale: u32,
 ) {
+    if !fire_rate_ok(_trigger) {
+        return;
+    }
     use image::GenericImageView;
 
     // Check file exists
@@ -2400,44 +2447,9 @@ fn fire_image_expansion(
         crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(false, std::sync::atomic::Ordering::SeqCst);
 
-        // Replay any keystrokes buffered during injection
-        let buffered: Vec<crate::hotkeys::BufferedKey> =
-            crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
-        if !buffered.is_empty() {
-            crate::hotkeys::SUPPRESS_SIMULATED
-                .store(true, std::sync::atomic::Ordering::SeqCst);
-            for key in &buffered {
-                send_vk_key(key.vk_code as u16, !key.is_keydown);
-                thread::sleep(Duration::from_millis(2));
-            }
-            crate::hotkeys::SUPPRESS_SIMULATED
-                .store(false, std::sync::atomic::Ordering::SeqCst);
-
-            let last_was_space = buffered.last()
-                .map(|k| k.vk_code == 0x20 && k.is_keydown)
-                .unwrap_or(false);
-            for key in &buffered {
-                if !key.is_keydown { continue; }
-                if key.vk_code == 0x20 { continue; }
-                if key.vk_code == 0x08 { buffer_pop(); continue; }
-                if key.vk_code == 0x0D || key.vk_code == 0x1B || key.vk_code == 0x09 {
-                    buffer_clear();
-                    break;
-                }
-                if crate::hotkeys::is_modifier_vk(key.vk_code) { continue; }
-                if let Some(ch) = crate::hotkeys::resolve_char(key.vk_code, key.scan_code) {
-                    buffer_push(ch);
-                    check_immediate_triggers();
-                }
-            }
-            if last_was_space {
-                check_space_trigger();
-                buffer_clear();
-            }
-        }
-
-        crate::hotkeys::sync_modifier_state_from_os();
-        // _guard drops here → INJECTION_IN_PROGRESS = false
+        // Replay buffered keystrokes and re-check triggers. The helper takes
+        // the guard and releases it BEFORE the re-checks — see its doc comment.
+        replay_buffered_and_recheck(_guard);
     });
 }
 
