@@ -10,12 +10,11 @@ use tauri::{AppHandle, Emitter};
 
 use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HANDLE, RECT};
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, PostThreadMessageW, QueryFullProcessImageNameW,
-    PROCESS_QUERY_LIMITED_INFORMATION,
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, GWL_STYLE, WS_CAPTION,
+    GetWindowThreadProcessId, PostThreadMessageW, GWL_STYLE, WS_CAPTION,
 };
 use windows_sys::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
