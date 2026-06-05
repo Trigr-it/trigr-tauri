@@ -22,6 +22,23 @@ static KB_HOOK: AtomicIsize = AtomicIsize::new(0);
 static MOUSE_HOOK: AtomicIsize = AtomicIsize::new(0);
 static HOOK_THREAD_ID: AtomicIsize = AtomicIsize::new(0);
 static HOOKS_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// True when the LL mouse hook has been intentionally uninstalled because the
+/// foreground window is fullscreen / borderless-fullscreen / chrome-less (e.g.
+/// World of Warcraft). The hook adds per-event latency that disrupts games'
+/// SetCursorPos recentering loops used for infinite camera rotation. The
+/// foreground watcher in foreground.rs sets this flag on transition + posts
+/// WM_TRIGR_MOUSE_HOOK_PAUSE / RESUME to the hook thread. Watchdog reads it to
+/// skip its heartbeat-stale reinstall (which would otherwise undo our pause).
+/// Runtime only — never persisted to config.
+pub static MOUSE_HOOK_PAUSED: AtomicBool = AtomicBool::new(false);
+
+/// Custom pump messages posted by the foreground watcher into the hook thread
+/// to selectively uninstall / reinstall only the LL mouse hook (keyboard hook
+/// stays installed). WM_USER range is Windows-reserved for app-private use and
+/// won't collide with WM_QUIT or any system message.
+pub const WM_TRIGR_MOUSE_HOOK_PAUSE: u32 = 0x0400 + 1;  // WM_USER + 1
+pub const WM_TRIGR_MOUSE_HOOK_RESUME: u32 = 0x0400 + 2; // WM_USER + 2
 pub(crate) static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
 static IS_RECORDING_HOTKEY: AtomicBool = AtomicBool::new(false);
 static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
@@ -2513,11 +2530,45 @@ fn spawn_hook_thread() {
                 // PeekMessageW polling loop — actively pumps LL hook messages.
                 // Unlike GetMessageW which blocks, this polls with a 1ms yield
                 // to guarantee the thread is always responsive to hook dispatches.
+                //
+                // Custom messages handled here:
+                //  - WM_TRIGR_MOUSE_HOOK_PAUSE: uninstall ONLY the mouse hook
+                //  - WM_TRIGR_MOUSE_HOOK_RESUME: reinstall the mouse hook
+                // Both posted from foreground.rs on fullscreen-state transition.
+                // Win32 thread affinity is respected — install/uninstall here on
+                // the same thread that originally installed the hooks.
                 let mut msg: MSG = std::mem::zeroed();
                 'pump: loop {
                     while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
                         if msg.message == WM_QUIT {
                             break 'pump;
+                        }
+                        if msg.message == WM_TRIGR_MOUSE_HOOK_PAUSE {
+                            let h = MOUSE_HOOK.load(Ordering::SeqCst);
+                            if h != 0 {
+                                UnhookWindowsHookEx(h as _);
+                                MOUSE_HOOK.store(0, Ordering::SeqCst);
+                                log::info!("[HOOK] Mouse hook paused (fullscreen detected)");
+                            }
+                            continue;
+                        }
+                        if msg.message == WM_TRIGR_MOUSE_HOOK_RESUME {
+                            if MOUSE_HOOK.load(Ordering::SeqCst) == 0 {
+                                let ms = SetWindowsHookExW(
+                                    WH_MOUSE_LL,
+                                    Some(mouse_hook_proc),
+                                    std::ptr::null_mut(),
+                                    0,
+                                );
+                                if !ms.is_null() {
+                                    MOUSE_HOOK.store(ms as isize, Ordering::SeqCst);
+                                    log::info!("[HOOK] Mouse hook resumed (foreground left fullscreen)");
+                                } else {
+                                    let err = windows_sys::Win32::Foundation::GetLastError();
+                                    log::warn!("[HOOK] Mouse hook resume failed — GetLastError={}", err);
+                                }
+                            }
+                            continue;
                         }
                     }
                     std::thread::sleep(Duration::from_millis(1));
@@ -2555,10 +2606,24 @@ pub fn start_hooks(app: AppHandle) {
             thread::sleep(Duration::from_secs(5));
             loop {
                 thread::sleep(Duration::from_secs(15));
+                // Skip the stale-check entirely while the mouse hook is intentionally
+                // paused (foreground watcher detected a fullscreen game). Tearing
+                // down the thread here would re-install the mouse hook and re-break
+                // the game until the next foreground poll (~1.5s later). Re-baseline
+                // the heartbeat counter so we don't immediately trip on resume.
+                if MOUSE_HOOK_PAUSED.load(Ordering::SeqCst) {
+                    last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+                    continue;
+                }
                 let current = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                 if current == last_heartbeat && HOOKS_RUNNING.load(Ordering::SeqCst) {
                     // Stale — wait another 15s to confirm (30s total)
                     thread::sleep(Duration::from_secs(15));
+                    // Re-check pause state — user may have entered fullscreen during the wait.
+                    if MOUSE_HOOK_PAUSED.load(Ordering::SeqCst) {
+                        last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+                        continue;
+                    }
                     let recheck = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                     if recheck == last_heartbeat {
                         log::warn!("[HOOK] Heartbeat stale for 30s — reinstalling hooks");
@@ -2623,6 +2688,13 @@ pub fn stop_hooks() {
 
 pub fn hooks_running() -> bool {
     HOOKS_RUNNING.load(Ordering::SeqCst)
+}
+
+/// Read the hook thread's Windows thread id. Returns 0 if hooks aren't running
+/// or are mid-teardown. Used by the foreground watcher to post the
+/// fullscreen-pause / resume custom messages via PostThreadMessageW.
+pub fn hook_thread_id() -> isize {
+    HOOK_THREAD_ID.load(Ordering::SeqCst)
 }
 
 // ── JS keydown forwarder (WebView2 capture path) ────────────────────────────

@@ -8,12 +8,17 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
-use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HANDLE, RECT};
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    OpenProcess, PostThreadMessageW, QueryFullProcessImageNameW,
+    PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
+    GetWindowThreadProcessId, GWL_STYLE, WS_CAPTION,
+};
+use windows_sys::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 
 const POLL_INTERVAL_MS: u64 = 1500;
@@ -238,6 +243,80 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
 
 // ── Watcher lifecycle ───────────────────────────────────────────────────────
 
+/// True iff the given HWND is fullscreen / borderless-fullscreen / chrome-less.
+///
+/// Distinguishes:
+///   exclusive-fullscreen DirectX game  (no WS_CAPTION, rect == monitor) → TRUE
+///   borderless-windowed game           (no WS_CAPTION, rect == monitor) → TRUE
+///   F11 browser / video fullscreen     (no WS_CAPTION, rect == monitor) → TRUE
+///   maximised normal window            (has WS_CAPTION)                  → FALSE
+///   any normal windowed app            (rect != monitor)                 → FALSE
+///
+/// Used by the foreground watcher to pause the LL mouse hook while a game
+/// has focus — games using SetCursorPos-recentering for camera rotation
+/// (e.g. World of Warcraft) misbehave with the per-event latency our hook
+/// adds. Read-only: this function does not modify any system state.
+fn is_window_fullscreen(hwnd: isize) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
+    unsafe {
+        // 1) No-chrome check: any window with WS_CAPTION (title bar) is a
+        //    normal app, even when maximised. Fast bail-out.
+        let style = GetWindowLongW(hwnd as _, GWL_STYLE) as u32;
+        if (style & WS_CAPTION) != 0 {
+            return false;
+        }
+
+        // 2) Window rect vs monitor rect. We use rcMonitor (the full monitor
+        //    bounds) not rcWork (which excludes the taskbar) — borderless
+        //    games cover the taskbar too.
+        let mut wr: RECT = std::mem::zeroed();
+        if GetWindowRect(hwnd as _, &mut wr) == 0 {
+            return false;
+        }
+        let hmon = MonitorFromWindow(hwnd as _, MONITOR_DEFAULTTONEAREST);
+        if hmon.is_null() {
+            return false;
+        }
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(hmon, &mut mi) == 0 {
+            return false;
+        }
+        let mr = mi.rcMonitor;
+
+        // 3) Equality with ~2px tolerance — some games' window rects are
+        //    off-by-one on the right/bottom edges.
+        const TOL: i32 = 2;
+        (wr.left - mr.left).abs() <= TOL
+            && (wr.top - mr.top).abs() <= TOL
+            && (wr.right - mr.right).abs() <= TOL
+            && (wr.bottom - mr.bottom).abs() <= TOL
+    }
+}
+
+/// Signal the hook thread to pause or resume the LL mouse hook. Best-effort:
+/// if HOOK_THREAD_ID has been cleared (mid-teardown), PostThreadMessageW(0,..)
+/// is a silent no-op.
+fn set_mouse_hook_paused(paused: bool) {
+    // Set the atomic BEFORE posting so the watchdog observes the paused state
+    // before any heartbeat tick that might otherwise trigger a reinstall.
+    crate::hotkeys::MOUSE_HOOK_PAUSED.store(paused, Ordering::SeqCst);
+    let tid = crate::hotkeys::hook_thread_id();
+    if tid == 0 {
+        return;
+    }
+    let msg = if paused {
+        crate::hotkeys::WM_TRIGR_MOUSE_HOOK_PAUSE
+    } else {
+        crate::hotkeys::WM_TRIGR_MOUSE_HOOK_RESUME
+    };
+    unsafe {
+        PostThreadMessageW(tid as u32, msg, 0, 0);
+    }
+}
+
 pub fn start_watcher(app: AppHandle) {
     if WATCHER_RUNNING.load(Ordering::Relaxed) {
         return;
@@ -250,6 +329,9 @@ pub fn start_watcher(app: AppHandle) {
             info!("[Trigr] Foreground watcher started ({}ms poll)", POLL_INTERVAL_MS);
 
             let mut prune_counter: u32 = 0;
+            // Local transition tracker for fullscreen-detected mouse-hook pause.
+            // Starts false (normal startup state); only flips on observed change.
+            let mut fs_last: bool = false;
 
             while WATCHER_RUNNING.load(Ordering::Relaxed) {
                 unsafe {
@@ -273,6 +355,21 @@ pub fn start_watcher(app: AppHandle) {
                                 handle_foreground_change(&name, &title, &app);
                             }
                         }
+
+                        // Fullscreen-detect mouse hook pause/resume. Checked
+                        // every poll (not gated on hwnd_changed) so a window
+                        // toggling fullscreen in-place — e.g. browser F11 —
+                        // is still caught.
+                        let fs_now = is_window_fullscreen(hwnd_val);
+                        if fs_now != fs_last {
+                            set_mouse_hook_paused(fs_now);
+                            fs_last = fs_now;
+                        }
+                    } else if fs_last {
+                        // No foreground window (rare — e.g. desktop has focus).
+                        // Treat as not-fullscreen so the hook resumes.
+                        set_mouse_hook_paused(false);
+                        fs_last = false;
                     }
                 }
 
