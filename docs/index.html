@@ -463,6 +463,7 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
    BENTO FEATURE GRID
    ════════════════════════════════════════════════════════════ */
 .bento { display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:minmax(180px,auto); gap:18px; margin-top:64px; }
+.bento-rail { display:contents; } /* invisible wrapper on desktop — becomes the mobile swipe rail ≤768px */
 .b-tile { position:relative; background:var(--bg-card); border:1px solid var(--hairline); border-radius:20px; padding:28px; display:flex; flex-direction:column; gap:12px; overflow:hidden; transition:border-color 0.3s, transform 0.3s, background 0.3s; }
 .b-tile::before { content:''; position:absolute; top:0; left:24px; right:24px; height:1px; background:linear-gradient(90deg,transparent,rgba(232,160,32,0.55),transparent); opacity:0; transition:opacity 0.35s; }
 .b-tile:hover { border-color:var(--hairline-gold); transform:translateY(-2px); background:var(--bg-card-hi); }
@@ -1079,6 +1080,45 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .ss-stage { padding: 20px 12px; min-height: 320px; }
 }
 
+/* ════════════════════════════════════════════════════════════
+   MOBILE SWIPE RAILS (≤768px)
+   Feature tiles + who-cards become horizontal snap-scroll rails
+   with a peeking next card. Desktop untouched: .bento-rail is
+   display:contents above 768px so the grid sees through it.
+   AHK tile stays full-width below the rail (never behind a swipe).
+   ════════════════════════════════════════════════════════════ */
+@media(max-width:768px){
+  .bento { display:block; }
+  .bento::before { content:'Swipe to explore →'; display:block; font-size:12px; letter-spacing:0.04em; color:var(--text-dim); margin-bottom:12px; }
+  .bento-rail {
+    display:flex; gap:14px; align-items:stretch;
+    overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity; scroll-padding-left:18px;
+    -webkit-overflow-scrolling:touch;
+    margin:0 -18px; padding:2px 18px 16px;
+    scrollbar-width:none;
+  }
+  .bento-rail::-webkit-scrollbar { display:none; }
+  .bento-rail > .b-tile { flex:0 0 82vw; max-width:360px; scroll-snap-align:start; }
+  /* The page hero already shows the full interactive keyboard; hiding the
+     mini-kb here keeps rail card heights balanced. Stats stay. */
+  .bento-rail .b-mini-kb { display:none; }
+  .bento-rail .b-hero-stats { flex-direction:row; min-width:0; }
+  .bento .b-ahk { margin-top:10px; }
+
+  .who-list::before { content:'Swipe to explore →'; display:block; font-size:12px; letter-spacing:0.04em; color:var(--text-dim); margin-bottom:12px; }
+  .who-row {
+    display:flex; gap:14px; align-items:stretch;
+    overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity; scroll-padding-left:18px;
+    -webkit-overflow-scrolling:touch;
+    margin:0 -18px; padding:2px 18px 16px;
+    scrollbar-width:none;
+  }
+  .who-row::-webkit-scrollbar { display:none; }
+  .who-row > .who-card { flex:0 0 78vw; max-width:340px; scroll-snap-align:start; }
+}
+
 </style>
 </head>
 <body>
@@ -1444,6 +1484,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     <p class="section-sub">One app, one install, your whole team. Every feature is set up by clicking — not scripted, not configured, never IT-blocked.</p>
 
     <div class="bento">
+      <div class="bento-rail"><!-- desktop: display:contents (invisible to grid). mobile: horizontal swipe rail -->
       <!-- HERO TILE: Hotkey Remapping -->
       <div class="b-tile b-tile-hero">
         <div class="b-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg></div>
@@ -1520,8 +1561,9 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <div class="voice-wave"><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span></div>
         <span class="b-tag tag-vc">Offline voice</span>
       </div>
+      </div><!-- /bento-rail -->
 
-      <!-- AHK FULL WIDTH -->
+      <!-- AHK FULL WIDTH (deliberately outside the mobile rail — never hidden behind a swipe) -->
       <div class="b-tile b-tile-full b-ahk">
         <div class="b-ahk-text">
           <div class="b-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg></div>
