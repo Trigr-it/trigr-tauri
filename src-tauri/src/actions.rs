@@ -122,6 +122,42 @@ impl Drop for SuppressionGuard {
     }
 }
 
+// ── Paste-op re-entrancy guard ─────────────────────────────────────────────
+// `paste_clipboard_item`, `paste_text`, and `copy_clipboard_item` each spawn a
+// fresh thread per call and do a read-prev / write-text / sleep / restore-prev
+// dance against the system clipboard. Concurrent invocations (the LL hook can
+// emit clipboard-overlay-key on Windows key-repeat, or a user clicks repeatedly
+// while the UI is laggy) interleave their reads/writes — observed on 2026-06-05
+// producing thousands of alternating-pair clipboard rows because each thread's
+// `prev` snapshot captures another thread's mid-flight write.
+//
+// One shared AtomicBool gates all three paths: the first call acquires, every
+// concurrent call drops out instantly. Released on thread exit (including
+// panic) via Drop, so a stuck paste can't deadlock future ones.
+pub static PASTE_OP_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) struct PasteOpGuard;
+
+impl PasteOpGuard {
+    /// Returns Some(guard) if no other paste/copy op is running. Returns None
+    /// if one is already in flight — the caller MUST return without touching
+    /// the clipboard.
+    pub(crate) fn try_acquire() -> Option<Self> {
+        match PASTE_OP_ACTIVE.compare_exchange(
+            false, true, Ordering::SeqCst, Ordering::SeqCst,
+        ) {
+            Ok(_) => Some(PasteOpGuard),
+            Err(_) => None,
+        }
+    }
+}
+
+impl Drop for PasteOpGuard {
+    fn drop(&mut self) {
+        PASTE_OP_ACTIVE.store(false, Ordering::SeqCst);
+    }
+}
+
 // ── Unified app launcher (path or AppsFolder AUMID) ───────────────────────
 //
 // Single helper for both single-action `app` assignments and macro `Open App`

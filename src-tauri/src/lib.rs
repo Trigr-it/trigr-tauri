@@ -2042,6 +2042,19 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
     let target_hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
 
     std::thread::spawn(move || {
+        // Re-entrancy guard: drop instantly if another paste/copy op is in
+        // flight. Without this, repeated Enter on the clipboard overlay (LL
+        // hook key-repeat, or clicks during UI lag) spawns concurrent threads
+        // whose read-prev/write-text/restore-prev interleave and flood the
+        // clipboard. See actions::PasteOpGuard.
+        let _paste_guard = match actions::PasteOpGuard::try_acquire() {
+            Some(g) => g,
+            None => {
+                log::info!("[Trigr] paste_clipboard_item skipped — concurrent paste/copy op in flight");
+                return;
+            }
+        };
+
         // Counter is incremented after the paste path succeeds (set inside the match below).
         let mut pasted_ok = false;
         // Hide the overlay first so focus transfer is clean
@@ -2155,6 +2168,17 @@ fn paste_text(text: String, source_id: Option<i64>, _app: tauri::AppHandle) {
     let target_hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
 
     std::thread::spawn(move || {
+        // Re-entrancy guard: same defect as paste_clipboard_item — concurrent
+        // calls would interleave read-prev/write/restore-prev and flood the
+        // clipboard. See actions::PasteOpGuard.
+        let _paste_guard = match actions::PasteOpGuard::try_acquire() {
+            Some(g) => g,
+            None => {
+                log::info!("[Trigr] paste_text skipped — concurrent paste/copy op in flight");
+                return;
+            }
+        };
+
         std::thread::sleep(std::time::Duration::from_millis(30));
 
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
@@ -2220,6 +2244,17 @@ fn copy_clipboard_item(id: i64) {
     };
 
     std::thread::spawn(move || {
+        // Re-entrancy guard: shared with paste_clipboard_item / paste_text so a
+        // burst of copy-then-paste calls (or repeated copy clicks) can't race.
+        // See actions::PasteOpGuard.
+        let _paste_guard = match actions::PasteOpGuard::try_acquire() {
+            Some(g) => g,
+            None => {
+                log::info!("[Trigr] copy_clipboard_item skipped — concurrent paste/copy op in flight");
+                return;
+            }
+        };
+
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -2352,7 +2387,13 @@ fn save_clipboard_image_as(id: i64, format: String, app: tauri::AppHandle) -> bo
 }
 
 /// Write image to clipboard as CF_DIB + PNG stream + CF_UNICODETEXT.
-/// Self-contained version for the clipboard paste path.
+/// Self-contained version for the clipboard paste path. Applies the same three
+/// protections as text writes so the image doesn't leak into Win+V history or
+/// re-enter Trigr's own clipboard DB on the listener's WM_CLIPBOARDUPDATE:
+///   1. SUPPRESS_NEXT_CLIPBOARD_WRITE (level flag for synchronous window)
+///   2. mark_clipboard_excluded (Windows Clipboard History opt-out)
+///   3. record_self_clipboard_write (seqnum record for async H3 race)
+/// Callers also set SUPPRESS_NEXT externally — that's redundant but harmless.
 fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_bytes: &[u8]) {
     use windows_sys::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
@@ -2364,6 +2405,9 @@ fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_byt
     let header_size: u32 = 40;
     let pixel_data_size = bgra_pixels.len();
     let total_size = header_size as usize + pixel_data_size;
+
+    actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
+        .store(true, std::sync::atomic::Ordering::SeqCst);
 
     unsafe {
         if OpenClipboard(std::ptr::null_mut()) == 0 {
@@ -2410,8 +2454,16 @@ fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_byt
             }
         }
 
+        // Keep image writes out of Win+V / cloud clipboard — must be set while
+        // clipboard is OPEN and AFTER the real content formats.
+        crate::expansions::mark_clipboard_excluded();
+
         CloseClipboard();
     }
+
+    // Record the seqnum produced by this write so the listener skips it even
+    // if WM_CLIPBOARDUPDATE arrives after SUPPRESS_NEXT was cleared.
+    actions::record_self_clipboard_write();
 }
 
 #[tauri::command]
