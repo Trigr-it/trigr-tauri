@@ -383,7 +383,7 @@
 /* Type selector */
 .type-selector {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 
@@ -442,6 +442,42 @@
   letter-spacing: 0.04em;
   text-align: center;
   line-height: 1.2;
+}
+
+/* Open sub-type segmented bar — shown while the merged Open button is active */
+.open-subtype-bar {
+  display: flex;
+  gap: 6px;
+  margin-top: -4px;
+}
+
+.open-subtype-btn {
+  flex: 1;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.open-subtype-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.open-subtype-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .type-desc {

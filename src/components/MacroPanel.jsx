@@ -16,42 +16,42 @@ const ACTION_TYPES = [
   {
     id: 'text',
     Icon: Type,
-    label: 'Type Text',
+    label: 'Text',
     desc: 'Types a text snippet when key is pressed',
     color: '#64b4ff',
   },
   {
     id: 'hotkey',
     Icon: Keyboard,
-    label: 'Send Hotkey',
+    label: 'Hotkey',
     desc: 'Triggers a key combination like Ctrl+C',
     color: '#c864ff',
   },
   {
     id: 'app',
     Icon: AppWindow,
-    label: 'Open App',
+    label: 'App',
     desc: 'Launch an application or file',
     color: '#50c878',
   },
   {
     id: 'url',
     Icon: Globe,
-    label: 'Open URL',
+    label: 'URL',
     desc: 'Open a website in your browser',
     color: '#ffc832',
   },
   {
     id: 'folder',
     Icon: FolderOpen,
-    label: 'Open Folder',
+    label: 'Folder',
     desc: 'Open a folder in File Explorer',
     color: '#40c8a0',
   },
   {
     id: 'macro',
     Icon: Layers,
-    label: 'Macro Sequence',
+    label: 'Macro',
     desc: 'Run a sequence of actions one after another',
     color: '#ff783c',
   },
@@ -63,6 +63,12 @@ const ACTION_TYPES = [
     color: '#4ecdc4',
   },
 ];
+
+// The three Open types (app/url/folder) collapse into a single "Open" button
+// in the type selector; the active sub-type is picked via the segmented bar
+// rendered below it. Underlying type ids are unchanged — saved assignments,
+// drafts and the Rust side are unaffected.
+const OPEN_TYPE_IDS = ['app', 'url', 'folder'];
 
 const MODIFIER_KEYS = ['Ctrl', 'Alt', 'Shift', 'Win'];
 const TRIGGER_KEYS = [
@@ -2055,6 +2061,13 @@ export default function MacroPanel({
   const effectiveDouble     = doubleAssignment || draftDoubleAssignment;
   const isDraftMode         = !selectedKey && !!draftAssignment;
   const [activeType, setActiveType] = useState('text');
+  // Which Open sub-type (app/url/folder) the merged Open selector button
+  // targets — clicking Open returns to the last-used sub-type. Tracks
+  // activeType so loading a saved url/folder assignment syncs the bar.
+  const [lastOpenType, setLastOpenType] = useState('app');
+  useEffect(() => {
+    if (OPEN_TYPE_IDS.includes(activeType)) setLastOpenType(activeType);
+  }, [activeType]);
   // Per-type form value drafts. Switching action type no longer wipes the
   // previous type's data — users can experiment freely (URL → Type Text →
   // back to URL) without losing what they typed. Only the active type's
@@ -2405,9 +2418,31 @@ export default function MacroPanel({
             >Cancel</button>
           </div>
         )}
-        {/* Action type selector */}
+        {/* Action type selector — App/URL/Folder share one Open button */}
         <div className="type-selector">
           {ACTION_TYPES.map(type => {
+            if (OPEN_TYPE_IDS.includes(type.id)) {
+              // Render the merged Open button at the first Open slot only.
+              if (type.id !== OPEN_TYPE_IDS[0]) return null;
+              const openType = ACTION_TYPES.find(t => t.id === lastOpenType) || type;
+              const OpenIcon = openType.Icon;
+              const isOpenActive = OPEN_TYPE_IDS.includes(activeType);
+              const hasDraft = !isOpenActive
+                && OPEN_TYPE_IDS.some(id => isDraftFilled(id, formValuesByType[id]));
+              return (
+                <button
+                  key="open"
+                  className={`type-btn ${isOpenActive ? 'active' : ''}`}
+                  style={{ '--type-color': openType.color }}
+                  onClick={() => setActiveType(lastOpenType)}
+                  type="button"
+                >
+                  <span className="type-btn-icon"><OpenIcon size={18} strokeWidth={1.75} /></span>
+                  <span className="type-btn-label">Open</span>
+                  {hasDraft && <span className="type-btn-draft-dot" aria-label="Has saved draft" />}
+                </button>
+              );
+            }
             const TypeIcon = type.Icon;
             // Show a dot when this type has a non-empty draft stashed but isn't
             // currently active — signals "you have content here" without
@@ -2428,6 +2463,29 @@ export default function MacroPanel({
             );
           })}
         </div>
+
+        {/* Open sub-type bar — visible while the merged Open button is active */}
+        {OPEN_TYPE_IDS.includes(activeType) && (
+          <div className="open-subtype-bar">
+            {OPEN_TYPE_IDS.map(id => {
+              const t = ACTION_TYPES.find(x => x.id === id);
+              const SubIcon = t.Icon;
+              const hasDraft = id !== activeType && isDraftFilled(id, formValuesByType[id]);
+              return (
+                <button
+                  key={id}
+                  className={`open-subtype-btn${activeType === id ? ' active' : ''}`}
+                  onClick={() => setActiveType(id)}
+                  type="button"
+                >
+                  <SubIcon size={13} strokeWidth={1.75} />
+                  {t.label}
+                  {hasDraft && <span className="press-mode-dot" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Type description */}
         <div className="type-desc">
