@@ -1117,6 +1117,41 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   }
   .who-row::-webkit-scrollbar { display:none; }
   .who-row > .who-card { flex:0 0 78vw; max-width:340px; scroll-snap-align:start; }
+
+  /* SEE IT demo panels → 2-card swipe rail (peek is the affordance) */
+  .demo-panels {
+    display:flex; gap:14px; align-items:stretch;
+    overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity; scroll-padding-left:18px;
+    -webkit-overflow-scrolling:touch;
+    margin:48px -18px 0; padding:2px 18px 16px;
+    scrollbar-width:none;
+  }
+  .demo-panels::-webkit-scrollbar { display:none; }
+  .demo-panels > .demo-panel { flex:0 0 88vw; max-width:400px; scroll-snap-align:start; min-height:560px; }
+
+  /* WHY VISUAL: AHK-vs-Trigr comparison → swipe rail with the OR pivot between cards */
+  .vs-grid {
+    display:flex; gap:14px; align-items:stretch;
+    overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity; scroll-padding-left:18px;
+    -webkit-overflow-scrolling:touch;
+    margin:48px -18px 0; padding:2px 18px 16px;
+    scrollbar-width:none;
+  }
+  .vs-grid::-webkit-scrollbar { display:none; }
+  .vs-grid > .vs-col { flex:0 0 86vw; max-width:420px; scroll-snap-align:start; }
+  .vs-grid > .vs-or { flex:0 0 auto; align-self:center; padding:0 2px; }
+  .vs-or-circle { transform:none; box-shadow:0 0 0 6px var(--bg); }
+
+  /* HOW IT WORKS: drop the scroll-driven mockup on mobile (scrollytelling
+     doesn't work with touch scrolling). The three text steps stay, compacted. */
+  .sticky-visual { display:none; }
+  .sticky-step { min-height:auto; padding-bottom:28px; opacity:1; }
+  .sticky-step h3 { font-size:28px; }
+
+  /* Tighter vertical rhythm on phones */
+  .section { padding:64px 18px; }
 }
 
 </style>
