@@ -153,12 +153,6 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 [data-theme="light"] .hero-bg::before { background-image:linear-gradient(rgba(26,26,46,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(26,26,46,0.05) 1px,transparent 1px); }
 [data-theme="light"] .hero-bg::after { background:radial-gradient(ellipse at center,rgba(232,160,32,0.09) 0%,rgba(232,160,32,0.02) 35%,transparent 70%); }
 .hero-inner { position:relative; max-width:1200px; margin:0 auto; padding:120px 32px 0; text-align:center; }
-.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.08); border:1px solid var(--hairline-gold); border-radius:100px; padding:6px 14px 6px 10px; font-size:12px; font-weight:500; color:var(--gold-light); margin-bottom:36px; animation:fadeInUp 0.6s ease both; }
-[data-theme="light"] .hero-badge { color:var(--gold-dark); }
-.hero-badge-dot { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:pulse 2s infinite; }
-.hero-badge strong { color:var(--text); font-weight:600; }
-@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.7)} }
-
 .hero-h1 { font-family:var(--font-display); font-weight:700; font-size:clamp(44px,6.5vw,92px); line-height:1.0; letter-spacing:-0.035em; color:var(--text); margin-bottom:28px; animation:fadeInUp 0.7s 0.1s ease both; }
 .hero-h1 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 50%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .hero-h1 .strike { position:relative; display:inline-block; }
@@ -172,74 +166,9 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; transition:all 0.2s; border:none; cursor:pointer; }
 .btn-primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
 [data-theme="light"] .btn-primary { color:#fff; }
-.btn-secondary { display:inline-flex; align-items:center; gap:8px; background:transparent; color:var(--text); text-decoration:none; padding:14px 22px; border-radius:10px; font-size:14px; font-weight:500; border:1px solid var(--hairline-strong); transition:all 0.2s; }
-.btn-secondary:hover { border-color:var(--hairline-gold); background:var(--gold-glow); color:var(--gold-light); }
-[data-theme="light"] .btn-secondary:hover { color:var(--gold-dark); }
 .hero-meta { margin-top:24px; font-size:12px; color:var(--text-dim); animation:fadeInUp 0.7s 0.4s ease both; letter-spacing:0.02em; }
 .hero-meta span { color:var(--text-muted); }
 @keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
-
-/* ── HERO NOTIFY (MailerLite v1.0 signup) ── */
-.hero-notify {
-  margin: 24px auto 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  max-width: 380px;
-  animation: fadeInUp 0.6s 0.35s ease both;
-}
-.hero-notify-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  font-weight: 600;
-}
-.hero-notify-divider::before,
-.hero-notify-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border-subtle);
-}
-.hero-notify-prompt {
-  font-size: 13px;
-  color: var(--text-muted);
-  text-align: center;
-  margin: 0 0 2px;
-}
-.hero-notify-prompt strong { color: var(--text); font-weight: 600; }
-.hero-notify-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--hairline-gold);
-  border-radius: 8px;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 9px 18px;
-  height: 38px;
-  cursor: pointer;
-  text-decoration: none;
-  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
-}
-.hero-notify-btn:hover {
-  background: var(--gold-glow);
-  border-color: var(--gold);
-  color: var(--gold-light);
-  transform: translateY(-1px);
-}
-[data-theme="light"] .hero-notify-btn:hover { color: var(--gold-dark); }
 
 /* ════════════════════════════════════════════════════════════
    MOCKUP — frame restyle (interior preserved)
@@ -1135,9 +1064,6 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 <section class="hero">
   <div class="hero-bg"></div>
   <div class="hero-inner">
-    <div class="hero-badge">
-      <span class="hero-badge-dot"></span><strong>Early Beta</strong> · Windows 10 & 11 · Free
-    </div>
     <h1 class="hero-h1">Your keyboard<br>can do more<br>than <em>type.</em></h1>
     <p class="hero-sub">Visual hotkeys, macros, and text expansion for Windows. No scripting required.</p>
     <div class="hero-actions">
@@ -1145,14 +1071,8 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
         Download for Windows
       </a>
-      <a href="trigr-help.html" class="btn-secondary">See how it works →</a>
     </div>
     <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
-    <div class="hero-notify">
-      <div class="hero-notify-divider">or</div>
-      <p class="hero-notify-prompt">Prefer to wait for <strong>v1.0</strong>? Get notified when it ships.</p>
-      <button type="button" class="hero-notify-btn ml-onclick-form" onclick="ml('show', 'EoKSIQ', true)">Notify me when v1.0 ships</button>
-    </div>
     <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Fully local — no accounts, no cloud <span>·</span> Latest: <span class="js-latest-version">v0.4.22</span></p>
 
     <!-- ── MOCKUP ── -->
@@ -2609,16 +2529,6 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
   }
 })();
 </script>
-
-<!-- MailerLite Universal -->
-<script>
-  (function(w,d,e,u,f,l,n){w[f]=w[f]||function(){(w[f].q=w[f].q||[])
-  .push(arguments);},l=d.createElement(e),l.async=1,l.src=u,
-  n=d.getElementsByTagName(e)[0],n.parentNode.insertBefore(l,n);})
-  (window,document,'script','https://assets.mailerlite.com/js/universal.js','ml');
-  ml('account', '2353025');
-</script>
-<!-- End MailerLite Universal -->
 
 </body>
 </html>
