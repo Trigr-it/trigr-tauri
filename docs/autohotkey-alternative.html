@@ -17,13 +17,15 @@
 <meta property="og:url" content="https://usetrigr.com/autohotkey-alternative.html">
 <meta property="og:title" content="AutoHotkey Alternative for Windows — Trigr (Free, No Scripting)">
 <meta property="og:description" content="A visual alternative to AutoHotkey for Windows 10 and 11. Hotkeys, macros, text expansion, and clipboard manager, with a UI instead of .ahk scripts. Free during beta.">
-<meta property="og:image" content="https://usetrigr.com/favicon-192.png">
+<meta property="og:image" content="https://usetrigr.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:site_name" content="Trigr">
 
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="AutoHotkey Alternative for Windows — Trigr (Free, No Scripting)">
 <meta name="twitter:description" content="A visual alternative to AutoHotkey for Windows 10 and 11. Hotkeys, macros, text expansion, and clipboard manager, with a UI instead of .ahk scripts.">
-<meta name="twitter:image" content="https://usetrigr.com/favicon-192.png">
+<meta name="twitter:image" content="https://usetrigr.com/og-image.png">
 
 <script type="application/ld+json">
 {
@@ -46,6 +48,44 @@
     "name": "Trigr",
     "url": "https://usetrigr.com"
   }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Will Trigr run my existing .ahk scripts?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Trigr has a built-in AHK Script action with both v1 and v2 runtimes bundled: paste a script, assign it to a key, and fire it. No separate AutoHotkey install needed. Most people rebuild their simple hotkeys and snippets in the visual editor and keep the runner for the scripts that genuinely need code." }
+    },
+    {
+      "@type": "Question",
+      "name": "Can Trigr do everything AHK can do?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Honestly, no. AHK is a full scripting language; if you write custom logic, parse text, or drive COM objects, AHK is the better tool for that work. Trigr covers the common cases without code: hotkeys, macros, text expansion, clipboard history, and app profiles. For the rest, the built-in AHK runner has you covered." }
+    },
+    {
+      "@type": "Question",
+      "name": "Why switch if AHK is free and works?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Not having to write or maintain code. A visual UI means you can see every binding at a glance, change one in seconds, and hand the setup to a teammate who has never seen a script." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it work with games?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes for most games. Trigr sends standard Windows input with realistic key timings. Some online games with anti-cheat may flag any simulated input; that's the same risk profile as AHK." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is the source code open?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The full source is public on GitHub under the Trigr Source-Available Licence: free to read and audit, not to redistribute. Not OSI open source, but every line the app runs is there to inspect." }
+    },
+    {
+      "@type": "Question",
+      "name": "What happens at v1.0? Will I have to pay?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The free tier stays free, and it includes everything you'd use instead of AHK: hotkeys, macros, text expansion, and the AHK runner. An optional Pro licence adds extras at v1.0. Anyone who joins during the beta gets Pro at half price for their first year." }
+    }
+  ]
 }
 </script>
 

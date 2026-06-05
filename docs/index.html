@@ -18,13 +18,15 @@
 <meta property="og:url" content="https://usetrigr.com/">
 <meta property="og:title" content="Trigr — Hotkeys, Macros & Text Expansion for Windows. No Scripting.">
 <meta property="og:description" content="Your keyboard can do more than type. Visual hotkeys, macros and text expansion for Windows — set up in seconds, no scripting required. Free to download.">
-<meta property="og:image" content="https://usetrigr.com/favicon-192.png">
+<meta property="og:image" content="https://usetrigr.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:site_name" content="Trigr">
 
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Trigr — Hotkeys, Macros & Text Expansion for Windows">
 <meta name="twitter:description" content="Visual hotkeys, macros and text expansion for Windows. Set up in seconds, no scripting required.">
-<meta name="twitter:image" content="https://usetrigr.com/favicon-192.png">
+<meta name="twitter:image" content="https://usetrigr.com/og-image.png">
 
 <script type="application/ld+json">
 {
@@ -60,6 +62,49 @@
     "name": "Trigr",
     "url": "https://usetrigr.com"
   }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is it really free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — fully free during Beta and the core feature set stays free at v1.0. Pro and Teams licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch." }
+    },
+    {
+      "@type": "Question",
+      "name": "How is this different from AutoHotkey?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Trigr ships with AutoHotkey built in — both v1 and v2 — so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it phone home? Where does my data live?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Everything stays on your machine. Config, clipboard history, analytics — all in plain JSON and SQLite files in your %LOCALAPPDATA%. No accounts, no cloud, no telemetry. Voice commands (currently experimental) run locally via the Windows speech engine — no audio is ever transmitted." }
+    },
+    {
+      "@type": "Question",
+      "name": "Will my IT team allow it?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Trigr ships as a signed ~9MB installer that installs per-user. No admin rights, no system services, no network calls outside the optional update check. It installs to your user folder and uninstalls in one click via Add/Remove Programs. Most enterprise IT departments approve it as a standard productivity tool, since nothing it does requires elevated permissions or touches shared system files." }
+    },
+    {
+      "@type": "Question",
+      "name": "Will it work in Outlook / Excel / Revit / Slack?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Trigr works at the OS level using low-level keyboard hooks — the same mechanism every Windows shortcut already uses. If you can type into the app, Trigr works in it. No per-app integration required." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it slow my computer down?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No measurable impact. ~30MB of RAM and effectively 0% CPU when idle. The keyboard hook is callback-driven (no polling) and per-key processing is sub-millisecond. You won't notice it's running." }
+    },
+    {
+      "@type": "Question",
+      "name": "Can my whole team share configs?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — point Trigr at a shared folder (network drive, OneDrive, Dropbox) and everyone on your team gets the same hotkeys, expansions and macros. Live-synced, file-watcher-backed, conflict-managed. Handy for support teams, ops, or anyone with a shared playbook." }
+    }
+  ]
 }
 </script>
 
