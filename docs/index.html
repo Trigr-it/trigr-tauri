@@ -1143,6 +1143,10 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .vs-grid > .vs-col { flex:0 0 86vw; max-width:420px; scroll-snap-align:start; }
   .vs-grid > .vs-or { flex:0 0 auto; align-self:center; padding:0 2px; }
   .vs-or-circle { transform:none; box-shadow:0 0 0 6px var(--bg); }
+  /* Lead the swipe rail with the Trigr (good) card; AHK card after the OR pivot */
+  .vs-grid > .vs-col-good { order:1; }
+  .vs-grid > .vs-or { order:2; }
+  .vs-grid > .vs-col-bad { order:3; }
 
   /* HOW IT WORKS: drop the scroll-driven mockup on mobile (scrollytelling
      doesn't work with touch scrolling). The three text steps stay, compacted. */
