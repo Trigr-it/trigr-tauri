@@ -2585,6 +2585,26 @@ fn spawn_hook_thread() {
         .expect("Failed to spawn hook thread");
 }
 
+/// Tick-count timestamp of the last input event seen by the SYSTEM (any
+/// process, injected included), via GetLastInputInfo. Used by the hook
+/// health monitor to distinguish "user is AFK" (no input anywhere, heartbeat
+/// legitimately silent) from "Windows silently removed our hook" (system saw
+/// input our procs never reported). None if the API fails.
+fn last_system_input_tick() -> Option<u32> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+    unsafe {
+        let mut lii = LASTINPUTINFO {
+            cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+            dwTime: 0,
+        };
+        if GetLastInputInfo(&mut lii) != 0 {
+            Some(lii.dwTime)
+        } else {
+            None
+        }
+    }
+}
+
 pub fn start_hooks(app: AppHandle) {
     if HOOKS_RUNNING.load(Ordering::SeqCst) {
         return;
@@ -2603,6 +2623,7 @@ pub fn start_hooks(app: AppHandle) {
         .name("trigr-hook-monitor".to_string())
         .spawn(|| {
             let mut last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+            let mut last_input_tick = last_system_input_tick();
             thread::sleep(Duration::from_secs(5));
             loop {
                 thread::sleep(Duration::from_secs(15));
@@ -2613,6 +2634,7 @@ pub fn start_hooks(app: AppHandle) {
                 // the heartbeat counter so we don't immediately trip on resume.
                 if MOUSE_HOOK_PAUSED.load(Ordering::SeqCst) {
                     last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+                    last_input_tick = last_system_input_tick();
                     continue;
                 }
                 let current = HOOK_HEARTBEAT.load(Ordering::SeqCst);
@@ -2622,11 +2644,31 @@ pub fn start_hooks(app: AppHandle) {
                     // Re-check pause state — user may have entered fullscreen during the wait.
                     if MOUSE_HOOK_PAUSED.load(Ordering::SeqCst) {
                         last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+                        last_input_tick = last_system_input_tick();
                         continue;
                     }
                     let recheck = HOOK_HEARTBEAT.load(Ordering::SeqCst);
                     if recheck == last_heartbeat {
-                        log::warn!("[HOOK] Heartbeat stale for 30s — reinstalling hooks");
+                        // The heartbeat only ticks on real input events, so a
+                        // flat heartbeat can simply mean the user is AFK. Only
+                        // reinstall if the SYSTEM saw input during the stale
+                        // window that our hook procs never reported — that's
+                        // the silently-removed-hook signature. If the system
+                        // input tick hasn't moved either, the user is idle and
+                        // the hooks are (presumably) fine. API failure falls
+                        // through to reinstall, matching the old behaviour.
+                        let input_recheck = last_system_input_tick();
+                        let system_input_moved = match (last_input_tick, input_recheck) {
+                            (Some(before), Some(after)) => after != before,
+                            _ => true,
+                        };
+                        if !system_input_moved {
+                            log::debug!("[HOOK] Heartbeat quiet but system idle too — AFK, no reinstall");
+                            last_heartbeat = recheck;
+                            last_input_tick = input_recheck;
+                            continue;
+                        }
+                        log::warn!("[HOOK] Heartbeat stale for 30s with system input present — reinstalling hooks");
                         let tid = HOOK_THREAD_ID.load(Ordering::SeqCst);
                         if tid != 0 {
                             unsafe { PostThreadMessageW(tid as u32, WM_QUIT, 0, 0); }
@@ -2647,10 +2689,12 @@ pub fn start_hooks(app: AppHandle) {
                         log::info!("[HOOK] Hooks reinstalled, suppress set rebuilt");
                         thread::sleep(Duration::from_secs(5));
                         last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+                        last_input_tick = last_system_input_tick();
                         continue;
                     }
                 }
                 last_heartbeat = current;
+                last_input_tick = last_system_input_tick();
 
                 // ── Injection safety timeout ────────────────────────────
                 // If INJECTION_IN_PROGRESS has been true for >5 seconds,
