@@ -278,6 +278,8 @@ pub fn rebuild_tray_menu(app: &AppHandle) {
 // ── Window management ───────────────────────────────────────────────────────
 
 pub fn show_window(app: &AppHandle) {
+    // Restore the webview memory target trimmed while hidden in the tray.
+    crate::webview_mem::resume_for_show(app, "main");
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         // If the window is minimized, restore it before focusing — set_focus

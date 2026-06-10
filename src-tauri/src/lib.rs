@@ -12,6 +12,7 @@ mod licence;
 mod ocr;
 mod tray;
 mod voice;
+mod webview_mem;
 
 // ── Config (Phase 2) ────────────────────────────────────────────────────────
 
@@ -1138,6 +1139,8 @@ fn voice_overlay_open_time() -> &'static StdMutex<Option<StdInstant>> {
 }
 
 fn show_overlay(app: &tauri::AppHandle) {
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "overlay");
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST};
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow};
@@ -1232,6 +1235,8 @@ fn show_overlay(app: &tauri::AppHandle) {
 }
 
 fn show_voice_overlay(app: &tauri::AppHandle) {
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "overlay");
     use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST};
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow};
     use windows_sys::Win32::Foundation::POINT;
@@ -1322,6 +1327,8 @@ static CLIPBOARD_OVERLAY_TARGET: std::sync::atomic::AtomicIsize =
     std::sync::atomic::AtomicIsize::new(0);
 
 fn show_clipboard_overlay(app: &tauri::AppHandle) {
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "clipboardoverlay");
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
     let target = unsafe { GetForegroundWindow() as isize };
@@ -1432,6 +1439,8 @@ fn radial_menu_show_time() -> &'static StdMutex<Option<StdInstant>> {
 }
 
 fn show_radial_menu(app: &tauri::AppHandle) {
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "radialmenu");
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetCursorPos};
     use windows_sys::Win32::Foundation::POINT;
 
@@ -2738,6 +2747,7 @@ pub fn run() {
         // any other plugin per the plugin's own docs. Args are ignored —
         // future protocol-handler support (trigr://) can add argv parsing.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            webview_mem::resume_for_show(app, "main");
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.show();
@@ -3048,6 +3058,10 @@ pub fn run() {
 
             // Start foreground watcher for app-specific profile switching
             foreground::start_watcher(app.handle().clone());
+
+            // Reclaim renderer memory from long-hidden windows (suspend
+            // overlays / cache-trim main after 5 min hidden)
+            webview_mem::start(app.handle().clone());
 
             // Autolaunch: if --autolaunch flag, keep window hidden (tray only)
             // Normal launch: show window

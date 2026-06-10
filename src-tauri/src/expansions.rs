@@ -1000,6 +1000,8 @@ fn fire_expansion_with_fillin(
             let _ = win.set_position(tauri::LogicalPosition::new(x, y));
         }
 
+        // Wake a suspended webview BEFORE show/emit — see webview_mem.rs invariant.
+        crate::webview_mem::resume_for_show(app, "fillin");
         let _ = win.show();
         let _ = win.set_focus();
 
@@ -2102,6 +2104,8 @@ fn fire_variant_expansion(
             let _ = win.set_position(tauri::LogicalPosition::new(x, y));
         }
 
+        // Wake a suspended webview BEFORE show/emit — see webview_mem.rs invariant.
+        crate::webview_mem::resume_for_show(&app, "fillin");
         let _ = win.show();
         let _ = win.set_focus();
 
@@ -2194,6 +2198,8 @@ fn fire_variant_expansion(
                 crate::hotkeys::FILLIN_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
             }
 
+            // Wake a suspended webview BEFORE show/emit — see webview_mem.rs invariant.
+            crate::webview_mem::resume_for_show(&app, "fillin");
             let _ = win.show();
             let _ = win.set_focus();
 
