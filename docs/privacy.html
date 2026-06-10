@@ -165,12 +165,13 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
     <li><strong>Update checks:</strong> Trigr periodically checks for updates by requesting our update manifest hosted on GitHub. GitHub may log standard request metadata (IP address, user agent).</li>
     <li><strong>Support correspondence:</strong> If you email us, we retain the contents of that correspondence to provide support.</li>
     <li><strong>Website analytics:</strong> usetrigr.com may use privacy-respecting analytics to understand aggregate traffic. No personally identifying information is stored.</li>
+    <li><strong>Anonymous usage telemetry:</strong> The Trigr app sends us a once-daily summary containing the date, the number of triggers, text expansions, and macros fired that day, and the app version. It contains no content, no account details, and no device or install identifiers, so we cannot link it to you or to any other day's summary. We do not log or store the IP address these requests arrive from. You can turn telemetry off at any time in Settings (Privacy &amp; Security), and Trigr then sends nothing.</li>
   </ul>
 
   <h2>3. What we do NOT collect</h2>
   <ul>
     <li>Trigr does not transmit your keystrokes, clipboard contents, macro definitions, or text expansions to us or any third party. All such data is stored locally on your device.</li>
-    <li>Trigr's local usage analytics (e.g. macro execution counts) are stored in a local SQLite database on your machine and are not sent to us.</li>
+    <li>Trigr's detailed local usage analytics are stored in a local SQLite database on your machine. The only part sent to us is the once-daily anonymous summary described in section 2, and only if you have not turned telemetry off.</li>
   </ul>
 
   <h2>4. Why we process your data</h2>

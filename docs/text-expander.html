@@ -68,7 +68,7 @@
     {
       "@type": "Question",
       "name": "Is my data sent to the cloud?",
-      "acceptedAnswer": { "@type": "Answer", "text": "No. Snippets, settings, and clipboard history are stored in local files on your machine. There is no account, no sync service, and no telemetry. The app's only network call is checking GitHub for updates." }
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Snippets, settings, and clipboard history are stored in local files on your machine. There is no account and no sync service. The app makes two kinds of network call: an update check against GitHub, and a once-daily anonymous usage summary (counts of fired expansions and macros plus the app version, no content, no identifiers) that you can turn off in Settings." }
     },
     {
       "@type": "Question",
@@ -840,7 +840,7 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
       <div class="feat-card reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
         <div class="feat-title">Local-first</div>
-        <div class="feat-desc">Your snippets live in a local file on your machine and never leave it. No account, no sync service, no telemetry.</div>
+        <div class="feat-desc">Your snippets live in a local file on your machine and never leave it. No account, no sync service. The only usage data sent is an anonymous daily count, with an off switch in Settings.</div>
       </div>
       <div class="feat-card reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
@@ -908,7 +908,7 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
       </details>
       <details class="faq-item reveal">
         <summary class="faq-q">Is my data sent to the cloud?<span class="faq-q-icon"></span></summary>
-        <div class="faq-body">No. Snippets, settings, and clipboard history are stored in local files on your machine. There is no account, no sync service, and no telemetry. The app's only network call is checking GitHub for updates.</div>
+        <div class="faq-body">No. Snippets, settings, and clipboard history are stored in local files on your machine. There is no account and no sync service. The app makes two kinds of network call: an update check against GitHub, and a once-daily anonymous usage summary (counts of fired expansions and macros plus the app version, no content, no identifiers) that you can turn off in Settings.</div>
       </details>
       <details class="faq-item reveal">
         <summary class="faq-q">Why is it free?<span class="faq-q-icon"></span></summary>
