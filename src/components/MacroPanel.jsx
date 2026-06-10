@@ -5,7 +5,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import {
   Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, FileCode,
-  GripVertical, Copy,
+  GripVertical, Copy, Sparkles,
 } from 'lucide-react';
 import './MacroPanel.css';
 import { SearchBar } from './SearchBar';
@@ -19,6 +19,13 @@ const ACTION_TYPES = [
     label: 'Text',
     desc: 'Types a text snippet when key is pressed',
     color: '#64b4ff',
+  },
+  {
+    id: 'expansion',
+    Icon: Sparkles,
+    label: 'Expansion',
+    desc: 'Fires an existing text expansion when key is pressed',
+    color: '#a070ff',
   },
   {
     id: 'hotkey',
@@ -69,6 +76,10 @@ const ACTION_TYPES = [
 // rendered below it. Underlying type ids are unchanged — saved assignments,
 // drafts and the Rust side are unaffected.
 const OPEN_TYPE_IDS = ['app', 'url', 'folder'];
+
+// Text + Expansion collapse into a single "Text" button under the same
+// sub-pill pattern. Type ids stay distinct; saved assignments unchanged.
+const TEXT_TYPE_IDS = ['text', 'expansion'];
 
 const MODIFIER_KEYS = ['Ctrl', 'Alt', 'Shift', 'Win'];
 const TRIGGER_KEYS = [
@@ -202,6 +213,49 @@ function TextForm({ value, onChange, globalInputMethod }) {
         onChange={e => onChange({ ...value, text: e.target.value })}
         rows={4}
       />
+    </div>
+  );
+}
+
+// Single-action "fire an existing text expansion" — reuses FireTargetPicker
+// (mode='expansion') and stores the chosen trigger word in `value.trigger`.
+// The Rust side dispatches via `fire_expansion_by_trigger`, same path as the
+// "Fire Text Expansion" macro step.
+function ExpansionForm({ value, onChange, assignments }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const trigger = value.trigger || '';
+  const entry = trigger ? assignments?.[`GLOBAL::EXPANSION::${trigger}`] : null;
+  const isMissing = !!trigger && !entry;
+  const friendly = entry
+    ? (entry.data?.displayName ? `${entry.data.displayName} (:${trigger})` : `:${trigger}`)
+    : null;
+  const placeholder = 'Choose a text expansion…';
+  return (
+    <div className="form-section">
+      <label className="form-label">Text expansion</label>
+      <button
+        type="button"
+        className={`fire-target-chip fire-target-chip-block${trigger ? ' fire-target-chip-set' : ''}${isMissing ? ' fire-target-chip-missing' : ''}`}
+        onClick={() => setPickerOpen(true)}
+        title={isMissing ? `Missing: :${trigger}` : (friendly || placeholder)}
+      >
+        <span className="fire-target-chip-label">
+          {isMissing ? `Missing: :${trigger}` : (friendly || placeholder)}
+        </span>
+        <span className="fire-target-chip-caret" aria-hidden="true">▾</span>
+      </button>
+      <div className="form-hint">
+        Pressing this key fires the expansion as if you typed its trigger.
+      </div>
+      {pickerOpen && (
+        <FireTargetPicker
+          mode="expansion"
+          assignments={assignments || {}}
+          currentValue={trigger}
+          onSelect={(t) => { onChange({ ...value, trigger: t }); setPickerOpen(false); }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -577,18 +631,6 @@ function AhkForm({ value, onChange }) {
   const isV2 = version === 'v2';
   return (
     <div className="form-section">
-      <div className="ahk-version-row">
-        <button
-          type="button"
-          className={`ahk-version-pill ${!isV2 ? 'active' : ''}`}
-          onClick={() => onChange({ ...value, ahkVersion: 'v1' })}
-        >v1</button>
-        <button
-          type="button"
-          className={`ahk-version-pill ${isV2 ? 'active' : ''}`}
-          onClick={() => onChange({ ...value, ahkVersion: 'v2' })}
-        >v2</button>
-      </div>
       <label className="form-label">AHK {version} Script</label>
       <textarea
         className="form-textarea"
@@ -2068,6 +2110,11 @@ export default function MacroPanel({
   useEffect(() => {
     if (OPEN_TYPE_IDS.includes(activeType)) setLastOpenType(activeType);
   }, [activeType]);
+  // Same pattern for the Text group (text / expansion sub-pills).
+  const [lastTextType, setLastTextType] = useState('text');
+  useEffect(() => {
+    if (TEXT_TYPE_IDS.includes(activeType)) setLastTextType(activeType);
+  }, [activeType]);
   // Per-type form value drafts. Switching action type no longer wipes the
   // previous type's data — users can experiment freely (URL → Type Text →
   // back to URL) without losing what they typed. Only the active type's
@@ -2075,6 +2122,11 @@ export default function MacroPanel({
   // a different key (via the selectedKey useEffect below).
   const [formValuesByType, setFormValuesByType] = useState({});
   const formValue = formValuesByType[activeType] || {};
+  // When set to a press mode, the next selectedKey/assignment effect run will
+  // preserve activeType + pressMode (skip auto-switch). Used by handleClearAction
+  // so clearing single-press Text on a key with double-press Hotkey doesn't
+  // bump the user into double mode.
+  const justClearedRef = useRef(null);
   const setFormValue = useCallback((updater) => {
     setFormValuesByType(prev => {
       const current = prev[activeType] || {};
@@ -2082,7 +2134,14 @@ export default function MacroPanel({
       return { ...prev, [activeType]: next };
     });
   }, [activeType]);
-  const [label, setLabel] = useState('');
+  // Per-type display labels — each action type has its own label so clearing
+  // one type doesn't wipe the labels of others. Backward-compat with the old
+  // single-`label` field: on load, an entry without `labels` is migrated to
+  // `{ [type]: label }`. On save, both `label` (active type, top-level for
+  // Sidebar/Rust readers) and `labels` (full map for the editor) are written.
+  const [labelByType, setLabelByType] = useState({});
+  const label = labelByType[activeType] || '';
+  const setLabel = (l) => setLabelByType(prev => ({ ...prev, [activeType]: l }));
   const [voicePhrases, setVoicePhrases] = useState([]);
   const [pressMode, setPressMode] = useState('single'); // 'single' | 'double'
   const [reassigning, setReassigning] = useState(false);
@@ -2110,13 +2169,42 @@ export default function MacroPanel({
       }
       return { [t]: entry.data || {} };
     };
+    const seedLabels = (entry) => {
+      const t = entry.type || 'text';
+      // Top-level `label` always wins for the primary type — covers the
+      // Sidebar right-click rename path that updates `label` only.
+      if (entry.labels && typeof entry.labels === 'object') {
+        const out = { ...entry.labels };
+        if (entry.label) out[t] = entry.label;
+        return out;
+      }
+      return entry.label ? { [t]: entry.label } : {};
+    };
+    // If the user just hit Clear Action, preserve activeType + pressMode and
+    // skip the auto-switch-to-double behaviour. Just sync formValuesByType /
+    // labelByType / voicePhrases against whichever press mode the user was on.
+    const justClearedMode = justClearedRef.current;
+    justClearedRef.current = null;
+    if (justClearedMode) {
+      const activeRecord = justClearedMode === 'double' ? effectiveDouble : effectiveAssignment;
+      if (activeRecord) {
+        setFormValuesByType(seedDrafts(activeRecord));
+        setLabelByType(seedLabels(activeRecord));
+        setVoicePhrases(readVoicePhrases(activeRecord.data));
+      } else {
+        setFormValuesByType({});
+        setLabelByType({});
+        setVoicePhrases([]);
+      }
+      return;
+    }
     // Auto-switch to double mode when only a double assignment exists
     if (!effectiveAssignment && effectiveDouble) {
       const t = effectiveDouble.type || 'text';
       setPressMode('double');
       setActiveType(t);
       setFormValuesByType(seedDrafts(effectiveDouble));
-      setLabel(effectiveDouble.label || '');
+      setLabelByType(seedLabels(effectiveDouble));
       setVoicePhrases(readVoicePhrases(effectiveDouble.data));
     } else {
       setPressMode('single');
@@ -2124,12 +2212,12 @@ export default function MacroPanel({
         const t = effectiveAssignment.type || 'text';
         setActiveType(t);
         setFormValuesByType(seedDrafts(effectiveAssignment));
-        setLabel(effectiveAssignment.label || '');
+        setLabelByType(seedLabels(effectiveAssignment));
         setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
         setActiveType('text');
         setFormValuesByType({});
-        setLabel('');
+        setLabelByType({});
         setVoicePhrases([]);
       }
     }
@@ -2144,17 +2232,28 @@ export default function MacroPanel({
       }
       return { [t]: entry.data || {} };
     };
+    const seedLabels = (entry) => {
+      const t = entry.type || 'text';
+      // Top-level `label` always wins for the primary type — covers the
+      // Sidebar right-click rename path that updates `label` only.
+      if (entry.labels && typeof entry.labels === 'object') {
+        const out = { ...entry.labels };
+        if (entry.label) out[t] = entry.label;
+        return out;
+      }
+      return entry.label ? { [t]: entry.label } : {};
+    };
     if (pressMode === 'double') {
       if (effectiveDouble) {
         const t = effectiveDouble.type || 'text';
         setActiveType(t);
         setFormValuesByType(seedDrafts(effectiveDouble));
-        setLabel(effectiveDouble.label || '');
+        setLabelByType(seedLabels(effectiveDouble));
         setVoicePhrases(readVoicePhrases(effectiveDouble.data));
       } else {
         setActiveType('text');
         setFormValuesByType({});
-        setLabel('');
+        setLabelByType({});
         setVoicePhrases([]);
       }
     } else {
@@ -2162,27 +2261,93 @@ export default function MacroPanel({
         const t = effectiveAssignment.type || 'text';
         setActiveType(t);
         setFormValuesByType(seedDrafts(effectiveAssignment));
-        setLabel(effectiveAssignment.label || '');
+        setLabelByType(seedLabels(effectiveAssignment));
         setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
         setActiveType('text');
         setFormValuesByType({});
-        setLabel('');
+        setLabelByType({});
         setVoicePhrases([]);
       }
     }
   // eslint-disable-next-line
   }, [pressMode]);
 
-  // Reset the current editor: clears the active type's form fields, label
-  // and voice phrases so the user can start the action over from scratch.
-  // Non-destructive — does NOT touch saved assignments or drafts under
-  // other action types. No confirmation needed; the user can retype, and
-  // the saved state is restored on next key reload if they navigate away.
+  // Clear the action of the currently-active type ONLY. Other types'
+  // drafts on this key are preserved. Persists to the saved assignment so
+  // the cleared state survives close + reopen.
+  //
+  // Two cases:
+  //  - Active type IS the saved primary type: wipe its data. If drafts
+  //    exist, keep the assignment with empty data + drafts. If no drafts
+  //    remain, delete the assignment entirely (nothing left to keep).
+  //  - Active type is a DRAFT (not the saved primary): remove only that
+  //    draft entry from the saved assignment's `drafts` map. The primary
+  //    action is left intact.
+  // For wiping ALL types on a key, use Clear Key.
   const handleClearAction = () => {
+    // Tell the assignment-effect to preserve activeType + pressMode after
+    // the parent state update lands. Without this, clearing single-press on
+    // a key that also has a double-press assignment would auto-switch the
+    // editor into double mode, and clearing the primary on a key would jump
+    // the user to a different tab.
+    justClearedRef.current = pressMode;
     setFormValuesByType(prev => ({ ...prev, [activeType]: {} }));
-    setLabel('');
-    setVoicePhrases([]);
+
+    if (!selectedKey) {
+      setLabel('');
+      setVoicePhrases([]);
+      return;
+    }
+    const activeRecord = pressMode === 'double' ? doubleAssignment : assignment;
+    if (!activeRecord) {
+      setLabel('');
+      setVoicePhrases([]);
+      return;
+    }
+
+    // Build the labels map for the modified assignment: take the latest
+    // labelByType minus the type being cleared. Empty strings are dropped.
+    const labelsToSave = {};
+    for (const [t, l] of Object.entries(labelByType)) {
+      if (t === activeType) continue;
+      const trimmed = (l || '').trim();
+      if (trimmed) labelsToSave[t] = trimmed;
+    }
+
+    if (activeRecord.type === activeType) {
+      // Clearing the saved primary action.
+      setLabel('');
+      setVoicePhrases([]);
+      const drafts = activeRecord.drafts || {};
+      const hasFilledDrafts = Object.entries(drafts).some(([t, d]) => isDraftFilled(t, d));
+      if (!hasFilledDrafts) {
+        if (pressMode === 'double') onClearDouble?.(selectedKey);
+        else onClear?.(selectedKey);
+      } else {
+        const newMacro = { type: activeType, label: '', data: {}, drafts };
+        if (Object.keys(labelsToSave).length > 0) newMacro.labels = labelsToSave;
+        if (pressMode === 'double') onAssignDouble?.(selectedKey, newMacro);
+        else onAssign?.(selectedKey, newMacro);
+      }
+    } else {
+      // Clearing a non-primary draft. Keep voicePhrases (they belong to the
+      // primary). Skip the save if this type had neither a draft nor a label.
+      const hadDraft = !!activeRecord.drafts?.[activeType];
+      const hadLabel = !!activeRecord.labels?.[activeType];
+      if (!hadDraft && !hadLabel) return;
+      const newDrafts = { ...(activeRecord.drafts || {}) };
+      delete newDrafts[activeType];
+      const newMacro = { ...activeRecord };
+      if (Object.keys(newDrafts).length > 0) newMacro.drafts = newDrafts;
+      else delete newMacro.drafts;
+      // Primary's label stays top-level; just rewrite the labels map without
+      // the cleared draft's entry.
+      if (Object.keys(labelsToSave).length > 0) newMacro.labels = labelsToSave;
+      else delete newMacro.labels;
+      if (pressMode === 'double') onAssignDouble?.(selectedKey, newMacro);
+      else onAssign?.(selectedKey, newMacro);
+    }
   };
 
   // Returns true if the draft has user-meaningful content for its action type.
@@ -2191,17 +2356,18 @@ export default function MacroPanel({
   const isDraftFilled = (type, d) => {
     if (!d || typeof d !== 'object') return false;
     switch (type) {
-      case 'text':   return !!d.text?.trim();
+      case 'text':      return !!d.text?.trim();
+      case 'expansion': return !!d.trigger?.trim();
       // Bare modifier (Ctrl / Shift / Alt / Win alone) is valid: capture
       // returns modifiers without a main key, and the backend treats key="" +
       // non-empty modifiers as a modifier-only chord.
-      case 'hotkey': return !!d.key || (d.modifiers || []).length > 0;
-      case 'app':    return !!(d.path?.trim() || d.appId?.trim());
-      case 'folder': return !!d.path?.trim();
-      case 'url':    return !!d.url?.trim();
-      case 'macro':  return (d.steps || []).length > 0;
-      case 'ahk':    return !!d.script?.trim();
-      default:       return false;
+      case 'hotkey':    return !!d.key || (d.modifiers || []).length > 0;
+      case 'app':       return !!(d.path?.trim() || d.appId?.trim());
+      case 'folder':    return !!d.path?.trim();
+      case 'url':       return !!d.url?.trim();
+      case 'macro':     return (d.steps || []).length > 0;
+      case 'ahk':       return !!d.script?.trim();
+      default:          return false;
     }
   };
 
@@ -2224,13 +2390,27 @@ export default function MacroPanel({
       }
     }
 
+    // Per-type labels. Always include the active type's resolved label
+    // (user-typed or auto-generated) so reopening the editor shows what the
+    // Sidebar/Rust display. Other types' labels are saved only if user-typed.
+    const resolvedActiveLabel = (label || '').trim() || getAutoLabel();
+    const persistedLabels = {};
+    for (const [t, l] of Object.entries(labelByType)) {
+      const trimmed = (l || '').trim();
+      if (trimmed) persistedLabels[t] = trimmed;
+    }
+    persistedLabels[activeType] = resolvedActiveLabel;
+
     const macro = {
       type: activeType,
-      label: label || getAutoLabel(),
+      label: resolvedActiveLabel,
       data,
     };
     if (Object.keys(persistedDrafts).length > 0) {
       macro.drafts = persistedDrafts;
+    }
+    if (Object.keys(persistedLabels).length > 0) {
+      macro.labels = persistedLabels;
     }
 
     if (pressMode === 'double') {
@@ -2256,6 +2436,13 @@ export default function MacroPanel({
   const getAutoLabel = () => {
     switch (activeType) {
       case 'text':   return formValue.text?.substring(0, 30) || 'Text snippet';
+      case 'expansion': {
+        const trig = formValue.trigger?.trim();
+        if (!trig) return 'Fire expansion';
+        const entry = assignments?.[`GLOBAL::EXPANSION::${trig}`];
+        const name = entry?.data?.displayName;
+        return `Fire: ${name || `:${trig}`}`;
+      }
       case 'hotkey': {
         const mouseOpt = MOUSE_CLICK_OPTIONS.find(o => o.value === formValue.key);
         if (mouseOpt && (!formValue.modifiers || formValue.modifiers.length === 0)) return mouseOpt.label;
@@ -2272,15 +2459,16 @@ export default function MacroPanel({
 
   const isValid = () => {
     switch (activeType) {
-      case 'text':   return !!formValue.text?.trim();
+      case 'text':      return !!formValue.text?.trim();
+      case 'expansion': return !!formValue.trigger?.trim();
       // Bare modifier (Ctrl / Shift / Alt / Win alone) is valid — see isDraftFilled comment.
-      case 'hotkey': return !!formValue.key || (formValue.modifiers || []).length > 0;
-      case 'app':    return !!(formValue.path?.trim() || formValue.appId?.trim());
-      case 'folder': return !!formValue.path?.trim();
-      case 'url':    return !!formValue.url?.trim();
-      case 'macro':  return (formValue.steps || []).length > 0;
-      case 'ahk':    return !!formValue.script?.trim();
-      default:       return false;
+      case 'hotkey':    return !!formValue.key || (formValue.modifiers || []).length > 0;
+      case 'app':       return !!(formValue.path?.trim() || formValue.appId?.trim());
+      case 'folder':    return !!formValue.path?.trim();
+      case 'url':       return !!formValue.url?.trim();
+      case 'macro':     return (formValue.steps || []).length > 0;
+      case 'ahk':       return !!formValue.script?.trim();
+      default:          return false;
     }
   };
 
@@ -2418,7 +2606,8 @@ export default function MacroPanel({
             >Cancel</button>
           </div>
         )}
-        {/* Action type selector — App/URL/Folder share one Open button */}
+        {/* Action type selector — App/URL/Folder share one Open button,
+            Text/Expansion share one Text button. */}
         <div className="type-selector">
           {ACTION_TYPES.map(type => {
             if (OPEN_TYPE_IDS.includes(type.id)) {
@@ -2433,12 +2622,32 @@ export default function MacroPanel({
                 <button
                   key="open"
                   className={`type-btn ${isOpenActive ? 'active' : ''}`}
-                  style={{ '--type-color': openType.color }}
                   onClick={() => setActiveType(lastOpenType)}
                   type="button"
                 >
                   <span className="type-btn-icon"><OpenIcon size={18} strokeWidth={1.75} /></span>
                   <span className="type-btn-label">Open</span>
+                  {hasDraft && <span className="type-btn-draft-dot" aria-label="Has saved draft" />}
+                </button>
+              );
+            }
+            if (TEXT_TYPE_IDS.includes(type.id)) {
+              // Render the merged Text button at the first Text slot only.
+              if (type.id !== TEXT_TYPE_IDS[0]) return null;
+              const textType = ACTION_TYPES.find(t => t.id === lastTextType) || type;
+              const TextIcon = textType.Icon;
+              const isTextActive = TEXT_TYPE_IDS.includes(activeType);
+              const hasDraft = !isTextActive
+                && TEXT_TYPE_IDS.some(id => isDraftFilled(id, formValuesByType[id]));
+              return (
+                <button
+                  key="text-group"
+                  className={`type-btn ${isTextActive ? 'active' : ''}`}
+                  onClick={() => setActiveType(lastTextType)}
+                  type="button"
+                >
+                  <span className="type-btn-icon"><TextIcon size={18} strokeWidth={1.75} /></span>
+                  <span className="type-btn-label">Text</span>
                   {hasDraft && <span className="type-btn-draft-dot" aria-label="Has saved draft" />}
                 </button>
               );
@@ -2451,8 +2660,7 @@ export default function MacroPanel({
             return (
               <button
                 key={type.id}
-                className={`type-btn ${activeType === type.id ? 'active' : ''}${type.id === 'ahk' ? ' type-btn-wide' : ''}`}
-                style={{ '--type-color': type.color }}
+                className={`type-btn ${activeType === type.id ? 'active' : ''}${(type.id === 'ahk' || type.id === 'macro') ? ' type-btn-half' : ''}`}
                 onClick={() => setActiveType(type.id)}
                 type="button"
               >
@@ -2464,9 +2672,9 @@ export default function MacroPanel({
           })}
         </div>
 
-        {/* Open sub-type bar — visible while the merged Open button is active */}
+        {/* Sub-pill bar — shown while a grouped button (Open or Text) is active */}
         {OPEN_TYPE_IDS.includes(activeType) && (
-          <div className="open-subtype-bar">
+          <div className="type-subtype-bar">
             {OPEN_TYPE_IDS.map(id => {
               const t = ACTION_TYPES.find(x => x.id === id);
               const SubIcon = t.Icon;
@@ -2474,7 +2682,7 @@ export default function MacroPanel({
               return (
                 <button
                   key={id}
-                  className={`open-subtype-btn${activeType === id ? ' active' : ''}`}
+                  className={`type-subtype-btn${activeType === id ? ' active' : ''}`}
                   onClick={() => setActiveType(id)}
                   type="button"
                 >
@@ -2486,17 +2694,58 @@ export default function MacroPanel({
             })}
           </div>
         )}
+        {TEXT_TYPE_IDS.includes(activeType) && (
+          <div className="type-subtype-bar">
+            {TEXT_TYPE_IDS.map(id => {
+              const t = ACTION_TYPES.find(x => x.id === id);
+              const SubIcon = t.Icon;
+              const hasDraft = id !== activeType && isDraftFilled(id, formValuesByType[id]);
+              return (
+                <button
+                  key={id}
+                  className={`type-subtype-btn${activeType === id ? ' active' : ''}`}
+                  onClick={() => setActiveType(id)}
+                  type="button"
+                >
+                  <SubIcon size={13} strokeWidth={1.75} />
+                  {t.label}
+                  {hasDraft && <span className="press-mode-dot" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {activeType === 'ahk' && (() => {
+          const ahkValue = formValuesByType.ahk || {};
+          const ahkVer = ahkValue.ahkVersion || 'v1';
+          return (
+            <div className="type-subtype-bar">
+              {['v1', 'v2'].map(v => (
+                <button
+                  key={v}
+                  className={`type-subtype-btn${ahkVer === v ? ' active' : ''}`}
+                  onClick={() => setFormValue(prev => ({ ...prev, ahkVersion: v }))}
+                  type="button"
+                >
+                  AHK {v}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Type description */}
         <div className="type-desc">
           {ACTION_TYPES.find(t => t.id === activeType)?.desc}
         </div>
 
+        <div className="type-selector-separator" aria-hidden="true" />
+
         {/* Display label — kept at the top of the editing area so the field
             lives in the same place regardless of which action type is active.
             Placeholder shows the auto-derived label for the current type. */}
         <div className="form-section">
-          <label className="form-label">Display label (optional)</label>
+          <label className="form-label">Display label</label>
           <input
             className="form-input"
             placeholder={getAutoLabel() || 'Short label for this key...'}
@@ -2508,7 +2757,8 @@ export default function MacroPanel({
 
         {/* Dynamic form */}
         <div className="form-body">
-          {activeType === 'text'   && <TextForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} />}
+          {activeType === 'text'      && <TextForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} />}
+          {activeType === 'expansion' && <ExpansionForm value={formValue} onChange={setFormValue} assignments={assignments} />}
           {activeType === 'hotkey' && (
             <>
               <HotkeyCaptureInput value={formValue} onChange={setFormValue} />
@@ -2617,7 +2867,7 @@ export default function MacroPanel({
           if (confirmingAction) {
             const confirmText =
               confirmingAction === 'clear-action'
-                ? 'Clear the current action? Editor resets to blank.'
+                ? 'Clear the action for the current type? Other type drafts are preserved.'
                 : confirmingAction === 'clear'
                 ? (pressMode === 'double'
                     ? 'Clear the double-press action on this key?'
@@ -2651,7 +2901,7 @@ export default function MacroPanel({
                 className="btn-clear-action"
                 onClick={() => setConfirmingAction('clear-action')}
                 type="button"
-                title="Clears the current action and resets the editor to blank. Saved data is not affected."
+                title="Clears the action for the currently-active type only. Other type drafts on this key are preserved. Use Clear Key to wipe all types."
               >Clear Action</button>
               <button
                 className="btn-clear"

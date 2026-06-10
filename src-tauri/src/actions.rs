@@ -496,6 +496,26 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
             }
         }
 
+        // Fire an existing text expansion by trigger word. Same dispatch as
+        // the "Fire Text Expansion" macro step — routes through
+        // expansions::fire_expansion_by_trigger which handles text / image /
+        // variants / fill-in fields uniformly. The FIRE_DEPTH guard at the
+        // top of this function caps chains (a key fires an expansion that
+        // fires another, etc.) at MAX_FIRE_DEPTH.
+        "expansion" => {
+            let trigger = data
+                .and_then(|d| d.get("trigger"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if trigger.is_empty() {
+                warn!("[Trigr] expansion action: empty trigger, skipping");
+            } else {
+                if step_settle_ms > 0 { thread::sleep(Duration::from_millis(step_settle_ms)); }
+                crate::expansions::fire_expansion_by_trigger(trigger);
+            }
+        }
+
         "hotkey" => {
             if let Some(d) = data {
                 // Skip step delay for plain hotkey — SendInput doesn't need settle time

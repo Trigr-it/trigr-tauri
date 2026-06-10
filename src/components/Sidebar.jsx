@@ -9,16 +9,17 @@ import { SearchBar } from './SearchBar';
 import { friendlyKeyName } from './keyboardLayout';
 
 const TYPE_META = {
-  text:   { color: '#64b4ff' },
-  hotkey: { color: '#c864ff' },
-  app:    { color: '#50c878' },
-  url:    { color: '#ffc832' },
-  macro:  { color: '#ff783c' },
-  folder: { color: '#40c8a0' },
+  text:      { color: '#64b4ff' },
+  expansion: { color: '#a070ff' },
+  hotkey:    { color: '#c864ff' },
+  app:       { color: '#50c878' },
+  url:       { color: '#ffc832' },
+  macro:     { color: '#ff783c' },
+  folder:    { color: '#40c8a0' },
 };
 
 const TYPE_NAMES = {
-  text: 'Text', hotkey: 'Hotkey', app: 'App',
+  text: 'Text', expansion: 'Expansion', hotkey: 'Hotkey', app: 'App',
   url: 'URL', macro: 'Macro', folder: 'Folder',
 };
 
@@ -977,9 +978,12 @@ export default function Sidebar({
 
     // Preview line
     let preview = '';
-    if (macro.type === 'text' || macro.type === 'expansion') {
+    if (macro.type === 'text') {
       const raw = macro.data?.text || '';
       preview = raw.length > 40 ? raw.slice(0, 40) + '…' : raw;
+    } else if (macro.type === 'expansion') {
+      const trig = macro.data?.trigger || '';
+      preview = trig ? `Fires :${trig}` : 'No expansion selected';
     } else if (macro.type === 'macro') {
       const steps = macro.data?.steps || [];
       preview = `${steps.length} step${steps.length !== 1 ? 's' : ''}`;

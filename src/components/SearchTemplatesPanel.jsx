@@ -214,6 +214,11 @@ const QA_ACTION_TYPES = [
   { id: 'macro',  icon: '◈', label: 'Macro Sequence',    desc: 'Run a sequence of actions one after another', color: '#ff783c' },
 ];
 
+// The three Open sub-types (app/url/folder) collapse into a single "Open"
+// button — matching MacroPanel's sub-pill pattern. Underlying type ids are
+// unchanged so existing saved Quick Actions still load correctly.
+const QA_OPEN_TYPE_IDS = ['app', 'url', 'folder'];
+
 // ── Google Translate target-language list ──────────────────────────────────
 
 // Full set of Google Translate target languages (sorted alphabetically by name).
@@ -584,6 +589,12 @@ export default function SearchTemplatesPanel({
   const [qaIsNew, setQaIsNew]              = useState(false);
   const [qaLabel, setQaLabel]              = useState('');
   const [qaType, setQaType]                = useState('url');
+  // Which Open sub-type (app/url/folder) the merged Open selector targets.
+  // Tracks qaType so loading a saved Open Quick Action syncs the sub-pill bar.
+  const [lastQaOpenType, setLastQaOpenType] = useState('app');
+  useEffect(() => {
+    if (QA_OPEN_TYPE_IDS.includes(qaType)) setLastQaOpenType(qaType);
+  }, [qaType]);
   const [qaFormValue, setQaFormValue]      = useState({});
   const [qaCategory, setQaCategory]        = useState(null);
   const [qaVoicePhrases, setQaVoicePhrases] = useState([]);
@@ -1628,26 +1639,66 @@ export default function SearchTemplatesPanel({
               <button className="stp-ep-close" onClick={closeQaPanel} type="button">✕</button>
             </div>
             <div className="stp-qa-body">
-              {/* Action type selector — matches MacroPanel type-selector */}
+              {/* Action type selector — App/URL/Folder share one Open button
+                  with the sub-pill pattern mirroring MacroPanel. */}
               <div className="type-selector">
-                {QA_ACTION_TYPES.map(t => (
-                  <button
-                    key={t.id}
-                    className={`type-btn${qaType === t.id ? ' active' : ''}`}
-                    style={{ '--type-color': t.color }}
-                    onClick={() => { setQaType(t.id); setQaFormValue({}); }}
-                    type="button"
-                  >
-                    <span className="type-btn-icon">{t.icon}</span>
-                    <span className="type-btn-label">{t.label}</span>
-                  </button>
-                ))}
+                {QA_ACTION_TYPES.map(t => {
+                  if (QA_OPEN_TYPE_IDS.includes(t.id)) {
+                    if (t.id !== QA_OPEN_TYPE_IDS[0]) return null;
+                    const openType = QA_ACTION_TYPES.find(x => x.id === lastQaOpenType) || t;
+                    const isOpenActive = QA_OPEN_TYPE_IDS.includes(qaType);
+                    return (
+                      <button
+                        key="open"
+                        className={`type-btn type-btn-half${isOpenActive ? ' active' : ''}`}
+                        onClick={() => { setQaType(lastQaOpenType); setQaFormValue({}); }}
+                        type="button"
+                      >
+                        <span className="type-btn-icon">{openType.icon}</span>
+                        <span className="type-btn-label">Open</span>
+                      </button>
+                    );
+                  }
+                  return (
+                    <button
+                      key={t.id}
+                      className={`type-btn type-btn-half${qaType === t.id ? ' active' : ''}`}
+                      onClick={() => { setQaType(t.id); setQaFormValue({}); }}
+                      type="button"
+                    >
+                      <span className="type-btn-icon">{t.icon}</span>
+                      <span className="type-btn-label">{t.label}</span>
+                    </button>
+                  );
+                })}
               </div>
+
+              {/* Open sub-pill bar — shown while the merged Open button is active */}
+              {QA_OPEN_TYPE_IDS.includes(qaType) && (
+                <div className="type-subtype-bar">
+                  {QA_OPEN_TYPE_IDS.map(id => {
+                    const t = QA_ACTION_TYPES.find(x => x.id === id);
+                    return (
+                      <button
+                        key={id}
+                        className={`type-subtype-btn${qaType === id ? ' active' : ''}`}
+                        onClick={() => { setQaType(id); setQaFormValue({}); }}
+                        type="button"
+                      >
+                        <span style={{ fontSize: 11 }}>{t.icon}</span>
+                        {t.label.replace(/^Open /, '')}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Type description */}
               <div className="type-desc">
                 {QA_ACTION_TYPES.find(t => t.id === qaType)?.desc}
               </div>
+
+              <div className="type-selector-separator" aria-hidden="true" />
 
               {/* Dynamic form per type */}
               <div className="form-body">
