@@ -26,7 +26,7 @@ import RadialEditorView from './components/RadialEditorView';
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MAX_SLOTS } from './components/RadialWheel';
-import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/IconPicker';
+import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/iconUtils';
 import { friendlyKeyName } from './components/keyboardLayout';
 
 // Bump whenever the onboarding tour changes meaningfully. Existing users whose

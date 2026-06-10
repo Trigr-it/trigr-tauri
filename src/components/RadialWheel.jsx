@@ -1,7 +1,7 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove } from '@dnd-kit/sortable';
-import { isLucideIcon, getLucideIconName, renderLucideIcon, isSimpleIcon, getSimpleIconSlug, renderSimpleIcon, isCustomIcon, getCustomIconData } from './IconPicker';
+import { isLucideIcon, getLucideIconName, isSimpleIcon, getSimpleIconSlug, isCustomIcon, getCustomIconData, loadIconRenderers, getIconRenderers } from './iconUtils';
 import './RadialWheel.css';
 
 // ── Geometry constants ─────────────────────────────────────────────────────────
@@ -124,6 +124,24 @@ export default function RadialWheel({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
+
+  // Icon libraries load on demand: only wheels that actually contain a
+  // lucide:/simple: icon pull in the heavy renderer chunk (see iconUtils.jsx).
+  // appIcon takes render priority over item.icon, so it doesn't trigger a load.
+  const needsRenderers = useMemo(() => {
+    const needs = (it) => !!it && (
+      (!it.appIcon && (isLucideIcon(it.icon) || isSimpleIcon(it.icon))) ||
+      (it.children || []).some(needs)
+    );
+    return items.some(needs);
+  }, [items]);
+  const [renderers, setRenderers] = useState(getIconRenderers);
+  useEffect(() => {
+    if (!needsRenderers || renderers) return;
+    let cancelled = false;
+    loadIconRenderers().then((mod) => { if (!cancelled) setRenderers(mod); });
+    return () => { cancelled = true; };
+  }, [needsRenderers, renderers]);
 
   // ── Compute inner wedges ─────────────────────────────────────────────
   const innerWedges = useMemo(() => {
@@ -395,7 +413,7 @@ export default function RadialWheel({
                 viewBox="0 0 24 24"
                 pointerEvents="none"
               >
-                {renderSimpleIcon(getSimpleIconSlug(item.icon), 24, iconColor !== 'currentColor' ? iconColor : undefined)}
+                {renderers ? renderers.renderSimpleIcon(getSimpleIconSlug(item.icon), 24, iconColor !== 'currentColor' ? iconColor : undefined) : null}
               </svg>
             ) : isLucideIcon(item.icon) ? (
               <svg
@@ -404,7 +422,7 @@ export default function RadialWheel({
                 viewBox="0 0 24 24"
                 pointerEvents="none"
               >
-                {renderLucideIcon(getLucideIconName(item.icon), 24, iconColor, false)}
+                {renderers ? renderers.renderLucideIcon(getLucideIconName(item.icon), 24, iconColor, false) : null}
               </svg>
             ) : (
               <text

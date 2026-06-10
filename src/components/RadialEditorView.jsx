@@ -1,9 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
-import IconPicker from './IconPicker';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
 import { SearchBar } from './SearchBar';
+
+// Lazy — IconPicker drags in the full lucide-react + simple-icons libraries
+// (~5.9MB of JS). Loading it on first picker open keeps that out of the main
+// window's startup bundle. See iconUtils.jsx.
+const IconPicker = React.lazy(() => import('./IconPicker'));
 
 // Use the same radii as the live overlay (INNER_R=80, OUTER_R=130) for WYSIWYG.
 // The editor scales the wheel up via CSS to fill more space.
@@ -856,18 +860,20 @@ export default function RadialEditorView({
             ))}
           </div>
           {/* Icon grid */}
-          <IconPicker
-            currentIcon={iconPicker.currentIcon}
-            onSelect={(iconName) => {
-              if (iconPicker.childId) {
-                onSetRadialChildIcon?.(iconPicker.folderId, iconPicker.childId, iconName, undefined);
-              } else {
-                onSetRadialMenuItemIcon?.(iconPicker.itemId, iconName, undefined);
-              }
-              setIconPicker(null);
-            }}
-            onClose={() => setIconPicker(null)}
-          />
+          <React.Suspense fallback={null}>
+            <IconPicker
+              currentIcon={iconPicker.currentIcon}
+              onSelect={(iconName) => {
+                if (iconPicker.childId) {
+                  onSetRadialChildIcon?.(iconPicker.folderId, iconPicker.childId, iconName, undefined);
+                } else {
+                  onSetRadialMenuItemIcon?.(iconPicker.itemId, iconName, undefined);
+                }
+                setIconPicker(null);
+              }}
+              onClose={() => setIconPicker(null)}
+            />
+          </React.Suspense>
         </div>
       )}
 
