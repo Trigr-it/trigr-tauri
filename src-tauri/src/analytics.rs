@@ -21,6 +21,9 @@ struct AnalyticsEvent {
 // ── Writer thread channel ──────────────────────────────────────────────────
 
 static ANALYTICS_TX: OnceLock<Mutex<mpsc::Sender<AnalyticsMsg>>> = OnceLock::new();
+/// Stored at init() so `telemetry.rs` can open its own read-only connection
+/// without re-resolving the app data dir. Set once; never overwritten.
+static ANALYTICS_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 enum AnalyticsMsg {
     Log(AnalyticsEvent),
@@ -37,12 +40,27 @@ enum AnalyticsMsg {
     Reset(mpsc::Sender<bool>),
     /// One-time migration: recalculate time_saved for old entries using current assignments.
     MigrateTimeSaved(std::collections::HashMap<String, serde_json::Value>),
+    // ── Telemetry writes (read-only queries open their own connection in telemetry.rs) ──
+    /// Insert a finalised daily aggregate row. Idempotent via INSERT OR IGNORE.
+    TelemetryInsertRow {
+        date: String,
+        triggers: i64,
+        expansions: i64,
+        macros: i64,
+    },
+    /// Mark a telemetry row as successfully sent and bump send_attempts.
+    TelemetryMarkSent { date: String, sent_at: String },
+    /// Bump send_attempts on a row that failed to send (telemetry-side bookkeeping).
+    TelemetryRecordAttempt { date: String },
+    /// Purge rows whose date is older than `before_date` (local YYYY-MM-DD).
+    TelemetryPurgeOlderThan { before_date: String },
 }
 
 // ── Initialise ─────────────────────────────────────────────────────────────
 
 pub fn init(app_data_dir: PathBuf) {
     let db_path = app_data_dir.join("trigr-analytics.db");
+    let _ = ANALYTICS_DB_PATH.set(db_path.clone());
     let (tx, rx) = mpsc::channel::<AnalyticsMsg>();
     let _ = ANALYTICS_TX.set(Mutex::new(tx));
 
@@ -81,6 +99,31 @@ pub fn init(app_data_dir: PathBuf) {
             // Version tracking for one-time migrations
             let _ = conn.execute_batch(
                 "CREATE TABLE IF NOT EXISTS analytics_meta (key TEXT PRIMARY KEY, value TEXT);"
+            );
+
+            // Daily aggregate counts for the telemetry POST. One row per past
+            // local-calendar day, finalised at local-midnight rollover. Today's
+            // row is never inserted while it is still "today" (counts stay
+            // mutable in action_log). The telemetry thread reads pending rows
+            // (sent_at IS NULL) and POSTs them; on 2xx the writer thread sets
+            // sent_at. 30-day retention is enforced by purge_old_rows in
+            // telemetry.rs on every tick. Counts source: aggregate over
+            // action_log grouped by action_type, anchored to local date.
+            //
+            // NOTE: no hotkeys column. Hotkey-remap actions are deliberately
+            // excluded from action_log (see lines 173-178 below); adding them
+            // here would require a separate counter pipeline for a category
+            // we already decided is noise. If a future need arises we'll add
+            // a column then.
+            let _ = conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS telemetry_sync (
+                    date            TEXT PRIMARY KEY,
+                    triggers        INTEGER NOT NULL DEFAULT 0,
+                    expansions      INTEGER NOT NULL DEFAULT 0,
+                    macros          INTEGER NOT NULL DEFAULT 0,
+                    sent_at         TEXT,
+                    send_attempts   INTEGER NOT NULL DEFAULT 0
+                );"
             );
 
             // One-time migration (v0.4.0+): drop legacy key-to-key remap rows.
@@ -156,6 +199,35 @@ pub fn init(app_data_dir: PathBuf) {
                     AnalyticsMsg::MigrateTimeSaved(assignments) => {
                         handle_migrate_time_saved(&conn, &assignments);
                     }
+                    AnalyticsMsg::TelemetryInsertRow { date, triggers, expansions, macros } => {
+                        // INSERT OR IGNORE so re-runs after a partial backfill are safe.
+                        let _ = conn.execute(
+                            "INSERT OR IGNORE INTO telemetry_sync \
+                             (date, triggers, expansions, macros, sent_at, send_attempts) \
+                             VALUES (?1, ?2, ?3, ?4, NULL, 0)",
+                            rusqlite::params![date, triggers, expansions, macros],
+                        );
+                    }
+                    AnalyticsMsg::TelemetryMarkSent { date, sent_at } => {
+                        let _ = conn.execute(
+                            "UPDATE telemetry_sync \
+                             SET sent_at = ?2, send_attempts = send_attempts + 1 \
+                             WHERE date = ?1",
+                            rusqlite::params![date, sent_at],
+                        );
+                    }
+                    AnalyticsMsg::TelemetryRecordAttempt { date } => {
+                        let _ = conn.execute(
+                            "UPDATE telemetry_sync SET send_attempts = send_attempts + 1 WHERE date = ?1",
+                            rusqlite::params![date],
+                        );
+                    }
+                    AnalyticsMsg::TelemetryPurgeOlderThan { before_date } => {
+                        let _ = conn.execute(
+                            "DELETE FROM telemetry_sync WHERE date < ?1",
+                            rusqlite::params![before_date],
+                        );
+                    }
                 }
             }
         })
@@ -188,6 +260,62 @@ pub fn log_action_ext(action_type: &str, char_count: u32, trigger: &str, label: 
                 macro_step_types,
                 target_app,
             }));
+        }
+    }
+}
+
+// ── Telemetry write API (called from telemetry.rs) ────────────────────────
+// Read-side queries open their own SQLite connection in telemetry.rs so
+// they don't contend with the writer thread; writes are routed through the
+// channel below so all mutations on telemetry_sync stay serialized through
+// the same connection as action_log writes.
+
+/// Path to the analytics SQLite file. Used by `telemetry.rs` to open its
+/// own read-only connection. Set by `init()`.
+pub fn db_path() -> Option<PathBuf> {
+    ANALYTICS_DB_PATH.get().cloned()
+}
+
+pub(crate) fn telemetry_insert_row(date: &str, triggers: i64, expansions: i64, macros: i64) {
+    if let Some(tx) = ANALYTICS_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(AnalyticsMsg::TelemetryInsertRow {
+                date: date.to_string(),
+                triggers,
+                expansions,
+                macros,
+            });
+        }
+    }
+}
+
+pub(crate) fn telemetry_mark_sent(date: &str, sent_at: &str) {
+    if let Some(tx) = ANALYTICS_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(AnalyticsMsg::TelemetryMarkSent {
+                date: date.to_string(),
+                sent_at: sent_at.to_string(),
+            });
+        }
+    }
+}
+
+pub(crate) fn telemetry_record_attempt(date: &str) {
+    if let Some(tx) = ANALYTICS_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(AnalyticsMsg::TelemetryRecordAttempt {
+                date: date.to_string(),
+            });
+        }
+    }
+}
+
+pub(crate) fn telemetry_purge_older_than(before_date: &str) {
+    if let Some(tx) = ANALYTICS_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(AnalyticsMsg::TelemetryPurgeOlderThan {
+                before_date: before_date.to_string(),
+            });
         }
     }
 }

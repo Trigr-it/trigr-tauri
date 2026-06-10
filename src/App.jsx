@@ -88,6 +88,10 @@ function App() {
   // behave unchanged; users opt in via Settings.
   const [clipboardCaptureEnabled, setClipboardCaptureEnabled] = useState(true);
   const [clipboardExcludedApps, setClipboardExcludedApps]     = useState([]);
+  // Anonymous-aggregate telemetry. Default ON during beta; persisted via
+  // trigr-local-settings.json (machine-local, not in shared config). The Rust
+  // side reads on every 6h tick so the flag takes effect immediately.
+  const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [globalInputMethod,  setGlobalInputMethod]  = useState('direct');
   const [macroSpeed,         setMacroSpeed]         = useState('safe');
   const [defaultDateFormat,  setDefaultDateFormat]  = useState('DD/MM/YYYY');
@@ -715,6 +719,15 @@ function App() {
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  // Load the telemetry opt-in flag from trigr-local-settings.json on mount.
+  // Failure silently keeps the permissive default (true) — the worst case is
+  // the UI shows ON briefly and then snaps OFF on first save; not a bug.
+  useEffect(() => {
+    window.electronAPI?.getTelemetryEnabled?.()
+      .then(v => { if (typeof v === 'boolean') setTelemetryEnabled(v); })
+      .catch(() => {});
   }, []);
 
   // ── Featurebase Feedback Widget init (main window only) ──
@@ -3153,6 +3166,14 @@ function App() {
     });
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, clipboardExcludedApps]);
 
+  // Telemetry opt-in toggle. NOT saved to the shared config (machine-local
+  // preference per [[reference_live_config_shared_path]] convention) — the
+  // Rust side persists to trigr-local-settings.json directly.
+  const handleToggleTelemetry = useCallback((enabled) => {
+    setTelemetryEnabled(enabled);
+    window.electronAPI?.setTelemetryEnabled?.(enabled);
+  }, []);
+
   const handleUpdateClipboardExcludedApps = useCallback((apps) => {
     // Normalize: lowercase, strip .exe, dedupe, drop empties. Mirrors the
     // Rust-side normalization in clipboard::normalize_proc_name.
@@ -4037,6 +4058,8 @@ function App() {
             clipboardPasteHotkey={clipboardPasteHotkey}
             onSetClipboardPasteKey={handleSetClipboardPasteKey}
             onClearClipboardPasteKey={handleClearClipboardPasteKey}
+            telemetryEnabled={telemetryEnabled}
+            onToggleTelemetry={handleToggleTelemetry}
           />
         ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
           <MacroPanel

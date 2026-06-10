@@ -10,6 +10,7 @@ mod foreground;
 mod hotkeys;
 mod licence;
 mod ocr;
+mod telemetry;
 mod tray;
 mod voice;
 mod webview_mem;
@@ -2576,6 +2577,22 @@ fn set_clipboard_capture_enabled(enabled: bool) {
     clipboard::set_capture_enabled(enabled);
 }
 
+// ── Telemetry opt-out (machine-local) ──────────────────────────────────────
+// The Settings UI exposes a "Send anonymous usage stats" toggle. Internally
+// we store the inverse (opt-OUT) so a fresh install reads `false` and
+// telemetry runs by default. The reciprocal command flips the bool for the
+// JS side.
+
+#[tauri::command]
+fn get_telemetry_enabled() -> bool {
+    !config::get_telemetry_opt_out()
+}
+
+#[tauri::command]
+fn set_telemetry_enabled(enabled: bool) {
+    config::set_telemetry_opt_out(!enabled);
+}
+
 #[tauri::command]
 fn set_clipboard_excluded_apps(apps: Vec<String>) {
     clipboard::set_excluded_apps(apps);
@@ -2792,6 +2809,25 @@ pub fn run() {
             }
             clipboard::init(app_data.clone(), app.handle().clone());
             actions::cleanup_stale_ahk_scripts(app_data);
+
+            // Telemetry timer thread — 30s after startup, then every 6h. Owns
+            // its own read-only SQLite connection (no contention with the
+            // analytics writer's exclusive connection) and routes writes back
+            // through the analytics writer thread via channel messages.
+            // Honours the trigr-local-settings.json opt-out flag on every tick.
+            {
+                let app_version = app.package_info().version.to_string();
+                std::thread::Builder::new()
+                    .name("trigr-telemetry".into())
+                    .spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(30));
+                        loop {
+                            telemetry::tick(&app_version);
+                            std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
+                        }
+                    })
+                    .ok();
+            }
 
             // Start file watcher if shared config path is configured
             if let Some(shared_dir) = config::get_shared_config_dir() {
@@ -3264,6 +3300,9 @@ pub fn run() {
             set_clipboard_capture_enabled,
             set_clipboard_excluded_apps,
             get_clipboard_storage_size,
+            // Telemetry opt-out
+            get_telemetry_enabled,
+            set_telemetry_enabled,
             close_clipboard_overlay,
             clipboard_overlay_resize,
             // Updater

@@ -214,6 +214,8 @@ export default function SettingsPanel({
   clipboardPasteHotkey = 'Ctrl+Shift+V',
   onSetClipboardPasteKey,
   onClearClipboardPasteKey,
+  telemetryEnabled = true,
+  onToggleTelemetry,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -779,7 +781,29 @@ export default function SettingsPanel({
           {isExpanded('privacy-security') && (<>
 
           <div className="settings-privacy-block">
-            <p>All your data is stored locally on this device. Trigr never transmits assignments, expansions, keystrokes or usage stats to any server. Nothing leaves your machine.</p>
+            <p>All your assignments, expansions, keystrokes and clipboard history stay on this device. The only thing that ever leaves your machine is a once-a-day anonymous count of how many triggers fired, helping us see which features are useful during the beta. No content, no identifiers, no device info. Toggle below to disable.</p>
+          </div>
+
+          {/* ── Telemetry opt-out ──────────────────────────── */}
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Send anonymous usage stats</span>
+              <span className="settings-toggle-sub">
+                Once per day Trigr sends just a count of triggers, expansions and macros fired, plus the app version. No content, no identifiers. Helps prioritise what to build next during the beta.
+              </span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${telemetryEnabled ? ' on' : ''}`}
+              onClick={() => onToggleTelemetry?.(!telemetryEnabled)}
+              role="switch"
+              aria-checked={telemetryEnabled}
+              title={telemetryEnabled ? 'Stop sending anonymous usage stats' : 'Resume sending anonymous usage stats'}
+            />
+          </div>
+
+          {/* ── Config & log files ─────────────────────────── */}
+          <div className="settings-privacy-block settings-config-files">
             <p className="settings-config-path-row">
               Config file:
               <code className="settings-config-path" title={configPath}>{configPath || '…'}</code>

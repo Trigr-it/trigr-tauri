@@ -194,6 +194,54 @@ fn set_migration_deferred(deferred: bool) {
     let _ = save_local_settings_json(&val);
 }
 
+// ── Telemetry opt-out (machine-local, NOT shared config) ───────────────────
+// Default is opt-IN (telemetry ON). The flag is only present in the JSON when
+// the user has explicitly opted out, so a fresh install reads `false` and
+// telemetry runs. Stored machine-local because the user may want different
+// settings on different machines (e.g. work laptop off, home desktop on).
+
+/// True when the user has explicitly disabled anonymous-usage telemetry.
+/// Default false on first launch.
+pub fn get_telemetry_opt_out() -> bool {
+    load_local_settings_json()
+        .get("telemetry_opt_out")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Persist the opt-out flag. Writing `false` removes the key entirely so the
+/// file stays lean for users who never touched the toggle.
+pub fn set_telemetry_opt_out(opted_out: bool) -> bool {
+    let mut val = load_local_settings_json();
+    let obj = val.as_object_mut().unwrap();
+    if opted_out {
+        obj.insert("telemetry_opt_out".to_string(), Value::Bool(true));
+    } else {
+        obj.remove("telemetry_opt_out");
+    }
+    save_local_settings_json(&val)
+}
+
+/// The telemetry epoch: the local date (YYYY-MM-DD) the telemetry-enabled
+/// build first ran on this machine. Nothing dated before it is ever
+/// aggregated or sent — usage recorded by older builds predates the telemetry
+/// disclosure in onboarding and must stay local. Empty string until stamped.
+pub fn get_telemetry_epoch() -> String {
+    load_local_settings_json()
+        .get("telemetry_epoch")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Stamp the epoch. Called once, on the first telemetry tick of this machine.
+pub fn set_telemetry_epoch(date: &str) -> bool {
+    let mut val = load_local_settings_json();
+    let obj = val.as_object_mut().unwrap();
+    obj.insert("telemetry_epoch".to_string(), Value::String(date.to_string()));
+    save_local_settings_json(&val)
+}
+
 /// Days remaining in the grace period, or None if no grace period is active.
 /// Returns 0 if grace period has expired and migration is pending.
 pub fn grace_period_days_remaining() -> Option<i64> {

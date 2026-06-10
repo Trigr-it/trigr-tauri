@@ -229,6 +229,9 @@ window.electronAPI = {
   setClipboardCaptureEnabled: (enabled)   => invoke('set_clipboard_capture_enabled', { enabled }),
   setClipboardExcludedApps: (apps)        => invoke('set_clipboard_excluded_apps', { apps }),
   getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
+  // Telemetry opt-out (machine-local). true = sending stats, false = disabled.
+  getTelemetryEnabled:    ()              => invoke('get_telemetry_enabled'),
+  setTelemetryEnabled:    (enabled)       => invoke('set_telemetry_enabled', { enabled }),
   closeClipboardOverlay:     ()       => invoke('close_clipboard_overlay'),
   resizeClipboardOverlay:    (width, height) => invoke('clipboard_overlay_resize', { width, height }),
   onClipboardNewItem: (callback) => {

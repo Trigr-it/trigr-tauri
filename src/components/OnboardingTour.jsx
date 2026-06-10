@@ -901,6 +901,9 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
           <p className="onboarding-hint">
             All three shortcuts are <strong>customisable in Settings</strong>. Check <strong>Analytics</strong> for time saved.
           </p>
+          <p className="onboarding-hint">
+            During the beta, Trigr sends one anonymous daily count (just totals: no content, no identifiers) to help us improve. Toggle off any time in <strong>Settings → Privacy &amp; Security</strong>.
+          </p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={finish}>Finish</button>
         </div>

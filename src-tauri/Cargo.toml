@@ -40,6 +40,12 @@ color-thief = "0.2"
 ed25519-dalek = { version = "2", features = ["rand_core", "std"] }
 rand = "0.8"
 base64 = "0.22"
+# Used only by telemetry.rs for the daily aggregate POST. Already in the
+# dependency tree transitively via tauri-plugin-updater (rustls-tls path),
+# so adding the direct dep is essentially free in binary size. Blocking
+# client keeps the telemetry thread synchronous (no tokio runtime needed).
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
+uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

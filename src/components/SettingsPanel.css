@@ -276,6 +276,14 @@
   line-height: 1.4;
 }
 
+/* ── Config & log files (below the telemetry toggle) ───────────────────── */
+
+.settings-config-files {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Shared config ─────────────────────────────────────────────────────── */
 
 .settings-shared-config {
