@@ -274,6 +274,287 @@ fn resolve_required_text(ciphertext: Vec<u8>, iv: Option<Vec<u8>>) -> String {
     }
 }
 
+/// Read a nullable column's raw bytes regardless of SQLite storage class.
+/// Legacy (pre-v0.5) rows stored text columns with TEXT storage; encrypted
+/// rows store BLOB ciphertext. rusqlite's `Vec<u8>` FromSql accepts BLOB only,
+/// so `row.get::<_, Vec<u8>>()` fails with InvalidColumnType on legacy rows.
+/// Every content-column read (history, item-full, image, migration) MUST go
+/// through this helper, not `row.get::<_, Vec<u8>>()`.
+fn get_optional_bytes(row: &rusqlite::Row<'_>, idx: usize) -> rusqlite::Result<Option<Vec<u8>>> {
+    use rusqlite::types::ValueRef;
+    match row.get_ref(idx)? {
+        ValueRef::Null => Ok(None),
+        ValueRef::Blob(b) => Ok(Some(b.to_vec())),
+        ValueRef::Text(t) => Ok(Some(t.to_vec())),
+        other => Err(rusqlite::Error::InvalidColumnType(
+            idx,
+            format!("column {}", idx),
+            other.data_type(),
+        )),
+    }
+}
+
+// ── Phase 3b: one-time migration of legacy plaintext rows ────────────────────
+//
+// On the first v0.5 launch (or any launch where plaintext rows still exist) we
+// encrypt every row where `iv_preview IS NULL` and store the IVs alongside.
+// A copy of the pre-migration .db is saved to `trigr-clipboard.db.plaintext-backup`
+// BEFORE any UPDATE runs, so the user has a known-good rollback for 7 days.
+//
+// Safety invariants:
+//   1. Backup file copy is atomic (write to .tmp, rename to final). A crash
+//      mid-copy leaves only the .tmp — the migration retries on next launch.
+//   2. Encryption happens inside a single SQLite transaction. A crash mid-
+//      transaction triggers automatic rollback; legacy rows stay plaintext.
+//   3. Before COMMIT, we decrypt-sample 3 rows we just encrypted and compare
+//      to the captured plaintext. A mismatch aborts COMMIT and the migration
+//      retries on next launch.
+//   4. Cipher unavailable (init failed) → migration skipped, plaintext rows
+//      stay plaintext, app keeps working with iv-NULL fallback.
+
+const PLAINTEXT_BACKUP_NAME: &str = "trigr-clipboard.db.plaintext-backup";
+const PLAINTEXT_BACKUP_TMP_NAME: &str = "trigr-clipboard.db.plaintext-backup.tmp";
+const PLAINTEXT_BACKUP_EXPIRES_NAME: &str = "trigr-clipboard.plaintext-backup-expires";
+const PLAINTEXT_BACKUP_RETENTION_DAYS: i64 = 7;
+
+/// Delete the plaintext-backup file and its expiry stamp if the 7-day retention
+/// window has passed. Runs at writer thread startup BEFORE the migration check.
+fn cleanup_expired_plaintext_backup(db_path: &Path) {
+    let backup_path = db_path.with_file_name(PLAINTEXT_BACKUP_NAME);
+    let expiry_path = db_path.with_file_name(PLAINTEXT_BACKUP_EXPIRES_NAME);
+
+    if !expiry_path.exists() {
+        return;
+    }
+
+    let expiry_str = match std::fs::read_to_string(&expiry_path) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("[Trigr] Clipboard: expiry file read failed: {}", e);
+            return;
+        }
+    };
+    let expiry = match chrono::DateTime::parse_from_rfc3339(expiry_str.trim()) {
+        Ok(dt) => dt.with_timezone(&chrono::Utc),
+        Err(e) => {
+            warn!("[Trigr] Clipboard: expiry file unparseable ({}); leaving in place", e);
+            return;
+        }
+    };
+
+    if chrono::Utc::now() < expiry {
+        return;
+    }
+
+    if backup_path.exists() {
+        match std::fs::remove_file(&backup_path) {
+            Ok(()) => info!("[Trigr] Clipboard: expired plaintext backup deleted"),
+            Err(e) => {
+                warn!("[Trigr] Clipboard: failed to delete expired backup: {}", e);
+                return;
+            }
+        }
+    }
+    let _ = std::fs::remove_file(&expiry_path);
+}
+
+/// Run the one-time migration. Returns the number of rows migrated (0 = nothing
+/// to do or migration skipped because cipher unavailable). Returns Err only on
+/// errors that should be visible in the log; the caller logs and continues —
+/// the app keeps running with legacy rows still plaintext-readable.
+fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, String> {
+    if CLIPBOARD_CIPHER.get().is_none() {
+        info!("[Trigr] Clipboard: Phase 3b migration skipped (cipher unavailable)");
+        return Ok(0);
+    }
+
+    let needs: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM clipboard_history WHERE iv_preview IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    if needs == 0 {
+        info!("[Trigr] Clipboard: Phase 3b migration not needed (no plaintext rows)");
+        return Ok(0);
+    }
+
+    info!(
+        "[Trigr] Clipboard: Phase 3b migration starting ({} plaintext row(s))",
+        needs
+    );
+
+    // STEP 1: copy plaintext .db to .plaintext-backup BEFORE any UPDATE.
+    // Force a WAL checkpoint first so the .db file is a complete snapshot
+    // (otherwise the WAL sidecar would hold pages the backup misses).
+    let backup_path = db_path.with_file_name(PLAINTEXT_BACKUP_NAME);
+    let backup_tmp = db_path.with_file_name(PLAINTEXT_BACKUP_TMP_NAME);
+
+    if !backup_path.exists() {
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        // Remove a stale .tmp from a prior interrupted run if present.
+        let _ = std::fs::remove_file(&backup_tmp);
+        std::fs::copy(db_path, &backup_tmp)
+            .map_err(|e| format!("plaintext backup copy: {}", e))?;
+        std::fs::rename(&backup_tmp, &backup_path)
+            .map_err(|e| format!("plaintext backup rename: {}", e))?;
+        info!(
+            "[Trigr] Clipboard: plaintext backup saved to {}",
+            backup_path.display()
+        );
+    } else {
+        info!("[Trigr] Clipboard: reusing existing plaintext backup from prior attempt");
+    }
+
+    // STEP 2: snapshot up to 3 row previews for post-migration sample verification.
+    let mut sample: Vec<(i64, Vec<u8>)> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, preview FROM clipboard_history WHERE iv_preview IS NULL LIMIT 3",
+            )
+            .map_err(|e| format!("sample prepare: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, get_optional_bytes(row, 1)?.unwrap_or_default()))
+            })
+            .map_err(|e| format!("sample query: {}", e))?;
+        for r in rows {
+            sample.push(r.map_err(|e| format!("sample row: {}", e))?);
+        }
+    }
+
+    // STEP 3: collect plaintext rows, then encrypt + UPDATE inside a transaction.
+    let plain_rows: Vec<(i64, Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>, Vec<u8>)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, text_content, image_blob, ocr_text, preview
+                 FROM clipboard_history WHERE iv_preview IS NULL",
+            )
+            .map_err(|e| format!("collect prepare: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    get_optional_bytes(row, 1)?,
+                    get_optional_bytes(row, 2)?,
+                    get_optional_bytes(row, 3)?,
+                    get_optional_bytes(row, 4)?.unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| format!("collect query: {}", e))?;
+        let mut collected = Vec::new();
+        for r in rows {
+            collected.push(r.map_err(|e| format!("collect row: {}", e))?);
+        }
+        collected
+    };
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("begin transaction: {}", e))?;
+
+    let mut migrated: usize = 0;
+    for (id, text_pt, image_pt, ocr_pt, preview_pt) in plain_rows {
+        let (text_ct, iv_text): (Option<Vec<u8>>, Option<Vec<u8>>) = match text_pt {
+            Some(pt) => match encrypt_blob(&pt) {
+                Some((ct, iv)) => (Some(ct), Some(iv)),
+                None => return Err(format!("encrypt text_content for row {}", id)),
+            },
+            None => (None, None),
+        };
+        let (image_ct, iv_image): (Option<Vec<u8>>, Option<Vec<u8>>) = match image_pt {
+            Some(pt) => match encrypt_blob(&pt) {
+                Some((ct, iv)) => (Some(ct), Some(iv)),
+                None => return Err(format!("encrypt image_blob for row {}", id)),
+            },
+            None => (None, None),
+        };
+        let (ocr_ct, iv_ocr): (Option<Vec<u8>>, Option<Vec<u8>>) = match ocr_pt {
+            Some(pt) => match encrypt_blob(&pt) {
+                Some((ct, iv)) => (Some(ct), Some(iv)),
+                None => return Err(format!("encrypt ocr_text for row {}", id)),
+            },
+            None => (None, None),
+        };
+        let (preview_ct, iv_preview): (Vec<u8>, Vec<u8>) = match encrypt_blob(&preview_pt) {
+            Some((ct, iv)) => (ct, iv),
+            None => return Err(format!("encrypt preview for row {}", id)),
+        };
+
+        tx.execute(
+            "UPDATE clipboard_history
+             SET text_content=?1, image_blob=?2, ocr_text=?3, preview=?4,
+                 iv_text=?5, iv_image=?6, iv_ocr=?7, iv_preview=?8
+             WHERE id=?9",
+            rusqlite::params![
+                text_ct, image_ct, ocr_ct, preview_ct, iv_text, iv_image, iv_ocr, iv_preview, id
+            ],
+        )
+        .map_err(|e| format!("update row {}: {}", id, e))?;
+        migrated += 1;
+    }
+
+    // Hard invariant: every counted plaintext row must have been encrypted.
+    // A mismatch means the collect query dropped rows — abort so the
+    // transaction rolls back and the migration retries next launch, rather
+    // than committing a partial (or empty) migration as success.
+    if migrated as i64 != needs {
+        return Err(format!(
+            "row-count mismatch: counted {} plaintext row(s) but encrypted {} — rolling back",
+            needs, migrated
+        ));
+    }
+
+    // STEP 4: sample-verify before COMMIT. Re-fetch each sampled row and decrypt
+    // the new ciphertext using the new iv; compare to the plaintext we captured
+    // BEFORE encryption. Any mismatch aborts COMMIT and the next launch retries
+    // (the backup file is left intact for recovery).
+    for (id, expected_preview) in &sample {
+        let (ct, iv): (Vec<u8>, Vec<u8>) = tx
+            .query_row(
+                "SELECT preview, iv_preview FROM clipboard_history WHERE id=?1",
+                rusqlite::params![id],
+                |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )
+            .map_err(|e| format!("sample verify select row {}: {}", id, e))?;
+        let decrypted = decrypt_blob(&ct, &iv)
+            .ok_or_else(|| format!("sample verify decrypt failed for row {}", id))?;
+        if &decrypted != expected_preview {
+            return Err(format!(
+                "sample verify MISMATCH on row {} — rolling back migration",
+                id
+            ));
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("commit migration: {}", e))?;
+
+    info!(
+        "[Trigr] Clipboard: Phase 3b migration committed ({} row(s) encrypted, {} sample(s) verified)",
+        migrated,
+        sample.len()
+    );
+
+    // STEP 5: write the 7-day expiry stamp.
+    let expiry_path = db_path.with_file_name(PLAINTEXT_BACKUP_EXPIRES_NAME);
+    let expiry = chrono::Utc::now() + chrono::Duration::days(PLAINTEXT_BACKUP_RETENTION_DAYS);
+    if let Err(e) = std::fs::write(&expiry_path, expiry.to_rfc3339()) {
+        warn!("[Trigr] Clipboard: failed to write expiry file: {}", e);
+        // Non-fatal: the backup will just live forever until manually deleted.
+    } else {
+        info!(
+            "[Trigr] Clipboard: plaintext backup expires {}",
+            expiry.to_rfc3339()
+        );
+    }
+
+    Ok(migrated)
+}
+
 // ── Clipboard entry ──────────────────────────────────────────────────────────
 
 struct ClipEntry {
@@ -605,6 +886,18 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_image BLOB", []);
             let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_ocr BLOB", []);
             let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_preview BLOB", []);
+
+            // Phase 3b (v0.5): clean up an expired plaintext backup from a prior
+            // upgrade, then run the one-time migration of any remaining legacy
+            // plaintext rows. Both are no-ops on most launches. Errors are logged
+            // but non-fatal — the app keeps running with iv-NULL fallback if
+            // migration can't proceed.
+            cleanup_expired_plaintext_backup(&db_path);
+            match run_phase3b_migration(&conn, &db_path) {
+                Ok(0) => {}
+                Ok(n) => info!("[Trigr] Clipboard: Phase 3b migrated {} row(s)", n),
+                Err(e) => error!("[Trigr] Clipboard: Phase 3b migration failed: {}", e),
+            }
 
             info!("[Trigr] Clipboard DB ready: {}", db_path.display());
 
@@ -1085,11 +1378,11 @@ fn handle_get_history(
 
     let items: Vec<Value> = stmt
         .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| {
-            let text_ct = row.get::<_, Option<Vec<u8>>>(3).unwrap_or(None);
+            let text_ct = get_optional_bytes(row, 3).unwrap_or(None);
             let iv_text = row.get::<_, Option<Vec<u8>>>(12).unwrap_or(None);
-            let preview_ct = row.get::<_, Vec<u8>>(6).unwrap_or_default();
+            let preview_ct = get_optional_bytes(row, 6).ok().flatten().unwrap_or_default();
             let iv_preview = row.get::<_, Option<Vec<u8>>>(13).unwrap_or(None);
-            let ocr_ct = row.get::<_, Option<Vec<u8>>>(11).unwrap_or(None);
+            let ocr_ct = get_optional_bytes(row, 11).unwrap_or(None);
             let iv_ocr = row.get::<_, Option<Vec<u8>>>(14).unwrap_or(None);
             Ok(serde_json::json!({
                 "id": row.get::<_, i64>(0).unwrap_or(0),
@@ -1118,11 +1411,11 @@ fn handle_get_item_full(conn: &Connection, id: i64) -> Option<FullClipItem> {
         "SELECT content_type, text_content, image_blob, ocr_text, iv_text, iv_image, iv_ocr FROM clipboard_history WHERE id = ?1",
         rusqlite::params![id],
         |row| {
-            let text_ct = row.get::<_, Option<Vec<u8>>>(1).unwrap_or(None);
+            let text_ct = get_optional_bytes(row, 1).unwrap_or(None);
             let iv_text = row.get::<_, Option<Vec<u8>>>(4).unwrap_or(None);
-            let image_ct = row.get::<_, Option<Vec<u8>>>(2).unwrap_or(None);
+            let image_ct = get_optional_bytes(row, 2).unwrap_or(None);
             let iv_image = row.get::<_, Option<Vec<u8>>>(5).unwrap_or(None);
-            let ocr_ct = row.get::<_, Option<Vec<u8>>>(3).unwrap_or(None);
+            let ocr_ct = get_optional_bytes(row, 3).unwrap_or(None);
             let iv_ocr = row.get::<_, Option<Vec<u8>>>(6).unwrap_or(None);
             Ok(FullClipItem {
                 content_type: row.get::<_, String>(0).unwrap_or_default(),
@@ -1174,7 +1467,7 @@ fn handle_get_image_blob(conn: &Connection, id: i64) -> Option<Vec<u8>> {
         "SELECT image_blob, iv_image FROM clipboard_history WHERE id = ?1 AND content_type = 'image'",
         rusqlite::params![id],
         |row| {
-            let image_ct = row.get::<_, Option<Vec<u8>>>(0)?;
+            let image_ct = get_optional_bytes(row, 0)?;
             let iv_image = row.get::<_, Option<Vec<u8>>>(1)?;
             Ok(resolve_optional_bytes(image_ct, iv_image))
         },
