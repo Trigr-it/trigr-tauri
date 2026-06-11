@@ -1737,7 +1737,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
           updateStep({ ...step, value: JSON.stringify(next) });
         };
         return (
-          <div className="wfi-config-row">
+          <div className="wfi-config-row wfi-config-row-nowrap">
             <div className="wfi-field">
               <span className="wfi-label">Trigger:</span>
               <select className="form-select wfi-select" value={wfi.trigger} onChange={e => updateWfi({ trigger: e.target.value })}>

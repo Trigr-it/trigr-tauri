@@ -374,6 +374,9 @@
 .macro-panel-body {
   flex: 1;
   overflow-y: auto;
+  /* Reserve the scrollbar's width permanently so adding a step (e.g.
+     duplicating one) never shifts the layout when the scrollbar appears. */
+  scrollbar-gutter: stable;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1306,6 +1309,21 @@
   gap: 6px;
   flex: 1;
   min-width: 150px;
+}
+
+/* Wait for Input sub-row — force single-line (same treatment as
+   .click-pos-row) so the Key field can't drop to its own line when the
+   scrollbar appears or the panel narrows. Fields shrink evenly instead:
+   the key-capture box wraps its chips internally and the selects floor
+   at 90px. */
+.wfi-config-row-nowrap {
+  flex-wrap: nowrap;
+}
+.wfi-config-row-nowrap .wfi-field {
+  min-width: 0;
+}
+.wfi-config-row-nowrap .wfi-select {
+  min-width: 90px;
 }
 
 .wfi-label {
