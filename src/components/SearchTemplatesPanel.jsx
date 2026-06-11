@@ -6,8 +6,10 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './SearchTemplatesPanel.css';
 import { MacroSequenceForm, AppForm } from './MacroPanel';
 import { SearchBar } from './SearchBar';
+import { Zap } from 'lucide-react';
 import { findPresetIconForUrl } from '../utils/presetIcons';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
+import { friendlyKeyName } from './keyboardLayout';
 
 // ── Colour palette (matches TextExpansions) ────────────────────────────────
 
@@ -562,6 +564,9 @@ export default function SearchTemplatesPanel({
   onQuickActionImportResolve,
   globalInputMethod,
   onShowNotification,
+  searchOverlayHotkey = 'Ctrl+Space',
+  hiddenTips = [],
+  onHideTip,
   // Suppress foreground auto-switch while the user is mid-edit
   onEditingChange,
 }) {
@@ -1208,13 +1213,32 @@ export default function SearchTemplatesPanel({
             className={`stp-mode-tab${panelMode === 'quickactions' ? ' active' : ''}`}
             onClick={() => { setPanelMode('quickactions'); closePanel(); setActiveCategory('All'); }}
             type="button"
-          >⚡ Quick Actions</button>
+          ><Zap size={12} fill="currentColor" strokeWidth={1} className="stp-mode-tab-icon" aria-hidden="true" /> Quick Actions</button>
           <button
             className={`stp-mode-tab${panelMode === 'templates' ? ' active' : ''}`}
             onClick={() => { setPanelMode('templates'); closeQaPanel(); setActiveCategory('All'); }}
             type="button"
-          >⌕ Search Templates</button>
+          ><span className="stp-mode-tab-icon" aria-hidden="true">⌕</span> Search Templates</button>
         </div>
+        {/* How-to tip — same gold TIP treatment as the radial editor */}
+        {!hiddenTips.includes('templates') && (
+          <div className="stp-tip">
+            <span className="stp-tip-badge">TIP</span>
+            <span>
+              Press{' '}
+              {(searchOverlayHotkey || 'Ctrl+Space').split('+').map((p, i, arr) => (
+                <React.Fragment key={i}>
+                  <kbd className="stp-tip-kbd">{friendlyKeyName(p)}</kbd>
+                  {i < arr.length - 1 && <span className="stp-tip-plus">+</span>}
+                </React.Fragment>
+              ))}
+              {' '}{panelMode === 'quickactions'
+                ? "then start typing an action's name to run it from anywhere."
+                : "followed by your template's trigger characters to activate the search template."}
+            </span>
+            <button type="button" className="stp-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('templates')}>&#10005;</button>
+          </div>
+        )}
         <div className="stp-header-right">
           {panelMode === 'templates' ? (
             <>

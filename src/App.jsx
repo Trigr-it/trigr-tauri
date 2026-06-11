@@ -76,6 +76,9 @@ function App() {
   const [isRecording, setIsRecording]               = useState(false);
   const [recordCapture, setRecordCapture]           = useState(null);
   const [tipsHidden, setTipsHidden]                 = useState(false);
+  // Per-feature TIP box dismissals (radial/templates/expansions/clipboard).
+  // Array of tip keys; reset via Settings "Show feature tips again".
+  const [hiddenTips, setHiddenTips]                 = useState([]);
   const [firstLaunchDate, setFirstLaunchDate]       = useState(null);
   const [backupRestoredFrom, setBackupRestoredFrom] = useState(null); // non-null = show banner
   const [activeGlobalProfile, setActiveGlobalProfile] = useState('Default');
@@ -437,6 +440,7 @@ function App() {
 
         // Tips — load hidden flag; record first launch date if not yet stored
         setTipsHidden(config.tipsHidden ?? false);
+        setHiddenTips(Array.isArray(config.hiddenTips) ? config.hiddenTips : []);
         const isFirstLaunch = !config.firstLaunchDate;
         const fld = config.firstLaunchDate || new Date().toISOString();
         setFirstLaunchDate(fld);
@@ -3270,6 +3274,24 @@ function App() {
     window.electronAPI?.saveConfig({ tipsHidden: true });
   }, []);
 
+  // Hide a single feature TIP box for good (until reset in Settings).
+  const handleHideTip = useCallback((key) => {
+    setHiddenTips(prev => {
+      if (prev.includes(key)) return prev;
+      const next = [...prev, key];
+      window.electronAPI?.saveConfig({ hiddenTips: next });
+      return next;
+    });
+  }, []);
+
+  // Settings "Show feature tips again" — restores every dismissed TIP box
+  // and the keyboard-view quick tips.
+  const handleResetHiddenTips = useCallback(() => {
+    setHiddenTips([]);
+    setTipsHidden(false);
+    window.electronAPI?.saveConfig({ hiddenTips: [], tipsHidden: false });
+  }, []);
+
   // ── Templates coachmark fire / dismiss ─────────────────────
   const handleDismissTemplatesNudge = useCallback(() => {
     setShowTemplatesNudge(false);
@@ -3886,6 +3908,9 @@ function App() {
           )}
           {activeArea === 'clipboard' && (
             <ClipboardPanel
+              hiddenTips={hiddenTips}
+              onHideTip={handleHideTip}
+              clipboardPasteHotkey={clipboardPasteHotkey}
               previewWidth={clipboardPreviewWidth}
               onChangePreviewWidth={(w) => {
                 const clamped = Math.max(320, Math.min(1200, Math.round(w)));
@@ -3897,6 +3922,8 @@ function App() {
           )}
           {activeArea === 'mapping' && activeView === 'radial' && (
             <RadialEditorView
+              hiddenTips={hiddenTips}
+              onHideTip={handleHideTip}
               radialMenuHotkey={radialMenuHotkey}
               onSetRadialMenuHotkey={handleSetRadialMenuHotkey}
               onClearRadialMenuHotkey={handleClearRadialMenuHotkey}
@@ -3940,8 +3967,11 @@ function App() {
           )}
           {activeArea === 'templates' && (
             <SearchTemplatesPanel
+              hiddenTips={hiddenTips}
+              onHideTip={handleHideTip}
               searchTemplates={searchTemplates}
               categories={searchTemplateCategories}
+              searchOverlayHotkey={searchOverlayHotkey}
               isPro={isPro}
               onAdd={handleAddSearchTemplate}
               onUpdate={handleUpdateSearchTemplate}
@@ -3975,6 +4005,8 @@ function App() {
             // Phase 3: Text Expansions will eventually support its own profile bar
             // for per-app or team expansion profiles.  For now a single global set.
             <TextExpansions
+              hiddenTips={hiddenTips}
+              onHideTip={handleHideTip}
               expansions={expansions}
               onAdd={handleAddExpansion}
               onDelete={handleDeleteExpansion}
@@ -4006,6 +4038,8 @@ function App() {
         {/* Right panel: Settings always accessible; MacroPanel only in Mapping area */}
         {showSettings ? (
           <SettingsPanel
+            onResetHiddenTips={handleResetHiddenTips}
+            hiddenTipsCount={hiddenTips.length + (tipsHidden ? 1 : 0)}
             onClose={() => setShowSettings(false)}
             macrosEnabledOnStartup={macrosEnabledOnStartup}
             onToggleMacrosOnStartup={handleToggleMacrosOnStartup}

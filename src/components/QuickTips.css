@@ -7,6 +7,29 @@
   align-items: center;
 }
 
+/* ── Gold tip box — mirrors the panel TIP boxes (.rev-tip / .stp-tip etc.) ── */
+.qt-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+
+.qt-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--btn-primary-text);
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
 /* ── Tip list ── */
 .qt-list {
   list-style: none;
@@ -38,36 +61,23 @@
 .qt-text {
   font-size: 11px;
   line-height: 1.4;
-  color: var(--qt-text);
+  color: var(--text-primary);
 }
 
-/* ── Dismiss link ── */
+/* ── Dismiss X — matches the panel tip close buttons ── */
 .qt-dismiss {
-  margin-top: 6px;
-  background: transparent;
+  flex-shrink: 0;
+  align-self: flex-start;
+  background: none;
   border: none;
-  padding: 0;
-  font-size: 10px;
-  color: var(--qt-dismiss);
+  padding: 2px;
+  color: var(--text-muted);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  display: block;
+  font-size: 11px;
+  line-height: 1;
   transition: color 0.12s;
 }
 
 .qt-dismiss:hover {
-  color: var(--text-secondary);
-}
-
-/* ── CSS variables — dark (default) ── */
-:root {
-  --qt-text:    #6a6880;
-  --qt-dismiss: #3a3860;
-}
-
-/* ── CSS variables — light ── */
-[data-theme="light"] {
-  --qt-text:    #6060a0;
-  --qt-dismiss: #b0b0c8;
+  color: var(--accent);
 }

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
+import { Info } from 'lucide-react';
 import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
@@ -51,6 +52,8 @@ export default function RadialEditorView({
   activeProfile         = '',
   onCopyRadialSegmentToProfile,
   onForceOverwriteRadialSegment,
+  hiddenTips            = [],
+  onHideTip,
 }) {
   const [capturingKey, setCapturingKey] = useState(false);
   const [capturedKey, setCapturedKey]   = useState(null);
@@ -378,7 +381,7 @@ export default function RadialEditorView({
             <div
               className="rmp-capture"
               tabIndex={0}
-              autoFocus
+              ref={el => el?.focus()}
               onBlur={() => { setCapturingKey(false); setCapturedKey(null); setRadialConflict(null); }}
               onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
               onKeyDown={async e => {
@@ -463,6 +466,13 @@ export default function RadialEditorView({
         </div>
       ) : (
         <div className="rev-wheel-zone">
+          {!hiddenTips.includes('radial-info') && (
+            <div className="rev-tip">
+              <Info size={14} strokeWidth={2} aria-hidden="true" />
+              <span>Assign actions to the 8 segments, or create a folder by right clicking on the segment to nest actions.</span>
+              <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-info')}>&#10005;</button>
+            </div>
+          )}
           <div className="rev-editor" ref={wheelRef} onClick={() => { setPopover(null); setCtxMenu(null); }}>
             <RadialWheel
               mode="editor"
@@ -679,6 +689,22 @@ export default function RadialEditorView({
               </>
             )}
           </div>
+          {!hiddenTips.includes('radial-hotkey') && (
+            <div className="rev-tip rev-tip-prominent">
+              <span className="rev-tip-badge">TIP</span>
+              <span>
+                Press{' '}
+                {radialMenuHotkey.split('+').map((p, i, arr) => (
+                  <React.Fragment key={i}>
+                    <kbd className="rmp-kbd">{friendlyKeyName(p)}</kbd>
+                    {i < arr.length - 1 && <span className="rmp-plus">+</span>}
+                  </React.Fragment>
+                ))}
+                {' '}when this profile is active to launch your radial wheel. Even better, add hotkey to mouse side button!
+              </span>
+              <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-hotkey')}>&#10005;</button>
+            </div>
+          )}
         </div>
       )}
 

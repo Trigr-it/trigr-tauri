@@ -22,26 +22,31 @@ export default function QuickTips({ onDismiss }) {
 
   return (
     <div className="quick-tips">
-      <ul className="qt-list">
-        {shown.map((tip, i) => {
-          const TipIcon = tip.Icon;
-          return (
-            <li key={i} className="qt-row">
-              <span className="qt-icon" aria-hidden="true">
-                <TipIcon size={14} strokeWidth={1.75} />
-              </span>
-              <span className="qt-text">{tip.text}</span>
-            </li>
-          );
-        })}
-      </ul>
-      <button
-        className="qt-dismiss"
-        onClick={onDismiss}
-        type="button"
-      >
-        hide tips
-      </button>
+      {/* Gold tip box — same visual language as the panel TIP boxes
+          (radial / templates / expansions / clipboard). */}
+      <div className="qt-box">
+        <span className="qt-badge">TIPS</span>
+        <ul className="qt-list">
+          {shown.map((tip, i) => {
+            const TipIcon = tip.Icon;
+            return (
+              <li key={i} className="qt-row">
+                <span className="qt-icon" aria-hidden="true">
+                  <TipIcon size={14} strokeWidth={1.75} />
+                </span>
+                <span className="qt-text">{tip.text}</span>
+              </li>
+            );
+          })}
+        </ul>
+        <button
+          className="qt-dismiss"
+          onClick={onDismiss}
+          type="button"
+          title="Hide these tips (restore in Settings)"
+          aria-label="Hide these tips"
+        >&#10005;</button>
+      </div>
     </div>
   );
 }

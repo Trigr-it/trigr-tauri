@@ -1063,6 +1063,8 @@ export default function TextExpansions({
   expansions,
   onAdd,
   onDelete,
+  hiddenTips = [],
+  onHideTip,
   categories = [],
   onAddCategory,
   onDeleteCategory,
@@ -1707,7 +1709,7 @@ export default function TextExpansions({
             onClick={() => setPanelMode('expansions')}
             type="button"
           >
-            ✦ Text Expansions
+            <span className="te-mode-tab-icon" aria-hidden="true">✦</span> Text Expansions
           </button>
           {/* Autocorrect tab hidden for Alpha
           <button
@@ -1719,12 +1721,18 @@ export default function TextExpansions({
           </button>
           */}
         </div>
-        <div className="te-header-right">
-          {panelMode !== 'globalvars' && (
-            <span className="te-hint">
-              {panelMode === 'expansions' ? 'type trigger + Space' : 'corrects on Space'}
+        {/* How-to tip — same gold TIP treatment as the radial editor and
+            templates panel. Replaces the old te-hint one-liner. */}
+        {panelMode === 'expansions' && !hiddenTips.includes('expansions') && (
+          <div className="te-tip">
+            <span className="te-tip-badge">TIP</span>
+            <span>
+              Type your trigger characters then <kbd className="te-tip-kbd">Space</kbd> to fire the expansion, or select <span className="te-tip-instant">⚡ Instant</span> mode to fire immediately on the last character.
             </span>
-          )}
+            <button type="button" className="te-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('expansions')}>&#10005;</button>
+          </div>
+        )}
+        <div className="te-header-right">
           {panelMode === 'expansions' && (
             <button className="te-add-btn" onClick={() => openAdd()} title="Add expansion" type="button">
               + Add

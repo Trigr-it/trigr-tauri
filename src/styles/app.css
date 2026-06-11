@@ -268,9 +268,14 @@
 }
 
 .view-tab.active {
-  background: var(--bg-active);
-  color: var(--accent);
-  border: 1px solid var(--border-accent);
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  color: var(--btn-primary-text);
+  border: 1px solid var(--accent);
+  box-shadow: 0 1px 6px rgba(var(--accent-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.view-tab.active .view-tab-icon {
+  color: var(--on-accent);
 }
 
 /* Below 1200px, view-switcher tabs collapse to icon-only so the row stays

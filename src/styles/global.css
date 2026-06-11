@@ -73,6 +73,9 @@
   /* ── Button hierarchy ── */
   --btn-primary-bg: var(--accent);
   --btn-primary-text: #0d0d11;
+  /* White regardless of theme — for icons/marks that must pop on a gold fill
+     even where the surrounding label uses --btn-primary-text ink. */
+  --on-accent: #ffffff;
   --btn-primary-hover: var(--accent-hover);
   --btn-secondary-bg: transparent;
   --btn-secondary-border: var(--border-bright);

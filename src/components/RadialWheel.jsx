@@ -289,7 +289,9 @@ export default function RadialWheel({
 
     const isDropTarget = isOuter ? dropTargetOuterIndex === index : dropTargetIndex === index;
     const isDragSource = !isOuter && dragFromIndex === index;
-    const isSelected = !isOuter && selectedIndex === index && !isEmpty;
+    // Empty wedges included: clicking one opens the editor for that slot, so
+    // the wheel should keep showing which slot is being assigned.
+    const isSelected = !isOuter && selectedIndex === index;
 
     const classNames = [
       'rw-wedge',
@@ -441,10 +443,13 @@ export default function RadialWheel({
                 pointerEvents="none"
               >{numLabel(index)}</text>
             )}
-            {/* Folder trim — gold arc along outer edge */}
+            {/* Folder trim — gold arc along outer edge. Radius tracks gapR so
+                the band hugs the wedge edge in both rest and hover (grown)
+                states: band outer edge lands flush with the wedge's 1px
+                outline at oR - gapR. */}
             {isFolder && (
               <path
-                d={arcPath(CX, CY, oR - 5, startAngle + gapAngle + 1, endAngle - gapAngle - 1)}
+                d={arcPath(CX, CY, oR - gapR - 2, startAngle + gapAngle + 1, endAngle - gapAngle - 1)}
                 className="rw-folder-trim"
                 pointerEvents="none"
               />

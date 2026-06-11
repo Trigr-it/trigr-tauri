@@ -198,6 +198,8 @@ export default function SettingsPanel({
   onSetVoiceKey,
   onClearVoiceKey,
   onRestartOnboarding,
+  onResetHiddenTips,
+  hiddenTipsCount = 0,
   activeProfile = 'Default',
   onImportTemplate,
   onImportCadTemplate,
@@ -669,6 +671,19 @@ export default function SettingsPanel({
             </button>
             <button
               type="button"
+              className="settings-action-btn settings-help-btn"
+              onClick={onResetHiddenTips}
+              disabled={hiddenTipsCount === 0}
+              title={hiddenTipsCount === 0 ? 'No tips are hidden' : 'Bring back every dismissed tip box'}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+                <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4"/>
+              </svg>
+              Show Feature Tips Again
+            </button>
+            <button
+              type="button"
               className="settings-action-btn settings-feedback-btn"
               onClick={openFeedback}
             >
@@ -990,7 +1005,7 @@ export default function SettingsPanel({
                 <div
                   className="settings-qs-capture"
                   tabIndex={0}
-                  autoFocus
+                  ref={el => el?.focus()}
                   onBlur={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
                   onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
                   onKeyDown={async e => {
@@ -1105,7 +1120,7 @@ export default function SettingsPanel({
                 <div
                   className="settings-qs-capture"
                   tabIndex={0}
-                  autoFocus
+                  ref={el => el?.focus()}
                   onBlur={() => { setCapturingHotkey(false); setCapturedHotkey(null); }}
                   onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
                   onKeyDown={e => {
@@ -1259,7 +1274,7 @@ export default function SettingsPanel({
                     <div
                       className="settings-qs-capture"
                       tabIndex={0}
-                      autoFocus
+                      ref={el => el?.focus()}
                       onBlur={() => { setCapturingClipPasteKey(false); setCapturedClipPasteKey(null); setClipPasteConflict(null); }}
                       onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
                       onKeyDown={async e => {
@@ -1455,7 +1470,7 @@ export default function SettingsPanel({
                 <div
                   className="settings-qs-capture"
                   tabIndex={0}
-                  autoFocus
+                  ref={el => el?.focus()}
                   onBlur={() => { setCapturingVoiceKey(false); setCapturedVoiceKey(null); setVoiceConflict(null); }}
                   onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
                   onKeyDown={async e => {

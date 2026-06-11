@@ -104,9 +104,12 @@
 
 /* ── Empty slot (editor mode) ─────────────────────────────────────────────── */
 
+/* Empty slots only ever render in the editor (live mode skips them), so
+   rgba fills are safe here despite the overlay-transparency rule above.
+   Faint gold dashed trim reads "slot available" against the canvas. */
 .rw-wedge--empty .rw-wedge-path {
   fill: rgba(128, 128, 128, 0.18);
-  stroke: var(--border-bright);
+  stroke: rgba(var(--accent-rgb), 0.5);
   stroke-dasharray: 4 6;
   stroke-width: 1;
 }
@@ -115,9 +118,13 @@
   cursor: pointer;
 }
 
+/* Hover: solid gold trim + glow, same treatment as the drop-target state,
+   so the segment about to be picked is unmistakable. */
 .rw-svg--editor .rw-wedge--empty:hover .rw-wedge-path {
-  stroke: var(--border-accent);
-  fill: rgba(var(--accent-rgb), 0.04);
+  stroke: var(--accent);
+  stroke-dasharray: none;
+  fill: var(--accent-glow);
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 /* ── Outer ring wedge ─────────────────────────────────────────────────────── */
@@ -211,7 +218,7 @@
 
 .rw-svg--editor .rw-wedge--empty:hover .rw-wedge-plus {
   fill: var(--accent);
-  opacity: 0.8;
+  opacity: 1;
 }
 
 /* ── Drag source (wedge being dragged away) ──────────────────────────────── */
@@ -257,9 +264,12 @@
 .rw-folder-trim {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 4;
+  stroke-width: 3;
   stroke-linecap: round;
   opacity: 0.8;
+  /* Animate with the wedge body's hover grow (same d transition as
+     .rw-wedge-path) so the trim moves as one piece with the segment. */
+  transition: d 0.1s ease;
 }
 
 .rw-folder-chevron {

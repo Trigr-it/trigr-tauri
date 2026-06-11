@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { Pin, PinOff, Link2, Maximize2 } from 'lucide-react';
+import { Pin, PinOff, Link2, Maximize2, Clipboard } from 'lucide-react';
+import { friendlyKeyName } from './keyboardLayout';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -219,7 +220,7 @@ function reflowParagraphs(text) {
     .join('\n\n');
 }
 
-export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth, onCreateExpansion }) {
+export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth, onCreateExpansion, clipboardPasteHotkey = 'Ctrl+Shift+V', hiddenTips = [], onHideTip }) {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -676,8 +677,26 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
            future siblings like Pinned, Snippets etc. without restructuring. */}
       <div className="cbg-header">
         <div className="cbg-mode-tabs">
-          <button className="cbg-mode-tab active" type="button">Clipboard</button>
+          <button className="cbg-mode-tab active" type="button"><Clipboard size={12} fill="currentColor" strokeWidth={1} className="cbg-mode-tab-icon" aria-hidden="true" /> Clipboard Manager</button>
         </div>
+        {/* How-to tip — same gold TIP treatment as the other panel headers.
+            Hidden when the popup hotkey has been removed in Settings. */}
+        {clipboardPasteHotkey && !hiddenTips.includes('clipboard') && (
+          <div className="cbg-tip">
+            <span className="cbg-tip-badge">TIP</span>
+            <span>
+              Press{' '}
+              {clipboardPasteHotkey.split('+').map((p, i, arr) => (
+                <React.Fragment key={i}>
+                  <kbd className="cbg-tip-kbd">{friendlyKeyName(p)}</kbd>
+                  {i < arr.length - 1 && <span className="cbg-tip-plus">+</span>}
+                </React.Fragment>
+              ))}
+              {' '}in any app to open the Clipboard Manager and paste a saved item right where you are.
+            </span>
+            <button type="button" className="cbg-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('clipboard')}>&#10005;</button>
+          </div>
+        )}
         <div className="cbg-header-right">
           {storageSize != null && storageSize > 0 && (
             <span className="cbg-storage-size">{formatStorageSize(storageSize)}</span>

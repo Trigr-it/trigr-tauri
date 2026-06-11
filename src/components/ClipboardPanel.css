@@ -167,6 +167,9 @@
   letter-spacing: 0.04em;
   cursor: pointer;
   transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .cbg-mode-tab:hover:not(.active) {
@@ -175,9 +178,87 @@
 }
 
 .cbg-mode-tab.active {
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  color: var(--btn-primary-text);
+  border: 1px solid var(--accent);
+  box-shadow: 0 1px 6px rgba(var(--accent-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.cbg-mode-tab.active .cbg-mode-tab-icon {
+  color: var(--on-accent);
+}
+
+/* ── How-to tip — gold TIP pill, mirrors .stp-tip / .te-tip (kept local so
+   the panels can diverge independently). Sits beside the mode tab;
+   content-sized; squeezes with ellipsis when narrow. ── */
+.cbg-tip {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 8px;
+  margin: 0 auto 0 12px;
+  padding: 0 10px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.cbg-tip > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.cbg-tip-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--btn-primary-text);
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.cbg-tip-kbd {
   background: var(--bg-active);
+  border: 1px solid var(--border-bright);
+  border-bottom-width: 2px;
+  border-radius: 4px;
   color: var(--accent);
-  border: 1px solid var(--border-accent);
+  font-size: 10px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  padding: 1px 5px;
+}
+
+.cbg-tip-plus {
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 0 2px;
+}
+
+.cbg-tip-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+
+.cbg-tip-close:hover {
+  color: var(--accent);
 }
 
 .cbg-header-right {

@@ -149,10 +149,71 @@
 .rev-wheel-zone {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 14px;
   overflow: visible;
   min-height: 0;
+}
+
+/* Helper tip shown above/below the wheel while it has no segments yet. */
+.rev-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 440px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.rev-tip svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* Prominent gold variant — reminds the user of their radial hotkey and
+   nudges them to try it. Shown below the wheel while it has no segments. */
+.rev-tip-prominent {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.rev-tip-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--btn-primary-text);
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.rev-tip-close {
+  flex-shrink: 0;
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+
+.rev-tip-close:hover {
+  color: var(--accent);
 }
 
 .rev-editor {
@@ -165,14 +226,20 @@
    Only interactive states (selected, drag, empty fade) are overridden.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Empty slots — faded ── */
-.rev-editor .rw-wedge--empty { opacity: 0.35; }
-.rev-editor .rw-wedge--empty:hover { opacity: 0.6; }
+/* ── Empty slots — lightly faded at rest, full strength on hover so the
+   hovered segment + its gold glow (RadialWheel.css) read at full power. ── */
+.rev-editor .rw-wedge--empty { opacity: 0.7; }
+.rev-editor .rw-wedge--empty:hover { opacity: 1; }
 
-/* ── Selected segment — accent border highlight ── */
+/* ── Selected segment — accent border highlight + glow. Applies to empty
+   wedges too (clicking one opens the editor for that slot), so force full
+   opacity and a solid outline over the empty state's fade + dashes. ── */
+.rev-editor .rw-wedge--empty.rw-wedge--selected { opacity: 1; }
 .rev-editor .rw-wedge--selected .rw-wedge-path {
   stroke: var(--accent);
   stroke-width: 2;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 /* ── Drag source — faded with dashed outline ── */
