@@ -1,17 +1,25 @@
-use log::{error, info};
+use aes_gcm::{Aes256Gcm, KeyInit};
+use log::{error, info, warn};
+use rand::RngCore;
+use rand::rngs::OsRng;
 use rusqlite::Connection;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
 use tauri::AppHandle;
+use zeroize::Zeroizing;
 
-use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Foundation::{HWND, LocalFree};
+use windows_sys::Win32::Security::Cryptography::{
+    CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB,
+};
 use windows_sys::Win32::System::DataExchange::{
     AddClipboardFormatListener, CloseClipboard, GetClipboardData, IsClipboardFormatAvailable,
     OpenClipboard, RemoveClipboardFormatListener,
@@ -31,6 +39,171 @@ const CF_DIB: u32 = 8;
 const CF_HDROP: u32 = 15;
 const WM_CLIPBOARDUPDATE: u32 = 0x031D;
 const DEFAULT_RETENTION_DAYS: u32 = 7;
+
+const KEY_FILE_NAME: &str = "trigr-clipboard.key.dpapi";
+
+// ── Encryption: DPAPI-wrapped AES-256-GCM master key ─────────────────────────
+//
+// Master key (32 random bytes) is generated on first launch and stored at
+// %APPDATA%\com.nodescaffold.trigr\trigr-clipboard.key.dpapi after being
+// wrapped with Windows DPAPI in user-scope. Only the logged-in Windows user
+// can unwrap it; other local users and offline disk attackers cannot.
+//
+// The unwrapped key is held in a Zeroizing<[u8; 32]> just long enough to build
+// the Aes256Gcm instance, then dropped (the cipher keeps its own expanded
+// round keys internally, which aes-gcm zeroes on drop).
+//
+// Phase 2: key generation, load, and cipher init only. Encryption of writes
+// and decryption of reads land in Phase 3.
+
+static CLIPBOARD_CIPHER: OnceLock<Aes256Gcm> = OnceLock::new();
+
+/// Wrap arbitrary bytes with DPAPI in user-scope. NEVER pass
+/// CRYPTPROTECT_LOCAL_MACHINE — that would let other users on the same
+/// machine unwrap the key.
+unsafe fn dpapi_protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    let mut in_blob = CRYPT_INTEGER_BLOB {
+        cbData: plaintext.len() as u32,
+        pbData: plaintext.as_ptr() as *mut u8,
+    };
+    let mut out_blob: CRYPT_INTEGER_BLOB = std::mem::zeroed();
+
+    let ok = CryptProtectData(
+        &mut in_blob,
+        ptr::null(),       // szDataDescr
+        ptr::null_mut(),   // pOptionalEntropy (none — DPAPI's user-scope is the secret)
+        ptr::null_mut(),   // pvReserved
+        ptr::null_mut(),   // pPromptStruct (no UI)
+        0,                 // dwFlags — user-scope, no UI
+        &mut out_blob,
+    );
+
+    if ok == 0 {
+        return Err("CryptProtectData failed".to_string());
+    }
+
+    let ciphertext =
+        std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec();
+    LocalFree(out_blob.pbData as _);
+    Ok(ciphertext)
+}
+
+/// Unwrap DPAPI-wrapped bytes. Returns Err if the calling user isn't the one
+/// who wrapped them (or if the blob is corrupted).
+unsafe fn dpapi_unprotect(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+    let mut in_blob = CRYPT_INTEGER_BLOB {
+        cbData: ciphertext.len() as u32,
+        pbData: ciphertext.as_ptr() as *mut u8,
+    };
+    let mut out_blob: CRYPT_INTEGER_BLOB = std::mem::zeroed();
+
+    let ok = CryptUnprotectData(
+        &mut in_blob,
+        ptr::null_mut(),
+        ptr::null_mut(),
+        ptr::null_mut(),
+        ptr::null_mut(),
+        0,
+        &mut out_blob,
+    );
+
+    if ok == 0 {
+        return Err("CryptUnprotectData failed".to_string());
+    }
+
+    let plaintext =
+        std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec();
+    LocalFree(out_blob.pbData as _);
+    Ok(plaintext)
+}
+
+/// Load the existing master key from disk, or generate a fresh one if none
+/// exists. Returns the unwrapped 32-byte key inside a zeroizing wrapper.
+fn load_or_generate_master_key(app_data_dir: &Path) -> Result<Zeroizing<[u8; 32]>, String> {
+    let key_path = app_data_dir.join(KEY_FILE_NAME);
+    if key_path.exists() {
+        load_master_key(&key_path)
+    } else {
+        generate_and_save_master_key(&key_path)
+    }
+}
+
+fn load_master_key(key_path: &Path) -> Result<Zeroizing<[u8; 32]>, String> {
+    let protected = std::fs::read(key_path)
+        .map_err(|e| format!("read key file: {}", e))?;
+    let unwrapped = unsafe { dpapi_unprotect(&protected) }?;
+    if unwrapped.len() != 32 {
+        return Err(format!(
+            "unexpected unwrapped key length: {} (expected 32)",
+            unwrapped.len()
+        ));
+    }
+    let mut key: Zeroizing<[u8; 32]> = Zeroizing::new([0u8; 32]);
+    key.copy_from_slice(&unwrapped);
+    Ok(key)
+}
+
+fn generate_and_save_master_key(key_path: &Path) -> Result<Zeroizing<[u8; 32]>, String> {
+    let mut key: Zeroizing<[u8; 32]> = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(key.as_mut_slice());
+
+    let protected = unsafe { dpapi_protect(key.as_slice()) }?;
+
+    std::fs::write(key_path, &protected)
+        .map_err(|e| format!("write key file: {}", e))?;
+
+    // Mark the file read-only so accidental edits don't corrupt it. Best-effort;
+    // failure here is logged but not fatal — the file is still safe at rest
+    // because the master key inside is DPAPI-wrapped.
+    match std::fs::metadata(key_path) {
+        Ok(meta) => {
+            let mut perms = meta.permissions();
+            perms.set_readonly(true);
+            if let Err(e) = std::fs::set_permissions(key_path, perms) {
+                warn!("[Trigr] Clipboard: failed to set key file read-only: {}", e);
+            }
+        }
+        Err(e) => warn!("[Trigr] Clipboard: failed to read key file metadata: {}", e),
+    }
+
+    info!("[Trigr] Clipboard: generated new master key, wrapped with DPAPI");
+    Ok(key)
+}
+
+/// Set up the AES-256-GCM cipher from the on-disk DPAPI-wrapped master key.
+/// Returns true on success, false on failure (logged). Phase 3 reads/writes
+/// will check `clipboard_cipher().is_some()` before encrypt/decrypt.
+fn init_cipher(app_data_dir: &Path) -> bool {
+    match load_or_generate_master_key(app_data_dir) {
+        Ok(key) => {
+            match Aes256Gcm::new_from_slice(key.as_slice()) {
+                Ok(aead) => {
+                    if CLIPBOARD_CIPHER.set(aead).is_err() {
+                        warn!("[Trigr] Clipboard: cipher already initialised");
+                    }
+                    info!("[Trigr] Clipboard: AES-256-GCM cipher ready");
+                    true
+                }
+                Err(e) => {
+                    error!("[Trigr] Clipboard: failed to build cipher: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            error!("[Trigr] Clipboard: failed to load/generate master key: {}", e);
+            false
+        }
+    }
+}
+
+/// Phase 3 will call this from encrypt/decrypt paths. Returns None if the
+/// cipher failed to initialise (in which case the writer thread should
+/// refuse to start encrypting).
+#[allow(dead_code)]
+pub(crate) fn clipboard_cipher() -> Option<&'static Aes256Gcm> {
+    CLIPBOARD_CIPHER.get()
+}
 
 // ── Clipboard entry ──────────────────────────────────────────────────────────
 
@@ -300,6 +473,13 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             set_excluded_apps(apps);
         }
     }
+
+    // Phase 2: build the AES-256-GCM cipher from the DPAPI-wrapped master key
+    // BEFORE spawning the writer thread. If this fails, the writer still spawns
+    // and the clipboard still works (read/write paths fall back to plaintext
+    // until Phase 3 wires encryption into the SQL paths); a follow-up error
+    // toast surfaces from the Phase 5 startup path.
+    let _ = init_cipher(&app_data_dir);
 
     let db_path = app_data_dir.join("trigr-clipboard.db");
     let _ = DB_PATH.set(db_path.clone());
