@@ -82,7 +82,7 @@
     {
       "@type": "Question",
       "name": "Does it phone home? Where does my data live?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Your content stays on your machine. Config, clipboard history, analytics: all in plain JSON and SQLite files in your %LOCALAPPDATA%. No accounts, no cloud. The only thing Trigr sends is a once-daily anonymous summary: how many triggers, expansions, and macros fired, plus the app version. No content, no identifiers, and one click in Settings turns it off. Voice commands (currently experimental) run locally via the Windows speech engine. No audio is ever transmitted." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Your content stays on your machine. Config, clipboard history, analytics: all in plain JSON and SQLite files in your %APPDATA% folder. No accounts, no cloud. The only thing Trigr sends is a once-daily anonymous summary: counts of actions fired by type, counts of what you have configured, your plan tier, and the app version. No content, no identifiers, and one click in Settings turns it off. Voice commands (currently experimental) run locally via the Windows speech engine. No audio is ever transmitted." }
     },
     {
       "@type": "Question",
@@ -1197,7 +1197,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       </a>
     </div>
     <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
-    <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Fully local — no accounts, no cloud <span>·</span> Latest: <span class="js-latest-version">v0.4.22</span></p>
+    <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Your data stays on your machine <span>·</span> No accounts, no cloud <span>·</span> Latest: <span class="js-latest-version">v0.4.22</span></p>
 
     <!-- ── MOCKUP ── -->
     <div class="mockup-wrap">
@@ -1789,7 +1789,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q">Does it phone home? Where does my data live?<span class="faq-q-icon"></span></summary>
-        <div class="faq-body">Your content stays on your machine. Config, clipboard history, analytics: all in plain JSON and SQLite files in your <code>%LOCALAPPDATA%</code>. <strong>No accounts, no cloud.</strong> The only thing Trigr sends is a once-daily anonymous summary: how many triggers, expansions, and macros fired, plus the app version. No content, no identifiers, and one click in Settings turns it off. Voice commands (currently experimental) run locally via the Windows speech engine. No audio is ever transmitted.</div>
+        <div class="faq-body">Your content stays on your machine. Config, clipboard history, analytics: all in plain JSON and SQLite files in your <code>%APPDATA%</code> folder. <strong>No accounts, no cloud.</strong> The only thing Trigr sends is a once-daily anonymous summary: counts of actions fired by type, counts of what you have configured, your plan tier, and the app version. No content, no identifiers, and one click in Settings turns it off. Voice commands (currently experimental) run locally via the Windows speech engine. No audio is ever transmitted.</div>
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q">Will my IT team allow it?<span class="faq-q-icon"></span></summary>
@@ -1827,7 +1827,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Windows 10 / 11</span>
       <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>~10MB · runtime included</span>
       <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>Auto-updates</span>
-      <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Fully local — no cloud</span>
+      <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Your data stays on your machine</span>
     </div>
   </div>
 </section>
