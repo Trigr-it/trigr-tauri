@@ -2456,14 +2456,23 @@
 .fire-picker-group + .fire-picker-group {
   margin-top: 4px;
 }
+/* Gold bar around each profile/category name so group boundaries read at
+   a glance while scanning the list. */
 .fire-picker-group-header {
-  padding: 8px 8px 4px;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  margin: 8px 4px 4px;
+  padding: 2px 10px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
   font-family: var(--font-display);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--accent);
 }
 .fire-picker-item {
   display: flex;

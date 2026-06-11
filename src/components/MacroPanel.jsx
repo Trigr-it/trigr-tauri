@@ -1259,7 +1259,7 @@ function formatCombo(combo, keyId) {
   return [...combo.split('+'), keyLabel].join('+');
 }
 
-function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose }) {
+function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose, profilesOrder }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
   const panelRef = useRef(null);
@@ -1362,16 +1362,28 @@ function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose }
       if (!byGroup.has(it.group)) byGroup.set(it.group, []);
       byGroup.get(it.group).push(it);
     }
-    // Profile groups before app groups (apps contain '.' usually — .exe basename)
+    // Default always leads, then profiles in the user's sidebar order (the
+    // config profiles array). Groups not in that array (raw app-name
+    // containers from AppName::combo keys) keep the old fallback: after
+    // profiles, apps last (apps contain '.' usually — .exe basename), A-Z.
+    const order = profilesOrder || [];
+    const rank = (name) => {
+      if (name === 'Default') return -1;
+      const i = order.indexOf(name);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
     return Array.from(byGroup.entries())
       .sort(([a], [b]) => {
+        const ra = rank(a);
+        const rb = rank(b);
+        if (ra !== rb) return ra - rb;
         const aApp = a.includes('.');
         const bApp = b.includes('.');
         if (aApp !== bApp) return aApp ? 1 : -1;
         return a.localeCompare(b);
       })
       .map(([name, items]) => ({ name, items }));
-  }, [mode, assignments, query]);
+  }, [mode, assignments, query, profilesOrder]);
 
   const totalCount = groups.reduce((sum, g) => sum + g.items.length, 0);
   const title = mode === 'expansion' ? 'Choose a text expansion to fire' : 'Choose a trigger to fire';
@@ -1432,7 +1444,7 @@ function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose }
 
 let _nextStepId = 1;
 
-function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep, advancedOpen, toggleAdvanced, assignments }) {
+function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep, advancedOpen, toggleAdvanced, assignments, profiles }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step._id });
   const style = {
     transform: DndCSS.Transform.toString(transform),
@@ -1793,6 +1805,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         <FireTargetPicker
           mode={firePickerMode}
           assignments={assignments || {}}
+          profilesOrder={profiles}
           currentValue={step.value || ''}
           onSelect={(v) => {
             updateStep({ ...step, value: v });
@@ -1805,7 +1818,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   );
 }
 
-export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments }) {
+export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles }) {
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
   const [advancedOpen, setAdvancedOpen] = useState({});
@@ -1911,6 +1924,7 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
                 advancedOpen={!!advancedOpen[step._id]}
                 toggleAdvanced={() => setAdvancedOpen(prev => ({ ...prev, [step._id]: !prev[step._id] }))}
                 assignments={assignments}
+                profiles={profiles}
               />
             ))}
           </div>
@@ -2816,7 +2830,7 @@ export default function MacroPanel({
           {activeType === 'app'    && <AppForm value={formValue} onChange={setFormValue} />}
           {activeType === 'folder' && <FolderForm value={formValue} onChange={setFormValue} />}
           {activeType === 'url'    && <UrlForm value={formValue} onChange={setFormValue} />}
-          {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} assignments={assignments} />}
+          {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} assignments={assignments} profiles={profiles} />}
           {activeType === 'ahk'   && <AhkForm value={formValue} onChange={setFormValue} />}
         </div>
 
