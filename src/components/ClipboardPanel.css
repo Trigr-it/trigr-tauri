@@ -991,6 +991,16 @@
   word-break: break-word;
 }
 
+/* Copy buttons sit directly under the extracted-text box so it reads as
+   "this is the text you are copying". Mirrors .cbg-image-actions. */
+.cbg-ocr-copy-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: -2px 0 8px;
+}
+
 .cbg-color-swatches {
   flex-shrink: 0;
   display: flex;

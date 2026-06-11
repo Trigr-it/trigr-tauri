@@ -209,6 +209,16 @@ function ColourPane({ value }) {
   );
 }
 
+// Reflow OCR text into continuous paragraphs: blank-line paragraph breaks
+// survive, single line breaks join with a space, and hyphenated line-end word
+// splits rejoin ("exam-\nple" -> "example").
+function reflowParagraphs(text) {
+  return text
+    .split(/\n{2,}/)
+    .map(p => p.replace(/-\n([a-z])/g, '$1').replace(/\n/g, ' '))
+    .join('\n\n');
+}
+
 export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth, onCreateExpansion }) {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -959,13 +969,6 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                       ? 'Extracting…'
                       : (ocrText !== null && !ocrError ? 'Re-extract text' : 'Extract text')}
                   </button>
-                  {ocrText !== null && !ocrError && ocrText.trim() && (
-                    <button
-                      className="cbg-dbtn"
-                      type="button"
-                      onClick={() => { try { navigator.clipboard?.writeText(ocrText); setCopyToast('text'); setTimeout(() => setCopyToast(null), 1200); } catch {} }}
-                    >{copyToast === 'text' ? 'Copied!' : 'Copy text'}</button>
-                  )}
                   <button
                     className="cbg-dbtn"
                     type="button"
@@ -983,6 +986,22 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                 {ocrText !== null && !ocrError && (
                   <div className="cbg-ocr-result">
                     <div className="cbg-ocr-text">{ocrText.trim() || '(no text detected)'}</div>
+                  </div>
+                )}
+                {ocrText !== null && !ocrError && ocrText.trim() && (
+                  <div className="cbg-ocr-copy-actions">
+                    <button
+                      className="cbg-dbtn"
+                      type="button"
+                      title="Keeps each line break from the image"
+                      onClick={async () => { try { await window.electronAPI?.copyText(ocrText); setCopyToast('ocr-shown'); setTimeout(() => setCopyToast(null), 1200); } catch {} }}
+                    >{copyToast === 'ocr-shown' ? 'Copied!' : 'Copy as shown'}</button>
+                    <button
+                      className="cbg-dbtn"
+                      type="button"
+                      title="Joins lines into continuous paragraphs"
+                      onClick={async () => { try { await window.electronAPI?.copyText(reflowParagraphs(ocrText)); setCopyToast('ocr-para'); setTimeout(() => setCopyToast(null), 1200); } catch {} }}
+                    >{copyToast === 'ocr-para' ? 'Copied!' : 'Copy as paragraphs'}</button>
                   </div>
                 )}
                 {imageColors.length > 0 && (

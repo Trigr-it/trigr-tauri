@@ -701,6 +701,7 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 "id": new_id,
                 "timestamp": now,
                 "content_type": entry.content_type,
+                "text_content": entry.text_content,
                 "preview": entry.preview,
                 "image_width": entry.image_width,
                 "image_height": entry.image_height,
