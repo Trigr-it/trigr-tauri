@@ -10,7 +10,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
@@ -65,6 +65,41 @@ static CLIPBOARD_CIPHER: RwLock<Option<Aes256Gcm>> = RwLock::new(None);
 
 fn cipher_ready() -> bool {
     CLIPBOARD_CIPHER.read().map(|g| g.is_some()).unwrap_or(false)
+}
+
+// ── Phase 5: encryption error surfacing ──────────────────────────────────────
+//
+// Two failure modes reach the user as a one-time toast pointing at
+// Settings → Reset clipboard storage. NEVER auto-wipe on either:
+//   1. Key file exists but DPAPI can't unwrap it at startup (KEY_UNREADABLE,
+//      picked up by App.jsx via get_clipboard_encryption_status on mount —
+//      an emit here would race the frontend listener registration).
+//   2. 5+ row decrypt failures in one session (key/data mismatch, e.g. the
+//      key file was deleted and silently regenerated) — emitted as a
+//      "clipboard-encryption-error" event the moment the threshold is hit;
+//      the frontend is necessarily mounted by then since decrypts only run
+//      on panel/overlay fetches.
+
+static KEY_UNREADABLE: AtomicBool = AtomicBool::new(false);
+static DECRYPT_FAILURES: AtomicU32 = AtomicU32::new(0);
+static DECRYPT_TOAST_SENT: AtomicBool = AtomicBool::new(false);
+const DECRYPT_FAILURE_TOAST_THRESHOLD: u32 = 5;
+
+fn note_decrypt_failure() {
+    let n = DECRYPT_FAILURES.fetch_add(1, Ordering::SeqCst) + 1;
+    if n == DECRYPT_FAILURE_TOAST_THRESHOLD && !DECRYPT_TOAST_SENT.swap(true, Ordering::SeqCst) {
+        warn!(
+            "[Trigr] Clipboard: {} row decrypt failures this session — key/data mismatch likely",
+            n
+        );
+        if let Some(app) = APP_HANDLE.get() {
+            use tauri::Emitter;
+            let _ = app.emit(
+                "clipboard-encryption-error",
+                serde_json::json!({ "reason": "decrypt_failures" }),
+            );
+        }
+    }
 }
 
 /// Wrap arbitrary bytes with DPAPI in user-scope. NEVER pass
@@ -205,6 +240,13 @@ fn init_cipher(app_data_dir: &Path) -> bool {
         }
         Err(e) => {
             error!("[Trigr] Clipboard: failed to load/generate master key: {}", e);
+            // Distinguish "key file exists but DPAPI can't unwrap it" (corrupt
+            // file, copied from another user/machine) — the recovery path is
+            // Settings → Reset clipboard storage. NEVER auto-wipe here.
+            if app_data_dir.join(KEY_FILE_NAME).exists() {
+                error!("[Trigr] Clipboard: encryption key unreadable");
+                KEY_UNREADABLE.store(true, Ordering::SeqCst);
+            }
             false
         }
     }
@@ -249,7 +291,17 @@ fn decrypt_blob(ciphertext: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let nonce = Nonce::from_slice(iv);
-    cipher.decrypt(nonce, ciphertext).ok()
+    match cipher.decrypt(nonce, ciphertext) {
+        Ok(pt) => Some(pt),
+        Err(_) => {
+            // Auth-tag mismatch: wrong key or tampered row. Debug level — a
+            // mismatched key fails EVERY row on every fetch, info would flood
+            // the log. The aggregate warn lives in note_decrypt_failure.
+            debug!("[Trigr] Clipboard: row decrypt failed (auth-tag mismatch)");
+            note_decrypt_failure();
+            None
+        }
+    }
 }
 
 /// Resolve a nullable text column to its plaintext value, handling both
@@ -937,6 +989,13 @@ fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>
         *guard = new_cipher;
     }
 
+    // Reset wipes db + key together, so any prior error state is stale now.
+    // Clearing DECRYPT_TOAST_SENT lets a future, genuinely new failure toast
+    // again instead of being swallowed by this session's earlier one.
+    KEY_UNREADABLE.store(false, Ordering::SeqCst);
+    DECRYPT_FAILURES.store(0, Ordering::SeqCst);
+    DECRYPT_TOAST_SENT.store(false, Ordering::SeqCst);
+
     // 4. Reopen a fresh, empty db.
     match open_clipboard_db(db_path) {
         Ok(c) => {
@@ -1211,6 +1270,10 @@ pub fn encryption_status() -> Value {
         "encrypted": encrypted,
         "backup_exists": backup_exists,
         "backup_expires": backup_expires,
+        // Phase 5: error surfacing. key_unreadable = DPAPI unwrap failed at
+        // startup; decrypt_failures = auth-tag mismatches this session.
+        "key_unreadable": KEY_UNREADABLE.load(Ordering::SeqCst),
+        "decrypt_failures": DECRYPT_FAILURES.load(Ordering::SeqCst),
     })
 }
 

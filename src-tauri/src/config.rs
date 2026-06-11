@@ -466,6 +466,24 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
                             continue;
                         }
 
+                        // Clipboard encryption artefacts (v0.5) must NEVER feed
+                        // config-sync activity. The is_target filename check below
+                        // already excludes them, but this guard makes the invariant
+                        // explicit so a future broadening of the filter (e.g. glob
+                        // matching, multi-file sync) can't silently pick them up.
+                        let is_crypto_artefact = event.paths.iter().any(|p| {
+                            if let Some(name) = p.file_name().and_then(|f| f.to_str()) {
+                                name.ends_with(".dpapi")
+                                    || name.ends_with(".plaintext-backup")
+                                    || name.ends_with(".plaintext-backup-expires")
+                            } else {
+                                false
+                            }
+                        });
+                        if is_crypto_artefact {
+                            continue;
+                        }
+
                         // Check if any path in the event matches our target file
                         let is_target = event.paths.iter().any(|p| {
                             p.file_name()

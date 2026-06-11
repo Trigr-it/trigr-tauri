@@ -61,6 +61,13 @@ window.electronAPI = {
     listen('shared-config-migrated', (event) => callback(event.payload)).then(u => { listeners['shared-config-migrated'] = u; });
   },
 
+  // Fired by clipboard.rs when 5+ rows fail decryption in one session
+  // (key/data mismatch). One-time per session; points the user at
+  // Settings > Privacy & Security > Reset clipboard storage.
+  onClipboardEncryptionError: (callback) => {
+    listen('clipboard-encryption-error', (event) => callback(event.payload)).then(u => { listeners['clipboard-encryption-error'] = u; });
+  },
+
   // Fired when the main window is hidden to the tray (X button / tray toggle).
   // Renderer clears its selection so reopening shows a blank slate.
   onResetEditingOnHide: (callback) => {

@@ -820,6 +820,12 @@ export default function SettingsPanel({
               </p>
             )}
 
+            {encStatus?.encrypted && encStatus?.decrypt_failures > 0 && (
+              <p className="settings-encryption-status settings-encryption-status-warn">
+                <span>{encStatus.decrypt_failures} clipboard item{encStatus.decrypt_failures === 1 ? '' : 's'} failed to decrypt this session. The stored items may not match this machine's key. If this keeps happening, reset clipboard storage below.</span>
+              </p>
+            )}
+
             {encStatus?.backup_exists && (
               <div className="settings-encryption-backup-row">
                 <span className="settings-toggle-sub">

@@ -552,6 +552,20 @@ function App() {
         showNotification('Shared config moved to local storage. Re-enable Pro any time to resume sync.');
       });
 
+      // Clipboard encryption error surfacing (v0.5 Phase 5). Two paths:
+      // startup key-unreadable is polled (a Rust emit during setup would race
+      // this listener registration); runtime decrypt failures arrive as an
+      // event because the frontend is necessarily mounted by the time any
+      // row is fetched and decrypted.
+      window.electronAPI.getClipboardEncryptionStatus?.().then(s => {
+        if (s?.key_unreadable) {
+          showNotification('Clipboard encryption key could not be loaded. Open Settings > Privacy & Security and use Reset clipboard storage.', 'error');
+        }
+      });
+      window.electronAPI.onClipboardEncryptionError?.(() => {
+        showNotification('Some clipboard items could not be decrypted. If this keeps happening, use Reset clipboard storage in Settings > Privacy & Security.', 'error');
+      });
+
 
       window.electronAPI.onEngineStatus((status) => {
         setEngineStatus(status);
