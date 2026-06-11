@@ -1146,11 +1146,26 @@ fn handle_clipboard_update() {
     };
 
     unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
+        // Writers like Word and Snipping Tool re-open the clipboard immediately
+        // after copying (delayed-render formats, Office clipboard, auto-save).
+        // A single OpenClipboard attempt silently loses that race and the copy
+        // never reaches history — retry briefly before giving up. Runs on the
+        // dedicated listener thread, so the sleeps block nothing else.
+        let mut opened = false;
+        for _ in 0..10 {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                opened = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        if !opened {
+            log::warn!("[Trigr] Clipboard: OpenClipboard still locked after 10 attempts — copy not captured");
             return;
         }
 
         if IsClipboardFormatAvailable(CF_HDROP) != 0 {
+            log::info!("[CLIP-DIAG] skip: CF_HDROP present (file copy)");
             CloseClipboard();
             return;
         }
@@ -1165,7 +1180,10 @@ fn handle_clipboard_update() {
                 let hash = compute_hash(&png_bytes);
                 {
                     let mut last = last_hash().lock().unwrap();
-                    if *last == hash { return; }
+                    if *last == hash {
+                        log::info!("[CLIP-DIAG] skip: duplicate image content");
+                        return;
+                    }
                     *last = hash;
                 }
 
@@ -1181,13 +1199,24 @@ fn handle_clipboard_update() {
                 });
                 return;
             }
+            log::warn!("[Trigr] Clipboard: image read failed (DIB advertised) — falling through to text");
         }
 
         if has_text {
-            let handle = GetClipboardData(CF_UNICODETEXT);
-            if !handle.is_null() {
+            let mut handle = GetClipboardData(CF_UNICODETEXT);
+            if handle.is_null() {
+                // Delayed-render sources (Word, Office clipboard) can need a
+                // beat to synthesize the text on demand — one short retry.
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                handle = GetClipboardData(CF_UNICODETEXT);
+            }
+            if handle.is_null() {
+                log::warn!("[Trigr] Clipboard: CF_UNICODETEXT advertised but GetClipboardData returned null — copy not captured");
+            } else {
                 let ptr = GlobalLock(handle) as *const u16;
-                if !ptr.is_null() {
+                if ptr.is_null() {
+                    log::warn!("[Trigr] Clipboard: GlobalLock failed on text handle — copy not captured");
+                } else {
                     let mut len = 0usize;
                     while *ptr.add(len) != 0 { len += 1; }
                     let slice = std::slice::from_raw_parts(ptr, len);
@@ -1200,7 +1229,10 @@ fn handle_clipboard_update() {
                     let hash = compute_hash(text.as_bytes());
                     {
                         let mut last = last_hash().lock().unwrap();
-                        if *last == hash { return; }
+                        if *last == hash {
+                            log::info!("[CLIP-DIAG] skip: duplicate text content");
+                            return;
+                        }
                         *last = hash;
                     }
 
