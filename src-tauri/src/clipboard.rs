@@ -57,7 +57,15 @@ const KEY_FILE_NAME: &str = "trigr-clipboard.key.dpapi";
 // Phase 2: key generation, load, and cipher init only. Encryption of writes
 // and decryption of reads land in Phase 3.
 
-static CLIPBOARD_CIPHER: OnceLock<Aes256Gcm> = OnceLock::new();
+// RwLock (not OnceLock) because Reset Clipboard Storage replaces the key at
+// runtime: it wipes the db + key file, generates a fresh key, and installs the
+// new cipher without an app restart. None = cipher unavailable (DPAPI failure
+// or pre-init); encrypt/decrypt fall back per their own contracts.
+static CLIPBOARD_CIPHER: RwLock<Option<Aes256Gcm>> = RwLock::new(None);
+
+fn cipher_ready() -> bool {
+    CLIPBOARD_CIPHER.read().map(|g| g.is_some()).unwrap_or(false)
+}
 
 /// Wrap arbitrary bytes with DPAPI in user-scope. NEVER pass
 /// CRYPTPROTECT_LOCAL_MACHINE — that would let other users on the same
@@ -179,8 +187,12 @@ fn init_cipher(app_data_dir: &Path) -> bool {
         Ok(key) => {
             match Aes256Gcm::new_from_slice(key.as_slice()) {
                 Ok(aead) => {
-                    if CLIPBOARD_CIPHER.set(aead).is_err() {
-                        warn!("[Trigr] Clipboard: cipher already initialised");
+                    match CLIPBOARD_CIPHER.write() {
+                        Ok(mut guard) => *guard = Some(aead),
+                        Err(_) => {
+                            error!("[Trigr] Clipboard: cipher lock poisoned during init");
+                            return false;
+                        }
                     }
                     info!("[Trigr] Clipboard: AES-256-GCM cipher ready");
                     true
@@ -208,7 +220,8 @@ fn init_cipher(app_data_dir: &Path) -> bool {
 /// fresh random IV from OsRng on every call. Storing the IV in the row's
 /// iv_* column is the caller's responsibility.
 fn encrypt_blob(plaintext: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
-    let cipher = CLIPBOARD_CIPHER.get()?;
+    let guard = CLIPBOARD_CIPHER.read().ok()?;
+    let cipher = guard.as_ref()?;
     let mut iv = [0u8; 12];
     OsRng.fill_bytes(&mut iv);
     let nonce = Nonce::from_slice(&iv);
@@ -226,7 +239,8 @@ fn encrypt_blob(plaintext: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
 /// failures MUST be skipped silently in the panel (caller's responsibility);
 /// never expose ciphertext to the UI.
 fn decrypt_blob(ciphertext: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
-    let cipher = CLIPBOARD_CIPHER.get()?;
+    let guard = CLIPBOARD_CIPHER.read().ok()?;
+    let cipher = guard.as_ref()?;
     if iv.len() != 12 {
         warn!(
             "[Trigr] Clipboard: decrypt called with invalid iv length {} (expected 12)",
@@ -363,7 +377,7 @@ fn cleanup_expired_plaintext_backup(db_path: &Path) {
 /// errors that should be visible in the log; the caller logs and continues —
 /// the app keeps running with legacy rows still plaintext-readable.
 fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, String> {
-    if CLIPBOARD_CIPHER.get().is_none() {
+    if !cipher_ready() {
         info!("[Trigr] Clipboard: Phase 3b migration skipped (cipher unavailable)");
         return Ok(0);
     }
@@ -629,6 +643,11 @@ enum ClipboardMsg {
         id: i64,
     },
     Prune,
+    /// Phase 4: wipe db + key + backup files and start fresh. The handler
+    /// swaps the writer loop's connection for a new one.
+    ResetStorage {
+        reply: mpsc::Sender<bool>,
+    },
 }
 
 pub struct FullClipItem {
@@ -800,6 +819,139 @@ unsafe fn query_process_name(process: *mut std::ffi::c_void) -> String {
     path.rsplit('\\').next().unwrap_or("").to_string()
 }
 
+// ── DB open + schema ─────────────────────────────────────────────────────────
+
+/// Open the clipboard DB and apply the full schema (CREATE + additive ALTERs).
+/// Called at writer-thread startup and again by Reset Clipboard Storage after
+/// it deletes the files. Keep ALL schema statements here so a reset-created db
+/// is identical to a startup-created one.
+fn open_clipboard_db(db_path: &Path) -> Result<Connection, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("open: {}", e))?;
+
+    let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clipboard_history (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp    TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            text_content TEXT,
+            image_blob   BLOB,
+            image_width  INTEGER DEFAULT 0,
+            image_height INTEGER DEFAULT 0,
+            preview      TEXT NOT NULL DEFAULT '',
+            pinned       INTEGER DEFAULT 0
+        );",
+    )
+    .map_err(|e| format!("create table: {}", e))?;
+
+    // Schema migration: add source_app and content_tag columns if missing
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN source_app TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN content_tag TEXT NOT NULL DEFAULT 'Text'", []);
+    // paste_count: number of times this entry has been pasted via the main UI.
+    // DEFAULT 0 — existing rows get 0 cleanly, no data loss.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN paste_count INTEGER NOT NULL DEFAULT 0", []);
+    // ocr_text: cached OCR result for image rows. NULL until the user runs
+    // Extract Text. Populated by `set_ocr_text` after `ocr_clipboard_image`
+    // succeeds so re-selecting the same image shows the text without re-OCR.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN ocr_text TEXT", []);
+
+    // Phase 3a (v0.5): per-column 12-byte AES-GCM IVs. NULL on legacy rows
+    // (those columns are still plaintext until the Phase 3b one-time
+    // migration encrypts them). NON-NULL means the corresponding content
+    // column holds ciphertext + GCM auth tag and must be decrypted with
+    // resolve_optional_text / resolve_optional_bytes / resolve_required_text.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_text BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_image BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_ocr BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_preview BLOB", []);
+
+    Ok(conn)
+}
+
+/// Phase 4: Reset Clipboard Storage. Wipes the db (+WAL/SHM sidecars), the
+/// DPAPI key file, and any plaintext backup, generates a fresh master key,
+/// and reopens an empty db. Per [[feedback_data_hygiene]] files are deleted
+/// outright so disk space is actually reclaimed. Returns the connection to
+/// continue the writer loop with (None only if no db could be reopened at
+/// all) and whether the reset fully succeeded.
+fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>, bool) {
+    info!("[Trigr] Clipboard: storage reset requested");
+    let mut ok = true;
+
+    // 1. Checkpoint + close so Windows releases the file locks.
+    let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+    if let Err((c, e)) = conn.close() {
+        warn!("[Trigr] Clipboard: close before reset failed: {}", e);
+        drop(c);
+    }
+
+    // 2. Delete db + sidecars + key file + plaintext backup + expiry stamp.
+    let dir = match db_path.parent() {
+        Some(d) => d.to_path_buf(),
+        None => PathBuf::new(),
+    };
+    let targets: Vec<PathBuf> = vec![
+        db_path.to_path_buf(),
+        PathBuf::from(format!("{}-wal", db_path.display())),
+        PathBuf::from(format!("{}-shm", db_path.display())),
+        dir.join(KEY_FILE_NAME),
+        db_path.with_file_name(PLAINTEXT_BACKUP_NAME),
+        db_path.with_file_name(PLAINTEXT_BACKUP_TMP_NAME),
+        db_path.with_file_name(PLAINTEXT_BACKUP_EXPIRES_NAME),
+    ];
+    for path in targets {
+        if !path.exists() {
+            continue;
+        }
+        // The key file is written READONLY — clear the attribute first or
+        // remove_file fails on Windows.
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if meta.permissions().readonly() {
+                let mut perms = meta.permissions();
+                perms.set_readonly(false);
+                let _ = std::fs::set_permissions(&path, perms);
+            }
+        }
+        if let Err(e) = std::fs::remove_file(&path) {
+            error!("[Trigr] Clipboard: reset failed to delete {}: {}", path.display(), e);
+            ok = false;
+        }
+    }
+
+    // 3. Fresh master key + cipher. Failure is non-fatal: the empty db keeps
+    // working via the plaintext fallback and the Settings status line shows
+    // encryption as unavailable.
+    let key_path = dir.join(KEY_FILE_NAME);
+    let new_cipher = match generate_and_save_master_key(&key_path)
+        .and_then(|key| Aes256Gcm::new_from_slice(key.as_slice()).map_err(|e| e.to_string()))
+    {
+        Ok(c) => Some(c),
+        Err(e) => {
+            error!("[Trigr] Clipboard: reset failed to generate new key: {}", e);
+            ok = false;
+            None
+        }
+    };
+    if let Ok(mut guard) = CLIPBOARD_CIPHER.write() {
+        *guard = new_cipher;
+    }
+
+    // 4. Reopen a fresh, empty db.
+    match open_clipboard_db(db_path) {
+        Ok(c) => {
+            if ok {
+                info!("[Trigr] Clipboard: storage reset complete (fresh db + key)");
+            }
+            (Some(c), ok)
+        }
+        Err(e) => {
+            error!("[Trigr] Clipboard: reset could not reopen db: {}", e);
+            (None, false)
+        }
+    }
+}
+
 // ── Initialise ───────────────────────────────────────────────────────────────
 
 pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
@@ -839,53 +991,15 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
     thread::Builder::new()
         .name("trigr-clipboard-writer".to_string())
         .spawn(move || {
-            let conn = match Connection::open(&db_path) {
+            // `mut` because Reset Clipboard Storage closes this connection,
+            // deletes the db files, and swaps in a fresh one mid-loop.
+            let mut conn = match open_clipboard_db(&db_path) {
                 Ok(c) => c,
                 Err(e) => {
                     error!("[Trigr] Failed to open clipboard DB: {}", e);
                     return;
                 }
             };
-
-            let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
-
-            if let Err(e) = conn.execute_batch(
-                "CREATE TABLE IF NOT EXISTS clipboard_history (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp    TEXT NOT NULL,
-                    content_type TEXT NOT NULL,
-                    text_content TEXT,
-                    image_blob   BLOB,
-                    image_width  INTEGER DEFAULT 0,
-                    image_height INTEGER DEFAULT 0,
-                    preview      TEXT NOT NULL DEFAULT '',
-                    pinned       INTEGER DEFAULT 0
-                );",
-            ) {
-                error!("[Trigr] Failed to create clipboard table: {}", e);
-                return;
-            }
-
-            // Schema migration: add source_app and content_tag columns if missing
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN source_app TEXT NOT NULL DEFAULT ''", []);
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN content_tag TEXT NOT NULL DEFAULT 'Text'", []);
-            // paste_count: number of times this entry has been pasted via the main UI.
-            // DEFAULT 0 — existing rows get 0 cleanly, no data loss.
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN paste_count INTEGER NOT NULL DEFAULT 0", []);
-            // ocr_text: cached OCR result for image rows. NULL until the user runs
-            // Extract Text. Populated by `set_ocr_text` after `ocr_clipboard_image`
-            // succeeds so re-selecting the same image shows the text without re-OCR.
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN ocr_text TEXT", []);
-
-            // Phase 3a (v0.5): per-column 12-byte AES-GCM IVs. NULL on legacy rows
-            // (those columns are still plaintext until the Phase 3b one-time
-            // migration encrypts them). NON-NULL means the corresponding content
-            // column holds ciphertext + GCM auth tag and must be decrypted with
-            // resolve_optional_text / resolve_optional_bytes / resolve_required_text.
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_text BLOB", []);
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_image BLOB", []);
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_ocr BLOB", []);
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_preview BLOB", []);
 
             // Phase 3b (v0.5): clean up an expired plaintext backup from a prior
             // upgrade, then run the one-time migration of any remaining legacy
@@ -964,6 +1078,20 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         );
                     }
                     ClipboardMsg::Prune => handle_prune(&conn),
+                    ClipboardMsg::ResetStorage { reply } => {
+                        let (new_conn, ok) = handle_reset_storage(conn, &db_path);
+                        match new_conn {
+                            Some(c) => conn = c,
+                            None => {
+                                // No usable db — same terminal state as a failed
+                                // open at startup. Reply, log, end the thread.
+                                error!("[Trigr] Clipboard: writer thread exiting after failed storage reset");
+                                let _ = reply.send(false);
+                                return;
+                            }
+                        }
+                        let _ = reply.send(ok);
+                    }
                 }
             }
         })
@@ -1041,6 +1169,68 @@ pub fn clear_all() -> bool {
         }
     }
     false
+}
+
+/// Phase 4: Reset Clipboard Storage (Settings → Privacy & Security). Longer
+/// timeout than the other ops — the writer may be mid-migration or mid-write
+/// when the message lands, and the reset itself does file I/O.
+pub fn reset_storage() -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::ResetStorage { reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(15)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Phase 4: encryption status for the Settings status line. Pure file/lock
+/// inspection — safe to call from any thread, no writer round-trip.
+pub fn encryption_status() -> Value {
+    let encrypted = cipher_ready();
+    let (backup_exists, backup_expires) = match data_dir() {
+        Some(dir) => {
+            let exists = dir.join(PLAINTEXT_BACKUP_NAME).exists();
+            let expires = if exists {
+                std::fs::read_to_string(dir.join(PLAINTEXT_BACKUP_EXPIRES_NAME))
+                    .ok()
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s.trim()).ok())
+                    .map(|dt| dt.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string())
+            } else {
+                None
+            };
+            (exists, expires)
+        }
+        None => (false, None),
+    };
+    serde_json::json!({
+        "encrypted": encrypted,
+        "backup_exists": backup_exists,
+        "backup_expires": backup_expires,
+    })
+}
+
+/// Phase 4: "Delete now" for the plaintext migration backup. Also removes the
+/// expiry stamp so the startup cleanup has nothing left to track.
+pub fn delete_plaintext_backup_now() -> bool {
+    let dir = match data_dir() {
+        Some(d) => d,
+        None => return false,
+    };
+    let backup = dir.join(PLAINTEXT_BACKUP_NAME);
+    if backup.exists() {
+        if let Err(e) = std::fs::remove_file(&backup) {
+            error!("[Trigr] Clipboard: failed to delete plaintext backup: {}", e);
+            return false;
+        }
+        info!("[Trigr] Clipboard: plaintext backup deleted via Settings");
+    }
+    let _ = std::fs::remove_file(dir.join(PLAINTEXT_BACKUP_EXPIRES_NAME));
+    true
 }
 
 pub fn pin_item(id: i64, pinned: bool) -> bool {

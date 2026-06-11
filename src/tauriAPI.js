@@ -229,6 +229,10 @@ window.electronAPI = {
   setClipboardCaptureEnabled: (enabled)   => invoke('set_clipboard_capture_enabled', { enabled }),
   setClipboardExcludedApps: (apps)        => invoke('set_clipboard_excluded_apps', { apps }),
   getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
+  // Clipboard encryption (v0.5): status line + plaintext-backup controls + nuke-and-restart
+  getClipboardEncryptionStatus: ()        => invoke('get_clipboard_encryption_status'),
+  deleteClipboardPlaintextBackup: ()      => invoke('delete_clipboard_plaintext_backup'),
+  resetClipboardStorage:  ()              => invoke('reset_clipboard_storage'),
   // Telemetry opt-out (machine-local). true = sending stats, false = disabled.
   getTelemetryEnabled:    ()              => invoke('get_telemetry_enabled'),
   setTelemetryEnabled:    (enabled)       => invoke('set_telemetry_enabled', { enabled }),

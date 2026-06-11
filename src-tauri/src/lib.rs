@@ -2501,6 +2501,21 @@ fn clear_clipboard_history() -> bool {
 }
 
 #[tauri::command]
+fn get_clipboard_encryption_status() -> Value {
+    clipboard::encryption_status()
+}
+
+#[tauri::command]
+fn delete_clipboard_plaintext_backup() -> bool {
+    clipboard::delete_plaintext_backup_now()
+}
+
+#[tauri::command]
+fn reset_clipboard_storage() -> bool {
+    clipboard::reset_storage()
+}
+
+#[tauri::command]
 fn pin_clipboard_item(id: i64, pinned: bool) -> bool {
     clipboard::pin_item(id, pinned)
 }
@@ -3300,6 +3315,9 @@ pub fn run() {
             set_clipboard_capture_enabled,
             set_clipboard_excluded_apps,
             get_clipboard_storage_size,
+            get_clipboard_encryption_status,
+            delete_clipboard_plaintext_backup,
+            reset_clipboard_storage,
             // Telemetry opt-out
             get_telemetry_enabled,
             set_telemetry_enabled,
