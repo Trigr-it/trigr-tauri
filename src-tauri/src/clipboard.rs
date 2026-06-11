@@ -1,6 +1,6 @@
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use rusqlite::Connection;
@@ -1327,12 +1327,11 @@ fn handle_get_history(
         _ => format!("(pinned = 1 OR timestamp >= datetime('now', '-{} days'))", days),
     };
 
-    // Toolbar filters (app, tag, search) layer on top of the date clause via
+    // Toolbar filters (app, tag) layer on top of the date clause via
     // AND-joined predicates with unnumbered `?` placeholders — SQLite binds
     // them positionally from rusqlite::params_from_iter so we don't have to
     // track numbering across two queries. User input goes through binds, not
-    // SQL string interpolation. LIKE wildcards in search are escaped so a
-    // literal % or _ in the query doesn't broaden the match.
+    // SQL string interpolation.
     let mut clauses: Vec<String> = vec![format!("({})", date_clause)];
     let mut where_binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
@@ -1343,17 +1342,15 @@ fn handle_get_history(
         clauses.push("content_tag = ?".to_string());
         where_binds.push(Box::new(tag.to_string()));
     }
-    if let Some(q) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        let escaped = q.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_");
-        // Phase 3a regression: encrypted preview columns hold ciphertext, so SQL
-        // LIKE can't substring-match them. The `iv_preview IS NULL` guard scopes
-        // search to legacy plaintext rows for now. Phase 3b/3c will replace this
-        // with decrypt-then-substring matching in the writer thread once the
-        // migration encrypts all old rows too.
-        clauses.push("LOWER(preview) LIKE ? ESCAPE '\\' AND iv_preview IS NULL".to_string());
-        where_binds.push(Box::new(format!("%{}%", escaped.to_lowercase())));
-    }
     let where_clause = clauses.join(" AND ");
+
+    // Phase 3c: search can't be a WHERE clause — previews are ciphertext, so
+    // SQL LIKE has nothing to match against. A non-empty query routes to the
+    // decrypt-and-scan path instead, which applies the same date/app/tag
+    // window and substring-matches decrypted previews in memory.
+    if let Some(needle) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        return search_history(conn, &where_clause, &where_binds, &needle.to_lowercase(), per_page, offset);
+    }
 
     // COUNT — same WHERE, just the toolbar binds.
     let count_sql = format!("SELECT COUNT(*) FROM clipboard_history WHERE {}", where_clause);
@@ -1366,9 +1363,8 @@ fn handle_get_history(
     // text_content/preview/ocr_text are bound as BLOB and resolved per-row by
     // the helpers below: NON-NULL iv_* → decrypt; NULL iv_* → legacy plaintext.
     let list_sql = format!(
-        "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr
-         FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC LIMIT ? OFFSET ?",
-        where_clause
+        "SELECT {} FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC LIMIT ? OFFSET ?",
+        HISTORY_LIST_COLUMNS, where_clause
     );
     let mut list_binds: Vec<Box<dyn rusqlite::ToSql>> = where_binds;
     list_binds.push(Box::new(per_page as i64));
@@ -1377,31 +1373,125 @@ fn handle_get_history(
     let mut stmt = conn.prepare(&list_sql).unwrap();
 
     let items: Vec<Value> = stmt
-        .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| {
-            let text_ct = get_optional_bytes(row, 3).unwrap_or(None);
-            let iv_text = row.get::<_, Option<Vec<u8>>>(12).unwrap_or(None);
-            let preview_ct = get_optional_bytes(row, 6).ok().flatten().unwrap_or_default();
-            let iv_preview = row.get::<_, Option<Vec<u8>>>(13).unwrap_or(None);
-            let ocr_ct = get_optional_bytes(row, 11).unwrap_or(None);
-            let iv_ocr = row.get::<_, Option<Vec<u8>>>(14).unwrap_or(None);
-            Ok(serde_json::json!({
-                "id": row.get::<_, i64>(0).unwrap_or(0),
-                "timestamp": row.get::<_, String>(1).unwrap_or_default(),
-                "content_type": row.get::<_, String>(2).unwrap_or_default(),
-                "text_content": resolve_optional_text(text_ct, iv_text),
-                "image_width": row.get::<_, u32>(4).unwrap_or(0),
-                "image_height": row.get::<_, u32>(5).unwrap_or(0),
-                "preview": resolve_required_text(preview_ct, iv_preview),
-                "pinned": row.get::<_, i32>(7).unwrap_or(0) != 0,
-                "source_app": row.get::<_, String>(8).unwrap_or_default(),
-                "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
-                "paste_count": row.get::<_, i64>(10).unwrap_or(0),
-                "ocr_text": resolve_optional_text(ocr_ct, iv_ocr),
-            }))
-        })
+        .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| history_row_to_json(row))
         .unwrap()
         .filter_map(|r| r.ok())
         .collect();
+
+    serde_json::json!({ "items": items, "total": total })
+}
+
+/// Column list for both history-list SELECTs (normal + search page fetch).
+/// history_row_to_json reads by position — keep order in sync.
+const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr";
+
+/// Shared row → JSON mapping for the history list (normal + search paths).
+/// Reads HISTORY_LIST_COLUMNS by position.
+fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    let text_ct = get_optional_bytes(row, 3).unwrap_or(None);
+    let iv_text = row.get::<_, Option<Vec<u8>>>(12).unwrap_or(None);
+    let preview_ct = get_optional_bytes(row, 6).ok().flatten().unwrap_or_default();
+    let iv_preview = row.get::<_, Option<Vec<u8>>>(13).unwrap_or(None);
+    let ocr_ct = get_optional_bytes(row, 11).unwrap_or(None);
+    let iv_ocr = row.get::<_, Option<Vec<u8>>>(14).unwrap_or(None);
+    Ok(serde_json::json!({
+        "id": row.get::<_, i64>(0).unwrap_or(0),
+        "timestamp": row.get::<_, String>(1).unwrap_or_default(),
+        "content_type": row.get::<_, String>(2).unwrap_or_default(),
+        "text_content": resolve_optional_text(text_ct, iv_text),
+        "image_width": row.get::<_, u32>(4).unwrap_or(0),
+        "image_height": row.get::<_, u32>(5).unwrap_or(0),
+        "preview": resolve_required_text(preview_ct, iv_preview),
+        "pinned": row.get::<_, i32>(7).unwrap_or(0) != 0,
+        "source_app": row.get::<_, String>(8).unwrap_or_default(),
+        "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
+        "paste_count": row.get::<_, i64>(10).unwrap_or(0),
+        "ocr_text": resolve_optional_text(ocr_ct, iv_ocr),
+    }))
+}
+
+/// Phase 3c: decrypt-and-scan search. SQL LIKE can't see into ciphertext, so
+/// we scan the filtered window in two passes:
+///   1. Fetch only (id, preview, iv_preview), decrypt each preview in memory
+///      (previews are small truncated strings), lowercase substring match.
+///   2. Fetch full rows for just the requested page of matched ids.
+/// Two passes keep memory flat — large text_content/ocr blobs are only
+/// decrypted for the page actually returned, never for the whole scan.
+/// `needle` must already be lowercased by the caller.
+fn search_history(
+    conn: &Connection,
+    where_clause: &str,
+    where_binds: &[Box<dyn rusqlite::ToSql>],
+    needle: &str,
+    per_page: u32,
+    offset: u32,
+) -> Value {
+    let started = std::time::Instant::now();
+
+    let scan_sql = format!(
+        "SELECT id, preview, iv_preview FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC",
+        where_clause
+    );
+    let bind_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = match conn.prepare(&scan_sql) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("[Trigr] Clipboard: search scan prepare failed: {}", e);
+            return serde_json::json!({ "items": [], "total": 0 });
+        }
+    };
+    let mut scanned: usize = 0;
+    let matched_ids: Vec<i64> = stmt
+        .query_map(rusqlite::params_from_iter(bind_refs.iter()), |row| {
+            let id = row.get::<_, i64>(0)?;
+            let preview_ct = get_optional_bytes(row, 1)?.unwrap_or_default();
+            let iv_preview = row.get::<_, Option<Vec<u8>>>(2)?;
+            Ok((id, resolve_required_text(preview_ct, iv_preview)))
+        })
+        .map(|iter| {
+            iter.filter_map(|r| r.ok())
+                .inspect(|_| scanned += 1)
+                .filter(|(_, preview)| preview.to_lowercase().contains(needle))
+                .map(|(id, _)| id)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let total = matched_ids.len() as i64;
+    let page_ids: Vec<i64> = matched_ids
+        .into_iter()
+        .skip(offset as usize)
+        .take(per_page as usize)
+        .collect();
+
+    let items: Vec<Value> = if page_ids.is_empty() {
+        Vec::new()
+    } else {
+        // page_ids are i64s we produced ourselves — safe to inline. The same
+        // ORDER BY re-applied to the id subset preserves the scan's order.
+        let id_list = page_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let list_sql = format!(
+            "SELECT {} FROM clipboard_history WHERE id IN ({}) ORDER BY pinned DESC, id DESC",
+            HISTORY_LIST_COLUMNS, id_list
+        );
+        match conn.prepare(&list_sql) {
+            Ok(mut stmt) => stmt
+                .query_map([], |row| history_row_to_json(row))
+                .map(|iter| iter.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default(),
+            Err(e) => {
+                error!("[Trigr] Clipboard: search page fetch prepare failed: {}", e);
+                Vec::new()
+            }
+        }
+    };
+
+    debug!(
+        "[Trigr] Clipboard: search scanned {} row(s), {} match(es) in {}ms",
+        scanned,
+        total,
+        started.elapsed().as_millis()
+    );
 
     serde_json::json!({ "items": items, "total": total })
 }
