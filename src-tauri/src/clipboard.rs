@@ -1,4 +1,5 @@
-use aes_gcm::{Aes256Gcm, KeyInit};
+use aes_gcm::aead::Aead;
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use log::{error, info, warn};
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -197,12 +198,80 @@ fn init_cipher(app_data_dir: &Path) -> bool {
     }
 }
 
-/// Phase 3 will call this from encrypt/decrypt paths. Returns None if the
-/// cipher failed to initialise (in which case the writer thread should
-/// refuse to start encrypting).
-#[allow(dead_code)]
-pub(crate) fn clipboard_cipher() -> Option<&'static Aes256Gcm> {
-    CLIPBOARD_CIPHER.get()
+/// Encrypt arbitrary bytes with the clipboard's master key. Returns the
+/// ciphertext (which includes the GCM auth tag) and a freshly generated
+/// 12-byte IV. None if the cipher hasn't been initialised yet — callers
+/// should fall back to writing plaintext (matching the legacy on-disk shape)
+/// when this happens.
+///
+/// IMPORTANT: never reuse an IV with the same key. This function generates a
+/// fresh random IV from OsRng on every call. Storing the IV in the row's
+/// iv_* column is the caller's responsibility.
+fn encrypt_blob(plaintext: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
+    let cipher = CLIPBOARD_CIPHER.get()?;
+    let mut iv = [0u8; 12];
+    OsRng.fill_bytes(&mut iv);
+    let nonce = Nonce::from_slice(&iv);
+    match cipher.encrypt(nonce, plaintext) {
+        Ok(ct) => Some((ct, iv.to_vec())),
+        Err(e) => {
+            warn!("[Trigr] Clipboard: encrypt failed: {:?}", e);
+            None
+        }
+    }
+}
+
+/// Decrypt ciphertext using the stored IV. None on auth-tag mismatch, wrong
+/// key, corrupted blob, or if the cipher isn't initialised. Per-row decrypt
+/// failures MUST be skipped silently in the panel (caller's responsibility);
+/// never expose ciphertext to the UI.
+fn decrypt_blob(ciphertext: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
+    let cipher = CLIPBOARD_CIPHER.get()?;
+    if iv.len() != 12 {
+        warn!(
+            "[Trigr] Clipboard: decrypt called with invalid iv length {} (expected 12)",
+            iv.len()
+        );
+        return None;
+    }
+    let nonce = Nonce::from_slice(iv);
+    cipher.decrypt(nonce, ciphertext).ok()
+}
+
+/// Resolve a nullable text column to its plaintext value, handling both
+/// encrypted (iv non-NULL) and legacy plaintext (iv NULL) cases.
+///
+/// - iv == Some AND ciphertext == Some → decrypt; None on failure (skip row).
+/// - iv == None  AND ciphertext == Some → legacy plaintext; UTF-8 lossy decode.
+/// - ciphertext == None                → no value at all.
+fn resolve_optional_text(ciphertext: Option<Vec<u8>>, iv: Option<Vec<u8>>) -> Option<String> {
+    let ct = ciphertext?;
+    match iv {
+        Some(iv_bytes) => decrypt_blob(&ct, &iv_bytes).map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+        None => Some(String::from_utf8_lossy(&ct).into_owned()),
+    }
+}
+
+/// Resolve a nullable byte-blob column (image_blob) — same iv/legacy logic as
+/// resolve_optional_text but returns raw bytes.
+fn resolve_optional_bytes(ciphertext: Option<Vec<u8>>, iv: Option<Vec<u8>>) -> Option<Vec<u8>> {
+    let ct = ciphertext?;
+    match iv {
+        Some(iv_bytes) => decrypt_blob(&ct, &iv_bytes),
+        None => Some(ct),
+    }
+}
+
+/// Resolve a NOT NULL text column (preview) — always returns a String, falling
+/// back to empty on decrypt failure so the panel still renders the row.
+fn resolve_required_text(ciphertext: Vec<u8>, iv: Option<Vec<u8>>) -> String {
+    match iv {
+        Some(iv_bytes) => match decrypt_blob(&ciphertext, &iv_bytes) {
+            Some(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            None => String::new(),
+        },
+        None => String::from_utf8_lossy(&ciphertext).into_owned(),
+    }
 }
 
 // ── Clipboard entry ──────────────────────────────────────────────────────────
@@ -527,6 +596,16 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             // succeeds so re-selecting the same image shows the text without re-OCR.
             let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN ocr_text TEXT", []);
 
+            // Phase 3a (v0.5): per-column 12-byte AES-GCM IVs. NULL on legacy rows
+            // (those columns are still plaintext until the Phase 3b one-time
+            // migration encrypts them). NON-NULL means the corresponding content
+            // column holds ciphertext + GCM auth tag and must be decrypted with
+            // resolve_optional_text / resolve_optional_bytes / resolve_required_text.
+            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_text BLOB", []);
+            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_image BLOB", []);
+            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_ocr BLOB", []);
+            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_preview BLOB", []);
+
             info!("[Trigr] Clipboard DB ready: {}", db_path.display());
 
             for msg in rx {
@@ -575,9 +654,14 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         let _ = reply.send(result);
                     }
                     ClipboardMsg::SetOcrText { id, text } => {
+                        // Phase 3a: encrypt ocr_text with a fresh IV before storing.
+                        let (ocr_ct, iv_ocr): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(text.as_bytes()) {
+                            Some((ct, iv)) => (ct, Some(iv)),
+                            None => (text.as_bytes().to_vec(), None),
+                        };
                         let _ = conn.execute(
-                            "UPDATE clipboard_history SET ocr_text = ?1 WHERE id = ?2",
-                            rusqlite::params![text, id],
+                            "UPDATE clipboard_history SET ocr_text = ?1, iv_ocr = ?2 WHERE id = ?3",
+                            rusqlite::params![ocr_ct, iv_ocr, id],
                         );
                     }
                     ClipboardMsg::IncrementPasteCount { id } => {
@@ -849,19 +933,46 @@ pub fn get_storage_size() -> u64 {
 fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Phase 3a: encrypt sensitive content columns before INSERT. If the cipher
+    // isn't initialised (encrypt_blob returns None), each column falls back to
+    // plaintext with iv_* = NULL — matching the legacy on-disk shape so the
+    // app degrades gracefully rather than failing to write. The clipboard-new-item
+    // event payload below stays plaintext because the panel needs to display it.
+    let (text_ct, iv_text): (Option<Vec<u8>>, Option<Vec<u8>>) = match entry.text_content.as_deref() {
+        Some(plain) => match encrypt_blob(plain.as_bytes()) {
+            Some((ct, iv)) => (Some(ct), Some(iv)),
+            None => (Some(plain.as_bytes().to_vec()), None),
+        },
+        None => (None, None),
+    };
+    let (image_ct, iv_image): (Option<Vec<u8>>, Option<Vec<u8>>) = match entry.image_blob.as_deref() {
+        Some(plain) => match encrypt_blob(plain) {
+            Some((ct, iv)) => (Some(ct), Some(iv)),
+            None => (Some(plain.to_vec()), None),
+        },
+        None => (None, None),
+    };
+    let (preview_ct, iv_preview): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(entry.preview.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (entry.preview.as_bytes().to_vec(), None),
+    };
+
     let result = conn.execute(
-        "INSERT INTO clipboard_history (timestamp, content_type, text_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)",
+        "INSERT INTO clipboard_history (timestamp, content_type, text_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag, iv_text, iv_image, iv_preview)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![
             now,
             entry.content_type,
-            entry.text_content,
-            entry.image_blob,
+            text_ct,
+            image_ct,
             entry.image_width,
             entry.image_height,
-            entry.preview,
+            preview_ct,
             entry.source_app,
             entry.content_tag,
+            iv_text,
+            iv_image,
+            iv_preview,
         ],
     );
 
@@ -941,7 +1052,12 @@ fn handle_get_history(
     }
     if let Some(q) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
         let escaped = q.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_");
-        clauses.push("LOWER(preview) LIKE ? ESCAPE '\\'".to_string());
+        // Phase 3a regression: encrypted preview columns hold ciphertext, so SQL
+        // LIKE can't substring-match them. The `iv_preview IS NULL` guard scopes
+        // search to legacy plaintext rows for now. Phase 3b/3c will replace this
+        // with decrypt-then-substring matching in the writer thread once the
+        // migration encrypts all old rows too.
+        clauses.push("LOWER(preview) LIKE ? ESCAPE '\\' AND iv_preview IS NULL".to_string());
         where_binds.push(Box::new(format!("%{}%", escaped.to_lowercase())));
     }
     let where_clause = clauses.join(" AND ");
@@ -954,8 +1070,10 @@ fn handle_get_history(
         .unwrap_or(0);
 
     // LIST — same WHERE, then LIMIT/OFFSET appended after the toolbar binds.
+    // text_content/preview/ocr_text are bound as BLOB and resolved per-row by
+    // the helpers below: NON-NULL iv_* → decrypt; NULL iv_* → legacy plaintext.
     let list_sql = format!(
-        "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text
+        "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr
          FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC LIMIT ? OFFSET ?",
         where_clause
     );
@@ -967,19 +1085,25 @@ fn handle_get_history(
 
     let items: Vec<Value> = stmt
         .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| {
+            let text_ct = row.get::<_, Option<Vec<u8>>>(3).unwrap_or(None);
+            let iv_text = row.get::<_, Option<Vec<u8>>>(12).unwrap_or(None);
+            let preview_ct = row.get::<_, Vec<u8>>(6).unwrap_or_default();
+            let iv_preview = row.get::<_, Option<Vec<u8>>>(13).unwrap_or(None);
+            let ocr_ct = row.get::<_, Option<Vec<u8>>>(11).unwrap_or(None);
+            let iv_ocr = row.get::<_, Option<Vec<u8>>>(14).unwrap_or(None);
             Ok(serde_json::json!({
                 "id": row.get::<_, i64>(0).unwrap_or(0),
                 "timestamp": row.get::<_, String>(1).unwrap_or_default(),
                 "content_type": row.get::<_, String>(2).unwrap_or_default(),
-                "text_content": row.get::<_, Option<String>>(3).unwrap_or(None),
+                "text_content": resolve_optional_text(text_ct, iv_text),
                 "image_width": row.get::<_, u32>(4).unwrap_or(0),
                 "image_height": row.get::<_, u32>(5).unwrap_or(0),
-                "preview": row.get::<_, String>(6).unwrap_or_default(),
+                "preview": resolve_required_text(preview_ct, iv_preview),
                 "pinned": row.get::<_, i32>(7).unwrap_or(0) != 0,
                 "source_app": row.get::<_, String>(8).unwrap_or_default(),
                 "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
                 "paste_count": row.get::<_, i64>(10).unwrap_or(0),
-                "ocr_text": row.get::<_, Option<String>>(11).unwrap_or(None),
+                "ocr_text": resolve_optional_text(ocr_ct, iv_ocr),
             }))
         })
         .unwrap()
@@ -991,14 +1115,20 @@ fn handle_get_history(
 
 fn handle_get_item_full(conn: &Connection, id: i64) -> Option<FullClipItem> {
     conn.query_row(
-        "SELECT content_type, text_content, image_blob, ocr_text FROM clipboard_history WHERE id = ?1",
+        "SELECT content_type, text_content, image_blob, ocr_text, iv_text, iv_image, iv_ocr FROM clipboard_history WHERE id = ?1",
         rusqlite::params![id],
         |row| {
+            let text_ct = row.get::<_, Option<Vec<u8>>>(1).unwrap_or(None);
+            let iv_text = row.get::<_, Option<Vec<u8>>>(4).unwrap_or(None);
+            let image_ct = row.get::<_, Option<Vec<u8>>>(2).unwrap_or(None);
+            let iv_image = row.get::<_, Option<Vec<u8>>>(5).unwrap_or(None);
+            let ocr_ct = row.get::<_, Option<Vec<u8>>>(3).unwrap_or(None);
+            let iv_ocr = row.get::<_, Option<Vec<u8>>>(6).unwrap_or(None);
             Ok(FullClipItem {
                 content_type: row.get::<_, String>(0).unwrap_or_default(),
-                text_content: row.get::<_, Option<String>>(1).unwrap_or(None),
-                image_blob: row.get::<_, Option<Vec<u8>>>(2).unwrap_or(None),
-                ocr_text: row.get::<_, Option<String>>(3).unwrap_or(None),
+                text_content: resolve_optional_text(text_ct, iv_text),
+                image_blob: resolve_optional_bytes(image_ct, iv_image),
+                ocr_text: resolve_optional_text(ocr_ct, iv_ocr),
             })
         },
     )
@@ -1041,9 +1171,13 @@ fn handle_pin_item(conn: &Connection, id: i64, pinned: bool) -> bool {
 
 fn handle_get_image_blob(conn: &Connection, id: i64) -> Option<Vec<u8>> {
     conn.query_row(
-        "SELECT image_blob FROM clipboard_history WHERE id = ?1 AND content_type = 'image'",
+        "SELECT image_blob, iv_image FROM clipboard_history WHERE id = ?1 AND content_type = 'image'",
         rusqlite::params![id],
-        |row| row.get::<_, Option<Vec<u8>>>(0),
+        |row| {
+            let image_ct = row.get::<_, Option<Vec<u8>>>(0)?;
+            let iv_image = row.get::<_, Option<Vec<u8>>>(1)?;
+            Ok(resolve_optional_bytes(image_ct, iv_image))
+        },
     ).ok().flatten()
 }
 
@@ -1116,9 +1250,21 @@ fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<Stri
     } else {
         new_text.to_string()
     };
+    // Phase 3a: re-encrypt both columns with fresh IVs on every UPDATE. NEVER
+    // reuse an IV with the same key (catastrophic with AES-GCM), so each
+    // edit generates new IVs. Cipher-unavailable fallback writes plaintext +
+    // NULL ivs, matching the legacy on-disk shape.
+    let (text_ct, iv_text): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(new_text.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (new_text.as_bytes().to_vec(), None),
+    };
+    let (preview_ct, iv_preview): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(preview.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (preview.as_bytes().to_vec(), None),
+    };
     match conn.execute(
-        "UPDATE clipboard_history SET text_content = ?1, preview = ?2, content_tag = ?3 WHERE id = ?4 AND content_type = 'text'",
-        rusqlite::params![new_text, preview, new_tag, id],
+        "UPDATE clipboard_history SET text_content = ?1, preview = ?2, content_tag = ?3, iv_text = ?4, iv_preview = ?5 WHERE id = ?6 AND content_type = 'text'",
+        rusqlite::params![text_ct, preview_ct, new_tag, iv_text, iv_preview, id],
     ) {
         Ok(rows) if rows > 0 => Some(new_tag),
         _ => None,
