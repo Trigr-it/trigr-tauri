@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { Search, SearchX } from 'lucide-react';
+import { Search, SearchX, ShieldCheck } from 'lucide-react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
 import { friendlyKeyName } from './keyboardLayout';
@@ -182,6 +182,7 @@ export default function SettingsPanel({
   keystrokeDelay    = 30,
   macroTriggerDelay = 150,
   doubleTapWindow   = 300,
+  holdThresholdMs   = 350,
   defaultDateFormat = 'DD/MM/YYYY',
   onUpdateGlobalSettings,
   searchOverlayHotkey      = 'Ctrl+Space',
@@ -253,6 +254,10 @@ export default function SettingsPanel({
   const [confirmClearShared, setConfirmClearShared] = useState(false);
   const [sharedExistsPrompt, setSharedExistsPrompt] = useState(null); // { path } when needs_choice
   const [searchQuery, setSearchQuery] = useState('');
+  // Clipboard encryption (v0.5): { encrypted, backup_exists, backup_expires }
+  const [encStatus, setEncStatus] = useState(null);
+  const [confirmResetClipboard, setConfirmResetClipboard] = useState(false);
+  const [resetClipboardBusy, setResetClipboardBusy] = useState(false);
 
   useEffect(() => {
     window.electronAPI?.getConfigPath().then(p  => setConfigPath(p || ''));
@@ -262,6 +267,7 @@ export default function SettingsPanel({
     window.electronAPI?.getClipboardSettings?.().then(s => {
       if (s?.retention_days) setClipboardRetention(s.retention_days);
     });
+    window.electronAPI?.getClipboardEncryptionStatus?.().then(s => setEncStatus(s || null));
     // Refresh the shared-config row if the grace-period banner triggers a
     // migration while this panel is open. Without this, the path display
     // would stay stale until the user closes + reopens Settings.
@@ -277,7 +283,10 @@ export default function SettingsPanel({
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== 'Escape') return;
-      if (confirmClearShared) {
+      if (confirmResetClipboard) {
+        e.preventDefault(); e.stopPropagation();
+        setConfirmResetClipboard(false);
+      } else if (confirmClearShared) {
         e.preventDefault(); e.stopPropagation();
         setConfirmClearShared(false);
       } else if (sharedExistsPrompt) {
@@ -294,7 +303,7 @@ export default function SettingsPanel({
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [confirmClearShared, sharedExistsPrompt, confirmRestore, onClose]);
+  }, [confirmResetClipboard, confirmClearShared, sharedExistsPrompt, confirmRestore, onClose]);
 
   // ── Accordion helpers ─────────────────────────────────────────────────
   // All settings sections, in JSX render order. Used by expand/collapse all.
@@ -796,7 +805,84 @@ export default function SettingsPanel({
           {isExpanded('privacy-security') && (<>
 
           <div className="settings-privacy-block">
-            <p>All your assignments, expansions, keystrokes and clipboard history stay on this device. The only thing that ever leaves your machine is a once-a-day anonymous count of how many triggers fired, helping us see which features are useful during the beta. No content, no identifiers, no device info. Toggle below to disable.</p>
+            <p>All your assignments, expansions, keystrokes and clipboard history stay on this device. The only thing that ever leaves your machine is a once-a-day anonymous usage summary: how many actions fired by type, how many of each feature you have set up, your plan tier (free, trial or Pro) and the app version. No content, no identifiers, no device info. Toggle below to disable.</p>
+          </div>
+
+          {/* ── Clipboard encryption at rest (v0.5) ────────── */}
+          <div className="settings-privacy-block settings-encryption-block">
+            {encStatus?.encrypted ? (
+              <p className="settings-encryption-status">
+                <ShieldCheck size={14} className="settings-encryption-icon" aria-hidden="true" />
+                <span>Clipboard content is encrypted at rest (AES-256-GCM, machine-bound).</span>
+              </p>
+            ) : (
+              <p className="settings-encryption-status settings-encryption-status-warn">
+                <span>Clipboard encryption is unavailable: the encryption key could not be loaded. New clipboard items are stored unencrypted. Reset clipboard storage below to start fresh with a new key.</span>
+              </p>
+            )}
+
+            {encStatus?.encrypted && encStatus?.decrypt_failures > 0 && (
+              <p className="settings-encryption-status settings-encryption-status-warn">
+                <span>{encStatus.decrypt_failures} clipboard item{encStatus.decrypt_failures === 1 ? '' : 's'} failed to decrypt this session. The stored items may not match this machine's key. If this keeps happening, reset clipboard storage below.</span>
+              </p>
+            )}
+
+            {encStatus?.backup_exists && (
+              <div className="settings-encryption-backup-row">
+                <span className="settings-toggle-sub">
+                  A plaintext backup from the one-time encryption upgrade
+                  {encStatus.backup_expires ? ` will be auto-deleted on ${encStatus.backup_expires}` : ' will be auto-deleted shortly'}.
+                </span>
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={async () => {
+                    await window.electronAPI?.deleteClipboardPlaintextBackup?.();
+                    const s = await window.electronAPI?.getClipboardEncryptionStatus?.();
+                    setEncStatus(s || null);
+                  }}
+                >
+                  Delete now
+                </button>
+              </div>
+            )}
+
+            <div className="settings-encryption-reset-row">
+              <span className="settings-toggle-sub">
+                Reset clipboard storage deletes all clipboard history and the encryption key, then starts fresh. Use it if clipboard items stop decrypting on this machine.
+              </span>
+              {confirmResetClipboard ? (
+                <div className="settings-shared-confirm">
+                  <span>All clipboard history will be permanently lost. Reset?</span>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    onClick={() => setConfirmResetClipboard(false)}
+                  >Cancel</button>
+                  <button
+                    type="button"
+                    className="settings-action-btn settings-danger-btn"
+                    disabled={resetClipboardBusy}
+                    onClick={async () => {
+                      setResetClipboardBusy(true);
+                      await window.electronAPI?.resetClipboardStorage?.();
+                      const s = await window.electronAPI?.getClipboardEncryptionStatus?.();
+                      setEncStatus(s || null);
+                      setConfirmResetClipboard(false);
+                      setResetClipboardBusy(false);
+                    }}
+                  >Reset Storage</button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={() => setConfirmResetClipboard(true)}
+                >
+                  Reset clipboard storage
+                </button>
+              )}
+            </div>
           </div>
 
           {/* ── Telemetry opt-out ──────────────────────────── */}
@@ -804,7 +890,7 @@ export default function SettingsPanel({
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Send anonymous usage stats</span>
               <span className="settings-toggle-sub">
-                Once per day Trigr sends just a count of triggers, expansions and macros fired, plus the app version. No content, no identifiers. Helps prioritise what to build next during the beta.
+                Once per day Trigr sends daily counts of what fired by type (expansions, macros, app launches and so on), counts of what you have configured, your plan tier and the app version. No content, no identifiers. Helps prioritise what to build next during the beta.
               </span>
             </div>
             <button
@@ -1721,6 +1807,32 @@ export default function SettingsPanel({
                   onClick={() => onUpdateGlobalSettings?.({ doubleTapWindow: 300, macroSpeed: 'custom' })}
                   title="Reset to default (300ms)"
                   aria-label="Reset double-tap window"
+                >↺</button>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-slider-row">
+            <div className="settings-slider-info">
+              <span className="settings-toggle-label">Hold threshold <span className="pro-badge">PRO</span></span>
+              <span className="settings-toggle-sub">How long a key must be held before a Hold trigger fires</span>
+            </div>
+            <div className="settings-slider-ctrl">
+              <input
+                type="range"
+                className="settings-slider"
+                min="200" max="700" step="10"
+                value={holdThresholdMs}
+                onChange={e => onUpdateGlobalSettings?.({ holdThresholdMs: Number(e.target.value) })}
+              />
+              <span className="settings-slider-val">{holdThresholdMs}ms</span>
+              {holdThresholdMs !== 350 && (
+                <button
+                  type="button"
+                  className="settings-slider-reset"
+                  onClick={() => onUpdateGlobalSettings?.({ holdThresholdMs: 350 })}
+                  title="Reset to default (350ms)"
+                  aria-label="Reset hold threshold"
                 >↺</button>
               )}
             </div>

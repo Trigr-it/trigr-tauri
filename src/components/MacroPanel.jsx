@@ -2088,6 +2088,7 @@ export default function MacroPanel({
   currentCombo,
   assignment,
   doubleAssignment,
+  holdAssignment = null,
   draftAssignment = null,
   draftDoubleAssignment = null,
   assignments,
@@ -2100,6 +2101,8 @@ export default function MacroPanel({
   onDelete,
   onAssignDouble,
   onClearDouble,
+  onAssignHold,
+  onClearHold,
   onClose,
   onCancelDraft,
   onReassign,
@@ -2115,6 +2118,8 @@ export default function MacroPanel({
   // the duplicated action).
   const effectiveAssignment = assignment || draftAssignment;
   const effectiveDouble     = doubleAssignment || draftDoubleAssignment;
+  // No draft variant for hold — duplicate-from-context carries single + double only.
+  const effectiveHold       = holdAssignment;
   const isDraftMode         = !selectedKey && !!draftAssignment;
   const [activeType, setActiveType] = useState('text');
   // Which Open sub-type (app/url/folder) the merged Open selector button
@@ -2157,7 +2162,7 @@ export default function MacroPanel({
   const label = labelByType[activeType] || '';
   const setLabel = (l) => setLabelByType(prev => ({ ...prev, [activeType]: l }));
   const [voicePhrases, setVoicePhrases] = useState([]);
-  const [pressMode, setPressMode] = useState('single'); // 'single' | 'double'
+  const [pressMode, setPressMode] = useState('single'); // 'single' | 'double' | 'hold'
   const [reassigning, setReassigning] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [pendingMouseSave, setPendingMouseSave] = useState(null); // macro pending global-mouse confirmation
@@ -2200,7 +2205,9 @@ export default function MacroPanel({
     const justClearedMode = justClearedRef.current;
     justClearedRef.current = null;
     if (justClearedMode) {
-      const activeRecord = justClearedMode === 'double' ? effectiveDouble : effectiveAssignment;
+      const activeRecord = justClearedMode === 'double' ? effectiveDouble
+        : justClearedMode === 'hold' ? effectiveHold
+        : effectiveAssignment;
       if (activeRecord) {
         setFormValuesByType(seedDrafts(activeRecord));
         setLabelByType(seedLabels(activeRecord));
@@ -2212,7 +2219,7 @@ export default function MacroPanel({
       }
       return;
     }
-    // Auto-switch to double mode when only a double assignment exists
+    // Auto-switch to double/hold mode when only that assignment exists
     if (!effectiveAssignment && effectiveDouble) {
       const t = effectiveDouble.type || 'text';
       setPressMode('double');
@@ -2220,6 +2227,13 @@ export default function MacroPanel({
       setFormValuesByType(seedDrafts(effectiveDouble));
       setLabelByType(seedLabels(effectiveDouble));
       setVoicePhrases(readVoicePhrases(effectiveDouble.data));
+    } else if (!effectiveAssignment && effectiveHold) {
+      const t = effectiveHold.type || 'text';
+      setPressMode('hold');
+      setActiveType(t);
+      setFormValuesByType(seedDrafts(effectiveHold));
+      setLabelByType(seedLabels(effectiveHold));
+      setVoicePhrases(readVoicePhrases(effectiveHold.data));
     } else {
       setPressMode('single');
       if (effectiveAssignment) {
@@ -2235,7 +2249,7 @@ export default function MacroPanel({
         setVoicePhrases([]);
       }
     }
-  }, [selectedKey, effectiveAssignment, effectiveDouble]);
+  }, [selectedKey, effectiveAssignment, effectiveDouble, effectiveHold]);
 
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {
@@ -2257,32 +2271,20 @@ export default function MacroPanel({
       }
       return entry.label ? { [t]: entry.label } : {};
     };
-    if (pressMode === 'double') {
-      if (effectiveDouble) {
-        const t = effectiveDouble.type || 'text';
-        setActiveType(t);
-        setFormValuesByType(seedDrafts(effectiveDouble));
-        setLabelByType(seedLabels(effectiveDouble));
-        setVoicePhrases(readVoicePhrases(effectiveDouble.data));
-      } else {
-        setActiveType('text');
-        setFormValuesByType({});
-        setLabelByType({});
-        setVoicePhrases([]);
-      }
+    const record = pressMode === 'double' ? effectiveDouble
+      : pressMode === 'hold' ? effectiveHold
+      : effectiveAssignment;
+    if (record) {
+      const t = record.type || 'text';
+      setActiveType(t);
+      setFormValuesByType(seedDrafts(record));
+      setLabelByType(seedLabels(record));
+      setVoicePhrases(readVoicePhrases(record.data));
     } else {
-      if (effectiveAssignment) {
-        const t = effectiveAssignment.type || 'text';
-        setActiveType(t);
-        setFormValuesByType(seedDrafts(effectiveAssignment));
-        setLabelByType(seedLabels(effectiveAssignment));
-        setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
-      } else {
-        setActiveType('text');
-        setFormValuesByType({});
-        setLabelByType({});
-        setVoicePhrases([]);
-      }
+      setActiveType('text');
+      setFormValuesByType({});
+      setLabelByType({});
+      setVoicePhrases([]);
     }
   // eslint-disable-next-line
   }, [pressMode]);
@@ -2313,7 +2315,9 @@ export default function MacroPanel({
       setVoicePhrases([]);
       return;
     }
-    const activeRecord = pressMode === 'double' ? doubleAssignment : assignment;
+    const activeRecord = pressMode === 'double' ? doubleAssignment
+      : pressMode === 'hold' ? holdAssignment
+      : assignment;
     if (!activeRecord) {
       setLabel('');
       setVoicePhrases([]);
@@ -2337,11 +2341,13 @@ export default function MacroPanel({
       const hasFilledDrafts = Object.entries(drafts).some(([t, d]) => isDraftFilled(t, d));
       if (!hasFilledDrafts) {
         if (pressMode === 'double') onClearDouble?.(selectedKey);
+        else if (pressMode === 'hold') onClearHold?.(selectedKey);
         else onClear?.(selectedKey);
       } else {
         const newMacro = { type: activeType, label: '', data: {}, drafts };
         if (Object.keys(labelsToSave).length > 0) newMacro.labels = labelsToSave;
         if (pressMode === 'double') onAssignDouble?.(selectedKey, newMacro);
+        else if (pressMode === 'hold') onAssignHold?.(selectedKey, newMacro);
         else onAssign?.(selectedKey, newMacro);
       }
     } else {
@@ -2360,6 +2366,7 @@ export default function MacroPanel({
       if (Object.keys(labelsToSave).length > 0) newMacro.labels = labelsToSave;
       else delete newMacro.labels;
       if (pressMode === 'double') onAssignDouble?.(selectedKey, newMacro);
+      else if (pressMode === 'hold') onAssignHold?.(selectedKey, newMacro);
       else onAssign?.(selectedKey, newMacro);
     }
   };
@@ -2429,6 +2436,10 @@ export default function MacroPanel({
 
     if (pressMode === 'double') {
       onAssignDouble?.(selectedKey, macro);
+      return;
+    }
+    if (pressMode === 'hold') {
+      onAssignHold?.(selectedKey, macro);
       return;
     }
 
@@ -2602,6 +2613,23 @@ export default function MacroPanel({
             ×2 Double Press <span className="pro-badge">PRO</span>
             {doubleAssignment && <span className="press-mode-dot" />}
           </button>
+          {/* Hold is keyboard-only — mouse buttons have their own hold-while-
+              action concept (holdMode) and the engine doesn't arm ::hold for
+              mouse ids. */}
+          {!selectedKey?.startsWith('MOUSE_') && (
+            <button
+              className={`press-mode-btn${pressMode === 'hold' ? ' active' : ''}`}
+              onClick={() => {
+                if (!isPro) { onShowUpgrade?.('Hold trigger'); return; }
+                setPressMode('hold');
+              }}
+              type="button"
+              title="Fires when the key is held past the threshold (set in Settings)"
+            >
+              ⏱ Hold <span className="pro-badge">PRO</span>
+              {holdAssignment && <span className="press-mode-dot" />}
+            </button>
+          )}
         </div>
       )}
 
@@ -2876,7 +2904,9 @@ export default function MacroPanel({
           Delete remove saved data and gate behind an inline confirmation row. */}
       <div className="macro-panel-footer">
         {(() => {
-          const activeRecord = pressMode === 'double' ? doubleAssignment : assignment;
+          const activeRecord = pressMode === 'double' ? doubleAssignment
+            : pressMode === 'hold' ? holdAssignment
+            : assignment;
           if (!activeRecord) return null;
           if (confirmingAction) {
             const confirmText =
@@ -2885,13 +2915,16 @@ export default function MacroPanel({
                 : confirmingAction === 'clear'
                 ? (pressMode === 'double'
                     ? 'Clear the double-press action on this key?'
+                    : pressMode === 'hold'
+                    ? 'Clear the hold action on this key?'
                     : 'Clear the single-press action on this key?')
-                : 'Delete both single and double-press actions on this key?';
+                : 'Delete the single, double-press and hold actions on this key?';
             const handleYes = () => {
               if (confirmingAction === 'clear-action') {
                 handleClearAction();
               } else if (confirmingAction === 'clear') {
                 if (pressMode === 'double') onClearDouble?.(selectedKey);
+                else if (pressMode === 'hold') onClearHold?.(selectedKey);
                 else onClear?.(selectedKey);
               } else if (confirmingAction === 'delete') {
                 onDelete?.(selectedKey);
@@ -2907,8 +2940,10 @@ export default function MacroPanel({
             );
           }
           const clearKeyTitle = pressMode === 'double'
-            ? 'Remove the double-press action on this key (keeps any single-press action)'
-            : 'Remove the single-press action on this key (keeps any double-press action)';
+            ? 'Remove the double-press action on this key (keeps any single-press or hold action)'
+            : pressMode === 'hold'
+            ? 'Remove the hold action on this key (keeps any single or double-press action)'
+            : 'Remove the single-press action on this key (keeps any double-press or hold action)';
           return (
             <div className="footer-assignment-actions">
               <button
@@ -2934,7 +2969,7 @@ export default function MacroPanel({
                   className="btn-delete"
                   onClick={() => setConfirmingAction('delete')}
                   type="button"
-                  title="Delete both single-press and double-press actions on this key"
+                  title="Delete the single, double-press and hold actions on this key"
                 >Delete</button>
               )}
             </div>
@@ -2976,6 +3011,8 @@ export default function MacroPanel({
               ? 'Pick a key to save'
               : pressMode === 'double'
                 ? (doubleAssignment ? 'Update Double-Tap' : 'Assign Double-Tap')
+                : pressMode === 'hold'
+                ? (holdAssignment ? 'Update Hold' : 'Assign Hold')
                 : (assignment ? 'Update' : 'Assign to Key')
             }
           </button>

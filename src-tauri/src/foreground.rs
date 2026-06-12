@@ -302,6 +302,9 @@ fn set_mouse_hook_paused(paused: bool) {
     // Set the atomic BEFORE posting so the watchdog observes the paused state
     // before any heartbeat tick that might otherwise trigger a reinstall.
     crate::hotkeys::MOUSE_HOOK_PAUSED.store(paused, Ordering::SeqCst);
+    // Hold trigger (v0.5): the same fullscreen transition pauses hold
+    // detection — keydowns stop arming timers and the watcher stops firing.
+    crate::hotkeys::HOLD_DETECTION_PAUSED.store(paused, Ordering::SeqCst);
     let tid = crate::hotkeys::hook_thread_id();
     if tid == 0 {
         return;
@@ -509,6 +512,38 @@ pub fn linked_profile_for_pid(pid: u32) -> Option<String> {
         .try_read()
         .ok()
         .and_then(|cache| cache.get(&pid).cloned())
+}
+
+/// Synchronously verify the foreground HWND matches what the watcher last
+/// recorded; if not, run the full foreground-change handler inline so the
+/// active profile is current. Cheap fast-path (~2µs) when nothing has
+/// changed — just GetForegroundWindow + an atomic compare against
+/// LAST_FG_HWND.
+///
+/// Called from handle_keydown before every first-press hotkey dispatch so
+/// storage_key resolves against the CURRENT foreground app, not a stale
+/// one waiting on the next 1500ms poll. Eliminates the click-into-app-
+/// then-fire-hotkey race for HWND-based linked profiles.
+///
+/// Title-filter changes (same HWND, new window title) are NOT caught here —
+/// the 1500ms poll still handles those (rare, no race because there's no
+/// click moment to win).
+///
+/// Lock ordering: takes fg_state internally (via handle_foreground_change)
+/// and may then call hotkeys::set_active_profile (which acquires
+/// engine_state). Caller MUST NOT be holding engine_state when invoking.
+pub fn check_and_switch_if_stale(app: &AppHandle) {
+    let hwnd = unsafe { GetForegroundWindow() as isize };
+    if hwnd == 0 { return; }
+    if hwnd == LAST_FG_HWND.load(Ordering::Relaxed) { return; }
+    // Foreground changed since the watcher's last sync — re-evaluate now.
+    LAST_FG_HWND.store(hwnd, Ordering::Relaxed);
+    let title = get_window_title(hwnd);
+    *last_fg_title().lock().unwrap() = title.clone();
+    if let Some(name) = unsafe { get_fg_proc_name(hwnd) } {
+        cache_linked_pid_if_match(hwnd, &name);
+        handle_foreground_change(&name, &title, app);
+    }
 }
 
 /// Force an immediate foreground check and profile switch if needed.

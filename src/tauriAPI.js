@@ -61,6 +61,13 @@ window.electronAPI = {
     listen('shared-config-migrated', (event) => callback(event.payload)).then(u => { listeners['shared-config-migrated'] = u; });
   },
 
+  // Fired by clipboard.rs when 5+ rows fail decryption in one session
+  // (key/data mismatch). One-time per session; points the user at
+  // Settings > Privacy & Security > Reset clipboard storage.
+  onClipboardEncryptionError: (callback) => {
+    listen('clipboard-encryption-error', (event) => callback(event.payload)).then(u => { listeners['clipboard-encryption-error'] = u; });
+  },
+
   // Fired when the main window is hidden to the tray (X button / tray toggle).
   // Renderer clears its selection so reopening shows a blank slate.
   onResetEditingOnHide: (callback) => {
@@ -229,6 +236,10 @@ window.electronAPI = {
   setClipboardCaptureEnabled: (enabled)   => invoke('set_clipboard_capture_enabled', { enabled }),
   setClipboardExcludedApps: (apps)        => invoke('set_clipboard_excluded_apps', { apps }),
   getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
+  // Clipboard encryption (v0.5): status line + plaintext-backup controls + nuke-and-restart
+  getClipboardEncryptionStatus: ()        => invoke('get_clipboard_encryption_status'),
+  deleteClipboardPlaintextBackup: ()      => invoke('delete_clipboard_plaintext_backup'),
+  resetClipboardStorage:  ()              => invoke('reset_clipboard_storage'),
   // Telemetry opt-out (machine-local). true = sending stats, false = disabled.
   getTelemetryEnabled:    ()              => invoke('get_telemetry_enabled'),
   setTelemetryEnabled:    (enabled)       => invoke('set_telemetry_enabled', { enabled }),

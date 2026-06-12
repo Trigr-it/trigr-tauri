@@ -256,6 +256,43 @@
   margin: 0 0 8px;
 }
 
+/* ── Clipboard encryption block (v0.5) ──────────────────────────────────── */
+
+.settings-encryption-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+
+.settings-encryption-icon {
+  color: #22c55e; /* status green — allowed hex exception */
+  flex-shrink: 0;
+}
+
+.settings-encryption-status-warn {
+  color: var(--danger);
+}
+
+.settings-encryption-backup-row,
+.settings-encryption-reset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.settings-encryption-backup-row .settings-toggle-sub,
+.settings-encryption-reset-row .settings-toggle-sub {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-encryption-backup-row .settings-action-btn,
+.settings-encryption-reset-row .settings-action-btn {
+  flex-shrink: 0;
+}
+
 .settings-config-path-row {
   display: flex;
   flex-direction: column;

@@ -1,17 +1,26 @@
-use log::{error, info};
+use aes_gcm::aead::Aead;
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use log::{debug, error, info, warn};
+use rand::RngCore;
+use rand::rngs::OsRng;
 use rusqlite::Connection;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Path, PathBuf};
+use std::ptr;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
 use tauri::AppHandle;
+use zeroize::Zeroizing;
 
-use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Foundation::{HWND, LocalFree};
+use windows_sys::Win32::Security::Cryptography::{
+    CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB,
+};
 use windows_sys::Win32::System::DataExchange::{
     AddClipboardFormatListener, CloseClipboard, GetClipboardData, IsClipboardFormatAvailable,
     OpenClipboard, RemoveClipboardFormatListener,
@@ -31,6 +40,586 @@ const CF_DIB: u32 = 8;
 const CF_HDROP: u32 = 15;
 const WM_CLIPBOARDUPDATE: u32 = 0x031D;
 const DEFAULT_RETENTION_DAYS: u32 = 7;
+
+const KEY_FILE_NAME: &str = "trigr-clipboard.key.dpapi";
+
+// ── Encryption: DPAPI-wrapped AES-256-GCM master key ─────────────────────────
+//
+// Master key (32 random bytes) is generated on first launch and stored at
+// %APPDATA%\com.nodescaffold.trigr\trigr-clipboard.key.dpapi after being
+// wrapped with Windows DPAPI in user-scope. Only the logged-in Windows user
+// can unwrap it; other local users and offline disk attackers cannot.
+//
+// The unwrapped key is held in a Zeroizing<[u8; 32]> just long enough to build
+// the Aes256Gcm instance, then dropped (the cipher keeps its own expanded
+// round keys internally, which aes-gcm zeroes on drop).
+//
+// Phase 2: key generation, load, and cipher init only. Encryption of writes
+// and decryption of reads land in Phase 3.
+
+// RwLock (not OnceLock) because Reset Clipboard Storage replaces the key at
+// runtime: it wipes the db + key file, generates a fresh key, and installs the
+// new cipher without an app restart. None = cipher unavailable (DPAPI failure
+// or pre-init); encrypt/decrypt fall back per their own contracts.
+static CLIPBOARD_CIPHER: RwLock<Option<Aes256Gcm>> = RwLock::new(None);
+
+fn cipher_ready() -> bool {
+    CLIPBOARD_CIPHER.read().map(|g| g.is_some()).unwrap_or(false)
+}
+
+// ── Phase 5: encryption error surfacing ──────────────────────────────────────
+//
+// Two failure modes reach the user as a one-time toast pointing at
+// Settings → Reset clipboard storage. NEVER auto-wipe on either:
+//   1. Key file exists but DPAPI can't unwrap it at startup (KEY_UNREADABLE,
+//      picked up by App.jsx via get_clipboard_encryption_status on mount —
+//      an emit here would race the frontend listener registration).
+//   2. 5+ row decrypt failures in one session (key/data mismatch, e.g. the
+//      key file was deleted and silently regenerated) — emitted as a
+//      "clipboard-encryption-error" event the moment the threshold is hit;
+//      the frontend is necessarily mounted by then since decrypts only run
+//      on panel/overlay fetches.
+
+static KEY_UNREADABLE: AtomicBool = AtomicBool::new(false);
+static DECRYPT_FAILURES: AtomicU32 = AtomicU32::new(0);
+static DECRYPT_TOAST_SENT: AtomicBool = AtomicBool::new(false);
+const DECRYPT_FAILURE_TOAST_THRESHOLD: u32 = 5;
+
+fn note_decrypt_failure() {
+    let n = DECRYPT_FAILURES.fetch_add(1, Ordering::SeqCst) + 1;
+    if n == DECRYPT_FAILURE_TOAST_THRESHOLD && !DECRYPT_TOAST_SENT.swap(true, Ordering::SeqCst) {
+        warn!(
+            "[Trigr] Clipboard: {} row decrypt failures this session — key/data mismatch likely",
+            n
+        );
+        if let Some(app) = APP_HANDLE.get() {
+            use tauri::Emitter;
+            let _ = app.emit(
+                "clipboard-encryption-error",
+                serde_json::json!({ "reason": "decrypt_failures" }),
+            );
+        }
+    }
+}
+
+/// Wrap arbitrary bytes with DPAPI in user-scope. NEVER pass
+/// CRYPTPROTECT_LOCAL_MACHINE — that would let other users on the same
+/// machine unwrap the key.
+unsafe fn dpapi_protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    let mut in_blob = CRYPT_INTEGER_BLOB {
+        cbData: plaintext.len() as u32,
+        pbData: plaintext.as_ptr() as *mut u8,
+    };
+    let mut out_blob: CRYPT_INTEGER_BLOB = std::mem::zeroed();
+
+    let ok = CryptProtectData(
+        &mut in_blob,
+        ptr::null(),       // szDataDescr
+        ptr::null_mut(),   // pOptionalEntropy (none — DPAPI's user-scope is the secret)
+        ptr::null_mut(),   // pvReserved
+        ptr::null_mut(),   // pPromptStruct (no UI)
+        0,                 // dwFlags — user-scope, no UI
+        &mut out_blob,
+    );
+
+    if ok == 0 {
+        return Err("CryptProtectData failed".to_string());
+    }
+
+    let ciphertext =
+        std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec();
+    LocalFree(out_blob.pbData as _);
+    Ok(ciphertext)
+}
+
+/// Unwrap DPAPI-wrapped bytes. Returns Err if the calling user isn't the one
+/// who wrapped them (or if the blob is corrupted).
+unsafe fn dpapi_unprotect(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+    let mut in_blob = CRYPT_INTEGER_BLOB {
+        cbData: ciphertext.len() as u32,
+        pbData: ciphertext.as_ptr() as *mut u8,
+    };
+    let mut out_blob: CRYPT_INTEGER_BLOB = std::mem::zeroed();
+
+    let ok = CryptUnprotectData(
+        &mut in_blob,
+        ptr::null_mut(),
+        ptr::null_mut(),
+        ptr::null_mut(),
+        ptr::null_mut(),
+        0,
+        &mut out_blob,
+    );
+
+    if ok == 0 {
+        return Err("CryptUnprotectData failed".to_string());
+    }
+
+    let plaintext =
+        std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec();
+    LocalFree(out_blob.pbData as _);
+    Ok(plaintext)
+}
+
+/// Load the existing master key from disk, or generate a fresh one if none
+/// exists. Returns the unwrapped 32-byte key inside a zeroizing wrapper.
+fn load_or_generate_master_key(app_data_dir: &Path) -> Result<Zeroizing<[u8; 32]>, String> {
+    let key_path = app_data_dir.join(KEY_FILE_NAME);
+    if key_path.exists() {
+        load_master_key(&key_path)
+    } else {
+        generate_and_save_master_key(&key_path)
+    }
+}
+
+fn load_master_key(key_path: &Path) -> Result<Zeroizing<[u8; 32]>, String> {
+    let protected = std::fs::read(key_path)
+        .map_err(|e| format!("read key file: {}", e))?;
+    let unwrapped = unsafe { dpapi_unprotect(&protected) }?;
+    if unwrapped.len() != 32 {
+        return Err(format!(
+            "unexpected unwrapped key length: {} (expected 32)",
+            unwrapped.len()
+        ));
+    }
+    let mut key: Zeroizing<[u8; 32]> = Zeroizing::new([0u8; 32]);
+    key.copy_from_slice(&unwrapped);
+    Ok(key)
+}
+
+fn generate_and_save_master_key(key_path: &Path) -> Result<Zeroizing<[u8; 32]>, String> {
+    let mut key: Zeroizing<[u8; 32]> = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(key.as_mut_slice());
+
+    let protected = unsafe { dpapi_protect(key.as_slice()) }?;
+
+    std::fs::write(key_path, &protected)
+        .map_err(|e| format!("write key file: {}", e))?;
+
+    // Mark the file read-only so accidental edits don't corrupt it. Best-effort;
+    // failure here is logged but not fatal — the file is still safe at rest
+    // because the master key inside is DPAPI-wrapped.
+    match std::fs::metadata(key_path) {
+        Ok(meta) => {
+            let mut perms = meta.permissions();
+            perms.set_readonly(true);
+            if let Err(e) = std::fs::set_permissions(key_path, perms) {
+                warn!("[Trigr] Clipboard: failed to set key file read-only: {}", e);
+            }
+        }
+        Err(e) => warn!("[Trigr] Clipboard: failed to read key file metadata: {}", e),
+    }
+
+    info!("[Trigr] Clipboard: generated new master key, wrapped with DPAPI");
+    Ok(key)
+}
+
+/// Set up the AES-256-GCM cipher from the on-disk DPAPI-wrapped master key.
+/// Returns true on success, false on failure (logged). Phase 3 reads/writes
+/// will check `clipboard_cipher().is_some()` before encrypt/decrypt.
+fn init_cipher(app_data_dir: &Path) -> bool {
+    match load_or_generate_master_key(app_data_dir) {
+        Ok(key) => {
+            match Aes256Gcm::new_from_slice(key.as_slice()) {
+                Ok(aead) => {
+                    match CLIPBOARD_CIPHER.write() {
+                        Ok(mut guard) => *guard = Some(aead),
+                        Err(_) => {
+                            error!("[Trigr] Clipboard: cipher lock poisoned during init");
+                            return false;
+                        }
+                    }
+                    info!("[Trigr] Clipboard: AES-256-GCM cipher ready");
+                    true
+                }
+                Err(e) => {
+                    error!("[Trigr] Clipboard: failed to build cipher: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            error!("[Trigr] Clipboard: failed to load/generate master key: {}", e);
+            // Distinguish "key file exists but DPAPI can't unwrap it" (corrupt
+            // file, copied from another user/machine) — the recovery path is
+            // Settings → Reset clipboard storage. NEVER auto-wipe here.
+            if app_data_dir.join(KEY_FILE_NAME).exists() {
+                error!("[Trigr] Clipboard: encryption key unreadable");
+                KEY_UNREADABLE.store(true, Ordering::SeqCst);
+            }
+            false
+        }
+    }
+}
+
+/// Encrypt arbitrary bytes with the clipboard's master key. Returns the
+/// ciphertext (which includes the GCM auth tag) and a freshly generated
+/// 12-byte IV. None if the cipher hasn't been initialised yet — callers
+/// should fall back to writing plaintext (matching the legacy on-disk shape)
+/// when this happens.
+///
+/// IMPORTANT: never reuse an IV with the same key. This function generates a
+/// fresh random IV from OsRng on every call. Storing the IV in the row's
+/// iv_* column is the caller's responsibility.
+fn encrypt_blob(plaintext: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
+    let guard = CLIPBOARD_CIPHER.read().ok()?;
+    let cipher = guard.as_ref()?;
+    let mut iv = [0u8; 12];
+    OsRng.fill_bytes(&mut iv);
+    let nonce = Nonce::from_slice(&iv);
+    match cipher.encrypt(nonce, plaintext) {
+        Ok(ct) => Some((ct, iv.to_vec())),
+        Err(e) => {
+            warn!("[Trigr] Clipboard: encrypt failed: {:?}", e);
+            None
+        }
+    }
+}
+
+/// Decrypt ciphertext using the stored IV. None on auth-tag mismatch, wrong
+/// key, corrupted blob, or if the cipher isn't initialised. Per-row decrypt
+/// failures MUST be skipped silently in the panel (caller's responsibility);
+/// never expose ciphertext to the UI.
+fn decrypt_blob(ciphertext: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
+    let guard = CLIPBOARD_CIPHER.read().ok()?;
+    let cipher = guard.as_ref()?;
+    if iv.len() != 12 {
+        warn!(
+            "[Trigr] Clipboard: decrypt called with invalid iv length {} (expected 12)",
+            iv.len()
+        );
+        return None;
+    }
+    let nonce = Nonce::from_slice(iv);
+    match cipher.decrypt(nonce, ciphertext) {
+        Ok(pt) => Some(pt),
+        Err(_) => {
+            // Auth-tag mismatch: wrong key or tampered row. Debug level — a
+            // mismatched key fails EVERY row on every fetch, info would flood
+            // the log. The aggregate warn lives in note_decrypt_failure.
+            debug!("[Trigr] Clipboard: row decrypt failed (auth-tag mismatch)");
+            note_decrypt_failure();
+            None
+        }
+    }
+}
+
+/// Resolve a nullable text column to its plaintext value, handling both
+/// encrypted (iv non-NULL) and legacy plaintext (iv NULL) cases.
+///
+/// - iv == Some AND ciphertext == Some → decrypt; None on failure (skip row).
+/// - iv == None  AND ciphertext == Some → legacy plaintext; UTF-8 lossy decode.
+/// - ciphertext == None                → no value at all.
+fn resolve_optional_text(ciphertext: Option<Vec<u8>>, iv: Option<Vec<u8>>) -> Option<String> {
+    let ct = ciphertext?;
+    match iv {
+        Some(iv_bytes) => decrypt_blob(&ct, &iv_bytes).map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+        None => Some(String::from_utf8_lossy(&ct).into_owned()),
+    }
+}
+
+/// Resolve a nullable byte-blob column (image_blob) — same iv/legacy logic as
+/// resolve_optional_text but returns raw bytes.
+fn resolve_optional_bytes(ciphertext: Option<Vec<u8>>, iv: Option<Vec<u8>>) -> Option<Vec<u8>> {
+    let ct = ciphertext?;
+    match iv {
+        Some(iv_bytes) => decrypt_blob(&ct, &iv_bytes),
+        None => Some(ct),
+    }
+}
+
+/// Resolve a NOT NULL text column (preview) — always returns a String, falling
+/// back to empty on decrypt failure so the panel still renders the row.
+fn resolve_required_text(ciphertext: Vec<u8>, iv: Option<Vec<u8>>) -> String {
+    match iv {
+        Some(iv_bytes) => match decrypt_blob(&ciphertext, &iv_bytes) {
+            Some(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            None => String::new(),
+        },
+        None => String::from_utf8_lossy(&ciphertext).into_owned(),
+    }
+}
+
+/// Read a nullable column's raw bytes regardless of SQLite storage class.
+/// Legacy (pre-v0.5) rows stored text columns with TEXT storage; encrypted
+/// rows store BLOB ciphertext. rusqlite's `Vec<u8>` FromSql accepts BLOB only,
+/// so `row.get::<_, Vec<u8>>()` fails with InvalidColumnType on legacy rows.
+/// Every content-column read (history, item-full, image, migration) MUST go
+/// through this helper, not `row.get::<_, Vec<u8>>()`.
+fn get_optional_bytes(row: &rusqlite::Row<'_>, idx: usize) -> rusqlite::Result<Option<Vec<u8>>> {
+    use rusqlite::types::ValueRef;
+    match row.get_ref(idx)? {
+        ValueRef::Null => Ok(None),
+        ValueRef::Blob(b) => Ok(Some(b.to_vec())),
+        ValueRef::Text(t) => Ok(Some(t.to_vec())),
+        other => Err(rusqlite::Error::InvalidColumnType(
+            idx,
+            format!("column {}", idx),
+            other.data_type(),
+        )),
+    }
+}
+
+// ── Phase 3b: one-time migration of legacy plaintext rows ────────────────────
+//
+// On the first v0.5 launch (or any launch where plaintext rows still exist) we
+// encrypt every row where `iv_preview IS NULL` and store the IVs alongside.
+// A copy of the pre-migration .db is saved to `trigr-clipboard.db.plaintext-backup`
+// BEFORE any UPDATE runs, so the user has a known-good rollback for 7 days.
+//
+// Safety invariants:
+//   1. Backup file copy is atomic (write to .tmp, rename to final). A crash
+//      mid-copy leaves only the .tmp — the migration retries on next launch.
+//   2. Encryption happens inside a single SQLite transaction. A crash mid-
+//      transaction triggers automatic rollback; legacy rows stay plaintext.
+//   3. Before COMMIT, we decrypt-sample 3 rows we just encrypted and compare
+//      to the captured plaintext. A mismatch aborts COMMIT and the migration
+//      retries on next launch.
+//   4. Cipher unavailable (init failed) → migration skipped, plaintext rows
+//      stay plaintext, app keeps working with iv-NULL fallback.
+
+const PLAINTEXT_BACKUP_NAME: &str = "trigr-clipboard.db.plaintext-backup";
+const PLAINTEXT_BACKUP_TMP_NAME: &str = "trigr-clipboard.db.plaintext-backup.tmp";
+const PLAINTEXT_BACKUP_EXPIRES_NAME: &str = "trigr-clipboard.plaintext-backup-expires";
+const PLAINTEXT_BACKUP_RETENTION_DAYS: i64 = 7;
+
+/// Delete the plaintext-backup file and its expiry stamp if the 7-day retention
+/// window has passed. Runs at writer thread startup BEFORE the migration check.
+fn cleanup_expired_plaintext_backup(db_path: &Path) {
+    let backup_path = db_path.with_file_name(PLAINTEXT_BACKUP_NAME);
+    let expiry_path = db_path.with_file_name(PLAINTEXT_BACKUP_EXPIRES_NAME);
+
+    if !expiry_path.exists() {
+        return;
+    }
+
+    let expiry_str = match std::fs::read_to_string(&expiry_path) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("[Trigr] Clipboard: expiry file read failed: {}", e);
+            return;
+        }
+    };
+    let expiry = match chrono::DateTime::parse_from_rfc3339(expiry_str.trim()) {
+        Ok(dt) => dt.with_timezone(&chrono::Utc),
+        Err(e) => {
+            warn!("[Trigr] Clipboard: expiry file unparseable ({}); leaving in place", e);
+            return;
+        }
+    };
+
+    if chrono::Utc::now() < expiry {
+        return;
+    }
+
+    if backup_path.exists() {
+        match std::fs::remove_file(&backup_path) {
+            Ok(()) => info!("[Trigr] Clipboard: expired plaintext backup deleted"),
+            Err(e) => {
+                warn!("[Trigr] Clipboard: failed to delete expired backup: {}", e);
+                return;
+            }
+        }
+    }
+    let _ = std::fs::remove_file(&expiry_path);
+}
+
+/// Run the one-time migration. Returns the number of rows migrated (0 = nothing
+/// to do or migration skipped because cipher unavailable). Returns Err only on
+/// errors that should be visible in the log; the caller logs and continues —
+/// the app keeps running with legacy rows still plaintext-readable.
+fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, String> {
+    if !cipher_ready() {
+        info!("[Trigr] Clipboard: Phase 3b migration skipped (cipher unavailable)");
+        return Ok(0);
+    }
+
+    let needs: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM clipboard_history WHERE iv_preview IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    if needs == 0 {
+        info!("[Trigr] Clipboard: Phase 3b migration not needed (no plaintext rows)");
+        return Ok(0);
+    }
+
+    info!(
+        "[Trigr] Clipboard: Phase 3b migration starting ({} plaintext row(s))",
+        needs
+    );
+
+    // STEP 1: copy plaintext .db to .plaintext-backup BEFORE any UPDATE.
+    // Force a WAL checkpoint first so the .db file is a complete snapshot
+    // (otherwise the WAL sidecar would hold pages the backup misses).
+    let backup_path = db_path.with_file_name(PLAINTEXT_BACKUP_NAME);
+    let backup_tmp = db_path.with_file_name(PLAINTEXT_BACKUP_TMP_NAME);
+
+    if !backup_path.exists() {
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        // Remove a stale .tmp from a prior interrupted run if present.
+        let _ = std::fs::remove_file(&backup_tmp);
+        std::fs::copy(db_path, &backup_tmp)
+            .map_err(|e| format!("plaintext backup copy: {}", e))?;
+        std::fs::rename(&backup_tmp, &backup_path)
+            .map_err(|e| format!("plaintext backup rename: {}", e))?;
+        info!(
+            "[Trigr] Clipboard: plaintext backup saved to {}",
+            backup_path.display()
+        );
+    } else {
+        info!("[Trigr] Clipboard: reusing existing plaintext backup from prior attempt");
+    }
+
+    // STEP 2: snapshot up to 3 row previews for post-migration sample verification.
+    let mut sample: Vec<(i64, Vec<u8>)> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, preview FROM clipboard_history WHERE iv_preview IS NULL LIMIT 3",
+            )
+            .map_err(|e| format!("sample prepare: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, get_optional_bytes(row, 1)?.unwrap_or_default()))
+            })
+            .map_err(|e| format!("sample query: {}", e))?;
+        for r in rows {
+            sample.push(r.map_err(|e| format!("sample row: {}", e))?);
+        }
+    }
+
+    // STEP 3: collect plaintext rows, then encrypt + UPDATE inside a transaction.
+    let plain_rows: Vec<(i64, Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>, Vec<u8>)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, text_content, image_blob, ocr_text, preview
+                 FROM clipboard_history WHERE iv_preview IS NULL",
+            )
+            .map_err(|e| format!("collect prepare: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    get_optional_bytes(row, 1)?,
+                    get_optional_bytes(row, 2)?,
+                    get_optional_bytes(row, 3)?,
+                    get_optional_bytes(row, 4)?.unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| format!("collect query: {}", e))?;
+        let mut collected = Vec::new();
+        for r in rows {
+            collected.push(r.map_err(|e| format!("collect row: {}", e))?);
+        }
+        collected
+    };
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("begin transaction: {}", e))?;
+
+    let mut migrated: usize = 0;
+    for (id, text_pt, image_pt, ocr_pt, preview_pt) in plain_rows {
+        let (text_ct, iv_text): (Option<Vec<u8>>, Option<Vec<u8>>) = match text_pt {
+            Some(pt) => match encrypt_blob(&pt) {
+                Some((ct, iv)) => (Some(ct), Some(iv)),
+                None => return Err(format!("encrypt text_content for row {}", id)),
+            },
+            None => (None, None),
+        };
+        let (image_ct, iv_image): (Option<Vec<u8>>, Option<Vec<u8>>) = match image_pt {
+            Some(pt) => match encrypt_blob(&pt) {
+                Some((ct, iv)) => (Some(ct), Some(iv)),
+                None => return Err(format!("encrypt image_blob for row {}", id)),
+            },
+            None => (None, None),
+        };
+        let (ocr_ct, iv_ocr): (Option<Vec<u8>>, Option<Vec<u8>>) = match ocr_pt {
+            Some(pt) => match encrypt_blob(&pt) {
+                Some((ct, iv)) => (Some(ct), Some(iv)),
+                None => return Err(format!("encrypt ocr_text for row {}", id)),
+            },
+            None => (None, None),
+        };
+        let (preview_ct, iv_preview): (Vec<u8>, Vec<u8>) = match encrypt_blob(&preview_pt) {
+            Some((ct, iv)) => (ct, iv),
+            None => return Err(format!("encrypt preview for row {}", id)),
+        };
+
+        tx.execute(
+            "UPDATE clipboard_history
+             SET text_content=?1, image_blob=?2, ocr_text=?3, preview=?4,
+                 iv_text=?5, iv_image=?6, iv_ocr=?7, iv_preview=?8
+             WHERE id=?9",
+            rusqlite::params![
+                text_ct, image_ct, ocr_ct, preview_ct, iv_text, iv_image, iv_ocr, iv_preview, id
+            ],
+        )
+        .map_err(|e| format!("update row {}: {}", id, e))?;
+        migrated += 1;
+    }
+
+    // Hard invariant: every counted plaintext row must have been encrypted.
+    // A mismatch means the collect query dropped rows — abort so the
+    // transaction rolls back and the migration retries next launch, rather
+    // than committing a partial (or empty) migration as success.
+    if migrated as i64 != needs {
+        return Err(format!(
+            "row-count mismatch: counted {} plaintext row(s) but encrypted {} — rolling back",
+            needs, migrated
+        ));
+    }
+
+    // STEP 4: sample-verify before COMMIT. Re-fetch each sampled row and decrypt
+    // the new ciphertext using the new iv; compare to the plaintext we captured
+    // BEFORE encryption. Any mismatch aborts COMMIT and the next launch retries
+    // (the backup file is left intact for recovery).
+    for (id, expected_preview) in &sample {
+        let (ct, iv): (Vec<u8>, Vec<u8>) = tx
+            .query_row(
+                "SELECT preview, iv_preview FROM clipboard_history WHERE id=?1",
+                rusqlite::params![id],
+                |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )
+            .map_err(|e| format!("sample verify select row {}: {}", id, e))?;
+        let decrypted = decrypt_blob(&ct, &iv)
+            .ok_or_else(|| format!("sample verify decrypt failed for row {}", id))?;
+        if &decrypted != expected_preview {
+            return Err(format!(
+                "sample verify MISMATCH on row {} — rolling back migration",
+                id
+            ));
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("commit migration: {}", e))?;
+
+    info!(
+        "[Trigr] Clipboard: Phase 3b migration committed ({} row(s) encrypted, {} sample(s) verified)",
+        migrated,
+        sample.len()
+    );
+
+    // STEP 5: write the 7-day expiry stamp.
+    let expiry_path = db_path.with_file_name(PLAINTEXT_BACKUP_EXPIRES_NAME);
+    let expiry = chrono::Utc::now() + chrono::Duration::days(PLAINTEXT_BACKUP_RETENTION_DAYS);
+    if let Err(e) = std::fs::write(&expiry_path, expiry.to_rfc3339()) {
+        warn!("[Trigr] Clipboard: failed to write expiry file: {}", e);
+        // Non-fatal: the backup will just live forever until manually deleted.
+    } else {
+        info!(
+            "[Trigr] Clipboard: plaintext backup expires {}",
+            expiry.to_rfc3339()
+        );
+    }
+
+    Ok(migrated)
+}
 
 // ── Clipboard entry ──────────────────────────────────────────────────────────
 
@@ -106,6 +695,11 @@ enum ClipboardMsg {
         id: i64,
     },
     Prune,
+    /// Phase 4: wipe db + key + backup files and start fresh. The handler
+    /// swaps the writer loop's connection for a new one.
+    ResetStorage {
+        reply: mpsc::Sender<bool>,
+    },
 }
 
 pub struct FullClipItem {
@@ -277,6 +871,146 @@ unsafe fn query_process_name(process: *mut std::ffi::c_void) -> String {
     path.rsplit('\\').next().unwrap_or("").to_string()
 }
 
+// ── DB open + schema ─────────────────────────────────────────────────────────
+
+/// Open the clipboard DB and apply the full schema (CREATE + additive ALTERs).
+/// Called at writer-thread startup and again by Reset Clipboard Storage after
+/// it deletes the files. Keep ALL schema statements here so a reset-created db
+/// is identical to a startup-created one.
+fn open_clipboard_db(db_path: &Path) -> Result<Connection, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("open: {}", e))?;
+
+    let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clipboard_history (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp    TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            text_content TEXT,
+            image_blob   BLOB,
+            image_width  INTEGER DEFAULT 0,
+            image_height INTEGER DEFAULT 0,
+            preview      TEXT NOT NULL DEFAULT '',
+            pinned       INTEGER DEFAULT 0
+        );",
+    )
+    .map_err(|e| format!("create table: {}", e))?;
+
+    // Schema migration: add source_app and content_tag columns if missing
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN source_app TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN content_tag TEXT NOT NULL DEFAULT 'Text'", []);
+    // paste_count: number of times this entry has been pasted via the main UI.
+    // DEFAULT 0 — existing rows get 0 cleanly, no data loss.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN paste_count INTEGER NOT NULL DEFAULT 0", []);
+    // ocr_text: cached OCR result for image rows. NULL until the user runs
+    // Extract Text. Populated by `set_ocr_text` after `ocr_clipboard_image`
+    // succeeds so re-selecting the same image shows the text without re-OCR.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN ocr_text TEXT", []);
+
+    // Phase 3a (v0.5): per-column 12-byte AES-GCM IVs. NULL on legacy rows
+    // (those columns are still plaintext until the Phase 3b one-time
+    // migration encrypts them). NON-NULL means the corresponding content
+    // column holds ciphertext + GCM auth tag and must be decrypted with
+    // resolve_optional_text / resolve_optional_bytes / resolve_required_text.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_text BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_image BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_ocr BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_preview BLOB", []);
+
+    Ok(conn)
+}
+
+/// Phase 4: Reset Clipboard Storage. Wipes the db (+WAL/SHM sidecars), the
+/// DPAPI key file, and any plaintext backup, generates a fresh master key,
+/// and reopens an empty db. Per [[feedback_data_hygiene]] files are deleted
+/// outright so disk space is actually reclaimed. Returns the connection to
+/// continue the writer loop with (None only if no db could be reopened at
+/// all) and whether the reset fully succeeded.
+fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>, bool) {
+    info!("[Trigr] Clipboard: storage reset requested");
+    let mut ok = true;
+
+    // 1. Checkpoint + close so Windows releases the file locks.
+    let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+    if let Err((c, e)) = conn.close() {
+        warn!("[Trigr] Clipboard: close before reset failed: {}", e);
+        drop(c);
+    }
+
+    // 2. Delete db + sidecars + key file + plaintext backup + expiry stamp.
+    let dir = match db_path.parent() {
+        Some(d) => d.to_path_buf(),
+        None => PathBuf::new(),
+    };
+    let targets: Vec<PathBuf> = vec![
+        db_path.to_path_buf(),
+        PathBuf::from(format!("{}-wal", db_path.display())),
+        PathBuf::from(format!("{}-shm", db_path.display())),
+        dir.join(KEY_FILE_NAME),
+        db_path.with_file_name(PLAINTEXT_BACKUP_NAME),
+        db_path.with_file_name(PLAINTEXT_BACKUP_TMP_NAME),
+        db_path.with_file_name(PLAINTEXT_BACKUP_EXPIRES_NAME),
+    ];
+    for path in targets {
+        if !path.exists() {
+            continue;
+        }
+        // The key file is written READONLY — clear the attribute first or
+        // remove_file fails on Windows.
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if meta.permissions().readonly() {
+                let mut perms = meta.permissions();
+                perms.set_readonly(false);
+                let _ = std::fs::set_permissions(&path, perms);
+            }
+        }
+        if let Err(e) = std::fs::remove_file(&path) {
+            error!("[Trigr] Clipboard: reset failed to delete {}: {}", path.display(), e);
+            ok = false;
+        }
+    }
+
+    // 3. Fresh master key + cipher. Failure is non-fatal: the empty db keeps
+    // working via the plaintext fallback and the Settings status line shows
+    // encryption as unavailable.
+    let key_path = dir.join(KEY_FILE_NAME);
+    let new_cipher = match generate_and_save_master_key(&key_path)
+        .and_then(|key| Aes256Gcm::new_from_slice(key.as_slice()).map_err(|e| e.to_string()))
+    {
+        Ok(c) => Some(c),
+        Err(e) => {
+            error!("[Trigr] Clipboard: reset failed to generate new key: {}", e);
+            ok = false;
+            None
+        }
+    };
+    if let Ok(mut guard) = CLIPBOARD_CIPHER.write() {
+        *guard = new_cipher;
+    }
+
+    // Reset wipes db + key together, so any prior error state is stale now.
+    // Clearing DECRYPT_TOAST_SENT lets a future, genuinely new failure toast
+    // again instead of being swallowed by this session's earlier one.
+    KEY_UNREADABLE.store(false, Ordering::SeqCst);
+    DECRYPT_FAILURES.store(0, Ordering::SeqCst);
+    DECRYPT_TOAST_SENT.store(false, Ordering::SeqCst);
+
+    // 4. Reopen a fresh, empty db.
+    match open_clipboard_db(db_path) {
+        Ok(c) => {
+            if ok {
+                info!("[Trigr] Clipboard: storage reset complete (fresh db + key)");
+            }
+            (Some(c), ok)
+        }
+        Err(e) => {
+            error!("[Trigr] Clipboard: reset could not reopen db: {}", e);
+            (None, false)
+        }
+    }
+}
+
 // ── Initialise ───────────────────────────────────────────────────────────────
 
 pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
@@ -301,6 +1035,13 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
         }
     }
 
+    // Phase 2: build the AES-256-GCM cipher from the DPAPI-wrapped master key
+    // BEFORE spawning the writer thread. If this fails, the writer still spawns
+    // and the clipboard still works (read/write paths fall back to plaintext
+    // until Phase 3 wires encryption into the SQL paths); a follow-up error
+    // toast surfaces from the Phase 5 startup path.
+    let _ = init_cipher(&app_data_dir);
+
     let db_path = app_data_dir.join("trigr-clipboard.db");
     let _ = DB_PATH.set(db_path.clone());
     let (tx, rx) = mpsc::channel::<ClipboardMsg>();
@@ -309,7 +1050,9 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
     thread::Builder::new()
         .name("trigr-clipboard-writer".to_string())
         .spawn(move || {
-            let conn = match Connection::open(&db_path) {
+            // `mut` because Reset Clipboard Storage closes this connection,
+            // deletes the db files, and swaps in a fresh one mid-loop.
+            let mut conn = match open_clipboard_db(&db_path) {
                 Ok(c) => c,
                 Err(e) => {
                     error!("[Trigr] Failed to open clipboard DB: {}", e);
@@ -317,35 +1060,17 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                 }
             };
 
-            let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
-
-            if let Err(e) = conn.execute_batch(
-                "CREATE TABLE IF NOT EXISTS clipboard_history (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp    TEXT NOT NULL,
-                    content_type TEXT NOT NULL,
-                    text_content TEXT,
-                    image_blob   BLOB,
-                    image_width  INTEGER DEFAULT 0,
-                    image_height INTEGER DEFAULT 0,
-                    preview      TEXT NOT NULL DEFAULT '',
-                    pinned       INTEGER DEFAULT 0
-                );",
-            ) {
-                error!("[Trigr] Failed to create clipboard table: {}", e);
-                return;
+            // Phase 3b (v0.5): clean up an expired plaintext backup from a prior
+            // upgrade, then run the one-time migration of any remaining legacy
+            // plaintext rows. Both are no-ops on most launches. Errors are logged
+            // but non-fatal — the app keeps running with iv-NULL fallback if
+            // migration can't proceed.
+            cleanup_expired_plaintext_backup(&db_path);
+            match run_phase3b_migration(&conn, &db_path) {
+                Ok(0) => {}
+                Ok(n) => info!("[Trigr] Clipboard: Phase 3b migrated {} row(s)", n),
+                Err(e) => error!("[Trigr] Clipboard: Phase 3b migration failed: {}", e),
             }
-
-            // Schema migration: add source_app and content_tag columns if missing
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN source_app TEXT NOT NULL DEFAULT ''", []);
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN content_tag TEXT NOT NULL DEFAULT 'Text'", []);
-            // paste_count: number of times this entry has been pasted via the main UI.
-            // DEFAULT 0 — existing rows get 0 cleanly, no data loss.
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN paste_count INTEGER NOT NULL DEFAULT 0", []);
-            // ocr_text: cached OCR result for image rows. NULL until the user runs
-            // Extract Text. Populated by `set_ocr_text` after `ocr_clipboard_image`
-            // succeeds so re-selecting the same image shows the text without re-OCR.
-            let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN ocr_text TEXT", []);
 
             info!("[Trigr] Clipboard DB ready: {}", db_path.display());
 
@@ -395,9 +1120,14 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         let _ = reply.send(result);
                     }
                     ClipboardMsg::SetOcrText { id, text } => {
+                        // Phase 3a: encrypt ocr_text with a fresh IV before storing.
+                        let (ocr_ct, iv_ocr): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(text.as_bytes()) {
+                            Some((ct, iv)) => (ct, Some(iv)),
+                            None => (text.as_bytes().to_vec(), None),
+                        };
                         let _ = conn.execute(
-                            "UPDATE clipboard_history SET ocr_text = ?1 WHERE id = ?2",
-                            rusqlite::params![text, id],
+                            "UPDATE clipboard_history SET ocr_text = ?1, iv_ocr = ?2 WHERE id = ?3",
+                            rusqlite::params![ocr_ct, iv_ocr, id],
                         );
                     }
                     ClipboardMsg::IncrementPasteCount { id } => {
@@ -407,6 +1137,20 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         );
                     }
                     ClipboardMsg::Prune => handle_prune(&conn),
+                    ClipboardMsg::ResetStorage { reply } => {
+                        let (new_conn, ok) = handle_reset_storage(conn, &db_path);
+                        match new_conn {
+                            Some(c) => conn = c,
+                            None => {
+                                // No usable db — same terminal state as a failed
+                                // open at startup. Reply, log, end the thread.
+                                error!("[Trigr] Clipboard: writer thread exiting after failed storage reset");
+                                let _ = reply.send(false);
+                                return;
+                            }
+                        }
+                        let _ = reply.send(ok);
+                    }
                 }
             }
         })
@@ -484,6 +1228,72 @@ pub fn clear_all() -> bool {
         }
     }
     false
+}
+
+/// Phase 4: Reset Clipboard Storage (Settings → Privacy & Security). Longer
+/// timeout than the other ops — the writer may be mid-migration or mid-write
+/// when the message lands, and the reset itself does file I/O.
+pub fn reset_storage() -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::ResetStorage { reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(15)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Phase 4: encryption status for the Settings status line. Pure file/lock
+/// inspection — safe to call from any thread, no writer round-trip.
+pub fn encryption_status() -> Value {
+    let encrypted = cipher_ready();
+    let (backup_exists, backup_expires) = match data_dir() {
+        Some(dir) => {
+            let exists = dir.join(PLAINTEXT_BACKUP_NAME).exists();
+            let expires = if exists {
+                std::fs::read_to_string(dir.join(PLAINTEXT_BACKUP_EXPIRES_NAME))
+                    .ok()
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s.trim()).ok())
+                    .map(|dt| dt.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string())
+            } else {
+                None
+            };
+            (exists, expires)
+        }
+        None => (false, None),
+    };
+    serde_json::json!({
+        "encrypted": encrypted,
+        "backup_exists": backup_exists,
+        "backup_expires": backup_expires,
+        // Phase 5: error surfacing. key_unreadable = DPAPI unwrap failed at
+        // startup; decrypt_failures = auth-tag mismatches this session.
+        "key_unreadable": KEY_UNREADABLE.load(Ordering::SeqCst),
+        "decrypt_failures": DECRYPT_FAILURES.load(Ordering::SeqCst),
+    })
+}
+
+/// Phase 4: "Delete now" for the plaintext migration backup. Also removes the
+/// expiry stamp so the startup cleanup has nothing left to track.
+pub fn delete_plaintext_backup_now() -> bool {
+    let dir = match data_dir() {
+        Some(d) => d,
+        None => return false,
+    };
+    let backup = dir.join(PLAINTEXT_BACKUP_NAME);
+    if backup.exists() {
+        if let Err(e) = std::fs::remove_file(&backup) {
+            error!("[Trigr] Clipboard: failed to delete plaintext backup: {}", e);
+            return false;
+        }
+        info!("[Trigr] Clipboard: plaintext backup deleted via Settings");
+    }
+    let _ = std::fs::remove_file(dir.join(PLAINTEXT_BACKUP_EXPIRES_NAME));
+    true
 }
 
 pub fn pin_item(id: i64, pinned: bool) -> bool {
@@ -669,19 +1479,46 @@ pub fn get_storage_size() -> u64 {
 fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Phase 3a: encrypt sensitive content columns before INSERT. If the cipher
+    // isn't initialised (encrypt_blob returns None), each column falls back to
+    // plaintext with iv_* = NULL — matching the legacy on-disk shape so the
+    // app degrades gracefully rather than failing to write. The clipboard-new-item
+    // event payload below stays plaintext because the panel needs to display it.
+    let (text_ct, iv_text): (Option<Vec<u8>>, Option<Vec<u8>>) = match entry.text_content.as_deref() {
+        Some(plain) => match encrypt_blob(plain.as_bytes()) {
+            Some((ct, iv)) => (Some(ct), Some(iv)),
+            None => (Some(plain.as_bytes().to_vec()), None),
+        },
+        None => (None, None),
+    };
+    let (image_ct, iv_image): (Option<Vec<u8>>, Option<Vec<u8>>) = match entry.image_blob.as_deref() {
+        Some(plain) => match encrypt_blob(plain) {
+            Some((ct, iv)) => (Some(ct), Some(iv)),
+            None => (Some(plain.to_vec()), None),
+        },
+        None => (None, None),
+    };
+    let (preview_ct, iv_preview): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(entry.preview.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (entry.preview.as_bytes().to_vec(), None),
+    };
+
     let result = conn.execute(
-        "INSERT INTO clipboard_history (timestamp, content_type, text_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)",
+        "INSERT INTO clipboard_history (timestamp, content_type, text_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag, iv_text, iv_image, iv_preview)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![
             now,
             entry.content_type,
-            entry.text_content,
-            entry.image_blob,
+            text_ct,
+            image_ct,
             entry.image_width,
             entry.image_height,
-            entry.preview,
+            preview_ct,
             entry.source_app,
             entry.content_tag,
+            iv_text,
+            iv_image,
+            iv_preview,
         ],
     );
 
@@ -743,12 +1580,11 @@ fn handle_get_history(
         _ => format!("(pinned = 1 OR timestamp >= datetime('now', '-{} days'))", days),
     };
 
-    // Toolbar filters (app, tag, search) layer on top of the date clause via
+    // Toolbar filters (app, tag) layer on top of the date clause via
     // AND-joined predicates with unnumbered `?` placeholders — SQLite binds
     // them positionally from rusqlite::params_from_iter so we don't have to
     // track numbering across two queries. User input goes through binds, not
-    // SQL string interpolation. LIKE wildcards in search are escaped so a
-    // literal % or _ in the query doesn't broaden the match.
+    // SQL string interpolation.
     let mut clauses: Vec<String> = vec![format!("({})", date_clause)];
     let mut where_binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
@@ -759,12 +1595,15 @@ fn handle_get_history(
         clauses.push("content_tag = ?".to_string());
         where_binds.push(Box::new(tag.to_string()));
     }
-    if let Some(q) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        let escaped = q.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_");
-        clauses.push("LOWER(preview) LIKE ? ESCAPE '\\'".to_string());
-        where_binds.push(Box::new(format!("%{}%", escaped.to_lowercase())));
-    }
     let where_clause = clauses.join(" AND ");
+
+    // Phase 3c: search can't be a WHERE clause — previews are ciphertext, so
+    // SQL LIKE has nothing to match against. A non-empty query routes to the
+    // decrypt-and-scan path instead, which applies the same date/app/tag
+    // window and substring-matches decrypted previews in memory.
+    if let Some(needle) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        return search_history(conn, &where_clause, &where_binds, &needle.to_lowercase(), per_page, offset);
+    }
 
     // COUNT — same WHERE, just the toolbar binds.
     let count_sql = format!("SELECT COUNT(*) FROM clipboard_history WHERE {}", where_clause);
@@ -774,10 +1613,11 @@ fn handle_get_history(
         .unwrap_or(0);
 
     // LIST — same WHERE, then LIMIT/OFFSET appended after the toolbar binds.
+    // text_content/preview/ocr_text are bound as BLOB and resolved per-row by
+    // the helpers below: NON-NULL iv_* → decrypt; NULL iv_* → legacy plaintext.
     let list_sql = format!(
-        "SELECT id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text
-         FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC LIMIT ? OFFSET ?",
-        where_clause
+        "SELECT {} FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC LIMIT ? OFFSET ?",
+        HISTORY_LIST_COLUMNS, where_clause
     );
     let mut list_binds: Vec<Box<dyn rusqlite::ToSql>> = where_binds;
     list_binds.push(Box::new(per_page as i64));
@@ -786,22 +1626,7 @@ fn handle_get_history(
     let mut stmt = conn.prepare(&list_sql).unwrap();
 
     let items: Vec<Value> = stmt
-        .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| {
-            Ok(serde_json::json!({
-                "id": row.get::<_, i64>(0).unwrap_or(0),
-                "timestamp": row.get::<_, String>(1).unwrap_or_default(),
-                "content_type": row.get::<_, String>(2).unwrap_or_default(),
-                "text_content": row.get::<_, Option<String>>(3).unwrap_or(None),
-                "image_width": row.get::<_, u32>(4).unwrap_or(0),
-                "image_height": row.get::<_, u32>(5).unwrap_or(0),
-                "preview": row.get::<_, String>(6).unwrap_or_default(),
-                "pinned": row.get::<_, i32>(7).unwrap_or(0) != 0,
-                "source_app": row.get::<_, String>(8).unwrap_or_default(),
-                "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
-                "paste_count": row.get::<_, i64>(10).unwrap_or(0),
-                "ocr_text": row.get::<_, Option<String>>(11).unwrap_or(None),
-            }))
-        })
+        .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| history_row_to_json(row))
         .unwrap()
         .filter_map(|r| r.ok())
         .collect();
@@ -809,16 +1634,137 @@ fn handle_get_history(
     serde_json::json!({ "items": items, "total": total })
 }
 
+/// Column list for both history-list SELECTs (normal + search page fetch).
+/// history_row_to_json reads by position — keep order in sync.
+const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr";
+
+/// Shared row → JSON mapping for the history list (normal + search paths).
+/// Reads HISTORY_LIST_COLUMNS by position.
+fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    let text_ct = get_optional_bytes(row, 3).unwrap_or(None);
+    let iv_text = row.get::<_, Option<Vec<u8>>>(12).unwrap_or(None);
+    let preview_ct = get_optional_bytes(row, 6).ok().flatten().unwrap_or_default();
+    let iv_preview = row.get::<_, Option<Vec<u8>>>(13).unwrap_or(None);
+    let ocr_ct = get_optional_bytes(row, 11).unwrap_or(None);
+    let iv_ocr = row.get::<_, Option<Vec<u8>>>(14).unwrap_or(None);
+    Ok(serde_json::json!({
+        "id": row.get::<_, i64>(0).unwrap_or(0),
+        "timestamp": row.get::<_, String>(1).unwrap_or_default(),
+        "content_type": row.get::<_, String>(2).unwrap_or_default(),
+        "text_content": resolve_optional_text(text_ct, iv_text),
+        "image_width": row.get::<_, u32>(4).unwrap_or(0),
+        "image_height": row.get::<_, u32>(5).unwrap_or(0),
+        "preview": resolve_required_text(preview_ct, iv_preview),
+        "pinned": row.get::<_, i32>(7).unwrap_or(0) != 0,
+        "source_app": row.get::<_, String>(8).unwrap_or_default(),
+        "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
+        "paste_count": row.get::<_, i64>(10).unwrap_or(0),
+        "ocr_text": resolve_optional_text(ocr_ct, iv_ocr),
+    }))
+}
+
+/// Phase 3c: decrypt-and-scan search. SQL LIKE can't see into ciphertext, so
+/// we scan the filtered window in two passes:
+///   1. Fetch only (id, preview, iv_preview), decrypt each preview in memory
+///      (previews are small truncated strings), lowercase substring match.
+///   2. Fetch full rows for just the requested page of matched ids.
+/// Two passes keep memory flat — large text_content/ocr blobs are only
+/// decrypted for the page actually returned, never for the whole scan.
+/// `needle` must already be lowercased by the caller.
+fn search_history(
+    conn: &Connection,
+    where_clause: &str,
+    where_binds: &[Box<dyn rusqlite::ToSql>],
+    needle: &str,
+    per_page: u32,
+    offset: u32,
+) -> Value {
+    let started = std::time::Instant::now();
+
+    let scan_sql = format!(
+        "SELECT id, preview, iv_preview FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC",
+        where_clause
+    );
+    let bind_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = match conn.prepare(&scan_sql) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("[Trigr] Clipboard: search scan prepare failed: {}", e);
+            return serde_json::json!({ "items": [], "total": 0 });
+        }
+    };
+    let mut scanned: usize = 0;
+    let matched_ids: Vec<i64> = stmt
+        .query_map(rusqlite::params_from_iter(bind_refs.iter()), |row| {
+            let id = row.get::<_, i64>(0)?;
+            let preview_ct = get_optional_bytes(row, 1)?.unwrap_or_default();
+            let iv_preview = row.get::<_, Option<Vec<u8>>>(2)?;
+            Ok((id, resolve_required_text(preview_ct, iv_preview)))
+        })
+        .map(|iter| {
+            iter.filter_map(|r| r.ok())
+                .inspect(|_| scanned += 1)
+                .filter(|(_, preview)| preview.to_lowercase().contains(needle))
+                .map(|(id, _)| id)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let total = matched_ids.len() as i64;
+    let page_ids: Vec<i64> = matched_ids
+        .into_iter()
+        .skip(offset as usize)
+        .take(per_page as usize)
+        .collect();
+
+    let items: Vec<Value> = if page_ids.is_empty() {
+        Vec::new()
+    } else {
+        // page_ids are i64s we produced ourselves — safe to inline. The same
+        // ORDER BY re-applied to the id subset preserves the scan's order.
+        let id_list = page_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let list_sql = format!(
+            "SELECT {} FROM clipboard_history WHERE id IN ({}) ORDER BY pinned DESC, id DESC",
+            HISTORY_LIST_COLUMNS, id_list
+        );
+        match conn.prepare(&list_sql) {
+            Ok(mut stmt) => stmt
+                .query_map([], |row| history_row_to_json(row))
+                .map(|iter| iter.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default(),
+            Err(e) => {
+                error!("[Trigr] Clipboard: search page fetch prepare failed: {}", e);
+                Vec::new()
+            }
+        }
+    };
+
+    debug!(
+        "[Trigr] Clipboard: search scanned {} row(s), {} match(es) in {}ms",
+        scanned,
+        total,
+        started.elapsed().as_millis()
+    );
+
+    serde_json::json!({ "items": items, "total": total })
+}
+
 fn handle_get_item_full(conn: &Connection, id: i64) -> Option<FullClipItem> {
     conn.query_row(
-        "SELECT content_type, text_content, image_blob, ocr_text FROM clipboard_history WHERE id = ?1",
+        "SELECT content_type, text_content, image_blob, ocr_text, iv_text, iv_image, iv_ocr FROM clipboard_history WHERE id = ?1",
         rusqlite::params![id],
         |row| {
+            let text_ct = get_optional_bytes(row, 1).unwrap_or(None);
+            let iv_text = row.get::<_, Option<Vec<u8>>>(4).unwrap_or(None);
+            let image_ct = get_optional_bytes(row, 2).unwrap_or(None);
+            let iv_image = row.get::<_, Option<Vec<u8>>>(5).unwrap_or(None);
+            let ocr_ct = get_optional_bytes(row, 3).unwrap_or(None);
+            let iv_ocr = row.get::<_, Option<Vec<u8>>>(6).unwrap_or(None);
             Ok(FullClipItem {
                 content_type: row.get::<_, String>(0).unwrap_or_default(),
-                text_content: row.get::<_, Option<String>>(1).unwrap_or(None),
-                image_blob: row.get::<_, Option<Vec<u8>>>(2).unwrap_or(None),
-                ocr_text: row.get::<_, Option<String>>(3).unwrap_or(None),
+                text_content: resolve_optional_text(text_ct, iv_text),
+                image_blob: resolve_optional_bytes(image_ct, iv_image),
+                ocr_text: resolve_optional_text(ocr_ct, iv_ocr),
             })
         },
     )
@@ -861,9 +1807,13 @@ fn handle_pin_item(conn: &Connection, id: i64, pinned: bool) -> bool {
 
 fn handle_get_image_blob(conn: &Connection, id: i64) -> Option<Vec<u8>> {
     conn.query_row(
-        "SELECT image_blob FROM clipboard_history WHERE id = ?1 AND content_type = 'image'",
+        "SELECT image_blob, iv_image FROM clipboard_history WHERE id = ?1 AND content_type = 'image'",
         rusqlite::params![id],
-        |row| row.get::<_, Option<Vec<u8>>>(0),
+        |row| {
+            let image_ct = get_optional_bytes(row, 0)?;
+            let iv_image = row.get::<_, Option<Vec<u8>>>(1)?;
+            Ok(resolve_optional_bytes(image_ct, iv_image))
+        },
     ).ok().flatten()
 }
 
@@ -936,9 +1886,21 @@ fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<Stri
     } else {
         new_text.to_string()
     };
+    // Phase 3a: re-encrypt both columns with fresh IVs on every UPDATE. NEVER
+    // reuse an IV with the same key (catastrophic with AES-GCM), so each
+    // edit generates new IVs. Cipher-unavailable fallback writes plaintext +
+    // NULL ivs, matching the legacy on-disk shape.
+    let (text_ct, iv_text): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(new_text.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (new_text.as_bytes().to_vec(), None),
+    };
+    let (preview_ct, iv_preview): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(preview.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (preview.as_bytes().to_vec(), None),
+    };
     match conn.execute(
-        "UPDATE clipboard_history SET text_content = ?1, preview = ?2, content_tag = ?3 WHERE id = ?4 AND content_type = 'text'",
-        rusqlite::params![new_text, preview, new_tag, id],
+        "UPDATE clipboard_history SET text_content = ?1, preview = ?2, content_tag = ?3, iv_text = ?4, iv_preview = ?5 WHERE id = ?6 AND content_type = 'text'",
+        rusqlite::params![text_ct, preview_ct, new_tag, iv_text, iv_preview, id],
     ) {
         Ok(rows) if rows > 0 => Some(new_tag),
         _ => None,
