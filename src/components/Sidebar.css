@@ -699,6 +699,14 @@
   padding-top: 1px;
 }
 
+/* Both mode chips share one row under the key badge */
+.sidebar-mode-chip-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
 .sidebar-key-badge {
   display: inline-block;
   background: var(--bg-elevated);
@@ -739,13 +747,24 @@
   gap: 5px;
 }
 
-.sidebar-double-badge {
+/* Press-mode glyph chips (v0.5): ×2 / ⏱ beside the key badge. The hollow
+   -only variant flags a key whose ONLY mapping is that mode (no single-press
+   action). Words live in the title tooltip, not the chip. */
+.sidebar-mode-chip {
   font-size: 9px;
   font-weight: 700;
   color: var(--accent);
-  opacity: 0.8;
+  opacity: 0.85;
   flex-shrink: 0;
   letter-spacing: -0.01em;
+}
+
+.sidebar-mode-chip-only {
+  color: var(--text-secondary);
+  opacity: 0.75;
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  padding: 0 3px;
 }
 
 .sidebar-item-active .sidebar-item-label {
@@ -1129,24 +1148,6 @@
   gap: 6px;
   margin-top: 2px;
 }
-
-.grid-card-type {
-  font-family: var(--font-display);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 1px 6px;
-  border-radius: 3px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.grid-card-type--text      { color: var(--type-text,   #64b4ff); background: color-mix(in srgb, var(--type-text,   #64b4ff) 10%, transparent); }
-.grid-card-type--hotkey    { color: var(--type-hotkey, #c864ff); background: color-mix(in srgb, var(--type-hotkey, #c864ff) 10%, transparent); }
-.grid-card-type--macro     { color: var(--type-macro,  #ff783c); background: color-mix(in srgb, var(--type-macro,  #ff783c) 10%, transparent); }
-.grid-card-type--app       { color: var(--type-app,    #50c878); background: color-mix(in srgb, var(--type-app,    #50c878) 10%, transparent); }
-.grid-card-type--url       { color: var(--type-url,    #ffc832); background: color-mix(in srgb, var(--type-url,    #ffc832) 10%, transparent); }
-.grid-card-type--folder    { color: var(--type-folder,  #40c8a0); background: color-mix(in srgb, var(--type-folder,  #40c8a0) 10%, transparent); }
 
 .grid-card-preview {
   font-size: 10px;

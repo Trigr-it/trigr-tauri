@@ -182,6 +182,7 @@ export default function SettingsPanel({
   keystrokeDelay    = 30,
   macroTriggerDelay = 150,
   doubleTapWindow   = 300,
+  holdThresholdMs   = 350,
   defaultDateFormat = 'DD/MM/YYYY',
   onUpdateGlobalSettings,
   searchOverlayHotkey      = 'Ctrl+Space',
@@ -804,7 +805,7 @@ export default function SettingsPanel({
           {isExpanded('privacy-security') && (<>
 
           <div className="settings-privacy-block">
-            <p>All your assignments, expansions, keystrokes and clipboard history stay on this device. The only thing that ever leaves your machine is a once-a-day anonymous count of how many triggers fired, helping us see which features are useful during the beta. No content, no identifiers, no device info. Toggle below to disable.</p>
+            <p>All your assignments, expansions, keystrokes and clipboard history stay on this device. The only thing that ever leaves your machine is a once-a-day anonymous usage summary: how many actions fired by type, how many of each feature you have set up, your plan tier (free, trial or Pro) and the app version. No content, no identifiers, no device info. Toggle below to disable.</p>
           </div>
 
           {/* ── Clipboard encryption at rest (v0.5) ────────── */}
@@ -889,7 +890,7 @@ export default function SettingsPanel({
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Send anonymous usage stats</span>
               <span className="settings-toggle-sub">
-                Once per day Trigr sends just a count of triggers, expansions and macros fired, plus the app version. No content, no identifiers. Helps prioritise what to build next during the beta.
+                Once per day Trigr sends daily counts of what fired by type (expansions, macros, app launches and so on), counts of what you have configured, your plan tier and the app version. No content, no identifiers. Helps prioritise what to build next during the beta.
               </span>
             </div>
             <button
@@ -1806,6 +1807,32 @@ export default function SettingsPanel({
                   onClick={() => onUpdateGlobalSettings?.({ doubleTapWindow: 300, macroSpeed: 'custom' })}
                   title="Reset to default (300ms)"
                   aria-label="Reset double-tap window"
+                >↺</button>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-slider-row">
+            <div className="settings-slider-info">
+              <span className="settings-toggle-label">Hold threshold <span className="pro-badge">PRO</span></span>
+              <span className="settings-toggle-sub">How long a key must be held before a Hold trigger fires</span>
+            </div>
+            <div className="settings-slider-ctrl">
+              <input
+                type="range"
+                className="settings-slider"
+                min="200" max="700" step="10"
+                value={holdThresholdMs}
+                onChange={e => onUpdateGlobalSettings?.({ holdThresholdMs: Number(e.target.value) })}
+              />
+              <span className="settings-slider-val">{holdThresholdMs}ms</span>
+              {holdThresholdMs !== 350 && (
+                <button
+                  type="button"
+                  className="settings-slider-reset"
+                  onClick={() => onUpdateGlobalSettings?.({ holdThresholdMs: 350 })}
+                  title="Reset to default (350ms)"
+                  aria-label="Reset hold threshold"
                 >↺</button>
               )}
             </div>

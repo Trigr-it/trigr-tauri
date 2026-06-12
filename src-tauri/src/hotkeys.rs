@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, PeekMessageW, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
-    KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, MSG, PM_REMOVE,
+    KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSLLHOOKSTRUCT, MSG, PM_REMOVE,
     WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_QUIT,
     WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEWHEEL,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
@@ -39,6 +39,12 @@ pub static MOUSE_HOOK_PAUSED: AtomicBool = AtomicBool::new(false);
 /// won't collide with WM_QUIT or any system message.
 pub const WM_TRIGR_MOUSE_HOOK_PAUSE: u32 = 0x0400 + 1;  // WM_USER + 1
 pub const WM_TRIGR_MOUSE_HOOK_RESUME: u32 = 0x0400 + 2; // WM_USER + 2
+
+/// Hold trigger (v0.5, Pro): paused alongside MOUSE_HOOK_PAUSED by the
+/// foreground watcher's fullscreen detector. While true, keydowns don't arm
+/// hold timers (keys with ::hold variants behave as plain single/double) and
+/// the watcher doesn't fire armed entries. Runtime only — never persisted.
+pub static HOLD_DETECTION_PAUSED: AtomicBool = AtomicBool::new(false);
 pub(crate) static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
 static IS_RECORDING_HOTKEY: AtomicBool = AtomicBool::new(false);
 static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
@@ -276,6 +282,11 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
         // let the single press pass through to the app. When both single+double
         // exist, the single entry already adds the key to the suppress set.
         if parts.last() == Some(&"double") { continue; }
+        // ::hold entries DO suppress (unlike ::double): a hold-armed key must
+        // not leak its keystroke to the app while the watcher waits for the
+        // threshold. Pro-gated — for free users hold mappings are inert, and
+        // suppressing would leave a dead key.
+        if parts.last() == Some(&"hold") && !crate::licence::is_pro() { continue; }
         if combo_str == "BARE" {
             let key_id = parts[2];
             // App-linked profiles: all bare keys allowed
@@ -320,8 +331,8 @@ fn rebuild_all_linked_mouse(assignments: &HashMap<String, Value>, profile_settin
         let prefix = format!("{}::BARE::", profile);
         for key in assignments.keys() {
             if !key.starts_with(&prefix) { continue; }
-            // Skip double entries
-            if key.ends_with("::double") { continue; }
+            // Skip double + hold entries (mouse buttons can't have either)
+            if key.ends_with("::double") || key.ends_with("::hold") { continue; }
             let key_id = key[prefix.len()..].split("::").next().unwrap_or("");
             if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
                 map.entry(mouse_id).or_default().insert(profile.clone());
@@ -464,11 +475,192 @@ pub(crate) fn engine_state() -> &'static Mutex<EngineState> {
     ENGINE_STATE.get_or_init(|| Mutex::new(EngineState::default()))
 }
 
+// ── Hold trigger state machine (v0.5, Pro) ──────────────────────────────────
+//
+// A key with a `::hold` variant defers ALL dispatch away from keydown:
+//   keydown      → arm a timer entry here (and swallow auto-repeat keydowns)
+//   watcher      → at threshold, fire the ::hold assignment while still held,
+//                  cancel any double-tap bookkeeping for the key
+//   keyup early  → release before threshold re-injects the deferred single /
+//                  double through the existing pending_macro machinery, so
+//                  modifier-release timing and double-tap dispatch are reused
+//   keyup late   → entry.fired == true → everything suppressed
+//
+// Map is keyed by raw VK (one physical key = one hold cycle), which keeps
+// keyup matching correct regardless of modifier release order. ONE watcher
+// thread total — never a thread per keypress.
+
+struct HoldEntry {
+    /// Base storage key, no suffix (e.g. "Default::Ctrl+Shift::F12").
+    storage_key: String,
+    fire_at: Instant,
+    inserted_at: Instant,
+    fired: bool,
+    hold_macro: Value,
+    /// The base (single-press) assignment, if one exists — re-injected at
+    /// early release.
+    single_macro: Option<Value>,
+    has_double: bool,
+    is_bare: bool,
+}
+
+static HOLD_TIMERS: OnceLock<Mutex<HashMap<u32, HoldEntry>>> = OnceLock::new();
+
+fn hold_timers() -> &'static Mutex<HashMap<u32, HoldEntry>> {
+    HOLD_TIMERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Arm a hold timer for a fresh keydown. Returns silently when the vk already
+/// has a live entry — that's an OS auto-repeat keydown, which must be
+/// swallowed for the whole hold cycle. A stale entry (>10s, keyup lost to a
+/// hook reinstall) is replaced rather than treated as a repeat.
+fn arm_hold_timer(
+    vk: u32,
+    storage_key: String,
+    hold_macro: Value,
+    single_macro: Option<Value>,
+    has_double: bool,
+    is_bare: bool,
+    threshold_ms: u64,
+) {
+    let mut timers = hold_timers().lock().unwrap();
+    if let Some(existing) = timers.get(&vk) {
+        if existing.inserted_at.elapsed() < Duration::from_secs(10) {
+            return; // auto-repeat while held — swallow
+        }
+    }
+    let now = Instant::now();
+    timers.insert(
+        vk,
+        HoldEntry {
+            storage_key,
+            fire_at: now + Duration::from_millis(threshold_ms),
+            inserted_at: now,
+            fired: false,
+            hold_macro,
+            single_macro,
+            has_double,
+            is_bare,
+        },
+    );
+}
+
+/// Drop all armed hold timers. Called on assignment updates (entries hold
+/// clones of old macros) and hook reinstall.
+pub(crate) fn clear_hold_timers() {
+    if let Some(m) = HOLD_TIMERS.get() {
+        if let Ok(mut timers) = m.lock() {
+            timers.clear();
+        }
+    }
+}
+
+// ── Auto-repeat tracking ────────────────────────────────────────────────
+// Set of non-modifier VKs whose first WM_KEYDOWN has already been
+// processed for the current physical press. Every subsequent WM_KEYDOWN
+// for the same vk before its keyup is a Windows OS auto-repeat and must
+// NOT re-enter the hotkey dispatch path. Without this guard, a foreground
+// watcher mid-press profile switch lets the NEW active_profile's hold or
+// double assignments fire under the same physical hold gesture — the
+// storage_key is rebuilt per invocation using the current active_profile.
+//
+// Modifier VKs return early in handle_keydown so they never enter the set.
+// Cleared on keyup, hook reinstall, and assignment updates.
+static KEYS_HELD_DOWN: OnceLock<RwLock<HashSet<u32>>> = OnceLock::new();
+
+fn keys_held_down() -> &'static RwLock<HashSet<u32>> {
+    KEYS_HELD_DOWN.get_or_init(|| RwLock::new(HashSet::new()))
+}
+
+/// True if this vk is already held (auto-repeat). False = first press
+/// of a new physical gesture; inserts the vk into the set.
+fn record_keydown_and_check_repeat(vk: u32) -> bool {
+    let mut held = keys_held_down().write().unwrap();
+    if held.contains(&vk) {
+        true
+    } else {
+        held.insert(vk);
+        false
+    }
+}
+
+pub(crate) fn clear_held_keys() {
+    if let Some(set) = KEYS_HELD_DOWN.get() {
+        if let Ok(mut held) = set.write() {
+            held.clear();
+        }
+    }
+}
+
+static HOLD_WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// The single trigr-hold-watcher thread: 16ms tick, fires entries whose
+/// threshold has passed. Firing happens here (not in any hook callback) so
+/// the hook latency budget is untouched.
+fn spawn_hold_watcher(app: AppHandle) {
+    if HOLD_WATCHER_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    thread::Builder::new()
+        .name("trigr-hold-watcher".to_string())
+        .spawn(move || {
+            loop {
+                thread::sleep(Duration::from_millis(16));
+                if HOLD_DETECTION_PAUSED.load(Ordering::SeqCst) {
+                    continue;
+                }
+                // Collect expired entries under the lock, fire after releasing it.
+                let mut to_fire: Vec<(String, Value, bool)> = Vec::new();
+                {
+                    let mut timers = hold_timers().lock().unwrap();
+                    if timers.is_empty() {
+                        continue;
+                    }
+                    let now = Instant::now();
+                    for entry in timers.values_mut() {
+                        if !entry.fired && now >= entry.fire_at {
+                            entry.fired = true;
+                            to_fire.push((
+                                entry.storage_key.clone(),
+                                entry.hold_macro.clone(),
+                                entry.is_bare,
+                            ));
+                        }
+                    }
+                }
+                for (sk, hold_macro, is_bare) in to_fire {
+                    // Threshold reached → hold wins this press cycle: cancel the
+                    // double window, any pending single timer, and any deferred
+                    // pending macro for this key.
+                    {
+                        let mut state = engine_state().lock().unwrap();
+                        if let Some(cancel) = state.pending_single_cancel.remove(&sk) {
+                            cancel.store(true, Ordering::SeqCst);
+                        }
+                        state.last_hotkey_time.remove(&sk);
+                        if state.pending_trigger_key.as_deref() == Some(sk.as_str()) {
+                            state.pending_macro = None;
+                            state.pending_storage_key = None;
+                            state.pending_trigger_key = None;
+                            state.pending_is_bare = false;
+                        }
+                    }
+                    let hold_trigger = format!("{}::hold", sk);
+                    info!("[Trigr] [HOLD] fired: {}", hold_trigger);
+                    fire_macro(hold_macro, is_bare, Some(hold_trigger), &app);
+                }
+            }
+        })
+        .expect("Failed to spawn hold watcher thread");
+}
+
 pub(crate) struct EngineState {
     pub(crate) active_profile: String,
     pub(crate) assignments: HashMap<String, Value>,
     pub(crate) profile_settings: HashMap<String, Value>,
     double_tap_window_ms: u64,
+    // Hold trigger threshold (v0.5, Pro) — global, clamped 200–700ms.
+    hold_threshold_ms: u64,
     // Double-tap tracking
     last_hotkey_time: HashMap<String, Instant>,
     pending_single_cancel: HashMap<String, Arc<AtomicBool>>,
@@ -512,6 +704,7 @@ impl Default for EngineState {
             assignments: HashMap::new(),
             profile_settings: HashMap::new(),
             double_tap_window_ms: 300,
+            hold_threshold_ms: 350,
             last_hotkey_time: HashMap::new(),
             pending_single_cancel: HashMap::new(),
             pending_macro: None,
@@ -1051,8 +1244,14 @@ unsafe extern "system" fn keyboard_hook_proc(
         // Mid-injection: our synthetic events pass through, but a real user keypress
         // for a suppressed key must still be blocked — otherwise it leaks to the game
         // as raw input (e.g. "I" reaching the game instead of being consumed by Trigr).
+        //
+        // LLKHF_INJECTED distinguishes synthetic (SendInput) events from real
+        // hardware input. Required for the hold-only passthrough path: when we
+        // SendInput a suppressed VK (e.g. F8 with ::hold mapped), this hook would
+        // otherwise treat it as a real press and block it.
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         if matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN)
+            && (kb.flags & LLKHF_INJECTED) == 0
             && !is_modifier_vk(kb.vkCode)
             && MACROS_ENABLED.load(Ordering::SeqCst)
         {
@@ -1464,6 +1663,27 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // Prevents stuck modifiers (e.g. Alt+Tab where keyup was missed by hook)
     sync_modifier_state_from_os();
 
+    // ── Auto-repeat detection ────────────────────────────────────────────
+    // True for every WM_KEYDOWN after the first one of this physical press
+    // (Windows OS key-repeat at ~30 Hz). Skips hotkey dispatch only — the
+    // expansion buffer fall-through still receives auto-repeats so held
+    // character keys feed triggers like ":kr" normally. See KEYS_HELD_DOWN.
+    let is_auto_repeat = record_keydown_and_check_repeat(vk);
+
+    // ── Foreground sync ─────────────────────────────────────────────────
+    // On the first press of a new physical gesture, eliminate the 1500ms
+    // foreground-watcher poll race: if the foreground HWND has changed since
+    // the watcher last recorded it, switch the active profile inline so the
+    // storage_key we build below resolves against the actual foreground app.
+    // Fast-path ~2µs (GetForegroundWindow + atomic compare); first press
+    // after a focus change pays ~50µs (OpenProcess + path query + switch).
+    // Auto-repeats skip — they don't dispatch hotkeys either.
+    // MUST run before any engine_state lock below (lock order: fg_state →
+    // engine_state, set by check_and_switch_if_stale's internal callees).
+    if !is_auto_repeat {
+        crate::foreground::check_and_switch_if_stale(app);
+    }
+
     // ── Release any held key on physical keypress ───────────────────────
     if crate::actions::is_key_held() {
         log::debug!("[DEBUG] HELD RELEASE: firing before pause check, key_id={}", key_id);
@@ -1738,7 +1958,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             is_static_bare_allowed(&key_id) && !is_foreground_dialog()
         };
 
-        if bare_allowed {
+        if bare_allowed && !is_auto_repeat {
             let bare_key = format!("{}::BARE::{}", profile, key_id);
             // Stop repeat if this key is the repeat trigger
             if crate::actions::is_repeating() {
@@ -1751,6 +1971,71 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                     }
                 }
             }
+            // ── Hold trigger (v0.5, Pro) on bare keys ───────────────────
+            // Mirrors the modified-key hold branch below. Note: this runs
+            // BEFORE the bare "hotkey" remap passthrough, so a hold-marked
+            // bare key deliberately loses AHK-style direct passthrough — its
+            // single fires at early release via pending_macro instead.
+            let bare_hold_key = format!("{}::hold", bare_key);
+            if crate::licence::is_pro()
+                && state.assignments.contains_key(&bare_hold_key)
+                && !HOLD_DETECTION_PAUSED.load(Ordering::SeqCst)
+            {
+                // Auto-repeat swallow — see the modified-key hold branch.
+                {
+                    let timers = hold_timers().lock().unwrap();
+                    if let Some(existing) = timers.get(&vk) {
+                        if existing.inserted_at.elapsed() < Duration::from_secs(10) {
+                            return;
+                        }
+                    }
+                }
+                crate::expansions::buffer_clear();
+                let hold_macro = state.assignments.get(&bare_hold_key).cloned().unwrap_or(Value::Null);
+                let single_macro = state.assignments.get(&bare_key).cloned();
+                let double_key = format!("{}::double", bare_key);
+                let has_double = state.assignments.contains_key(&double_key);
+                let threshold = state.hold_threshold_ms;
+
+                // Keydown-time double-tap detection — see the modified-key
+                // hold branch for why this can't live at keyup.
+                if has_double {
+                    let now = Instant::now();
+                    let dtw = state.double_tap_window_ms;
+                    if let Some(last) = state.last_hotkey_time.get(&bare_key) {
+                        if now.duration_since(*last).as_millis() < dtw as u128 {
+                            if let Some(cancel) = state.pending_single_cancel.remove(&bare_key) {
+                                cancel.store(true, Ordering::SeqCst);
+                            }
+                            state.last_hotkey_time.remove(&bare_key);
+                            info!("[Trigr] x2 Keydown double-tap (hold-armed bare key): {}", bare_key);
+                            // Sentinel so this press's auto-repeats hit the
+                            // swallow check above — see the modified branch.
+                            hold_timers().lock().unwrap().insert(vk, HoldEntry {
+                                storage_key: bare_key.clone(),
+                                fire_at: now,
+                                inserted_at: now,
+                                fired: true,
+                                hold_macro: Value::Null,
+                                single_macro: None,
+                                has_double: true,
+                                is_bare: true,
+                            });
+                            state.pending_macro = state.assignments.get(&double_key).cloned();
+                            state.pending_storage_key = None;
+                            state.pending_trigger_key = Some(bare_key);
+                            state.pending_is_bare = true;
+                            return;
+                        }
+                    }
+                    state.last_hotkey_time.insert(bare_key.clone(), now);
+                }
+
+                drop(state);
+                arm_hold_timer(vk, bare_key, hold_macro, single_macro, has_double, true, threshold);
+                return;
+            }
+
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 crate::expansions::buffer_clear();
                 let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -1834,6 +2119,90 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // modifier held, the keystroke should still drive the expansion buffer
     // (so triggers like ":kr" work).
     let mut hotkey_matched = false;
+
+    // Auto-repeat presses skip the hotkey dispatch — the original physical
+    // press already made its decisions. Stops mid-press profile switches
+    // from arming the new profile's hold/double under the same gesture.
+    if !is_auto_repeat {
+    // ── Hold trigger (v0.5, Pro) ────────────────────────────────────────
+    // A ::hold variant takes over the whole press cycle: arm the watcher
+    // timer and return (auto-repeat keydowns are swallowed inside
+    // arm_hold_timer). Early release re-injects the deferred single/double
+    // from handle_keyup; reaching threshold fires the hold from the watcher.
+    // Free users fall through — their ::hold mappings stay stored but inert.
+    let hold_key = format!("{}::hold", storage_key);
+    if crate::licence::is_pro()
+        && state.assignments.contains_key(&hold_key)
+        && !HOLD_DETECTION_PAUSED.load(Ordering::SeqCst)
+    {
+        // Auto-repeat swallow — MUST run before the double-tap window logic
+        // below: a held key repeats WM_KEYDOWN at ~30Hz and each repeat would
+        // otherwise re-enter the bookkeeping (alternately re-arming hold and
+        // re-detecting "second tap" — seen as x2 log spam in dev 2026-06-11).
+        // Covers armed holds, post-fire holds, and the second-tap sentinel.
+        // Lock order state→timers is safe: no thread nests timers→state.
+        {
+            let timers = hold_timers().lock().unwrap();
+            if let Some(existing) = timers.get(&vk) {
+                if existing.inserted_at.elapsed() < Duration::from_secs(10) {
+                    return;
+                }
+            }
+        }
+        crate::expansions::buffer_clear();
+        let hold_macro = state.assignments.get(&hold_key).cloned().unwrap_or(Value::Null);
+        let single_macro = state.assignments.get(&storage_key).cloned();
+        let double_key = format!("{}::double", storage_key);
+        let has_double = state.assignments.contains_key(&double_key);
+        let threshold = state.hold_threshold_ms;
+
+        // Double-tap detection must stay at KEYDOWN (tap-to-tap timing).
+        // Deferring it to keyup breaks modified combos: both taps' keyups
+        // overwrite the same pending_macro slot while the modifiers stay
+        // held, so only one dispatch ever happens and the double resolves
+        // as a single.
+        if has_double {
+            let now = Instant::now();
+            let dtw = state.double_tap_window_ms;
+            if let Some(last) = state.last_hotkey_time.get(&storage_key) {
+                if now.duration_since(*last).as_millis() < dtw as u128 {
+                    // Second tap inside the window — resolves as a double.
+                    // Per the conflict matrix, hold is NOT armed on the
+                    // second press.
+                    if let Some(cancel) = state.pending_single_cancel.remove(&storage_key) {
+                        cancel.store(true, Ordering::SeqCst);
+                    }
+                    state.last_hotkey_time.remove(&storage_key);
+                    info!("[Trigr] x2 Keydown double-tap (hold-armed key): {}", storage_key);
+                    // Sentinel so this press's auto-repeats hit the swallow
+                    // check above. fired=true keeps the watcher and the keyup
+                    // re-injection inert; the pending double set below still
+                    // fires at keyup as normal.
+                    hold_timers().lock().unwrap().insert(vk, HoldEntry {
+                        storage_key: storage_key.clone(),
+                        fire_at: now,
+                        inserted_at: now,
+                        fired: true,
+                        hold_macro: Value::Null,
+                        single_macro: None,
+                        has_double: true,
+                        is_bare: false,
+                    });
+                    state.pending_macro = state.assignments.get(&double_key).cloned();
+                    state.pending_storage_key = None;
+                    state.pending_trigger_key = Some(storage_key);
+                    state.pending_is_bare = false;
+                    return;
+                }
+            }
+            // First tap — record for the second-tap check above.
+            state.last_hotkey_time.insert(storage_key.clone(), now);
+        }
+
+        drop(state);
+        arm_hold_timer(vk, storage_key, hold_macro, single_macro, has_double, false, threshold);
+        return;
+    }
 
     if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
         hotkey_matched = true;
@@ -1938,6 +2307,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             state.last_hotkey_time.insert(storage_key, now);
         }
     }
+    } // end of `if !is_auto_repeat` (modified-key hotkey dispatch)
 
     // ── Shift-only fallthrough for text-expansion buffer ────────────────
     // If no modified hotkey matched and Shift is the only modifier held,
@@ -1950,9 +2320,56 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     }
 }
 
+/// Send a synthetic keydown + 15ms hold + keyup pair for the given VK so
+/// the OS / target app sees a clean tap. Used in the hold-armed early-
+/// release path when no single mapping exists — passthrough behaviour so
+/// the app's native handling of the key (F8 ortho, F5 refresh, arrow nav)
+/// still works after the LL hook suppressed the original physical keydown.
+/// Any modifiers still held during the synthesis are naturally included in
+/// the app's view of the combo.
+///
+/// 15ms hold between keydown and keyup is the [[feedback_synthetic_key_hold_time]]
+/// invariant — fused single-batch SendInput is invisible to ~60fps game
+/// polling. Caller MUST wrap with SUPPRESS_SIMULATED so our own LL hook
+/// ignores these synthetic events.
+fn send_synthetic_tap(vk: u32) {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_KEYBOARD, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP,
+    };
+    unsafe {
+        let down = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk as u16, wScan: 0, dwFlags: 0, time: 0, dwExtraInfo: 0,
+                },
+            },
+        };
+        let up = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk as u16, wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0,
+                },
+            },
+        };
+        SendInput(1, &down as *const _, std::mem::size_of::<INPUT>() as i32);
+        thread::sleep(Duration::from_millis(15));
+        SendInput(1, &up as *const _, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
 // ── Keyup handler ───────────────────────────────────────────────────────────
 
 fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
+    // Clear physical-press tracking for this vk. Safe for any vk — no-op
+    // if not present, and modifier VKs are never tracked.
+    if let Some(set) = KEYS_HELD_DOWN.get() {
+        if let Ok(mut held) = set.write() {
+            held.remove(&vk);
+        }
+    }
+
     // Normalize VK through scan-code resolution so OEM keys match on all layouts.
     let normalised_vk = resolve_key_id(vk, scan)
         .and_then(key_id_to_vk)
@@ -1994,6 +2411,107 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
     // Must come after modifier update so modifier state is accurate for the release.
     if crate::actions::remap_key_release(vk as u16) {
         return;
+    }
+
+    // ── Hold trigger: trigger-key release ends the hold cycle ──────────────
+    // fired == true → the watcher already fired the hold; suppress everything.
+    // fired == false → released before threshold; re-inject the dispatch that
+    // keydown deferred (single via pending_macro, double via the storage-key
+    // route into dispatch_with_double_tap, double-only via the same window
+    // bookkeeping the keydown path uses). The pending block below then fires
+    // it once all modifiers are released.
+    {
+        let removed = {
+            let mut timers = hold_timers().lock().unwrap();
+            timers.remove(&vk)
+        };
+        if let Some(entry) = removed {
+            if !entry.fired {
+                if let Some(single) = entry.single_macro {
+                    if entry.has_double {
+                        // Single + double + hold, released before threshold:
+                        // the single must wait out the double window. Spawn
+                        // the same cancel-able timer the non-hold keydown
+                        // path uses — a second tap cancels it via
+                        // pending_single_cancel in the keydown hold branch.
+                        let sk = entry.storage_key.clone();
+                        let is_bare = entry.is_bare;
+                        let mut state = engine_state().lock().unwrap();
+                        let dtw = state.double_tap_window_ms;
+                        if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
+                            old_cancel.store(true, Ordering::SeqCst);
+                        }
+                        let cancel_flag = Arc::new(AtomicBool::new(false));
+                        state.pending_single_cancel.insert(sk.clone(), cancel_flag.clone());
+                        drop(state);
+                        let app_clone = app.clone();
+                        thread::spawn(move || {
+                            thread::sleep(Duration::from_millis(dtw));
+                            if cancel_flag.load(Ordering::SeqCst) {
+                                return; // second tap arrived — double fired instead
+                            }
+                            {
+                                let mut state = engine_state().lock().unwrap();
+                                state.pending_single_cancel.remove(&sk);
+                                state.last_hotkey_time.remove(&sk);
+                            }
+                            info!("[Trigr] x1 Single confirmed (hold-deferred): {}", sk);
+                            fire_macro(single, is_bare, Some(sk), &app_clone);
+                        });
+                    } else {
+                        // Single + hold only: fire through the pending route so
+                        // injection waits for clean modifier state as usual.
+                        let mut state = engine_state().lock().unwrap();
+                        state.pending_macro = Some(single);
+                        state.pending_storage_key = None;
+                        state.pending_trigger_key = Some(entry.storage_key.clone());
+                        state.pending_is_bare = entry.is_bare;
+                    }
+                } else if entry.has_double {
+                    // Hold + double, NO single — defer the passthrough through the
+                    // dtw window. If a second tap arrives the keydown hold branch
+                    // sets pending_macro for double and cancels this; otherwise
+                    // synthesize a clean tap so the app's native key behaviour
+                    // fires (the LL hook suppressed the original physical keydown).
+                    let sk = entry.storage_key.clone();
+                    let key_vk = normalised_vk;
+                    let mut state = engine_state().lock().unwrap();
+                    let dtw = state.double_tap_window_ms;
+                    if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
+                        old_cancel.store(true, Ordering::SeqCst);
+                    }
+                    let cancel_flag = Arc::new(AtomicBool::new(false));
+                    state.pending_single_cancel.insert(sk.clone(), cancel_flag.clone());
+                    drop(state);
+                    thread::spawn(move || {
+                        thread::sleep(Duration::from_millis(dtw));
+                        if cancel_flag.load(Ordering::SeqCst) {
+                            return; // second tap arrived → double fired instead
+                        }
+                        {
+                            let mut state = engine_state().lock().unwrap();
+                            state.pending_single_cancel.remove(&sk);
+                            state.last_hotkey_time.remove(&sk);
+                        }
+                        info!("[Trigr] [HOLD] tap passthrough (hold+double, no single): {}", sk);
+                        SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        send_synthetic_tap(key_vk);
+                        thread::sleep(Duration::from_millis(5));
+                        SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    });
+                } else {
+                    // Hold-only, no single, no double — immediate passthrough so
+                    // the app's native key behaviour fires (the LL hook suppressed
+                    // the user's physical keydown). Modifiers held during this
+                    // synthesis are naturally included in the app's view.
+                    info!("[Trigr] [HOLD] tap passthrough (hold-only): {}", entry.storage_key);
+                    SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                    send_synthetic_tap(normalised_vk);
+                    thread::sleep(Duration::from_millis(5));
+                    SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                }
+            }
+        }
     }
 
     // Fire pending macro once all modifiers released (or immediately for bare keys)
@@ -2514,6 +3032,12 @@ fn spawn_hook_thread() {
                 // from a prior hook session can corrupt the new hook's behaviour.
                 INJECTION_IN_PROGRESS.store(false, Ordering::SeqCst);
                 SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                // Armed hold timers belong to the prior hook session — their
+                // keyups may have been lost to the reinstall.
+                clear_hold_timers();
+                // Same reasoning for auto-repeat tracking: held-key state
+                // is invalid across a hook reinstall (lost keyups).
+                clear_held_keys();
                 FILL_IN_ACTIVE.store(false, Ordering::SeqCst);
                 FILLIN_HWND.store(0, Ordering::SeqCst);
                 MOD_CTRL.store(false, Ordering::SeqCst);
@@ -2616,6 +3140,10 @@ pub fn start_hooks(app: AppHandle) {
     }
 
     spawn_hook_thread();
+
+    // Hold trigger watcher (v0.5) — one thread for all hold timers.
+    spawn_hold_watcher(app.clone());
+
     process_events(receiver, app);
 
     // Health monitor — reinstalls hooks if heartbeat stalls for 30s
@@ -2852,6 +3380,11 @@ pub fn set_input_focused(focused: bool) {
 
 pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) {
     log::info!("[Trigr] update_assignments: {} entries for profile '{}'", assignments.len(), profile);
+    // Armed hold timers reference clones of old macros — drop them.
+    clear_hold_timers();
+    // Auto-repeat tracking is keyed by raw VK and survives assignment
+    // changes harmlessly, but clearing here keeps state minimal.
+    clear_held_keys();
     let mut state = engine_state().lock().unwrap();
     state.assignments = assignments;
     state.active_profile = profile;
@@ -2918,6 +3451,9 @@ pub fn update_global_settings(settings: &Value) {
     let mut state = engine_state().lock().unwrap();
     if let Some(dtw) = settings.get("doubleTapWindow").and_then(|v| v.as_u64()) {
         state.double_tap_window_ms = dtw;
+    }
+    if let Some(ht) = settings.get("holdThresholdMs").and_then(|v| v.as_u64()) {
+        state.hold_threshold_ms = ht.clamp(200, 700);
     }
     if let Some(m) = settings.get("globalInputMethod").and_then(|v| v.as_str()) {
         state.global_input_method = m.to_string();

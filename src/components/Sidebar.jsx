@@ -650,6 +650,7 @@ export default function Sidebar({
       if (k.includes('::EXPANSION::')) continue;
       const parts = k.split('::');
       if (parts[parts.length - 1] === 'double') continue;
+      if (parts[parts.length - 1] === 'hold') continue;
       const baseKey = k;
       seen.add(baseKey);
       entries.push({
@@ -657,7 +658,9 @@ export default function Sidebar({
         keyId:      parts[2] || '',
         macro:      v,
         hasDouble:  !!assignments[baseKey + '::double'],
+        hasHold:    !!assignments[baseKey + '::hold'],
         doubleOnly: false,
+        holdOnly:   false,
       });
     }
     // Second pass: collect double-only entries (no matching single)
@@ -668,12 +671,33 @@ export default function Sidebar({
       if (parts[parts.length - 1] !== 'double') continue;
       const baseKey = parts.slice(0, -1).join('::');
       if (seen.has(baseKey)) continue; // already listed via single entry
+      seen.add(baseKey);
       entries.push({
         combo:      parts[1] || '',
         keyId:      parts[2] || '',
         macro:      v,
         hasDouble:  true,
+        hasHold:    !!assignments[baseKey + '::hold'],
         doubleOnly: true,
+        holdOnly:   false,
+      });
+    }
+    // Third pass: collect hold-only entries (no single, no double)
+    for (const [k, v] of Object.entries(assignments)) {
+      if (!k.startsWith(activeProfile + '::')) continue;
+      if (k.includes('::EXPANSION::')) continue;
+      const parts = k.split('::');
+      if (parts[parts.length - 1] !== 'hold') continue;
+      const baseKey = parts.slice(0, -1).join('::');
+      if (seen.has(baseKey)) continue; // already listed via single/double entry
+      entries.push({
+        combo:      parts[1] || '',
+        keyId:      parts[2] || '',
+        macro:      v,
+        hasDouble:  false,
+        hasHold:    true,
+        doubleOnly: false,
+        holdOnly:   true,
       });
     }
     return entries;
@@ -888,7 +912,7 @@ export default function Sidebar({
   const isRenaming = (combo, keyId) => renaming?.combo === combo && renaming?.keyId === keyId;
   const isClearing = (combo, keyId) => clearing?.combo === combo && clearing?.keyId === keyId;
 
-  function renderItem({ combo, keyId, macro, hasDouble, doubleOnly }) {
+  function renderItem({ combo, keyId, macro, hasDouble, doubleOnly, hasHold, holdOnly }) {
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
     const displayKey = MOUSE_KEY_LABELS[keyId] || friendlyKeyName(keyId);
     const isSelected = selectedKey === keyId && combo === currentCombo;
@@ -921,10 +945,22 @@ export default function Sidebar({
           <span className="sidebar-key-badge" style={{ borderColor: meta.color + '55', color: meta.color }}>
             {displayKey}
           </span>
-          {doubleOnly
-            ? <span className="sidebar-double-badge">×2 only</span>
-            : hasDouble && <span className="sidebar-double-badge">×2</span>
-          }
+          {(hasDouble || hasHold) && (
+            <span className="sidebar-mode-chip-row">
+              {hasDouble && (
+                <span
+                  className={`sidebar-mode-chip${doubleOnly ? ' sidebar-mode-chip-only' : ''}`}
+                  title={doubleOnly ? 'Double-press only (no single-press action)' : 'Double-press also mapped'}
+                >×2</span>
+              )}
+              {hasHold && (
+                <span
+                  className={`sidebar-mode-chip${holdOnly ? ' sidebar-mode-chip-only' : ''}`}
+                  title={holdOnly ? 'Hold only (no single-press action)' : 'Hold also mapped'}
+                >⏱</span>
+              )}
+            </span>
+          )}
         </div>
         <div className="sidebar-item-info">
           <div className="sidebar-item-label">
@@ -968,7 +1004,7 @@ export default function Sidebar({
   }
 
   // ── Card for list view grid ──────────────────────────────────
-  function renderCard({ combo, keyId, macro, hasDouble, doubleOnly }) {
+  function renderCard({ combo, keyId, macro, hasDouble, doubleOnly, hasHold, holdOnly }) {
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
     const displayKey = MOUSE_KEY_LABELS[keyId] || friendlyKeyName(keyId);
     const isSelected = selectedKey === keyId && combo === currentCombo;
@@ -998,6 +1034,15 @@ export default function Sidebar({
     } else if (macro.type === 'folder') {
       preview = macro.data?.path || '';
     }
+    // Don't echo the title: when the item has no custom label, displayLabel
+    // falls back to the same data field the preview shows (url, path, target,
+    // text), so the card would print it twice. The startsWith case covers
+    // truncated text previews ("Lorem ipsum…" under a "Lorem ipsum dolor…"
+    // label).
+    if (preview === displayLabel ||
+        (preview.endsWith('…') && displayLabel.startsWith(preview.slice(0, -1)))) {
+      preview = '';
+    }
 
     if (isClearing(combo, keyId)) {
       return (
@@ -1021,12 +1066,29 @@ export default function Sidebar({
         onClick={() => onSelectAssignment(keyId, combo)}
         onContextMenu={e => handleAssignContextMenu(e, combo, keyId, macro)}
       >
+        {/* Same per-item anatomy as the sidebar rows: coloured key badge +
+            mode chips, not accent text. Keep these two renderers visually
+            in sync. */}
         <div className="grid-card-combo">
-          {comboLabel}
-          {doubleOnly
-            ? <span className="sidebar-double-badge">×2 only</span>
-            : hasDouble && <span className="sidebar-double-badge">×2</span>
-          }
+          <span className="sidebar-key-badge" style={{ borderColor: meta.color + '55', color: meta.color }}>
+            {comboLabel}
+          </span>
+          {(hasDouble || hasHold) && (
+            <span className="sidebar-mode-chip-row">
+              {hasDouble && (
+                <span
+                  className={`sidebar-mode-chip${doubleOnly ? ' sidebar-mode-chip-only' : ''}`}
+                  title={doubleOnly ? 'Double-press only (no single-press action)' : 'Double-press also mapped'}
+                >×2</span>
+              )}
+              {hasHold && (
+                <span
+                  className={`sidebar-mode-chip${holdOnly ? ' sidebar-mode-chip-only' : ''}`}
+                  title={holdOnly ? 'Hold only (no single-press action)' : 'Hold also mapped'}
+                >⏱</span>
+              )}
+            </span>
+          )}
         </div>
         <div className="grid-card-label">
           {isRenaming(combo, keyId) ? (
@@ -1042,7 +1104,10 @@ export default function Sidebar({
           ) : displayLabel}
         </div>
         <div className="grid-card-bottom">
-          <span className={`grid-card-type grid-card-type--${macro.type}`}>{typeName}</span>
+          <span className="sidebar-item-type">
+            <span className="type-dot" style={{ background: meta.color }} />
+            {typeName}
+          </span>
           {preview && <span className="grid-card-preview" title={preview}>{preview}</span>}
         </div>
       </div>

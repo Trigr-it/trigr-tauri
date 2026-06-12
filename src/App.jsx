@@ -109,6 +109,7 @@ function App() {
   const [overlayIncludeAutocorrect,  setOverlayIncludeAutocorrect]  = useState(false);
   const [clipboardPreviewWidth,      setClipboardPreviewWidth]      = useState(480);
   const [doubleTapWindow,            setDoubleTapWindow]            = useState(300);
+  const [holdThresholdMs,            setHoldThresholdMs]            = useState(350);
   const [updateInfo,     setUpdateInfo]     = useState(null);   // { version, percent, ready, dismissed }
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
@@ -319,6 +320,7 @@ function App() {
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
+        setHoldThresholdMs(  config.holdThresholdMs     ?? 350);
         setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
         // Always start on the Mapping view — do not restore last-used view/area
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
@@ -383,6 +385,7 @@ function App() {
           keystrokeDelay:    config.keystrokeDelay     ?? 30,
           macroTriggerDelay: config.macroTriggerDelay  ?? 150,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
+          holdThresholdMs:   config.holdThresholdMs    ?? 350,
           defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
         });
         // CRITICAL: updateAssignments MUST be called after config loads on startup.
@@ -649,6 +652,7 @@ function App() {
         setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
         setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
+        setHoldThresholdMs(  config.holdThresholdMs     ?? 350);
         setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
         setVoiceEnabled(            config.voiceEnabled             ?? false);
@@ -700,6 +704,7 @@ function App() {
           keystrokeDelay:    config.keystrokeDelay     ?? 30,
           macroTriggerDelay: config.macroTriggerDelay  ?? 150,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
+          holdThresholdMs:   config.holdThresholdMs    ?? 350,
           defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
         });
         showNotification('Config updated from sync', 'info');
@@ -1233,9 +1238,11 @@ function App() {
   const handleDeleteKey = useCallback((keyId) => {
     const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
     const doubleKey = key + '::double';
+    const holdKey = key + '::hold';
     const newAssignments = { ...assignments };
     delete newAssignments[key];
     delete newAssignments[doubleKey];
+    delete newAssignments[holdKey];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Deleted ${currentCombo}+${keyId}`, 'info');
@@ -1255,9 +1262,11 @@ function App() {
   const handleClearAssignment = useCallback((combo, keyId) => {
     const key = `${activeProfile}::${combo}::${keyId}`;
     const doubleKey = key + '::double';
+    const holdKey = key + '::hold';
     const newAssignments = { ...assignments };
     delete newAssignments[key];
     delete newAssignments[doubleKey];
+    delete newAssignments[holdKey];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     syncEngine(newAssignments, activeProfile);
@@ -1329,6 +1338,33 @@ function App() {
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification('Double-tap cleared', 'info');
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeDoubleKey]);
+
+  // ── Hold trigger assignment helpers (v0.5, Pro) ────────────
+  const makeHoldKey = useCallback((profile, combo, keyId) => {
+    return `${profile}::${combo}::${keyId}::hold`;
+  }, []);
+
+  const getHoldAssignment = useCallback((keyId) => {
+    if (activeModifiers.length === 0) return null;
+    return assignments[makeHoldKey(activeProfile, currentCombo, keyId)] || null;
+  }, [assignments, activeProfile, currentCombo, activeModifiers, makeHoldKey]);
+
+  const handleAssignHold = useCallback((keyId, macro) => {
+    const key = makeHoldKey(activeProfile, currentCombo, keyId);
+    const newAssignments = { ...assignments, [key]: macro };
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    showNotification(`Hold assigned to ${currentCombo}+${keyId}`);
+  }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeHoldKey]);
+
+  const handleClearHold = useCallback((keyId) => {
+    const key = makeHoldKey(activeProfile, currentCombo, keyId);
+    const newAssignments = { ...assignments };
+    delete newAssignments[key];
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    showNotification('Hold cleared', 'info');
+  }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeHoldKey]);
 
   // ── Profile management ────────────────────────────────────
   const handleProfileChange = useCallback((profile) => {
@@ -2495,6 +2531,7 @@ function App() {
       keystrokeDelay:     patch.keystrokeDelay     ?? keystrokeDelay,
       macroTriggerDelay:  patch.macroTriggerDelay  ?? macroTriggerDelay,
       doubleTapWindow:    patch.doubleTapWindow     ?? doubleTapWindow,
+      holdThresholdMs:    patch.holdThresholdMs    ?? holdThresholdMs,
       defaultDateFormat:  patch.defaultDateFormat  ?? defaultDateFormat,
     };
     setGlobalInputMethod(next.globalInputMethod);
@@ -2502,10 +2539,11 @@ function App() {
     setKeystrokeDelay(next.keystrokeDelay);
     setMacroTriggerDelay(next.macroTriggerDelay);
     setDoubleTapWindow(next.doubleTapWindow);
+    setHoldThresholdMs(next.holdThresholdMs);
     setDefaultDateFormat(next.defaultDateFormat);
     window.electronAPI?.updateGlobalSettings(next);
     window.electronAPI?.saveConfig(next);
-  }, [globalInputMethod, macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow, defaultDateFormat]);
+  }, [globalInputMethod, macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow, holdThresholdMs, defaultDateFormat]);
 
   // ── Global pause toggle ───────────────────────────────────
   const handleSetPauseKey = useCallback(async (combo) => {
@@ -4065,6 +4103,7 @@ function App() {
             keystrokeDelay={keystrokeDelay}
             macroTriggerDelay={macroTriggerDelay}
             doubleTapWindow={doubleTapWindow}
+            holdThresholdMs={holdThresholdMs}
             defaultDateFormat={defaultDateFormat}
             onUpdateGlobalSettings={handleUpdateGlobalSettings}
             searchOverlayHotkey={searchOverlayHotkey}
@@ -4130,6 +4169,8 @@ function App() {
             onClear={handleRadialChildClear}
             onAssignDouble={() => {}}
             onClearDouble={() => {}}
+            onAssignHold={() => {}}
+            onClearHold={() => {}}
             onClose={() => setSelectedRadialChild(null)}
             onReassign={() => {}}
             onDuplicate={() => {}}
@@ -4157,6 +4198,8 @@ function App() {
             onClear={handleRadialClear}
             onAssignDouble={() => {}}
             onClearDouble={() => {}}
+            onAssignHold={() => {}}
+            onClearHold={() => {}}
             onClose={() => setSelectedRadialSegment(null)}
             onReassign={() => {}}
             onDuplicate={() => {}}
@@ -4175,6 +4218,7 @@ function App() {
             currentCombo={currentCombo}
             assignment={selectedKey ? getKeyAssignment(selectedKey) : null}
             doubleAssignment={selectedKey ? getDoubleAssignment(selectedKey) : null}
+            holdAssignment={selectedKey ? getHoldAssignment(selectedKey) : null}
             draftAssignment={draftAssignment}
             draftDoubleAssignment={draftDoubleAssignment}
             assignments={assignments}
@@ -4187,6 +4231,8 @@ function App() {
             onDelete={handleDeleteKey}
             onAssignDouble={handleAssignDouble}
             onClearDouble={handleClearDouble}
+            onAssignHold={handleAssignHold}
+            onClearHold={handleClearHold}
             onClose={() => { clearDraft(); setSelectedKey(null); }}
             onCancelDraft={clearDraft}
             onReassign={handleReassign}
