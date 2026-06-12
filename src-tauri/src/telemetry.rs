@@ -8,6 +8,10 @@
 //!   - app_version (the running Trigr version)
 //!   - request_id (one-shot UUID, NOT persisted, lets the backend dedupe
 //!     duplicate retries without us needing a persistent install ID)
+//!   - extra (payload v2, v0.5+): per-type fire counts, double/hold fire
+//!     counts, tier ("free"|"trial"|"pro" — a cohort label, not an
+//!     identifier), and a library snapshot (counts + booleans of what's
+//!     configured). Still zero content, zero identifiers.
 //!
 //! Zero identifiers, zero user content, zero hardware fingerprint. Default ON
 //! during beta with a one-click off toggle in Settings (machine-local flag in
@@ -134,42 +138,152 @@ fn send_floor() -> String {
 
 // ── Aggregation ────────────────────────────────────────────────────────────
 
-/// Counts for a single local calendar day. Mirrors the telemetry_sync table
-/// (minus the housekeeping columns) so the same struct flows through
-/// aggregate → insert → POST.
-#[derive(Debug, Clone, Copy)]
+/// Counts for a single local calendar day. The v1 trio (triggers, expansions,
+/// macros) mirrors the dedicated telemetry_sync columns; the rest travels in
+/// the `extra` JSON column (payload v2).
+#[derive(Debug, Clone, Default)]
 pub struct DayCounts {
     pub triggers: i64,
     pub expansions: i64,
     pub macros: i64,
+    // Payload v2 per-type breakdown (the v1 "other" bucket, split out).
+    pub text: i64,
+    pub app: i64,
+    pub url: i64,
+    pub folder: i64,
+    pub search_template: i64,
+    // Trigger-mode fires, derived from the storage-key suffix. Adoption
+    // signal for the Pro-gated double/hold modes.
+    pub double_fires: i64,
+    pub hold_fires: i64,
 }
 
 /// Aggregate counts for one local date. Single SQL query with conditional
 /// aggregations — one full scan of the row range matching `DATE(...,'localtime') = ?`.
 /// Returns zeros if the date has no rows or the query fails (logged).
 pub fn aggregate_for_date(date: &str) -> DayCounts {
-    with_read_conn(
-        DayCounts { triggers: 0, expansions: 0, macros: 0 },
-        |conn| {
-            let row: rusqlite::Result<(i64, i64, i64)> = conn.query_row(
-                "SELECT \
-                    COUNT(*) AS triggers, \
-                    COUNT(CASE WHEN action_type = 'expansion' THEN 1 END) AS expansions, \
-                    COUNT(CASE WHEN action_type = 'macro' THEN 1 END) AS macros \
-                 FROM action_log \
-                 WHERE DATE(timestamp, 'localtime') = ?1",
-                rusqlite::params![date],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            );
-            match row {
-                Ok((t, e, m)) => DayCounts { triggers: t, expansions: e, macros: m },
-                Err(e) => {
-                    warn!("[Telemetry] aggregate_for_date({}) query failed: {}", date, e);
-                    DayCounts { triggers: 0, expansions: 0, macros: 0 }
+    with_read_conn(DayCounts::default(), |conn| {
+        let row: rusqlite::Result<DayCounts> = conn.query_row(
+            "SELECT \
+                COUNT(*) AS triggers, \
+                COUNT(CASE WHEN action_type = 'expansion' THEN 1 END) AS expansions, \
+                COUNT(CASE WHEN action_type = 'macro' THEN 1 END) AS macros, \
+                COUNT(CASE WHEN action_type = 'text' THEN 1 END) AS text, \
+                COUNT(CASE WHEN action_type = 'app' THEN 1 END) AS app, \
+                COUNT(CASE WHEN action_type = 'url' THEN 1 END) AS url, \
+                COUNT(CASE WHEN action_type = 'folder' THEN 1 END) AS folder, \
+                COUNT(CASE WHEN action_type = 'search_template' THEN 1 END) AS search_template, \
+                COUNT(CASE WHEN trigger_key LIKE '%::double' THEN 1 END) AS double_fires, \
+                COUNT(CASE WHEN trigger_key LIKE '%::hold' THEN 1 END) AS hold_fires \
+             FROM action_log \
+             WHERE DATE(timestamp, 'localtime') = ?1",
+            rusqlite::params![date],
+            |r| {
+                Ok(DayCounts {
+                    triggers: r.get(0)?,
+                    expansions: r.get(1)?,
+                    macros: r.get(2)?,
+                    text: r.get(3)?,
+                    app: r.get(4)?,
+                    url: r.get(5)?,
+                    folder: r.get(6)?,
+                    search_template: r.get(7)?,
+                    double_fires: r.get(8)?,
+                    hold_fires: r.get(9)?,
+                })
+            },
+        );
+        match row {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("[Telemetry] aggregate_for_date({}) query failed: {}", date, e);
+                DayCounts::default()
+            }
+        }
+    })
+}
+
+/// Build the payload-v2 `extra` JSON for a finalised day: the per-type fire
+/// breakdown plus the CURRENT tier and library snapshot, captured at
+/// finalisation time (the first tick after the day rolls over). Snapshot is
+/// counts and booleans only — no key names, no content, no identifiers.
+///
+/// Why a snapshot at all: fires tell us what users USE; the snapshot tells us
+/// what they have CONFIGURED. Configured-but-never-fired is the adoption gap
+/// the dashboard can't see from fire counts alone.
+fn build_extra(c: &DayCounts) -> String {
+    let status = crate::licence::get_licence_status();
+    let tier = if status.trial_active {
+        "trial"
+    } else if status.is_pro {
+        "pro"
+    } else {
+        "free"
+    };
+
+    let mut assignments = 0i64;
+    let mut expansion_defs = 0i64;
+    let mut double_assignments = 0i64;
+    let mut hold_assignments = 0i64;
+    let mut search_templates = 0i64;
+    let mut radial_items = 0i64;
+    let mut clipboard_capture = true;
+    let mut voice_enabled = false;
+    if let Some(cfg) = crate::config::load_config() {
+        if let Some(map) = cfg.get("assignments").and_then(|v| v.as_object()) {
+            for k in map.keys() {
+                if k.contains("::EXPANSION::") {
+                    expansion_defs += 1;
+                } else if k.ends_with("::double") {
+                    double_assignments += 1;
+                } else if k.ends_with("::hold") {
+                    hold_assignments += 1;
+                } else {
+                    assignments += 1;
                 }
             }
+        }
+        if let Some(arr) = cfg.get("searchTemplates").and_then(|v| v.as_array()) {
+            search_templates = arr.len() as i64;
+        }
+        if let Some(by_profile) = cfg.get("radialMenuItemsByProfile").and_then(|v| v.as_object()) {
+            for items in by_profile.values() {
+                if let Some(a) = items.as_array() {
+                    radial_items += a.iter().filter(|i| !i.is_null()).count() as i64;
+                }
+            }
+        }
+        if let Some(b) = cfg.get("clipboardCaptureEnabled").and_then(|v| v.as_bool()) {
+            clipboard_capture = b;
+        }
+        if let Some(b) = cfg.get("voiceEnabled").and_then(|v| v.as_bool()) {
+            voice_enabled = b;
+        }
+    }
+
+    serde_json::json!({
+        "type_counts": {
+            "text": c.text,
+            "app": c.app,
+            "url": c.url,
+            "folder": c.folder,
+            "search_template": c.search_template,
         },
-    )
+        "double_fires": c.double_fires,
+        "hold_fires": c.hold_fires,
+        "tier": tier,
+        "features": {
+            "assignments": assignments,
+            "expansion_defs": expansion_defs,
+            "double_assignments": double_assignments,
+            "hold_assignments": hold_assignments,
+            "search_templates": search_templates,
+            "radial_items": radial_items,
+            "clipboard_capture": clipboard_capture,
+            "voice_enabled": voice_enabled,
+        },
+    })
+    .to_string()
 }
 
 /// Find every local date strictly before today that has action_log rows but
@@ -223,7 +337,8 @@ pub fn ensure_rows_through_yesterday(floor: &str) {
         if c.triggers == 0 {
             continue;
         }
-        crate::analytics::telemetry_insert_row(&date, c.triggers, c.expansions, c.macros);
+        let extra = build_extra(&c);
+        crate::analytics::telemetry_insert_row(&date, c.triggers, c.expansions, c.macros, Some(extra));
     }
 }
 
@@ -243,6 +358,9 @@ struct PendingRow {
     triggers: i64,
     expansions: i64,
     macros: i64,
+    /// Payload v2 JSON (NULL on rows created by pre-v2 builds — those send
+    /// as v1-shaped payloads, which the backend continues to accept).
+    extra: Option<String>,
 }
 
 /// Pull every telemetry_sync row that has `sent_at IS NULL` and sits at or
@@ -253,7 +371,7 @@ struct PendingRow {
 fn select_pending_rows(floor: &str) -> Vec<PendingRow> {
     with_read_conn(Vec::new(), |conn| {
         let mut stmt = match conn.prepare(
-            "SELECT date, triggers, expansions, macros \
+            "SELECT date, triggers, expansions, macros, extra \
              FROM telemetry_sync \
              WHERE sent_at IS NULL \
                AND date >= ?1 \
@@ -271,6 +389,7 @@ fn select_pending_rows(floor: &str) -> Vec<PendingRow> {
                 triggers: r.get(1)?,
                 expansions: r.get(2)?,
                 macros: r.get(3)?,
+                extra: r.get(4)?,
             })
         });
         match rows {
@@ -320,7 +439,7 @@ pub fn send_pending(app_version: &str, floor: &str) {
         // never received. Doesn't break the "no persistent identifier"
         // rule — re-generated every send attempt.
         let request_id = uuid::Uuid::new_v4().to_string();
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "date": row.date,
             "triggers": row.triggers,
             "expansions": row.expansions,
@@ -328,6 +447,15 @@ pub fn send_pending(app_version: &str, floor: &str) {
             "app_version": app_version,
             "request_id": request_id,
         });
+        // Payload v2: rows finalised by this build carry the extra blob
+        // (per-type counts, double/hold fires, tier, feature snapshot).
+        // Rows left over from a pre-v2 build send the v1 shape above.
+        if let Some(extra_raw) = &row.extra {
+            if let Ok(extra_val) = serde_json::from_str::<serde_json::Value>(extra_raw) {
+                payload["schema"] = serde_json::json!(2);
+                payload["extra"] = extra_val;
+            }
+        }
 
         let resp = client
             .post(TELEMETRY_ENDPOINT)

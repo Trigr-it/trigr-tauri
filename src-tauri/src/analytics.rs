@@ -47,6 +47,9 @@ enum AnalyticsMsg {
         triggers: i64,
         expansions: i64,
         macros: i64,
+        /// Payload v2 JSON blob (type_counts, double/hold fires, tier,
+        /// feature snapshot). None → row sends as a v1-shaped payload.
+        extra: Option<String>,
     },
     /// Mark a telemetry row as successfully sent and bump send_attempts.
     TelemetryMarkSent { date: String, sent_at: String },
@@ -125,6 +128,11 @@ pub fn init(app_data_dir: PathBuf) {
                     send_attempts   INTEGER NOT NULL DEFAULT 0
                 );"
             );
+            // Payload v2 (v0.5): one nullable JSON column carries everything
+            // new (per-type counts, double/hold fires, tier, feature snapshot)
+            // so this table never needs another column migration. NULL on rows
+            // created by older builds — those still send as v1-shaped payloads.
+            let _ = conn.execute("ALTER TABLE telemetry_sync ADD COLUMN extra TEXT", []);
 
             // One-time migration (v0.4.0+): drop legacy key-to-key remap rows.
             // Simple "hotkey" action_type entries are no longer logged at runtime
@@ -199,13 +207,13 @@ pub fn init(app_data_dir: PathBuf) {
                     AnalyticsMsg::MigrateTimeSaved(assignments) => {
                         handle_migrate_time_saved(&conn, &assignments);
                     }
-                    AnalyticsMsg::TelemetryInsertRow { date, triggers, expansions, macros } => {
+                    AnalyticsMsg::TelemetryInsertRow { date, triggers, expansions, macros, extra } => {
                         // INSERT OR IGNORE so re-runs after a partial backfill are safe.
                         let _ = conn.execute(
                             "INSERT OR IGNORE INTO telemetry_sync \
-                             (date, triggers, expansions, macros, sent_at, send_attempts) \
-                             VALUES (?1, ?2, ?3, ?4, NULL, 0)",
-                            rusqlite::params![date, triggers, expansions, macros],
+                             (date, triggers, expansions, macros, sent_at, send_attempts, extra) \
+                             VALUES (?1, ?2, ?3, ?4, NULL, 0, ?5)",
+                            rusqlite::params![date, triggers, expansions, macros, extra],
                         );
                     }
                     AnalyticsMsg::TelemetryMarkSent { date, sent_at } => {
@@ -276,7 +284,7 @@ pub fn db_path() -> Option<PathBuf> {
     ANALYTICS_DB_PATH.get().cloned()
 }
 
-pub(crate) fn telemetry_insert_row(date: &str, triggers: i64, expansions: i64, macros: i64) {
+pub(crate) fn telemetry_insert_row(date: &str, triggers: i64, expansions: i64, macros: i64, extra: Option<String>) {
     if let Some(tx) = ANALYTICS_TX.get() {
         if let Ok(tx) = tx.lock() {
             let _ = tx.send(AnalyticsMsg::TelemetryInsertRow {
@@ -284,6 +292,7 @@ pub(crate) fn telemetry_insert_row(date: &str, triggers: i64, expansions: i64, m
                 triggers,
                 expansions,
                 macros,
+                extra,
             });
         }
     }
