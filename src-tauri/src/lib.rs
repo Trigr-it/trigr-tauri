@@ -1139,6 +1139,28 @@ fn voice_overlay_open_time() -> &'static StdMutex<Option<StdInstant>> {
     VOICE_OVERLAY_OPEN_TIME.get_or_init(|| StdMutex::new(None))
 }
 
+/// Resolve a monitor's effective DPI scale via Win32 GetDpiForMonitor.
+/// Returns the linear scale factor (e.g. 2.25 for 225% scaling). Falls
+/// back to 1.0 if the API call fails.
+///
+/// Use this instead of `Window::scale_factor()` when positioning an overlay
+/// onto a target monitor. `scale_factor()` returns the scale of the
+/// monitor the window is CURRENTLY on, which may not match the target.
+/// On a hidden pre-created overlay window, scale_factor() can also return
+/// stale 1.0 before Windows establishes the window's DPI, producing wrong
+/// physical coordinates after Tauri's logical-to-physical conversion at
+/// set_position/set_size. Going through PhysicalPosition + PhysicalSize
+/// computed from this helper bypasses all of that.
+fn monitor_scale_factor(hmon: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> f64 {
+    use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+    let mut dx: u32 = 96;
+    let mut dy: u32 = 96;
+    unsafe {
+        let _ = GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
+    }
+    dx as f64 / 96.0
+}
+
 fn show_overlay(app: &tauri::AppHandle) {
     // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
     webview_mem::resume_for_show(app, "overlay");
@@ -1162,32 +1184,32 @@ fn show_overlay(app: &tauri::AppHandle) {
         (pt.x, pt.y)
     };
 
-    // Get the work area of the monitor containing the cursor
-    let (wa_left, wa_top, wa_right, wa_bottom) = unsafe {
+    // Get the work area + DPI of the monitor containing the cursor.
+    // Physical coords throughout: avoids the hidden-window scale_factor
+    // race and Tauri's logical-to-physical re-conversion at set_position
+    // using a possibly-different scale (the bug behind the 4K@225% clip).
+    let (wa_left, wa_top, wa_right, wa_bottom, scale) = unsafe {
         let pt = POINT { x: cx, y: cy };
         let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
         let mut mi: MONITORINFO = std::mem::zeroed();
         mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let s = monitor_scale_factor(hmon);
         if GetMonitorInfoW(hmon, &mut mi) != 0 {
-            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, s)
         } else {
-            (0, 0, 1920, 1080)
+            (0, 0, 1920, 1080, s)
         }
     };
 
-    // Convert physical monitor coords to logical using the window scale factor
-    let scale = overlay.scale_factor().unwrap_or(1.0);
-    let log_left = wa_left as f64 / scale;
-    let log_top = wa_top as f64 / scale;
-    let log_w = (wa_right - wa_left) as f64 / scale;
-    let log_h = (wa_bottom - wa_top) as f64 / scale;
-
-    // Centre on active monitor, one-third from top
-    let win_w = 620.0;
-    let x = log_left + (log_w - win_w) / 2.0;
-    let y = log_top + log_h / 3.0;
-    let _ = overlay.set_position(tauri::LogicalPosition::new(x, y));
-    let _ = overlay.set_size(tauri::LogicalSize::new(620.0, 103.0));
+    // Centre on active monitor, one-third from top. Physical units.
+    let win_w_logical = 620.0_f64;
+    let win_h_logical = 103.0_f64;
+    let phys_w = (win_w_logical * scale).round() as i32;
+    let phys_h = (win_h_logical * scale).round() as i32;
+    let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+    let phys_y = wa_top + (wa_bottom - wa_top) / 3;
+    let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+    let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
     // Send search data to the overlay — includes ALL assignments (profile + global)
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
@@ -1259,30 +1281,30 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
         GetCursorPos(&mut pt);
         (pt.x, pt.y)
     };
-    let (wa_left, wa_top, wa_right, wa_bottom) = unsafe {
+    let (wa_left, wa_top, wa_right, wa_bottom, scale) = unsafe {
         let pt = POINT { x: cx, y: cy };
         let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
         let mut mi: MONITORINFO = std::mem::zeroed();
         mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let s = monitor_scale_factor(hmon);
         if GetMonitorInfoW(hmon, &mut mi) != 0 {
-            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, s)
         } else {
-            (0, 0, 1920, 1080)
+            (0, 0, 1920, 1080, s)
         }
     };
 
-    let scale = overlay.scale_factor().unwrap_or(1.0);
-    let log_left = wa_left as f64 / scale;
-    let log_top = wa_top as f64 / scale;
-    let log_w = (wa_right - wa_left) as f64 / scale;
-    let log_h = (wa_bottom - wa_top) as f64 / scale;
-    // Compact square — bottom-centre, above taskbar
-    let win_w = 72.0_f64;
-    let win_h = 72.0_f64;
-    let x = log_left + (log_w - win_w) / 2.0;
-    let y = log_top + log_h - win_h - 12.0; // 12px above taskbar
-    let _ = overlay.set_position(tauri::LogicalPosition::new(x, y));
-    let _ = overlay.set_size(tauri::LogicalSize::new(win_w, win_h));
+    // Compact square, bottom-centre, above taskbar. Physical units to dodge
+    // the hidden-window scale_factor race (see monitor_scale_factor docstring).
+    let win_w_logical = 72.0_f64;
+    let win_h_logical = 72.0_f64;
+    let phys_w = (win_w_logical * scale).round() as i32;
+    let phys_h = (win_h_logical * scale).round() as i32;
+    let pad_phys = (12.0 * scale).round() as i32; // 12px above taskbar, in physical
+    let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+    let phys_y = wa_bottom - phys_h - pad_phys;
+    let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+    let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
     // Send voice data to overlay
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
@@ -1347,36 +1369,31 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
-    let (wa_left, wa_top, wa_right, wa_bottom) = unsafe {
+    let (wa_left, wa_top, wa_right, wa_bottom, scale) = unsafe {
         let mut pt = POINT { x: 0, y: 0 };
         GetCursorPos(&mut pt);
         let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
         let mut mi: MONITORINFO = std::mem::zeroed();
         mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let s = monitor_scale_factor(hmon);
         if GetMonitorInfoW(hmon, &mut mi) != 0 {
-            (
-                mi.rcWork.left,
-                mi.rcWork.top,
-                mi.rcWork.right,
-                mi.rcWork.bottom,
-            )
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, s)
         } else {
-            (0, 0, 1920, 1080)
+            (0, 0, 1920, 1080, s)
         }
     };
 
-    let scale = win.scale_factor().unwrap_or(1.0);
-    let log_left = wa_left as f64 / scale;
-    let log_top = wa_top as f64 / scale;
-    let log_w = (wa_right - wa_left) as f64 / scale;
-    let log_h = (wa_bottom - wa_top) as f64 / scale;
-
-    // 730px panel + 12px shadow breathing room each side (24px total)
-    let win_w = 754.0;
-    let x = log_left + (log_w - win_w) / 2.0;
-    let y = log_top + log_h / 3.0;
-    let _ = win.set_position(tauri::LogicalPosition::new(x, y));
-    let _ = win.set_size(tauri::LogicalSize::new(win_w, 500.0));
+    // 730px panel + 12px shadow breathing room each side (24px total).
+    // Physical units throughout to dodge the hidden-window scale_factor
+    // race that clipped 4K@225% users in v0.5.0 (see monitor_scale_factor).
+    let win_w_logical = 754.0_f64;
+    let win_h_logical = 500.0_f64;
+    let phys_w = (win_w_logical * scale).round() as i32;
+    let phys_h = (win_h_logical * scale).round() as i32;
+    let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+    let phys_y = wa_top + (wa_bottom - wa_top) / 3;
+    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+    let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
     // Send recent clipboard history + theme to the overlay
     let history = clipboard::get_history(1, 500, None, None, None, None);
@@ -1444,6 +1461,7 @@ fn show_radial_menu(app: &tauri::AppHandle) {
     webview_mem::resume_for_show(app, "radialmenu");
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetCursorPos};
     use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
 
     // Force an immediate foreground/profile check so the radial menu
     // uses the correct profile even if the 1500ms poll hasn't fired yet.
@@ -1457,23 +1475,29 @@ fn show_radial_menu(app: &tauri::AppHandle) {
         None => return,
     };
 
-    // Position: centre 620x620 window on cursor
+    // Position: centre 525x525 window on cursor. Physical units throughout
+    // to dodge the hidden-window scale_factor race (see monitor_scale_factor).
     let (cx, cy) = unsafe {
         let mut pt = POINT { x: 0, y: 0 };
         GetCursorPos(&mut pt);
         (pt.x, pt.y)
     };
 
-    let scale = win.scale_factor().unwrap_or(1.0);
+    let scale = unsafe {
+        let pt = POINT { x: cx, y: cy };
+        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        monitor_scale_factor(hmon)
+    };
 
-    let win_size = 525.0;
+    let win_size_logical = 525.0_f64;
+    let phys_size = (win_size_logical * scale).round() as i32;
     // Always centre on cursor — no clamping to work area.
     // Items near screen edges may be clipped, but the cursor stays
     // at the wheel centre which preserves muscle memory.
-    let x = cx as f64 / scale - win_size / 2.0;
-    let y = cy as f64 / scale - win_size / 2.0;
-    let _ = win.set_position(tauri::LogicalPosition::new(x, y));
-    let _ = win.set_size(tauri::LogicalSize::new(win_size, win_size));
+    let phys_x = cx - phys_size / 2;
+    let phys_y = cy - phys_size / 2;
+    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+    let _ = win.set_size(tauri::PhysicalSize::new(phys_size as u32, phys_size as u32));
 
     // Build payload: resolve radial menu items for the CURRENT active profile.
     // Use radialMenuItemsByProfile[activeProfile] rather than the flat radialMenuItems

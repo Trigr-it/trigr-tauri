@@ -3910,6 +3910,15 @@ function App() {
               </button>
             </div>
           )}
+          {activeArea === 'mapping' && !listViewActive && !hiddenTips.includes('profile-link') && (
+            <div className="profile-link-tip">
+              <span className="profile-link-tip-badge">TIP</span>
+              <span className="profile-link-tip-text">
+                Right-click any profile in the sidebar to link it to a specific app. Trigr auto-switches profiles when that app gains focus.
+              </span>
+              <button type="button" className="profile-link-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => handleHideTip('profile-link')}>&#10005;</button>
+            </div>
+          )}
           {activeArea === 'mapping' && activeView === 'keyboard' && !listViewActive && (
             <div className="keyboard-numpad-wrap">
               <KeyboardCanvas
