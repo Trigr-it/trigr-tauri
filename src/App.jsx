@@ -108,6 +108,7 @@ function App() {
   const [overlayCloseAfterFiring,    setOverlayCloseAfterFiring]    = useState(true);
   const [overlayIncludeAutocorrect,  setOverlayIncludeAutocorrect]  = useState(false);
   const [clipboardPreviewWidth,      setClipboardPreviewWidth]      = useState(480);
+  const [clipboardColumnMode,        setClipboardColumnMode]        = useState('auto');
   const [doubleTapWindow,            setDoubleTapWindow]            = useState(300);
   const [holdThresholdMs,            setHoldThresholdMs]            = useState(350);
   const [updateInfo,     setUpdateInfo]     = useState(null);   // { version, percent, ready, dismissed }
@@ -350,6 +351,7 @@ function App() {
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
         setClipboardPreviewWidth(   Math.max(320, Math.min(1200, config.clipboardPreviewWidth ?? 480)));
+        setClipboardColumnMode(     config.clipboardColumnMode === 'one' || config.clipboardColumnMode === 'two' ? config.clipboardColumnMode : 'auto');
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
         setQuickActionCategories(config.quickActionCategories || []);
@@ -681,6 +683,7 @@ function App() {
         setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
         setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
         setClipboardPreviewWidth(   Math.max(320, Math.min(1200, config.clipboardPreviewWidth ?? 480)));
+        setClipboardColumnMode(     config.clipboardColumnMode === 'one' || config.clipboardColumnMode === 'two' ? config.clipboardColumnMode : 'auto');
         setSearchTemplates(config.searchTemplates || []);
         setSearchTemplateCategories(config.searchTemplateCategories || []);
         setQuickActionCategories(config.quickActionCategories || []);
@@ -3977,6 +3980,12 @@ function App() {
                 const clamped = Math.max(320, Math.min(1200, Math.round(w)));
                 setClipboardPreviewWidth(clamped);
                 window.electronAPI?.saveConfig({ clipboardPreviewWidth: clamped });
+              }}
+              columnMode={clipboardColumnMode}
+              onChangeColumnMode={(m) => {
+                const next = (m === 'one' || m === 'two') ? m : 'auto';
+                setClipboardColumnMode(next);
+                window.electronAPI?.saveConfig({ clipboardColumnMode: next });
               }}
               onCreateExpansion={handleCreateExpansionFromClip}
             />

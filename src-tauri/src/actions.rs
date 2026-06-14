@@ -12,10 +12,10 @@ use windows_sys::Win32::System::DataExchange::{
 };
 use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
-    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
-    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
-    VIRTUAL_KEY,
+    GetAsyncKeyState, MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
+    KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE,
+    MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
+    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, VIRTUAL_KEY,
 };
 use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
 use windows_sys::Win32::System::Threading::{
@@ -950,15 +950,41 @@ fn send_unicode_key(scan: u16, key_up: bool) {
 
 // ── Direct inline key remap (AHK-style T::W passthrough) ────────────────────
 
+/// Resolve a VK to its scancode-mode SendInput payload.
+///
+/// Returns (wVk, wScan, base_flags). When the scancode lookup succeeds (the
+/// common path for all normal keys), returns scancode mode with the extended
+/// flag set for arrows / INS / DEL / HOME / END / PG keys / RAlt / RCtrl /
+/// Win / NumLock / PrtScn. Scancode mode is what DirectInput / Raw Input
+/// game engines read directly — VK-only injection is invisible to them.
+///
+/// Falls back to VK-only mode if MapVirtualKeyW returns 0 (rare: some
+/// media-key VKs have no hardware mapping). Standard Win32 apps see the
+/// same WM_KEYDOWN either way because Windows synthesises the cooked
+/// message from the scancode lookup.
+fn vk_to_sendinput_parts(vk: u16) -> (u16, u16, u32) {
+    let scan = unsafe { MapVirtualKeyW(vk as u32, 0) } as u16;
+    if scan == 0 {
+        return (vk, 0, 0);
+    }
+    let is_extended = matches!(vk as u32,
+        0x21..=0x28 | 0x2C..=0x2E | 0x5B | 0x5C | 0x90 | 0xA3 | 0xA5
+    );
+    let mut flags = KEYEVENTF_SCANCODE;
+    if is_extended { flags |= KEYEVENTF_EXTENDEDKEY; }
+    (0, scan, flags)
+}
+
 /// Build a single VK keyboard INPUT struct (key-down or key-up).
 fn make_vk_input(vk: u16, key_up: bool) -> INPUT {
-    let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
+    let (w_vk, w_scan, base_flags) = vk_to_sendinput_parts(vk);
+    let flags = if key_up { base_flags | KEYEVENTF_KEYUP } else { base_flags };
     INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {
             ki: KEYBDINPUT {
-                wVk: vk as VIRTUAL_KEY,
-                wScan: 0,
+                wVk: w_vk as VIRTUAL_KEY,
+                wScan: w_scan,
                 dwFlags: flags,
                 time: 0,
                 dwExtraInfo: 0,
@@ -2146,40 +2172,14 @@ fn wait_for_input(config_json: &str) {
 // ── Low-level VK key simulation ─────────────────────────────────────────────
 
 fn send_vk_key(vk: u16, key_up: bool) {
-    let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
-
-    let input = INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: vk as VIRTUAL_KEY,
-                wScan: 0,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
-    };
-
+    let input = make_vk_input(vk, key_up);
     unsafe {
         SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
     }
 }
 
 fn send_vk_key_checked(vk: u16, key_up: bool) -> u32 {
-    let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
-    let input = INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: vk as VIRTUAL_KEY,
-                wScan: 0,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
-    };
+    let input = make_vk_input(vk, key_up);
     unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32) }
 }
 

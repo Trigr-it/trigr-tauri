@@ -279,6 +279,47 @@
   flex-wrap: wrap;
 }
 
+/* ── Column-layout toggle (1 / 2 / Auto) ─────────────────────────────────── */
+/* Pill group sits at the right edge of the toolbar after the search bar.
+   Active state uses the gold gradient treatment per
+   feedback_gold_tip_and_switcher_conventions. 32px / 6px standard. */
+.cbg-col-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 3px;
+  gap: 2px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.cbg-col-btn {
+  width: 26px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.cbg-col-btn:hover:not(.active) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cbg-col-btn.active {
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  color: var(--btn-primary-text);
+  box-shadow: 0 1px 4px rgba(var(--accent-rgb), 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
 .cbg-search {
   flex: 1;
   height: 32px;
@@ -702,9 +743,35 @@
 }
 
 /* ── 2-column grid when detail pane open ─────────────────────────────────── */
+/* Only applies in 'auto' column mode (default). The user's explicit 'one' or
+   'two' selection wins via the [data-cols] rules further below — those use
+   higher specificity (class + attribute) so they override this. */
 
 .cbg-grid-2col {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+/* ── Column-mode overrides (user-selected 1 / 2 / Auto) ──────────────────── */
+/* data-cols attribute lives on .cbg-grid; values are 'one' | 'two' | 'auto'.
+   'auto' is the default behaviour (no override needed — falls through to
+   .cbg-grid above and .cbg-grid-2col when detail pane is open). */
+
+.cbg-grid[data-cols="one"] {
+  grid-template-columns: 1fr;
+}
+
+.cbg-grid[data-cols="two"] {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* 1-col lets text/link/email/code/number cards grow to fit their full preview.
+   Switching off the -webkit-box display drops the line-clamp entirely so the
+   body expands to natural content height, and the card flex column grows with
+   it. Excludes the colour-value body, which is a single-line label by design.
+   Image cards have no .cbg-card-body at all so they're unaffected. */
+.cbg-grid[data-cols="one"] .cbg-card-body:not(.cbg-colour-value) {
+  display: block;
+  -webkit-line-clamp: unset;
 }
 
 /* ── Divider ─────────────────────────────────────────────────────────────── */

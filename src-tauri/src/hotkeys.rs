@@ -1384,6 +1384,16 @@ unsafe extern "system" fn mouse_hook_proc(
                 let ms = &*(l_param as *const MSLLHOOKSTRUCT);
                 let xbutton = ((ms.mouseData >> 16) & 0xFFFF) as u16;
                 let button = if xbutton == 1 { MouseButton::Side1 } else { MouseButton::Side2 };
+                // [MOUSE-DIAG] temp instrumentation for "side buttons don't fire" reports.
+                // Logs raw mouseData hex + decoded xbutton + mapped variant so we can tell:
+                // - no log line = vendor software intercepting at HID level, or hook paused
+                // - xbutton > 2  = non-standard firmware collapsing into Side2 bucket
+                // - xbutton 1/2 = standard event reached the hook (chase dispatch side next)
+                log::info!(
+                    "[MOUSE-DIAG] xbutton_down raw=0x{:08X} xbutton={} mapped={:?} hook_paused={}",
+                    ms.mouseData, xbutton, button,
+                    MOUSE_HOOK_PAUSED.load(Ordering::SeqCst)
+                );
                 send_event(HookEvent::MouseDown { button });
                 suppress_id = Some(if xbutton == 1 { SUPPRESS_MOUSE_SIDE1 } else { SUPPRESS_MOUSE_SIDE2 });
                 is_button_down = true;
@@ -1392,6 +1402,10 @@ unsafe extern "system" fn mouse_hook_proc(
                 let ms = &*(l_param as *const MSLLHOOKSTRUCT);
                 let xbutton = ((ms.mouseData >> 16) & 0xFFFF) as u16;
                 let button = if xbutton == 1 { MouseButton::Side1 } else { MouseButton::Side2 };
+                log::info!(
+                    "[MOUSE-DIAG] xbutton_up   raw=0x{:08X} xbutton={} mapped={:?}",
+                    ms.mouseData, xbutton, button
+                );
                 send_event(HookEvent::MouseUp { button });
                 suppress_id = Some(if xbutton == 1 { SUPPRESS_MOUSE_SIDE1 } else { SUPPRESS_MOUSE_SIDE2 });
             }
@@ -1960,6 +1974,17 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
         if bare_allowed && !is_auto_repeat {
             let bare_key = format!("{}::BARE::{}", profile, key_id);
+            // [KEY-DIAG] temp instrumentation for fullscreen-game dispatch failures
+            // (W hold killing FPS movement, double-press not firing). Logs whether
+            // the bare assignment exists at lookup time, plus the gates that decide
+            // whether dispatch will proceed. Read alongside [MOUSE-DIAG] in the log.
+            let has_single = state.assignments.contains_key(&bare_key);
+            let has_hold = state.assignments.contains_key(&format!("{}::hold", bare_key));
+            let has_double = state.assignments.contains_key(&format!("{}::double", bare_key));
+            log::info!(
+                "[KEY-DIAG] bare key_id={} vk=0x{:02X} profile={} bare_key={} linked={} has_single={} has_hold={} has_double={}",
+                key_id, vk, profile, bare_key, linked, has_single, has_hold, has_double
+            );
             // Stop repeat if this key is the repeat trigger
             if crate::actions::is_repeating() {
                 if let Some(trigger) = crate::actions::get_repeating_trigger() {
@@ -2102,6 +2127,19 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     let combo = build_modifier_combo();
     let profile = state.active_profile.clone();
     let storage_key = format!("{}::{}::{}", profile, combo, key_id);
+
+    // [KEY-DIAG] temp instrumentation — mirror of the bare-path log for
+    // modifier-combo presses. Together they tell us whether a tester's
+    // double-press / hold mapping is even being found by the dispatcher, or
+    // whether the profile/combo is mismatched (e.g. foreground watcher hasn't
+    // switched yet so storage_key resolves against the wrong profile).
+    let has_single_m = state.assignments.contains_key(&storage_key);
+    let has_hold_m = state.assignments.contains_key(&format!("{}::hold", storage_key));
+    let has_double_m = state.assignments.contains_key(&format!("{}::double", storage_key));
+    log::info!(
+        "[KEY-DIAG] modified key_id={} vk=0x{:02X} combo={} profile={} storage_key={} auto_repeat={} has_single={} has_hold={} has_double={}",
+        key_id, vk, combo, profile, storage_key, is_auto_repeat, has_single_m, has_hold_m, has_double_m
+    );
 
     // Stop repeat if this key is the repeat trigger
     if crate::actions::is_repeating() {
@@ -2334,14 +2372,43 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 /// ignores these synthetic events.
 fn send_synthetic_tap(vk: u32) {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_KEYBOARD, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP,
+        MapVirtualKeyW, SendInput, INPUT, INPUT_KEYBOARD, INPUT_0, KEYBDINPUT,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
     };
     unsafe {
+        // Resolve hardware scancode for this VK on the current keyboard layout.
+        // MAPVK_VK_TO_VSC = 0. Scancode-mode SendInput reaches DirectInput / Raw
+        // Input games that read the hardware keyboard buffer directly and ignore
+        // the cooked Win32 message stream (the v0.5.0 wVk-only synthesis worked
+        // in BricsCAD/notepad but was invisible to FPS engines — the W-key
+        // movement repro that drove this fix).
+        let scan = MapVirtualKeyW(vk, 0) as u16;
+
+        // Extended-key flag is mandatory for arrows, INS/DEL/HOME/END/PGUP/PGDN,
+        // right Alt/Ctrl, NumLock, Print Screen, and the Windows keys — without
+        // it those keys also fail to register in scancode-reading apps. Same
+        // pattern as the Chromium-terminal Shift+Insert paste fix.
+        let is_extended = matches!(vk,
+            0x21..=0x28 | 0x2C..=0x2E | 0x5B | 0x5C | 0x90 | 0xA3 | 0xA5
+        );
+
+        // Fall back to VK-only mode if MapVirtualKeyW couldn't resolve a scan
+        // (rare: some media-key VKs have no hardware mapping). VK-only mode is
+        // the v0.5.0 behaviour — still works for standard Win32 apps even if
+        // it doesn't reach raw-input games.
+        let (w_vk, w_scan, base_flags) = if scan != 0 {
+            let mut f = KEYEVENTF_SCANCODE;
+            if is_extended { f |= KEYEVENTF_EXTENDEDKEY; }
+            (0u16, scan, f)
+        } else {
+            (vk as u16, 0u16, 0)
+        };
+
         let down = INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
                 ki: KEYBDINPUT {
-                    wVk: vk as u16, wScan: 0, dwFlags: 0, time: 0, dwExtraInfo: 0,
+                    wVk: w_vk, wScan: w_scan, dwFlags: base_flags, time: 0, dwExtraInfo: 0,
                 },
             },
         };
@@ -2349,7 +2416,7 @@ fn send_synthetic_tap(vk: u32) {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
                 ki: KEYBDINPUT {
-                    wVk: vk as u16, wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0,
+                    wVk: w_vk, wScan: w_scan, dwFlags: base_flags | KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0,
                 },
             },
         };
@@ -2545,6 +2612,11 @@ fn check_overlay_outside_click(app: &AppHandle) {
 
     let search_hwnd = SEARCH_OVERLAY_HWND.load(Ordering::SeqCst);
     let clipboard_hwnd = CLIPBOARD_OVERLAY_HWND.load(Ordering::SeqCst);
+
+    // [OUTSIDE-CLICK] temp instrumentation: every mouse-down while an overlay
+    // is visible logs the cursor pos + window rect + outside-check verdict +
+    // emit result, so we can diagnose the v0.5.1 intermittent outside-click
+    // dismiss bug. Remove after Rory's repro session confirms the cause.
     if search_hwnd == 0 && clipboard_hwnd == 0 {
         return;
     }
@@ -2552,24 +2624,64 @@ fn check_overlay_outside_click(app: &AppHandle) {
     let mut pt = POINT { x: 0, y: 0 };
     unsafe { GetCursorPos(&mut pt); }
 
-    let is_outside = |hwnd: isize| -> bool {
-        if hwnd == 0 { return false; }
+    let read_rect = |hwnd: isize| -> Option<RECT> {
+        if hwnd == 0 { return None; }
         let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
         unsafe {
             if GetWindowRect(hwnd as _, &mut rect) == 0 {
-                return false;
+                return None;
             }
         }
+        Some(rect)
+    };
+    let cursor_outside = |rect: &RECT| -> bool {
         pt.x < rect.left || pt.x >= rect.right || pt.y < rect.top || pt.y >= rect.bottom
     };
 
+    let voice = is_voice_active();
+    let mouse_paused = MOUSE_HOOK_PAUSED.load(Ordering::SeqCst);
+    log::info!(
+        "[OUTSIDE-CLICK] entry search_hwnd={:#x} clipboard_hwnd={:#x} cursor=({},{}) voice_active={} mouse_hook_paused={}",
+        search_hwnd, clipboard_hwnd, pt.x, pt.y, voice, mouse_paused
+    );
+
     // Search overlay: skip dismissal while voice recognition is active (the WinRT
     // recognizer briefly steals focus/cursor in ways that can mimic an outside click).
-    if search_hwnd != 0 && !is_voice_active() && is_outside(search_hwnd) {
-        let _ = app.emit("close-overlay-outside-click", Value::Null);
+    if search_hwnd != 0 {
+        match read_rect(search_hwnd) {
+            Some(rect) => {
+                let outside = cursor_outside(&rect);
+                log::info!(
+                    "[OUTSIDE-CLICK] search rect=({},{},{},{}) outside={} voice_skip={}",
+                    rect.left, rect.top, rect.right, rect.bottom, outside, voice
+                );
+                if !voice && outside {
+                    let r = app.emit("close-overlay-outside-click", Value::Null);
+                    log::info!("[OUTSIDE-CLICK] search emit ok={}", r.is_ok());
+                }
+            }
+            None => {
+                log::warn!("[OUTSIDE-CLICK] search GetWindowRect failed hwnd={:#x}", search_hwnd);
+            }
+        }
     }
-    if clipboard_hwnd != 0 && is_outside(clipboard_hwnd) {
-        let _ = app.emit("close-clipboard-overlay-outside-click", Value::Null);
+    if clipboard_hwnd != 0 {
+        match read_rect(clipboard_hwnd) {
+            Some(rect) => {
+                let outside = cursor_outside(&rect);
+                log::info!(
+                    "[OUTSIDE-CLICK] clipboard rect=({},{},{},{}) outside={}",
+                    rect.left, rect.top, rect.right, rect.bottom, outside
+                );
+                if outside {
+                    let r = app.emit("close-clipboard-overlay-outside-click", Value::Null);
+                    log::info!("[OUTSIDE-CLICK] clipboard emit ok={}", r.is_ok());
+                }
+            }
+            None => {
+                log::warn!("[OUTSIDE-CLICK] clipboard GetWindowRect failed hwnd={:#x}", clipboard_hwnd);
+            }
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { Pin, PinOff, Link2, Maximize2, Clipboard } from 'lucide-react';
+import { Pin, PinOff, Link2, Maximize2, Clipboard, Square, Columns2, LayoutGrid } from 'lucide-react';
 import { friendlyKeyName } from './keyboardLayout';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
@@ -220,7 +220,7 @@ function reflowParagraphs(text) {
     .join('\n\n');
 }
 
-export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth, onCreateExpansion, clipboardPasteHotkey = 'Ctrl+Shift+V', hiddenTips = [], onHideTip }) {
+export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidth, onCreateExpansion, clipboardPasteHotkey = 'Ctrl+Shift+V', hiddenTips = [], onHideTip, columnMode = 'auto', onChangeColumnMode }) {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -733,6 +733,38 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        <div className="cbg-col-toggle" role="group" aria-label="Card layout">
+          <button
+            type="button"
+            className={`cbg-col-btn${columnMode === 'one' ? ' active' : ''}`}
+            onClick={() => onChangeColumnMode?.('one')}
+            title="Single column"
+            aria-label="Single column"
+            aria-pressed={columnMode === 'one'}
+          >
+            <Square size={14} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            className={`cbg-col-btn${columnMode === 'two' ? ' active' : ''}`}
+            onClick={() => onChangeColumnMode?.('two')}
+            title="Two columns"
+            aria-label="Two columns"
+            aria-pressed={columnMode === 'two'}
+          >
+            <Columns2 size={14} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            className={`cbg-col-btn${columnMode === 'auto' ? ' active' : ''}`}
+            onClick={() => onChangeColumnMode?.('auto')}
+            title="Auto layout"
+            aria-label="Auto layout"
+            aria-pressed={columnMode === 'auto'}
+          >
+            <LayoutGrid size={14} strokeWidth={2} />
+          </button>
+        </div>
       </div>
 
       {/* ── Body: date sidebar + grid (+ preview when an item is selected) ── */}
@@ -795,7 +827,7 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                   <span className="cbg-timeline-count">{groupItems.length}</span>
                   <span className="cbg-timeline-rule" />
                 </div>
-                <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`}>
+                <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`} data-cols={columnMode}>
                   {groupItems.map(item => {
                     const isImage = item.content_type === 'image';
                     const tag = item.content_tag || 'Text';
@@ -845,7 +877,7 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                                   <Link2 size={12} strokeWidth={1.75} style={{ verticalAlign: -2, marginRight: 4 }} />
                                 </span>
                               )}
-                              {(item.preview || item.text_content || '').slice(0, 400)}
+                              {(item.text_content || item.preview || '').slice(0, 1000)}
                             </div>
                             <div className="cbg-card-meta">
                               {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}

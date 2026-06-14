@@ -1389,9 +1389,21 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let win_w_logical = 754.0_f64;
     let win_h_logical = 500.0_f64;
     let phys_w = (win_w_logical * scale).round() as i32;
-    let phys_h = (win_h_logical * scale).round() as i32;
+    let phys_h_unclamped = (win_h_logical * scale).round() as i32;
+
+    // High-scaling clamp: at 200%+ on smaller panels (e.g. 1080p laptop at 250%)
+    // the unclamped popup would overflow the work area. Cap to (work-area-height
+    // minus 32px margin), floor at 200px. Popup body is internally scrollable so
+    // capping is safe. Reposition phys_y so the bottom never lands past
+    // wa_bottom - 16, and never above wa_top + 16.
+    let wa_h = wa_bottom - wa_top;
+    let max_h = (wa_h - 32).max(200);
+    let phys_h = phys_h_unclamped.min(max_h);
+    let ideal_y = wa_top + wa_h / 3;
+    let max_y = wa_bottom - phys_h - 16;
+    let phys_y = ideal_y.min(max_y).max(wa_top + 16);
+
     let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
-    let phys_y = wa_top + (wa_bottom - wa_top) / 3;
     let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
     let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
