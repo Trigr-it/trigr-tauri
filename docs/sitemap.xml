@@ -44,13 +44,19 @@
   </url>
   <url>
     <loc>https://usetrigr.com/blog/</loc>
-    <lastmod>2026-05-26</lastmod>
+    <lastmod>2026-06-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html</loc>
     <lastmod>2026-05-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://usetrigr.com/blog/best-text-expander-windows-11-2026.html</loc>
+    <lastmod>2026-06-15</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
