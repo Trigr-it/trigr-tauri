@@ -305,6 +305,8 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 .sv-frame[data-active="v0.1"] .sv-screen[data-phase="v0.1"] { opacity:1; pointer-events:auto; }
 .sv-frame[data-active="v0.2"] .sv-screen[data-phase="v0.2"] { opacity:1; pointer-events:auto; }
 .sv-frame[data-active="v0.3"] .sv-screen[data-phase="v0.3"] { opacity:1; pointer-events:auto; }
+.sv-frame[data-active="v0.4"] .sv-screen[data-phase="v0.4"] { opacity:1; pointer-events:auto; }
+.sv-frame[data-active="v0.5"] .sv-screen[data-phase="v0.5"] { opacity:1; pointer-events:auto; }
 .sv-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .sv-title { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); }
 .sv-version { font-family:var(--font-mono); font-size:10px; font-weight:700; padding:3px 9px; border:1px solid var(--hairline-gold); border-radius:5px; background:var(--gold-glow); color:var(--gold-light); }
@@ -455,6 +457,77 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 [data-theme="light"] .sv-clip-btn.primary { color:#fff; }
 [data-theme="light"] .sv-clip-btn.primary:hover { color:#fff; }
 
+/* v0.4 — Trust Center */
+.sv-trust-tile { display:flex; align-items:center; gap:12px; padding:14px 16px; background:rgba(13,17,32,0.5); border:1px solid var(--hairline); border-radius:10px; }
+[data-theme="light"] .sv-trust-tile { background:rgba(0,0,0,0.03); }
+.sv-trust-tile.ok { border-color:rgba(80,200,120,0.32); background:rgba(80,200,120,0.06); }
+[data-theme="light"] .sv-trust-tile.ok { background:rgba(80,200,120,0.05); }
+.sv-trust-tile.pro { border-color:rgba(232,160,32,0.32); background:rgba(232,160,32,0.06); }
+[data-theme="light"] .sv-trust-tile.pro { background:rgba(232,160,32,0.05); }
+.sv-trust-ico { width:36px; height:36px; flex-shrink:0; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04); border:1px solid var(--hairline); }
+[data-theme="light"] .sv-trust-ico { background:#fff; border-color:#dcdce8; }
+.sv-trust-tile.ok .sv-trust-ico { background:rgba(80,200,120,0.12); border-color:rgba(80,200,120,0.32); }
+.sv-trust-tile.pro .sv-trust-ico { background:var(--gold-glow); border-color:var(--hairline-gold); }
+.sv-trust-ico svg { width:18px; height:18px; color:var(--text-muted); stroke-width:2; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; }
+.sv-trust-tile.ok .sv-trust-ico svg { color:#5cd687; }
+[data-theme="light"] .sv-trust-tile.ok .sv-trust-ico svg { color:#1f8a4a; }
+.sv-trust-tile.pro .sv-trust-ico svg { color:var(--gold-light); }
+[data-theme="light"] .sv-trust-tile.pro .sv-trust-ico svg { color:var(--gold-dark); }
+.sv-trust-body { flex:1; min-width:0; }
+.sv-trust-name { font-size:13px; font-weight:600; color:var(--text); line-height:1.3; }
+.sv-trust-meta { font-family:var(--font-mono); font-size:10px; color:var(--text-muted); margin-top:4px; letter-spacing:0.04em; }
+.sv-trust-tag { font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:4px 10px; border-radius:100px; background:rgba(80,200,120,0.12); color:#5cd687; border:1px solid rgba(80,200,120,0.3); flex-shrink:0; }
+[data-theme="light"] .sv-trust-tag { color:#1f8a4a; }
+.sv-trust-tag.pro { background:var(--gold-glow); color:var(--gold-light); border-color:var(--hairline-gold); }
+[data-theme="light"] .sv-trust-tag.pro { color:var(--gold-dark); }
+.sv-spark { display:flex; align-items:flex-end; gap:3px; height:30px; width:84px; flex-shrink:0; }
+.sv-spark span { flex:1; background:rgba(232,160,32,0.32); border-radius:2px; min-height:4px; }
+.sv-spark span.now { background:var(--gold); box-shadow:0 0 8px rgba(232,160,32,0.5); }
+[data-theme="light"] .sv-spark span { background:rgba(232,160,32,0.4); }
+.sv-trust-foot { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; background:rgba(13,17,32,0.4); border:1px solid var(--hairline-gold); border-radius:10px; margin-top:auto; }
+[data-theme="light"] .sv-trust-foot { background:rgba(232,160,32,0.04); }
+.sv-trust-foot-lbl { font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); }
+.sv-trust-foot-val { font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--gold-light); letter-spacing:0.04em; }
+[data-theme="light"] .sv-trust-foot-val { color:var(--gold-dark); }
+
+/* v0.5 — Vault */
+.sv-vault-status { display:flex; align-items:center; gap:12px; padding:14px 16px; background:linear-gradient(135deg, rgba(232,160,32,0.1), rgba(232,160,32,0.02)); border:1px solid var(--hairline-gold); border-radius:10px; box-shadow:0 0 32px rgba(232,160,32,0.06); }
+[data-theme="light"] .sv-vault-status { background:linear-gradient(135deg, rgba(232,160,32,0.06), rgba(232,160,32,0.01)); }
+.sv-vault-lock { width:40px; height:40px; flex-shrink:0; border-radius:9px; background:var(--gold-glow); border:1px solid var(--hairline-gold); display:flex; align-items:center; justify-content:center; }
+.sv-vault-lock svg { width:20px; height:20px; color:var(--gold-light); stroke-width:2; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; }
+[data-theme="light"] .sv-vault-lock svg { color:var(--gold-dark); }
+.sv-vault-body { flex:1; min-width:0; }
+.sv-vault-title { font-size:13px; font-weight:600; color:var(--text); line-height:1.3; }
+.sv-vault-meta { font-family:var(--font-mono); font-size:10px; color:var(--text-muted); margin-top:4px; letter-spacing:0.04em; }
+.sv-vault-badge { font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.1em; padding:5px 12px; border-radius:100px; background:rgba(80,200,120,0.14); color:#5cd687; border:1px solid rgba(80,200,120,0.34); flex-shrink:0; }
+[data-theme="light"] .sv-vault-badge { color:#1f8a4a; }
+.sv-vault-items { display:flex; flex-direction:column; gap:6px; flex:1; min-height:0; overflow:hidden; }
+.sv-vault-item { display:flex; align-items:center; gap:10px; padding:9px 12px; background:rgba(13,17,32,0.4); border:1px solid var(--hairline); border-radius:8px; }
+[data-theme="light"] .sv-vault-item { background:rgba(0,0,0,0.02); }
+.sv-vault-itemlock { width:24px; height:24px; flex-shrink:0; border-radius:5px; background:var(--gold-glow); border:1px solid var(--hairline-gold); display:flex; align-items:center; justify-content:center; color:var(--gold-light); }
+[data-theme="light"] .sv-vault-itemlock { color:var(--gold-dark); }
+.sv-vault-itemlock svg { width:12px; height:12px; stroke-width:2.2; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; }
+.sv-vault-itembody { flex:1; min-width:0; }
+.sv-vault-cipher { font-family:var(--font-mono); font-size:9.5px; color:var(--text-dim); letter-spacing:0.06em; display:block; line-height:1.2; }
+.sv-vault-plain { font-size:13px; color:var(--text); font-weight:500; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.3; }
+.sv-vault-itemtag { font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; padding:1px 7px; border-radius:4px; flex-shrink:0; }
+.sv-vault-itemtag.email { background:rgba(100,180,255,0.12); color:#7ec5ff; border:1px solid rgba(100,180,255,0.3); }
+[data-theme="light"] .sv-vault-itemtag.email { color:#3a7fc4; }
+.sv-vault-itemtag.color { background:rgba(232,160,32,0.12); color:var(--gold-light); border:1px solid rgba(232,160,32,0.3); }
+[data-theme="light"] .sv-vault-itemtag.color { color:var(--gold-dark); }
+.sv-vault-itemtag.link { background:rgba(80,200,120,0.12); color:#82d8a3; border:1px solid rgba(80,200,120,0.3); }
+[data-theme="light"] .sv-vault-itemtag.link { color:#1f8a4a; }
+.sv-vault-game { display:flex; align-items:center; gap:12px; padding:14px 16px; background:rgba(13,17,32,0.5); border:1px solid var(--hairline); border-radius:10px; margin-top:auto; }
+[data-theme="light"] .sv-vault-game { background:rgba(0,0,0,0.03); }
+.sv-vault-game-ico { width:36px; height:36px; flex-shrink:0; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--hairline); display:flex; align-items:center; justify-content:center; }
+[data-theme="light"] .sv-vault-game-ico { background:#fff; border-color:#dcdce8; }
+.sv-vault-game-ico svg { width:18px; height:18px; color:var(--text-muted); stroke-width:2; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; }
+.sv-vault-game-body { flex:1; min-width:0; }
+.sv-vault-game-title { font-size:13px; font-weight:600; color:var(--text); line-height:1.3; }
+.sv-vault-game-meta { font-family:var(--font-mono); font-size:10px; color:var(--text-muted); margin-top:4px; letter-spacing:0.04em; }
+.sv-vault-game-tag { font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:4px 10px; border-radius:100px; background:rgba(80,200,120,0.12); color:#5cd687; border:1px solid rgba(80,200,120,0.3); flex-shrink:0; }
+[data-theme="light"] .sv-vault-game-tag { color:#1f8a4a; }
+
 </style>
 
 <!-- Privacy-friendly analytics by Plausible -->
@@ -497,7 +570,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 <section class="stats-strip reveal">
   <div class="stats-grid">
     <div class="stat-block">
-      <div class="stat-num"><span class="stat-num-value" data-target="60">0</span><span class="stat-suffix">+</span></div>
+      <div class="stat-num"><span class="stat-num-value" data-target="100">0</span><span class="stat-suffix">+</span></div>
       <div class="stat-lbl">Releases shipped</div>
     </div>
     <div class="stat-block">
@@ -522,7 +595,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">01</span><span class="section-label">Shipped</span></div>
     <h2 class="section-h2">What we've <em>built</em>.</h2>
-    <p class="section-sub">Four major releases, 60+ patch versions, every feature visible. Filter by tier to focus on what matters.</p>
+    <p class="section-sub">Six major releases, 100+ patch versions, every feature visible. Filter by tier to focus on what matters.</p>
 
     <div class="filter-row">
       <span class="filter-label">Filter</span>
@@ -731,6 +804,100 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
         </div>
       </div>
 
+      <!-- v0.4 -->
+      <div class="phase" data-phase="v0.4">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.4 — Hardening &amp; Trust</span>
+          <span class="phase-date">35 releases · May — Jun 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature feature-hero" data-tier="free pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Microsoft Code Signing</div>
+              <div class="feature-desc">Microsoft Azure Trusted Signing on every installer. SmartScreen-clean installs out of the box, no more "unknown publisher" warnings.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Offline Beta Keys <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Ed25519 offline beta keys, manually issued on email request. 30-day expiry, fully local verification. No accounts, no phone-home.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Anonymous Daily Telemetry <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Once-daily anonymous usage summary, opt-out in Settings. No IDs, no IPs, no third-party SDKs. Per-day action counts only, no persistent install ID by design.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M3 8h18M3 14h18M3 20h18"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Clipboard Stability + OCR <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Re-entrancy guards on paste and copy operations. OCR-from-image clipboard modes (as shown, as paragraphs). Full text emitted on every new clipboard event.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Game-Friendly Hooks <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">LL mouse hook auto-pauses while a fullscreen or borderless app has focus, eliminating input lag in games. WebView2 windows suspend after 5 min idle for a lower RAM footprint when minimised to tray.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M2 12l5 5L20 4"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Macro Polish: Wait for Input <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Wait-for-Input macro trigger pauses execution until you press a key. Condensed type selector. App, URL, and Folder merged into a single Open step. Per-type macro labels.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v0.5 -->
+      <div class="phase" data-phase="v0.5">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.5 — Encryption &amp; Game Compatibility</span>
+          <span class="phase-date">3 releases · Jun 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature feature-hero" data-tier="free pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Clipboard Encryption at Rest <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">AES-256-GCM encryption on the clipboard history database, with a DPAPI-wrapped master key tied to your Windows user. Legacy plaintext rows migrated automatically. Search still works, decryption happens in memory.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Scancode Injection for Games <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Every synthetic keystroke now uses scancode-mode SendInput. DirectInput and Raw Input games (FPS engines, fighting games, BricsCAD) finally see Trigr's keypresses where VK-only injection was silently invisible.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Hold Trigger Mode <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Third trigger mode alongside single press and double press. Fires a separate action when you hold a key past a configurable threshold. Race-condition fixes for overlapping triggers.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Quality of Life <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Clipboard column toggle. Overlay HiDPI positioning fix at non-default display scaling. Popup height clamp on long lists. Profile-link discoverability tip. Live diagnostics for mouse, keyboard, and outside-click events.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
       </div><!-- /.shipped-text -->
 
@@ -907,6 +1074,117 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
             <div class="sv-rad-label">8 segments · folder nesting · per-profile</div>
           </div>
 
+          <!-- v0.4 — Trust Center -->
+          <div class="sv-screen" data-phase="v0.4">
+            <div class="sv-head"><span class="sv-title">Trust &amp; Privacy</span><span class="sv-version">v0.4</span></div>
+
+            <div class="sv-trust-tile ok">
+              <div class="sv-trust-ico">
+                <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+              </div>
+              <div class="sv-trust-body">
+                <div class="sv-trust-name">Microsoft Code Signing</div>
+                <div class="sv-trust-meta">Azure Trusted Signing · Verified Publisher</div>
+              </div>
+              <span class="sv-trust-tag">Active</span>
+            </div>
+
+            <div class="sv-trust-tile pro">
+              <div class="sv-trust-ico">
+                <svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg>
+              </div>
+              <div class="sv-trust-body">
+                <div class="sv-trust-name">Pro Beta Key</div>
+                <div class="sv-trust-meta">Ed25519 offline · Local verify · 30 days remaining</div>
+              </div>
+              <span class="sv-trust-tag pro">Pro</span>
+            </div>
+
+            <div class="sv-trust-tile">
+              <div class="sv-trust-ico">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              </div>
+              <div class="sv-trust-body">
+                <div class="sv-trust-name">Anonymous Daily Telemetry</div>
+                <div class="sv-trust-meta">No IDs · No IPs · Opt-out in Settings</div>
+              </div>
+              <div class="sv-spark" aria-hidden="true">
+                <span style="height:28%"></span>
+                <span style="height:52%"></span>
+                <span style="height:38%"></span>
+                <span style="height:72%"></span>
+                <span style="height:48%"></span>
+                <span style="height:88%"></span>
+                <span class="now" style="height:62%"></span>
+              </div>
+            </div>
+
+            <div class="sv-trust-foot">
+              <span class="sv-trust-foot-lbl">Privacy posture</span>
+              <span class="sv-trust-foot-val">Data stays on your machine · No accounts · No IDs</span>
+            </div>
+          </div>
+
+          <!-- v0.5 — Vault -->
+          <div class="sv-screen" data-phase="v0.5">
+            <div class="sv-head"><span class="sv-title">Encrypted Clipboard</span><span class="sv-version">v0.5</span></div>
+
+            <div class="sv-vault-status">
+              <div class="sv-vault-lock">
+                <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <div class="sv-vault-body">
+                <div class="sv-vault-title">Clipboard encrypted at rest</div>
+                <div class="sv-vault-meta">AES-256-GCM · DPAPI-wrapped master key</div>
+              </div>
+              <span class="sv-vault-badge">ON</span>
+            </div>
+
+            <div class="sv-vault-items">
+              <div class="sv-vault-item">
+                <div class="sv-vault-itemlock">
+                  <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                </div>
+                <div class="sv-vault-itembody">
+                  <code class="sv-vault-cipher">8f3a9c2e7b1d4f8a... · 64 B</code>
+                  <div class="sv-vault-plain">admin@usetrigr.com</div>
+                </div>
+                <span class="sv-vault-itemtag email">Email</span>
+              </div>
+              <div class="sv-vault-item">
+                <div class="sv-vault-itemlock">
+                  <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                </div>
+                <div class="sv-vault-itembody">
+                  <code class="sv-vault-cipher">7b1d4f8a3c9e2071... · 32 B</code>
+                  <div class="sv-vault-plain">#e8a020</div>
+                </div>
+                <span class="sv-vault-itemtag color">Colour</span>
+              </div>
+              <div class="sv-vault-item">
+                <div class="sv-vault-itemlock">
+                  <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                </div>
+                <div class="sv-vault-itembody">
+                  <code class="sv-vault-cipher">a4e7c01968f2bd45... · 128 B</code>
+                  <div class="sv-vault-plain">github.com/Trigr-it/trigr-tauri</div>
+                </div>
+                <span class="sv-vault-itemtag link">Link</span>
+              </div>
+            </div>
+
+            <div class="sv-vault-game">
+              <div class="sv-vault-game-ico">
+                <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              </div>
+              <div class="sv-vault-game-body">
+                <div class="sv-vault-game-title">Scancode injection</div>
+                <div class="sv-vault-game-meta">DirectInput · Raw Input · FPS &amp; CAD engines</div>
+              </div>
+              <span class="sv-vault-game-tag">Compatible</span>
+            </div>
+          </div>
+
         </div>
       </div>
     </div><!-- /.shipped-grid -->
@@ -920,7 +1198,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">02</span><span class="section-label">What's next</span></div>
     <h2 class="section-h2">Where we're <em>headed</em>.</h2>
-    <p class="section-sub">Beta lands this month. v1.0 in August. Mac in September. Everything dated, everything visible.</p>
+    <p class="section-sub">Public Beta is live. v1.0 in August. Mac Beta in September. Everything dated, everything visible.</p>
 
     <div class="timeline">
 
@@ -929,24 +1207,10 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
         <div class="phase-dot current"></div>
         <div class="phase-header">
           <span class="phase-name">Beta</span>
-          <span class="phase-date">May 2026</span>
+          <span class="phase-date">May — Aug 2026</span>
           <span class="we-are-here"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>We are here</span>
         </div>
         <div class="feature-grid">
-          <div class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Free Beta Keys</div>
-              <div class="feature-desc">Offline Ed25519 beta keys, manually issued on request (email admin@usetrigr.com). 30-day expiry, fully local verification, no accounts, no phone-home.</div>
-            </div>
-          </div>
-          <div class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Code Signing</div>
-              <div class="feature-desc">Microsoft Azure Trusted Signing. No more SmartScreen warnings on install.</div>
-            </div>
-          </div>
           <div class="feature">
             <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M15.09 14a5 5 0 1 0-6.18 0 4 4 0 0 1 1.09 4h4a4 4 0 0 1 1.09-4z"/></svg></span>
             <div class="feature-body">
@@ -959,6 +1223,20 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
             <div class="feature-body">
               <div class="feature-name">Macro Recorder</div>
               <div class="feature-desc">Record keystrokes and mouse actions, replay as a macro. Build complex sequences without manual step entry.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Public Feedback Board</div>
+              <div class="feature-desc">Featurebase-hosted board for tester ideas, votes, and roadmap visibility. Daily releases driven by what testers actually report.</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Tester-Informed Releases</div>
+              <div class="feature-desc">Daily patch cadence driven by what testers report on the feedback board and what anonymous telemetry shows is actually getting used. No reverse-engineering, no guesswork.</div>
             </div>
           </div>
         </div>
