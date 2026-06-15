@@ -1,5 +1,7 @@
 import React, { useRef } from 'react';
-import { Keyboard, Type, AppWindow } from 'lucide-react';
+import {
+  Keyboard, Type, Workflow, Search, Disc, ClipboardList,
+} from 'lucide-react';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 import './WelcomeModal.css';
 
@@ -7,74 +9,120 @@ const FEATURES = [
   {
     Icon: Keyboard,
     name: 'Triggers',
-    desc: 'Assign hotkeys and macros to any key or mouse button',
+    desc: 'Map hotkeys to any key on your keyboard or mouse.',
+    accent: 'a',
+  },
+  {
+    Icon: Workflow,
+    name: 'Macros',
+    desc: 'Sequence keystrokes, clicks, delays and app launches.',
+    accent: 'b',
+  },
+  {
+    Icon: Disc,
+    name: 'Radial Menu',
+    desc: 'Press-and-hold pie menu for your most-used actions.',
+    accent: 'c',
   },
   {
     Icon: Type,
     name: 'Text Expansions',
-    desc: 'Type a short trigger word and expand it into full text instantly',
+    desc: 'Type a short trigger word and expand it instantly anywhere.',
+    accent: 'd',
   },
   {
-    Icon: AppWindow,
-    name: 'Profiles',
-    desc: 'Create app-specific profiles that switch automatically',
+    Icon: Search,
+    name: 'Quick Search',
+    desc: 'Ctrl + Space launcher for apps, URLs and search templates.',
+    accent: 'e',
+  },
+  {
+    Icon: ClipboardList,
+    name: 'Clipboard History',
+    desc: 'Ctrl + Shift + V to recall and paste anything you’ve copied.',
+    accent: 'f',
   },
 ];
 
-export default function WelcomeModal({ onDismiss }) {
+export default function WelcomeModal({ onContinue, onSkip, onDismiss }) {
+  // Backwards-compat: existing call sites that only pass onDismiss get the
+  // same handler used for both Get Started and Skip. App.jsx splits them.
+  const handleContinue = onContinue || onDismiss;
+  const handleSkip = onSkip || onDismiss;
   const panelRef = useRef(null);
-  useModalKeyboard(panelRef, onDismiss);
+  useModalKeyboard(panelRef, handleSkip);
 
   return (
     <div className="modal-overlay welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
       <div className="modal-panel welcome-modal" ref={panelRef}>
 
-        {/* Logo mark */}
-        <div className="welcome-logo">
-          <svg width="28" height="28" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <rect x="2"  y="5"  width="6"  height="4" rx="1.5" fill="var(--accent)" opacity="0.9"/>
-            <rect x="10" y="5"  width="4"  height="4" rx="1.5" fill="var(--accent)" opacity="0.6"/>
-            <rect x="16" y="5"  width="2"  height="4" rx="1"   fill="var(--accent)" opacity="0.4"/>
-            <rect x="2"  y="11" width="4"  height="4" rx="1.5" fill="var(--accent)" opacity="0.5"/>
-            <rect x="8"  y="11" width="10" height="4" rx="1.5" fill="var(--accent)" opacity="0.8"/>
+        {/* Header band — logo + brand + intro */}
+        <div className="welcome-header">
+          <svg
+            className="welcome-logo-img"
+            width="56"
+            height="56"
+            viewBox="0 0 64 64"
+            role="img"
+            aria-label="Trigr"
+          >
+            <defs>
+              <linearGradient id="welcome-trigr-base" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f0b942"/>
+                <stop offset="100%" stopColor="#c8860a"/>
+              </linearGradient>
+              <linearGradient id="welcome-trigr-keytop" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ffffff"/>
+                <stop offset="100%" stopColor="#e8e5dc"/>
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="64" height="64" rx="9" fill="url(#welcome-trigr-base)"/>
+            <rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#welcome-trigr-keytop)"/>
+            <rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/>
+            <rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>
+            <rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>
           </svg>
+          <div className="welcome-pill">WELCOME TO TRIGR</div>
+          <h1 className="welcome-title" id="welcome-title">Out of the box</h1>
+          <p className="welcome-subtitle">
+            Six core surfaces, one keyboard. Here's what you'll find inside.
+          </p>
         </div>
 
-        <h1 className="welcome-title" id="welcome-title">Trigr</h1>
-        <p className="welcome-subtitle">Your visual hotkey, macro and text expansion manager</p>
-
-        {/* Feature cards */}
-        <div className="welcome-cards">
+        {/* 3×2 feature grid */}
+        <div className="welcome-tiles" role="list">
           {FEATURES.map(f => {
             const FeatureIcon = f.Icon;
             return (
-              <div key={f.name} className="welcome-card">
-                <span className="welcome-card-icon" aria-hidden="true">
-                  <FeatureIcon size={26} strokeWidth={1.5} />
+              <div key={f.name} className={`welcome-tile welcome-tile--${f.accent}`} role="listitem">
+                <span className="welcome-tile-icon" aria-hidden="true">
+                  <FeatureIcon size={22} strokeWidth={1.75} />
                 </span>
-                <span className="welcome-card-name">{f.name}</span>
-                <span className="welcome-card-desc">{f.desc}</span>
+                <span className="welcome-tile-name">{f.name}</span>
+                <span className="welcome-tile-desc">{f.desc}</span>
               </div>
             );
           })}
         </div>
 
         {/* Actions */}
-        <button
-          className="welcome-cta-btn"
-          onClick={onDismiss}
-          type="button"
-          autoFocus
-        >
-          Get Started
-        </button>
-        <button
-          className="welcome-skip-link"
-          onClick={onDismiss}
-          type="button"
-        >
-          Skip
-        </button>
+        <div className="welcome-actions">
+          <button
+            className="welcome-cta-btn"
+            onClick={handleContinue}
+            type="button"
+            autoFocus
+          >
+            Get Started
+          </button>
+          <button
+            className="welcome-skip-link"
+            onClick={handleSkip}
+            type="button"
+          >
+            Skip the tour
+          </button>
+        </div>
 
       </div>
     </div>

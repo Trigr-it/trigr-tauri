@@ -1,121 +1,266 @@
-/* ── Welcome Modal — layout-only; uses .modal-overlay + .modal-panel base ── */
+/* ── Welcome Modal — first-launch feature tour, 6-tile grid ──────────────── */
+
+.welcome-overlay {
+  z-index: 2200;
+}
 
 .welcome-modal {
-  width: 560px;
-  padding: 36px 36px 28px;
+  width: 760px;
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Multi-blob gold mesh gradient — four soft radial stops in different
+   corners. Slow drift gives the background a subtle "alive" feel without
+   becoming distracting. inset is negative so the blobs can travel without
+   exposing the panel edge. */
+.welcome-modal::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  background:
+    radial-gradient(38% 30% at 15% 18%, rgba(var(--accent-rgb), 0.22) 0%, transparent 62%),
+    radial-gradient(30% 24% at 85% 14%, rgba(var(--accent-rgb), 0.14) 0%, transparent 60%),
+    radial-gradient(34% 28% at 50% 96%, rgba(var(--accent-rgb), 0.16) 0%, transparent 65%),
+    radial-gradient(26% 22% at 92% 80%, rgba(var(--accent-rgb), 0.10) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+  animation: welcome-mesh-drift 22s ease-in-out infinite;
+}
+
+@keyframes welcome-mesh-drift {
+  0%, 100% { transform: translate(0, 0); }
+  33%      { transform: translate(10px, -8px); }
+  66%      { transform: translate(-8px, 10px); }
+}
+
+/* Faint dot grid concentrated in the centre and fading at the edges —
+   on-brand nod to Trigr's keyboard motif without competing with the tiles. */
+.welcome-modal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.035) 1px, transparent 1.6px);
+  background-size: 22px 22px;
+  pointer-events: none;
+  z-index: 0;
+  mask-image: radial-gradient(80% 70% at 50% 50%, black 0%, transparent 92%);
+  -webkit-mask-image: radial-gradient(80% 70% at 50% 50%, black 0%, transparent 92%);
+}
+
+[data-theme="light"] .welcome-modal::after {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.05) 1px, transparent 1.6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-modal::before {
+    animation: none;
+  }
+}
+
+.welcome-modal > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+
+.welcome-header {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+  padding: 36px 36px 24px;
+  gap: 0;
 }
 
-/* ── Logo ──────────────────────────────────────────────────────────────── */
+.welcome-logo-img {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 18px;
+  image-rendering: -webkit-optimize-contrast;
+  filter: drop-shadow(0 6px 20px rgba(var(--accent-rgb), 0.35));
+  user-select: none;
+}
 
-.welcome-logo {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.welcome-pill {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+  padding: 5px 12px;
+  border-radius: 100px;
   margin-bottom: 16px;
-  box-shadow: 0 0 28px var(--accent-glow);
 }
 
-/* ── Title & subtitle ──────────────────────────────────────────────────── */
+[data-theme="light"] .welcome-pill {
+  color: #c8860a;
+  background: rgba(232, 160, 32, 0.1);
+  border-color: rgba(232, 160, 32, 0.32);
+}
 
 .welcome-title {
-  font-family: var(--font-label);
-  font-size: 26px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 800;
   color: var(--text-primary);
-  letter-spacing: normal;
-  margin: 0 0 8px;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0 0 10px;
 }
 
 .welcome-subtitle {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
-  line-height: 1.5;
-  margin: 0 0 28px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 480px;
 }
 
-/* ── Feature cards ─────────────────────────────────────────────────────── */
+/* ── 3×2 tile grid ─────────────────────────────────────────────────────── */
 
-.welcome-cards {
+.welcome-tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  width: 100%;
-  margin-bottom: 28px;
+  padding: 0 24px 24px;
 }
 
-.welcome-card {
+.welcome-tile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 16px 10px;
+  gap: 10px;
+  padding: 20px 16px 18px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   border-radius: 12px;
   text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.welcome-card-icon {
-  font-size: 20px;
-  line-height: 1;
+.welcome-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 60% at 100% 0%, rgba(var(--accent-rgb), 0.08) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.welcome-tile:hover {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(var(--accent-rgb), 0.18);
+}
+
+.welcome-tile:hover::before {
+  opacity: 1;
+}
+
+[data-theme="light"] .welcome-tile {
+  background: #ffffff;
+  border-color: #e8e8f4;
+}
+
+[data-theme="light"] .welcome-tile:hover {
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(232, 160, 32, 0.25);
+}
+
+.welcome-tile-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.2), rgba(var(--accent-rgb), 0.06));
+  border: 1px solid rgba(var(--accent-rgb), 0.32);
   color: var(--accent);
-  font-family: var(--font-display);
-  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  position: relative;
+  z-index: 1;
 }
 
-.welcome-card-name {
+[data-theme="light"] .welcome-tile-icon {
+  color: #c8860a;
+  border-color: rgba(232, 160, 32, 0.4);
+}
+
+.welcome-tile-name {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: 0.04em;
+  letter-spacing: -0.005em;
+  position: relative;
+  z-index: 1;
 }
 
-.welcome-card-desc {
-  font-size: 11px;
+.welcome-tile-desc {
+  font-size: 11.5px;
   color: var(--text-muted);
-  line-height: 1.45;
+  line-height: 1.5;
+  position: relative;
+  z-index: 1;
 }
 
-/* ── CTA button ────────────────────────────────────────────────────────── */
+/* ── Actions ───────────────────────────────────────────────────────────── */
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 36px 28px;
+}
 
 .welcome-cta-btn {
   width: 100%;
-  height: 42px;
-  background: var(--btn-primary-bg);
-  border: none;
-  border-radius: var(--radius-md);
+  max-width: 320px;
+  height: 44px;
+  padding: 0 24px;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: 1px solid var(--accent);
+  border-radius: 8px;
   color: var(--btn-primary-text);
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-  margin-bottom: 10px;
-  box-shadow: 0 4px 20px rgba(var(--accent-rgb), 0.3);
+  box-shadow:
+    0 4px 20px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .welcome-cta-btn:hover {
-  background: var(--btn-primary-hover);
+  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
   transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.4);
+  box-shadow:
+    0 6px 26px rgba(var(--accent-rgb), 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .welcome-cta-btn:active {
   transform: translateY(0);
 }
-
-/* ── Skip link ─────────────────────────────────────────────────────────── */
 
 .welcome-skip-link {
   background: transparent;
@@ -123,18 +268,29 @@
   color: var(--text-muted);
   font-size: 12px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 6px 8px;
   border-radius: 4px;
   transition: color 0.12s;
+  margin-top: 4px;
 }
 
 .welcome-skip-link:hover {
   color: var(--text-secondary);
 }
 
-/* ── Light theme overrides — shadow handled by .modal-panel via --shadow-modal ── */
+/* ── Narrow viewport fallback — single column on very small windows ───── */
 
-[data-theme="light"] .welcome-card {
-  background: #ffffff;
-  border-color: #e8e8f4;
+@media (max-width: 720px) {
+  .welcome-modal {
+    width: 100%;
+  }
+  .welcome-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .welcome-tiles {
+    grid-template-columns: 1fr;
+  }
 }

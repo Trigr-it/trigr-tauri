@@ -3,10 +3,11 @@ import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
-import { GripVertical, Link, Keyboard, Zap, Disc } from 'lucide-react';
+import { GripVertical, Link, Keyboard, Zap, Disc, Plus, Download } from 'lucide-react';
 import './Sidebar.css';
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName } from './keyboardLayout';
+import { useModalKeyboard } from '../hooks/useModalKeyboard';
 
 const TYPE_META = {
   text:      { color: '#64b4ff' },
@@ -79,6 +80,8 @@ function ProfileAccordion({
   const addInputRef = useRef(null);
   // Link to App picker state
   const [linkPicker, setLinkPicker] = useState(null); // profileName or null
+  const [linkPickerMode, setLinkPickerMode] = useState('link'); // 'link' | 'change'
+  const [linkPickerCurrentApp, setLinkPickerCurrentApp] = useState(null); // shown in Change mode
   const [linkWindowList, setLinkWindowList] = useState([]);
   const [linkSelectedExe, setLinkSelectedExe] = useState(null);
   const [linkWindowTitle, setLinkWindowTitle] = useState('');
@@ -87,7 +90,19 @@ function ProfileAccordion({
   const linkDropdownPortalRef = useRef(null);
   const pickAppBtnRef = useRef(null);
   const [linkDropdownPos, setLinkDropdownPos] = useState(null);
+  const linkModalPanelRef = useRef(null);
   const importPromptRef = useRef(null);
+
+  function closeLinkPicker() {
+    setLinkPicker(null);
+    setLinkPickerMode('link');
+    setLinkPickerCurrentApp(null);
+    setLinkSelectedExe(null);
+    setLinkWindowTitle('');
+    setLinkDropdownOpen(false);
+  }
+
+  useModalKeyboard(linkModalPanelRef, closeLinkPicker, { enabled: !!linkPicker });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -351,7 +366,7 @@ function ProfileAccordion({
             </DragOverlay>
           </DndContext>
 
-          {/* Add profile */}
+          {/* Add / Import profile actions */}
           {isAdding ? (
             <form className="profile-add-row" onSubmit={handleAdd}>
               <input
@@ -365,17 +380,25 @@ function ProfileAccordion({
               />
             </form>
           ) : (
-            <button
-              className="profile-add-btn"
-              type="button"
-              onClick={() => setIsAdding(true)}
-            >
-              + Add Profile
-            </button>
+            <div className="profile-actions-row">
+              <button
+                className="profile-action-btn profile-action-btn--primary"
+                type="button"
+                onClick={() => setIsAdding(true)}
+              >
+                <Plus size={14} strokeWidth={2.25} />
+                <span>New Profile</span>
+              </button>
+              <button
+                className="profile-action-btn profile-action-btn--secondary"
+                type="button"
+                onClick={() => onImportProfile?.()}
+              >
+                <Download size={14} strokeWidth={2.25} />
+                <span>Import Profile</span>
+              </button>
+            </div>
           )}
-          <button className="profile-add-btn profile-import-btn" type="button" onClick={() => onImportProfile?.()}>
-            ↓ Import Profile
-          </button>
           {importPrompt && (
             <div className="profile-import-prompt" ref={importPromptRef}>
               <div className="profile-import-prompt-msg">
@@ -415,6 +438,8 @@ function ProfileAccordion({
               <button className="profile-ctx-item" onClick={() => {
                 if (!isPro) { onShowUpgrade?.('App-specific profiles'); setContextMenu(null); return; }
                 setLinkPicker(contextMenu.profile);
+                setLinkPickerMode('link');
+                setLinkPickerCurrentApp(null);
                 setLinkSelectedExe(null);
                 setLinkWindowTitle('');
                 setContextMenu(null);
@@ -423,12 +448,26 @@ function ProfileAccordion({
               </button>
             )}
             {!isStatic && (
-              <button className="profile-ctx-item" onClick={() => {
-                onUpdateProfileSettings?.(contextMenu.profile, { linkedApp: null, linkedWindowTitle: null });
-                setContextMenu(null);
-              }}>
-                Unlink App
-              </button>
+              <>
+                <button className="profile-ctx-item" onClick={() => {
+                  if (!isPro) { onShowUpgrade?.('App-specific profiles'); setContextMenu(null); return; }
+                  const settings = profileSettings[contextMenu.profile] || {};
+                  setLinkPicker(contextMenu.profile);
+                  setLinkPickerMode('change');
+                  setLinkPickerCurrentApp(settings.linkedApp || null);
+                  setLinkSelectedExe(settings.linkedApp || null);
+                  setLinkWindowTitle(settings.linkedWindowTitle || '');
+                  setContextMenu(null);
+                }}>
+                  Change App
+                </button>
+                <button className="profile-ctx-item" onClick={() => {
+                  onUpdateProfileSettings?.(contextMenu.profile, { linkedApp: null, linkedWindowTitle: null });
+                  setContextMenu(null);
+                }}>
+                  Unlink App
+                </button>
+              </>
             )}
             {!isDefault && (
               <>
@@ -440,103 +479,137 @@ function ProfileAccordion({
         );
       })()}
 
-      {/* Link to App picker */}
+      {/* Link to App picker modal */}
       {linkPicker && (
-        <div className="profile-link-picker">
-          <div className="profile-link-picker-header">
-            <span className="profile-link-picker-title">Link "{linkPicker}" to App</span>
-            <button className="profile-link-picker-close" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkWindowTitle(''); setLinkDropdownOpen(false); }}>✕</button>
-          </div>
-          <p className="profile-link-picker-hint">Open the app first, then pick it below.</p>
-          <div className="profile-link-picker-row" ref={linkDropdownRef}>
-            {linkSelectedExe ? (
-              <span className="pick-window-badge">
-                {linkSelectedExe}
-                <button className="pick-window-badge-clear" type="button" onClick={() => setLinkSelectedExe(null)}>✕</button>
-              </span>
-            ) : (
-              <>
-                <button className="browse-btn" ref={pickAppBtnRef} type="button" onClick={async () => {
-                  const rowEl = linkDropdownRef.current;
-                  if (rowEl) {
-                    const rect = rowEl.getBoundingClientRect();
-                    setLinkDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width, btnTop: rect.top });
-                  }
-                  setLinkDropdownOpen(true);
-                  setLinkWindowList([]);
-                  try {
-                    const { invoke } = await import('@tauri-apps/api/core');
-                    const list = await invoke('list_open_windows');
-                    const seen = new Set();
-                    const unique = [];
-                    for (const w of (list || [])) {
-                      const lower = w.process.toLowerCase();
-                      if (!seen.has(lower)) { seen.add(lower); unique.push(w.process); }
-                    }
-                    unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-                    setLinkWindowList(unique);
-                  } catch (e) {
-                    console.error('[Trigr] list_open_windows failed:', e);
-                    setLinkWindowList([]);
-                  }
-                }}>
-                  ⊞ Pick App
-                </button>
-                <button className="browse-btn" type="button" onClick={async () => {
-                  const path = await window.electronAPI?.browseForFile();
-                  if (path) {
-                    const filename = path.split(/[/\\]/).pop() || path;
-                    setLinkSelectedExe(filename);
-                  }
-                }}>
-                  Browse…
-                </button>
-              </>
-            )}
-            {linkDropdownOpen && !linkSelectedExe && linkDropdownPos && ReactDOM.createPortal(
-              <div className="pick-window-dropdown pick-window-dropdown--portal" ref={linkDropdownPortalRef} style={{ top: linkDropdownPos.top, left: linkDropdownPos.left, width: linkDropdownPos.width }}>
-                {linkWindowList.length === 0 ? (
-                  <div className="pick-window-loading">Loading windows…</div>
-                ) : (
-                  linkWindowList.map((exe, i) => (
-                    <div key={i} className="pick-window-item" onClick={() => { setLinkSelectedExe(exe); setLinkDropdownOpen(false); }}>
-                      <span className="pick-window-process">{exe}</span>
-                    </div>
-                  ))
-                )}
-              </div>,
-              document.body
-            )}
-          </div>
-          {linkSelectedExe && (
-            <div className="profile-link-picker-title-row">
-              <label className="profile-link-picker-label">Window title contains (optional):</label>
-              <input
-                className="profile-link-picker-title-input"
-                type="text"
-                placeholder="e.g. Inbox"
-                value={linkWindowTitle}
-                onChange={e => setLinkWindowTitle(e.target.value)}
-              />
-            </div>
-          )}
-          <div className="profile-link-picker-actions">
-            {linkSelectedExe && (
-              <button className="profile-link-picker-confirm" type="button" onClick={() => {
-                onUpdateProfileSettings?.(linkPicker, {
-                  linkedApp: linkSelectedExe,
-                  linkedWindowTitle: linkWindowTitle.trim() || null,
-                });
-                setLinkPicker(null);
-                setLinkSelectedExe(null);
-                setLinkWindowTitle('');
-              }}>
-                Confirm
+        <div
+          className="modal-overlay profile-link-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="profile-link-modal-title"
+          onClick={closeLinkPicker}
+        >
+          <div
+            className="modal-panel profile-link-modal"
+            ref={linkModalPanelRef}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="profile-link-modal-header">
+              <h2 className="profile-link-modal-title" id="profile-link-modal-title">
+                {linkPickerMode === 'change' ? 'Change linked app' : 'Link profile to app'}
+              </h2>
+              <button
+                className="profile-link-modal-close"
+                type="button"
+                onClick={closeLinkPicker}
+                aria-label="Close"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                  <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
               </button>
+            </div>
+            <p className="profile-link-modal-sub">
+              Profile <strong>"{linkPicker}"</strong> will switch on automatically when the linked app gains focus.
+            </p>
+            {linkPickerMode === 'change' && linkPickerCurrentApp && (
+              <div className="profile-link-modal-current">
+                Currently linked to <strong>{linkPickerCurrentApp}</strong>
+              </div>
             )}
-            <button className="profile-link-picker-cancel" type="button" onClick={() => { setLinkPicker(null); setLinkSelectedExe(null); setLinkWindowTitle(''); setLinkDropdownOpen(false); }}>
-              Cancel
-            </button>
+            <p className="profile-link-modal-hint">Open the app first, then pick it below.</p>
+            <div className="profile-link-modal-row" ref={linkDropdownRef}>
+              {linkSelectedExe ? (
+                <span className="pick-window-badge">
+                  {linkSelectedExe}
+                  <button className="pick-window-badge-clear" type="button" onClick={() => setLinkSelectedExe(null)} aria-label="Clear selection">✕</button>
+                </span>
+              ) : (
+                <>
+                  <button className="browse-btn" ref={pickAppBtnRef} type="button" onClick={async () => {
+                    const rowEl = linkDropdownRef.current;
+                    if (rowEl) {
+                      const rect = rowEl.getBoundingClientRect();
+                      setLinkDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width, btnTop: rect.top });
+                    }
+                    setLinkDropdownOpen(true);
+                    setLinkWindowList([]);
+                    try {
+                      const { invoke } = await import('@tauri-apps/api/core');
+                      const list = await invoke('list_open_windows');
+                      const seen = new Set();
+                      const unique = [];
+                      for (const w of (list || [])) {
+                        const lower = w.process.toLowerCase();
+                        if (!seen.has(lower)) { seen.add(lower); unique.push(w.process); }
+                      }
+                      unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                      setLinkWindowList(unique);
+                    } catch (e) {
+                      console.error('[Trigr] list_open_windows failed:', e);
+                      setLinkWindowList([]);
+                    }
+                  }}>
+                    ⊞ Pick App
+                  </button>
+                  <button className="browse-btn" type="button" onClick={async () => {
+                    const path = await window.electronAPI?.browseForFile();
+                    if (path) {
+                      const filename = path.split(/[/\\]/).pop() || path;
+                      setLinkSelectedExe(filename);
+                    }
+                  }}>
+                    Browse…
+                  </button>
+                </>
+              )}
+              {linkDropdownOpen && !linkSelectedExe && linkDropdownPos && ReactDOM.createPortal(
+                <div className="pick-window-dropdown pick-window-dropdown--portal" ref={linkDropdownPortalRef} style={{ top: linkDropdownPos.top, left: linkDropdownPos.left, width: linkDropdownPos.width }}>
+                  {linkWindowList.length === 0 ? (
+                    <div className="pick-window-loading">Loading windows…</div>
+                  ) : (
+                    linkWindowList.map((exe, i) => (
+                      <div key={i} className="pick-window-item" onClick={() => { setLinkSelectedExe(exe); setLinkDropdownOpen(false); }}>
+                        <span className="pick-window-process">{exe}</span>
+                      </div>
+                    ))
+                  )}
+                </div>,
+                document.body
+              )}
+            </div>
+            {linkSelectedExe && (
+              <div className="profile-link-modal-title-row">
+                <label className="profile-link-modal-label">Window title contains (optional)</label>
+                <input
+                  className="profile-link-modal-title-input"
+                  type="text"
+                  placeholder="e.g. Inbox"
+                  value={linkWindowTitle}
+                  onChange={e => setLinkWindowTitle(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="profile-link-modal-actions">
+              <button className="profile-link-modal-cancel" type="button" onClick={closeLinkPicker}>
+                Cancel
+              </button>
+              <button
+                className="profile-link-modal-confirm"
+                type="button"
+                disabled={!linkSelectedExe}
+                onClick={() => {
+                  if (!linkSelectedExe) return;
+                  onUpdateProfileSettings?.(linkPicker, {
+                    linkedApp: linkSelectedExe,
+                    linkedWindowTitle: linkWindowTitle.trim() || null,
+                  });
+                  closeLinkPicker();
+                }}
+              >
+                {linkPickerMode === 'change' ? 'Save' : 'Confirm'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1266,7 +1339,7 @@ export default function Sidebar({
               type="button"
               onClick={() => setNewFolderName('')}
             >
-              + Add folder
+              + New Folder
             </button>
           ) : (
             <div className="sidebar-new-folder-row">

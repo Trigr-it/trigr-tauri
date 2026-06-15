@@ -199,6 +199,7 @@ export default function SettingsPanel({
   onSetVoiceKey,
   onClearVoiceKey,
   onRestartOnboarding,
+  onReplayWelcome,
   onResetHiddenTips,
   hiddenTipsCount = 0,
   activeProfile = 'Default',
@@ -678,6 +679,23 @@ export default function SettingsPanel({
               </svg>
               Restart Onboarding Tour
             </button>
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                className="settings-action-btn settings-help-btn"
+                onClick={onReplayWelcome}
+                title="Replay the first-launch welcome screen and onboarding tour from scratch"
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M2 5.5h12" stroke="currentColor" strokeWidth="1.4"/>
+                  <circle cx="4" cy="4.5" r="0.5" fill="currentColor"/>
+                  <circle cx="5.6" cy="4.5" r="0.5" fill="currentColor"/>
+                  <circle cx="7.2" cy="4.5" r="0.5" fill="currentColor"/>
+                </svg>
+                Replay Welcome Screen (dev)
+              </button>
+            )}
             <button
               type="button"
               className="settings-action-btn settings-help-btn"

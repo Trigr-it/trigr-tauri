@@ -1388,24 +1388,45 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     // race that clipped 4K@225% users in v0.5.0 (see monitor_scale_factor).
     let win_w_logical = 754.0_f64;
     let win_h_logical = 500.0_f64;
-    let phys_w = (win_w_logical * scale).round() as i32;
+    let phys_w_unclamped = (win_w_logical * scale).round() as i32;
     let phys_h_unclamped = (win_h_logical * scale).round() as i32;
 
     // High-scaling clamp: at 200%+ on smaller panels (e.g. 1080p laptop at 250%)
-    // the unclamped popup would overflow the work area. Cap to (work-area-height
-    // minus 32px margin), floor at 200px. Popup body is internally scrollable so
-    // capping is safe. Reposition phys_y so the bottom never lands past
-    // wa_bottom - 16, and never above wa_top + 16.
+    // the unclamped popup would overflow the work area. Cap to (work-area minus
+    // 32px margin) on each axis, with sensible floors. Popup body is internally
+    // scrollable both axes so capping is safe.
+    //
+    // Width clamp added v0.5.3 — a 4K TV tester at 225% reported left/right
+    // clipping where the unclamped 754*scale physical width could exceed the
+    // visible work area on some HDMI/PC-mode setups that report higher-than-
+    // expected effective DPI. The companion [CLIP-DPI] diagnostic line records
+    // the raw math so future reports can be triaged from a single log line.
+    let wa_w = wa_right - wa_left;
     let wa_h = wa_bottom - wa_top;
+    let max_w = (wa_w - 32).max(400);
     let max_h = (wa_h - 32).max(200);
+    let phys_w = phys_w_unclamped.min(max_w);
     let phys_h = phys_h_unclamped.min(max_h);
+    let clamped_w = phys_w < phys_w_unclamped;
+    let clamped_h = phys_h < phys_h_unclamped;
+
     let ideal_y = wa_top + wa_h / 3;
     let max_y = wa_bottom - phys_h - 16;
     let phys_y = ideal_y.min(max_y).max(wa_top + 16);
 
-    let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+    let phys_x = wa_left + (wa_w - phys_w) / 2;
     let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
     let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
+
+    // TEMP DIAGNOSTIC — strip once cross-machine clipboard clipping reports
+    // settle. See diagnostic lifecycle in [[project_next_session_todos]].
+    log::info!(
+        "[CLIP-DPI] scale={:.3} wa=({},{},{},{}) wa_size={}x{} unclamped={}x{} phys=({},{} {}x{}) clamped_w={} clamped_h={}",
+        scale, wa_left, wa_top, wa_right, wa_bottom, wa_w, wa_h,
+        phys_w_unclamped, phys_h_unclamped, phys_x, phys_y, phys_w, phys_h,
+        if clamped_w { "yes" } else { "no" },
+        if clamped_h { "yes" } else { "no" }
+    );
 
     // Send recent clipboard history + theme to the overlay
     let history = clipboard::get_history(1, 500, None, None, None, None);

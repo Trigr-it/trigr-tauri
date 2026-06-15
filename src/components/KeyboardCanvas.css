@@ -584,22 +584,98 @@
   cursor: pointer;
 }
 
-/* ── NEW SHORTCUT BUTTON ──────────────────────────────── */
-/* Sibling of .record-btn — clears the current selection so the user can
-   build a new shortcut from scratch. Subtler styling than Record so it
-   doesn't compete for attention. */
+/* Gold-pulse: drawn when "+ New Trigger" was just clicked. Stops as soon
+   as the user picks a modifier, clicks a key, or starts recording.
+   Slightly stronger than --accent-glow so it reads against the panel. */
+.record-btn.record-btn--pulse {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+  animation: record-btn-pulse 1.4s ease-out infinite;
+}
+
+@keyframes record-btn-pulse {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(var(--accent-rgb), 0.55),
+      0 0 0 0 rgba(var(--accent-rgb), 0.0);
+  }
+  70% {
+    box-shadow:
+      0 0 0 10px rgba(var(--accent-rgb), 0),
+      0 0 14px 2px rgba(var(--accent-rgb), 0.25);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(var(--accent-rgb), 0),
+      0 0 0 0 rgba(var(--accent-rgb), 0.0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-btn.record-btn--pulse {
+    animation: none;
+  }
+}
+
+/* Contextual hint shown next to the Record button while the New Trigger
+   prompt is active. Replaces the default "select 1–3 modifiers" hint. */
+.combo-hint-new-trigger {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.combo-hint-new-trigger strong {
+  font-weight: 700;
+}
+
+/* ── NEW TRIGGER BUTTON ──────────────────────────────── */
+/* Solid-gold primary CTA — same recipe as .te-add-btn / .stp-add-btn /
+   .profile-action-btn--primary. Sits beside Record in the modifier bar.
+   This is the "start a new top-level mapping" entry-point, hence primary. */
 .new-shortcut-btn {
-  padding: 0 12px;
-  color: var(--text-muted);
-  font-size: 12px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-family: inherit;
+  letter-spacing: 0.005em;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: 1px solid var(--accent);
+  color: var(--btn-primary-text);
+  box-shadow:
+    0 1px 6px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: background 0.14s ease, box-shadow 0.14s ease, transform 0.08s ease;
 }
 
 .new-shortcut-btn:hover:not(:disabled) {
-  color: var(--accent);
-  border-color: var(--border-accent);
+  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  color: var(--btn-primary-text);
+  border-color: var(--accent);
+  box-shadow:
+    0 2px 10px rgba(var(--accent-rgb), 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.new-shortcut-btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.new-shortcut-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 1px 6px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 2px rgba(var(--accent-rgb), 0.45);
+}
+
+.new-shortcut-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .record-btn.recording:hover {

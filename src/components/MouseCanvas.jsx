@@ -102,6 +102,7 @@ export default function MouseCanvas({
   onStopRecord,
   recordCapture,
   onNewShortcut,
+  newTriggerHint = false,
 }) {
   const [firingZoneId, setFiringZoneId]       = useState(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
@@ -182,6 +183,7 @@ export default function MouseCanvas({
         recordCapture={recordCapture}
         selectedKey={selectedKey}
         onNewShortcut={onNewShortcut}
+        newTriggerHint={newTriggerHint}
       />
 
       <div className="mouse-label">

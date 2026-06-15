@@ -485,8 +485,16 @@ function App() {
         }
 
         if (!onboardingComplete) {
-          // New user — show onboarding tour (replaces WelcomeModal)
-          setShowOnboarding(true);
+          // New user — show WelcomeModal first (visual feature intro).
+          // Clicking "Get Started" inside the modal then kicks off the
+          // OnboardingTour. Clicking "Skip the tour" bypasses both and
+          // marks onboarding complete.
+          if (!config.hasSeenWelcome) {
+            setShowWelcome(true);
+          } else {
+            // Existing user mid-replay (already saw welcome) — straight to tour
+            setShowOnboarding(true);
+          }
         } else if (!config.hasSeenWelcome) {
           // Edge case: onboarding complete but welcome not set
           setShowWelcome(true);
@@ -1206,8 +1214,54 @@ function App() {
   }, [assignments, activeProfile, currentCombo, activeModifiers, makeAssignmentKey]);
 
   // ── Assign macro ──────────────────────────────────────────
+  // ── Radial label propagation helper ────────────────────────
+  // Sweeps every profile's radial items + folder children, updating any segment
+  // whose storageKey matches AND whose label still equals oldLabel. Segments
+  // the user independently renamed in the radial editor are preserved.
+  // Declared before handleAssign / handleRenameAssignment so both useCallback
+  // dep arrays can reference it without hitting a TDZ ReferenceError on render.
+  const propagateLabelToRadialItems = useCallback((key, oldLabelRaw, newLabelRaw) => {
+    const oldLabel = oldLabelRaw || '';
+    const newLabel = newLabelRaw || '';
+    if (oldLabel === newLabel) return;
+    setRadialItemsMap(prev => {
+      let mapChanged = false;
+      const nextMap = {};
+      for (const [profileName, items] of Object.entries(prev)) {
+        if (!Array.isArray(items)) { nextMap[profileName] = items; continue; }
+        let profileChanged = false;
+        const nextItems = items.map(item => {
+          if (!item) return item;
+          if (item.type === 'folder' && Array.isArray(item.children)) {
+            let kidsChanged = false;
+            const nextKids = item.children.map(child => {
+              if (child && child.storageKey === key && (child.label || '') === oldLabel) {
+                kidsChanged = true;
+                return { ...child, label: newLabel };
+              }
+              return child;
+            });
+            if (kidsChanged) { profileChanged = true; return { ...item, children: nextKids }; }
+            return item;
+          }
+          if (item.storageKey === key && (item.label || '') === oldLabel) {
+            profileChanged = true;
+            return { ...item, label: newLabel };
+          }
+          return item;
+        });
+        if (profileChanged) { mapChanged = true; nextMap[profileName] = nextItems; }
+        else nextMap[profileName] = items;
+      }
+      if (!mapChanged) return prev;
+      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: nextMap });
+      return nextMap;
+    });
+  }, []);
+
   const handleAssign = useCallback((keyId, macro) => {
     const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
+    const oldLabel = assignments[key]?.label || '';
     const newAssignments = { ...assignments, [key]: macro };
     // If a draft duplicate has a double-press counterpart, save that too
     if (draftDoubleAssignment) {
@@ -1218,8 +1272,9 @@ function App() {
     saveConfig(newAssignments, profiles, activeProfile);
     setDraftAssignment(null);
     setDraftDoubleAssignment(null);
+    propagateLabelToRadialItems(key, oldLabel, macro?.label || '');
     showNotification(`Assigned to ${currentCombo}+${keyId}`);
-  }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey, draftDoubleAssignment]);
+  }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey, draftDoubleAssignment, propagateLabelToRadialItems]);
 
   // ── Clear key (single-press only) ────────────────────────
   // Removes the single-press assignment for this combo+keyId. Double-press
@@ -1251,15 +1306,17 @@ function App() {
     showNotification(`Deleted ${currentCombo}+${keyId}`, 'info');
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
-  // ── Rename assignment label ────────────────────────────────
+  // ── Rename assignment label (sidebar right-click → Rename) ───────────
   const handleRenameAssignment = useCallback((combo, keyId, newLabel) => {
     const key = `${activeProfile}::${combo}::${keyId}`;
     const existing = assignments[key];
     if (!existing) return;
+    const oldLabel = existing.label || '';
     const newAssignments = { ...assignments, [key]: { ...existing, label: newLabel } };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-  }, [assignments, activeProfile, profiles, saveConfig]);
+    propagateLabelToRadialItems(key, oldLabel, newLabel);
+  }, [assignments, activeProfile, profiles, saveConfig, propagateLabelToRadialItems]);
 
   // ── Clear assignment by combo+keyId (context menu) ────────
   const handleClearAssignment = useCallback((combo, keyId) => {
@@ -2405,13 +2462,39 @@ function App() {
   // ── New Shortcut button — wipe selection state so the user gets a clean slate
   // for creating a new hotkey from scratch. Cheaper than asking the user to
   // manually deselect each modifier + key. Per Ailin round-1 feedback.
+  // newTriggerHint is the "next step" prompt — pulses the Record button until
+  // the user takes any forward action (pick modifier, click key, start record).
+  const [newTriggerHint, setNewTriggerHint] = useState(false);
   const handleNewShortcut = useCallback(() => {
     setSelectedKey(null);
     setActiveModifiers([]);
     setSidebarComboFilter(null);
     setDraftAssignment(null);
     setDraftDoubleAssignment(null);
+    setNewTriggerHint(true);
   }, []);
+
+  // Clear the New Trigger hint as soon as the user advances the flow.
+  useEffect(() => {
+    if (!newTriggerHint) return;
+    if (selectedKey || isRecording || activeModifiers.length > 0) {
+      setNewTriggerHint(false);
+    }
+  }, [newTriggerHint, selectedKey, isRecording, activeModifiers]);
+
+  // Also clear on any pointer-down anywhere in the document — covers clicks on
+  // unrelated UI (sidebar tabs, top nav, canvas blank space) so the pulse
+  // doesn't hang around once the user's attention has moved on. Skip clicks on
+  // the New Trigger button itself so the prompt doesn't kill itself on arrival.
+  useEffect(() => {
+    if (!newTriggerHint) return;
+    function onDown(e) {
+      if (e.target.closest?.('.new-shortcut-btn')) return;
+      setNewTriggerHint(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [newTriggerHint]);
 
   // ── Narrow-window tracker (< 1200px) — controls right-panel auto-hide ────
   // When narrow, the MacroPanel is hidden unless there's an active selection,
@@ -3277,6 +3360,46 @@ function App() {
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
 
+  // "Get Started" inside WelcomeModal — proceed to the onboarding tour.
+  // Marks welcome seen but keeps onboarding incomplete so the tour fires.
+  const handleWelcomeContinue = useCallback(() => {
+    setShowWelcome(false);
+    window.electronAPI?.saveConfig({ hasSeenWelcome: true });
+    if (!onboardingCompleteRef.current) {
+      setShowOnboarding(true);
+    }
+  }, []);
+
+  // "Skip the tour" inside WelcomeModal — bypass both and mark everything seen.
+  const handleWelcomeSkip = useCallback(() => {
+    setShowWelcome(false);
+    onboardingCompleteRef.current = true;
+    window.electronAPI?.saveConfig({
+      hasSeenWelcome: true,
+      onboarding_complete: true,
+      onboarding_version_seen: ONBOARDING_VERSION,
+    });
+  }, []);
+
+  // Dev-only: replay the first-launch experience without uninstalling.
+  // Resets the welcome + onboarding flags, snaps to keyboard mapping (so the
+  // tour can render its highlights), then re-fires the welcome modal.
+  const handleReplayWelcome = useCallback(() => {
+    setShowSettings(false);
+    window.electronAPI?.resetOnboarding();
+    setTemplatesNudgeSeen(false);
+    setActiveModifiers([]);
+    setSidebarComboFilter(null);
+    setActiveArea('mapping');
+    setActiveView('keyboard');
+    window.electronAPI?.saveConfig({
+      hasSeenWelcome: false,
+      templates_nudge_seen: false,
+    });
+    onboardingCompleteRef.current = false;
+    setShowWelcome(true);
+  }, []);
+
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
     onboardingCompleteRef.current = true;
@@ -3646,7 +3769,11 @@ function App() {
         />
       )}
       {showWelcome && !showOnboarding && (
-        <WelcomeModal onDismiss={handleDismissWelcome} />
+        <WelcomeModal
+          onContinue={handleWelcomeContinue}
+          onSkip={handleWelcomeSkip}
+          onDismiss={handleDismissWelcome}
+        />
       )}
       {upgradePrompt && (
         <UpgradeModal
@@ -3943,6 +4070,7 @@ function App() {
                 onClearAssignment={handleClearAssignment}
                 onDuplicateFromContext={handleDuplicateFromContext}
                 onNewShortcut={handleNewShortcut}
+                newTriggerHint={newTriggerHint}
               />
             </div>
           )}
@@ -3965,6 +4093,7 @@ function App() {
               onStopRecord={handleStopRecord}
               recordCapture={recordCapture}
               onNewShortcut={handleNewShortcut}
+              newTriggerHint={newTriggerHint}
             />
           )}
           {activeArea === 'analytics' && (
@@ -4138,6 +4267,7 @@ function App() {
             onSetVoiceKey={handleSetVoiceKey}
             onClearVoiceKey={handleClearVoiceKey}
             onRestartOnboarding={handleRestartOnboarding}
+            onReplayWelcome={handleReplayWelcome}
             activeProfile={activeProfile}
             onImportTemplate={handleImportTemplate}
             onImportCadTemplate={handleImportCadTemplate}

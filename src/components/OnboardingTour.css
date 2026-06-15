@@ -170,38 +170,71 @@
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 .onboarding-btn-primary {
-  display: inline-block;
-  background: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
   color: var(--btn-primary-text);
   font-size: 14px;
-  font-weight: 600;
-  border: none;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.005em;
+  border: 1px solid var(--accent);
   border-radius: 6px;
   padding: 10px 28px;
   margin-bottom: 24px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.14s ease, box-shadow 0.14s ease, transform 0.08s ease;
+  box-shadow:
+    0 4px 18px rgba(var(--accent-rgb), 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .onboarding-btn-primary:hover {
-  background: var(--accent-dim);
+  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  box-shadow:
+    0 6px 22px rgba(var(--accent-rgb), 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+}
+
+.onboarding-btn-primary:active {
+  transform: translateY(0);
 }
 
 .onboarding-btn-secondary {
-  display: inline-block;
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-glow);
   color: var(--accent);
   font-size: 14px;
   font-weight: 600;
-  border: 1px solid var(--accent);
+  font-family: inherit;
+  letter-spacing: 0.005em;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
   border-radius: 6px;
   padding: 9px 24px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .onboarding-btn-secondary:hover {
-  background: var(--accent-glow);
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+[data-theme="light"] .onboarding-btn-secondary {
+  color: #c8860a;
+  background: rgba(232, 160, 32, 0.1);
+  border-color: rgba(232, 160, 32, 0.3);
+}
+
+[data-theme="light"] .onboarding-btn-secondary:hover {
+  color: #b07408;
+  background: rgba(232, 160, 32, 0.18);
+  border-color: #c8860a;
 }
 
 /* ── Skip link ──────────────────────────────────────────────────────────── */

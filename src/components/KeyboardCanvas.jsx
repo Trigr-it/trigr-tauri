@@ -21,7 +21,7 @@ export function comboString(modifiers) {
   return order.filter(m => modifiers.includes(m)).join('+');
 }
 
-export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecording, onStartRecord, onStopRecord, recordCapture, selectedKey, onNewShortcut }) {
+export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecording, onStartRecord, onStopRecord, recordCapture, selectedKey, onNewShortcut, newTriggerHint = false }) {
   const isBare = activeModifiers.includes('BARE');
   const combo  = comboString(activeModifiers);
   const recordStartTime = useRef(0);
@@ -92,7 +92,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             </button>
           ) : (
             <button
-              className="mod-layer-btn record-btn"
+              className={`mod-layer-btn record-btn${newTriggerHint ? ' record-btn--pulse' : ''}`}
               onMouseDown={onStartRecord}
               title="Click then press any key combination to select it"
             >
@@ -104,9 +104,9 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
               className="mod-layer-btn new-shortcut-btn"
               onClick={isRecording ? undefined : onNewShortcut}
               disabled={isRecording}
-              title="Clear the current selection and start a new shortcut from scratch"
+              title="Clear the current selection and start a new trigger from scratch"
             >
-              <Plus size={12} strokeWidth={2.5} style={{ marginRight: 4, verticalAlign: -1 }} /> New Shortcut
+              <Plus size={13} strokeWidth={2.5} style={{ marginRight: 4, verticalAlign: -1 }} /> New Trigger
             </button>
           )}
         </div>
@@ -116,6 +116,8 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
           <span className="combo-hint record-hint">Press any key combination — click Recording to cancel</span>
         ) : recordCapture ? (
           <span className="combo-hint record-captured">Captured: {recordCapture}</span>
+        ) : newTriggerHint ? (
+          <span className="combo-hint combo-hint-new-trigger">Press <strong>Record</strong> or click a key on the keyboard to start</span>
         ) : activeModifiers.length === 0 ? (
           <span className="combo-hint combo-hint-select-mods">↑ Select 1–3 modifiers to view that hotkey layer</span>
         ) : isBare ? (
@@ -207,6 +209,7 @@ export default function KeyboardCanvas({
   onClearAssignment,
   onDuplicateFromContext,
   onNewShortcut,
+  newTriggerHint = false,
 }) {
   const [firingKeyId, setFiringKeyId] = useState(null);
   const [scale, setScale]             = useState(1);
@@ -304,6 +307,7 @@ export default function KeyboardCanvas({
         recordCapture={recordCapture}
         selectedKey={selectedKey}
         onNewShortcut={onNewShortcut}
+        newTriggerHint={newTriggerHint}
       />
 
       {/* Empty state — shown only when no modifier is selected AND no assignments exist anywhere */}

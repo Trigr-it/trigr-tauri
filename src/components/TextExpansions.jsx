@@ -1117,6 +1117,10 @@ export default function TextExpansions({
   const [variantRenameValue, setVariantRenameValue] = useState('');
   const [variantRemoveConfirm, setVariantRemoveConfirm] = useState(null); // index of variant pending "collapse to single" confirm
   const [voicePhrases, setVoicePhrases]   = useState([]);
+  // Inline create-category state — when user picks "+ Add Category" in the
+  // editor dropdown, swap to an inline input that creates and selects in one go.
+  const [creatingCatInEditor, setCreatingCatInEditor] = useState(false);
+  const [editorNewCatName, setEditorNewCatName]       = useState('');
 
   // Push editing state to parent so foreground auto-switch is suppressed while
   // the user is mid-build. Non-null `editing` covers both Add and Edit flows.
@@ -1310,6 +1314,8 @@ export default function TextExpansions({
     setRenamingVariantIndex(null);
     setVariantRemoveConfirm(null);
     setVoicePhrases([]);
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
     setEditing({ isNew: true });
   }
 
@@ -1347,6 +1353,8 @@ export default function TextExpansions({
     setRenamingVariantIndex(null);
     setVariantRemoveConfirm(null);
     setVoicePhrases(Array.isArray(exp.voicePhrases) ? exp.voicePhrases : []);
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
     setEditing({ isNew: false, originalTrigger: exp.trigger });
   }
 
@@ -1378,6 +1386,22 @@ export default function TextExpansions({
       setNewCategoryColour(null);
     }
     setAddingCategory(false);
+  }
+
+  function commitEditorNewCategory() {
+    const name = editorNewCatName.trim();
+    if (name) {
+      const exists = normCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
+      if (!exists) onAddCategory(name, null);
+      setCategory(exists ? exists.name : name);
+    }
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
+  }
+
+  function cancelEditorNewCategory() {
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
   }
 
   function openCatColourPopover(e, forCat) {
@@ -1735,17 +1759,17 @@ export default function TextExpansions({
         <div className="te-header-right">
           {panelMode === 'expansions' && (
             <button className="te-add-btn" onClick={() => openAdd()} title="Add expansion" type="button">
-              + Add
+              + New Expansion
             </button>
           )}
           {panelMode === 'autocorrect' && (
             <button className="te-add-btn" onClick={openAcAdd} title="Add custom correction" type="button">
-              + Add
+              + New Correction
             </button>
           )}
           {panelMode === 'globalvars' && (
             <button className="te-add-btn" onClick={() => openGdAdd()} title="Add variable" type="button">
-              + Add Variable
+              + New Variable
             </button>
           )}
           <button
@@ -1966,7 +1990,7 @@ export default function TextExpansions({
                   <div className="te-empty-state">
                     <span className="te-empty-icon">✦</span>
                     <span className="te-empty-heading">No text expansions yet</span>
-                    <span className="te-empty-sub">Click <strong>+ Add</strong> to create your first expansion. Type a short trigger word and it expands to full text instantly anywhere on your computer.</span>
+                    <span className="te-empty-sub">Click <strong>+ New Expansion</strong> to create your first expansion. Type a short trigger word and it expands to full text instantly anywhere on your computer.</span>
                     <span className="te-empty-example">e.g. type <kbd className="te-empty-kbd">signoff</kbd> and press Space → <em>"Thanks for your message, speak soon!"</em></span>
                   </div>
                 ) : typeFilter !== 'all' && typeFiltered.length === 0 ? (
@@ -2111,10 +2135,61 @@ export default function TextExpansions({
                     </button>
                   </div>
 
-                  {/* Fixed-height top fields: name + trigger + mode + category */}
+                  {/* Fixed-height top fields: category + name + voice + trigger + mode */}
                   <div className="te-panel-fields">
                     <div className="te-panel-field">
-                      <label className="form-label">NAME <span className="te-optional-label">(OPTIONAL)</span></label>
+                      <label className="form-label">CATEGORY</label>
+                      {creatingCatInEditor ? (
+                        <div className="te-cat-inline-create">
+                          <input
+                            autoFocus
+                            className="form-input te-cat-inline-input"
+                            placeholder="New category name…"
+                            value={editorNewCatName}
+                            onChange={e => setEditorNewCatName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); commitEditorNewCategory(); }
+                              if (e.key === 'Escape') { e.preventDefault(); cancelEditorNewCategory(); }
+                            }}
+                            spellCheck={false}
+                          />
+                          <button
+                            type="button"
+                            className="te-cat-inline-confirm"
+                            onClick={commitEditorNewCategory}
+                            disabled={!editorNewCatName.trim()}
+                          >Add</button>
+                          <button
+                            type="button"
+                            className="te-cat-inline-cancel"
+                            onClick={cancelEditorNewCategory}
+                            aria-label="Cancel"
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <select
+                          className="te-cat-select"
+                          value={category || ''}
+                          onChange={e => {
+                            if (e.target.value === '__create_new__') {
+                              setEditorNewCatName('');
+                              setCreatingCatInEditor(true);
+                            } else {
+                              setCategory(e.target.value || null);
+                            }
+                          }}
+                        >
+                          <option value="">Uncategorised</option>
+                          {normCategories.map(cat => (
+                            <option key={cat.name} value={cat.name}>{cat.name}</option>
+                          ))}
+                          <option disabled value="__divider__">──────────</option>
+                          <option value="__create_new__">+ Add Category…</option>
+                        </select>
+                      )}
+                    </div>
+                    <div className="te-panel-field">
+                      <label className="form-label">DISPLAY LABEL <span className="te-optional-label">(OPTIONAL)</span></label>
                       <input
                         className="form-input"
                         placeholder="e.g. Email sign-off, CAD polyline command…"
@@ -2200,19 +2275,6 @@ export default function TextExpansions({
                         onClick={() => setTriggerMode('immediate')}
                         title="Fire immediately when trigger is typed"
                       >⚡ Instant</button>
-                    </div>
-                    <div className="te-panel-field">
-                      <label className="form-label">CATEGORY</label>
-                      <select
-                        className="te-cat-select"
-                        value={category || ''}
-                        onChange={e => setCategory(e.target.value || null)}
-                      >
-                        <option value="">Uncategorised</option>
-                        {normCategories.map(cat => (
-                          <option key={cat.name} value={cat.name}>{cat.name}</option>
-                        ))}
-                      </select>
                     </div>
                   </div>
 
@@ -2486,7 +2548,7 @@ export default function TextExpansions({
                     <path d="M12 20h9"/>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
-                  <p>Select an expansion to edit,<br/>or click <strong>+ Add</strong> to create a new one</p>
+                  <p>Select an expansion to edit,<br/>or click <strong>+ New Expansion</strong> to create a new one</p>
                 </div>
               )}
             </div>

@@ -149,21 +149,44 @@
 }
 
 .stp-add-btn {
-  height: 24px;
-  padding: 0 10px;
-  background: var(--accent-glow);
-  border: 1px solid var(--border-accent);
-  border-radius: 5px;
-  color: var(--accent);
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 11.5px;
   font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.005em;
   cursor: pointer;
-  transition: all 0.15s;
-  font-family: var(--font-body);
+  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, transform 0.08s ease;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: 1px solid var(--accent);
+  color: var(--btn-primary-text);
+  box-shadow:
+    0 1px 6px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .stp-add-btn:hover {
-  background: var(--accent-glow-strong);
+  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  box-shadow:
+    0 2px 10px rgba(var(--accent-rgb), 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.stp-add-btn:active {
+  transform: translateY(0.5px);
+}
+
+.stp-add-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 1px 6px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 2px rgba(var(--accent-rgb), 0.45);
 }
 
 .stp-cap-nudge {
@@ -274,27 +297,51 @@
   color: var(--cat-color, var(--accent));
 }
 
+/* Primary action (Add Category) — solid-gold gradient, mirrors
+   .profile-action-btn--primary in Sidebar.css. */
 .stp-cat-new-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  width: 100%;
+  justify-content: center;
+  gap: 7px;
+  width: calc(100% - 20px);
+  margin: 8px 10px 0;
   height: 30px;
-  padding: 0 10px;
-  background: transparent;
-  border: none;
-  border-left: 2px solid transparent;
-  color: var(--text-muted);
-  font-size: 11px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
   font-weight: 600;
-  font-family: var(--font-display);
-  letter-spacing: 0.04em;
+  font-family: inherit;
+  letter-spacing: 0.005em;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease,
+              box-shadow 0.14s ease, transform 0.08s ease;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: 1px solid var(--accent);
+  color: var(--btn-primary-text);
+  box-shadow:
+    0 1px 6px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .stp-cat-new-btn:hover {
-  color: var(--accent);
-  background: var(--accent-glow);
+  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  box-shadow:
+    0 2px 10px rgba(var(--accent-rgb), 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.stp-cat-new-btn:active {
+  transform: translateY(0.5px);
+}
+
+.stp-cat-new-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 1px 6px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 2px rgba(var(--accent-rgb), 0.45);
 }
 
 /* Quick Action editor footer: equalise Clear Action + Duplicate widths.
@@ -306,19 +353,88 @@
   min-width: 0;
 }
 
-/* Quick action pack import/export buttons (sidebar, QA mode only) */
+/* Quick action pack import/export buttons (sidebar, QA mode only) —
+   outline-gold secondary, mirrors .profile-action-btn--secondary. */
 .stp-cat-pack-btn {
-  font-family: var(--font-body);
-  font-weight: 500;
-  letter-spacing: 0;
+  background: var(--accent-glow);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+  box-shadow: none;
+  margin-top: 6px;
 }
 
-.stp-cat-pack-btn:first-of-type {
-  margin-top: 6px;
-  border-top: 1px solid var(--border-bright);
-  padding-top: 8px;
-  height: auto;
-  min-height: 30px;
+.stp-cat-pack-btn:hover {
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+  box-shadow: none;
+}
+
+[data-theme="light"] .stp-cat-pack-btn {
+  color: #c8860a;
+  background: rgba(232, 160, 32, 0.1);
+  border-color: rgba(232, 160, 32, 0.3);
+}
+
+[data-theme="light"] .stp-cat-pack-btn:hover {
+  color: #b07408;
+  background: rgba(232, 160, 32, 0.18);
+  border-color: #c8860a;
+}
+
+/* Inline create-category row inside the QA editor — replaces the <select>
+   when the user picks "+ Add Category". Mirrors TextExpansions' equivalent. */
+.stp-cat-inline-create {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stp-cat-inline-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.stp-cat-inline-confirm {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: 1px solid var(--accent);
+  color: var(--btn-primary-text);
+  box-shadow: 0 1px 4px rgba(var(--accent-rgb), 0.3);
+  transition: background 0.14s ease, box-shadow 0.14s ease;
+}
+
+.stp-cat-inline-confirm:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+}
+
+.stp-cat-inline-confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.stp-cat-inline-cancel {
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.stp-cat-inline-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
 }
 
 /* ── Category inline rename ──────────────────────────────────────────────── */

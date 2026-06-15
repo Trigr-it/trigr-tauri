@@ -603,6 +603,10 @@ export default function SearchTemplatesPanel({
   const [qaFormValue, setQaFormValue]      = useState({});
   const [qaCategory, setQaCategory]        = useState(null);
   const [qaVoicePhrases, setQaVoicePhrases] = useState([]);
+  // Inline create-category state inside the QA editor — sentinel "+ Add Category"
+  // in the dropdown swaps the select for an inline input + Add/Cancel buttons.
+  const [creatingCatInEditor, setCreatingCatInEditor] = useState(false);
+  const [editorNewCatName, setEditorNewCatName]       = useState('');
   const [qaConfirmAction, setQaConfirmAction] = useState(null); // null | 'clear-action' | 'delete'
   // Right-click row context menu (Quick Actions): { id, x, y } | null
   const [qaItemContextMenu, setQaItemContextMenu] = useState(null);
@@ -901,6 +905,8 @@ export default function SearchTemplatesPanel({
     setQaVoicePhrases(readVoicePhrases(qa.data));
     setQaIsNew(false);
     setQaConfirmAction(null);
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
   }
 
   function openNewQuickAction() {
@@ -912,12 +918,16 @@ export default function SearchTemplatesPanel({
     setQaVoicePhrases([]);
     setQaIsNew(true);
     setQaConfirmAction(null);
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
   }
 
   function closeQaPanel() {
     setQaSelectedId(null);
     setQaIsNew(false);
     setQaConfirmAction(null);
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
   }
 
   function handleQaSave() {
@@ -950,6 +960,8 @@ export default function SearchTemplatesPanel({
     setQaFormValue({});
     setQaCategory(activeCategory === 'All' || activeCategory === '__uncategorised__' ? null : activeCategory);
     setQaVoicePhrases([]);
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
   }
 
   // Duplicate a quick action by id. Creates a new entry with " (copy)" suffix
@@ -1013,6 +1025,22 @@ export default function SearchTemplatesPanel({
     setNewCategoryName('');
     setNewCategoryColour(null);
     setAddingCategory(false);
+  }
+
+  function commitEditorNewCategory() {
+    const name = editorNewCatName.trim();
+    if (name) {
+      const exists = qaCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
+      if (!exists) onAddQaCategory?.(name, null);
+      setQaCategory(exists ? exists.name : name);
+    }
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
+  }
+
+  function cancelEditorNewCategory() {
+    setCreatingCatInEditor(false);
+    setEditorNewCatName('');
   }
 
   function openCatColourPopover(e, forCat) {
@@ -1426,7 +1454,7 @@ export default function SearchTemplatesPanel({
                   title="Import a quick action pack file (.json)"
                   type="button"
                 >
-                  ↓ Import Pack
+                  ↓ Import Category
                 </button>
                 <button
                   className="stp-cat-new-btn stp-cat-pack-btn"
@@ -1724,10 +1752,76 @@ export default function SearchTemplatesPanel({
 
               <div className="type-selector-separator" aria-hidden="true" />
 
-              {/* Dynamic form per type */}
+              {/* Dynamic form per type — Category and Display Label are
+                  rendered first (consistent across editors), then type-specific
+                  fields, then secondary (Voice). */}
               <div className="form-body">
+                {/* Category */}
+                <div className="form-section">
+                  <label className="form-label">Category</label>
+                  {creatingCatInEditor ? (
+                    <div className="stp-cat-inline-create">
+                      <input
+                        autoFocus
+                        className="form-input stp-cat-inline-input"
+                        placeholder="New category name…"
+                        value={editorNewCatName}
+                        onChange={e => setEditorNewCatName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitEditorNewCategory(); }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelEditorNewCategory(); }
+                          e.stopPropagation();
+                        }}
+                        spellCheck={false}
+                      />
+                      <button
+                        type="button"
+                        className="stp-cat-inline-confirm"
+                        onClick={commitEditorNewCategory}
+                        disabled={!editorNewCatName.trim()}
+                      >Add</button>
+                      <button
+                        type="button"
+                        className="stp-cat-inline-cancel"
+                        onClick={cancelEditorNewCategory}
+                        aria-label="Cancel"
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <select
+                      className="form-select"
+                      style={{ width: 'auto', minWidth: 140 }}
+                      value={qaCategory || ''}
+                      onChange={e => {
+                        if (e.target.value === '__create_new__') {
+                          setEditorNewCatName('');
+                          setCreatingCatInEditor(true);
+                        } else {
+                          setQaCategory(e.target.value || null);
+                        }
+                      }}
+                    >
+                      <option value="">Uncategorised</option>
+                      {qaCategories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      <option disabled value="__divider__">──────────</option>
+                      <option value="__create_new__">+ Add Category…</option>
+                    </select>
+                  )}
+                </div>
+
+                {/* Display label */}
+                <div className="form-section" style={{ marginTop: 4 }}>
+                  <label className="form-label">Display label</label>
+                  <input
+                    className="form-input"
+                    placeholder="Short label for Quick Search..."
+                    value={qaLabel}
+                    onChange={e => setQaLabel(e.target.value)}
+                  />
+                </div>
+
                 {qaType === 'url' && (
-                  <div className="form-section">
+                  <div className="form-section" style={{ marginTop: 4 }}>
                     <label className="form-label">URL to open</label>
                     <input
                       className="form-input"
@@ -1738,10 +1832,12 @@ export default function SearchTemplatesPanel({
                   </div>
                 )}
                 {qaType === 'app' && (
-                  <AppForm value={qaFormValue} onChange={setQaFormValue} />
+                  <div style={{ marginTop: 4 }}>
+                    <AppForm value={qaFormValue} onChange={setQaFormValue} />
+                  </div>
                 )}
                 {qaType === 'folder' && (
-                  <div className="form-section">
+                  <div className="form-section" style={{ marginTop: 4 }}>
                     <label className="form-label">Folder path</label>
                     <div className="file-input-row">
                       <input
@@ -1758,28 +1854,10 @@ export default function SearchTemplatesPanel({
                   </div>
                 )}
                 {qaType === 'macro' && (
-                  <MacroSequenceForm value={qaFormValue} onChange={setQaFormValue} globalInputMethod={globalInputMethod} />
+                  <div style={{ marginTop: 4 }}>
+                    <MacroSequenceForm value={qaFormValue} onChange={setQaFormValue} globalInputMethod={globalInputMethod} />
+                  </div>
                 )}
-
-                {/* Display label */}
-                <div className="form-section" style={{ marginTop: 4 }}>
-                  <label className="form-label">Display label</label>
-                  <input
-                    className="form-input"
-                    placeholder="Short label for Quick Search..."
-                    value={qaLabel}
-                    onChange={e => setQaLabel(e.target.value)}
-                  />
-                </div>
-
-                {/* Category */}
-                <div className="form-section" style={{ marginTop: 4 }}>
-                  <label className="form-label">Category</label>
-                  <select className="form-select" style={{ width: 'auto', minWidth: 140 }} value={qaCategory || ''} onChange={e => setQaCategory(e.target.value || null)}>
-                    <option value="">Uncategorised</option>
-                    {qaCategories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                  </select>
-                </div>
 
                 {/* Voice commands */}
                 <div className="form-section" style={{ marginTop: 4 }}>
