@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clipboard manager comparison: Ditto vs Trigr vs ClipboardFusion — Trigr</title>
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../favicon-192.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="description" content="A 2026 comparison of three popular Windows clipboard managers: Ditto, Trigr, and ClipboardFusion.">
+
+<!-- SEO: canonical -->
+<link rel="canonical" href="https://usetrigr.com/blog/clipboard-manager-comparison.html">
+
+<!-- Open Graph -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Clipboard manager comparison: Ditto vs Trigr vs ClipboardFusion">
+<meta property="og:description" content="A 2026 comparison of three popular Windows clipboard managers: Ditto, Trigr, and ClipboardFusion.">
+<meta property="og:url" content="https://usetrigr.com/blog/clipboard-manager-comparison.html">
+<meta property="og:site_name" content="Trigr">
+<meta property="article:published_time" content="2026-06-22">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Clipboard manager comparison: Ditto vs Trigr vs ClipboardFusion">
+<meta name="twitter:description" content="A 2026 comparison of three popular Windows clipboard managers: Ditto, Trigr, and ClipboardFusion.">
+
+<script>
+(function(){
+  try {
+    var saved = localStorage.getItem('trigr-site-theme');
+    var theme;
+    if (saved === 'light' || saved === 'dark') { theme = saved; }
+    else { theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="blog.css">
+</head>
+<body>
+
+<nav>
+  <a href="../index.html" class="nav-logo">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="logo-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="logo-key-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#logo-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#logo-key-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">TRIGR</span>
+  </a>
+  <div class="nav-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#how">How it works</a>
+    <a href="../trigr-help.html">Guide</a>
+    <a href="../roadmap.html">Roadmap</a>
+    <a href="../pricing.html">Pricing</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
+  </div>
+</nav>
+
+<main>
+  <div class="blog-container">
+    <article>
+      <header>
+        <span class="eyebrow">Comparison</span>
+        <h1>Clipboard manager comparison: Ditto vs Trigr vs ClipboardFusion</h1>
+        <div class="meta-row">
+          <time datetime="2026-06-22">22 June 2026</time>
+          <span class="dot"></span>
+          <span>4 min read</span>
+        </div>
+      </header>
+
+      <div class="prose">
+        <p>Windows has a clipboard, technically. Press Win+V and you get the last several things you copied. It is fine until you actually use it. You cannot pin items, formatting is dropped on paste, and there is no search. History wipes on reboot, and tags do not exist. Twenty years of clipboard managers exist because Win+V is the bare minimum and most knowledge workers want more.</p>
+
+        <p>Three options dominate the Windows market in 2026. Here is how they actually compare.</p>
+
+        <h2>Ditto</h2>
+
+        <p>Open source, free, mature, written in C++. Ditto has been around since the early 2000s and the UI shows it. Functionally it does almost everything you would expect: history, search, pinned clips, multiple clipboard groups, network sharing between machines on the same LAN.</p>
+
+        <p>The interface is dated. Settings dialogs feel like classic Win32 with hundreds of options spread across nested tabs. Rich-text editing is absent, complex content does not get a preview, and tagging is limited to folders. Images are stored but rendered in a basic preview pane. Keyboard-only operation is its strongest point. Once you learn the shortcuts, Ditto is fast.</p>
+
+        <p><strong>Cost:</strong> free.</p>
+        <p><strong>Best fit:</strong> Windows power users who care about function over form, want LAN-share between machines, and are comfortable with a dated UI.</p>
+
+        <h2>ClipboardFusion</h2>
+
+        <p>Commercial, made by Binary Fortress. Polished UI, regular updates, paid tiers including a cloud sync option (their own sync service) for working across devices. Built-in scripting engine with C# and JavaScript macros that run against clipboard content. Image, file, and rich-text support.</p>
+
+        <p>The differentiator versus Ditto is the macro engine. ClipboardFusion lets you write a script that strips formatting on copy, converts case, removes emails, or runs arbitrary transformations on whatever you paste. That is useful for power workflows, and the scripting hooks are well documented.</p>
+
+        <p><strong>Cost:</strong> free tier with limits, Pro around &dollar;25 one-off, Pro Plus with cloud sync runs about &dollar;30 per year.</p>
+        <p><strong>Best fit:</strong> users who need cross-machine clipboard sync without setting up a LAN, or who want to run transformations on clipboard content.</p>
+
+        <h2>Trigr</h2>
+
+        <p>Trigr's clipboard manager is one feature inside a wider hotkey, macro, and text expansion suite. The clipboard history opens with Ctrl+Shift+V into a fast search overlay. Items can be pinned, tagged automatically (URL, email, code, address are detected and auto-tagged), and searched. Images are stored alongside text and rendered with a zoomable preview. Rich-text formatting is preserved.</p>
+
+        <p>The integration is the point. A clipboard item can be pasted, or pasted-then-acted-on. The same UI that manages your clipboard manages your hotkeys, expansions, and macros, all backed by one local JSON config. There is no separate database to back up. No second tray icon.</p>
+
+        <p><strong>Cost:</strong> free during Beta.</p>
+        <p><strong>Best fit:</strong> users who already want hotkeys or expansions and would rather have one tool than three.</p>
+
+        <h2>Side-by-side</h2>
+
+        <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Tool</th><th>Price</th><th>OSS</th><th>Sync</th><th>Rich text</th><th>Images</th><th>Search</th><th>Macros</th><th>Hotkeys integrated</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Ditto</td><td>Free</td><td>Yes</td><td>LAN</td><td>No</td><td>Basic</td><td>Yes</td><td>No</td><td>No</td></tr>
+            <tr><td>ClipboardFusion</td><td>Free / Paid</td><td>No</td><td>Vendor cloud</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes (scripting)</td><td>No</td></tr>
+            <tr><td>Trigr</td><td>Free (Beta)</td><td>Source-available</td><td>Optional (file path)</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes (visual)</td><td>Yes</td></tr>
+          </tbody>
+        </table>
+        </div>
+
+        <h2>Picking by use case</h2>
+
+        <h3>Power user on a budget, multi-machine on the same network</h3>
+        <p>Ditto. Free, mature, LAN-share works well, and the UI ugliness is the only real cost. If you do not need a polished interface, this is hard to beat at zero pounds.</p>
+
+        <h3>You need cloud sync across home and work, you do not want to manage storage</h3>
+        <p>ClipboardFusion. The hosted sync option is the simplest answer here. If you also want clipboard transforms (strip formatting, convert case) the scripting engine earns its keep.</p>
+
+        <h3>You want hotkeys and text expansion alongside your clipboard manager</h3>
+        <p>Trigr. The cost of three separate utilities adds up, both in licence fees and in mental overhead. One config file, one shortcut for everything.</p>
+
+        <h2>What everybody handles badly</h2>
+
+        <p>A few things to be aware of regardless of which tool you pick.</p>
+
+        <h3>Sensitive data</h3>
+        <p>Password managers copy your password to the clipboard for a few seconds, then clear it. A history-keeping clipboard manager that catches that copy is a security problem. All three tools above have excluded-application lists or sensitive-data filters. Read the docs and configure them before you commit a password manager to your daily workflow.</p>
+
+        <h3>Win+Shift+S screenshots</h3>
+        <p>Windows' built-in snipping tool copies images in a specific format (DIBv5) that not all clipboard managers handle gracefully. Test this specifically with whatever tool you pick. Trigr handles it, Ditto handles it, ClipboardFusion handles it, but new releases have occasionally broken the path. Verify on your machine before you rely on it.</p>
+
+        <h3>Storage growth</h3>
+        <p>A clipboard manager that retains everything you have copied for two years will end up with a substantial database. All three tools offer retention limits. Set a sane cap (a few thousand items, or thirty days) at install rather than after your disk starts complaining.</p>
+
+        <aside class="cta-card">
+          <h3>Try Trigr</h3>
+          <p>Clipboard manager, hotkeys, macros, and text expansion in one tool. Auto-tagged history, image support, search overlay. Free during Beta. Windows 10 and 11.</p>
+          <a class="cta-btn" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="blog_cta" data-arch="x64">Download Now</a>
+        </aside>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-top">
+    <div class="footer-brand">
+      <a href="../index.html" class="ft-logo">
+        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+        <span class="ft-wm">TRIGR</span>
+      </a>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
+    </div>
+    <div class="footer-cols">
+      <div class="ft-col">
+        <h4>Product</h4>
+        <a href="../index.html#features">Features</a>
+        <a href="../index.html#how">How it works</a>
+        <a href="../roadmap.html">Roadmap</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
+      </div>
+      <div class="ft-col">
+        <h4>Resources</h4>
+        <a href="../trigr-help.html">Guide</a>
+        <a href="../trigr-alpha-tester-guide.html">Tester guide</a>
+        <a href="https://trigr.featurebase.app" target="_blank" rel="noopener">Feedback &amp; Roadmap</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/issues">Report a bug</a>
+      </div>
+      <div class="ft-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:admin@usetrigr.com">admin@usetrigr.com</a>
+        <a href="https://github.com/Trigr-it">@Trigr-it</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span class="ft-copy">&copy; 2026 Trigr &middot; Designed by a human, built by an AI, shipped by both</span>
+    <div class="ft-meta">
+      <a href="../trigr-help.html">Privacy</a>
+      <a href="https://github.com/Trigr-it/trigr-tauri/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+function toggleTheme() {
+  var html = document.documentElement;
+  var current = html.getAttribute('data-theme') || 'dark';
+  var next = current === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '🌙' : '☀';
+  localStorage.setItem('trigr-site-theme', next);
+}
+(function() {
+  var btn = document.getElementById('theme-btn');
+  if (btn) {
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    btn.textContent = current === 'light' ? '🌙' : '☀';
+  }
+})();
+</script>
+</body>
+</html>
