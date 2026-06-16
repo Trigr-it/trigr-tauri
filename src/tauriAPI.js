@@ -133,6 +133,9 @@ window.electronAPI = {
   onConfigReloadedFromSync: (callback) => {
     listen('config-reloaded-from-sync', (event) => callback(event.payload)).then(u => { listeners['config-reloaded-from-sync'] = u; });
   },
+  onSyncConflictResolved: (callback) => {
+    listen('sync-conflict-resolved', (event) => callback(event.payload)).then(u => { listeners['sync-conflict-resolved'] = u; });
+  },
 
   // ── Backup & restore ────────────────────────────────────────────────────────
   exportConfig:   ()         => invoke('export_config'),

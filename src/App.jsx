@@ -720,6 +720,46 @@ function App() {
         });
         showNotification('Config updated from sync', 'info');
       });
+
+      // Phase 2 cross-device merge: another machine's edits to top-level
+      // sections survived this save because we'd never seen those changes
+      // locally. Surface a toast so the user knows their save picked up
+      // remote work.
+      window.electronAPI.onSyncConflictResolved?.((payload) => {
+        const sections = Array.isArray(payload?.sections) ? payload.sections : [];
+        if (sections.length === 0) return;
+        const SECTION_LABELS = {
+          radialMenuItemsByProfile: 'radial menu',
+          radialMenuItems: 'radial menu',
+          radialMenuHotkey: 'radial menu hotkey',
+          assignments: 'triggers',
+          profiles: 'profiles',
+          profileSettings: 'profile settings',
+          activeProfile: 'active profile',
+          activeGlobalProfile: 'active profile',
+          expansions: 'text expansions',
+          expansionCategories: 'expansion categories',
+          globalVariables: 'global variables',
+          searchTemplates: 'search templates',
+          searchTemplateCategories: 'search template categories',
+          quickActionCategories: 'quick action categories',
+          searchOverlayHotkey: 'search hotkey',
+          clipboardPasteHotkey: 'clipboard hotkey',
+          globalPauseToggleKey: 'pause hotkey',
+          voiceHotkey: 'voice hotkey',
+          theme: 'theme',
+          autocorrectEnabled: 'autocorrect',
+          macrosEnabledOnStartup: 'macros on startup',
+          clipboardCaptureEnabled: 'clipboard capture',
+          clipboardExcludedApps: 'clipboard exclusions',
+        };
+        const labels = Array.from(new Set(sections.map(s => SECTION_LABELS[s] || s)));
+        let joined;
+        if (labels.length === 1) joined = labels[0];
+        else if (labels.length === 2) joined = `${labels[0]} and ${labels[1]}`;
+        else joined = `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+        showNotification(`Merged ${joined} from another device.`, 'info');
+      });
     };
     init();
     return () => {

@@ -2,7 +2,7 @@ use log::{error, info, warn};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 
 const MAX_BACKUPS: usize = 10;
@@ -560,6 +560,9 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
                                     // Protect against a cross-device clobber that
                                     // empties the radial layout before we apply it.
                                     guard_destructive_sync(&cfg);
+                                    // Phase 2: the reloaded config is now the
+                                    // frontend's base for any subsequent save.
+                                    snapshot_loaded(&cfg);
                                     info!("[Trigr] Config watcher: valid config change detected — emitting reload event");
                                     if let Err(e) = app_handle.emit("config-reloaded-from-sync", &cfg) {
                                         error!("[Trigr] Failed to emit config reload event: {}", e);
@@ -907,6 +910,143 @@ fn guard_destructive_sync(incoming: &Value) {
             );
             create_timestamped_backup(&lkg);
         }
+    }
+}
+
+// ── Phase 2: cross-device revision tracking ─────────────────────────────────
+//
+// Defends against the shared-config last-writer-wins clobber: when two machines
+// edit the cloud-synced config and one writes a stale base over the other's
+// edits. We stamp every save with a monotonic `configRevision`; at save time
+// we re-read disk and, if disk's revision is ahead of what the frontend last
+// loaded from, run a 3-way merge (base / incoming / existing) so each side's
+// genuinely-edited top-level keys both survive. Phase 1's destructive-regression
+// guard stays in place as the backstop for keys both sides edited.
+
+static LAST_LOADED_REVISION: AtomicU64 = AtomicU64::new(0);
+static LAST_LOADED_BASE: Mutex<Option<Value>> = Mutex::new(None);
+
+/// Top-level fields that are not persistent user state and must be excluded
+/// when diffing the frontend's view against on-disk state during a merge.
+/// `configRevision` and `lastModifiedUtc` are written by Trigr itself on every
+/// save; `_restoredFrom` is injected at load time and never belongs in the
+/// merge calculus.
+pub const INTERNAL_CONFIG_KEYS: &[&str] = &["configRevision", "lastModifiedUtc", "_restoredFrom"];
+
+/// Read the monotonic revision from a config, defaulting to 0 for configs
+/// produced by pre-Phase 2 builds (the field will be absent).
+pub fn config_revision(cfg: &Value) -> u64 {
+    cfg.get("configRevision").and_then(|v| v.as_u64()).unwrap_or(0)
+}
+
+/// Update the in-process snapshot of what the frontend's view started from.
+/// Called whenever a fresh authoritative state lands: initial load, our own
+/// successful write, or a watcher-driven sync reload (before the reload event
+/// fires so the next save merges against the post-reload base).
+pub fn snapshot_loaded(cfg: &Value) {
+    LAST_LOADED_REVISION.store(config_revision(cfg), Ordering::SeqCst);
+    if let Ok(mut guard) = LAST_LOADED_BASE.lock() {
+        *guard = Some(cfg.clone());
+    }
+}
+
+pub fn last_loaded_revision() -> u64 {
+    LAST_LOADED_REVISION.load(Ordering::SeqCst)
+}
+
+pub fn last_loaded_base() -> Option<Value> {
+    LAST_LOADED_BASE.lock().ok().and_then(|g| g.clone())
+}
+
+/// Outcome of a save-time 3-way merge. `remote_preserved` lists the top-level
+/// keys whose values came from disk (i.e. another machine edited them while
+/// this view was active) — empty when no conflict occurred.
+pub struct MergeOutcome {
+    pub merged: Value,
+    pub remote_preserved: Vec<String>,
+}
+
+/// 3-way merge for cross-device shared-config safety. Compares three states:
+///   - `base`: what the frontend's view started from (last load/save/reload)
+///   - `incoming`: the frontend's just-submitted save
+///   - `existing`: what's on disk right now (may include another machine's
+///     edits delivered by cloud sync since `base` was captured)
+/// Per top-level key, we take `incoming` when the user edited locally and
+/// `existing` when only the remote did. Same-key edits on both sides last-
+/// writer-wins on `incoming` — Phase 1's destructive-regression guard backs
+/// up the prior state if the local edit would zero out a populated set.
+/// Internal keys (configRevision/lastModifiedUtc/_restoredFrom) are excluded
+/// from the diff because the save path stamps them itself.
+pub fn merge_with_remote(base: &Value, incoming: &Value, existing: &Value) -> MergeOutcome {
+    let (base_obj, in_obj, ex_obj) = match (
+        base.as_object(),
+        incoming.as_object(),
+        existing.as_object(),
+    ) {
+        (Some(b), Some(i), Some(e)) => (b, i, e),
+        _ => {
+            // Degenerate input — fall back to the legacy shallow-merge so the
+            // save still completes.
+            return MergeOutcome {
+                merged: shallow_merge(incoming, existing),
+                remote_preserved: Vec::new(),
+            };
+        }
+    };
+
+    let mut merged = ex_obj.clone();
+    let mut remote_preserved: Vec<String> = Vec::new();
+
+    let mut keys: std::collections::BTreeSet<String> = base_obj.keys().cloned().collect();
+    keys.extend(in_obj.keys().cloned());
+    keys.extend(ex_obj.keys().cloned());
+
+    for k in keys {
+        if INTERNAL_CONFIG_KEYS.contains(&k.as_str()) {
+            continue;
+        }
+        let b = base_obj.get(&k);
+        let i = in_obj.get(&k);
+        let e = ex_obj.get(&k);
+
+        let local_edited = i != b;
+        let remote_edited = e != b;
+
+        if local_edited {
+            match i {
+                Some(v) => {
+                    merged.insert(k.clone(), v.clone());
+                }
+                None => {
+                    merged.remove(&k);
+                }
+            }
+        } else if remote_edited {
+            // Disk value already lives in `merged` from ex_obj.clone(); record
+            // the key so the caller can surface it in a "kept remote edits" toast.
+            remote_preserved.push(k.clone());
+        }
+    }
+
+    MergeOutcome {
+        merged: Value::Object(merged),
+        remote_preserved,
+    }
+}
+
+/// Legacy shallow-merge: every key in `incoming` overwrites `existing`, keys
+/// only present in `existing` are preserved. Used on the non-conflict path
+/// and as a fallback when 3-way merge inputs aren't objects.
+pub fn shallow_merge(incoming: &Value, existing: &Value) -> Value {
+    match (existing.as_object(), incoming.as_object()) {
+        (Some(ex), Some(inc)) => {
+            let mut m = ex.clone();
+            for (k, v) in inc {
+                m.insert(k.clone(), v.clone());
+            }
+            Value::Object(m)
+        }
+        _ => incoming.clone(),
     }
 }
 

@@ -39,6 +39,10 @@ fn load_config() -> Value {
                 // Healthy load — create timestamped backup snapshot
                 config::create_timestamped_backup(&c);
             }
+            // Phase 2: record what the frontend's view started from so any
+            // subsequent save can detect a cross-device sync that landed
+            // between this load and the next save.
+            config::snapshot_loaded(&c);
             c
         }
         None => {
@@ -51,27 +55,57 @@ fn load_config() -> Value {
             });
             config::save_config(&defaults);
             config::update_last_known_good(&defaults);
+            config::snapshot_loaded(&defaults);
             defaults
         }
     }
 }
 
 #[tauri::command]
-fn save_config(config: Value) -> bool {
+fn save_config(app: tauri::AppHandle, config: Value) -> bool {
+    // Re-read from disk RIGHT NOW so we catch any cross-device sync that landed
+    // between the frontend's last load and this save. Without this, we'd merge
+    // against the file's state at app launch and silently overwrite another
+    // machine's edits.
     let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
 
-    // Merge incoming over existing, preserving fields not in incoming
-    let merged = if let (Some(ex_obj), Some(in_obj)) =
-        (existing.as_object(), config.as_object())
-    {
-        let mut m = ex_obj.clone();
-        for (k, v) in in_obj {
-            m.insert(k.clone(), v.clone());
+    // Phase 2 conflict detection: disk revision ahead of what the frontend's
+    // view started from means another machine wrote since we loaded.
+    let existing_rev = config::config_revision(&existing);
+    let last_loaded_rev = config::last_loaded_revision();
+    let base = config::last_loaded_base();
+    let has_conflict = base.is_some() && existing_rev > last_loaded_rev;
+
+    let (mut merged, remote_preserved) = if has_conflict {
+        let outcome = config::merge_with_remote(base.as_ref().unwrap(), &config, &existing);
+        if !outcome.remote_preserved.is_empty() {
+            log::warn!(
+                "[Trigr] save_config: sync conflict — disk rev {} > loaded rev {}; preserved remote edits to {:?}",
+                existing_rev,
+                last_loaded_rev,
+                outcome.remote_preserved
+            );
         }
-        Value::Object(m)
+        (outcome.merged, outcome.remote_preserved)
     } else {
-        config.clone()
+        (config::shallow_merge(&config, &existing), Vec::new())
     };
+
+    // Stamp the new revision + UTC timestamp. We bump above max(existing, loaded)
+    // so two machines writing concurrently can't issue the same revision number.
+    if let Some(obj) = merged.as_object_mut() {
+        let new_rev = existing_rev.max(last_loaded_rev).saturating_add(1);
+        obj.insert(
+            "configRevision".to_string(),
+            Value::Number(serde_json::Number::from(new_rev)),
+        );
+        obj.insert(
+            "lastModifiedUtc".to_string(),
+            Value::String(chrono::Utc::now().to_rfc3339()),
+        );
+        // `_restoredFrom` is a transient load-time marker — never persist it.
+        obj.remove("_restoredFrom");
+    }
 
     // Back up the existing config first if this is a significant change OR a
     // destructive regression (radial/assignments going from populated to empty).
@@ -95,9 +129,22 @@ fn save_config(config: Value) -> bool {
         if !destructive {
             config::update_last_known_good(&merged);
         }
+        // Snapshot the just-written state as the new base for the next save —
+        // otherwise a follow-up save would still see disk ahead of base and
+        // run the 3-way merge needlessly.
+        config::snapshot_loaded(&merged);
         // Voice phrases live inside the assignments blob, which is part of every save.
         // Pre-warm asynchronously so the next recognition is cache-hit fast.
         voice::prewarm_from_state();
+        // Surface a sync-conflict toast when remote edits were preserved.
+        if !remote_preserved.is_empty() {
+            if let Err(e) = app.emit(
+                "sync-conflict-resolved",
+                serde_json::json!({ "sections": remote_preserved }),
+            ) {
+                log::error!("[Trigr] Failed to emit sync-conflict-resolved: {}", e);
+            }
+        }
     }
     ok
 }
