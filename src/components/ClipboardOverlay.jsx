@@ -162,6 +162,20 @@ export default function ClipboardOverlay() {
   // When the overlay is open it never steals OS focus (WS_EX_NOACTIVATE).
   // The Rust LL hook intercepts keystrokes and emits 'clipboard-overlay-key'
   // with { vk, shift } so navigation and search still work without DOM focus.
+  //
+  // Refs give the one-time listener current values without re-registering on
+  // every keystroke. The previous `[filtered, selected, editing]` deps re-ran
+  // the effect on every search change; `listen()`/unlisten are async and the
+  // new subscription could finish before the old one tore down, so multiple
+  // handlers ended up alive and each keystroke wrote N copies of itself into
+  // the search box (bug: 'the' became 'tthhee'). See
+  // [[feedback_tauri_listener_registration_race]].
+  const editingRef = useRef(editing);
+  const selectedRef = useRef(selected);
+  const filteredRef = useRef(filtered);
+  useEffect(() => { editingRef.current = editing; }, [editing]);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => { filteredRef.current = filtered; }, [filtered]);
 
   useEffect(() => {
     function vkToChar(vk, shift) {
@@ -173,16 +187,17 @@ export default function ClipboardOverlay() {
 
     function handleHookKey({ payload }) {
       const { vk, shift } = payload || {};
-      if (editing) {
+      if (editingRef.current) {
         if (vk === 27) { setEditing(false); setEditText(''); }
         return;
       }
       if (vk === 27) { window.electronAPI?.closeClipboardOverlay(); return; }
       if (vk === 13) {
-        if (selected) { window.electronAPI?.closeClipboardOverlay(); window.electronAPI?.pasteClipboardItem(selected.id); }
+        const sel = selectedRef.current;
+        if (sel) { window.electronAPI?.closeClipboardOverlay(); window.electronAPI?.pasteClipboardItem(sel.id); }
         return;
       }
-      if (vk === 40) { setSelectedIndex(i => Math.min(i + 1, filtered.length - 1)); return; }
+      if (vk === 40) { setSelectedIndex(i => Math.min(i + 1, filteredRef.current.length - 1)); return; }
       if (vk === 38) { setSelectedIndex(i => Math.max(i - 1, 0)); return; }
       if (vk === 8)  { setSearch(q => q.slice(0, -1)); return; }
       const ch = vkToChar(vk, shift);
@@ -191,7 +206,7 @@ export default function ClipboardOverlay() {
 
     const unlistenPromise = listen('clipboard-overlay-key', handleHookKey);
     return () => { unlistenPromise.then(fn => fn()); };
-  }, [filtered, selected, editing]);
+  }, []);
 
   useLayoutEffect(() => {
     const el = rowRefs.current[selectedIndex];
