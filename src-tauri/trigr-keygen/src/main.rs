@@ -60,9 +60,14 @@ Usage:
       Generate a new Ed25519 keypair, save the private key to disk,
       and print the public key to paste into licence.rs.
 
-  cargo run --release -- sign --email <e> [--days N] [--tier T] [--no-log]
+  cargo run --release -- sign --email <e> [--days N] [--tier T] [--no-log] [--key-only]
       Sign a new licence key. Defaults: --days 30, --tier pro.
       A row is appended to issued-keys.csv unless --no-log is passed.
+      --key-only prints ONLY the key string to stdout with no trailing
+      newline (and no header, fields, or log-path line). Designed to be
+      piped straight to a clipboard tool, e.g. PowerShell:
+        trigr-keygen sign --email <e> --key-only | Set-Clipboard
+      The CSV log is still written unless --no-log is also passed.
 
 Environment:
   TRIGR_SIGNING_KEY    Path to the private key file. Defaults to
@@ -137,6 +142,7 @@ fn cmd_sign(args: &[String]) -> ExitCode {
     let mut days: i64 = 30;
     let mut tier: String = "pro".to_string();
     let mut no_log = false;
+    let mut key_only = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -158,6 +164,9 @@ fn cmd_sign(args: &[String]) -> ExitCode {
             }
             "--no-log" => {
                 no_log = true;
+            }
+            "--key-only" => {
+                key_only = true;
             }
             other => {
                 eprintln!("Unknown arg: {}", other);
@@ -213,6 +222,18 @@ fn cmd_sign(args: &[String]) -> ExitCode {
     // `.` is not in the base64url alphabet, so it's an unambiguous separator
     // even when the payload or signature happens to contain `-` or `_`.
     let licence_key = format!("TRIGR-PRO.{}.{}", payload_b64, sig_b64);
+
+    if key_only {
+        // Clipboard-safe path: ONLY the key string, no newline, no extras.
+        // Designed to be piped straight to Set-Clipboard / pbcopy / xclip.
+        // The CSV log still runs (silently) unless --no-log was also passed.
+        print!("{}", licence_key);
+        let _ = std::io::stdout().flush();
+        if !no_log {
+            let _ = append_to_log(&email, &tier, days, &exp.to_rfc3339(), &id);
+        }
+        return ExitCode::SUCCESS;
+    }
 
     println!();
     println!("=== Licence key ===");
