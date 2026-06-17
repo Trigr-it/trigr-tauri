@@ -44,7 +44,12 @@
 html, body {
   margin: 0;
   padding: 0;
-  width: 620px;
+  /* Fill viewport up to the design cap rather than hard-coding the width.
+     Some displays (TVs over HDMI at high scale) report a narrower CSS
+     viewport than our DPI math predicts; a hard-coded 620px overflowed
+     and got clipped by overflow:hidden, producing flat left/right edges
+     on the panel. See ClipboardOverlay.css for the sibling fix. */
+  width: 100%;
   max-width: 620px;
   background: transparent !important;
   overflow: hidden;
@@ -57,7 +62,7 @@ html, body {
 }
 
 #root {
-  width: 620px;
+  width: 100%;
   max-width: 620px;
   background: transparent !important;
 }
@@ -80,7 +85,7 @@ html, body {
 /* ── Floating panel ───────────────────────────────────────────────────────── */
 
 .search-panel {
-  width: 596px;
+  width: 100%;
   max-width: 596px;
   margin: 12px auto 0;
   background: var(--bg-elevated);

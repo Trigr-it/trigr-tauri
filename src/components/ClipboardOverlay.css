@@ -74,8 +74,15 @@ html, body {
 }
 
 .co-panel {
-  flex: 0 0 auto;
+  /* width is the design target; max-width keeps the panel inside whatever
+     viewport WebView2 actually reports (it doesn't always match our DPI math
+     on every display — TVs over HDMI at high scale have surfaced narrower
+     viewports than GetDpiForMonitor predicts). Without the cap, the fixed
+     730px overflowed and got clipped by body's overflow:hidden, producing
+     flat (not rounded) left and right edges. */
+  flex: 0 1 auto;
   width: 730px;
+  max-width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
