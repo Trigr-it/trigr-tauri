@@ -1220,6 +1220,23 @@ unsafe extern "system" fn keyboard_hook_proc(
     if n_code < 0 {
         HOOK_NCODE_NEGATIVE.store(true, Ordering::SeqCst);
     }
+
+    // Macro-loop Esc cancel. Cheap path: single atomic read gates the rest, so
+    // zero cost while no loop is active. When a loop IS active and Esc is pressed
+    // (real, not injected), set the global break flag — the loop iteration
+    // observes it at its next per-iter or inter-step check and exits cleanly.
+    // We do NOT suppress Esc — the target app should still see it (a stuck macro
+    // typing into a textbox should still cancel any modal the user opens).
+    if n_code >= 0
+        && crate::actions::LOOPING_COUNT.load(Ordering::SeqCst) > 0
+        && matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN)
+    {
+        let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+        if kb.vkCode == 0x1B /* VK_ESCAPE */ && (kb.flags & LLKHF_INJECTED) == 0 {
+            crate::actions::ESC_LOOP_BREAK.store(true, Ordering::SeqCst);
+            log::info!("[Trigr] Esc pressed during active loop — cancel signal sent");
+        }
+    }
     // Buffer real user keystrokes during injection — swallow them so they don't land in the target app.
     // Exception: if the fill-in window is foreground, pass keystrokes through so the user can type.
     if n_code >= 0 && INJECTION_IN_PROGRESS.load(Ordering::SeqCst) && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
@@ -3009,6 +3026,38 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Op
 // ── Fire macro — execute action + notify frontend ───────────────────────────
 
 fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app: &AppHandle) {
+    // Re-press cancel — if a loop is already running for this trigger, the user
+    // pressing it again is the canonical stop gesture. Set the cancel flag and
+    // bail before any thread spawn / clipboard work happens. The running loop
+    // observes the flag at its next per-iter or inter-step check and exits.
+    if let Some(ref key) = trigger_key {
+        if crate::actions::cancel_loop_if_running(key) {
+            log::info!("[Trigr] Loop cancel signal: {}", key);
+            return;
+        }
+    }
+
+    // H1 re-entrancy guard — if the same trigger is mid-flight, drop the new
+    // fire. Without this, a manual re-press of a slow macro spawns a second
+    // thread that races the first across the clipboard snapshot/restore and
+    // SUPPRESS_SIMULATED, causing the BricsCAD-style freeze. Per-storage-key,
+    // so different macros still run concurrently. The guard travels into the
+    // spawned thread; Drop releases it on thread exit (including panic).
+    let macro_guard = if let Some(ref key) = trigger_key {
+        match crate::actions::MacroRunningGuard::try_acquire(key) {
+            Some(g) => Some(g),
+            None => {
+                log::warn!(
+                    "[Trigr] Dropped re-fire: {} already running (H1 re-entrancy guard)",
+                    key
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
     // Capture the target window HWND NOW, before any async delay.
     let target_hwnd = unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
@@ -3026,16 +3075,9 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
     let macro_clone = macro_val.clone();
     let app_clone = app.clone();
     thread::spawn(move || {
-        // Overlap guard-rail: warn if a macro fires while another is still running.
-        // Re-entrancy (H1) is the leading suspect for the rare macro-freeze report
-        // but could not be reproduced in dev — this keeps a cheap signal in the log
-        // (only emits on an actual overlap, never per-fire) to catch it in the wild.
-        let active = crate::actions::ACTIVE_FIRE_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-        if active > 1 {
-            let ty = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("?");
-            let trig = trigger_key.as_deref().unwrap_or("");
-            log::warn!("[Trigr] Overlapping macro fire: {} concurrent (type={} trigger={}) — possible re-entrancy", active, ty, trig);
-        }
+        // Guard moved into the thread — drops on exit, releasing the storage_key
+        // from ACTIVE_MACRO_KEYS so future fires can proceed.
+        let _macro_guard = macro_guard;
 
         crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, trigger_key.as_deref(), &app_clone);
 
@@ -3059,8 +3101,6 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
                 "type": macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or(""),
             }),
         );
-
-        crate::actions::ACTIVE_FIRE_COUNT.fetch_sub(1, Ordering::SeqCst);
     });
 }
 

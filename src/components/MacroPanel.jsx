@@ -1821,6 +1821,8 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
 export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles }) {
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
+  const loopCfg = value.loop || { enabled: false, mode: 'count', count: 5, delayMs: 0 };
+  const updateLoop = (patch) => onChange({ ...value, loop: { ...loopCfg, ...patch } });
   const [advancedOpen, setAdvancedOpen] = useState({});
   const [activeId, setActiveId] = useState(null);
 
@@ -1907,6 +1909,76 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
           ))}
         </select>
       </div>
+
+      <div className="seq-method-row">
+        <label className="form-label" style={{ marginBottom: 0 }}>Loop this macro</label>
+        <input
+          type="checkbox"
+          className="seq-loop-checkbox"
+          checked={!!loopCfg.enabled}
+          onChange={e => updateLoop({ enabled: e.target.checked })}
+        />
+      </div>
+      {loopCfg.enabled && (
+        <div className="seq-loop-config">
+          <div className="seq-loop-mode-row">
+            <label className="seq-loop-row">
+              <input
+                type="radio"
+                name="seq-loop-mode"
+                checked={loopCfg.mode !== 'forever'}
+                onChange={() => updateLoop({ mode: 'count' })}
+              />
+              <span>Repeat</span>
+              <input
+                type="number"
+                className="seq-loop-count"
+                min={2}
+                max={9999}
+                value={loopCfg.count ?? 5}
+                disabled={loopCfg.mode === 'forever'}
+                onChange={e => {
+                  const n = parseInt(e.target.value, 10);
+                  updateLoop({ count: Number.isFinite(n) ? Math.max(2, Math.min(9999, n)) : 5 });
+                }}
+              />
+              <span>times</span>
+            </label>
+
+            <label className="seq-loop-row">
+              <input
+                type="radio"
+                name="seq-loop-mode"
+                checked={loopCfg.mode === 'forever'}
+                onChange={() => updateLoop({ mode: 'forever' })}
+              />
+              <span>Repeat until stopped</span>
+            </label>
+          </div>
+
+          <label className="seq-loop-row seq-loop-delay">
+            <span>Delay between iterations</span>
+            <input
+              type="number"
+              className="seq-loop-delay-input"
+              min={0}
+              max={60000}
+              step={50}
+              value={loopCfg.delayMs ?? 0}
+              onChange={e => {
+                const n = parseInt(e.target.value, 10);
+                updateLoop({ delayMs: Number.isFinite(n) ? Math.max(0, Math.min(60000, n)) : 0 });
+              }}
+            />
+            <span>ms</span>
+          </label>
+
+          <div className="seq-loop-hint">
+            Re-press the trigger or press Esc to stop a running loop.
+          </div>
+        </div>
+      )}
+
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <SortableContext items={stepsWithIds.map(s => s._id)} strategy={verticalListSortingStrategy}>
           <div className="macro-steps">

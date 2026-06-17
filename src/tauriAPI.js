@@ -49,6 +49,16 @@ window.electronAPI = {
     listen('macro-fired', (event) => callback(event.payload)).then(u => { listeners['macro-fired'] = u; });
   },
 
+  // Fired when a macro begins looping. Payload: { label, trigger, mode, count }.
+  // Used by App.jsx to show the "loop running" toast so the user knows how to stop.
+  onLoopFireStarted: (callback) => {
+    listen('loop-fire-started', (event) => callback(event.payload)).then(u => { listeners['loop-fire-started'] = u; });
+  },
+
+  onLoopFireEnded: (callback) => {
+    listen('loop-fire-ended', (event) => callback(event.payload)).then(u => { listeners['loop-fire-ended'] = u; });
+  },
+
   onEngineStatus: (callback) => {
     listen('engine-status', (event) => callback(event.payload)).then(u => { listeners['engine-status'] = u; });
   },

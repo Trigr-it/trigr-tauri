@@ -589,6 +589,17 @@ function App() {
         setLastFired(data);
         setTimeout(() => setLastFired(null), 1500);
       });
+      // Loop start — show a toast so the user knows the loop is active and
+      // how to stop it. End event isn't toasted (the user already sees the
+      // visible effect stop) but is wired for any future indicator UI.
+      window.electronAPI.onLoopFireStarted?.((data) => {
+        const labelPart = data?.label ? `"${data.label}"` : 'Macro';
+        const countPart = data?.mode === 'forever'
+          ? 'looping until stopped'
+          : `looping × ${data?.count ?? '?'}`;
+        showNotification(`${labelPart} ${countPart} — re-press trigger or Esc to stop`, 'info');
+      });
+      window.electronAPI.onLoopFireEnded?.(() => {});
       // Engine auto-switched profile (foreground app matched a linked profile)
       window.electronAPI.onProfileSwitched(({ profile }) => {
         setActiveProfile(profile);
@@ -769,6 +780,8 @@ function App() {
       window.electronAPI?.removeAllListeners('reset-editing-on-hide');
       window.electronAPI?.removeAllListeners('overlay-fired');
       window.electronAPI?.removeAllListeners('hotkey-recorded');
+      window.electronAPI?.removeAllListeners('loop-fire-started');
+      window.electronAPI?.removeAllListeners('loop-fire-ended');
     };
   }, []);
 

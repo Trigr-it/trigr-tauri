@@ -2117,6 +2117,88 @@
   max-width: 220px;
 }
 
+/* ── Macro loop ────────────────────────────────────────────────────────────
+   "Loop this macro" sits in a .seq-method-row chassis below the Input method
+   row so the label matches the surrounding form. The config (count, delay,
+   hint) expands directly below when the checkbox is ticked. */
+.seq-loop-checkbox {
+  margin: 0;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.seq-loop-config {
+  margin: -2px 0 10px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.seq-loop-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.seq-loop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.seq-loop-row input[type="radio"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.seq-loop-count,
+.seq-loop-delay-input {
+  width: 72px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.seq-loop-count:focus,
+.seq-loop-delay-input:focus {
+  outline: none;
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 1px var(--border-accent);
+}
+
+.seq-loop-count:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.seq-loop-delay {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.seq-loop-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ── AHK version pills ───────────────────────────────────────────────────── */
 .ahk-version-row {
   display: flex;

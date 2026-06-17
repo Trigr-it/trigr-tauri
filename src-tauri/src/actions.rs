@@ -1,8 +1,8 @@
 use log::{info, warn};
 use serde_json::Value;
 use std::cell::Cell;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use tauri::Manager;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use tauri::{Emitter, Manager};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -70,12 +70,6 @@ pub(crate) fn is_self_clipboard_seq(seq: u32) -> bool {
     }
     false
 }
-
-/// Number of action/macro executions currently in flight (inc/dec in fire_macro's
-/// thread). >1 means overlapping fires (re-entrancy) — fire_macro logs a warn when
-/// that happens, a lightweight guard-rail for the rare macro-freeze report whose
-/// re-entrancy path (H1) we could not reproduce in dev.
-pub static ACTIVE_FIRE_COUNT: AtomicU32 = AtomicU32::new(0);
 
 // ── Recursion guard for Fire Trigger / Fire Text Expansion macro steps ────
 // Thread-local depth counter — execute_action increments on entry, the Drop
@@ -158,6 +152,103 @@ impl Drop for PasteOpGuard {
     }
 }
 
+// ── Macro re-entrancy guard + loop cancel state ───────────────────────────
+// `ACTIVE_MACRO_KEYS` blocks the H1 re-entrancy path: a manual re-press of a
+// trigger while its macro is still running spawns a second thread that races
+// the first across shared clipboard/SUPPRESS state (BricsCAD Ctrl+Shift+F7
+// freeze, confirmed in-wild 2026-06-11). Per-storage-key — different macros
+// can still fire concurrently. Nested Fire Trigger / Fire Text Expansion calls
+// inside execute_macro_step bypass this guard (they go straight to
+// execute_action, not fire_macro) and are bounded instead by FIRE_DEPTH.
+//
+// `LOOPING_MACROS` holds the cancel flag for each currently-looping macro,
+// keyed by storage_key. The hotkey re-press path (fire_macro) checks this map
+// FIRST: if the trigger is already looping, we set its cancel flag and return
+// without spawning a new fire. `LOOPING_COUNT` is the cheap "any loop active?"
+// predicate the LL hook polls on every Esc keydown — single atomic read, no
+// mutex contention. `ESC_LOOP_BREAK` is the global cancel signal set by the
+// hook on Esc and reset when the last loop exits.
+static ACTIVE_MACRO_KEYS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+static LOOPING_MACROS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub static LOOPING_COUNT: AtomicUsize = AtomicUsize::new(0);
+pub static ESC_LOOP_BREAK: AtomicBool = AtomicBool::new(false);
+
+pub(crate) struct MacroRunningGuard {
+    key: String,
+}
+
+impl MacroRunningGuard {
+    pub(crate) fn try_acquire(key: &str) -> Option<Self> {
+        let mut set = ACTIVE_MACRO_KEYS.lock().ok()?;
+        if set.contains(key) {
+            return None;
+        }
+        set.insert(key.to_string());
+        Some(Self { key: key.to_string() })
+    }
+}
+
+impl Drop for MacroRunningGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = ACTIVE_MACRO_KEYS.lock() {
+            set.remove(&self.key);
+        }
+    }
+}
+
+pub(crate) struct LoopHandle {
+    key: String,
+    cancel_flag: Arc<AtomicBool>,
+}
+
+impl LoopHandle {
+    pub(crate) fn register(key: &str) -> Self {
+        let flag = Arc::new(AtomicBool::new(false));
+        if let Ok(mut map) = LOOPING_MACROS.lock() {
+            map.insert(key.to_string(), flag.clone());
+        }
+        LOOPING_COUNT.fetch_add(1, Ordering::SeqCst);
+        Self {
+            key: key.to_string(),
+            cancel_flag: flag,
+        }
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.cancel_flag.load(Ordering::SeqCst) || ESC_LOOP_BREAK.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for LoopHandle {
+    fn drop(&mut self) {
+        if let Ok(mut map) = LOOPING_MACROS.lock() {
+            map.remove(&self.key);
+        }
+        let prev = LOOPING_COUNT.fetch_sub(1, Ordering::SeqCst);
+        if prev <= 1 {
+            ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Hook-side re-press handler. If `trigger_key` has a loop in flight, set its
+/// cancel flag and return true so the caller can drop the new fire. The
+/// running iteration will observe the flag at its next per-iter check or
+/// between-step poll and exit cleanly.
+pub fn cancel_loop_if_running(trigger_key: &str) -> bool {
+    if let Ok(map) = LOOPING_MACROS.lock() {
+        if let Some(flag) = map.get(trigger_key) {
+            flag.store(true, Ordering::SeqCst);
+            return true;
+        }
+    }
+    false
+}
+
 // ── Unified app launcher (path or AppsFolder AUMID) ───────────────────────
 //
 // Single helper for both single-action `app` assignments and macro `Open App`
@@ -207,7 +298,7 @@ fn shell_launch_app(kind: &str, path: &str, app_id: &str, args: &str) {
 
 // ── AHK Script Runner process tracking ─────────────────────────────────────
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::{Mutex, LazyLock};
@@ -551,21 +642,105 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 let uses_clipboard = method != "send-input" && method != "direct";
                 let mut current_hwnd = target_hwnd;
                 let (_, settle_ms, _, clip_restore_ms) = speed_delays();
-                info!("[Trigr] Macro sequence: {} step(s), method={}", steps.len(), method);
+
+                // Loop config — backward compatible: missing `loop` = single fire.
+                // `count` clamped to >= 1; `forever` runs until cancelled.
+                let loop_cfg = data.and_then(|d| d.get("loop"));
+                let loop_enabled = loop_cfg
+                    .and_then(|l| l.get("enabled"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let loop_mode = loop_cfg
+                    .and_then(|l| l.get("mode"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("count");
+                let loop_count = loop_cfg
+                    .and_then(|l| l.get("count"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1)
+                    .max(1);
+                let loop_delay_ms = loop_cfg
+                    .and_then(|l| l.get("delayMs"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let max_iters: u64 = if loop_enabled {
+                    if loop_mode == "forever" { u64::MAX } else { loop_count }
+                } else {
+                    1
+                };
+
+                // Register loop handle only when looping AND we have a trigger key
+                // to cancel against. Without a trigger key (e.g. nested Fire Trigger
+                // chain) the re-press cancel path can't reach us — we run uncancelled.
+                let loop_handle = if loop_enabled && max_iters > 1 {
+                    trigger_key.map(LoopHandle::register)
+                } else {
+                    None
+                };
+
+                if loop_enabled && max_iters > 1 {
+                    let _ = app.emit(
+                        "loop-fire-started",
+                        serde_json::json!({
+                            "label": label,
+                            "trigger": trigger_key.unwrap_or(""),
+                            "mode": loop_mode,
+                            "count": if loop_mode == "forever" { 0 } else { max_iters },
+                        }),
+                    );
+                    info!(
+                        "[Trigr] Macro loop: {} step(s) × {}, method={}",
+                        steps.len(),
+                        if loop_mode == "forever" { "forever".to_string() } else { max_iters.to_string() },
+                        method
+                    );
+                } else {
+                    info!("[Trigr] Macro sequence: {} step(s), method={}", steps.len(), method);
+                }
 
                 // For clipboard method: snapshot once, batch pastes, restore once.
                 // Snapshot captures EVERY format (CF_DIB, RTF, CF_HDROP, registered
                 // formats) so non-text clipboard content (e.g. an image from Snagit)
                 // is preserved across the macro — text-only save would silently drop
                 // the image and leak the expansion text into the Windows clipboard.
+                // For LOOPED macros the same snapshot covers all iterations (the user's
+                // clipboard state is preserved across the whole loop, not per-iter).
                 let saved_snapshot = if uses_clipboard {
                     crate::expansions::snapshot_clipboard()
                 } else {
                     Vec::new()
                 };
                 let mut clipboard_dirty = false;
+                let mut cancelled = false;
+                let mut iter_index: u64 = 0;
+
+                'outer: while iter_index < max_iters {
+                    // Per-iteration cancel check — covers re-press (sets per-loop flag)
+                    // and Esc (sets global ESC_LOOP_BREAK). Drains responsively because
+                    // the inter-step check below also polls between every step.
+                    if let Some(ref lh) = loop_handle {
+                        if lh.is_cancelled() {
+                            info!("[Trigr] Macro loop cancelled at iter {}", iter_index);
+                            cancelled = true;
+                            break;
+                        }
+                    }
+
+                    if iter_index > 0 && loop_delay_ms > 0 {
+                        thread::sleep(Duration::from_millis(loop_delay_ms));
+                    }
 
                 for (i, step) in steps.iter().enumerate() {
+                    // Inter-step cancel poll — keeps Esc/re-press response time bounded
+                    // by step duration even inside long macros (the per-iter check would
+                    // otherwise only fire between full iterations).
+                    if let Some(ref lh) = loop_handle {
+                        if lh.is_cancelled() {
+                            info!("[Trigr] Macro loop cancelled mid-iter at step {}/{}", i + 1, steps.len());
+                            cancelled = true;
+                            break 'outer;
+                        }
+                    }
                     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
                     info!("[Trigr]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
@@ -589,10 +764,11 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         let cont = execute_macro_step(step, &mut current_hwnd, &method, app);
                         if !cont {
                             info!("[Trigr] Macro aborted at step {}/{} ({})", i + 1, steps.len(), step_type);
-                            // Break out of the steps loop. The post-loop clipboard
-                            // restore (just below this for-block) still runs, so any
-                            // mid-paste state is cleaned up correctly.
-                            break;
+                            // Abort propagates out of the outer loop too — an explicit
+                            // user-cancel (e.g. Wait for Input cancel) shouldn't restart.
+                            // Post-loop clipboard restore (just below) still runs.
+                            cancelled = true;
+                            break 'outer;
                         }
                     }
 
@@ -619,7 +795,10 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     }
                 }
 
-                // Final restore after all steps. Seqnum guard: if the user copied
+                    iter_index += 1;
+                }
+
+                // Final restore after all iterations. Seqnum guard: if the user copied
                 // something during the final paste window, leave their content.
                 if clipboard_dirty {
                     let post_seq = crate::expansions::clipboard_sequence_number();
@@ -629,6 +808,24 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     }
                     SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
                 }
+
+                if loop_handle.is_some() {
+                    let _ = app.emit(
+                        "loop-fire-ended",
+                        serde_json::json!({
+                            "trigger": trigger_key.unwrap_or(""),
+                            "iterations": iter_index,
+                            "cancelled": cancelled,
+                        }),
+                    );
+                    info!(
+                        "[Trigr] Macro loop ended: {} iter(s), cancelled={}",
+                        iter_index, cancelled
+                    );
+                }
+                // loop_handle dropped at end of scope — removes from LOOPING_MACROS map,
+                // decrements LOOPING_COUNT, resets ESC_LOOP_BREAK if this was the last
+                // active loop.
             }
         }
 
@@ -904,6 +1101,7 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
         if fg_settle_ms > 0 { thread::sleep(Duration::from_millis(fg_settle_ms)); }
     }
 
+    let mut char_count: u64 = 0;
     for ch in text.chars() {
         let code = ch as u32;
         if code > 0xFFFF {
@@ -918,9 +1116,23 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
             send_unicode_key(code as u16, false);
             send_unicode_key(code as u16, true);
         }
+        char_count += 1;
         if KEYSTROKE_DELAY_MS > 0 {
             thread::sleep(Duration::from_millis(KEYSTROKE_DELAY_MS));
         }
+    }
+
+    // Drain buffer — `SendInput` only queues keystrokes into the OS input
+    // queue; the target app drains them via its message pump at its own
+    // pace. Without this wait, a subsequent macro step that bypasses the
+    // input queue (Open URL, Open App, Click at Position, Focus Window)
+    // can act on the target window before the last few characters have
+    // been processed, producing the visible "next action fires before text
+    // finishes typing" bug. Scale = half the typing time, capped so very
+    // long text doesn't drag — empirically enough for browsers/IDEs.
+    if KEYSTROKE_DELAY_MS > 0 && char_count > 0 {
+        let drain_ms = (char_count * KEYSTROKE_DELAY_MS / 2).min(500);
+        thread::sleep(Duration::from_millis(drain_ms));
     }
 
     restore_modifiers(&held);
