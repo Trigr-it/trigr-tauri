@@ -1231,16 +1231,36 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .vs-grid > .vs-or { order:2; }
   .vs-grid > .vs-col-bad { order:3; }
 
-  /* HOW IT WORKS: drop the scroll-driven mockup on mobile (scrollytelling
-     doesn't work with touch scrolling). The three text steps stay, compacted. */
+  /* HOW IT WORKS: drop the scroll-driven mockup on mobile, convert the three
+     text steps into a horizontal swipe rail per site convention. */
   .sticky-visual { display:none; }
-  .sticky-step { min-height:auto; padding-bottom:28px; opacity:1; }
-  .sticky-step h3 { font-size:28px; }
+  .sticky-grid { display:block; }
+  .sticky-grid::before { content:'Swipe to explore \2192'; display:block; font-size:12px; letter-spacing:0.04em; color:var(--text-dim); margin-bottom:12px; }
+  .sticky-text {
+    display:flex; flex-direction:row; gap:14px; align-items:stretch;
+    overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity; scroll-padding-left:18px;
+    -webkit-overflow-scrolling:touch;
+    margin:0 -18px; padding:2px 18px 16px;
+    scrollbar-width:none;
+  }
+  .sticky-text::-webkit-scrollbar { display:none; }
+  .sticky-step {
+    flex:0 0 84vw; max-width:380px; scroll-snap-align:start;
+    min-height:auto; padding:24px;
+    opacity:1;
+    background:var(--bg-card); border:1px solid var(--hairline); border-radius:14px;
+  }
+  .sticky-step h3 { font-size:24px; }
 
   /* Tighter vertical rhythm on phones */
   .section { padding:64px 18px; }
 }
 
+@media(max-width:768px){
+  .mockup-viewport { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .mockup-viewport::-webkit-scrollbar { display:none; }
+}
 </style>
 </head>
 <body>
@@ -2296,7 +2316,7 @@ function scaleMockup() {
   const available = outer.offsetWidth;
   if (available === 0) return;
   const naturalW = 1280;
-  const scale = available / naturalW;
+  const scale = window.innerWidth <= 768 ? Math.max(available / naturalW, 0.50) : (available / naturalW);
   scaler.style.transform = 'scale(' + scale + ')';
   scaler.style.transformOrigin = 'top left';
   const naturalH = shell.offsetHeight;
