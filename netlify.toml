@@ -1,6 +1,6 @@
 [build]
   publish = "docs"
-  command = '''echo 'Static site — IndexNow ping' && curl -sS -X POST -H 'Content-Type: application/json' --data-raw '{"host":"usetrigr.com","key":"24db6ec83ef4488ba706bf6cd5fcb81b","keyLocation":"https://usetrigr.com/24db6ec83ef4488ba706bf6cd5fcb81b.txt","urlList":["https://usetrigr.com/","https://usetrigr.com/pricing.html","https://usetrigr.com/text-expander.html","https://usetrigr.com/autohotkey-alternative.html","https://usetrigr.com/roadmap.html","https://usetrigr.com/trigr-help.html","https://usetrigr.com/blog/","https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html","https://usetrigr.com/blog/best-text-expander-windows-11-2026.html"]}' https://api.indexnow.org/indexnow || true'''
+  command = "bash scripts/netlify-build.sh"
 
 [[headers]]
   for = "/*"
