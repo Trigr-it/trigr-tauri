@@ -170,6 +170,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   .prose h2 { font-size:24px; }
   .prose h3 { font-size:18px; }
   .post-card { padding:22px 22px; }
+  .prose .table-wrap table { min-width:640px; }
   .footer-top { flex-direction:column; gap:32px; }
   .footer-cols { grid-template-columns:repeat(2,1fr); gap:24px; }
   footer { padding:40px 18px 28px; }
