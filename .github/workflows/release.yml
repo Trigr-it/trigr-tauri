@@ -73,6 +73,10 @@ jobs:
             # let that be the authoritative gate rather than blocking on a
             # check whose own verify path is misfiring.
             Write-Warning "signtool verify of pre-flight signature failed (exit $LASTEXITCODE) — continuing; real NSIS sign step is the authoritative gate"
+            # GitHub Actions' pwsh wrapper auto-exits with $LASTEXITCODE at
+            # script end. Reset to 0 so this step doesn't fail despite the
+            # explicit Write-Warning soft-mode above.
+            $global:LASTEXITCODE = 0
           } else {
             Write-Output "Pre-flight signing PASSED — Azure is reachable, cert profile resolves, signature applies cleanly"
           }
