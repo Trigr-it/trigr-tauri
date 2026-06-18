@@ -614,14 +614,14 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
   .feat-grid, .trust-grid {
     display:flex; gap:14px; align-items:stretch;
     overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
-    scroll-snap-type:x proximity; scroll-padding-left:18px;
+    scroll-snap-type:x mandatory; scroll-padding-left:18px;
     -webkit-overflow-scrolling:touch;
     margin:48px -18px 0; padding:2px 18px 16px;
     scrollbar-width:none;
   }
   .feat-grid::-webkit-scrollbar, .trust-grid::-webkit-scrollbar { display:none; }
-  .feat-grid > .feat-card { flex:0 0 80vw; max-width:360px; scroll-snap-align:start; }
-  .trust-grid > .trust-card { flex:0 0 80vw; max-width:360px; scroll-snap-align:start; }
+  .feat-grid > .feat-card { flex:0 0 80vw; max-width:360px; scroll-snap-align:start; scroll-snap-stop:always; }
+  .trust-grid > .trust-card { flex:0 0 80vw; max-width:360px; scroll-snap-align:start; scroll-snap-stop:always; }
   .cta-card{padding:60px 24px;}
   .cta-section{padding:40px 18px 80px;}
   .hero-inner{padding:100px 18px 0;}
