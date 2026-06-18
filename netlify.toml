@@ -2,6 +2,23 @@
   publish = "docs"
   command = "bash scripts/netlify-build.sh"
 
+# First-party Plausible proxy. Routes the analytics script + event POSTs
+# through usetrigr.com so ad/tracker blocklists (EasyPrivacy, Brave Shields,
+# DDG, uBlock Origin) — which block by the plausible.io domain — can't see
+# the request. Status 200 = server-side rewrite (browser sees same-origin),
+# not a redirect. Capture rate jumps from ~75% to ~97% on tech audiences.
+[[redirects]]
+  from = "/js/p.js"
+  to = "https://plausible.io/js/pa-VJCTdtLxXP7hTgXINlwwm.js"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/event"
+  to = "https://plausible.io/api/event"
+  status = 200
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]
@@ -9,4 +26,4 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "geolocation=(), microphone=(), camera=()"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://plausible.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://betalist.com https://peerpush.com https://www.google-analytics.com https://www.googletagmanager.com; connect-src 'self' https://api.github.com https://plausible.io https://www.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://betalist.com https://peerpush.com https://www.google-analytics.com https://www.googletagmanager.com; connect-src 'self' https://api.github.com https://www.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'"
