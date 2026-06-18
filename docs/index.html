@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="description" content="Your keyboard can do more than type. Visual hotkeys, macros and text expansion for Windows — set up in seconds, no scripting required. Free to download.">
+<meta name="description" content="Your keyboard can do more than type. Visual hotkeys, macros and text expansion for Windows. Set up in seconds, no scripting required. Free to download.">
 
 <!-- SEO: canonical, Open Graph, Twitter Card, structured data -->
 <link rel="canonical" href="https://usetrigr.com/">
@@ -17,7 +17,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://usetrigr.com/">
 <meta property="og:title" content="Trigr — Hotkeys, Macros & Text Expansion for Windows. No Scripting.">
-<meta property="og:description" content="Your keyboard can do more than type. Visual hotkeys, macros and text expansion for Windows — set up in seconds, no scripting required. Free to download.">
+<meta property="og:description" content="Your keyboard can do more than type. Visual hotkeys, macros and text expansion for Windows. Set up in seconds, no scripting required. Free to download.">
 <meta property="og:image" content="https://usetrigr.com/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -34,7 +34,12 @@
   "@type": "Organization",
   "name": "Trigr",
   "url": "https://usetrigr.com",
-  "logo": "https://usetrigr.com/favicon-192.png",
+  "logo": {
+    "@type": "ImageObject",
+    "url": "https://usetrigr.com/favicon-192.png",
+    "width": 192,
+    "height": 192
+  },
   "sameAs": [
     "https://github.com/Trigr-it/trigr-tauri"
   ]
@@ -48,9 +53,9 @@
   "description": "Visual hotkey, macro and text expansion tool for Windows. Click a key on the on-screen keyboard, pick an action. No scripting required.",
   "url": "https://usetrigr.com",
   "image": "https://usetrigr.com/favicon-192.png",
-  "applicationCategory": "ProductivityApplication",
+  "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Windows 10, Windows 11",
-  "softwareVersion": "0.4.20",
+  "softwareVersion": "0.5.3",
   "downloadUrl": "https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe",
   "offers": {
     "@type": "Offer",
@@ -72,12 +77,12 @@
     {
       "@type": "Question",
       "name": "Is it really free?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes — fully free during Beta and the core feature set stays free at v1.0. Pro and Teams licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Fully free during Beta and the core feature set stays free at v1.0. Pro and Teams licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch." }
     },
     {
       "@type": "Question",
       "name": "How is this different from AutoHotkey?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Trigr ships with AutoHotkey built in — both v1 and v2 — so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Trigr ships with AutoHotkey built in (both v1 and v2), so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one." }
     },
     {
       "@type": "Question",
@@ -92,7 +97,7 @@
     {
       "@type": "Question",
       "name": "Will it work in Outlook / Excel / Revit / Slack?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Trigr works at the OS level using low-level keyboard hooks — the same mechanism every Windows shortcut already uses. If you can type into the app, Trigr works in it. No per-app integration required." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Trigr works at the OS level using low-level keyboard hooks, the same mechanism every Windows shortcut already uses. If you can type into the app, Trigr works in it. No per-app integration required." }
     },
     {
       "@type": "Question",
@@ -102,7 +107,7 @@
     {
       "@type": "Question",
       "name": "Can my whole team share configs?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes — point Trigr at a shared folder (network drive, OneDrive, Dropbox) and everyone on your team gets the same hotkeys, expansions and macros. Live-synced, file-watcher-backed, conflict-managed. Handy for support teams, ops, or anyone with a shared playbook." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Point Trigr at a shared folder (network drive, OneDrive, Dropbox) and everyone on your team gets the same hotkeys, expansions and macros. Live-synced, file-watcher-backed, conflict-managed. Handy for support teams, ops, or anyone with a shared playbook." }
     }
   ]
 }
@@ -146,9 +151,8 @@
   gtag('config', 'G-KBLCKKSZKE');
 </script>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Chakra+Petch:wght@500;600&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/SpaceGrotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts.css">
 <style>
 /* ════════════════════════════════════════════════════════════
    RESET, TOKENS, BASE
@@ -1364,7 +1368,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">01</span><span class="section-label">See it in action</span></div>
     <h2 class="section-h2">Two clicks to set up.<br><em>Instant</em> every time.</h2>
-    <p class="section-sub">No scripts, no config files, no learning curve. Just results — exactly what Trigr does, the moment you press the key.</p>
+    <p class="section-sub">No scripts, no config files, no learning curve. Just results. Exactly what Trigr does, the moment you press the key.</p>
 
     <div class="demo-panels">
       <!-- PANEL 1: Text Expansion -->
@@ -1403,7 +1407,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
           <span class="demo-interactive-pill"><span class="demo-int-dot"></span>Interactive · Try it</span>
         </div>
         <div class="demo-panel-title">One key.<br>Multiple actions.</div>
-        <div class="demo-panel-sub">Press <span class="demo-code">Ctrl+E</span> and watch Trigr fire a full macro — two terminals open, commands run, all before your hand moves.</div>
+        <div class="demo-panel-sub">Press <span class="demo-code">Ctrl+E</span> and watch Trigr fire a full macro. Two terminals open, commands run, all before your hand moves.</div>
         <div class="demo-screen">
           <div class="demo-screen-bar">
             <div class="demo-screen-dots"><span></span><span></span><span></span></div>
@@ -1460,7 +1464,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">02</span><span class="section-label">Why visual</span></div>
     <h2 class="section-h2">Same result.<br><em>Three clicks</em>, not three lines of script.</h2>
-    <p class="section-sub">Most automation tools assume you'll learn their syntax. Trigr assumes you have better things to do — like everything else on your to-do list.</p>
+    <p class="section-sub">Most automation tools assume you'll learn their syntax. Trigr assumes you have better things to do, like everything else on your to-do list.</p>
 
     <div class="vs-grid">
       <div class="vs-col vs-col-bad">
@@ -1482,7 +1486,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <span class="vs-fn">Sleep</span>, 500
   <span class="vs-fn">SendInput</span>, npm run dev{Enter}
 <span class="vs-kw">return</span></pre>
-        <div class="vs-foot">14 lines, in a separate <strong>.ahk</strong> file. Reload to take effect. Powerful if you write AHK every day — opaque to anyone who needs to edit it later but doesn't.</div>
+        <div class="vs-foot">14 lines, in a separate <strong>.ahk</strong> file. Reload to take effect. Powerful if you write AHK every day. Opaque to anyone who needs to edit it later but doesn't.</div>
       </div>
 
       <div class="vs-or"><div class="vs-or-circle">OR</div></div>
@@ -1535,7 +1539,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">03</span><span class="section-label">Features</span></div>
     <h2 class="section-h2">Eight ways to give time<br><em>back</em> every day.</h2>
-    <p class="section-sub">One app, one install, your whole team. Every feature is set up by clicking — not scripted, not configured, never IT-blocked.</p>
+    <p class="section-sub">One app, one install, your whole team. Every feature is set up by clicking. Not scripted, not configured, never IT-blocked.</p>
 
     <div class="bento">
       <div class="bento-rail"><!-- desktop: display:contents (invisible to grid). mobile: horizontal swipe rail -->
@@ -1543,7 +1547,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       <div class="b-tile b-tile-hero">
         <div class="b-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg></div>
         <div class="b-title">Remap any key,<br>any combination,<br>any action.</div>
-        <div class="b-desc">Pick a modifier, click a key, fill in the action. Live in under a minute. The keyboard shows exactly what's assigned and what's free — no guessing, no syntax.</div>
+        <div class="b-desc">Pick a modifier, click a key, fill in the action. Live in under a minute. The keyboard shows exactly what's assigned and what's free. No guessing, no syntax.</div>
         <div class="b-hero-visual">
           <div class="b-mini-kb">
             <div class="b-mini-row">
@@ -1581,7 +1585,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <div class="b-icon ic-hk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></div>
         <div class="b-title">Quick Search</div>
         <div class="b-desc">Press <strong style="color:var(--gold-light);font-weight:500">Ctrl+Space</strong> from anywhere. Search every assignment. Fire any action without touching the mouse.</div>
-        <button class="demo-press-hint" onclick="openCmdK()" type="button" aria-label="Try it — open this site's search palette">
+        <button class="demo-press-hint" onclick="openCmdK()" type="button" aria-label="Try it: open this site's search palette">
           <span class="demo-hint-pulse"></span>Press <span class="demo-code" style="margin-left:2px;">Ctrl+K</span> to search this page
         </button>
       </div>
@@ -1590,7 +1594,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       <div class="b-tile b-tile-wide">
         <div class="b-icon ic-mc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
         <div class="b-title">Chain actions into a single trigger.</div>
-        <div class="b-desc">Build the sequence step by step — open apps, type text, run hotkeys, add delays. Trigger it from any key.</div>
+        <div class="b-desc">Build the sequence step by step: open apps, type text, run hotkeys, add delays. Trigger it from any key.</div>
         <div class="b-macro-steps">
           <div class="b-step"><span class="b-step-n">1</span><span class="b-step-l">Open Terminal</span><span class="b-step-time">+0ms</span></div>
           <div class="b-step"><span class="b-step-n">2</span><span class="b-step-l">Type:</span> <code style="font-family:var(--font-mono);font-size:11px;color:var(--text)">npm run dev</code><span class="b-step-time">+120ms</span></div>
@@ -1611,7 +1615,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <span class="b-exp-badge">Experimental</span>
         <div class="b-icon ic-vc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0014 0v-2M12 19v3"/></svg></div>
         <div class="b-title">Voice Commands</div>
-        <div class="b-desc">Hold Alt+Space, say <em style="color:var(--text);font-style:normal">"open Revit"</em>. Fully offline, grammar-bound — no cloud, no listening. <strong style="color:var(--text);font-weight:500">Early-stage feature</strong>, improving each release.</div>
+        <div class="b-desc">Hold Alt+Space, say <em style="color:var(--text);font-style:normal">"open Revit"</em>. Fully offline, grammar-bound. No cloud, no listening. <strong style="color:var(--text);font-weight:500">Early-stage feature</strong>, improving each release.</div>
         <div class="voice-wave"><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span></div>
         <span class="b-tag tag-vc">Offline voice</span>
       </div>
@@ -1624,8 +1628,8 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
           <div class="b-title" style="margin-top:14px;">Already use AutoHotkey?<br>Bring your scripts.</div>
           <div class="b-desc">v1 and v2 ship inside Trigr. Paste, assign to a key, fire. No installation, no .ahk files, no terminal. Live alongside your visual hotkeys.</div>
           <div class="b-ahk-feats">
-            <div class="b-ahk-feat"><svg class="b-ahk-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>v1 + v2 — both bundled</span></div>
-            <div class="b-ahk-feat"><svg class="b-ahk-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>Zero install — runtime included</span></div>
+            <div class="b-ahk-feat"><svg class="b-ahk-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>v1 + v2, both bundled</span></div>
+            <div class="b-ahk-feat"><svg class="b-ahk-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>Zero install, runtime included</span></div>
             <div class="b-ahk-feat"><svg class="b-ahk-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>Re-trigger kills previous run</span></div>
             <div class="b-ahk-feat"><svg class="b-ahk-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>Use standalone or as a macro step</span></div>
           </div>
@@ -1666,14 +1670,14 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">04</span><span class="section-label">Built for</span></div>
     <h2 class="section-h2">You're typing things<br>your keyboard could <em>do</em>.</h2>
-    <p class="section-sub">Trigr is for people who want to move faster on Windows without learning a scripting language. Built for my own civil-engineering team — because every tool we tried was either too complex or too limited.</p>
+    <p class="section-sub">Trigr is for people who want to move faster on Windows without learning a scripting language. Built for my own civil-engineering team, because every tool we tried was either too complex or too limited.</p>
 
     <div class="who-list">
       <div class="who-row">
         <div class="who-card">
           <div class="who-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1"/></svg></div>
           <h3>Office &amp; admin</h3>
-          <p>Type <strong>/sig</strong> and get your full signature. Type <strong>/addr</strong> and get your office address. Set it up once — works in every app, forever.</p>
+          <p>Type <strong>/sig</strong> and get your full signature. Type <strong>/addr</strong> and get your office address. Set it up once. Works in every app, forever.</p>
         </div>
         <div class="who-card">
           <div class="who-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-5a9 9 0 0118 0v5M21 19a2 2 0 01-2 2h-1v-6h3v4zM3 19v-4h3v6H5a2 2 0 01-2-2z"/></svg></div>
@@ -1723,12 +1727,12 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <div class="sticky-step" data-step="1">
           <span class="step-num">01</span>
           <h3>Pick a <em>modifier</em>.</h3>
-          <p>Click Ctrl, Alt, Shift or Win. The visual keyboard shows what's already assigned and what's free — at a glance, no guessing.</p>
+          <p>Click Ctrl, Alt, Shift or Win. The visual keyboard shows what's already assigned and what's free, at a glance. No guessing.</p>
         </div>
         <div class="sticky-step" data-step="2">
           <span class="step-num">02</span>
           <h3>Click a <em>key</em>.</h3>
-          <p>Any letter, number, function key — even mouse buttons. Pick one of seven action types: Type Text, Send Hotkey, Run Macro, Open App, Open URL, Open Folder, or AHK Script.</p>
+          <p>Any letter, number, function key, even mouse buttons. Pick one of seven action types: Type Text, Send Hotkey, Run Macro, Open App, Open URL, Open Folder, or AHK Script.</p>
         </div>
         <div class="sticky-step" data-step="3">
           <span class="step-num">03</span>
@@ -1791,16 +1795,16 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">06</span><span class="section-label">Questions</span></div>
     <h2 class="section-h2">The questions you're<br>about to <em>ask</em>.</h2>
-    <p class="section-sub">Built solo, shipped solo, supported solo — happy to answer anything else over email.</p>
+    <p class="section-sub">Built solo, shipped solo, supported solo. Happy to answer anything else over email.</p>
 
     <div class="faq-list">
       <details class="faq-item" name="faq">
         <summary class="faq-q">Is it really free?<span class="faq-q-icon"></span></summary>
-        <div class="faq-body">Yes — fully free during Beta and the core feature set stays free at v1.0. <strong>Pro</strong> and <strong>Teams</strong> licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch.</div>
+        <div class="faq-body">Yes. Fully free during Beta and the core feature set stays free at v1.0. <strong>Pro</strong> and <strong>Teams</strong> licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch.</div>
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q">How is this different from AutoHotkey?<span class="faq-q-icon"></span></summary>
-        <div class="faq-body">Trigr ships with AutoHotkey built in — both <code>v1</code> and <code>v2</code> — so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one.</div>
+        <div class="faq-body">Trigr ships with AutoHotkey built in (both <code>v1</code> and <code>v2</code>), so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one.</div>
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q">Does it phone home? Where does my data live?<span class="faq-q-icon"></span></summary>
@@ -1812,7 +1816,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q">Will it work in Outlook / Excel / Revit / Slack?<span class="faq-q-icon"></span></summary>
-        <div class="faq-body">Yes. Trigr works at the OS level using low-level keyboard hooks — the same mechanism every Windows shortcut already uses. <strong>If you can type into the app, Trigr works in it.</strong> No per-app integration required.</div>
+        <div class="faq-body">Yes. Trigr works at the OS level using low-level keyboard hooks, the same mechanism every Windows shortcut already uses. <strong>If you can type into the app, Trigr works in it.</strong> No per-app integration required.</div>
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q">Does it slow my computer down?<span class="faq-q-icon"></span></summary>
@@ -1820,7 +1824,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q">Can my whole team share configs?<span class="faq-q-icon"></span></summary>
-        <div class="faq-body">Yes — point Trigr at a shared folder (network drive, OneDrive, Dropbox) and everyone on your team gets the same hotkeys, expansions and macros. Live-synced, file-watcher-backed, conflict-managed. Handy for support teams, ops, or anyone with a shared playbook.</div>
+        <div class="faq-body">Yes. Point Trigr at a shared folder (network drive, OneDrive, Dropbox) and everyone on your team gets the same hotkeys, expansions and macros. Live-synced, file-watcher-backed, conflict-managed. Handy for support teams, ops, or anyone with a shared playbook.</div>
       </details>
     </div>
   </div>
@@ -1832,10 +1836,10 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 <section class="cta-section reveal">
   <div class="cta-card">
     <h2 class="cta-h2">Your keyboard.<br><em>Trigr it.</em></h2>
-    <p class="cta-sub">Core features are free, always. Pro and Teams licences land at v1.0 — everyone testing now gets a thank-you discount at launch.</p>
+    <p class="cta-sub">Core features are free, always. Pro and Teams licences land at v1.0. Everyone testing now gets a thank-you discount at launch.</p>
     <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="btn-primary" style="font-size:16px;padding:16px 36px;" data-loc="footer_cta" data-arch="x64">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-      Download for Windows — Free
+      Download for Windows · Free
     </a>
     <p class="cta-arm-link" style="margin-top:14px;font-size:13px;opacity:0.72;">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="footer_cta_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
     <div class="cta-meta">
