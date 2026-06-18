@@ -307,8 +307,17 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     setLoading(false);
   }, []);
 
-  const loadDateBuckets = useCallback(() => {
-    window.electronAPI?.getClipboardDateBuckets?.().then(b => {
+  // Filter-aware: when the app/tag toolbar filter is set, the sidebar date
+  // counts (and the Pinned count) reflect items matching that filter. Empty
+  // dates drop out via SQL GROUP BY, so the sidebar hides dates with 0 hits
+  // for the current filter automatically.
+  const loadDateBuckets = useCallback((overrideFilters) => {
+    const f = overrideFilters || filtersRef.current;
+    const filters = {
+      appFilter: f.app || null,
+      tagFilter: f.tag && f.tag !== 'All' ? f.tag : null,
+    };
+    window.electronAPI?.getClipboardDateBuckets?.(filters).then(b => {
       if (b) setDateBuckets(b);
     });
   }, []);
@@ -337,9 +346,13 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
       const next = { date: selectedDate, app: filterApp, tag: filterTag, search };
       filtersRef.current = next;
       loadHistory(1, false, next);
+      // Sidebar bucket counts mirror the toolbar filters so dates with 0 hits
+      // for the current app/tag drop out. Search isn't applied to buckets
+      // (decrypt-and-scan would be expensive per keystroke).
+      loadDateBuckets(next);
     }, search ? 200 : 0);
     return () => clearTimeout(timer);
-    // loadHistory is stable; we re-fire on any filter change.
+    // loadHistory / loadDateBuckets are stable; we re-fire on any filter change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, filterApp, filterTag, search]);
 
@@ -370,18 +383,16 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
       if (item.source_app) {
         setSourceApps(prev => prev.includes(item.source_app) ? prev : [...prev, item.source_app].sort());
       }
-      // Update sidebar bucket counts for the new item's date.
-      setDateBuckets(prev => {
-        const key = itemLocalDateKey(item);
-        if (!key) return prev;
-        const existing = prev.dates.find(d => d.date === key);
-        const dates = existing
-          ? prev.dates.map(d => d.date === key ? { ...d, count: d.count + 1 } : d)
-          : [{ date: key, count: 1 }, ...prev.dates].sort((a, b) => b.date.localeCompare(a.date));
-        return { ...prev, dates };
-      });
+      // Refresh sidebar bucket counts. Re-fetch (rather than incrementing
+      // locally) because the new item may or may not match the active app/tag
+      // filter — a single SQL query is the simplest way to stay correct under
+      // both filtered and unfiltered views.
+      loadDateBuckets();
     });
     return () => window.electronAPI?.removeAllListeners('clipboard-new-item');
+    // loadDateBuckets is a stable useCallback; deps must stay `[]` so the
+    // listener registers exactly once per [[feedback_tauri_listener_registration_race]].
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

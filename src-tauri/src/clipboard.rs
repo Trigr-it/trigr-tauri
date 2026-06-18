@@ -680,6 +680,8 @@ enum ClipboardMsg {
         reply: mpsc::Sender<Vec<String>>,
     },
     GetDateBuckets {
+        app_filter: Option<String>,
+        tag_filter: Option<String>,
         reply: mpsc::Sender<Value>,
     },
     UpdateItem {
@@ -1111,8 +1113,8 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         let apps = handle_get_distinct_source_apps(&conn);
                         let _ = reply.send(apps);
                     }
-                    ClipboardMsg::GetDateBuckets { reply } => {
-                        let buckets = handle_get_date_buckets(&conn);
+                    ClipboardMsg::GetDateBuckets { app_filter, tag_filter, reply } => {
+                        let buckets = handle_get_date_buckets(&conn, app_filter.as_deref(), tag_filter.as_deref());
                         let _ = reply.send(buckets);
                     }
                     ClipboardMsg::UpdateItem { id, new_text, reply } => {
@@ -1338,11 +1340,11 @@ pub fn get_distinct_source_apps() -> Vec<String> {
     Vec::new()
 }
 
-pub fn get_date_buckets() -> Value {
+pub fn get_date_buckets(app_filter: Option<String>, tag_filter: Option<String>) -> Value {
     if let Some(tx) = CLIPBOARD_TX.get() {
         if let Ok(tx) = tx.lock() {
             let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetDateBuckets { reply: reply_tx }).is_ok() {
+            if tx.send(ClipboardMsg::GetDateBuckets { app_filter, tag_filter, reply: reply_tx }).is_ok() {
                 if let Ok(buckets) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
                     return buckets;
                 }
@@ -1842,23 +1844,49 @@ fn handle_get_distinct_source_apps(conn: &Connection) -> Vec<String> {
 /// separately (the sidebar shows them under a "Pinned" entry that ignores age),
 /// so they're not counted in the date rows. Per [[feedback_sqlite_localtime_pattern]]
 /// we store UTC and convert with DATE(timestamp, 'localtime') for grouping.
-fn handle_get_date_buckets(conn: &Connection) -> Value {
+fn handle_get_date_buckets(
+    conn: &Connection,
+    app_filter: Option<&str>,
+    tag_filter: Option<&str>,
+) -> Value {
     let days = effective_retention_days();
+
+    // Toolbar filters (app, tag) layer on top via positional `?` binds, same
+    // pattern as handle_get_history. Search is intentionally NOT applied here —
+    // it would force a decrypt-and-scan per refresh and the buckets are meant
+    // to be cheap. GROUP BY naturally drops dates with zero matching rows, so
+    // the sidebar hides empty dates without extra filtering on the JS side.
+    let mut clauses: Vec<String> = vec![
+        "pinned = 0".to_string(),
+        format!("timestamp >= datetime('now', '-{} days')", days),
+    ];
+    let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
+        clauses.push("source_app = ?".to_string());
+        binds.push(Box::new(app.to_string()));
+    }
+    if let Some(tag) = tag_filter.filter(|s| !s.is_empty() && *s != "All") {
+        clauses.push("content_tag = ?".to_string());
+        binds.push(Box::new(tag.to_string()));
+    }
+    let where_clause = clauses.join(" AND ");
+
     let dates_sql = format!(
         "SELECT DATE(timestamp, 'localtime') AS local_date, COUNT(*) AS cnt
          FROM clipboard_history
-         WHERE pinned = 0 AND timestamp >= datetime('now', '-{} days')
+         WHERE {}
          GROUP BY local_date
          ORDER BY local_date DESC",
-        days
+        where_clause
     );
 
     let mut stmt = match conn.prepare(&dates_sql) {
         Ok(s) => s,
         Err(_) => return serde_json::json!({ "dates": [], "pinned_count": 0 }),
     };
+    let dates_refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|p| p.as_ref()).collect();
     let dates: Vec<Value> = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params_from_iter(dates_refs.iter()), |row| {
             Ok(serde_json::json!({
                 "date": row.get::<_, String>(0).unwrap_or_default(),
                 "count": row.get::<_, i64>(1).unwrap_or(0),
@@ -1867,12 +1895,25 @@ fn handle_get_date_buckets(conn: &Connection) -> Value {
         .map(|iter| iter.filter_map(|r| r.ok()).collect())
         .unwrap_or_default();
 
+    // Pinned count also respects the active filters so the "Pinned" bucket
+    // reflects what the user would actually see if they clicked it.
+    let mut pin_clauses: Vec<String> = vec!["pinned = 1".to_string()];
+    let mut pin_binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
+        pin_clauses.push("source_app = ?".to_string());
+        pin_binds.push(Box::new(app.to_string()));
+    }
+    if let Some(tag) = tag_filter.filter(|s| !s.is_empty() && *s != "All") {
+        pin_clauses.push("content_tag = ?".to_string());
+        pin_binds.push(Box::new(tag.to_string()));
+    }
+    let pin_sql = format!(
+        "SELECT COUNT(*) FROM clipboard_history WHERE {}",
+        pin_clauses.join(" AND ")
+    );
+    let pin_refs: Vec<&dyn rusqlite::ToSql> = pin_binds.iter().map(|p| p.as_ref()).collect();
     let pinned_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM clipboard_history WHERE pinned = 1",
-            [],
-            |row| row.get(0),
-        )
+        .query_row(&pin_sql, rusqlite::params_from_iter(pin_refs.iter()), |row| row.get(0))
         .unwrap_or(0);
 
     serde_json::json!({ "dates": dates, "pinned_count": pinned_count })

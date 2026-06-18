@@ -2658,8 +2658,11 @@ fn get_distinct_source_apps() -> Vec<String> {
 }
 
 #[tauri::command]
-fn get_clipboard_date_buckets() -> Value {
-    clipboard::get_date_buckets()
+fn get_clipboard_date_buckets(
+    app_filter: Option<String>,
+    tag_filter: Option<String>,
+) -> Value {
+    clipboard::get_date_buckets(app_filter, tag_filter)
 }
 
 #[tauri::command]

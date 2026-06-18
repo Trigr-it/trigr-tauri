@@ -242,7 +242,10 @@ window.electronAPI = {
   pinClipboardItem:       (id, pinned)    => invoke('pin_clipboard_item', { id, pinned }),
   getClipboardImage:      (id)            => invoke('get_clipboard_image', { id }),
   getDistinctSourceApps:  ()              => invoke('get_distinct_source_apps'),
-  getClipboardDateBuckets: ()             => invoke('get_clipboard_date_buckets'),
+  getClipboardDateBuckets: (filters = {}) => invoke('get_clipboard_date_buckets', {
+    appFilter: filters.appFilter ?? null,
+    tagFilter: filters.tagFilter ?? null,
+  }),
   updateClipboardItem:    (id, newText)   => invoke('update_clipboard_item', { id, newText }),
   getClipboardSettings:   ()              => invoke('get_clipboard_settings'),
   setClipboardSettings:   (retentionDays) => invoke('set_clipboard_settings', { retentionDays }),

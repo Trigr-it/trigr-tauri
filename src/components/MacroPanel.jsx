@@ -1499,7 +1499,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         <div className="macro-step-num">{index + 1}</div>
         <MacroStepTypeMenu
           value={step.type}
-          onChange={(t) => updateStep({ ...step, type: t, value: '' })}
+          onChange={(t) => updateStep({ ...step, type: t, value: t === 'Click Mouse' ? 'LButton' : '' })}
         />
 
         {/* Inline value fields */}

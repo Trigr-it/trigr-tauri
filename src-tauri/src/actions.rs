@@ -1865,6 +1865,11 @@ fn send_mouse_click(button: &str) {
 
     unsafe {
         SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
+        // Small hold between down and up — fused back-to-back SendInputs are
+        // invisible to some Chromium-based targets (Arc browser's right-click
+        // context menu, observed 2026-06-18). Mirrors the keyboard hold-time
+        // pattern per [[feedback_synthetic_key_hold_time]].
+        thread::sleep(Duration::from_millis(15));
         SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
     }
 
@@ -1895,9 +1900,10 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         }
 
         "Click Mouse" => {
-            if !step_value.is_empty() && is_mouse_button(step_value) {
+            let btn = if step_value.is_empty() { "LButton" } else { step_value };
+            if is_mouse_button(btn) {
                 for i in 0..repeat_count {
-                    send_mouse_click(step_value);
+                    send_mouse_click(btn);
                     if i + 1 < repeat_count && settle_ms > 0 {
                         thread::sleep(Duration::from_millis(settle_ms));
                     }
