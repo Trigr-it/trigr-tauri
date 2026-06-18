@@ -910,6 +910,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 [data-theme="light"] .faq-item[open] { background:rgba(232,160,32,0.03); }
 .faq-q { padding:22px 28px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:16px; user-select:none; list-style:none; font-family:var(--font-display); font-size:17px; font-weight:600; color:var(--text); }
 .faq-q::-webkit-details-marker { display:none; }
+.faq-q .faq-q-text { font:inherit; color:inherit; margin:0; padding:0; }
 .faq-q-icon { width:28px; height:28px; flex-shrink:0; border:1px solid var(--hairline-strong); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.3s; position:relative; }
 .faq-q-icon::before, .faq-q-icon::after { content:''; position:absolute; background:currentColor; border-radius:1px; }
 .faq-q-icon::before { width:10px; height:1.5px; }
@@ -1859,31 +1860,31 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 
     <div class="faq-list">
       <details class="faq-item" name="faq">
-        <summary class="faq-q">Is it really free?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Is it really free?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes. Fully free during Beta and the core feature set stays free at v1.0. <strong>Pro</strong> and <strong>Teams</strong> licences ship at v1.0 with extras (advanced analytics, shared snippet libraries, admin management). Everyone testing now gets early access and a thank-you discount at launch.</div>
       </details>
       <details class="faq-item" name="faq">
-        <summary class="faq-q">How is this different from AutoHotkey?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">How is this different from AutoHotkey?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Trigr ships with AutoHotkey built in (both <code>v1</code> and <code>v2</code>), so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one.</div>
       </details>
       <details class="faq-item" name="faq">
-        <summary class="faq-q">Does it phone home? Where does my data live?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Does it phone home? Where does my data live?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Your content stays on your machine. Config, clipboard history, analytics: all in plain JSON and SQLite files in your <code>%APPDATA%</code> folder. <strong>No accounts, no cloud.</strong> The only thing Trigr sends is a once-daily anonymous summary: counts of actions fired by type, counts of what you have configured, your plan tier, and the app version. No content, no identifiers, and one click in Settings turns it off. Voice commands (currently experimental) run locally via the Windows speech engine. No audio is ever transmitted.</div>
       </details>
       <details class="faq-item" name="faq">
-        <summary class="faq-q">Will my IT team allow it?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Will my IT team allow it?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Trigr ships as a signed ~9MB installer that installs per-user. <strong>No admin rights, no system services, no network calls</strong> outside the optional update check. It installs to your user folder and uninstalls in one click via Add/Remove Programs. Most enterprise IT departments approve it as a standard productivity tool, since nothing it does requires elevated permissions or touches shared system files.</div>
       </details>
       <details class="faq-item" name="faq">
-        <summary class="faq-q">Will it work in Outlook / Excel / Revit / Slack?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Will it work in Outlook / Excel / Revit / Slack?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes. Trigr works at the OS level using low-level keyboard hooks, the same mechanism every Windows shortcut already uses. <strong>If you can type into the app, Trigr works in it.</strong> No per-app integration required.</div>
       </details>
       <details class="faq-item" name="faq">
-        <summary class="faq-q">Does it slow my computer down?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Does it slow my computer down?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">No measurable impact. ~30MB of RAM and effectively 0% CPU when idle. The keyboard hook is callback-driven (no polling) and per-key processing is sub-millisecond. You won't notice it's running.</div>
       </details>
       <details class="faq-item" name="faq">
-        <summary class="faq-q">Can my whole team share configs?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Can my whole team share configs?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes. Point Trigr at a shared folder (network drive, OneDrive, Dropbox) and everyone on your team gets the same hotkeys, expansions and macros. Live-synced, file-watcher-backed, conflict-managed. Handy for support teams, ops, or anyone with a shared playbook.</div>
       </details>
     </div>

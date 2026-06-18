@@ -484,6 +484,7 @@ td:not(.cmp-trigr) .cmp-yes { color:var(--text-muted); font-weight:500; }
 [data-theme="light"] .faq-item[open] { background:rgba(232,160,32,0.03); }
 .faq-q { padding:22px 28px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:16px; user-select:none; list-style:none; font-family:var(--font-display); font-size:17px; font-weight:600; color:var(--text); }
 .faq-q::-webkit-details-marker { display:none; }
+.faq-q .faq-q-text { font:inherit; color:inherit; margin:0; padding:0; }
 .faq-q-icon { width:28px; height:28px; flex-shrink:0; border:1px solid var(--hairline-strong); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.3s; position:relative; }
 .faq-q-icon::before, .faq-q-icon::after { content:''; position:absolute; background:currentColor; border-radius:1px; }
 .faq-q-icon::before { width:10px; height:1.5px; }
@@ -988,27 +989,27 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
 
     <div class="faq-list">
       <details class="faq-item reveal">
-        <summary class="faq-q">Will Trigr run my existing .ahk scripts?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Will Trigr run my existing .ahk scripts?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes. Trigr has a built-in <strong>AHK Script</strong> action with both v1 and v2 runtimes bundled: paste a script, assign it to a key, and fire it. No separate AutoHotkey install needed. Most people rebuild their simple hotkeys and snippets in the visual editor and keep the runner for the scripts that genuinely need code.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Can Trigr do everything AHK can do?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Can Trigr do everything AHK can do?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Honestly, no. AHK is a full scripting language; if you write custom logic, parse text, or drive COM objects, AHK is the better tool for that work. Trigr covers the common cases without code: hotkeys, macros, text expansion, clipboard history, and app profiles. For the rest, the built-in AHK runner has you covered.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Why switch if AHK is free and works?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Why switch if AHK is free and works?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Not having to write or maintain code. A visual UI means you can see every binding at a glance, change one in seconds, and hand the setup to a teammate who has never seen a script.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Does it work with games?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Does it work with games?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes for most games. Trigr sends standard Windows input with realistic key timings. Some online games with anti-cheat may flag any simulated input; that's the same risk profile as AHK.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Is the source code open?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Is the source code open?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">The full source is public on <a href="https://github.com/Trigr-it/trigr-tauri" target="_blank" rel="noopener">GitHub</a> under the Trigr Source-Available Licence: free to read and audit, not to redistribute. Not OSI open source, but every line the app runs is there to inspect.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">What happens at v1.0? Will I have to pay?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">What happens at v1.0? Will I have to pay?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">The free tier stays free, and it includes everything you'd use instead of AHK: hotkeys, macros, text expansion, and the AHK runner. An optional <strong>Pro</strong> licence adds extras at v1.0. Anyone who joins during the beta gets Pro at half price for their first year.</div>
       </details>
     </div>

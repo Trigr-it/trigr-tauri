@@ -473,6 +473,7 @@ td:not(.cmp-trigr) .cmp-yes { color:var(--text-muted); font-weight:500; }
 [data-theme="light"] .faq-item[open] { background:rgba(232,160,32,0.03); }
 .faq-q { padding:22px 28px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:16px; user-select:none; list-style:none; font-family:var(--font-display); font-size:17px; font-weight:600; color:var(--text); }
 .faq-q::-webkit-details-marker { display:none; }
+.faq-q .faq-q-text { font:inherit; color:inherit; margin:0; padding:0; }
 .faq-q-icon { width:28px; height:28px; flex-shrink:0; border:1px solid var(--hairline-strong); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.3s; position:relative; }
 .faq-q-icon::before, .faq-q-icon::after { content:''; position:absolute; background:currentColor; border-radius:1px; }
 .faq-q-icon::before { width:10px; height:1.5px; }
@@ -922,27 +923,27 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
 
     <div class="faq-list">
       <details class="faq-item reveal">
-        <summary class="faq-q">Can I import my TextExpander snippets?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Can I import my TextExpander snippets?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Not automatically yet; an importer for competitor formats is on the roadmap. Snippets are quick to re-create in the visual editor, and you can paste your existing snippet text straight in.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Does it work in Word, Outlook, Chrome, and VS Code?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Does it work in Word, Outlook, Chrome, and VS Code?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes. Trigr watches typing at the Windows input layer rather than through per-app plugins, so expansions fire in any app that accepts text: Office, browsers, IDEs, terminals, and chat apps.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Is my data sent to the cloud?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Is my data sent to the cloud?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">No. Snippets, settings, and clipboard history are stored in local files on your machine. There is no account and no sync service. The app makes two kinds of network call: an update check against GitHub, and a once-daily anonymous usage summary (counts of fired expansions and macros plus the app version, no content, no identifiers) that you can turn off in Settings.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Why is it free?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Why is it free?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Trigr is in public beta. Feedback is worth more than revenue right now, so the full feature set, including Pro features, is free while the beta runs.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">What happens when v1.0 ships? Will I have to pay?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">What happens when v1.0 ships? Will I have to pay?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">The core feature set stays free, including text expansion. At v1.0 an optional <strong>Pro</strong> licence adds extras like advanced analytics and shared snippet libraries. Anyone who joins during the beta gets Pro at half price for their first year.</div>
       </details>
       <details class="faq-item reveal">
-        <summary class="faq-q">Is the source code public?<span class="faq-q-icon"></span></summary>
+        <summary class="faq-q"><h3 class="faq-q-text">Is the source code public?</h3><span class="faq-q-icon"></span></summary>
         <div class="faq-body">Yes. The full source is on <a href="https://github.com/Trigr-it/trigr-tauri" target="_blank" rel="noopener">GitHub</a> under the Trigr Source-Available Licence: free to read and audit, not to redistribute. The installer you download is built from that source and signed by Node Group Ltd.</div>
       </details>
     </div>
