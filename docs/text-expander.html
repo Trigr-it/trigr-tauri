@@ -34,15 +34,39 @@
   "name": "Trigr",
   "description": "Text expander for Windows with snippets, placeholders, and fill-in fields, plus hotkeys, macros, and a clipboard manager. No account required.",
   "url": "https://usetrigr.com/text-expander.html",
-  "image": "https://usetrigr.com/favicon-192.png",
+  "image": {
+    "@type": "ImageObject",
+    "url": "https://usetrigr.com/og-image.png",
+    "width": 1200,
+    "height": 630
+  },
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Windows 10, Windows 11",
+  "softwareVersion": "0.5.3",
   "downloadUrl": "https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe",
-  "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "USD"
-  },
+  "featureList": [
+    "Text expansion with abbreviation triggers",
+    "Dynamic tokens: date, time, clipboard, cursor position",
+    "Fill-in placeholders",
+    "Clipboard history",
+    "Hotkey and macro automation"
+  ],
+  "offers": [
+    {
+      "@type": "Offer",
+      "name": "Free",
+      "price": "0",
+      "priceCurrency": "GBP",
+      "url": "https://usetrigr.com/pricing.html"
+    },
+    {
+      "@type": "Offer",
+      "name": "Pro",
+      "price": "49",
+      "priceCurrency": "GBP",
+      "url": "https://usetrigr.com/pricing.html"
+    }
+  ],
   "publisher": {
     "@type": "Organization",
     "name": "Trigr",

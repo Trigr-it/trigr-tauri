@@ -34,15 +34,40 @@
   "name": "Trigr",
   "description": "Visual alternative to AutoHotkey for Windows. Hotkeys, macros, text expansion, and a clipboard manager with a point-and-click UI instead of .ahk scripts.",
   "url": "https://usetrigr.com/autohotkey-alternative.html",
-  "image": "https://usetrigr.com/favicon-192.png",
+  "image": {
+    "@type": "ImageObject",
+    "url": "https://usetrigr.com/og-image.png",
+    "width": 1200,
+    "height": 630
+  },
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Windows 10, Windows 11",
+  "softwareVersion": "0.5.3",
   "downloadUrl": "https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe",
-  "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "USD"
-  },
+  "featureList": [
+    "Visual hotkey editor (no scripting)",
+    "Built-in AutoHotkey v1 and v2 runner",
+    "Macro sequences",
+    "Text expansion",
+    "App-specific profiles",
+    "Clipboard history"
+  ],
+  "offers": [
+    {
+      "@type": "Offer",
+      "name": "Free",
+      "price": "0",
+      "priceCurrency": "GBP",
+      "url": "https://usetrigr.com/pricing.html"
+    },
+    {
+      "@type": "Offer",
+      "name": "Pro",
+      "price": "49",
+      "priceCurrency": "GBP",
+      "url": "https://usetrigr.com/pricing.html"
+    }
+  ],
   "publisher": {
     "@type": "Organization",
     "name": "Trigr",

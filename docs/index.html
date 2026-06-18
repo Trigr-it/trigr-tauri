@@ -33,12 +33,18 @@
   "@context": "https://schema.org",
   "@type": "Organization",
   "name": "Trigr",
+  "legalName": "Node Group Ltd",
   "url": "https://usetrigr.com",
   "logo": {
     "@type": "ImageObject",
     "url": "https://usetrigr.com/favicon-192.png",
     "width": 192,
     "height": 192
+  },
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "email": "admin@usetrigr.com",
+    "contactType": "customer support"
   },
   "sameAs": [
     "https://github.com/Trigr-it/trigr-tauri"
@@ -48,23 +54,76 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Trigr",
+  "url": "https://usetrigr.com",
+  "description": "Visual hotkey, macro, text expansion, and clipboard manager for Windows. No scripting required.",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Trigr",
+    "url": "https://usetrigr.com"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Trigr",
   "description": "Visual hotkey, macro and text expansion tool for Windows. Click a key on the on-screen keyboard, pick an action. No scripting required.",
   "url": "https://usetrigr.com",
-  "image": "https://usetrigr.com/favicon-192.png",
+  "image": {
+    "@type": "ImageObject",
+    "url": "https://usetrigr.com/og-image.png",
+    "width": 1200,
+    "height": 630
+  },
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Windows 10, Windows 11",
   "softwareVersion": "0.5.3",
   "downloadUrl": "https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe",
-  "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "USD"
-  },
+  "featureList": [
+    "Visual hotkey editor",
+    "Macro sequences",
+    "Text expansion with dynamic tokens",
+    "Clipboard history manager",
+    "App-specific profiles",
+    "AutoHotkey script runner (v1 and v2)",
+    "Voice commands",
+    "Quick search overlay"
+  ],
+  "offers": [
+    {
+      "@type": "Offer",
+      "name": "Free",
+      "price": "0",
+      "priceCurrency": "GBP",
+      "description": "Core feature set free forever",
+      "url": "https://usetrigr.com/pricing.html"
+    },
+    {
+      "@type": "Offer",
+      "name": "Pro",
+      "price": "49",
+      "priceCurrency": "GBP",
+      "priceSpecification": {
+        "@type": "UnitPriceSpecification",
+        "price": "49",
+        "priceCurrency": "GBP",
+        "referenceQuantity": {
+          "@type": "QuantitativeValue",
+          "value": 1,
+          "unitCode": "ANN"
+        }
+      },
+      "description": "Advanced analytics, shared snippet libraries, admin management",
+      "url": "https://usetrigr.com/pricing.html"
+    }
+  ],
   "publisher": {
     "@type": "Organization",
     "name": "Trigr",
+    "legalName": "Node Group Ltd",
     "url": "https://usetrigr.com"
   }
 }
@@ -1865,7 +1924,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     <a href="privacy.html">Privacy</a>
     <a href="refund.html">Refunds</a>
   </div>
-  <span class="ft-copy">© 2026 Trigr</span>
+  <span class="ft-copy">© 2026 Node Group Ltd · Built by The Trigr team</span>
   <a href="https://betalist.com/startups/trigr?utm_campaign=badge-trigr&amp;utm_medium=badge&amp;utm_source=badge-featured" class="betalist-badge" target="_blank" rel="noopener">
     <img class="bl-badge-light" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=dark">
     <img class="bl-badge-dark" loading="lazy" alt="Trigr - Visual hotkeys, macros, and text expansion for Windows | BetaList" width="117" height="40" src="https://betalist.com/badges/featured?id=165543&amp;theme=gray">
