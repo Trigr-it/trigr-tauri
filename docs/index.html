@@ -1239,14 +1239,14 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .sticky-text {
     display:flex; flex-direction:row; gap:14px; align-items:stretch;
     overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
-    scroll-snap-type:x proximity; scroll-padding-left:18px;
+    scroll-snap-type:x mandatory; scroll-padding-left:18px;
     -webkit-overflow-scrolling:touch;
     margin:0 -18px; padding:2px 18px 16px;
     scrollbar-width:none;
   }
   .sticky-text::-webkit-scrollbar { display:none; }
   .sticky-step {
-    flex:0 0 84vw; max-width:380px; scroll-snap-align:start;
+    flex:0 0 84vw; max-width:380px; scroll-snap-align:start; scroll-snap-stop:always;
     min-height:auto; padding:24px;
     opacity:1;
     background:var(--bg-card); border:1px solid var(--hairline); border-radius:14px;
@@ -1257,10 +1257,6 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .section { padding:64px 18px; }
 }
 
-@media(max-width:768px){
-  .mockup-viewport { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-  .mockup-viewport::-webkit-scrollbar { display:none; }
-}
 </style>
 </head>
 <body>
@@ -2316,7 +2312,7 @@ function scaleMockup() {
   const available = outer.offsetWidth;
   if (available === 0) return;
   const naturalW = 1280;
-  const scale = window.innerWidth <= 768 ? Math.max(available / naturalW, 0.50) : (available / naturalW);
+  const scale = available / naturalW;
   scaler.style.transform = 'scale(' + scale + ')';
   scaler.style.transformOrigin = 'top left';
   const naturalH = shell.offsetHeight;

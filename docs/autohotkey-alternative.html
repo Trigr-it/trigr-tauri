@@ -641,10 +641,6 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
   .ss-steps { grid-template-columns: 1fr; }
   .ss-stage { padding: 20px 12px; min-height: 320px; }
 }
-@media(max-width:768px){
-  .mockup-viewport { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-  .mockup-viewport::-webkit-scrollbar { display:none; }
-}
 </style>
 </head>
 <body>
@@ -1227,7 +1223,7 @@ function scaleMockup() {
   const available = outer.offsetWidth;
   if (available === 0) return;
   const naturalW = 1280;
-  const scale = window.innerWidth <= 768 ? Math.max(available / naturalW, 0.50) : (available / naturalW);
+  const scale = available / naturalW;
   scaler.style.transform = 'scale(' + scale + ')';
   scaler.style.transformOrigin = 'top left';
   const naturalH = shell.offsetHeight;
