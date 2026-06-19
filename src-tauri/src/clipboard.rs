@@ -2106,21 +2106,6 @@ fn handle_clipboard_update() {
     let was_self = crate::actions::is_self_clipboard_seq(cur_seq);
     let was_suppress = crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE.load(Ordering::SeqCst);
 
-    // ── TEMP DIAGNOSTIC [CLIP-DIAG]: clipboard-flood investigation ───────────
-    // Logs one line per WM_CLIPBOARDUPDATE so we can correlate seqnums + the
-    // self-skip / suppress gates with the rows actually landing in the DB.
-    // Remove this block (and the early get_foreground_process_name call below
-    // that supports it) once the flood writer is identified.
-    let fg_proc = get_foreground_process_name();
-    log::info!(
-        "[CLIP-DIAG] seq={} self={} suppress={} capture_on={} fg={}",
-        cur_seq,
-        was_self,
-        was_suppress,
-        CAPTURE_ENABLED.load(Ordering::SeqCst),
-        if fg_proc.is_empty() { "<unknown>" } else { fg_proc.as_str() }
-    );
-
     if was_self || was_suppress {
         return;
     }
@@ -2131,12 +2116,10 @@ fn handle_clipboard_update() {
         return;
     }
 
-    // fg_proc already resolved above for [CLIP-DIAG]; reuse it here. (When the
-    // diagnostic is removed, restore the original call site at the line below.)
-
     // App exclusion list: skip capture when the user has opted out of recording
     // clipboard from this process. Comparison is case-insensitive and ignores
     // the `.exe` suffix on both sides.
+    let fg_proc = get_foreground_process_name();
     if !fg_proc.is_empty() && is_app_excluded(&fg_proc) {
         return;
     }
@@ -2168,7 +2151,6 @@ fn handle_clipboard_update() {
         }
 
         if IsClipboardFormatAvailable(CF_HDROP) != 0 {
-            log::info!("[CLIP-DIAG] skip: CF_HDROP present (file copy)");
             CloseClipboard();
             return;
         }
@@ -2184,7 +2166,6 @@ fn handle_clipboard_update() {
                 {
                     let mut last = last_hash().lock().unwrap();
                     if *last == hash {
-                        log::info!("[CLIP-DIAG] skip: duplicate image content");
                         return;
                     }
                     *last = hash;
@@ -2233,7 +2214,6 @@ fn handle_clipboard_update() {
                     {
                         let mut last = last_hash().lock().unwrap();
                         if *last == hash {
-                            log::info!("[CLIP-DIAG] skip: duplicate text content");
                             return;
                         }
                         *last = hash;

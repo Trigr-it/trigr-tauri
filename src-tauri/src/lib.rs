@@ -1441,21 +1441,14 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     // High-scaling clamp: at 200%+ on smaller panels (e.g. 1080p laptop at 250%)
     // the unclamped popup would overflow the work area. Cap to (work-area minus
     // 32px margin) on each axis, with sensible floors. Popup body is internally
-    // scrollable both axes so capping is safe.
-    //
-    // Width clamp added v0.5.3 — a 4K TV tester at 225% reported left/right
-    // clipping where the unclamped 754*scale physical width could exceed the
-    // visible work area on some HDMI/PC-mode setups that report higher-than-
-    // expected effective DPI. The companion [CLIP-DPI] diagnostic line records
-    // the raw math so future reports can be triaged from a single log line.
+    // scrollable both axes so capping is safe. Width clamp added v0.5.3 after a
+    // 4K TV tester at 225% reported left/right clipping.
     let wa_w = wa_right - wa_left;
     let wa_h = wa_bottom - wa_top;
     let max_w = (wa_w - 32).max(400);
     let max_h = (wa_h - 32).max(200);
     let phys_w = phys_w_unclamped.min(max_w);
     let phys_h = phys_h_unclamped.min(max_h);
-    let clamped_w = phys_w < phys_w_unclamped;
-    let clamped_h = phys_h < phys_h_unclamped;
 
     let ideal_y = wa_top + wa_h / 3;
     let max_y = wa_bottom - phys_h - 16;
@@ -1464,16 +1457,6 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let phys_x = wa_left + (wa_w - phys_w) / 2;
     let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
     let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
-
-    // TEMP DIAGNOSTIC — strip once cross-machine clipboard clipping reports
-    // settle. See diagnostic lifecycle in [[project_next_session_todos]].
-    log::info!(
-        "[CLIP-DPI] scale={:.3} wa=({},{},{},{}) wa_size={}x{} unclamped={}x{} phys=({},{} {}x{}) clamped_w={} clamped_h={}",
-        scale, wa_left, wa_top, wa_right, wa_bottom, wa_w, wa_h,
-        phys_w_unclamped, phys_h_unclamped, phys_x, phys_y, phys_w, phys_h,
-        if clamped_w { "yes" } else { "no" },
-        if clamped_h { "yes" } else { "no" }
-    );
 
     // Send recent clipboard history + theme to the overlay
     let history = clipboard::get_history(1, 500, None, None, None, None);
@@ -1504,18 +1487,14 @@ fn hide_clipboard_overlay(app: &tauri::AppHandle) {
     }
     let hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
     if hwnd != 0 {
-        unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
-        }
+        actions::set_foreground_robust(hwnd);
     }
 }
 
 fn restore_overlay_target() {
     let hwnd = OVERLAY_TARGET_HWND.load(AtomicOrdering::Relaxed);
     if hwnd != 0 {
-        unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
-        }
+        actions::set_foreground_robust(hwnd);
     }
 }
 
@@ -1742,9 +1721,7 @@ fn hide_radial_menu(app: &tauri::AppHandle) {
 fn restore_radial_menu_target() {
     let hwnd = RADIAL_MENU_TARGET_HWND.load(std::sync::atomic::Ordering::SeqCst);
     if hwnd != 0 {
-        unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
-        }
+        actions::set_foreground_robust(hwnd);
     }
 }
 
@@ -1890,12 +1867,8 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 // captures GetForegroundWindow() for its paste / fill-in flow
                 // (the overlay had focus until execute_search_result hid it).
                 if target_hwnd != 0 {
-                    unsafe {
-                        windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
-                            target_hwnd as _,
-                        );
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    actions::set_foreground_robust(target_hwnd);
+                    std::thread::sleep(std::time::Duration::from_millis(30));
                 }
                 // fire_expansion_by_trigger handles image / variant / fill-in /
                 // plain text and logs analytics in each sub-path itself.
@@ -1922,12 +1895,8 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
 
                 let held = actions::release_held_modifiers();
                 if target_hwnd != 0 {
-                    unsafe {
-                        windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
-                            target_hwnd as _,
-                        );
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    actions::set_foreground_robust(target_hwnd);
+                    std::thread::sleep(std::time::Duration::from_millis(30));
                 }
 
                 // Use clipboard paste
@@ -2182,12 +2151,8 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
 
         // Restore focus to the original target app
         if target_hwnd != 0 {
-            unsafe {
-                windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
-                    target_hwnd as _,
-                );
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            actions::set_foreground_robust(target_hwnd);
+            std::thread::sleep(std::time::Duration::from_millis(30));
         }
 
         match item.content_type.as_str() {
@@ -2302,12 +2267,8 @@ fn paste_text(text: String, source_id: Option<i64>, _app: tauri::AppHandle) {
         let held = actions::release_held_modifiers();
 
         if target_hwnd != 0 {
-            unsafe {
-                windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
-                    target_hwnd as _,
-                );
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            actions::set_foreground_robust(target_hwnd);
+            std::thread::sleep(std::time::Duration::from_millis(30));
         }
 
         let prev = actions::read_clipboard_pub().unwrap_or_default();
@@ -3261,9 +3222,7 @@ pub fn run() {
                     let _ = window.hide();
                     let hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
                     if hwnd != 0 {
-                        unsafe {
-                            windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd as _);
-                        }
+                        actions::set_foreground_robust(hwnd);
                     }
                 }
             } else if label == "radialmenu" {

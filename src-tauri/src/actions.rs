@@ -19,11 +19,12 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
+    PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    BringWindowToTop, EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     SetForegroundWindow, SW_SHOW,
 };
 
@@ -2446,6 +2447,42 @@ pub fn release_held_modifiers() -> Vec<u16> {
 pub fn restore_modifiers(held: &[u16]) {
     for &vk in held {
         send_vk_key(vk, false);
+    }
+}
+
+/// Restore foreground to `hwnd` using the AttachThreadInput trick to defeat
+/// Windows' cross-process SetForegroundWindow restrictions. Returns whether
+/// SetForegroundWindow actually succeeded; on false the helper logs a
+/// `[FOCUS-DIAG]` warn so the strip-cycle can grep for refusing apps. Mirrors
+/// the tray.rs:show_window pattern but inverted (we want target_hwnd to become
+/// foreground, not our own window).
+pub fn set_foreground_robust(hwnd: isize) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
+    unsafe {
+        let mut pid: u32 = 0;
+        let target_tid = GetWindowThreadProcessId(hwnd as _, &mut pid);
+        let current_tid = GetCurrentThreadId();
+
+        let ok = if target_tid != 0 && target_tid != current_tid {
+            let attached = AttachThreadInput(current_tid, target_tid, 1);
+            let r = SetForegroundWindow(hwnd as _);
+            let _ = BringWindowToTop(hwnd as _);
+            if attached != 0 {
+                AttachThreadInput(current_tid, target_tid, 0);
+            }
+            r != 0
+        } else {
+            SetForegroundWindow(hwnd as _) != 0
+        };
+        if !ok {
+            log::warn!(
+                "[Trigr] [FOCUS-DIAG] SetForegroundWindow failed for hwnd 0x{:x}",
+                hwnd
+            );
+        }
+        ok
     }
 }
 
