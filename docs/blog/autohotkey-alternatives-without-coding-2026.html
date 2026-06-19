@@ -130,7 +130,7 @@
       </header>
 
       <div class="prose">
-        <p><strong>Quick answer:</strong> the best no-code AutoHotkey alternatives for Windows in 2026 are <strong>Trigr</strong> (visual editor for hotkeys, text expansion, macros, and clipboard, with optional fallback to your existing .ahk scripts), <strong>Beeftext</strong> (free, open source, text expansion only), <strong>PhraseExpress</strong> (commercial, broader feature set), <strong>TextExpander</strong> (commercial, team-focused, polished), <strong>Espanso</strong> (free and cross-platform, but YAML config so technically not no-code), and <strong>PowerToys Text Replacement</strong> (built into Microsoft PowerToys, basic). For pure text expansion and hotkeys, all of these cover the 90% of AHK usage that doesn't actually need a scripting language.</p>
+        <p><strong>Quick answer:</strong> the best no-code AutoHotkey alternatives for Windows in 2026 are <strong>Trigr</strong> (visual editor for hotkeys, text expansion, macros, and clipboard, with AHK v1 + v2 runtimes bundled so it runs your existing .ahk scripts inside the app too), <strong>Beeftext</strong> (free, open source, text expansion only), <strong>PhraseExpress</strong> (commercial, broader feature set), <strong>TextExpander</strong> (commercial, team-focused, polished), <strong>Espanso</strong> (free and cross-platform, but YAML config so technically not no-code), and <strong>PowerToys Text Replacement</strong> (built into Microsoft PowerToys, basic). For pure text expansion and hotkeys, all of these cover the 90% of AHK usage that doesn't actually need a scripting language.</p>
 
         <p>AutoHotkey has been the default Windows automation tool for nearly two decades. It is free and capable. But it is also a small programming language with its own runtime, and three things send users looking for an alternative in 2026.</p>
 
@@ -169,7 +169,7 @@
 
         <p>Text expansion uses the same editor. Define a trigger like <code>;email</code>, set the expansion (plain text or rich text with images, dates, and fill-in fields), save. Hotkeys can be app-specific: bind F8 to do one thing in Excel and a different thing in Slack, and Trigr switches based on the focused window. Macros are step-by-step sequences, not live-recorded.</p>
 
-        <p>For users with an existing .ahk file, Trigr bundles both AHK v1 and v2 runtimes. Paste the script into an AHK Script action, bind it to a key, and it runs alongside your visual bindings. Migrate the easy 90% to the editor and keep the stubborn 10% as scripts.</p>
+        <p><strong>Already have .ahk scripts?</strong> Trigr bundles both AHK v1 and v2 runtimes inside the app. Paste your existing script into an AHK Script action, bind it to a key in the visual editor, and it runs alongside your no-code hotkeys. No separate AutoHotkey install needed. You can migrate the easy 90% (text expansion, simple hotkeys, app launchers) into the visual editor and keep the stubborn 10% as scripts, all managed from one place. That is the key thing Trigr does that other tools on this list do not: it gives you a no-code GUI <em>and</em> runs your existing AHK scripts side by side.</p>
 
         <p><em>Caveats worth knowing:</em> voice commands are experimental. Code is source-available (readable, not redistributable). Pro tier moves to paid pricing at v1.0; Free tier will remain free.</p>
 
@@ -220,6 +220,8 @@
 
         <p>For users with significant existing investment in AHK who only want to upgrade the text-expansion side, the practical answer is to keep AHK installed for the parts that need scripting (window positioning, COM, complex logic) and add a dedicated text expander alongside it. Trigr, Beeftext, and TextExpander all coexist with an AHK install without conflict. You get a fast modern expander for everyday typing without throwing away the scripts that took years to write.</p>
 
+        <p>If you pick Trigr, you can go a step further and consolidate: paste your existing .ahk scripts into Trigr's AHK Script action and run them from inside Trigr, dropping the separate AutoHotkey install entirely. One app, visual editor for the easy things, AHK runner for the rest.</p>
+
         <h2>Side-by-side comparison</h2>
 
         <div class="table-wrap">
@@ -232,6 +234,7 @@
               <th>Text expansion</th>
               <th>Hotkeys</th>
               <th>Macros</th>
+              <th>Runs your existing .ahk scripts</th>
               <th>Price</th>
             </tr>
           </thead>
@@ -243,6 +246,7 @@
               <td>Yes</td>
               <td>Yes</td>
               <td>Yes</td>
+              <td><strong>Yes (v1 + v2 runtimes bundled)</strong></td>
               <td>Free during Beta; paid Pro from v1.0</td>
             </tr>
             <tr>
@@ -250,6 +254,7 @@
               <td>No</td>
               <td>Windows</td>
               <td>Yes</td>
+              <td>No</td>
               <td>No</td>
               <td>No</td>
               <td>Free (open source)</td>
@@ -261,6 +266,7 @@
               <td>Yes</td>
               <td>Yes</td>
               <td>Yes</td>
+              <td>No</td>
               <td>Free personal; commercial licences</td>
             </tr>
             <tr>
@@ -268,6 +274,7 @@
               <td>No</td>
               <td>Windows, Mac</td>
               <td>Yes</td>
+              <td>No</td>
               <td>No</td>
               <td>No</td>
               <td>~$4.16 to ~$13.54 per user per month (annual)</td>
@@ -279,6 +286,7 @@
               <td>Yes</td>
               <td>Limited</td>
               <td>No</td>
+              <td>No</td>
               <td>Free (open source)</td>
             </tr>
             <tr>
@@ -286,6 +294,7 @@
               <td>No</td>
               <td>Windows</td>
               <td>Basic</td>
+              <td>No</td>
               <td>No</td>
               <td>No</td>
               <td>Free (Microsoft)</td>
@@ -297,6 +306,7 @@
               <td>Yes (scripted)</td>
               <td>Yes (scripted)</td>
               <td>Yes (scripted)</td>
+              <td>Yes (native)</td>
               <td>Free (open source)</td>
             </tr>
           </tbody>
@@ -324,7 +334,7 @@
 
         <p>For Windows users who want hotkeys, text expansion, macros, and a clipboard manager under one visual editor, <a href="../autohotkey-alternative.html">Trigr is what we build</a> and the closest substitute for what AHK does day to day. For text expansion only on a $0 budget, Beeftext is the right answer. For teams that need shared snippet libraries, TextExpander. For cross-platform with no GUI requirement, Espanso. For five quick abbreviations alongside what you already have, PowerToys.</p>
 
-        <p>If you need AHK's scripting depth, keep AHK. There is no shame in using both at once: AHK for window automation and complex logic, a no-code tool for everything that doesn't need code.</p>
+        <p>If you need AHK's scripting depth, keep AHK. There is no shame in using both at once: AHK for window automation and complex logic, a no-code tool for everything that doesn't need code. And if you would rather consolidate, Trigr is the only tool on this list that bundles the AHK v1 and v2 runtimes inside the app, so you can run your existing scripts without keeping a separate AutoHotkey install on the machine.</p>
 
         <h2>Sources</h2>
 
