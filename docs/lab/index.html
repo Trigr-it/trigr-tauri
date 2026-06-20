@@ -1340,37 +1340,43 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   background: radial-gradient(ellipse at center, rgba(0,0,0,0.22) 0%, transparent 65%);
 }
 
-/* ── 5. The keyboard chassis — chunky physical base ─────────── */
+/* ── 5. The keyboard chassis — CHUNKY physical base ─────────── */
 .mockup-wrap .app-shell .kb-outer {
   --kb-rx: 40deg;
-  --kb-ry: 0deg;
+  --kb-ry: 22deg;
   transform: rotateX(var(--kb-rx)) rotateY(var(--kb-ry));
   transform-style: preserve-3d;
-  transform-origin: 50% 60%;
+  transform-origin: 50% 55%;
   transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
   z-index: 1;
-  background: linear-gradient(180deg, #1f1f2d 0%, #0d0d14 100%) !important;
-  border: 1px solid #2a2a3a !important;
-  border-radius: 18px !important;
-  padding: 28px 30px 34px !important;
+  background: linear-gradient(180deg, #262635 0%, #0a0a12 100%) !important;
+  border: 1px solid #2e2e40 !important;
+  border-radius: 22px !important;
+  padding: 44px 48px 64px !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.07),
-    inset 0 -3px 8px rgba(0,0,0,0.6),
-    0 4px 0 #050509,
-    0 6px 0 #050509 !important;
+    inset 0 1px 0 rgba(255,255,255,0.09),
+    inset 0 -6px 16px rgba(0,0,0,0.7),
+    inset 0 0 50px rgba(0,0,0,0.35),
+    0 6px 0 #0a0a14,
+    0 12px 0 #050509,
+    0 18px 0 #020205,
+    0 22px 50px rgba(0,0,0,0.75) !important;
 }
 .mockup-wrap .app-shell .kb-outer::before {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 35%) !important;
 }
 [data-theme="light"] .mockup-wrap .app-shell .kb-outer {
-  background: linear-gradient(180deg, #ebe8de 0%, #c8c4b6 100%) !important;
-  border: 1px solid #b8b4a4 !important;
+  background: linear-gradient(180deg, #efece2 0%, #c4c0b0 100%) !important;
+  border: 1px solid #b0ac9c !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.7),
-    inset 0 -3px 8px rgba(0,0,0,0.08),
-    0 4px 0 #8a8676,
-    0 6px 0 #8a8676 !important;
+    inset 0 1px 0 rgba(255,255,255,0.8),
+    inset 0 -6px 16px rgba(0,0,0,0.1),
+    inset 0 0 50px rgba(0,0,0,0.06),
+    0 6px 0 #8a8676,
+    0 12px 0 #6e6a5a,
+    0 18px 0 #545040,
+    0 22px 40px rgba(0,0,0,0.3) !important;
 }
 .mockup-wrap .app-shell .kb-area.is-tracking .kb-outer {
   transition: transform 0.15s linear;
@@ -1473,8 +1479,78 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .mockup-wrap .app-shell .kb-area { padding: 30px 20px 50px !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mockup-wrap .app-shell .kb-outer { transition: none !important; --kb-rx: 32deg !important; --kb-ry: 0deg !important; }
+  .mockup-wrap .app-shell .kb-outer { transition: none !important; --kb-rx: 32deg !important; --kb-ry: 22deg !important; }
   .mockup-wrap .app-shell .k { transition: background 0.15s, border-color 0.15s !important; }
+}
+
+/* ── 11. SIDE-BY-SIDE HERO LAYOUT ────────────────────────────
+   Text on the left, 3D keyboard on the right.
+   Matches the Aetheris / Asobu inspiration layout. */
+.hero-inner {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 56px;
+  align-items: center;
+  text-align: left !important;
+  padding: 100px 40px 60px !important;
+  max-width: 1400px !important;
+}
+.hero-text-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.hero-text-col .hero-h1,
+.hero-text-col .hero-sub,
+.hero-text-col .hero-arm-link,
+.hero-text-col .hero-meta {
+  text-align: left;
+  margin-left: 0;
+  margin-right: 0;
+  max-width: 540px;
+}
+.hero-text-col .hero-actions {
+  justify-content: flex-start;
+}
+
+/* Mockup in the right column — kill the original 80px top margin */
+.hero-inner > .mockup-wrap {
+  margin-top: 0 !important;
+  padding-bottom: 40px !important;
+}
+
+/* Hide the floating chips in side-by-side layout — they cluttered the right col */
+.hero-inner > .mockup-wrap .chip-floater { display: none !important; }
+
+/* Tablet — narrower grid, smaller gap */
+@media (max-width: 1100px) {
+  .hero-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 32px;
+    padding: 80px 28px 40px !important;
+  }
+}
+
+/* Mobile — stack: text on top, keyboard below, restore original look */
+@media (max-width: 860px) {
+  .hero-inner {
+    display: block !important;
+    text-align: center !important;
+    padding: 100px 24px 0 !important;
+  }
+  .hero-text-col {
+    align-items: center;
+  }
+  .hero-text-col .hero-h1,
+  .hero-text-col .hero-sub,
+  .hero-text-col .hero-arm-link,
+  .hero-text-col .hero-meta {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .hero-text-col .hero-actions { justify-content: center; }
+  .hero-inner > .mockup-wrap { margin-top: 60px !important; }
 }
 
 </style>
@@ -1507,6 +1583,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 <section class="hero">
   <div class="hero-bg"></div>
   <div class="hero-inner">
+    <div class="hero-text-col">
     <h1 class="hero-h1">Your keyboard<br>can do more<br>than <em>type.</em></h1>
     <p class="hero-sub">Visual hotkeys, macros, and text expansion for Windows. No scripting required.</p>
     <div class="hero-actions">
@@ -1517,6 +1594,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     </div>
     <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
     <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Your data stays on your machine <span>·</span> No accounts, no cloud <span>·</span> Latest: <span class="js-latest-version">v0.4.22</span></p>
+    </div>
 
     <!-- ── MOCKUP ── -->
     <div class="mockup-wrap">
@@ -2581,7 +2659,8 @@ setTimeout(scaleMockup, 50);
     var rect = hero.getBoundingClientRect();
     var x = (e.clientX - rect.left) / rect.width;
     x = Math.max(0, Math.min(1, x));
-    pending = (x - 0.5) * 14;
+    // Base 22deg (default rotateY) +/- 8deg around it
+    pending = 22 + (x - 0.5) * 16;
     if (!raf) raf = requestAnimationFrame(apply);
     kbArea.classList.add('is-tracking');
   });
