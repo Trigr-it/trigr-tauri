@@ -1343,7 +1343,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 /* ── 5. The keyboard chassis — slim physical base ───────────── */
 .mockup-wrap .app-shell .kb-outer {
   --kb-rx: 40deg;
-  --kb-ry: -22deg;
+  --kb-ry: -33deg;
   transform: rotateX(var(--kb-rx)) rotateY(var(--kb-ry));
   transform-style: preserve-3d;
   transform-origin: 50% 55%;
@@ -1473,7 +1473,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .mockup-wrap .app-shell .kb-area { padding: 30px 20px 50px !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mockup-wrap .app-shell .kb-outer { transition: none !important; --kb-rx: 32deg !important; --kb-ry: -22deg !important; }
+  .mockup-wrap .app-shell .kb-outer { transition: none !important; --kb-rx: 32deg !important; --kb-ry: -33deg !important; }
   .mockup-wrap .app-shell .k { transition: background 0.15s, border-color 0.15s !important; }
 }
 
@@ -1482,12 +1482,12 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
    Matches the Aetheris / Asobu inspiration layout. */
 .hero-inner {
   display: grid !important;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.5fr);
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 2fr);
   gap: 40px;
   align-items: center;
   text-align: left !important;
-  padding: 100px 40px 60px !important;
-  max-width: 1500px !important;
+  padding: 100px 32px 60px !important;
+  max-width: 1700px !important;
 }
 .hero-text-col {
   display: flex;
@@ -2653,8 +2653,8 @@ setTimeout(scaleMockup, 50);
     var rect = hero.getBoundingClientRect();
     var x = (e.clientX - rect.left) / rect.width;
     x = Math.max(0, Math.min(1, x));
-    // Base -22deg (default rotateY) +/- 8deg around it
-    pending = -22 + (x - 0.5) * 16;
+    // Base -33deg (default rotateY) +/- 8deg around it
+    pending = -33 + (x - 0.5) * 16;
     if (!raf) raf = requestAnimationFrame(apply);
     kbArea.classList.add('is-tracking');
   });
