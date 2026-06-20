@@ -517,7 +517,7 @@ function ProfileAccordion({
                 Currently linked to <strong>{linkPickerCurrentApp}</strong>
               </div>
             )}
-            <p className="profile-link-modal-hint">Open the app first, then pick it below.</p>
+            <p className="profile-link-modal-hint">Make sure the app is running, then use Pick App below or browse for the app directly.</p>
             <div className="profile-link-modal-row" ref={linkDropdownRef}>
               {linkSelectedExe ? (
                 <span className="pick-window-badge">

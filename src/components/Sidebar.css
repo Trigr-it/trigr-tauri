@@ -583,7 +583,10 @@
   cursor: not-allowed;
 }
 
-.pick-window-dropdown--portal {
+/* Chained selector to outrank MacroPanel.css's .pick-window-dropdown
+   (z-index:50; position:absolute) which loads later and would otherwise
+   win on equal single-class specificity. */
+.pick-window-dropdown.pick-window-dropdown--portal {
   position: fixed;
   z-index: 2100;
   min-width: 180px;
