@@ -1270,62 +1270,78 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 }
 
 /* ════════════════════════════════════════════════════════════
-   LAB v2 — 3D KEYBOARD
-   Only the central .kb-outer becomes a 3D object at 40° tilt.
-   Each key stands up off the base plate as a physical keycap.
-   Rest of the app-shell stays flat (no whole-mockup tilt).
+   LAB v3 — STANDALONE 3D KEYBOARD
+   Hides ALL the surrounding UI (titlebar, sidebar, action panel,
+   modifier bar, hints, status bar). Just the physical keyboard,
+   tilted 40°, sitting in its own chassis, like the inspiration
+   keyboard product shots.
    Removable as one block.
    ════════════════════════════════════════════════════════════ */
 
-/* Propagate 3D through the scaler so perspective inside the shell works */
+/* ── 1. Hide every chrome element around the keyboard ───────── */
+.mockup-wrap .app-shell .t-bar,
+.mockup-wrap .app-shell .sb,
+.mockup-wrap .app-shell .panel,
+.mockup-wrap .app-shell .s-bar,
+.mockup-wrap .app-shell .mod-bar,
+.mockup-wrap .app-shell .kb-lbl,
+.mockup-wrap .app-shell .kb-hints {
+  display: none !important;
+}
+
+/* ── 2. Strip the mockup viewport and app-shell chrome ──────── */
+.mockup-wrap .mockup-viewport {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+.mockup-wrap .mockup-viewport::after { display: none !important; }
+.mockup-wrap .app-shell {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.mockup-wrap .app-shell .a-body {
+  background: transparent !important;
+}
+
+/* ── 3. Propagate 3D through the scaler ─────────────────────── */
 .mockup-scaler { transform-style: preserve-3d; }
 
-/* Slightly deeper shadow on the mockup viewport — sells the floating feel */
-.mockup-viewport {
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0.04),
-    0 80px 140px -20px rgba(0,0,0,0.75),
-    0 40px 80px rgba(0,0,0,0.5),
-    0 0 120px rgba(232,160,32,0.12);
-}
-[data-theme="light"] .mockup-viewport {
-  box-shadow:
-    0 0 0 1px rgba(0,0,0,0.05),
-    0 50px 100px -20px rgba(0,0,0,0.22),
-    0 25px 50px rgba(0,0,0,0.12),
-    0 0 80px rgba(232,160,32,0.08);
-}
-
-/* Keyboard stage — perspective on the kb-area, allow tilted overflow */
-.kb-area {
-  perspective: 1500px;
+/* ── 4. Center the keyboard, give it breathing room ─────────── */
+.mockup-wrap .app-shell .kb-area {
+  perspective: 1600px;
   perspective-origin: 50% 60%;
   overflow: visible;
   position: relative;
-  /* Give the tilted keyboard headroom — back row sits higher in 3D space */
-  padding-top: 36px;
-  padding-bottom: 36px;
+  background: transparent !important;
+  border: none !important;
+  padding: 70px 60px 100px !important;
+  gap: 0 !important;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Cast a ground shadow under the tilted keyboard (flat, not rotated) */
-.kb-area::after {
+/* Ground shadow — flat, doesn't rotate with the keyboard */
+.mockup-wrap .app-shell .kb-area::after {
   content: '';
   position: absolute;
-  left: 14%;
-  right: 14%;
-  bottom: 50px;
-  height: 30px;
+  left: 18%;
+  right: 18%;
+  bottom: 60px;
+  height: 40px;
   background: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, transparent 65%);
-  filter: blur(14px);
+  filter: blur(18px);
   z-index: 0;
   pointer-events: none;
 }
-[data-theme="light"] .app-shell .kb-area::after {
-  background: radial-gradient(ellipse at center, rgba(0,0,0,0.18) 0%, transparent 65%);
+[data-theme="light"] .mockup-wrap .app-shell .kb-area::after {
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.22) 0%, transparent 65%);
 }
 
-/* The keyboard plane — tilts 40° back */
-.kb-outer {
+/* ── 5. The keyboard chassis — chunky physical base ─────────── */
+.mockup-wrap .app-shell .kb-outer {
   --kb-rx: 40deg;
   --kb-ry: 0deg;
   transform: rotateX(var(--kb-rx)) rotateY(var(--kb-ry));
@@ -1334,93 +1350,131 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
   z-index: 1;
+  background: linear-gradient(180deg, #1f1f2d 0%, #0d0d14 100%) !important;
+  border: 1px solid #2a2a3a !important;
+  border-radius: 18px !important;
+  padding: 28px 30px 34px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07),
+    inset 0 -3px 8px rgba(0,0,0,0.6),
+    0 4px 0 #050509,
+    0 6px 0 #050509 !important;
 }
-.kb-area.is-tracking .kb-outer {
+.mockup-wrap .app-shell .kb-outer::before {
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%) !important;
+}
+[data-theme="light"] .mockup-wrap .app-shell .kb-outer {
+  background: linear-gradient(180deg, #ebe8de 0%, #c8c4b6 100%) !important;
+  border: 1px solid #b8b4a4 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 -3px 8px rgba(0,0,0,0.08),
+    0 4px 0 #8a8676,
+    0 6px 0 #8a8676 !important;
+}
+.mockup-wrap .app-shell .kb-area.is-tracking .kb-outer {
   transition: transform 0.15s linear;
 }
 
-/* Preserve 3D down to each key */
-.kb-rows, .kb-row { transform-style: preserve-3d; }
+/* ── 6. Preserve 3D down to each key ────────────────────────── */
+.mockup-wrap .app-shell .kb-rows,
+.mockup-wrap .app-shell .kb-row { transform-style: preserve-3d; }
 
-/* Keys become 3D keycaps with depth — compose Y (existing hover lift) + Z (depth) */
-.app-shell .k {
+/* ── 7. Keys become real chunky 3D keycaps ──────────────────── */
+.mockup-wrap .app-shell .k {
   --k-y: 0px;
-  --k-z: 14px;
+  --k-z: 22px;
   transform: translateY(var(--k-y)) translateZ(var(--k-z));
   transform-style: preserve-3d;
   transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  /* KEY FIX: allow ::after to render below the key (was overflow:hidden) */
+  overflow: visible !important;
+  /* Top face — subtle highlight on top edge, inner shadow on bottom */
+  background: linear-gradient(180deg, var(--key-bg-hover) 0%, var(--key-bg) 100%) !important;
   box-shadow:
-    0 1px 2px rgba(0,0,0,0.5),
-    inset 0 1px 0 rgba(255,255,255,0.06);
+    inset 0 1px 0 rgba(255,255,255,0.1),
+    inset 0 -2px 4px rgba(0,0,0,0.35) !important;
 }
-.app-shell .k:hover  { --k-y: -1px; --k-z: 18px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
-.app-shell .k:active { --k-y:  1px; --k-z:  8px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
-.app-shell .k.sel    { --k-y: -1px; --k-z: 22px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
-.app-shell .k.sys:hover { --k-y: 0px; --k-z: 14px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-wrap .app-shell .k:hover  { --k-y: -1px; --k-z: 26px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-wrap .app-shell .k:active { --k-y:  1px; --k-z: 14px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-wrap .app-shell .k.sel    { --k-y: -1px; --k-z: 30px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-wrap .app-shell .k.sys:hover { --k-y: 0px; --k-z: 22px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
 
-/* Front face of each keycap — vertical face dropped 90° from the top */
-.app-shell .k::after {
+.mockup-wrap .app-shell .k.asgn {
+  background: linear-gradient(180deg, var(--key-bg-assigned) 0%, color-mix(in srgb, var(--key-bg-assigned) 80%, black) 100%) !important;
+}
+.mockup-wrap .app-shell .k.sel {
+  background: linear-gradient(180deg, var(--key-bg-selected) 0%, color-mix(in srgb, var(--key-bg-selected) 75%, black) 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -2px 4px rgba(0,0,0,0.35),
+    0 0 24px rgba(232,160,32,0.4) !important;
+}
+
+/* ── 8. Front face of each keycap — the visible side wall ───── */
+.mockup-wrap .app-shell .k::after {
   content: '';
   position: absolute;
   left: -1px;
   right: -1px;
   top: 100%;
-  height: 14px;
-  background: linear-gradient(180deg, rgba(22,22,32,0.95) 0%, rgba(10,10,16,0.95) 100%);
+  height: 22px;
+  background: linear-gradient(180deg, #1a1a26 0%, #050509 100%);
   border-left: 1px solid var(--key-border);
   border-right: 1px solid var(--key-border);
-  border-bottom: 1px solid var(--key-border);
+  border-bottom: 1px solid #000;
   border-radius: 0 0 5px 5px;
   transform-origin: top center;
   transform: rotateX(-90deg);
   pointer-events: none;
+  box-shadow: inset 0 -3px 5px rgba(0,0,0,0.6);
 }
-.app-shell .k.asgn::after {
-  background: linear-gradient(180deg, rgba(40,30,12,0.95) 0%, rgba(20,14,4,0.95) 100%);
+.mockup-wrap .app-shell .k.asgn::after {
+  background: linear-gradient(180deg, #3a2a10 0%, #100a02 100%);
 }
-.app-shell .k.sel::after {
-  background: linear-gradient(180deg, rgba(80,52,14,0.95) 0%, rgba(40,26,6,0.95) 100%);
-  border-color: rgba(232,160,32,0.55);
+.mockup-wrap .app-shell .k.sel::after {
+  background: linear-gradient(180deg, #6a4818 0%, #1c1206 100%);
+  border-color: rgba(232,160,32,0.6);
 }
-[data-theme="light"] .app-shell .k::after {
-  background: linear-gradient(180deg, rgba(190,190,205,0.92) 0%, rgba(140,140,160,0.92) 100%);
-}
-[data-theme="light"] .app-shell .k.asgn::after {
-  background: linear-gradient(180deg, rgba(220,180,120,0.85) 0%, rgba(180,135,60,0.85) 100%);
-}
-
-/* Match keycap depth on hover/sel/active by scaling the front-face height */
-.app-shell .k:hover::after,
-.app-shell .k.sel::after  { height: 18px; }
-.app-shell .k:active::after { height: 8px; }
-
-/* The kb-outer base plate — when tilted, keep its background but soften shadow
-   (the box-shadow tilts with it; we already painted a separate ground shadow above) */
-.app-shell .kb-outer {
+[data-theme="light"] .mockup-wrap .app-shell .k {
+  background: linear-gradient(180deg, #ffffff 0%, #e0ddd1 100%) !important;
   box-shadow:
-    0 0 0 1px var(--border),
-    inset 0 1px 0 rgba(255,255,255,0.04);
+    inset 0 1px 0 rgba(255,255,255,0.9),
+    inset 0 -2px 3px rgba(0,0,0,0.06) !important;
+}
+[data-theme="light"] .mockup-wrap .app-shell .k::after {
+  background: linear-gradient(180deg, #d4d0c0 0%, #8a8676 100%);
+  border-color: #b8b4a4;
+}
+[data-theme="light"] .mockup-wrap .app-shell .k.asgn::after {
+  background: linear-gradient(180deg, #d8a868 0%, #6a4818 100%);
 }
 
-/* Tablet — keep 3D but slightly less aggressive */
+/* Front face height tracks key Z depth */
+.mockup-wrap .app-shell .k:hover::after,
+.mockup-wrap .app-shell .k.sel::after   { height: 26px; }
+.mockup-wrap .app-shell .k:active::after { height: 14px; }
+
+/* ── 9. Selected key — accent dot becomes glowing pip ───────── */
+.mockup-wrap .app-shell .k.sel .k-lbl,
+.mockup-wrap .app-shell .k.asgn .k-lbl { text-shadow: 0 0 8px rgba(232,160,32,0.5); }
+
+/* ── 10. Responsive ─────────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .kb-outer { --kb-rx: 32deg; }
+  .mockup-wrap .app-shell .kb-outer { --kb-rx: 34deg; }
+  .mockup-wrap .app-shell .kb-area { padding: 50px 40px 80px !important; }
 }
-
-/* Mobile — much shallower tilt, lighter depth */
 @media (max-width: 768px) {
-  .kb-outer { --kb-rx: 18deg !important; --kb-ry: 0deg !important; transition: none; }
-  .app-shell .k { --k-z: 6px; }
-  .app-shell .k::after { height: 6px; }
-  .app-shell .k:hover { --k-z: 9px; }
-  .app-shell .k:hover::after, .app-shell .k.sel::after { height: 9px; }
-  .kb-area { padding-top: 18px; padding-bottom: 18px; }
+  .mockup-wrap .app-shell .kb-outer { --kb-rx: 22deg !important; --kb-ry: 0deg !important; transition: none; }
+  .mockup-wrap .app-shell .k { --k-z: 10px; }
+  .mockup-wrap .app-shell .k::after { height: 10px; }
+  .mockup-wrap .app-shell .k:hover, .mockup-wrap .app-shell .k.sel { --k-z: 14px; }
+  .mockup-wrap .app-shell .k:hover::after, .mockup-wrap .app-shell .k.sel::after { height: 14px; }
+  .mockup-wrap .app-shell .kb-area { padding: 30px 20px 50px !important; }
 }
-
-/* Reduced motion — static angle, no transitions */
 @media (prefers-reduced-motion: reduce) {
-  .kb-outer { transition: none !important; --kb-rx: 30deg !important; --kb-ry: 0deg !important; }
-  .app-shell .k { transition: background 0.15s, border-color 0.15s !important; }
+  .mockup-wrap .app-shell .kb-outer { transition: none !important; --kb-rx: 32deg !important; --kb-ry: 0deg !important; }
+  .mockup-wrap .app-shell .k { transition: background 0.15s, border-color 0.15s !important; }
 }
 
 </style>
@@ -2506,7 +2560,7 @@ document.fonts.ready.then(() => { scaleMockup(); });
 })();
 setTimeout(scaleMockup, 50);
 
-/* ── LAB v2: 3D KEYBOARD PARALLAX (Y-axis swing, subtle) ─────── */
+/* ── LAB v3: 3D KEYBOARD PARALLAX (Y-axis swing, subtle) ─────── */
 (function() {
   var kbArea = document.querySelector('.kb-area');
   var kbOuter = document.querySelector('.kb-outer');
