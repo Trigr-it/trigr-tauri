@@ -1827,6 +1827,17 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
     match result_type {
         "assignment" | "quickaction" => {
             if let Some(storage_key) = result.get("storageKey").and_then(|v| v.as_str()) {
+                // Re-assert foreground right before fire. restore_radial_menu_target
+                // already ran before the 180ms head-start sleep in
+                // execute_radial_menu_item, but focus can drift in that window
+                // (esp. fullscreen / hardened targets). Mirrors the expansion +
+                // autocorrect branches below. Without this, SendInput from
+                // execute_action lands on whatever holds focus when the sleep
+                // ends, which on fullscreen games means nothing reaches them.
+                if target_hwnd != 0 {
+                    actions::set_foreground_robust(target_hwnd);
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                }
                 let state = hotkeys::engine_state().lock().unwrap();
                 if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
                     drop(state);
