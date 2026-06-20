@@ -1525,7 +1525,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   width: min(78%, 1280px);
   margin-top: 0 !important;
   padding-bottom: 40px !important;
-  transform: translateX(52%);
+  transform: translateX(72%);
 }
 /* Keep the rightward shift off when the layout collapses on mobile */
 @media (max-width: 860px) {
@@ -1535,6 +1535,60 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 /* ── 12. Restore opacity on sys keys so depth is fully visible ─ */
 .mockup-wrap .app-shell .k.sys {
   opacity: 1 !important;
+}
+
+/* ── 13. RIGHT-SIDE face of each keycap (injected as <div class="k-side">)
+       Combined with the ::after FRONT face, gives each key a solid 3D body
+       with two visible side walls at this 40deg X / -33deg Y view. ─── */
+.mockup-wrap .app-shell .k-side {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--k-z, 22px);
+  height: 100%;
+  background: color-mix(in srgb, var(--key-bg) 75%, #000);
+  border-top: 1px solid var(--key-border);
+  border-right: 1px solid var(--key-border);
+  border-bottom: 1px solid var(--key-border);
+  border-radius: 0 5px 5px 0;
+  transform-origin: 0 50%;
+  transform: rotateY(90deg);
+  transition: width 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s;
+  pointer-events: none;
+}
+.mockup-wrap .app-shell .k.asgn .k-side {
+  background: color-mix(in srgb, var(--key-bg-assigned) 72%, #000);
+}
+.mockup-wrap .app-shell .k.sel .k-side {
+  background: color-mix(in srgb, var(--key-bg-selected) 65%, #000);
+  border-color: rgba(232,160,32,0.5);
+}
+[data-theme="light"] .mockup-wrap .app-shell .k-side {
+  background: color-mix(in srgb, var(--key-bg) 82%, #2a2418);
+  border-color: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .mockup-wrap .app-shell .k.asgn .k-side {
+  background: color-mix(in srgb, var(--key-bg-assigned) 80%, #2a1e08);
+}
+
+/* Make the FRONT face height also track --k-z so depth stays consistent */
+.mockup-wrap .app-shell .k::after {
+  height: var(--k-z, 22px);
+  transition: height 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s;
+}
+/* Drop the old per-state height overrides — var(--k-z) now drives both faces */
+.mockup-wrap .app-shell .k:hover::after,
+.mockup-wrap .app-shell .k.sel::after,
+.mockup-wrap .app-shell .k:active::after { height: var(--k-z, 22px); }
+
+/* ── 14. FIRE animation actually depresses the key — neighbours stick up
+       around the pressed key so the press reads physically. ─── */
+.mockup-wrap .app-shell .k.fire {
+  --k-y: 2px;
+  --k-z: 6px !important;
+  transform: translateY(var(--k-y)) translateZ(var(--k-z)) !important;
+  transition: transform 0.08s cubic-bezier(0.6, 0, 0.5, 1) !important;
+  animation: none !important; /* the existing keyFire animation moved the box-shadow, we override */
 }
 
 /* Hide the floating chips in side-by-side layout — they cluttered the right col */
@@ -2536,6 +2590,8 @@ function buildKB() {
       k.dataset.id = id;
       if (sub) { const sl = document.createElement('span'); sl.className = 'k-sub'; sl.textContent = sub; k.appendChild(sl); }
       const ll = document.createElement('span'); ll.className = 'k-lbl'; ll.textContent = lbl; k.appendChild(ll);
+      // Lab v3: inject right-side face element for 3D keycap depth (CSS rotates it)
+      const ks = document.createElement('div'); ks.className = 'k-side'; k.appendChild(ks);
       if (!sys) k.addEventListener('click', () => onKey(id, lbl));
       rowEl.appendChild(k);
     });
