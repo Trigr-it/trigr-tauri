@@ -1482,7 +1482,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
    Matches the Aetheris / Asobu inspiration layout. */
 .hero-inner {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr);
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 2fr);
   gap: 40px;
   align-items: center;
   text-align: left !important;
@@ -1494,12 +1494,6 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   flex-direction: column;
   align-items: flex-start;
 }
-/* Bigger headline in the side-by-side layout — each line reads longer */
-.hero-text-col .hero-h1 {
-  font-size: clamp(54px, 7vw, 112px);
-  letter-spacing: -0.04em;
-  line-height: 0.95;
-}
 .hero-text-col .hero-h1,
 .hero-text-col .hero-sub,
 .hero-text-col .hero-arm-link,
@@ -1507,7 +1501,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   text-align: left;
   margin-left: 0;
   margin-right: 0;
-  max-width: none;
+  max-width: 540px;
 }
 .hero-text-col .hero-actions {
   justify-content: flex-start;
@@ -1584,7 +1578,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <div class="hero-bg"></div>
   <div class="hero-inner">
     <div class="hero-text-col">
-    <h1 class="hero-h1">Your keyboard<br>can do more<br>than <em>type.</em></h1>
+    <h1 class="hero-h1">Your Keyboard<br>can do more<br>than <em>type</em></h1>
     <p class="hero-sub">Visual hotkeys, macros, and text expansion for Windows. No scripting required.</p>
     <div class="hero-actions">
       <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="btn-primary" data-loc="hero" data-arch="x64">
