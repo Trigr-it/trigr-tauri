@@ -1525,11 +1525,16 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   width: min(78%, 1280px);
   margin-top: 0 !important;
   padding-bottom: 40px !important;
-  transform: translateX(20%);
+  transform: translateX(38%);
 }
 /* Keep the rightward shift off when the layout collapses on mobile */
 @media (max-width: 860px) {
   .hero-inner > .mockup-wrap { transform: none; }
+}
+
+/* ── 12. Restore opacity on sys keys so depth is fully visible ─ */
+.mockup-wrap .app-shell .k.sys {
+  opacity: 1 !important;
 }
 
 /* Hide the floating chips in side-by-side layout — they cluttered the right col */
@@ -2651,8 +2656,10 @@ document.fonts.ready.then(() => { scaleMockup(); });
 })();
 setTimeout(scaleMockup, 50);
 
-/* ── LAB v3: 3D KEYBOARD PARALLAX (Y-axis swing, subtle) ─────── */
+/* ── LAB v3: 3D KEYBOARD PARALLAX (Y-axis swing) — DISABLED ─── */
 (function() {
+  return; // hover rotation removed per redesign — keyboard stays at its static -33deg
+  /* eslint-disable no-unreachable */
   var kbArea = document.querySelector('.kb-area');
   var kbOuter = document.querySelector('.kb-outer');
   var hero = document.querySelector('.mockup-wrap');
@@ -2814,6 +2821,16 @@ function toggleTheme() {
     profToast._t = setTimeout(function(){ profToast.classList.remove('show'); }, 2400);
   }
 
+  // Map a modifier name to the data-id of the visual key to pulse alongside the main key
+  var MOD_KEY_IDS = { 'Ctrl': 'CtrlL', 'Alt': 'AltL', 'Shift': 'ShiftLeft', 'Win': 'WinL' };
+  function pulseKeysById(ids){
+    ids.forEach(function(id){
+      var el = document.querySelector('#kb-rows .k[data-id="'+id+'"]');
+      if(!el) return;
+      el.classList.add('fire');
+      setTimeout(function(){ el.classList.remove('fire'); }, 1100);
+    });
+  }
   function fireRandomKey(){
     if(userIsActive()) return;
     if(typeof PROFILES === 'undefined' || typeof S === 'undefined') return;
@@ -2827,10 +2844,9 @@ function toggleTheme() {
       var modBtn = document.getElementById('mb-'+mod);
       if(modBtn && typeof selMod === 'function') selMod(modBtn, mod);
     }
-    var kEl = document.querySelector('#kb-rows .k[data-id="'+keyId+'"]');
-    if(!kEl) return;
-    kEl.classList.add('fire');
-    setTimeout(function(){ kEl.classList.remove('fire'); }, 1100);
+    // Pulse the modifier key(s) on the visual keyboard alongside the main key
+    var modIds = mod.split('+').map(function(m){ return MOD_KEY_IDS[m]; }).filter(Boolean);
+    pulseKeysById(modIds.concat([keyId]));
     var keyDef = ROWS.flat().find(function(r){ return Array.isArray(r) && r[0] === keyId; });
     var keyLbl = keyDef ? keyDef[1] : keyId;
     showFireToast(mod+'+'+keyLbl, assigns[pick].label);
