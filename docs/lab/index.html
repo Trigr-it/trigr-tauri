@@ -1477,22 +1477,31 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .mockup-wrap .app-shell .k { transition: background 0.15s, border-color 0.15s !important; }
 }
 
-/* ── 11. SIDE-BY-SIDE HERO LAYOUT ────────────────────────────
-   Text on the left, 3D keyboard on the right.
-   Matches the Aetheris / Asobu inspiration layout. */
+/* ── 11. OVERLAY HERO LAYOUT ─────────────────────────────────
+   Text and keyboard share the same grid cell.
+   Text justifies left (z 2), keyboard justifies right (z 1).
+   They can overlap in the middle — text floats over the keyboard. */
 .hero-inner {
   display: grid !important;
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 2fr);
-  gap: 40px;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto;
+  position: relative;
   align-items: center;
   text-align: left !important;
   padding: 100px 32px 60px !important;
   max-width: 1700px !important;
 }
 .hero-text-col {
+  grid-area: 1 / 1;
+  z-index: 2;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  align-self: center;
+  justify-self: start;
+  max-width: 720px;
+  width: 100%;
 }
 .hero-text-col .hero-h1,
 .hero-text-col .hero-sub,
@@ -1501,14 +1510,19 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   text-align: left;
   margin-left: 0;
   margin-right: 0;
-  max-width: 540px;
+  max-width: none;
 }
 .hero-text-col .hero-actions {
   justify-content: flex-start;
 }
 
-/* Mockup in the right column — kill the original 80px top margin */
+/* Mockup behind — pushed right, capped width so it doesn't fill the full hero */
 .hero-inner > .mockup-wrap {
+  grid-area: 1 / 1;
+  z-index: 1;
+  align-self: center;
+  justify-self: end;
+  width: min(78%, 1280px);
   margin-top: 0 !important;
   padding-bottom: 40px !important;
 }
