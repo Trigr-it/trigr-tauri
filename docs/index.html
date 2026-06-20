@@ -1462,182 +1462,11 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 </section>
 
 <!-- ════════════════════════════════════════════════════════════
-     01 — SEE IT
-     ════════════════════════════════════════════════════════════ -->
-<section class="section reveal" id="see-it">
-  <div class="section-inner">
-    <div class="section-meta"><span class="section-num">01</span><span class="section-label">See it in action</span></div>
-    <h2 class="section-h2">Two clicks to set up.<br><em>Instant</em> every time.</h2>
-    <p class="section-sub">No scripts, no config files, no learning curve. Just results. Exactly what Trigr does, the moment you press the key.</p>
-
-    <div class="demo-panels">
-      <!-- PANEL 1: Text Expansion -->
-      <div class="demo-panel">
-        <div class="demo-tag-row">
-          <span class="demo-panel-tag">Text Expansion</span>
-          <span class="demo-interactive-pill"><span class="demo-int-dot"></span>Interactive · Try it</span>
-        </div>
-        <div class="demo-panel-title">Type a shortcut.<br>Get the whole thing.</div>
-        <div class="demo-panel-sub">Assign <span class="demo-code">/sig</span> to your full email signature. Never type it again.</div>
-        <div class="demo-screen">
-          <div class="demo-screen-bar">
-            <div class="demo-screen-dots"><span></span><span></span><span></span></div>
-            <div class="demo-screen-title">Email — New Message</div>
-          </div>
-          <div class="demo-screen-body">
-            <div class="demo-field-label">To:</div>
-            <div class="demo-field" style="color:#a8a6c2;">sarah&#64;clientco&#46;com</div>
-            <div class="demo-field-label">Subject:</div>
-            <div class="demo-field">Project update — Q3</div>
-            <div class="demo-field-label">Body:</div>
-            <div class="demo-field demo-field-body">
-              <span class="demo-body-static">Hi Sarah,<br><br>Please find the latest files attached for review.<br><br></span><span class="demo-typed" id="demo-typed"></span><span class="demo-expanded-inline" id="demo-expanded-inline"></span><span class="demo-cursor" id="demo-cursor">|</span>
-            </div>
-          </div>
-        </div>
-        <div class="demo-press-hint" id="te-hint">
-          <span class="demo-hint-pulse"></span>Type <span class="demo-code" style="margin-left:2px;">/sig</span> anywhere to trigger
-        </div>
-      </div>
-
-      <!-- PANEL 2: Hotkey -->
-      <div class="demo-panel">
-        <div class="demo-tag-row">
-          <span class="demo-panel-tag">Hotkey</span>
-          <span class="demo-interactive-pill"><span class="demo-int-dot"></span>Interactive · Try it</span>
-        </div>
-        <div class="demo-panel-title">One key.<br>Multiple actions.</div>
-        <div class="demo-panel-sub">Press <span class="demo-code">Ctrl+E</span> and watch Trigr fire a full macro. Two terminals open, commands run, all before your hand moves.</div>
-        <div class="demo-screen">
-          <div class="demo-screen-bar">
-            <div class="demo-screen-dots"><span></span><span></span><span></span></div>
-            <div class="demo-screen-title">Trigr — Key Mapping</div>
-          </div>
-          <div class="demo-screen-body demo-hk-body">
-            <div class="demo-mini-kb">
-              <div class="demo-kb-row">
-                <div class="dmk" id="dmk-q">Q</div><div class="dmk" id="dmk-w">W</div><div class="dmk dmk-assigned" id="dmk-e">E</div><div class="dmk" id="dmk-r">R</div><div class="dmk" id="dmk-t">T</div><div class="dmk" id="dmk-y">Y</div><div class="dmk" id="dmk-u">U</div><div class="dmk" id="dmk-i">I</div><div class="dmk" id="dmk-o">O</div><div class="dmk" id="dmk-p">P</div>
-              </div>
-              <div class="demo-kb-row">
-                <div class="dmk" id="dmk-a">A</div><div class="dmk" id="dmk-s">S</div><div class="dmk" id="dmk-d">D</div><div class="dmk" id="dmk-f">F</div><div class="dmk" id="dmk-g">G</div><div class="dmk" id="dmk-h">H</div><div class="dmk" id="dmk-j">J</div><div class="dmk" id="dmk-k">K</div><div class="dmk" id="dmk-l">L</div>
-              </div>
-              <div class="demo-kb-row">
-                <div class="dmk dmk-mod" id="dmk-ctrl">Ctrl</div><div class="dmk dmk-spacer"></div><div class="dmk dmk-mod" id="dmk-alt">Alt</div>
-              </div>
-            </div>
-            <div class="demo-hk-result">
-              <div class="demo-hk-idle" id="demo-hk-idle">
-                <span class="demo-hk-combo"><span class="demo-hk-key" id="hk-ctrl-disp">Ctrl</span><span class="demo-hk-plus">+</span><span class="demo-hk-key" id="hk-e-disp">E</span></span>
-                <span class="demo-hk-arrow">→</span>
-                <span class="demo-hk-label">Open App</span>
-              </div>
-              <div class="demo-hk-fired" id="demo-hk-fired">
-                <div class="demo-hk-flash" id="demo-hk-flash"></div>
-                <div class="demo-snap-container" id="demo-snap-container">
-                  <div class="demo-snap-win" id="snap-editor">
-                    <div class="demo-snap-bar"><span class="demo-snap-dots"><i></i><i></i><i></i></span><span class="demo-snap-title">Terminal 1</span></div>
-                    <div class="demo-snap-body demo-snap-doc-body" id="term1-body"></div>
-                  </div>
-                  <div class="demo-snap-win" id="snap-brief">
-                    <div class="demo-snap-bar demo-snap-bar-alt"><span class="demo-snap-dots"><i></i><i></i><i></i></span><span class="demo-snap-title">Terminal 2</span></div>
-                    <div class="demo-snap-body demo-snap-doc-body" id="term2-body"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="demo-press-hint" id="demo-press-hint">
-          <span class="demo-hint-pulse"></span>Press <span class="demo-code" style="margin-left:2px;">Ctrl+E</span> to trigger
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="section-divider"></div>
-
-<!-- ════════════════════════════════════════════════════════════
-     02 — WHY VISUAL?
-     ════════════════════════════════════════════════════════════ -->
-<section class="section reveal" id="why-visual">
-  <div class="section-inner">
-    <div class="section-meta"><span class="section-num">02</span><span class="section-label">Why visual</span></div>
-    <h2 class="section-h2">Same result.<br><em>Three clicks</em>, not three lines of script.</h2>
-    <p class="section-sub">Most automation tools assume you'll learn their syntax. Trigr assumes you have better things to do, like everything else on your to-do list.</p>
-
-    <div class="vs-grid">
-      <div class="vs-col vs-col-bad">
-        <span class="vs-tag vs-tag-bad">In AutoHotkey</span>
-        <h3 class="vs-h3">Open VS Code, run dev server</h3>
-        <pre class="vs-script"><span class="vs-cmt">; Ctrl+E — open project, start dev server</span>
-<span class="vs-kw">^e::</span>
-  <span class="vs-kw">IfWinExist</span>, ahk_exe Code.exe
-  {
-    <span class="vs-fn">WinActivate</span>
-  }
-  <span class="vs-kw">Else</span>
-  {
-    <span class="vs-fn">Run</span>, <span class="vs-str">"%LocalAppData%\Programs\</span>
-        <span class="vs-str">Microsoft VS Code\Code.exe"</span> <span class="vs-str">"C:\Projects\Trigr"</span>
-  }
-  <span class="vs-fn">Sleep</span>, 1500
-  <span class="vs-fn">Send</span>, ^`` <span class="vs-cmt">; toggle terminal</span>
-  <span class="vs-fn">Sleep</span>, 500
-  <span class="vs-fn">SendInput</span>, npm run dev{Enter}
-<span class="vs-kw">return</span></pre>
-        <div class="vs-foot">14 lines, in a separate <strong>.ahk</strong> file. Reload to take effect. Powerful if you write AHK every day. Opaque to anyone who needs to edit it later but doesn't.</div>
-      </div>
-
-      <div class="vs-or"><div class="vs-or-circle">OR</div></div>
-
-      <div class="vs-col vs-col-good">
-        <span class="vs-tag vs-tag-good">In Trigr</span>
-        <h3 class="vs-h3">Open VS Code, run dev server</h3>
-        <div class="vs-clicks">
-          <div class="vs-step">
-            <div class="vs-step-n">1</div>
-            <div class="vs-step-body">
-              <div class="vs-step-title">Pick the modifier</div>
-              <div class="vs-step-mock"><span class="vs-mk lit">Ctrl</span><span class="vs-mk dim">Alt</span><span class="vs-mk dim">Shift</span><span class="vs-mk dim">Win</span></div>
-            </div>
-          </div>
-          <div class="vs-step">
-            <div class="vs-step-n">2</div>
-            <div class="vs-step-body">
-              <div class="vs-step-title">Click the key</div>
-              <div class="vs-step-mock"><span class="vs-mk">Ctrl</span><span class="vs-step-arr">+</span><span class="vs-mk lit">E</span></div>
-            </div>
-          </div>
-          <div class="vs-step">
-            <div class="vs-step-n">3</div>
-            <div class="vs-step-body">
-              <div class="vs-step-title">Pick "Macro" → add steps → Save</div>
-              <div class="vs-step-mock"><span class="vs-mk lit">◈ Macro</span><span class="vs-step-arr">building…</span></div>
-              <div class="sm-macro-rows" style="margin-top:2px;">
-                <div class="sm-mrow"><span class="sm-mrow-n">1</span><span class="sm-mrow-label">Open VS Code</span><span class="sm-mrow-time">+0ms</span></div>
-                <div class="sm-mrow"><span class="sm-mrow-n">2</span><span class="sm-mrow-label">Wait 1.5s</span><span class="sm-mrow-time">+1.5s</span></div>
-                <div class="sm-mrow"><span class="sm-mrow-n">3</span><span class="sm-mrow-label">Send Ctrl+`</span><span class="sm-mrow-time">+1.5s</span></div>
-                <div class="sm-mrow"><span class="sm-mrow-n">4</span><span class="sm-mrow-label">Type "npm run dev"</span><span class="sm-mrow-time">+2.0s</span></div>
-                <div class="sm-mrow"><span class="sm-mrow-n">5</span><span class="sm-mrow-label">Press Enter</span><span class="sm-mrow-time">+2.0s</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="vs-foot"><strong>~8 seconds.</strong> No reload, no syntax. Live in every app immediately. Edit anytime in two clicks.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="section-divider"></div>
-
-<!-- ════════════════════════════════════════════════════════════
-     03 — BENTO FEATURES
+     01 — BENTO FEATURES
      ════════════════════════════════════════════════════════════ -->
 <section class="section reveal" id="features">
   <div class="section-inner">
-    <div class="section-meta"><span class="section-num">03</span><span class="section-label">Features</span></div>
+    <div class="section-meta"><span class="section-num">01</span><span class="section-label">Features</span></div>
     <h2 class="section-h2">Eight ways to give time<br><em>back</em> every day.</h2>
     <p class="section-sub">One app, one install, your whole team. Every feature is set up by clicking. Not scripted, not configured, never IT-blocked.</p>
 
@@ -1756,6 +1585,177 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 <span class="b-ahk-cmd">Sleep</span>(500)
 <span class="b-ahk-cmd">Send</span>("npm run dev`n")</pre>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     02 — SEE IT
+     ════════════════════════════════════════════════════════════ -->
+<section class="section reveal" id="see-it">
+  <div class="section-inner">
+    <div class="section-meta"><span class="section-num">02</span><span class="section-label">See it in action</span></div>
+    <h2 class="section-h2">Two clicks to set up.<br><em>Instant</em> every time.</h2>
+    <p class="section-sub">No scripts, no config files, no learning curve. Just results. Exactly what Trigr does, the moment you press the key.</p>
+
+    <div class="demo-panels">
+      <!-- PANEL 1: Text Expansion -->
+      <div class="demo-panel">
+        <div class="demo-tag-row">
+          <span class="demo-panel-tag">Text Expansion</span>
+          <span class="demo-interactive-pill"><span class="demo-int-dot"></span>Interactive · Try it</span>
+        </div>
+        <div class="demo-panel-title">Type a shortcut.<br>Get the whole thing.</div>
+        <div class="demo-panel-sub">Assign <span class="demo-code">/sig</span> to your full email signature. Never type it again.</div>
+        <div class="demo-screen">
+          <div class="demo-screen-bar">
+            <div class="demo-screen-dots"><span></span><span></span><span></span></div>
+            <div class="demo-screen-title">Email — New Message</div>
+          </div>
+          <div class="demo-screen-body">
+            <div class="demo-field-label">To:</div>
+            <div class="demo-field" style="color:#a8a6c2;">sarah&#64;clientco&#46;com</div>
+            <div class="demo-field-label">Subject:</div>
+            <div class="demo-field">Project update — Q3</div>
+            <div class="demo-field-label">Body:</div>
+            <div class="demo-field demo-field-body">
+              <span class="demo-body-static">Hi Sarah,<br><br>Please find the latest files attached for review.<br><br></span><span class="demo-typed" id="demo-typed"></span><span class="demo-expanded-inline" id="demo-expanded-inline"></span><span class="demo-cursor" id="demo-cursor">|</span>
+            </div>
+          </div>
+        </div>
+        <div class="demo-press-hint" id="te-hint">
+          <span class="demo-hint-pulse"></span>Type <span class="demo-code" style="margin-left:2px;">/sig</span> anywhere to trigger
+        </div>
+      </div>
+
+      <!-- PANEL 2: Hotkey -->
+      <div class="demo-panel">
+        <div class="demo-tag-row">
+          <span class="demo-panel-tag">Hotkey</span>
+          <span class="demo-interactive-pill"><span class="demo-int-dot"></span>Interactive · Try it</span>
+        </div>
+        <div class="demo-panel-title">One key.<br>Multiple actions.</div>
+        <div class="demo-panel-sub">Press <span class="demo-code">Ctrl+E</span> and watch Trigr fire a full macro. Two terminals open, commands run, all before your hand moves.</div>
+        <div class="demo-screen">
+          <div class="demo-screen-bar">
+            <div class="demo-screen-dots"><span></span><span></span><span></span></div>
+            <div class="demo-screen-title">Trigr — Key Mapping</div>
+          </div>
+          <div class="demo-screen-body demo-hk-body">
+            <div class="demo-mini-kb">
+              <div class="demo-kb-row">
+                <div class="dmk" id="dmk-q">Q</div><div class="dmk" id="dmk-w">W</div><div class="dmk dmk-assigned" id="dmk-e">E</div><div class="dmk" id="dmk-r">R</div><div class="dmk" id="dmk-t">T</div><div class="dmk" id="dmk-y">Y</div><div class="dmk" id="dmk-u">U</div><div class="dmk" id="dmk-i">I</div><div class="dmk" id="dmk-o">O</div><div class="dmk" id="dmk-p">P</div>
+              </div>
+              <div class="demo-kb-row">
+                <div class="dmk" id="dmk-a">A</div><div class="dmk" id="dmk-s">S</div><div class="dmk" id="dmk-d">D</div><div class="dmk" id="dmk-f">F</div><div class="dmk" id="dmk-g">G</div><div class="dmk" id="dmk-h">H</div><div class="dmk" id="dmk-j">J</div><div class="dmk" id="dmk-k">K</div><div class="dmk" id="dmk-l">L</div>
+              </div>
+              <div class="demo-kb-row">
+                <div class="dmk dmk-mod" id="dmk-ctrl">Ctrl</div><div class="dmk dmk-spacer"></div><div class="dmk dmk-mod" id="dmk-alt">Alt</div>
+              </div>
+            </div>
+            <div class="demo-hk-result">
+              <div class="demo-hk-idle" id="demo-hk-idle">
+                <span class="demo-hk-combo"><span class="demo-hk-key" id="hk-ctrl-disp">Ctrl</span><span class="demo-hk-plus">+</span><span class="demo-hk-key" id="hk-e-disp">E</span></span>
+                <span class="demo-hk-arrow">→</span>
+                <span class="demo-hk-label">Open App</span>
+              </div>
+              <div class="demo-hk-fired" id="demo-hk-fired">
+                <div class="demo-hk-flash" id="demo-hk-flash"></div>
+                <div class="demo-snap-container" id="demo-snap-container">
+                  <div class="demo-snap-win" id="snap-editor">
+                    <div class="demo-snap-bar"><span class="demo-snap-dots"><i></i><i></i><i></i></span><span class="demo-snap-title">Terminal 1</span></div>
+                    <div class="demo-snap-body demo-snap-doc-body" id="term1-body"></div>
+                  </div>
+                  <div class="demo-snap-win" id="snap-brief">
+                    <div class="demo-snap-bar demo-snap-bar-alt"><span class="demo-snap-dots"><i></i><i></i><i></i></span><span class="demo-snap-title">Terminal 2</span></div>
+                    <div class="demo-snap-body demo-snap-doc-body" id="term2-body"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="demo-press-hint" id="demo-press-hint">
+          <span class="demo-hint-pulse"></span>Press <span class="demo-code" style="margin-left:2px;">Ctrl+E</span> to trigger
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     03 — WHY VISUAL?
+     ════════════════════════════════════════════════════════════ -->
+<section class="section reveal" id="why-visual">
+  <div class="section-inner">
+    <div class="section-meta"><span class="section-num">03</span><span class="section-label">Why visual</span></div>
+    <h2 class="section-h2">Same result.<br><em>Three clicks</em>, not three lines of script.</h2>
+    <p class="section-sub">Most automation tools assume you'll learn their syntax. Trigr assumes you have better things to do, like everything else on your to-do list.</p>
+
+    <div class="vs-grid">
+      <div class="vs-col vs-col-bad">
+        <span class="vs-tag vs-tag-bad">In AutoHotkey</span>
+        <h3 class="vs-h3">Open VS Code, run dev server</h3>
+        <pre class="vs-script"><span class="vs-cmt">; Ctrl+E — open project, start dev server</span>
+<span class="vs-kw">^e::</span>
+  <span class="vs-kw">IfWinExist</span>, ahk_exe Code.exe
+  {
+    <span class="vs-fn">WinActivate</span>
+  }
+  <span class="vs-kw">Else</span>
+  {
+    <span class="vs-fn">Run</span>, <span class="vs-str">"%LocalAppData%\Programs\</span>
+        <span class="vs-str">Microsoft VS Code\Code.exe"</span> <span class="vs-str">"C:\Projects\Trigr"</span>
+  }
+  <span class="vs-fn">Sleep</span>, 1500
+  <span class="vs-fn">Send</span>, ^`` <span class="vs-cmt">; toggle terminal</span>
+  <span class="vs-fn">Sleep</span>, 500
+  <span class="vs-fn">SendInput</span>, npm run dev{Enter}
+<span class="vs-kw">return</span></pre>
+        <div class="vs-foot">14 lines, in a separate <strong>.ahk</strong> file. Reload to take effect. Powerful if you write AHK every day. Opaque to anyone who needs to edit it later but doesn't.</div>
+      </div>
+
+      <div class="vs-or"><div class="vs-or-circle">OR</div></div>
+
+      <div class="vs-col vs-col-good">
+        <span class="vs-tag vs-tag-good">In Trigr</span>
+        <h3 class="vs-h3">Open VS Code, run dev server</h3>
+        <div class="vs-clicks">
+          <div class="vs-step">
+            <div class="vs-step-n">1</div>
+            <div class="vs-step-body">
+              <div class="vs-step-title">Pick the modifier</div>
+              <div class="vs-step-mock"><span class="vs-mk lit">Ctrl</span><span class="vs-mk dim">Alt</span><span class="vs-mk dim">Shift</span><span class="vs-mk dim">Win</span></div>
+            </div>
+          </div>
+          <div class="vs-step">
+            <div class="vs-step-n">2</div>
+            <div class="vs-step-body">
+              <div class="vs-step-title">Click the key</div>
+              <div class="vs-step-mock"><span class="vs-mk">Ctrl</span><span class="vs-step-arr">+</span><span class="vs-mk lit">E</span></div>
+            </div>
+          </div>
+          <div class="vs-step">
+            <div class="vs-step-n">3</div>
+            <div class="vs-step-body">
+              <div class="vs-step-title">Pick "Macro" → add steps → Save</div>
+              <div class="vs-step-mock"><span class="vs-mk lit">◈ Macro</span><span class="vs-step-arr">building…</span></div>
+              <div class="sm-macro-rows" style="margin-top:2px;">
+                <div class="sm-mrow"><span class="sm-mrow-n">1</span><span class="sm-mrow-label">Open VS Code</span><span class="sm-mrow-time">+0ms</span></div>
+                <div class="sm-mrow"><span class="sm-mrow-n">2</span><span class="sm-mrow-label">Wait 1.5s</span><span class="sm-mrow-time">+1.5s</span></div>
+                <div class="sm-mrow"><span class="sm-mrow-n">3</span><span class="sm-mrow-label">Send Ctrl+`</span><span class="sm-mrow-time">+1.5s</span></div>
+                <div class="sm-mrow"><span class="sm-mrow-n">4</span><span class="sm-mrow-label">Type "npm run dev"</span><span class="sm-mrow-time">+2.0s</span></div>
+                <div class="sm-mrow"><span class="sm-mrow-n">5</span><span class="sm-mrow-label">Press Enter</span><span class="sm-mrow-time">+2.0s</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="vs-foot"><strong>~8 seconds.</strong> No reload, no syntax. Live in every app immediately. Edit anytime in two clicks.</div>
       </div>
     </div>
   </div>
