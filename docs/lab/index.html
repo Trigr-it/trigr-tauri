@@ -1269,6 +1269,56 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .section { padding:64px 18px; }
 }
 
+/* ════════════════════════════════════════════════════════════
+   LAB v1 — 3D HERO MOCKUP TILT
+   Tilts the whole app-shell in space, adds mouse parallax.
+   Single appended block. Remove this block to revert.
+   ════════════════════════════════════════════════════════════ */
+.mockup-wrap {
+  perspective: 2200px;
+  perspective-origin: 50% 28%;
+}
+.mockup-viewport {
+  --m3d-rx: -9deg;
+  --m3d-ry: 0deg;
+  transform: rotateX(var(--m3d-rx)) rotateY(var(--m3d-ry));
+  transform-origin: 50% 50%;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 80px 140px -20px rgba(0,0,0,0.75),
+    0 40px 80px rgba(0,0,0,0.5),
+    0 0 120px rgba(232,160,32,0.14);
+}
+[data-theme="light"] .mockup-viewport {
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.05),
+    0 50px 100px -20px rgba(0,0,0,0.22),
+    0 25px 50px rgba(0,0,0,0.12),
+    0 0 80px rgba(232,160,32,0.08);
+}
+.mockup-wrap.is-tracking .mockup-viewport {
+  transition: transform 0.12s linear;
+}
+@media (max-width: 1024px) {
+  .mockup-viewport { --m3d-rx: -6deg; }
+}
+@media (max-width: 768px) {
+  .mockup-viewport {
+    --m3d-rx: -3deg !important;
+    --m3d-ry: 0deg !important;
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mockup-viewport {
+    transition: none !important;
+    --m3d-rx: -5deg !important;
+    --m3d-ry: 0deg !important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -2351,6 +2401,43 @@ document.fonts.ready.then(() => { scaleMockup(); });
   vp.style.height = (estimatedH * scale) + 'px';
 })();
 setTimeout(scaleMockup, 50);
+
+/* ── LAB v1: HERO 3D MOUSE PARALLAX ──────────────────────────── */
+(function() {
+  var wrap = document.querySelector('.mockup-wrap');
+  var vp = document.getElementById('mockup-viewport');
+  if (!wrap || !vp) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (window.matchMedia('(hover: none), (max-width: 768px)').matches) return;
+
+  var raf = null;
+  var pending = null;
+
+  function apply() {
+    vp.style.setProperty('--m3d-rx', pending[0].toFixed(2) + 'deg');
+    vp.style.setProperty('--m3d-ry', pending[1].toFixed(2) + 'deg');
+    raf = null;
+  }
+
+  wrap.addEventListener('mousemove', function(e) {
+    var rect = wrap.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width;
+    var y = (e.clientY - rect.top) / rect.height;
+    x = Math.max(0, Math.min(1, x));
+    y = Math.max(0, Math.min(1, y));
+    var rx = -9 + (y - 0.5) * -5;
+    var ry = (x - 0.5) * 10;
+    pending = [rx, ry];
+    if (!raf) raf = requestAnimationFrame(apply);
+    wrap.classList.add('is-tracking');
+  });
+
+  wrap.addEventListener('mouseleave', function() {
+    wrap.classList.remove('is-tracking');
+    vp.style.removeProperty('--m3d-rx');
+    vp.style.removeProperty('--m3d-ry');
+  });
+})();
 
 /* ── AHK V1 / V2 TOGGLE ───────────────────────────────────────── */
 function switchAhkVer(btn, ver) {
