@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
 Disallow: /private/
+Disallow: /lab/
 
 Sitemap: https://usetrigr.com/sitemap.xml
