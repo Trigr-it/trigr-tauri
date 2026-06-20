@@ -1387,13 +1387,12 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   transform: translateY(var(--k-y)) translateZ(var(--k-z));
   transform-style: preserve-3d;
   transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s, box-shadow 0.12s;
-  /* KEY FIX: allow ::after to render below the key (was overflow:hidden) */
   overflow: visible !important;
-  /* Top face — subtle highlight on top edge, inner shadow on bottom */
-  background: linear-gradient(180deg, var(--key-bg-hover) 0%, var(--key-bg) 100%) !important;
+  /* Solid top face, no concave gradient — proper keycap */
+  background: var(--key-bg) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.1),
-    inset 0 -2px 4px rgba(0,0,0,0.35) !important;
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.18) !important;
 }
 .mockup-wrap .app-shell .k:hover  { --k-y: -1px; --k-z: 26px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
 .mockup-wrap .app-shell .k:active { --k-y:  1px; --k-z: 14px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
@@ -1401,17 +1400,18 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 .mockup-wrap .app-shell .k.sys:hover { --k-y: 0px; --k-z: 22px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
 
 .mockup-wrap .app-shell .k.asgn {
-  background: linear-gradient(180deg, var(--key-bg-assigned) 0%, color-mix(in srgb, var(--key-bg-assigned) 80%, black) 100%) !important;
+  background: var(--key-bg-assigned) !important;
 }
 .mockup-wrap .app-shell .k.sel {
-  background: linear-gradient(180deg, var(--key-bg-selected) 0%, color-mix(in srgb, var(--key-bg-selected) 75%, black) 100%) !important;
+  background: var(--key-bg-selected) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.12),
-    inset 0 -2px 4px rgba(0,0,0,0.35),
-    0 0 24px rgba(232,160,32,0.4) !important;
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 0 22px rgba(232,160,32,0.35) !important;
 }
 
-/* ── 8. Front face of each keycap — the visible side wall ───── */
+/* ── 8. Front face — derived from the top colour, just slightly darker
+       so the side wall reads as the same keycap, not a different object ─ */
 .mockup-wrap .app-shell .k::after {
   content: '';
   position: absolute;
@@ -1419,35 +1419,35 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   right: -1px;
   top: 100%;
   height: 22px;
-  background: linear-gradient(180deg, #1a1a26 0%, #050509 100%);
+  background: color-mix(in srgb, var(--key-bg) 72%, #000);
   border-left: 1px solid var(--key-border);
   border-right: 1px solid var(--key-border);
-  border-bottom: 1px solid #000;
+  border-bottom: 1px solid var(--key-border);
   border-radius: 0 0 5px 5px;
   transform-origin: top center;
   transform: rotateX(-90deg);
   pointer-events: none;
-  box-shadow: inset 0 -3px 5px rgba(0,0,0,0.6);
 }
 .mockup-wrap .app-shell .k.asgn::after {
-  background: linear-gradient(180deg, #3a2a10 0%, #100a02 100%);
+  background: color-mix(in srgb, var(--key-bg-assigned) 70%, #000);
+  border-color: var(--key-border-assigned, var(--key-border));
 }
 .mockup-wrap .app-shell .k.sel::after {
-  background: linear-gradient(180deg, #6a4818 0%, #1c1206 100%);
-  border-color: rgba(232,160,32,0.6);
+  background: color-mix(in srgb, var(--key-bg-selected) 65%, #000);
+  border-color: rgba(232,160,32,0.55);
 }
 [data-theme="light"] .mockup-wrap .app-shell .k {
-  background: linear-gradient(180deg, #ffffff 0%, #e0ddd1 100%) !important;
+  background: var(--key-bg) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.9),
-    inset 0 -2px 3px rgba(0,0,0,0.06) !important;
+    inset 0 1px 0 rgba(255,255,255,0.85),
+    inset 0 -1px 0 rgba(0,0,0,0.05) !important;
 }
 [data-theme="light"] .mockup-wrap .app-shell .k::after {
-  background: linear-gradient(180deg, #d4d0c0 0%, #8a8676 100%);
-  border-color: #b8b4a4;
+  background: color-mix(in srgb, var(--key-bg) 84%, #2a2418);
+  border-color: rgba(0,0,0,0.15);
 }
 [data-theme="light"] .mockup-wrap .app-shell .k.asgn::after {
-  background: linear-gradient(180deg, #d8a868 0%, #6a4818 100%);
+  background: color-mix(in srgb, var(--key-bg-assigned) 82%, #2a1e08);
 }
 
 /* Front face height tracks key Z depth */
@@ -1525,7 +1525,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   width: min(78%, 1280px);
   margin-top: 0 !important;
   padding-bottom: 40px !important;
-  transform: translateX(38%);
+  transform: translateX(52%);
 }
 /* Keep the rightward shift off when the layout collapses on mobile */
 @media (max-width: 860px) {
