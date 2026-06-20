@@ -1525,6 +1525,11 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   width: min(78%, 1280px);
   margin-top: 0 !important;
   padding-bottom: 40px !important;
+  transform: translateX(20%);
+}
+/* Keep the rightward shift off when the layout collapses on mobile */
+@media (max-width: 860px) {
+  .hero-inner > .mockup-wrap { transform: none; }
 }
 
 /* Hide the floating chips in side-by-side layout — they cluttered the right col */
