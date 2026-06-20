@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trigr — Hotkeys, Macros & Text Expansion for Windows. No Scripting.</title>
-<link rel="icon" href="favicon.ico" sizes="any">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="description" content="Your keyboard can do more than type. Visual hotkeys, macros and text expansion for Windows. Set up in seconds, no scripting required. Free to download.">
 <meta name="indexnow" content="24db6ec83ef4488ba706bf6cd5fcb81b">
 
@@ -1267,6 +1267,405 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .section { padding:64px 18px; }
 }
 
+/* ════════════════════════════════════════════════════════════
+   LAB v3 — STANDALONE 3D KEYBOARD
+   Hides ALL the surrounding UI (titlebar, sidebar, action panel,
+   modifier bar, hints, status bar). Just the physical keyboard,
+   tilted 40°, sitting in its own chassis, like the inspiration
+   keyboard product shots.
+   Removable as one block.
+   ════════════════════════════════════════════════════════════ */
+
+/* ── 1. Hide every chrome element around the keyboard ───────── */
+.mockup-wrap .app-shell .t-bar,
+.mockup-wrap .app-shell .sb,
+.mockup-wrap .app-shell .panel,
+.mockup-wrap .app-shell .s-bar,
+.mockup-wrap .app-shell .mod-bar,
+.mockup-wrap .app-shell .kb-lbl,
+.mockup-wrap .app-shell .kb-hints {
+  display: none !important;
+}
+
+/* ── 2. Strip the mockup viewport and app-shell chrome ──────── */
+.mockup-wrap .mockup-viewport {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+.mockup-wrap .mockup-viewport::after { display: none !important; }
+.mockup-wrap .app-shell {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.mockup-wrap .app-shell .a-body {
+  background: transparent !important;
+}
+
+/* ── 3. Propagate 3D through the scaler ─────────────────────── */
+.mockup-scaler { transform-style: preserve-3d; }
+
+/* ── 4. Center the keyboard, give it breathing room ─────────── */
+.mockup-wrap .app-shell .kb-area {
+  perspective: 1600px;
+  perspective-origin: 50% 60%;
+  overflow: visible;
+  position: relative;
+  background: transparent !important;
+  border: none !important;
+  padding: 70px 60px 100px !important;
+  gap: 0 !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ground shadow — flat, doesn't rotate with the keyboard */
+.mockup-wrap .app-shell .kb-area::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 60px;
+  height: 40px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, transparent 65%);
+  filter: blur(18px);
+  z-index: 0;
+  pointer-events: none;
+}
+[data-theme="light"] .mockup-wrap .app-shell .kb-area::after {
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.22) 0%, transparent 65%);
+}
+
+/* ── 5. The keyboard chassis — slim physical base ───────────── */
+.mockup-wrap .app-shell .kb-outer {
+  --kb-rx: 40deg;
+  --kb-ry: -33deg;
+  --kb-rz: 10deg;  /* clockwise rotation in screen plane */
+  transform: rotateZ(var(--kb-rz)) rotateX(var(--kb-rx)) rotateY(var(--kb-ry));
+  transform-style: preserve-3d;
+  transform-origin: 50% 55%;
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+  z-index: 1;
+  background: linear-gradient(180deg, #1f1f2d 0%, #0d0d14 100%) !important;
+  border: 1px solid #2a2a3a !important;
+  border-radius: 18px !important;
+  padding: 28px 30px 34px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07),
+    inset 0 -3px 8px rgba(0,0,0,0.6),
+    0 4px 0 #050509,
+    0 6px 0 #050509 !important;
+}
+.mockup-wrap .app-shell .kb-outer::before {
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%) !important;
+}
+[data-theme="light"] .mockup-wrap .app-shell .kb-outer {
+  background: linear-gradient(180deg, #ebe8de 0%, #c8c4b6 100%) !important;
+  border: 1px solid #b8b4a4 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 -3px 8px rgba(0,0,0,0.08),
+    0 4px 0 #8a8676,
+    0 6px 0 #8a8676 !important;
+}
+.mockup-wrap .app-shell .kb-area.is-tracking .kb-outer {
+  transition: transform 0.15s linear;
+}
+
+/* ── 6. Preserve 3D down to each key ────────────────────────── */
+.mockup-wrap .app-shell .kb-rows,
+.mockup-wrap .app-shell .kb-row { transform-style: preserve-3d; }
+
+/* ── 7. Keys become real chunky 3D keycaps ──────────────────── */
+.mockup-wrap .app-shell .k {
+  --k-y: 0px;
+  --k-z: 22px;
+  transform: translateY(var(--k-y)) translateZ(var(--k-z));
+  transform-style: preserve-3d;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  overflow: visible !important;
+  /* Solid top face, no concave gradient — proper keycap */
+  background: var(--key-bg) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.18) !important;
+}
+.mockup-wrap .app-shell .k:hover  { --k-y: -1px; --k-z: 26px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-wrap .app-shell .k:active { --k-y:  1px; --k-z: 14px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-wrap .app-shell .k.sel    { --k-y: -1px; --k-z: 30px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-wrap .app-shell .k.sys:hover { --k-y: 0px; --k-z: 22px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+
+.mockup-wrap .app-shell .k.asgn {
+  background: var(--key-bg-assigned) !important;
+}
+.mockup-wrap .app-shell .k.sel {
+  background: var(--key-bg-selected) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 0 22px rgba(232,160,32,0.35) !important;
+}
+
+/* ── 8. Front face — derived from the top colour, just slightly darker
+       so the side wall reads as the same keycap, not a different object ─ */
+.mockup-wrap .app-shell .k::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: 100%;
+  height: 22px;
+  background: color-mix(in srgb, var(--key-bg) 72%, #000);
+  border-left: 1px solid var(--key-border);
+  border-right: 1px solid var(--key-border);
+  border-bottom: 1px solid var(--key-border);
+  border-radius: 0 0 5px 5px;
+  transform-origin: top center;
+  transform: rotateX(-90deg);
+  pointer-events: none;
+}
+.mockup-wrap .app-shell .k.asgn::after {
+  background: color-mix(in srgb, var(--key-bg-assigned) 70%, #000);
+  border-color: var(--key-border-assigned, var(--key-border));
+}
+.mockup-wrap .app-shell .k.sel::after {
+  background: color-mix(in srgb, var(--key-bg-selected) 65%, #000);
+  border-color: rgba(232,160,32,0.55);
+}
+[data-theme="light"] .mockup-wrap .app-shell .k {
+  background: var(--key-bg) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.85),
+    inset 0 -1px 0 rgba(0,0,0,0.05) !important;
+}
+[data-theme="light"] .mockup-wrap .app-shell .k::after {
+  background: color-mix(in srgb, var(--key-bg) 84%, #2a2418);
+  border-color: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .mockup-wrap .app-shell .k.asgn::after {
+  background: color-mix(in srgb, var(--key-bg-assigned) 82%, #2a1e08);
+}
+
+/* Front face height tracks key Z depth */
+.mockup-wrap .app-shell .k:hover::after,
+.mockup-wrap .app-shell .k.sel::after   { height: 26px; }
+.mockup-wrap .app-shell .k:active::after { height: 14px; }
+
+/* ── 9. Selected key — accent dot becomes glowing pip ───────── */
+.mockup-wrap .app-shell .k.sel .k-lbl,
+.mockup-wrap .app-shell .k.asgn .k-lbl { text-shadow: 0 0 8px rgba(232,160,32,0.5); }
+
+/* ── 10. Responsive ─────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .mockup-wrap .app-shell .kb-outer { --kb-rx: 34deg; }
+  .mockup-wrap .app-shell .kb-area { padding: 50px 40px 80px !important; }
+}
+@media (max-width: 768px) {
+  .mockup-wrap .app-shell .kb-outer { --kb-rx: 22deg !important; --kb-ry: 0deg !important; transition: none; }
+  .mockup-wrap .app-shell .k { --k-z: 10px; }
+  .mockup-wrap .app-shell .k::after { height: 10px; }
+  .mockup-wrap .app-shell .k:hover, .mockup-wrap .app-shell .k.sel { --k-z: 14px; }
+  .mockup-wrap .app-shell .k:hover::after, .mockup-wrap .app-shell .k.sel::after { height: 14px; }
+  .mockup-wrap .app-shell .kb-area { padding: 30px 20px 50px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mockup-wrap .app-shell .kb-outer { transition: none !important; --kb-rx: 32deg !important; --kb-ry: -33deg !important; }
+  .mockup-wrap .app-shell .k { transition: background 0.15s, border-color 0.15s !important; }
+}
+
+/* ── 11. OVERLAY HERO LAYOUT ─────────────────────────────────
+   Text and keyboard share the same grid cell.
+   Text justifies left (z 2), keyboard justifies right (z 1).
+   They can overlap in the middle — text floats over the keyboard. */
+.hero-inner {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto;
+  position: relative;
+  align-items: center;
+  text-align: left !important;
+  padding: 100px 32px 60px !important;
+  max-width: 1700px !important;
+}
+.hero-text-col {
+  grid-area: 1 / 1;
+  z-index: 2;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: center;
+  justify-self: start;
+  max-width: 720px;
+  width: 100%;
+}
+.hero-text-col .hero-h1,
+.hero-text-col .hero-sub,
+.hero-text-col .hero-arm-link,
+.hero-text-col .hero-meta {
+  text-align: left;
+  margin-left: 0;
+  margin-right: 0;
+  max-width: none;
+}
+.hero-text-col .hero-actions {
+  justify-content: flex-start;
+}
+
+/* Mockup behind — pushed right, capped width so it doesn't fill the full hero */
+.hero-inner > .mockup-wrap {
+  grid-area: 1 / 1;
+  z-index: 1;
+  align-self: center;
+  justify-self: end;
+  width: min(78%, 1280px);
+  margin-top: 0 !important;
+  padding-bottom: 40px !important;
+  /* Kill the fadeInUp animation - its 'to' keyframe sets transform:translateY(0)
+     which clobbered our translateX with animation-fill-mode:both */
+  animation: none !important;
+  transform: translateX(15%) !important;
+}
+/* Keep the rightward shift off when the layout collapses on mobile */
+@media (max-width: 860px) {
+  .hero-inner > .mockup-wrap { transform: none !important; }
+}
+
+/* ── 12. Restore opacity on sys keys so depth is fully visible ─ */
+.mockup-wrap .app-shell .k.sys {
+  opacity: 1 !important;
+}
+
+/* ── 13. RIGHT-SIDE face of each keycap (injected as <div class="k-side">)
+       Combined with the ::after FRONT face, gives each key a solid 3D body
+       with two visible side walls at this 40deg X / -33deg Y view.
+       Hardcoded dark colours (no color-mix dependency) + !important so
+       the side face MUST render regardless of browser quirks. ─── */
+.mockup-wrap .app-shell .k-side {
+  position: absolute !important;
+  top: 0 !important;
+  left: 100% !important;    /* sit OUTSIDE the key's right edge so rotation pivots correctly */
+  right: auto !important;
+  width: 22px !important;
+  height: 100% !important;
+  background: #0e0e16 !important;
+  border-top: 1px solid var(--key-border) !important;
+  border-right: 1px solid var(--key-border) !important;
+  border-bottom: 1px solid var(--key-border) !important;
+  border-radius: 0 5px 5px 0 !important;
+  transform-origin: 0 50% !important;   /* left edge = key's right edge after left:100% */
+  transform: rotateY(90deg) !important;  /* swings the body into -Z, becoming the right-side wall */
+  transition: background 0.12s, border-color 0.12s !important;
+  pointer-events: none !important;
+}
+.mockup-wrap .app-shell .k.asgn .k-side { background: #1c1408 !important; }
+.mockup-wrap .app-shell .k.sel  .k-side { background: #3a2810 !important; border-color: rgba(232,160,32,0.55) !important; }
+[data-theme="light"] .mockup-wrap .app-shell .k-side { background: #948c7c !important; border-color: rgba(0,0,0,0.22) !important; }
+[data-theme="light"] .mockup-wrap .app-shell .k.asgn .k-side { background: #b48030 !important; }
+
+/* FRONT face — same hardcoded dark colour scheme */
+.mockup-wrap .app-shell .k::after { background: #0e0e16 !important; }
+.mockup-wrap .app-shell .k.asgn::after { background: #1c1408 !important; }
+.mockup-wrap .app-shell .k.sel::after { background: #3a2810 !important; }
+[data-theme="light"] .mockup-wrap .app-shell .k::after { background: #948c7c !important; }
+[data-theme="light"] .mockup-wrap .app-shell .k.asgn::after { background: #b48030 !important; }
+
+/* Make the FRONT face height also track --k-z so depth stays consistent */
+.mockup-wrap .app-shell .k::after {
+  height: var(--k-z, 22px);
+  transition: height 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s;
+}
+/* Drop the old per-state height overrides — var(--k-z) now drives both faces */
+.mockup-wrap .app-shell .k:hover::after,
+.mockup-wrap .app-shell .k.sel::after,
+.mockup-wrap .app-shell .k:active::after { height: var(--k-z, 22px); }
+
+/* ── 14a. Callout SVG — thin solid line that draws on from key to toast ─ */
+.key-callout-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+.key-callout-svg path {
+  stroke: #e8a020;
+  stroke-width: 1.5;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  filter: drop-shadow(0 0 3px rgba(232, 160, 32, 0.5));
+  /* draw-on animation driven by JS setting strokeDashoffset from len -> 0 */
+  transition: stroke-dashoffset 0.55s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.2s;
+}
+.key-callout-svg.show path { opacity: 1; }
+
+/* ── 14b. PROFILE TOAST — original pill style, shifted 20pct left,
+       with a subtle gold-tinted border + soft gold ambient glow so it
+       reads as a distinct event without breaking the theme. ─── */
+.mockup-wrap .mockup-prof-toast {
+  right: auto !important;
+  left: 30% !important;
+  transform: translateX(-50%) translateY(-8px) !important;
+  border-color: rgba(232,160,32,0.45) !important;
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.45),
+    0 0 18px rgba(232,160,32,0.22) !important;
+}
+.mockup-wrap .mockup-prof-toast.show {
+  transform: translateX(-50%) translateY(0) !important;
+}
+
+/* ── 14. FIRE animation actually depresses the key — neighbours stick up
+       around the pressed key so the press reads physically. ─── */
+.mockup-wrap .app-shell .k.fire {
+  --k-y: 2px;
+  --k-z: 6px !important;
+  transform: translateY(var(--k-y)) translateZ(var(--k-z)) !important;
+  transition: transform 0.08s cubic-bezier(0.6, 0, 0.5, 1) !important;
+  animation: none !important; /* the existing keyFire animation moved the box-shadow, we override */
+}
+
+/* Hide the floating chips in side-by-side layout — they cluttered the right col */
+.hero-inner > .mockup-wrap .chip-floater { display: none !important; }
+
+/* Tablet — narrower grid, smaller gap */
+@media (max-width: 1100px) {
+  .hero-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 32px;
+    padding: 80px 28px 40px !important;
+  }
+}
+
+/* Mobile — stack: text on top, keyboard below, restore original look */
+@media (max-width: 860px) {
+  .hero-inner {
+    display: block !important;
+    text-align: center !important;
+    padding: 100px 24px 0 !important;
+  }
+  .hero-text-col {
+    align-items: center;
+  }
+  .hero-text-col .hero-h1,
+  .hero-text-col .hero-sub,
+  .hero-text-col .hero-arm-link,
+  .hero-text-col .hero-meta {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .hero-text-col .hero-actions { justify-content: center; }
+  .hero-inner > .mockup-wrap { margin-top: 60px !important; }
+}
+
 </style>
 </head>
 <body>
@@ -1282,10 +1681,10 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   <div class="nav-links">
     <a href="#features">Features</a>
     <a href="#how">How it works</a>
-    <a href="trigr-help.html">Guide</a>
-    <a href="roadmap.html">Roadmap</a>
-    <a href="blog/">Blog</a>
-    <a href="pricing.html">Pricing</a>
+    <a href="/trigr-help.html">Guide</a>
+    <a href="/roadmap.html">Roadmap</a>
+    <a href="/blog/">Blog</a>
+    <a href="/pricing.html">Pricing</a>
     <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
   </div>
@@ -1297,7 +1696,8 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 <section class="hero">
   <div class="hero-bg"></div>
   <div class="hero-inner">
-    <h1 class="hero-h1">Your keyboard<br>can do more<br>than <em>type.</em></h1>
+    <div class="hero-text-col">
+    <h1 class="hero-h1">Your keyboard<br>can do more<br>than <em>type</em></h1>
     <p class="hero-sub">Visual hotkeys, macros, and text expansion for Windows. No scripting required.</p>
     <div class="hero-actions">
       <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="btn-primary" data-loc="hero" data-arch="x64">
@@ -1307,6 +1707,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     </div>
     <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
     <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Auto-updates <span>·</span> Your data stays on your machine <span>·</span> No accounts, no cloud <span>·</span> Latest: <span class="js-latest-version">v0.4.22</span></p>
+    </div>
 
     <!-- ── MOCKUP ── -->
     <div class="mockup-wrap">
@@ -1316,6 +1717,16 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 
       <div class="mockup-fire-toast" id="mockup-fire-toast"></div>
       <div class="mockup-prof-toast" id="mockup-prof-toast"></div>
+
+      <!-- Lab v3: callout line from pressed key to fire-toast badge -->
+      <svg class="key-callout-svg" aria-hidden="true">
+        <defs>
+          <marker id="callout-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#e8a020"/>
+          </marker>
+        </defs>
+        <path id="key-callout-path" d="" marker-end="url(#callout-arrow)"></path>
+      </svg>
 
       <div class="mockup-outer" id="mockup-outer">
         <div class="mockup-viewport" id="mockup-viewport">
@@ -1338,7 +1749,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
                   <div class="t-profiles">
                     <button class="t-ptab on" onclick="switchProf(this,'default')">Default <span class="t-gdot"></span></button>
                     <button class="t-ptab" onclick="switchProf(this,'chrome')">Chrome <span class="t-ldot"></span></button>
-                    <button class="t-ptab" onclick="switchProf(this,'vscode')">VS Code <span class="t-ldot"></span></button>
+                    <button class="t-ptab" onclick="switchProf(this,'autocad')">AutoCAD <span class="t-ldot"></span></button>
                     <button class="t-ptab t-ptab-add">+</button>
                   </div>
                 </div>
@@ -1423,16 +1834,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 </section>
 
 <!-- ════════════════════════════════════════════════════════════
-     MARQUEE — scrolling shortcut combos
-     ════════════════════════════════════════════════════════════ -->
-<div class="marquee">
-  <div class="marquee-track" id="marquee-track">
-    <!-- JS will populate -->
-  </div>
-</div>
-
-<!-- ════════════════════════════════════════════════════════════
-     STATS STRIP
+     STATS STRIP — moved above the marquee so it sits right under the hero
      ════════════════════════════════════════════════════════════ -->
 <section class="stats-strip reveal">
   <div class="stats-grid">
@@ -1452,9 +1854,18 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 </section>
 
 <!-- ════════════════════════════════════════════════════════════
-     COST ANCHOR — loss-naming strip
+     MARQUEE — scrolling shortcut combos
      ════════════════════════════════════════════════════════════ -->
-<section class="cost-anchor reveal">
+<div class="marquee">
+  <div class="marquee-track" id="marquee-track">
+    <!-- JS will populate -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     COST ANCHOR — HIDDEN for now (kept in HTML for later reuse)
+     ════════════════════════════════════════════════════════════ -->
+<section class="cost-anchor reveal" style="display:none">
   <div class="cost-anchor-inner">
     <p class="cost-anchor-line"><span class="cn">117 emails</span>. <span class="cn">153 Teams messages</span>. Every working day. Most of them get the same five replies.</p>
     <p class="cost-anchor-cite"><a href="https://www.microsoft.com/en-us/worklab/work-trend-index/breaking-down-infinite-workday" target="_blank" rel="noopener">Microsoft Work Trend Index, 2025</a></p>
@@ -1955,15 +2366,15 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
      FOOTER
      ════════════════════════════════════════════════════════════ -->
 <footer>
-  <a href="index.html" class="ft-logo"><div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="ft-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="ft-key" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#ft-base)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#ft-key)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div><span class="ft-wm">Trigr</span></a>
+  <a href="/" class="ft-logo"><div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="ft-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="ft-key" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#ft-base)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#ft-key)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div><span class="ft-wm">Trigr</span></a>
   <div class="ft-links">
-    <a href="index.html#features">Features</a>
-    <a href="trigr-help.html">Guide</a>
-    <a href="blog/">Blog</a>
+    <a href="/#features">Features</a>
+    <a href="/trigr-help.html">Guide</a>
+    <a href="/blog/">Blog</a>
     <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
-    <a href="terms.html">Terms</a>
-    <a href="privacy.html">Privacy</a>
-    <a href="refund.html">Refunds</a>
+    <a href="/terms.html">Terms</a>
+    <a href="/privacy.html">Privacy</a>
+    <a href="/refund.html">Refunds</a>
   </div>
   <span class="ft-copy">© 2026 Node Group Ltd · Built by The Trigr team</span>
   <a href="https://peerpush.com/p/trigr" class="peerpush-badge" target="_blank" rel="noopener">
@@ -2183,20 +2594,20 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 /* ── APP MOCKUP — interactive keyboard ────────────────────────── */
 const PROFILES = {
   default: { name:'Default', assigns:{
-    'Ctrl-KeyE':{type:'tt',label:'Type Text',text:"Hello, thanks for reaching out!"},
-    'Ctrl-KeyR':{type:'mc',label:'Macro',steps:['Open terminal','Type: npm start','Wait 2s','Press Enter']},
-    'Ctrl-KeyT':{type:'ap',label:'Open App',path:'C:\\Program Files\\Notepad++\\notepad++.exe'},
-    'Alt-KeyQ': {type:'hk',label:'Send Hotkey',combo:'Win+Shift+S'},
+    'Ctrl-KeyE':{type:'url',label:'Open YouTube'},
+    'Ctrl-KeyR':{type:'ap', label:'Open C:/Downloads'},
+    'Ctrl-KeyT':{type:'ap', label:'Launch Slack'},
+    'Alt-KeyQ': {type:'mc', label:'Open Folders Snap Right'},
   }},
   chrome: { name:'Chrome', assigns:{
-    'Ctrl-KeyD':{type:'tt',label:'Type Text',text:'https://github.com/Trigr-it/trigr-tauri'},
-    'Ctrl-KeyK':{type:'hk',label:'Send Hotkey',combo:'Ctrl+L'},
-    'Alt-KeyR': {type:'mc',label:'Macro',steps:['Ctrl+Shift+J','Wait 1s','Type: console.log(']},
+    'Ctrl-KeyD':{type:'url',label:'Open Gmail'},
+    'Ctrl-KeyK':{type:'url',label:'Show Weather Now'},
+    'Alt-KeyR': {type:'hk', label:'Turn On Adblock'},
   }},
-  vscode: { name:'VS Code', assigns:{
-    'Ctrl-KeyG':{type:'tt',label:'Type Text',text:'console.log('},
-    'Ctrl-KeyB':{type:'hk',label:'Send Hotkey',combo:'Ctrl+Shift+P'},
-    'Alt-KeyF': {type:'ap',label:'Open App',path:'C:\\Windows\\System32\\cmd.exe'},
+  autocad: { name:'AutoCAD', assigns:{
+    'Ctrl-KeyG':{type:'mc', label:'Rotate Copy 90'},
+    'Ctrl-KeyB':{type:'hk', label:'UCS World'},
+    'Alt-KeyF': {type:'hk', label:'Publish'},
   }}
 };
 const TYPE_COLORS = {tt:'#64b4ff',hk:'#c864ff',mc:'#ff783c',ap:'#50c878',url:'#ffc832'};
@@ -2230,6 +2641,8 @@ function buildKB() {
       k.dataset.id = id;
       if (sub) { const sl = document.createElement('span'); sl.className = 'k-sub'; sl.textContent = sub; k.appendChild(sl); }
       const ll = document.createElement('span'); ll.className = 'k-lbl'; ll.textContent = lbl; k.appendChild(ll);
+      // Lab v3: inject right-side face element for 3D keycap depth (CSS rotates it)
+      const ks = document.createElement('div'); ks.className = 'k-side'; k.appendChild(ks);
       if (!sys) k.addEventListener('click', () => onKey(id, lbl));
       rowEl.appendChild(k);
     });
@@ -2350,6 +2763,41 @@ document.fonts.ready.then(() => { scaleMockup(); });
 })();
 setTimeout(scaleMockup, 50);
 
+/* ── LAB v3: 3D KEYBOARD PARALLAX (Y-axis swing) — DISABLED ─── */
+(function() {
+  return; // hover rotation removed per redesign — keyboard stays at its static -33deg
+  /* eslint-disable no-unreachable */
+  var kbArea = document.querySelector('.kb-area');
+  var kbOuter = document.querySelector('.kb-outer');
+  var hero = document.querySelector('.mockup-wrap');
+  if (!kbArea || !kbOuter || !hero) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (window.matchMedia('(hover: none), (max-width: 768px)').matches) return;
+
+  var raf = null;
+  var pending = 0;
+
+  function apply() {
+    kbOuter.style.setProperty('--kb-ry', pending.toFixed(2) + 'deg');
+    raf = null;
+  }
+
+  hero.addEventListener('mousemove', function(e) {
+    var rect = hero.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width;
+    x = Math.max(0, Math.min(1, x));
+    // Base -33deg (default rotateY) +/- 8deg around it
+    pending = -33 + (x - 0.5) * 16;
+    if (!raf) raf = requestAnimationFrame(apply);
+    kbArea.classList.add('is-tracking');
+  });
+
+  hero.addEventListener('mouseleave', function() {
+    kbArea.classList.remove('is-tracking');
+    kbOuter.style.removeProperty('--kb-ry');
+  });
+})();
+
 /* ── AHK V1 / V2 TOGGLE ───────────────────────────────────────── */
 function switchAhkVer(btn, ver) {
   document.querySelectorAll('.b-ahk-tab').forEach(t => t.classList.remove('active'));
@@ -2459,7 +2907,7 @@ function toggleTheme() {
     });
   }
 
-  var profOrder = ['default','chrome','vscode'];
+  var profOrder = ['default','chrome','autocad'];
   var profIdx = 0;
 
   function userIsActive(){ return Date.now() - lastUserAction < 4500; }
@@ -2474,33 +2922,105 @@ function toggleTheme() {
 
   function showProfToast(name){
     if(!profToast) return;
-    profToast.innerHTML = 'Profile <em>'+name+'</em>';
+    profToast.innerHTML = 'Auto Profile Switch <em>'+name+'</em>';
     profToast.classList.add('show');
     clearTimeout(profToast._t);
     profToast._t = setTimeout(function(){ profToast.classList.remove('show'); }, 2400);
   }
 
-  function fireRandomKey(){
-    if(userIsActive()) return;
-    if(typeof PROFILES === 'undefined' || typeof S === 'undefined') return;
+  // Index into the current profile's assignments — sequential, deterministic.
+  // Reset on profile change so each profile starts at its first assignment.
+  var fireIdx = 0;
+  // Map a modifier name to the data-id of the visual key to pulse alongside the main key
+  var MOD_KEY_IDS = { 'Ctrl': 'CtrlL', 'Alt': 'AltL', 'Shift': 'ShiftLeft', 'Win': 'WinL' };
+  function pulseKeysById(ids){
+    ids.forEach(function(id){
+      var el = document.querySelector('#kb-rows .k[data-id="'+id+'"]');
+      if(!el) return;
+      el.classList.add('fire');
+      setTimeout(function(){ el.classList.remove('fire'); }, 1100);
+    });
+  }
+  // Draw an SVG callout line from the (unpressed) key to the fire-toast badge.
+  // Path: straight up from the key, then 90deg bend to meet the toast horizontally.
+  // Animates as a draw-on (extends from key end to toast end).
+  // Accepts a pre-captured key rect (so we anchor to the UNPRESSED position).
+  function drawCallout(unpressedKeyRect){
+    var svg = document.querySelector('.key-callout-svg');
+    var path = document.getElementById('key-callout-path');
+    var wrap = document.querySelector('.mockup-wrap');
+    var toast = document.getElementById('mockup-fire-toast');
+    if(!unpressedKeyRect || !svg || !path || !wrap || !toast) return;
+    var wrapRect = wrap.getBoundingClientRect();
+    var toastRect = toast.getBoundingClientRect();
+    var startX = unpressedKeyRect.left + unpressedKeyRect.width/2 - wrapRect.left;
+    var startY = unpressedKeyRect.top + unpressedKeyRect.height/2 - wrapRect.top;
+    var endX = toastRect.left + toastRect.width/2 - wrapRect.left;
+    var endY = toastRect.top + toastRect.height - wrapRect.top;
+    // L-path: vertical up from start, then horizontal across to end
+    path.setAttribute('d',
+      'M ' + startX + ' ' + startY +
+      ' L ' + startX + ' ' + endY +
+      ' L ' + endX + ' ' + endY
+    );
+    // Set up the draw-on: dasharray=length, dashoffset=length (invisible),
+    // then on next frame set dashoffset=0 to trigger the CSS transition.
+    var len = path.getTotalLength();
+    path.style.transition = 'none';
+    path.style.strokeDasharray = len;
+    path.style.strokeDashoffset = len;
+    svg.classList.add('show');
+    // Force layout then animate
+    void path.getBoundingClientRect();
+    requestAnimationFrame(function(){
+      path.style.transition = '';  // restore the CSS transition
+      path.style.strokeDashoffset = 0;
+    });
+  }
+  function clearCallout(){
+    var svg = document.querySelector('.key-callout-svg');
+    if(svg) svg.classList.remove('show');
+  }
+  // Fire a single key by its assignment pick string (e.g. 'Ctrl-KeyE')
+  function fireKey(pick){
     var assigns = PROFILES[S.prof].assigns;
-    var keys = Object.keys(assigns);
-    if(keys.length === 0) return;
-    var pick = keys[Math.floor(Math.random()*keys.length)];
     var mod = pick.split('-')[0];
     var keyId = pick.split('-')[1];
     if(S.mod !== mod){
       var modBtn = document.getElementById('mb-'+mod);
       if(modBtn && typeof selMod === 'function') selMod(modBtn, mod);
     }
-    var kEl = document.querySelector('#kb-rows .k[data-id="'+keyId+'"]');
-    if(!kEl) return;
-    kEl.classList.add('fire');
-    setTimeout(function(){ kEl.classList.remove('fire'); }, 1100);
+    // Capture the UNPRESSED key position BEFORE the pulse animation depresses it
+    var mainKey = document.querySelector('#kb-rows .k[data-id="'+keyId+'"]');
+    var unpressedRect = mainKey ? mainKey.getBoundingClientRect() : null;
+    var modIds = mod.split('+').map(function(m){ return MOD_KEY_IDS[m]; }).filter(Boolean);
+    pulseKeysById(modIds.concat([keyId]));
     var keyDef = ROWS.flat().find(function(r){ return Array.isArray(r) && r[0] === keyId; });
     var keyLbl = keyDef ? keyDef[1] : keyId;
     showFireToast(mod+'+'+keyLbl, assigns[pick].label);
+    setTimeout(function(){ drawCallout(unpressedRect); }, 80);
+    setTimeout(clearCallout, 2300);
   }
+  // Single sequencer: fires this profile's assignments in order, then a profile
+  // change counts as a step, then the next profile's assignments, etc.
+  function tickSequence(){
+    if(userIsActive()) return;
+    if(typeof PROFILES === 'undefined' || typeof S === 'undefined') return;
+    var assigns = PROFILES[S.prof].assigns;
+    var keys = Object.keys(assigns);
+    if(keys.length === 0) return;
+    if(fireIdx < keys.length){
+      // Fire the next assignment in the current profile
+      fireKey(keys[fireIdx]);
+      fireIdx++;
+    } else {
+      // Finished this profile — profile-change counts as the next animation step
+      cycleProfile();
+      // cycleProfile resets fireIdx to 0; the next tick fires the first assignment
+    }
+  }
+  // Legacy alias so any other code calling fireRandomKey still works
+  var fireRandomKey = tickSequence;
 
   function cycleProfile(){
     if(userIsActive()) return;
@@ -2511,14 +3031,16 @@ function toggleTheme() {
       switchProf(btn, next);
       if(typeof PROFILES !== 'undefined') showProfToast(PROFILES[next].name);
     }
+    // Reset the sequential fire index so each profile starts at its first assignment
+    fireIdx = 0;
   }
 
-  // Stagger so the demo feels alive but not chaotic
+  // First animation 1.5s after load, then every 3s.
+  // Profile change is part of the sequence (between profiles), driven by tickSequence.
   setTimeout(function(){
-    fireRandomKey();
-    setInterval(fireRandomKey, 4200);
-    setInterval(cycleProfile, 9000);
-  }, 2500);
+    tickSequence();
+    setInterval(tickSequence, 3000);
+  }, 1500);
 })();
 
 /* ── CTRL+K SEARCH PALETTE ───────────────────────────────── */
@@ -2659,7 +3181,7 @@ fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
 
     <div class="ss-stage">
       <video class="ss-video" autoplay loop muted playsinline preload="auto" aria-label="Animation showing the two clicks needed to bypass SmartScreen: More info, then Run anyway.">
-        <source src="windows-smartscreen-trigr.mp4" type="video/mp4">
+        <source src="/windows-smartscreen-trigr.mp4" type="video/mp4">
       </video>
     </div>
 
