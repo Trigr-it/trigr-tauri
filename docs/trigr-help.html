@@ -3,24 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trigr — User Guide</title>
-  <meta name="description" content="Trigr user guide. How to set up hotkeys, macros, text expansions, clipboard history, and app-specific profiles on Windows.">
+  <title>Trigr · User Guide</title>
+  <meta name="description" content="Trigr user guide. Hotkeys, macros, text expansion with formulas, clipboard history, radial menus, and app profiles on Windows.">
 
-  <!-- SEO: canonical, Open Graph, Twitter Card -->
   <link rel="canonical" href="https://usetrigr.com/trigr-help.html">
 
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://usetrigr.com/trigr-help.html">
-  <meta property="og:title" content="Trigr — User Guide">
-  <meta property="og:description" content="How to set up hotkeys, macros, text expansions, clipboard history, and app-specific profiles on Windows.">
+  <meta property="og:title" content="Trigr · User Guide">
+  <meta property="og:description" content="Hotkeys, macros, text expansion with formulas, clipboard history, radial menus, and app profiles on Windows.">
   <meta property="og:image" content="https://usetrigr.com/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:site_name" content="Trigr">
 
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Trigr — User Guide">
-  <meta name="twitter:description" content="How to set up hotkeys, macros, text expansions, clipboard history, and app-specific profiles on Windows.">
+  <meta name="twitter:title" content="Trigr · User Guide">
+  <meta name="twitter:description" content="Hotkeys, macros, text expansion, clipboard, radial menus, and app profiles on Windows.">
   <meta name="twitter:image" content="https://usetrigr.com/og-image.png">
 
   <link rel="icon" href="favicon.ico" sizes="any">
@@ -28,83 +27,628 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Chakra+Petch:wght@500&display=swap" rel="stylesheet">
+
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=Chakra+Petch:wght@500;600&display=swap" rel="stylesheet">
+
+  <script>
+    /* Theme: saved → OS preference → dark fallback. Runs synchronously to prevent flash. */
+    (function(){
+      try {
+        var saved = localStorage.getItem('trigr-site-theme');
+        var theme;
+        if (saved === 'light' || saved === 'dark') {
+          theme = saved;
+        } else {
+          theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch(e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+    })();
+  </script>
+
   <style>
     :root {
-      --gold: #E8A020; --gold-dark: #C8860A; --gold-light: #F0B942; --gold-bg: #FFF8ED;
-      --navy: #1A1A2E; --navy-mid: #252540; --navy-light: #2E2E50;
-      --body: #4A4A6A; --muted: #9090B0; --border: #E0E0F0;
-      --light-bg: #F5F5FA; --white: #FFFFFF;
+      --gold:#e8a020; --gold-light:#f0b942; --gold-dark:#c8860a;
+      --gold-glow:rgba(232,160,32,0.15); --gold-line:rgba(232,160,32,0.22);
+      --bg:#080B14; --bg-2:#0D1120; --bg-3:#111827;
+      --bg-card:#0E1320; --bg-card-hi:#131829;
+      --hairline:rgba(255,255,255,0.06);
+      --hairline-strong:rgba(255,255,255,0.1);
+      --hairline-gold:rgba(232,160,32,0.18);
+      --text:#F1F5F9; --text-muted:#94A3B8; --text-dim:#475569;
+      --font-display:'Space Grotesk',sans-serif;
+      --font-mono:'Rajdhani',sans-serif;
+      --font-body:'DM Sans',sans-serif;
+      --font-label:'Chakra Petch',sans-serif;
+      --font-code:'JetBrains Mono','Consolas',monospace;
+
+      --info:#5cb8ff;
+      --info-bg:rgba(120,200,255,0.10);
+      --info-line:rgba(120,200,255,0.40);
+      --warn:#f5cb6a;
+      --warn-bg:rgba(245,203,106,0.10);
+      --warn-line:rgba(245,203,106,0.40);
+      --pro:#c864ff;
+      --pro-bg:rgba(200,100,255,0.12);
+      --pro-line:rgba(200,100,255,0.35);
     }
+    [data-theme="light"] {
+      --bg:#F5F5FA; --bg-2:#FFFFFF; --bg-3:#EEEEF2;
+      --bg-card:#FFFFFF; --bg-card-hi:#FAFAFE;
+      --hairline:rgba(0,0,0,0.07);
+      --hairline-strong:rgba(0,0,0,0.12);
+      --hairline-gold:rgba(232,160,32,0.25);
+      --text:#1A1A2E; --text-muted:#4A4A6A; --text-dim:#9090B0;
+      --gold-glow:rgba(232,160,32,0.10);
+
+      --info:#2D5FD4;
+      --info-bg:rgba(45,95,212,0.08);
+      --info-line:rgba(45,95,212,0.30);
+      --warn:#C27A00;
+      --warn-bg:rgba(232,160,32,0.10);
+      --warn-line:rgba(232,160,32,0.35);
+      --pro:#8B3FCC;
+      --pro-bg:rgba(139,63,204,0.08);
+      --pro-line:rgba(139,63,204,0.30);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; background: var(--light-bg); color: var(--body); display: flex; height: 100vh; overflow: hidden; }
 
-    #sidebar { width: 230px; background: var(--navy-mid); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
-    .sidebar-logo { padding: 14px 16px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--navy-light); }
-    .sidebar-logo-mark { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.55;
+    }
+
+    /* ── Sidebar nav ─────────────────────────────────────────── */
+    #sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      background: var(--bg-2);
+      border-right: 1px solid var(--hairline);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .sidebar-top {
+      padding: 18px 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .sidebar-logo-mark { width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0; }
     .sidebar-logo-mark svg { width: 100%; height: 100%; display: block; }
-    .sidebar-logo-name { font-family: 'Chakra Petch', sans-serif; font-weight: 500; font-size: 15px; color: var(--muted); letter-spacing: 0.08em; }
-    .sidebar-version { padding: 4px 16px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--navy-light); margin-bottom: 6px; }
-    .sidebar-section-label { padding: 14px 16px 4px; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-    .nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px; color: #A0A0C0; cursor: pointer; text-decoration: none; border-left: 3px solid transparent; transition: all 0.12s; }
-    .nav-item:hover { background: var(--navy-light); color: var(--white); }
-    .nav-item.active { background: var(--navy-light); color: var(--gold); border-left-color: var(--gold); }
-    .nav-sub { padding-left: 30px; font-size: 12px; }
+    .sidebar-logo-name {
+      font-family: var(--font-label);
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+    .theme-toggle {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--hairline);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .theme-toggle:hover { color: var(--gold); border-color: var(--hairline-gold); background: var(--gold-glow); }
 
-    #main { flex: 1; overflow-y: auto; }
-    .section-page { display: none; padding: 32px 44px; max-width: 960px; }
+    .sidebar-version {
+      padding: 8px 20px 14px;
+      font-size: 11px;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--hairline);
+    }
+    .sidebar-section-label {
+      padding: 18px 20px 6px;
+      font-family: var(--font-label);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 7px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-decoration: none;
+      border-left: 2px solid transparent;
+      transition: all 0.12s;
+    }
+    .nav-item:hover { background: var(--bg-card-hi); color: var(--text); }
+    .nav-item.active {
+      background: var(--gold-glow);
+      color: var(--gold);
+      border-left-color: var(--gold);
+    }
+    .nav-sub {
+      padding-left: 38px;
+      font-size: 12px;
+    }
+    .nav-pro {
+      margin-left: auto;
+      font-family: var(--font-label);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--pro);
+      background: var(--pro-bg);
+      border: 1px solid var(--pro-line);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .nav-new {
+      margin-left: auto;
+      font-family: var(--font-label);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--gold);
+      background: var(--gold-glow);
+      border: 1px solid var(--gold-line);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .sidebar-foot {
+      margin-top: auto;
+      padding: 16px 20px 18px;
+      border-top: 1px solid var(--hairline);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sidebar-foot a {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .sidebar-foot a:hover { color: var(--gold); }
+
+    /* ── Main content ───────────────────────────────────────── */
+    #main {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg);
+      position: relative;
+    }
+    .section-page {
+      display: none;
+      padding: 56px 64px 80px;
+      max-width: 920px;
+    }
     .section-page.active { display: block; }
-    .section-title { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--navy); margin-bottom: 4px; }
-    .section-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+    .section-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .section-num {
+      font-family: var(--font-label);
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      padding: 3px 10px;
+      border: 1px solid var(--hairline-gold);
+      border-radius: 5px;
+      background: var(--gold-glow);
+    }
+    .section-label {
+      font-family: var(--font-label);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(30px, 4.2vw, 42px);
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      margin-bottom: 12px;
+    }
+    .section-title em {
+      font-style: normal;
+      background: linear-gradient(135deg, #f5cb6a 0%, #e8a020 50%, #c8860a 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      padding-right: 0.08em;
+      margin-right: -0.08em;
+    }
+    .section-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-bottom: 36px;
+      line-height: 1.55;
+      max-width: 640px;
+    }
 
-    h2 { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--navy); border-bottom: 2px solid var(--gold); padding-bottom: 5px; margin: 28px 0 12px; }
-    h3 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--gold-dark); margin: 18px 0 7px; }
-    p { font-size: 14px; line-height: 1.72; color: var(--body); margin-bottom: 12px; }
-    ul, ol { padding-left: 20px; margin-bottom: 12px; }
-    li { font-size: 14px; line-height: 1.72; color: var(--body); margin-bottom: 4px; }
-    strong { color: var(--navy); }
-    code { background: var(--light-bg); border: 1px solid var(--border); border-radius: 3px; font-size: 12px; padding: 1px 5px; color: var(--navy); }
+    h2 {
+      font-family: var(--font-display);
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 38px 0 12px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2::before {
+      content: '';
+      width: 3px;
+      height: 18px;
+      background: var(--gold);
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    h3 {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--gold);
+      margin: 20px 0 6px;
+      letter-spacing: 0.01em;
+    }
+    p {
+      font-size: 14.5px;
+      line-height: 1.68;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+    p strong, li strong { color: var(--text); font-weight: 600; }
+    a { color: var(--gold); text-decoration: none; transition: color 0.15s; }
+    a:hover { color: var(--gold-light); text-decoration: underline; }
 
-    .callout { border-radius: 8px; padding: 12px 16px; margin: 14px 0; }
-    .callout.tip { background: var(--gold-bg); border-left: 3px solid var(--gold); }
-    .callout.info { background: #F0F4FF; border-left: 3px solid #4A7FF5; }
-    .callout.warn { background: #FFF3E0; border-left: 3px solid #F59C0A; }
-    .callout .ct { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-    .callout.tip .ct { color: var(--gold-dark); }
-    .callout.info .ct { color: #2D5FD4; }
-    .callout.warn .ct { color: #C27A00; }
-    .callout p { margin: 0; font-size: 13px; }
+    ul, ol { padding-left: 24px; margin-bottom: 14px; }
+    li {
+      font-size: 14.5px;
+      line-height: 1.7;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    li::marker { color: var(--gold); }
 
-    kbd { background: var(--light-bg); border: 1px solid var(--border); border-bottom: 2px solid #C0C0D0; border-radius: 4px; font-size: 11px; font-family: Arial, sans-serif; padding: 1px 7px; color: var(--navy); font-weight: 700; }
+    code {
+      background: var(--bg-card-hi);
+      border: 1px solid var(--hairline-strong);
+      border-radius: 4px;
+      font-family: var(--font-code);
+      font-size: 12.5px;
+      padding: 1px 6px;
+      color: var(--gold-light);
+    }
+    [data-theme="light"] code { color: var(--gold-dark); }
 
-    .step-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 9px; }
-    .step-num { background: var(--navy-mid); color: var(--gold); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 11px; min-width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
-    .step-text { font-size: 14px; line-height: 1.65; color: var(--body); }
+    kbd {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline-strong);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      color: var(--text);
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
 
-    .screenshot-slot { background: var(--light-bg); border: 2px dashed var(--border); border-radius: 8px; padding: 22px 20px; margin: 16px 0; text-align: center; color: var(--muted); font-size: 12px; font-style: italic; }
-    .screenshot-slot strong { display: block; font-family: 'Syne', sans-serif; font-size: 11px; color: var(--gold-dark); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; font-style: normal; }
+    /* Callouts */
+    .callout {
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin: 18px 0;
+      border: 1px solid;
+    }
+    .callout.tip  { background: var(--gold-glow); border-color: var(--hairline-gold); }
+    .callout.info { background: var(--info-bg);   border-color: var(--info-line);   }
+    .callout.warn { background: var(--warn-bg);   border-color: var(--warn-line);   }
+    .callout.pro  { background: var(--pro-bg);    border-color: var(--pro-line);    }
+    .callout .ct {
+      font-family: var(--font-label);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-bottom: 5px;
+    }
+    .callout.tip  .ct { color: var(--gold);  }
+    .callout.info .ct { color: var(--info);  }
+    .callout.warn .ct { color: var(--warn);  }
+    .callout.pro  .ct { color: var(--pro);   }
+    .callout p { margin: 0; font-size: 13.5px; color: var(--text); }
+    .callout p + p { margin-top: 8px; }
 
-    .token-row { display: flex; gap: 10px; align-items: baseline; margin-bottom: 9px; }
-    .token { background: var(--navy-mid); color: var(--gold); font-family: monospace; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
-    .token-desc { font-size: 13px; color: var(--body); }
+    /* Step rows */
+    .step-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .step-num {
+      background: var(--bg-card-hi);
+      border: 1px solid var(--hairline-gold);
+      color: var(--gold);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 12px;
+      min-width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-text { font-size: 14.5px; line-height: 1.65; color: var(--text-muted); }
+    .step-text strong { color: var(--text); }
 
-    table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 20px; }
-    th { background: var(--navy); color: var(--white); font-family: 'Syne', sans-serif; padding: 9px 12px; text-align: left; font-size: 12px; }
-    td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--body); vertical-align: top; }
-    tr:nth-child(even) td { background: var(--light-bg); }
-    tr:nth-child(odd) td { background: var(--white); }
+    /* Tokens */
+    .token-row {
+      display: flex;
+      gap: 14px;
+      align-items: baseline;
+      margin-bottom: 9px;
+      flex-wrap: wrap;
+    }
+    .token {
+      background: var(--gold-glow);
+      color: var(--gold);
+      font-family: var(--font-code);
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 5px;
+      border: 1px solid var(--hairline-gold);
+      white-space: nowrap;
+    }
+    [data-theme="light"] .token { color: var(--gold-dark); }
+    .token-desc { font-size: 13.5px; color: var(--text-muted); }
 
-    .accordion { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
-    .accordion-header { display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: var(--white); user-select: none; }
-    .accordion.open .accordion-header { border-bottom: 1px solid var(--border); }
-    .accordion-header span:first-child { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; color: var(--navy); flex: 1; }
-    .accordion-arrow { color: var(--muted); font-size: 10px; transition: transform 0.15s; }
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      margin: 16px 0 22px;
+      background: var(--bg-card);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    th {
+      background: var(--bg-card-hi);
+      color: var(--text);
+      font-family: var(--font-display);
+      font-weight: 700;
+      padding: 11px 14px;
+      text-align: left;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      border-bottom: 1px solid var(--hairline-strong);
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--hairline);
+      color: var(--text-muted);
+      vertical-align: top;
+      line-height: 1.55;
+    }
+    tr:last-child td { border-bottom: none; }
+    td strong { color: var(--text); font-weight: 600; }
+
+    /* Accordions */
+    .accordion {
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      background: var(--bg-card);
+    }
+    .accordion-header {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .accordion-header:hover { background: var(--bg-card-hi); }
+    .accordion-header span:first-child {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+      flex: 1;
+    }
+    .accordion-arrow {
+      color: var(--text-dim);
+      font-size: 10px;
+      transition: transform 0.18s;
+    }
     .accordion.open .accordion-arrow { transform: rotate(180deg); }
-    .accordion-body { display: none; padding: 12px 14px; background: var(--white); }
+    .accordion-body {
+      display: none;
+      padding: 6px 16px 14px;
+    }
     .accordion.open .accordion-body { display: block; }
-    .accordion-body p { margin-bottom: 0; font-size: 13px; }
+    .accordion-body p:last-child { margin-bottom: 0; }
+    .accordion-body p { font-size: 13.5px; }
 
-    .section-footer { border-top: 1px solid var(--border); padding: 14px 0 4px; margin-top: 40px; font-size: 11px; color: var(--muted); font-style: italic; text-align: center; }
+    /* Screenshot placeholder */
+    .screenshot-slot {
+      background: var(--bg-card);
+      border: 2px dashed var(--hairline-strong);
+      border-radius: 10px;
+      padding: 28px 22px;
+      margin: 18px 0;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 12.5px;
+      font-style: italic;
+    }
+    .screenshot-slot strong {
+      display: block;
+      font-family: var(--font-label);
+      font-size: 11px;
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 6px;
+      font-style: normal;
+    }
+
+    /* Pro pill inline */
+    .pro-pill {
+      display: inline-block;
+      font-family: var(--font-label);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--pro);
+      background: var(--pro-bg);
+      border: 1px solid var(--pro-line);
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: 2px;
+    }
+
+    /* Hero card */
+    .hero-card {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline);
+      border-radius: 14px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.6;
+    }
+    .hero-card p { font-size: 15px; line-height: 1.65; color: var(--text); margin-bottom: 0; }
+
+    /* Feature grid */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin: 18px 0 26px;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 18px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: var(--hairline-gold); }
+    .feature-card h4 {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .feature-card p { font-size: 13px; margin: 0; line-height: 1.55; }
+
+    /* Section divider */
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--hairline-strong), transparent);
+      margin: 36px 0 28px;
+    }
+
+    /* Section footer */
+    .section-footer {
+      border-top: 1px solid var(--hairline);
+      padding: 18px 0 4px;
+      margin-top: 48px;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-label);
+      letter-spacing: 0.1em;
+      text-align: center;
+    }
+    .section-footer a { color: var(--text-muted); }
+
+    /* Page footer (links) */
+    footer.page-footer {
+      border-top: 1px solid var(--hairline);
+      padding: 28px 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 18px;
+      max-width: 920px;
+    }
+    footer.page-footer .ft-links {
+      display: flex;
+      gap: 22px;
+      flex-wrap: wrap;
+    }
+    footer.page-footer a {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    footer.page-footer a:hover { color: var(--gold); }
+    footer.page-footer .ft-copy { font-size: 12px; color: var(--text-dim); }
+
+    /* Responsive */
+    @media (max-width: 880px) {
+      body { flex-direction: column; height: auto; overflow: auto; }
+      #sidebar { width: 100%; height: auto; max-height: 60vh; }
+      #main { height: auto; }
+      .section-page { padding: 36px 24px 60px; }
+      footer.page-footer { padding: 24px; }
+    }
+
+    /* Scrollbar */
+    #sidebar::-webkit-scrollbar, #main::-webkit-scrollbar { width: 8px; }
+    #sidebar::-webkit-scrollbar-thumb, #main::-webkit-scrollbar-thumb {
+      background: var(--hairline-strong);
+      border-radius: 4px;
+    }
+    #sidebar::-webkit-scrollbar-thumb:hover, #main::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
   </style>
 
   <!-- Privacy-friendly analytics by Plausible -->
@@ -117,255 +661,437 @@
 <body>
 
 <nav id="sidebar">
-  <div class="sidebar-logo">
-    <div class="sidebar-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="hlp-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="hlp-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect x="0" y="0" width="64" height="64" rx="9" fill="url(#hlp-base)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#hlp-top)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
-    <span class="sidebar-logo-name">Trigr</span>
+  <div class="sidebar-top">
+    <a class="sidebar-logo" href="index.html">
+      <div class="sidebar-logo-mark">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+          <defs>
+            <linearGradient id="hlp-base" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/>
+            </linearGradient>
+            <linearGradient id="hlp-top" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="64" height="64" rx="9" fill="url(#hlp-base)"/>
+          <rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#hlp-top)"/>
+          <rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/>
+          <rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>
+          <rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>
+        </svg>
+      </div>
+      <span class="sidebar-logo-name">Trigr</span>
+    </a>
+    <button class="theme-toggle" id="theme-toggle" title="Toggle light / dark" aria-label="Toggle theme">
+      <span id="theme-icon">☾</span>
+    </button>
   </div>
-  <div class="sidebar-version" id="version-label">User Guide &nbsp;·&nbsp; loading...</div>
+  <div class="sidebar-version" id="version-label">User Guide</div>
 
   <div class="sidebar-section-label">Getting Started</div>
-  <a class="nav-item active" onclick="show('welcome')" href="#">⚡ Welcome</a>
-  <a class="nav-item" onclick="show('interface')" href="#">🖥️ The Interface</a>
-  <a class="nav-item" onclick="show('quick-start')" href="#">🚀 Quick Start</a>
+  <a class="nav-item active" onclick="show(event,'welcome')" href="#">Welcome</a>
+  <a class="nav-item" onclick="show(event,'install')" href="#">Install &amp; First Launch</a>
+  <a class="nav-item" onclick="show(event,'interface')" href="#">The Interface</a>
+  <a class="nav-item" onclick="show(event,'quick-start')" href="#">Quick Start</a>
 
-  <div class="sidebar-section-label">Features</div>
-  <a class="nav-item" onclick="show('hotkeys')" href="#">⌨️ Hotkeys</a>
-  <a class="nav-item nav-sub" onclick="show('hk-macro')" href="#">↳ Macros</a>
-  <a class="nav-item nav-sub" onclick="show('hk-text')" href="#">↳ Type Text</a>
-  <a class="nav-item nav-sub" onclick="show('hk-sendkey')" href="#">↳ Send Hotkey</a>
-  <a class="nav-item nav-sub" onclick="show('hk-app')" href="#">↳ Open App / URL / Folder</a>
-  <a class="nav-item nav-sub" onclick="show('hk-doublepress')" href="#">↳ Double Press</a>
-  <a class="nav-item nav-sub" onclick="show('hk-ahk')" href="#">↳ AHK Script Runner</a>
-  <a class="nav-item" onclick="show('expansions')" href="#">✍️ Text Expansions</a>
-  <a class="nav-item nav-sub" onclick="show('exp-tokens')" href="#">↳ Dynamic Tokens</a>
-  <a class="nav-item" onclick="show('mouse')" href="#">🖱️ Mouse Hotkeys</a>
-  <a class="nav-item" onclick="show('profiles')" href="#">👤 Profiles</a>
-  <a class="nav-item" onclick="show('templates')" href="#">📦 Templates</a>
-  <a class="nav-item" onclick="show('quick-search')" href="#">🔍 Quick Search</a>
-  <a class="nav-item" onclick="show('list-view')" href="#">📋 List View</a>
-  <a class="nav-item" onclick="show('clipboard')" href="#">📋 Clipboard Manager</a>
-  <a class="nav-item" onclick="show('analytics')" href="#">📊 Analytics</a>
+  <div class="sidebar-section-label">Mapping &amp; Triggers</div>
+  <a class="nav-item" onclick="show(event,'hotkeys')" href="#">Hotkeys</a>
+  <a class="nav-item" onclick="show(event,'mouse')" href="#">Mouse Hotkeys</a>
+  <a class="nav-item" onclick="show(event,'trigger-modes')" href="#">Trigger Modes</a>
+
+  <div class="sidebar-section-label">Actions</div>
+  <a class="nav-item" onclick="show(event,'type-text')" href="#">Type Text</a>
+  <a class="nav-item" onclick="show(event,'send-hotkey')" href="#">Send Hotkey</a>
+  <a class="nav-item" onclick="show(event,'open-things')" href="#">Open App / URL / Folder</a>
+  <a class="nav-item" onclick="show(event,'macros')" href="#">Macros</a>
+  <a class="nav-item" onclick="show(event,'ahk')" href="#">AHK Script Runner</a>
+
+  <div class="sidebar-section-label">Text Expansion</div>
+  <a class="nav-item" onclick="show(event,'expansions')" href="#">Text Expansions</a>
+  <a class="nav-item" onclick="show(event,'dynamic-tokens')" href="#">Dynamic Tokens</a>
+  <a class="nav-item" onclick="show(event,'fill-ins')" href="#">Fill-in Fields<span class="nav-new">NEW</span></a>
+  <a class="nav-item" onclick="show(event,'formulas')" href="#">Formulas<span class="nav-pro">PRO</span></a>
+
+  <div class="sidebar-section-label">Quick Access</div>
+  <a class="nav-item" onclick="show(event,'quick-search')" href="#">Quick Search</a>
+  <a class="nav-item" onclick="show(event,'radial')" href="#">Radial Menus<span class="nav-new">NEW</span></a>
+  <a class="nav-item" onclick="show(event,'clipboard')" href="#">Clipboard Manager</a>
+  <a class="nav-item" onclick="show(event,'list-view')" href="#">List View</a>
+
+  <div class="sidebar-section-label">Organisation</div>
+  <a class="nav-item" onclick="show(event,'profiles')" href="#">Profiles</a>
+  <a class="nav-item" onclick="show(event,'templates')" href="#">Templates</a>
+  <a class="nav-item" onclick="show(event,'shared-config')" href="#">Shared Config</a>
 
   <div class="sidebar-section-label">Reference</div>
-  <a class="nav-item" onclick="show('global-pause')" href="#">⏸️ Pause &amp; Resume</a>
-  <a class="nav-item" onclick="show('settings')" href="#">⚙️ Settings</a>
-  <a class="nav-item" onclick="show('licence')" href="#">🔑 Licence</a>
-  <a class="nav-item" onclick="show('troubleshooting')" href="#">🔧 Troubleshooting</a>
+  <a class="nav-item" onclick="show(event,'pause')" href="#">Pause &amp; Resume</a>
+  <a class="nav-item" onclick="show(event,'settings')" href="#">Settings</a>
+  <a class="nav-item" onclick="show(event,'analytics')" href="#">Analytics</a>
+  <a class="nav-item" onclick="show(event,'licence')" href="#">Licence</a>
+  <a class="nav-item" onclick="show(event,'troubleshooting')" href="#">Troubleshooting</a>
+
+  <div class="sidebar-foot">
+    <a href="index.html">← Back to website</a>
+    <a href="pricing.html">Pricing</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+  </div>
 </nav>
 
 <main id="main">
 
-<!-- WELCOME -->
+<!-- ════════════════════════════════════════════════════════════
+     WELCOME
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page active" id="page-welcome">
-  <div class="section-title">Welcome to Trigr</div>
-  <div class="section-subtitle">Hotkeys, macros, and text expansions — no scripting required.</div>
+  <div class="section-meta"><span class="section-num">01</span><span class="section-label">Getting Started</span></div>
+  <div class="section-title">Welcome to <em>Trigr</em></div>
+  <div class="section-subtitle">Visual hotkeys, macros, text expansion, and a clipboard manager that lives in your tray. No scripting, no config files.</div>
 
-  <p>Trigr is a Windows desktop productivity app that lives in your system tray. You assign actions to key combinations and Trigr fires them instantly, in any app, while you work. No scripting, no config files — everything is visual.</p>
+  <div class="hero-card">
+    <p>Trigr is a Windows desktop productivity app. You assign actions to key combinations and Trigr fires them instantly, in any app, while you work. Everything is visual. Set it up in seconds.</p>
+  </div>
 
   <h2>What Trigr can do</h2>
-  <table>
-    <tr><th>Feature</th><th>What it does</th><th>Example</th></tr>
-    <tr><td><strong>Hotkeys</strong></td><td>Bind a key combo to an action</td><td>Ctrl+Alt+E opens your email</td></tr>
-    <tr><td><strong>Macros</strong></td><td>Chain multiple actions in sequence</td><td>Open app → wait → type text → press key</td></tr>
-    <tr><td><strong>Text Expansions</strong></td><td>Short trigger → expands to full text</td><td>/sig → your full email signature</td></tr>
-    <tr><td><strong>Mouse Hotkeys</strong></td><td>Modifier + click combinations</td><td>Ctrl+RightClick opens a URL</td></tr>
-    <tr><td><strong>Profiles</strong></td><td>Separate shortcut sets per context</td><td>CAD profile, Sales profile, Default</td></tr>
-    <tr><td><strong>Quick Search</strong></td><td>Find and trigger any shortcut by name</td><td>Ctrl+Space → type "sig" → Enter</td></tr>
-  </table>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h4>Hotkeys</h4>
+      <p>Bind a key combo to an action. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd> opens your email client.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Macros</h4>
+      <p>Chain multiple steps in sequence. Open an app, wait, type text, press Enter.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Text Expansions</h4>
+      <p>Type <code>/sig</code>, get your full signature. Works in every app.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Formulas <span class="pro-pill">PRO</span></h4>
+      <p>Compute values in your snippets. <code>{=upper(name)}</code>, conditional text, math.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Clipboard History</h4>
+      <p>Everything you copy is searchable, taggable, and reusable. Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Radial Menus</h4>
+      <p>Pop a wheel of actions over your cursor. Click a wedge to fire it.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Profiles</h4>
+      <p>Separate shortcut sets per app or context. Auto-switches when the linked app gets focus.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Quick Search</h4>
+      <p>Press <kbd>Ctrl</kbd>+<kbd>Space</kbd>. Type any part of an action name. Hit Enter.</p>
+    </div>
+  </div>
 
   <h2>How Trigr runs</h2>
-  <p>Trigr starts with Windows and sits in the <strong>system tray</strong> (bottom-right, near the clock). As long as the icon is visible, your shortcuts are live. You can pause all shortcuts at any time from the tray without closing the app.</p>
+  <p>Trigr starts with Windows and sits in the <strong>system tray</strong>, bottom-right near the clock. As long as the icon is visible, your shortcuts are live. Pause everything from the tray at any time. Trigr uses about 30MB of RAM and effectively 0% CPU when idle.</p>
 
   <div class="callout tip">
-    <div class="ct">💡 First time?</div>
-    <p>Head to <strong>Quick Start</strong> in the sidebar to set up your first shortcut in under two minutes.</p>
+    <div class="ct">First time?</div>
+    <p>Head to <strong>Install &amp; First Launch</strong> for the onboarding flow, then <strong>Quick Start</strong> to set up your first shortcut in under two minutes.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- INTERFACE -->
-<div class="section-page" id="page-interface">
-  <div class="section-title">The Interface</div>
-  <div class="section-subtitle">Five main areas — here's what each does.</div>
+<!-- ════════════════════════════════════════════════════════════
+     INSTALL & FIRST LAUNCH
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-install">
+  <div class="section-meta"><span class="section-num">02</span><span class="section-label">Getting Started</span></div>
+  <div class="section-title">Install &amp; first launch</div>
+  <div class="section-subtitle">Download, run the installer, take the tour. Five minutes start to finish.</div>
+
+  <h2>Download</h2>
+  <p>Grab the latest build from <a href="https://usetrigr.com">usetrigr.com</a> or directly from <a href="https://github.com/Trigr-it/trigr-tauri/releases">GitHub Releases</a>. Two builds are available:</p>
+  <ul>
+    <li><strong>Trigr_x64-setup.exe</strong> for Intel and AMD machines</li>
+    <li><strong>Trigr_arm64-setup.exe</strong> for ARM-based Windows (Surface Pro, Snapdragon laptops)</li>
+  </ul>
+
+  <h2>Running the installer</h2>
+  <p>The installer is code-signed via Microsoft Trusted Signing under <strong>Node Group Ltd</strong>. Trigr installs to your user folder, no admin rights required. About 9MB on disk after install.</p>
+
+  <div class="callout warn">
+    <div class="ct">SmartScreen warning</div>
+    <p>You may see a SmartScreen prompt the first time you install. This is expected for newer apps that have not yet built up Windows reputation. Click <strong>More info</strong>, then <strong>Run anyway</strong>. The dialog should show <strong>Publisher: Node Group Ltd</strong> confirming the installer is genuine. The warning fades as install volume builds.</p>
+  </div>
+
+  <h2>The welcome screen</h2>
+  <p>On first launch, Trigr shows a welcome screen with a six-tile feature grid covering triggers, macros, radial menus, text expansions, quick search, and clipboard history. Click <strong>Get Started</strong> to begin the tour, or <strong>Skip the tour</strong> if you want to dive straight in.</p>
 
   <div class="screenshot-slot">
-    <strong>Screenshot slot A — Full app window (annotated)</strong>
-    Capture the full Trigr window. Annotate with five labelled callouts: (1) Title Bar, (2) Profile Accordion, (3) Assignments Sidebar, (4) Keyboard Canvas, (5) Status Bar. Show a profile selected with a green dot and at least one assigned key highlighted on the canvas.
+    <strong>Screenshot slot · Welcome screen</strong>
+    The six-tile welcome modal with the gold Get Started button.
   </div>
 
-  <h2>Title Bar</h2>
-  <p>Runs across the top. Left side: Trigr logo and version. Centre: active profile name with a dropdown arrow to switch profiles. Right side: Quick Search button, List View toggle, and the Settings cog.</p>
-  <p>A <strong>Templates</strong> pill button also appears here until you dismiss it — click it to access the starter shortcut packs.</p>
+  <h2>The onboarding tour</h2>
+  <p>A five-step tour walks you through the main UI surfaces:</p>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text"><strong>The keyboard canvas</strong>: where you click keys to assign actions.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text"><strong>The modifier bar</strong>: pick which layer you are mapping (Ctrl, Alt, Shift, Win, or combinations).</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text"><strong>The assignments sidebar</strong>: every assignment in the active profile, grouped by modifier.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text"><strong>Text expansion and quick search</strong>: where snippets live and how to fire them.</div></div>
+  <div class="step-row"><div class="step-num">5</div><div class="step-text"><strong>The tray icon</strong>: pause, resume, and quit.</div></div>
 
-  <h2>Profile Accordion</h2>
-  <p>The left panel lists all your profiles. The active profile shows a green dot. Profiles linked to a specific app show a Windows icon with the exe name as a tooltip. Click a profile to switch to it. Right-click a profile row for rename, duplicate, export, link to app, and delete options.</p>
-  <p>Profiles are grouped: <strong>General</strong> (unlinked, always active) and <strong>App-Specific</strong> (auto-switches when the linked app has focus).</p>
+  <p>Replay the tour any time from <strong>Settings → Help &amp; Documentation → Replay Onboarding Tour</strong>.</p>
 
-  <h2>Assignments Sidebar</h2>
-  <p>Below the profile accordion — lists every shortcut in the active profile, grouped by modifier layer under gold header bars. Use the modifier filter tabs (All, Ctrl, Shift+Alt, etc.) to narrow by layer. Each tab shows a count badge.</p>
+  <h2>System tray icon</h2>
+  <p>The tray icon shows Trigr's state at a glance:</p>
+  <table>
+    <tr><th>Colour</th><th>State</th></tr>
+    <tr><td>Gold</td><td>Running, hotkeys live</td></tr>
+    <tr><td>Dimmed</td><td>Paused (all shortcuts suspended)</td></tr>
+    <tr><td>Red</td><td>A key is held or a repeat is active. Tooltip shows which key.</td></tr>
+  </table>
 
-  <h2>Keyboard Canvas</h2>
-  <p>The main area shows a visual keyboard. Assigned keys are highlighted. Click any key to open its action panel on the right. Use the modifier buttons at the top to switch layers. At window widths below 800px, the canvas is replaced automatically by List View.</p>
-
-  <h2>Action Panel</h2>
-  <p>Opens on the right when you click a key or assignment. Choose the action type at the top, then configure the fields below. Save with the Save button or <kbd>Enter</kbd>. Discard with <kbd>Esc</kbd>.</p>
-
-  <h2>Status Bar</h2>
-  <p>Bottom of the window. Shows macros enabled/paused state, assignment count, and the Listener and Executor engine indicators — both should be green when Trigr is running normally.</p>
-
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- QUICK START -->
+<!-- ════════════════════════════════════════════════════════════
+     INTERFACE
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-interface">
+  <div class="section-meta"><span class="section-num">03</span><span class="section-label">Getting Started</span></div>
+  <div class="section-title">The interface</div>
+  <div class="section-subtitle">Five main areas. Here is what each one does.</div>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Annotated main window</strong>
+    Full app window with five labelled callouts: (1) Title Bar, (2) Profile Accordion, (3) Assignments Sidebar, (4) Keyboard Canvas, (5) Status Bar.
+  </div>
+
+  <h2>Title bar</h2>
+  <p>Runs across the top. Left side: Trigr logo and area tabs (Keyboard, Mouse, Radial, Expansions, Clipboard, Analytics). Centre: active profile tabs. Right side: Quick Search, List View toggle, and the Settings cog. A <strong>Templates</strong> pill button also appears here until you dismiss it.</p>
+
+  <h2>Profile accordion</h2>
+  <p>The left panel lists all your profiles. The active profile shows a green dot. Profiles linked to a specific app show a Windows icon. Click any profile to switch. Right-click for rename, duplicate, export, link to app, and delete options. Profiles are grouped into <strong>General</strong> (always active) and <strong>App-Specific</strong> (auto-switches when the linked app has focus).</p>
+
+  <h2>Assignments sidebar</h2>
+  <p>Below the profile accordion. Lists every shortcut in the active profile, grouped by modifier layer under gold header bars. Use the modifier filter tabs (All, Ctrl, Shift+Alt, etc.) to narrow by layer. Each tab shows a count badge.</p>
+
+  <h2>Keyboard canvas</h2>
+  <p>The main area shows a visual keyboard. Assigned keys are highlighted gold. Click any key to open its action panel on the right. Use the modifier buttons at the top to switch layers. Below 800px window width, the canvas swaps to List View automatically.</p>
+
+  <h2>Action panel</h2>
+  <p>Opens on the right when you click a key or assignment. Choose the action type at the top, configure the fields, save with the Save button or <kbd>Enter</kbd>. Discard with <kbd>Esc</kbd>.</p>
+
+  <h2>Status bar</h2>
+  <p>Bottom of the window. Shows macros enabled / paused state, assignment count, and the Listener and Executor engine indicators. Both should be green when Trigr is running normally.</p>
+
+  <div class="callout info">
+    <div class="ct">Area tabs</div>
+    <p>The area tabs across the top let you switch between the keyboard canvas, mouse canvas, radial menu editor, text expansions, clipboard history, and analytics. The sidebar and status bar persist across tabs.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     QUICK START
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-quick-start">
-  <div class="section-title">Quick Start</div>
-  <div class="section-subtitle">Set up your first shortcut in two minutes.</div>
+  <div class="section-meta"><span class="section-num">04</span><span class="section-label">Getting Started</span></div>
+  <div class="section-title">Quick start</div>
+  <div class="section-subtitle">Set up your first shortcut in two minutes. Pick the path that fits.</div>
 
-  <h2>Option 1 — Text expansion (recommended starting point)</h2>
-  <p>A text expansion replaces a short trigger you type with a longer phrase — instantly, in any app.</p>
-
+  <h2>Option 1: text expansion (recommended starting point)</h2>
+  <p>A text expansion replaces a short trigger you type with a longer phrase, in any app.</p>
   <div class="step-row"><div class="step-num">1</div><div class="step-text">Click the <strong>Text Expansions</strong> tab in the title bar.</div></div>
   <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>+ New Expansion</strong>.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">In the <strong>Trigger</strong> field, type a short abbreviation — e.g. <code>/sig</code> or <code>/ty</code>.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">In the <strong>Trigger</strong> field, type a short abbreviation. For example <code>/sig</code> or <code>/ty</code>.</div></div>
   <div class="step-row"><div class="step-num">4</div><div class="step-text">In the <strong>Expansion</strong> field, type the full text you want it to produce.</div></div>
-  <div class="step-row"><div class="step-num">5</div><div class="step-text">Click <strong>Save</strong>. Now open any text field anywhere, type your trigger, and watch it expand.</div></div>
+  <div class="step-row"><div class="step-num">5</div><div class="step-text">Click <strong>Save</strong>. Open any text field anywhere, type your trigger, and watch it expand.</div></div>
 
   <div class="callout tip">
-    <div class="ct">💡 Good trigger format</div>
+    <div class="ct">Good trigger format</div>
     <p>Prefix triggers with <code>/</code> or <code>;</code> so they never fire mid-word by accident. Good examples: <code>/addr</code>, <code>/sig</code>, <code>;ty</code>.</p>
   </div>
 
-  <h2>Option 2 — Hotkey</h2>
-
-  <div class="step-row"><div class="step-num">1</div><div class="step-text">On the keyboard canvas, click a modifier button — e.g. <kbd>Ctrl</kbd>.</div></div>
+  <h2>Option 2: hotkey</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">On the keyboard canvas, click a modifier button (for example <kbd>Ctrl</kbd>).</div></div>
   <div class="step-row"><div class="step-num">2</div><div class="step-text">Click any key. The action panel opens on the right.</div></div>
   <div class="step-row"><div class="step-num">3</div><div class="step-text">Choose an action type (Type Text, Open URL, Open App, Macro, etc.) and fill in the fields.</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Save</strong>. Press the combo anywhere on your computer — it fires immediately.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Save</strong>. Press the combo anywhere on your computer. It fires immediately.</div></div>
 
-  <h2>Option 3 — Use a template pack</h2>
-  <p>Click the <strong>Templates</strong> pill in the title bar (or go to Settings → Templates) to import a pre-built set of shortcuts. Templates are additive — they never overwrite your existing assignments.</p>
+  <h2>Option 3: template pack</h2>
+  <p>Click the <strong>Templates</strong> pill in the title bar (or go to Settings → Templates) to import a pre-built set of shortcuts. Templates are additive. They never overwrite your existing assignments.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- HOTKEYS -->
+<!-- ════════════════════════════════════════════════════════════
+     HOTKEYS
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-hotkeys">
+  <div class="section-meta"><span class="section-num">05</span><span class="section-label">Mapping &amp; Triggers</span></div>
   <div class="section-title">Hotkeys</div>
-  <div class="section-subtitle">Bind key combinations to any action.</div>
+  <div class="section-subtitle">Bind any key combination to any action. Works globally in every app.</div>
 
   <p>A hotkey combines one or more modifier keys (<kbd>Ctrl</kbd>, <kbd>Alt</kbd>, <kbd>Shift</kbd>, <kbd>Win</kbd>) with a letter, number, function key, or special key. When pressed from anywhere on your computer, Trigr fires the assigned action instantly.</p>
 
   <h2>Creating a hotkey</h2>
   <div class="step-row"><div class="step-num">1</div><div class="step-text">Select a modifier layer using the buttons above the keyboard canvas.</div></div>
   <div class="step-row"><div class="step-num">2</div><div class="step-text">Click the key you want to assign. The action panel opens.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">Choose an action type, configure it, and click <strong>Save</strong>. The key is now highlighted on the canvas.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Choose an action type, configure it, click <strong>Save</strong>. The key is now highlighted on the canvas.</div></div>
+
+  <p>Alternatively, click <strong>+ New Trigger</strong> in the sidebar. The Record button pulses gold and a hint reads "Press Record or click a key to start". Then either press a combination physically or click a key on the canvas.</p>
 
   <h2>Modifier layers</h2>
-  <p>Each modifier combination is a separate layer — Ctrl, Alt, Shift, Win, Ctrl+Shift, Ctrl+Alt, Shift+Alt, and more. The same physical key can have a different action on each layer. For example, <kbd>Ctrl</kbd>+<kbd>E</kbd> and <kbd>Ctrl+Shift</kbd>+<kbd>E</kbd> are entirely independent assignments.</p>
+  <p>Each modifier combination is a separate layer: Ctrl, Alt, Shift, Win, Ctrl+Shift, Ctrl+Alt, Shift+Alt, and so on. The same physical key can have a different action on each layer. <kbd>Ctrl</kbd>+<kbd>E</kbd> and <kbd>Ctrl+Shift</kbd>+<kbd>E</kbd> are entirely independent assignments.</p>
 
   <h2>Bare keys (app-specific profiles only)</h2>
-  <p>In a profile linked to a specific app, you can assign bare keys with no modifier — pressing <kbd>F</kbd> alone fires the action. This only works when the linked app has focus, so it won't interfere with normal typing elsewhere. Ideal for CAD software, games, and tools where bare key macros are standard.</p>
+  <p>In a profile linked to a specific app, you can assign bare keys with no modifier. Pressing <kbd>F</kbd> alone fires the action. This only works when the linked app has focus, so it does not interfere with normal typing elsewhere. Ideal for CAD software, games, and tools where bare key macros are standard.</p>
 
   <h2>Win key</h2>
   <p>The Windows key can be used as a modifier. In the hotkey capture UI, click the <strong>⊞ Win</strong> button to add it to a combination. Win key combinations are captured and fired exactly like any other modifier layer.</p>
 
   <h2>Right-click options on assigned keys</h2>
-  <p>Right-click any assigned key on the canvas (or card in List View) to access: <strong>Rename</strong>, <strong>Duplicate</strong> (copies the full payload including double-press config), and <strong>Clear</strong> (with inline confirmation).</p>
+  <p>Right-click any assigned key on the canvas (or card in List View) to access: <strong>Rename</strong>, <strong>Duplicate</strong> (copies the full payload including double-press and hold config), and <strong>Clear</strong> (with inline confirmation).</p>
 
   <div class="callout warn">
-    <div class="ct">⚠️ System shortcut conflicts</div>
+    <div class="ct">System shortcut conflicts</div>
     <p>Trigr overrides key combinations when it captures them. Avoid assigning combinations that Windows uses globally, such as <kbd>Win</kbd>+<kbd>D</kbd>. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Del</kbd> cannot be overridden by any application.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- MACROS -->
-<div class="section-page" id="page-hk-macro">
-  <div class="section-title">Macros</div>
-  <div class="section-subtitle">Chain multiple steps into a single keypress.</div>
+<!-- ════════════════════════════════════════════════════════════
+     MOUSE HOTKEYS
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-mouse">
+  <div class="section-meta"><span class="section-num">06</span><span class="section-label">Mapping &amp; Triggers</span></div>
+  <div class="section-title">Mouse hotkeys</div>
+  <div class="section-subtitle">Bind modifier + click combinations and side buttons to any action.</div>
 
-  <p>A macro is a sequence of steps that Trigr executes in order when you press the hotkey. Mix any combination of step types in a single macro.</p>
+  <p>Switch to the <strong>Mouse</strong> tab to see a visual mouse diagram. Click any button to assign an action. Modifier layers work the same as for keyboard hotkeys.</p>
 
   <div class="screenshot-slot">
-    <strong>Screenshot slot B — Macro step builder</strong>
-    Show a multi-step macro with at least 3 different step types visible. Include the drag handles on the left, step type labels, the full-width Type Text sub-row, and the + Add Step button at the bottom.
+    <strong>Screenshot slot · Mouse canvas</strong>
+    Mouse tab active with the silhouette visible. Modifier selector at the top and at least one assigned button highlighted.
   </div>
 
-  <h2>Available step types</h2>
+  <h2>Available mouse triggers</h2>
   <table>
-    <tr><th>Step type</th><th>What it does</th></tr>
-    <tr><td><strong>Type Text</strong></td><td>Types a string at the cursor position. Expands to full width for longer strings.</td></tr>
-    <tr><td><strong>Press Key</strong></td><td>Sends a single keypress or combo (e.g. Enter, Escape, Ctrl+V, Delete).</td></tr>
-    <tr><td><strong>Wait (ms)</strong></td><td>Pauses for a specified number of milliseconds before the next step.</td></tr>
-    <tr><td><strong>Wait for Input</strong></td><td>Pauses until a specified mouse button or key event occurs.</td></tr>
-    <tr><td><strong>Open App</strong></td><td>Launches a specific application.</td></tr>
-    <tr><td><strong>Open URL</strong></td><td>Opens a URL in the default browser.</td></tr>
-    <tr><td><strong>Open Folder</strong></td><td>Opens a folder in Windows Explorer.</td></tr>
-    <tr><td><strong>Focus Window</strong></td><td>Brings a specific open application window to the foreground.</td></tr>
-    <tr><td><strong>Run AHK Script</strong></td><td>Executes an AutoHotkey v1 or v2 script. Waits for completion before the next step.</td></tr>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td>Left Click</td><td>Standard left mouse button</td></tr>
+    <tr><td>Right Click</td><td>Standard right mouse button</td></tr>
+    <tr><td>Middle Click</td><td>Scroll wheel press</td></tr>
+    <tr><td>Side 1 / Side 2</td><td>Side buttons (Mouse 4 and 5, if your mouse has them)</td></tr>
+    <tr><td>Scroll Up / Scroll Down</td><td>Scroll wheel direction. Fires once per scroll tick.</td></tr>
   </table>
 
-  <h2>Building a macro</h2>
-  <div class="step-row"><div class="step-num">1</div><div class="step-text">Click a key on the canvas, then choose <strong>Macro</strong> as the action type in the panel.</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>+ Add Step</strong> and choose the step type.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">Configure the step. Repeat to add more steps.</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-text">Drag the handle on the left of each step to reorder.</div></div>
-  <div class="step-row"><div class="step-num">5</div><div class="step-text">Click <strong>Save</strong>.</div></div>
+  <h2>Setting up a mouse hotkey</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Switch to the <strong>Mouse</strong> tab.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Select your modifier layer (<kbd>Ctrl</kbd>, <kbd>Alt</kbd>, <kbd>Shift</kbd>, etc.).</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Click the mouse button on the silhouette. Configure and save as normal.</div></div>
 
-  <h2>Focus Window — Pick Window</h2>
-  <p>The Focus Window step brings an app to the foreground. Instead of typing a .exe name manually, click <strong>Pick Window</strong> — a dropdown appears showing all currently running processes. Selecting one fills in both the process name and window title automatically.</p>
-
-  <h2>Wait for Input</h2>
-  <p>Pauses the macro until a specified mouse or keyboard event. Supported input types include left click press/release, right click, and specific keys. Useful when a macro needs to wait for you to click somewhere before continuing.</p>
-
-  <div class="callout tip">
-    <div class="ct">💡 Add delays after opening apps</div>
-    <p>If a macro types text before an app has finished loading, the characters get dropped. Add a <strong>Wait (ms)</strong> step of 500–1000ms after an Open App step to give it time to settle.</p>
+  <div class="callout warn">
+    <div class="ct">Bare mouse buttons</div>
+    <p>Assigning mouse buttons without a modifier is only supported in app-linked profiles. You would not want left click triggering a macro everywhere.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <h2>Side buttons not firing?</h2>
+  <p>If your mouse has manufacturer software (Logitech G Hub, Razer Synapse, etc.), it may be translating side buttons to other inputs before Windows sees them. Open the mouse software and set Side 1 and Side 2 to their <strong>default mouse button</strong> mapping. Then Trigr can see them.</p>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- TYPE TEXT -->
-<div class="section-page" id="page-hk-text">
+<!-- ════════════════════════════════════════════════════════════
+     TRIGGER MODES (single / double / hold)
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-trigger-modes">
+  <div class="section-meta"><span class="section-num">07</span><span class="section-label">Mapping &amp; Triggers</span></div>
+  <div class="section-title">Trigger modes</div>
+  <div class="section-subtitle">One key can fire three different actions depending on how you press it.</div>
+
+  <p>Every assignment can have up to three distinct actions on the same key, fired by different press patterns:</p>
+  <ul>
+    <li><strong>Single press</strong>: tap the key, action fires.</li>
+    <li><strong>Double press</strong>: tap twice within the double-tap window, the double-press action fires instead.</li>
+    <li><strong>Hold</strong> <span class="pro-pill">PRO</span>: press and hold past the threshold (default 350ms), the hold action fires.</li>
+  </ul>
+
+  <h2>Setting up double press</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Open any assignment in the action panel.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click the <strong>Double</strong> pill above the action editor.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Configure the double-press action independently. It does not have to match the single-press type.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Save. Single press fires the first action, double-tap fires the second.</div></div>
+
+  <h2>Setting up hold <span class="pro-pill">PRO</span></h2>
+  <p>The Hold pill appears next to Single and Double when you open an assignment. Hold triggers fire after the key has been held past the configurable threshold (200ms to 700ms, default 350ms in Settings).</p>
+
+  <div class="callout pro">
+    <div class="ct">Pro feature</div>
+    <p>Hold triggers require a Pro licence. Without it, the Hold pill shows a lock icon and clicking it opens the upgrade modal. Free users can still configure single and double press triggers.</p>
+  </div>
+
+  <h2>How hold detection works</h2>
+  <p>When you press a hold-armed key, Trigr starts a timer. If you release before the threshold, the single-press action fires (if assigned) or the keystroke passes through to the focused app. If you cross the threshold, the hold action fires and the key release is suppressed.</p>
+
+  <h2>Double-tap window</h2>
+  <p>The interval Trigr waits for a second tap before firing the single-press action. Adjust in <strong>Settings → Compatibility → Double-tap window</strong>. Default is 300ms.</p>
+
+  <div class="callout tip">
+    <div class="ct">Three actions on one key</div>
+    <p>You can combine all three modes on one key. For example: F8 single = type a string, F8 double = open an app, F8 hold = fire a macro. Cycle through the Single / Double / Hold pills to configure each.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     TYPE TEXT
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-type-text">
+  <div class="section-meta"><span class="section-num">08</span><span class="section-label">Actions</span></div>
   <div class="section-title">Type Text</div>
   <div class="section-subtitle">Instantly type any string at the cursor position.</div>
 
   <p>Type Text sends a fixed string to the active text field the moment you press the hotkey. Works in any application.</p>
 
   <h2>Input method</h2>
-  <p>Three methods are available. The default works in most situations — only change it if you run into issues.</p>
+  <p>Three methods are available. The default works in most situations. Change it only if you run into issues.</p>
   <table>
     <tr><th>Method</th><th>When to use</th></tr>
-    <tr><td><strong>Global default</strong></td><td>Works in most apps. Use this unless you have a specific issue.</td></tr>
-    <tr><td><strong>Direct</strong></td><td>Faster. Good for apps that process keys directly (games, CAD tools).</td></tr>
+    <tr><td><strong>Global default</strong></td><td>Whatever you have set in Settings → Compatibility. Suitable for most apps.</td></tr>
+    <tr><td><strong>Direct</strong></td><td>Faster. Good for apps that process keys directly (games, CAD tools, DirectInput).</td></tr>
     <tr><td><strong>Clipboard</strong></td><td>Pastes via clipboard. Most reliable in apps that intercept standard key input. May briefly affect clipboard contents.</td></tr>
   </table>
 
   <div class="callout tip">
-    <div class="ct">💡 Unicode and special characters</div>
-    <p>Type Text supports full Unicode. If a character isn't typing correctly in a specific app, switch that assignment to the <strong>Clipboard</strong> method.</p>
+    <div class="ct">Unicode and special characters</div>
+    <p>Type Text supports full Unicode. If a character is not typing correctly in a specific app, switch that assignment to the <strong>Clipboard</strong> method.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <h2>Games and DirectInput</h2>
+  <p>Trigr uses scancode-mode injection by default, so keystrokes are visible to games using DirectInput, Raw Input, or other low-level input APIs. If a hotkey is being ignored by a specific FPS or simulation game, raise it as feedback. Most cases work without configuration.</p>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- SEND HOTKEY -->
-<div class="section-page" id="page-hk-sendkey">
+<!-- ════════════════════════════════════════════════════════════
+     SEND HOTKEY
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-send-hotkey">
+  <div class="section-meta"><span class="section-num">09</span><span class="section-label">Actions</span></div>
   <div class="section-title">Send Hotkey</div>
   <div class="section-subtitle">Fire a specific keypress or combo into the active window.</div>
 
-  <p>Send Hotkey fires a key combination into whichever application is in focus. This lets you trigger an app's own keyboard shortcuts from a Trigr hotkey — useful when the app's native shortcut conflicts with something you've already assigned globally.</p>
-  <p>Example: your CAD app uses <kbd>Ctrl</kbd>+<kbd>F</kbd> for a tool, but you've assigned Ctrl+F globally in Trigr to something else. Bind Trigr's <kbd>Ctrl</kbd>+<kbd>G</kbd> to Send Hotkey → <kbd>Ctrl</kbd>+<kbd>F</kbd>, and Trigr sends it directly to the active window.</p>
+  <p>Send Hotkey fires a key combination into whichever application is in focus. This lets you trigger an app's own keyboard shortcuts from a Trigr hotkey, useful when an app's native shortcut conflicts with something you have assigned globally.</p>
+
+  <p>Example: your CAD app uses <kbd>Ctrl</kbd>+<kbd>F</kbd> for a tool, but you have already assigned <kbd>Ctrl</kbd>+<kbd>F</kbd> globally in Trigr. Bind Trigr's <kbd>Ctrl</kbd>+<kbd>G</kbd> to Send Hotkey → <kbd>Ctrl</kbd>+<kbd>F</kbd>, and Trigr sends it directly to the active window.</p>
 
   <h2>Hold Mode</h2>
-  <p>The <strong>Hold Mode</strong> toggle changes Send Hotkey behaviour: the first press sends keydown only (holding the key), and the second press sends keyup (releasing it). Useful for gaming and CAD workflows that require a sustained key press.</p>
+  <p>The <strong>Hold Mode</strong> toggle changes Send Hotkey behaviour. The first press sends keydown only (holding the key), and the second press sends keyup (releasing it). Useful for gaming and CAD workflows that need a sustained key press.</p>
 
   <div class="screenshot-slot">
-    <strong>Screenshot slot C — Send Hotkey panel with Hold Mode</strong>
-    Show the action panel for a Send Hotkey assignment. The toggle switch should be visible. If possible, show the tray icon in the red "held" state in a corner of the screenshot or as a separate inset.
+    <strong>Screenshot slot · Send Hotkey panel with Hold Mode</strong>
+    Action panel for a Send Hotkey assignment. Hold Mode toggle visible. Show the tray icon in red "held" state.
   </div>
 
   <p>While a key is held, the Trigr tray icon turns <strong>red</strong> and the tooltip shows which key is being held. The held key auto-releases when:</p>
@@ -377,12 +1103,12 @@
   </ul>
 
   <div class="callout warn">
-    <div class="ct">⚠️ Hold mode is for polling apps, not text</div>
+    <div class="ct">Hold mode is for polling apps, not text</div>
     <p>Held keys via SendInput do not produce repeated characters. Windows only repeats hardware keypresses. Use hold mode for games and CAD tools that poll key state, not for generating repeated text.</p>
   </div>
 
   <h2>Repeat Mode</h2>
-  <p><strong>Repeat Mode</strong> sends the target key or mouse click repeatedly at a configurable interval. First press starts repeating, second press of the <strong>same trigger</strong> stops it. Unlike Hold Mode, other keypresses do not stop it — only the original trigger hotkey toggles it off.</p>
+  <p><strong>Repeat Mode</strong> sends the target key or mouse click repeatedly at a configurable interval. First press starts repeating, second press of the same trigger stops it. Other keypresses do not stop it. Only the original trigger hotkey toggles it off.</p>
 
   <table>
     <tr><th>Setting</th><th>Description</th></tr>
@@ -392,20 +1118,23 @@
   <p>While repeating, the tray icon turns <strong>red</strong> and the tooltip shows the repeating key and interval. Repeating auto-stops when you pause Trigr or quit the app.</p>
 
   <div class="callout tip">
-    <div class="ct">💡 Hold vs Repeat</div>
-    <p>Hold Mode and Repeat Mode are mutually exclusive — enabling one disables the other. Both work with keyboard keys and mouse buttons.</p>
+    <div class="ct">Hold vs Repeat</div>
+    <p>Hold Mode and Repeat Mode are mutually exclusive. Enabling one disables the other. Both work with keyboard keys and mouse buttons.</p>
   </div>
 
   <h2>Mouse button targets</h2>
-  <p>Send Hotkey supports mouse buttons (Left Click, Right Click, Middle Click) as targets in all three modes — normal, hold, and repeat. Select a mouse button from the pill buttons below the capture field.</p>
+  <p>Send Hotkey supports mouse buttons (Left Click, Right Click, Middle Click) as targets in all three modes: normal, hold, and repeat. Select a mouse button from the pill buttons below the capture field.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- OPEN APP / URL / FOLDER -->
-<div class="section-page" id="page-hk-app">
+<!-- ════════════════════════════════════════════════════════════
+     OPEN APP / URL / FOLDER
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-open-things">
+  <div class="section-meta"><span class="section-num">10</span><span class="section-label">Actions</span></div>
   <div class="section-title">Open App / URL / Folder</div>
-  <div class="section-subtitle">Launch applications and destinations instantly.</div>
+  <div class="section-subtitle">Launch applications, websites, and folders instantly.</div>
 
   <h2>Open App</h2>
   <p>Launches an installed application. Click <strong>Browse</strong> to select the .exe, or type the path manually. Trigr stores only the executable name, not the full path, making profiles portable across machines.</p>
@@ -417,54 +1146,105 @@
   <p>Opens a folder in Windows Explorer. Click <strong>Browse</strong> or type the path manually. Supports environment variables like <code>%USERPROFILE%</code> and <code>%APPDATA%</code>.</p>
 
   <div class="callout tip">
-    <div class="ct">💡 Combining with macros</div>
-    <p>Need to open an app and immediately do something in it? Use a Macro — chain Open App → Wait (500ms) → Type Text or Press Key to give the app time to load before sending input.</p>
+    <div class="ct">Combining with macros</div>
+    <p>Need to open an app and immediately do something in it? Use a Macro. Chain Open App → Wait (500ms) → Type Text or Press Key to give the app time to load before sending input.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- DOUBLE PRESS -->
-<div class="section-page" id="page-hk-doublepress">
-  <div class="section-title">Double Press</div>
-  <div class="section-subtitle">Assign two different actions to the same key.</div>
+<!-- ════════════════════════════════════════════════════════════
+     MACROS
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-macros">
+  <div class="section-meta"><span class="section-num">11</span><span class="section-label">Actions</span></div>
+  <div class="section-title">Macros</div>
+  <div class="section-subtitle">Chain multiple steps into a single keypress. Loop them if needed.</div>
 
-  <p>Double press lets you assign two actions to one key: a single press fires the first action, a rapid double-tap fires the second. Detection is purely keydown-based with a dynamic timer.</p>
+  <p>A macro is a sequence of steps that Trigr executes in order when you press the hotkey. Mix any combination of step types in a single macro.</p>
 
-  <h2>Setting up double press</h2>
-  <div class="step-row"><div class="step-num">1</div><div class="step-text">Open any assignment in the action panel.</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-text">Toggle <strong>Enable Double Press</strong>.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">A second configuration area appears. Set the double-press action independently.</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-text">Save. Single press = first action. Double-tap = second action.</div></div>
-
-  <div class="callout info">
-    <div class="ct">ℹ️ Duplicate preserves double-press config</div>
-    <p>When you right-click and duplicate an assignment, the full double-press configuration is copied over, including all step data in each action.</p>
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Macro step builder</strong>
+    Multi-step macro with at least 3 different step types. Drag handles on the left, step type labels, the full-width Type Text sub-row, the + Add Step button at the bottom, the loop toggle.
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <h2>Available step types</h2>
+  <table>
+    <tr><th>Step type</th><th>What it does</th></tr>
+    <tr><td><strong>Type Text</strong></td><td>Types a string at the cursor position. Full Unicode support.</td></tr>
+    <tr><td><strong>Dynamic Text</strong></td><td>Like Type Text, but with token replacement at fire time. Supports date, time, clipboard, selection, and formula tokens.</td></tr>
+    <tr><td><strong>Press Key</strong></td><td>Sends a single keypress or combo. For example Enter, Escape, Ctrl+V, Delete.</td></tr>
+    <tr><td><strong>Click Mouse</strong></td><td>Sends a single mouse button click.</td></tr>
+    <tr><td><strong>Click at Position</strong></td><td>Moves the cursor to specific screen coordinates and clicks.</td></tr>
+    <tr><td><strong>Wait (ms)</strong></td><td>Pauses for a specified number of milliseconds before the next step.</td></tr>
+    <tr><td><strong>Wait for Input</strong></td><td>Pauses until a specified mouse button or key event occurs.</td></tr>
+    <tr><td><strong>Open App / URL / Folder</strong></td><td>Same as the standalone actions, callable as a step inside a macro.</td></tr>
+    <tr><td><strong>Focus Window</strong></td><td>Brings a specific open application window to the foreground.</td></tr>
+    <tr><td><strong>Run AHK Script</strong></td><td>Executes an AutoHotkey v1 or v2 script. Waits for completion before the next step.</td></tr>
+    <tr><td><strong>Fire Trigger</strong></td><td>Calls another macro or action by its storage key. Up to 5 nesting levels.</td></tr>
+    <tr><td><strong>Fire Text Expansion</strong></td><td>Fires an expansion by its trigger string. The expansion's resolution rules apply.</td></tr>
+  </table>
+
+  <h2>Building a macro</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Click a key on the canvas, then choose <strong>Macro</strong> as the action type.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>+ Add Step</strong> and choose the step type.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Configure the step. Repeat to add more.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Drag the handle on the left of each step to reorder.</div></div>
+  <div class="step-row"><div class="step-num">5</div><div class="step-text">Click <strong>Save</strong>.</div></div>
+
+  <h2>Macro looping</h2>
+  <p>Below the Input Method row, the <strong>Loop</strong> section lets the macro repeat itself. Two modes:</p>
+  <ul>
+    <li><strong>Count</strong>: run N times in a row.</li>
+    <li><strong>Forever</strong>: run continuously until you press <kbd>Esc</kbd> or re-press the trigger.</li>
+  </ul>
+  <p>An optional <strong>Delay</strong> between iterations smooths out fast loops. Press the same trigger again while a loop is running, and Trigr cancels it.</p>
+
+  <div class="callout tip">
+    <div class="ct">Stop a runaway loop</div>
+    <p>Three ways to stop a loop: press <kbd>Esc</kbd>, re-press the trigger that started it, or pause Trigr from the tray. Forever loops also stop automatically if you quit the app.</p>
+  </div>
+
+  <h2>Focus Window: Pick Window</h2>
+  <p>The Focus Window step brings an app to the foreground. Instead of typing a .exe name manually, click <strong>Pick Window</strong>. A dropdown appears showing all currently running processes. Selecting one fills in both the process name and window title automatically.</p>
+
+  <h2>Wait for Input</h2>
+  <p>Pauses the macro until a specified mouse or keyboard event. Supported input types include left click press / release, right click, and specific keys. Useful when a macro needs to wait for you to click somewhere before continuing.</p>
+
+  <div class="callout tip">
+    <div class="ct">Add delays after opening apps</div>
+    <p>If a macro types text before an app has finished loading, the characters get dropped. Add a <strong>Wait (ms)</strong> step of 500 to 1000ms after an Open App step to give it time to settle.</p>
+  </div>
+
+  <h2>Fire Trigger and Fire Text Expansion</h2>
+  <p>These two step types call other Trigr actions from inside a macro. Useful for composing complex flows from smaller reusable units. Trigr enforces a maximum of 5 nesting levels to prevent infinite recursion.</p>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- AHK SCRIPT RUNNER -->
-<div class="section-page" id="page-hk-ahk">
+<!-- ════════════════════════════════════════════════════════════
+     AHK SCRIPT RUNNER
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-ahk">
+  <div class="section-meta"><span class="section-num">12</span><span class="section-label">Actions</span></div>
   <div class="section-title">AHK Script Runner</div>
-  <div class="section-subtitle">Run AutoHotkey v1 and v2 scripts from any hotkey — no AHK install needed.</div>
+  <div class="section-subtitle">Run AutoHotkey v1 and v2 scripts from any hotkey. No AHK install required.</div>
 
-  <p>Trigr bundles AutoHotkey executables for both v1 and v2, so your users don't need to install AutoHotkey separately. Write a script body, assign it to a key, and Trigr handles execution.</p>
+  <p>Trigr bundles AutoHotkey executables for both v1 and v2. You do not need AutoHotkey installed separately. Write a script body, assign it to a key, and Trigr handles execution.</p>
 
   <h2>How it works</h2>
   <div class="step-row"><div class="step-num">1</div><div class="step-text">Click a key on the canvas, then choose <strong>AHK Script</strong> as the action type.</div></div>
   <div class="step-row"><div class="step-num">2</div><div class="step-text">Select <strong>v1</strong> or <strong>v2</strong> using the version toggle at the top of the form.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">Write your script body in the textarea. No hotkey labels or <code>Return</code> needed — Trigr handles the trigger.</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Assign</strong>.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Write your script body in the textarea. No hotkey labels or <code>Return</code> needed. Trigr handles the trigger.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Save</strong>.</div></div>
 
   <h2>Execution</h2>
-  <p>When the hotkey fires, Trigr writes a temporary <code>.ahk</code> file, spawns the bundled AutoHotkey process, and cleans up after it exits. Scripts run with <code>ExitApp</code> appended automatically (unless your script already contains it).</p>
+  <p>When the hotkey fires, Trigr writes a temporary <code>.ahk</code> file, spawns the bundled AutoHotkey process, and cleans up after it exits. Scripts run with <code>ExitApp</code> appended automatically unless your script already contains it.</p>
 
   <table>
     <tr><th>Behaviour</th><th>Description</th></tr>
     <tr><td><strong>Re-trigger</strong></td><td>Pressing the same hotkey again kills the previous AHK instance and starts a fresh one.</td></tr>
-    <tr><td><strong>Macro step</strong></td><td>AHK scripts can also be used as a step inside a Macro Sequence. In this mode, Trigr waits for the script to finish before proceeding to the next step.</td></tr>
+    <tr><td><strong>Macro step</strong></td><td>AHK scripts can also be used as a step inside a Macro Sequence. Trigr waits for the script to finish before proceeding to the next step.</td></tr>
     <tr><td><strong>Cleanup</strong></td><td>All running AHK processes are killed on app quit. Leftover temp files from crashes are cleaned up on next startup.</td></tr>
   </table>
 
@@ -479,336 +1259,698 @@
   </table>
 
   <div class="callout tip">
-    <div class="ct">💡 Existing AHK users</div>
-    <p>If you already have AHK scripts, paste the body directly into Trigr. Your scripts work alongside visual hotkeys, macros, and text expansions — all managed from one app.</p>
+    <div class="ct">Existing AHK users</div>
+    <p>If you already have AHK scripts, paste the body directly into Trigr. Your scripts work alongside visual hotkeys, macros, and text expansions, all managed from one app.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- TEXT EXPANSIONS -->
+<!-- ════════════════════════════════════════════════════════════
+     TEXT EXPANSIONS
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-expansions">
-  <div class="section-title">Text Expansions</div>
-  <div class="section-subtitle">Type a short trigger and get a full phrase in return.</div>
+  <div class="section-meta"><span class="section-num">13</span><span class="section-label">Text Expansion</span></div>
+  <div class="section-title">Text expansions</div>
+  <div class="section-subtitle">Type a short trigger and get a full phrase in return. Works in every app.</div>
 
-  <p>Text expansions monitor everything you type and replace a trigger sequence with expanded text the moment you complete it. They work in any application — browser, email, CRM, editor, anywhere.</p>
+  <p>Text expansions monitor what you type and replace a trigger sequence with expanded text the moment you complete it. They work in any application: browser, email, CRM, editor, anywhere.</p>
 
   <div class="screenshot-slot">
-    <strong>Screenshot slot D — Text Expansions panel</strong>
-    Show the full expansions panel with the category tabs at the top, a list of at least 4 expansion items showing the trigger badge and expansion preview, and the + New button.
+    <strong>Screenshot slot · Text Expansions panel</strong>
+    The full expansions panel with category tabs at the top, a list of at least 4 expansion items with trigger badges and previews, and the + New Expansion button.
   </div>
 
   <h2>Creating an expansion</h2>
   <div class="step-row"><div class="step-num">1</div><div class="step-text">Switch to the <strong>Text Expansions</strong> tab.</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>+ New</strong>.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">Enter a <strong>Trigger</strong> — the short sequence you'll type.</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-text">Enter the <strong>Expansion</strong> — the full text to insert.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>+ New Expansion</strong>.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Enter a <strong>Trigger</strong> (the short sequence you will type).</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Enter the <strong>Expansion</strong> in the rich-text editor. Type plain text or use the toolbar to insert dynamic tokens, fill-ins, formulas, lists, and headings.</div></div>
   <div class="step-row"><div class="step-num">5</div><div class="step-text">Optionally assign a <strong>Category</strong>. Click <strong>Save</strong>.</div></div>
 
   <h2>Trigger tips</h2>
   <ul>
     <li>Prefix triggers with <code>/</code> or <code>;</code> to prevent accidental firing mid-word.</li>
     <li>Triggers are case-sensitive by default.</li>
-    <li>Single-character triggers are supported (useful in app-linked profiles with bare key mode).</li>
+    <li>Single-character triggers work in app-linked profiles with bare key mode.</li>
+  </ul>
+
+  <h2>Trigger modes</h2>
+  <p>The expansion editor has two trigger modes:</p>
+  <ul>
+    <li><strong>Space</strong>: fires when you type the trigger followed by a space. Best for triggers that could appear inside other words.</li>
+    <li><strong>Immediate</strong>: fires as soon as you finish typing the trigger. Best for prefix-style triggers like <code>/sig</code>.</li>
   </ul>
 
   <h2>Categories</h2>
-  <p>Assign expansions to named categories. Category tabs appear at the top of the list. Drag tabs to reorder them — the order is saved.</p>
+  <p>Assign expansions to named categories. Category tabs appear at the top of the list. Drag tabs to reorder them. The order is saved.</p>
 
-  <h2>Global variables</h2>
-  <p>Define a reusable text value once and reference it across multiple expansions using <code>{var:name}</code>. Update the variable once and it updates everywhere instantly. Useful for your company name, phone number, address, or any shared piece of text.</p>
+  <h2>Variants <span class="pro-pill">PRO</span></h2>
+  <p>One trigger can have multiple variant outputs. When the trigger fires, Trigr shows a selector with all variants and you pick one. Useful for response templates with formal / casual / brief variations on the same theme.</p>
 
-  <h2>Image expansions</h2>
-  <p>Expansions can paste images as well as text. Toggle the <strong>Image</strong> type selector at the top of the expansion editor, then click <strong>Choose Image</strong> to select a PNG or JPEG file.</p>
+  <h2>Image expansions <span class="pro-pill">PRO</span></h2>
+  <p>Expansions can paste images as well as text. Toggle the <strong>Image</strong> type at the top of the expansion editor, then click <strong>Choose Image</strong> to select a PNG or JPEG file.</p>
   <table>
     <tr><th>Setting</th><th>Description</th></tr>
     <tr><td>Image path</td><td>Full path to a PNG or JPEG file on your machine.</td></tr>
-    <tr><td>Scale</td><td>10–100%. Resizes the image before pasting. 100% uses the original size.</td></tr>
+    <tr><td>Scale</td><td>10 to 100%. Resizes the image before pasting. 100% uses the original size.</td></tr>
     <tr><td>Trigger mode</td><td>Space (type trigger + space) or Immediate (fires as you finish typing).</td></tr>
   </table>
-  <p>When the trigger fires, Trigr writes the image to the clipboard and sends a paste command. The image is left on the clipboard after pasting. Works in Word, Outlook, Google Docs, and any app that accepts pasted images.</p>
+  <p>When the trigger fires, Trigr writes the image to the clipboard and sends a paste command. Works in Word, Outlook, Google Docs, and any app that accepts pasted images.</p>
+
+  <h2>Autocorrect</h2>
+  <p>The Autocorrect tab manages typo replacements. Type a common misspelling, get the correct version. Behaves identically to expansions but with a separate management surface.</p>
 
   <div class="callout tip">
-    <div class="ct">💡 Type filter</div>
-    <p>Use the All / Text / Image filter pills above the expansion list to quickly find text or image expansions.</p>
+    <div class="ct">Type filter</div>
+    <p>Use the <strong>All / Text / Image</strong> filter pills above the expansion list to find expansions by type.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- DYNAMIC TOKENS -->
-<div class="section-page" id="page-exp-tokens">
-  <div class="section-title">Dynamic Tokens</div>
-  <div class="section-subtitle">Insert live values like today's date into any expansion.</div>
+<!-- ════════════════════════════════════════════════════════════
+     DYNAMIC TOKENS
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-dynamic-tokens">
+  <div class="section-meta"><span class="section-num">14</span><span class="section-label">Text Expansion</span></div>
+  <div class="section-title">Dynamic tokens</div>
+  <div class="section-subtitle">Insert live values into any expansion. Date, time, clipboard, selection, cursor position.</div>
 
-  <p>Tokens are special placeholders in your expansion text that are replaced with live values at the moment the expansion fires. Insert them using the <strong>Insert</strong> button in the expansion editor.</p>
-
-  <h2>Date tokens</h2>
-  <div class="token-row"><span class="token">{date:DD/MM/YYYY}</span><span class="token-desc">→ e.g. 06/04/2026</span></div>
-  <div class="token-row"><span class="token">{date:MM/DD/YYYY}</span><span class="token-desc">→ e.g. 04/06/2026</span></div>
-  <div class="token-row"><span class="token">{date:YYYY-MM-DD}</span><span class="token-desc">→ e.g. 2026-04-06</span></div>
-  <div class="token-row"><span class="token">{date:DD/MM/YY}</span><span class="token-desc">→ e.g. 06/04/26</span></div>
-
-  <h2>Time tokens</h2>
-  <div class="token-row"><span class="token">{time:HH:MM:SS}</span><span class="token-desc">→ e.g. 14:32:07</span></div>
-  <div class="token-row"><span class="token">{time:HH:MM}</span><span class="token-desc">→ e.g. 14:32</span></div>
-
-  <h2>Day token</h2>
-  <div class="token-row"><span class="token">{dayofweek}</span><span class="token-desc">→ e.g. Monday</span></div>
-
-  <h2>Fill-in fields</h2>
-  <p>Use <code>{fillIn:FieldName}</code> to create a prompt that pauses the expansion and asks you to enter a value before completing. Useful for templates that need a name, reference number, or similar variable piece of information.</p>
-  <p>Example: <code>Dear {fillIn:Name}, thank you for your enquiry regarding {fillIn:Project}.</code></p>
-  <p>When this expansion fires, Trigr opens a fill-in dialog for each field in sequence before inserting the final text.</p>
-
-  <h2>Global variable references</h2>
-  <div class="token-row"><span class="token">{var:VariableName}</span><span class="token-desc">→ Inserts the value of a defined global variable</span></div>
-
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
-</div>
-
-<!-- MOUSE HOTKEYS -->
-<div class="section-page" id="page-mouse">
-  <div class="section-title">Mouse Hotkeys</div>
-  <div class="section-subtitle">Bind modifier + click combinations to actions.</div>
-
-  <p>Trigr supports mouse buttons as hotkey triggers. Combine any modifier key with a mouse button click to create a hotkey that works the same as any keyboard hotkey.</p>
+  <p>Tokens are special placeholders in your expansion text that are replaced with live values at the moment the expansion fires. Insert them using the toolbar buttons in the expansion editor.</p>
 
   <div class="screenshot-slot">
-    <strong>Screenshot slot E — Mouse canvas</strong>
-    Show the mouse tab active with the mouse diagram visible. Include the modifier selector at the top and at least one assigned mouse button highlighted.
+    <strong>Screenshot slot · Expansion editor toolbar</strong>
+    Toolbar across the top of the expansion editor showing all the dropdown buttons: color, headings, lists, date &amp; time, clipboard, fill-in, formula, cursor, variables.
   </div>
 
-  <h2>Available mouse triggers</h2>
-  <table>
-    <tr><th>Button</th><th>Description</th></tr>
-    <tr><td>Left Click</td><td>Standard left mouse button</td></tr>
-    <tr><td>Right Click</td><td>Standard right mouse button</td></tr>
-    <tr><td>Middle Click</td><td>Scroll wheel press</td></tr>
-    <tr><td>Side 1 / Side 2</td><td>Side buttons (Mouse 4 and 5, if your mouse has them)</td></tr>
-    <tr><td>Scroll Up / Scroll Down</td><td>Scroll wheel direction — fires once per scroll tick</td></tr>
-  </table>
+  <h2>Date and time</h2>
+  <p>Click the <strong>Date &amp; Time</strong> toolbar icon for the full menu. Sub-sections cover dates, date parts, time, and date math.</p>
 
-  <h2>Setting up a mouse hotkey</h2>
-  <div class="step-row"><div class="step-num">1</div><div class="step-text">Switch to the <strong>Mouse</strong> tab in the keyboard area.</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-text">Select your modifier layer (<kbd>Ctrl</kbd>, <kbd>Alt</kbd>, <kbd>Shift</kbd>, etc.).</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">Click the mouse button you want to assign. Configure and save as normal.</div></div>
+  <h3>Date formats</h3>
+  <div class="token-row"><span class="token">{date}</span><span class="token-desc">Your default format from Settings</span></div>
+  <div class="token-row"><span class="token">{date:DD/MM/YYYY}</span><span class="token-desc">e.g. 06/04/2026</span></div>
+  <div class="token-row"><span class="token">{date:MM/DD/YYYY}</span><span class="token-desc">e.g. 04/06/2026</span></div>
+  <div class="token-row"><span class="token">{date:YYYY-MM-DD}</span><span class="token-desc">e.g. 2026-04-06</span></div>
+  <div class="token-row"><span class="token">{date:D MMMM YYYY}</span><span class="token-desc">e.g. 6 April 2026</span></div>
 
-  <div class="callout warn">
-    <div class="ct">⚠️ Bare mouse buttons</div>
-    <p>Assigning mouse buttons without a modifier is only supported in app-linked profiles — for the same reason bare keyboard keys are. You don't want left click triggering a macro everywhere.</p>
-  </div>
+  <h3>Date parts</h3>
+  <div class="token-row"><span class="token">{dayofweek}</span><span class="token-desc">e.g. Monday</span></div>
+  <div class="token-row"><span class="token">{month}</span><span class="token-desc">e.g. April</span></div>
+  <div class="token-row"><span class="token">{year}</span><span class="token-desc">e.g. 2026</span></div>
+  <div class="token-row"><span class="token">{day}</span><span class="token-desc">Day of month, e.g. 6</span></div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
-</div>
+  <h3>Time</h3>
+  <div class="token-row"><span class="token">{time:HH:MM}</span><span class="token-desc">e.g. 14:32</span></div>
+  <div class="token-row"><span class="token">{time:HH:MM:SS}</span><span class="token-desc">e.g. 14:32:07</span></div>
+  <div class="token-row"><span class="token">{isodate}</span><span class="token-desc">e.g. 2026-04-06T14:32:07</span></div>
 
-<!-- PROFILES -->
-<div class="section-page" id="page-profiles">
-  <div class="section-title">Profiles</div>
-  <div class="section-subtitle">Separate shortcut sets for different contexts.</div>
+  <h3>Date math</h3>
+  <div class="token-row"><span class="token">{date:+1d}</span><span class="token-desc">Tomorrow</span></div>
+  <div class="token-row"><span class="token">{date:-1d}</span><span class="token-desc">Yesterday</span></div>
+  <div class="token-row"><span class="token">{date:+7d}</span><span class="token-desc">Next week</span></div>
+  <div class="token-row"><span class="token">{date:+1m}</span><span class="token-desc">Next month</span></div>
+  <p>Append <code>:FORMAT</code> to use a specific format. For example <code>{date:+1d:YYYY-MM-DD}</code>.</p>
 
-  <p>A profile is a complete, independent set of assignments. Only one profile is active at a time — its shortcuts are the ones Trigr fires. The active profile shows a green dot in the accordion.</p>
+  <h2>Clipboard</h2>
+  <p>Insert the current clipboard contents into your expansion.</p>
+  <div class="token-row"><span class="token">{clipboard}</span><span class="token-desc">Raw clipboard contents</span></div>
+  <div class="token-row"><span class="token">{clipboard:uppercase}</span><span class="token-desc">Uppercased</span></div>
+  <div class="token-row"><span class="token">{clipboard:lowercase}</span><span class="token-desc">Lowercased</span></div>
+  <div class="token-row"><span class="token">{clipboard:trim}</span><span class="token-desc">Whitespace trimmed</span></div>
+  <div class="token-row"><span class="token">{clipboard:urlencode}</span><span class="token-desc">URL-encoded for use in links</span></div>
 
-  <div class="screenshot-slot">
-    <strong>Screenshot slot F — Profile accordion open</strong>
-    Show the profile accordion expanded with at least 3 profiles: one General (active, with green dot), one in the App-Specific group (with Windows icon), and one more. Show the right-click context menu open on a profile row with all options visible.
-  </div>
-
-  <h2>Creating and switching profiles</h2>
-  <p>Click <strong>+ Add Profile</strong> at the bottom of the accordion. Click any profile name to switch to it — the switch is instant.</p>
-
-  <h2>Profile groups</h2>
-  <ul>
-    <li><strong>General</strong> — unlinked profiles, always available regardless of which app has focus.</li>
-    <li><strong>App-Specific</strong> — profiles linked to a .exe. When the linked app has focus, this profile activates automatically. When focus leaves, the previous profile resumes.</li>
-  </ul>
-
-  <h2>Linking a profile to an app</h2>
-  <div class="step-row"><div class="step-num">1</div><div class="step-text">Right-click the profile row and choose <strong>Link to App</strong>.</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-text">Open the target app so it appears in the running processes.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">Click <strong>Pick App</strong> and select it — or use <strong>Browse</strong> to find the .exe manually.</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Confirm</strong>. The profile moves to the App-Specific group with a Windows icon.</div></div>
-  <p>To unlink, right-click and choose <strong>Unlink App</strong>.</p>
-
-  <h2>Right-click options</h2>
-  <table>
-    <tr><th>Option</th><th>What it does</th></tr>
-    <tr><td>Rename</td><td>Edit the profile name inline</td></tr>
-    <tr><td>Duplicate</td><td>Creates a full copy of the profile including all assignments</td></tr>
-    <tr><td>Link to App</td><td>Opens the app picker (shown on unlinked profiles)</td></tr>
-    <tr><td>Unlink App</td><td>Removes the linked app (shown on linked profiles)</td></tr>
-    <tr><td>Export Profile</td><td>Saves the profile as a .json file</td></tr>
-    <tr><td>Delete</td><td>Removes the profile (with confirmation, not available on Default)</td></tr>
-  </table>
-
-  <h2>Export and import</h2>
-  <p>Right-click any profile → <strong>Export Profile</strong>. This saves the profile name and all its assignments as a <code>.json</code> file. The linked app is not exported — it's machine-specific and must be re-linked after import on a new machine.</p>
-  <p>To import, click <strong>↓ Import Profile</strong> at the bottom of the accordion. If the name conflicts with an existing profile, you'll be prompted: <strong>Copy</strong> (creates a new profile with a suffix) or <strong>Overwrite</strong> (replaces existing assignments, preserves the linked app).</p>
+  <h2>Selection <span class="pro-pill">NEW</span></h2>
+  <p>Insert whatever text you currently have highlighted in the source app. Trigr presses Ctrl+C internally to capture the selection, then restores your previous clipboard contents.</p>
+  <div class="token-row"><span class="token">{selection}</span><span class="token-desc">The currently highlighted text</span></div>
+  <div class="token-row"><span class="token">{selection:uppercase}</span><span class="token-desc">Uppercased</span></div>
+  <div class="token-row"><span class="token">{selection:lowercase}</span><span class="token-desc">Lowercased</span></div>
+  <div class="token-row"><span class="token">{selection:trim}</span><span class="token-desc">Whitespace trimmed</span></div>
+  <div class="token-row"><span class="token">{selection:urlencode}</span><span class="token-desc">URL-encoded</span></div>
 
   <div class="callout info">
-    <div class="ct">ℹ️ File format</div>
-    <p>Profiles are saved as <code>.json</code> for now. The extension will migrate to <code>.trigr</code> post-Beta. Existing files will remain importable.</p>
+    <div class="ct">Empty selection</div>
+    <p>If nothing is selected when the expansion fires, <code>{selection}</code> resolves to an empty string. The expansion still fires.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <h2>Cursor position</h2>
+  <p>Mark where the cursor should land after the expansion completes.</p>
+  <div class="token-row"><span class="token">{cursor}</span><span class="token-desc">Sets the final caret position</span></div>
+  <p>Example: <code>Dear {fillIn:Name},{cursor}\n\nKind regards</code> places the caret after the comma so you can start typing the body immediately.</p>
+
+  <h2>Global variables <span class="pro-pill">PRO</span></h2>
+  <p>Define a reusable text value once and reference it across multiple expansions using <code>{{name}}</code>. Update the variable once and it updates everywhere instantly. Useful for your company name, phone number, address, or any shared piece of text.</p>
+  <p>Define variables in <strong>Settings → Global Variables</strong>. Click the <strong>Variables</strong> toolbar icon in the expansion editor to insert one.</p>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- TEMPLATES -->
-<div class="section-page" id="page-templates">
-  <div class="section-title">Templates</div>
-  <div class="section-subtitle">Pre-built shortcut packs to get started fast.</div>
+<!-- ════════════════════════════════════════════════════════════
+     FILL-IN FIELDS
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-fill-ins">
+  <div class="section-meta"><span class="section-num">15</span><span class="section-label">Text Expansion</span></div>
+  <div class="section-title">Fill-in fields</div>
+  <div class="section-subtitle">Pause the expansion, ask the user for input, then complete. Six field types.</div>
 
-  <p>Trigr includes three starter template packs. Importing a template adds its shortcuts to your current profile without overwriting anything already there — import is always additive.</p>
+  <p>Fill-in fields let an expansion pause before completing and prompt you for variable values. The prompt opens in a small floating modal next to your cursor.</p>
 
-  <h2>Accessing templates</h2>
+  <h2>Insert a fill-in</h2>
+  <p>In the expansion editor, click the <strong>Fill-in</strong> toolbar icon. Choose a field type:</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h4>Text</h4>
+      <p>Single-line text input. The classic fill-in. Inserts <code>{fillIn:Label}</code>.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Multi-line Text</h4>
+      <p>Larger text area for paragraphs. Inserts <code>{fillIn:Label:multiline}</code>.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Dropdown</h4>
+      <p>Pick from a list of preset options. Comma-separated in the editor. Inserts <code>{fillIn:Label:dropdown:opt1,opt2,opt3}</code>.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Yes / No Toggle</h4>
+      <p>Boolean checkbox. Returns <code>yes</code> or <code>no</code>. Inserts <code>{fillIn:Label:checkbox}</code>.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Number</h4>
+      <p>Numeric input with validation. Inserts <code>{fillIn:Label:number}</code>.</p>
+    </div>
+    <div class="feature-card">
+      <h4>Date Picker</h4>
+      <p>Native date picker. Inserts <code>{fillIn:Label:date}</code>.</p>
+    </div>
+  </div>
+
+  <h2>Default values</h2>
+  <p>Append <code>:default=VALUE</code> to seed an initial value. The user can accept or edit it.</p>
   <ul>
-    <li>Click the <strong>Templates</strong> pill in the title bar (visible until dismissed).</li>
-    <li>Go to <strong>Settings → Templates</strong> — always available.</li>
+    <li><code>{fillIn:Name:text:default=John}</code></li>
+    <li><code>{fillIn:Tone:dropdown:Formal,Casual:default=Casual}</code></li>
+    <li><code>{fillIn:Done:checkbox:default=yes}</code></li>
+    <li><code>{fillIn:Qty:number:default=1}</code></li>
   </ul>
 
-  <div class="screenshot-slot">
-    <strong>Screenshot slot G — Templates panel</strong>
-    Show the three template packs with their names and brief descriptions. Include the Import button on one of them and show it in an active/hover state.
-  </div>
+  <h2>Editing an existing fill-in</h2>
+  <p>Click any fill-in chip in the editor. A small popover appears showing the label and (for dropdowns) the options. Edit and click <strong>Save</strong>. All chips in the editor that reference the same label update together.</p>
 
-  <h2>Available packs</h2>
-
-  <div class="accordion" id="acc-t1">
-    <div class="accordion-header" onclick="toggleAcc('acc-t1')"><span>General / Office</span><span class="accordion-arrow">▼</span></div>
-    <div class="accordion-body"><p>Everyday office productivity shortcuts — email sign-offs, date stamps, navigation keys, and common clipboard actions. Assigned to the Default profile under Ctrl and Ctrl+Shift layers.</p></div>
-  </div>
-
-  <div class="accordion" id="acc-t2">
-    <div class="accordion-header" onclick="toggleAcc('acc-t2')"><span>CAD / Engineering</span><span class="accordion-arrow">▼</span></div>
-    <div class="accordion-body"><p>Bare key shortcuts for CAD software — the most common commands on single keys: F=Fillet, X=Explode, H=Hatch, Z=Zoom Extents, A=Array, O=Offset, T=Trim, D=DimLinear. These use bare key Type Text macros in an app-linked profile. When you import this pack, Trigr guides you through creating a new app-specific profile and linking it to your CAD application.</p></div>
-  </div>
-
-  <div class="accordion" id="acc-t3">
-    <div class="accordion-header" onclick="toggleAcc('acc-t3')"><span>Sales / BD</span><span class="accordion-arrow">▼</span></div>
-    <div class="accordion-body"><p>Shortcuts for sales and business development workflows — CRM navigation, email response starters, meeting confirmation templates, and follow-up boilerplate. Assigned to the Default profile.</p></div>
-  </div>
+  <h2>Reusing the same field</h2>
+  <p>If you reference the same label multiple times, Trigr prompts once and inserts the answer at every position. Example:</p>
+  <p><code>Dear {fillIn:Name}, thank you for your enquiry. We will follow up with you, {fillIn:Name}, by close of business.</code></p>
 
   <div class="callout tip">
-    <div class="ct">💡 CAD pack: open your app first</div>
-    <p>Before importing the CAD pack, open your CAD software so it appears in the running processes list. The import flow will prompt you to pick it for the new app-linked profile.</p>
+    <div class="ct">Reuse panel</div>
+    <p>The Fill-in insert menu shows a <strong>Reuse</strong> row with chips for every fill-in label used elsewhere in the editor. Click a chip to insert that field at the cursor.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <h2>The fill-in modal</h2>
+  <p>When the expansion fires, Trigr opens a small modal next to your cursor with one input per field. Tab between fields. Press <kbd>Enter</kbd> on the last field to submit. Press <kbd>Esc</kbd> to cancel.</p>
+
+  <div class="callout info">
+    <div class="ct">Plain text only</div>
+    <p>Expansions containing fill-in fields render as plain text in the output. Rich formatting (bold, italic, lists) is not preserved through the fill-in flow.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- QUICK SEARCH -->
+<!-- ════════════════════════════════════════════════════════════
+     FORMULAS
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-formulas">
+  <div class="section-meta"><span class="section-num">16</span><span class="section-label">Text Expansion</span></div>
+  <div class="section-title">Formulas <span class="pro-pill">PRO</span></div>
+  <div class="section-subtitle">Compute values inside your expansions. Math, string functions, conditional text.</div>
+
+  <p>Formulas turn text expansions from static templates into dynamic content. Inside any expansion you can reference fill-in fields, run math, manipulate strings, and switch text based on conditions.</p>
+
+  <h2>Two token types</h2>
+  <table>
+    <tr><th>Token</th><th>What it does</th></tr>
+    <tr><td><code>{=expr}</code></td><td>Evaluates the expression, substitutes the result. Renders as a chip in the editor.</td></tr>
+    <tr><td><code>{if cond}…{else}…{endif}</code></td><td>Keeps one branch based on the condition. Plain text in the editor for inline editing.</td></tr>
+  </table>
+
+  <h2>Inserting a formula</h2>
+  <p>Click the <strong>Formulas</strong> toolbar icon (the function-square symbol) in the expansion editor.</p>
+  <ul>
+    <li><strong>Expression {=…}</strong> opens a prompt where you type the expression. Inserts as a chip showing <code>ƒ expr</code>.</li>
+    <li><strong>If / Else block</strong> inserts a template <code>{if condition}then text{else}other text{endif}</code> that you edit in place.</li>
+  </ul>
+
+  <p>Click any formula chip to edit the expression. The popover prefills with the current expression.</p>
+
+  <h2>Supported values</h2>
+  <ul>
+    <li><strong>Numbers</strong>: <code>2</code>, <code>3.75</code>, <code>-10</code></li>
+    <li><strong>Booleans</strong>: <code>yes</code> / <code>no</code> (also accepts <code>true</code> / <code>false</code>)</li>
+    <li><strong>Strings</strong>: <code>"abc"</code>, <code>"this is a string"</code></li>
+    <li><strong>References</strong>: bare identifiers resolve to fill-in field values, then global variables, then <code>selection</code> and <code>clipboard</code>.</li>
+  </ul>
+
+  <h2>Operators</h2>
+  <table>
+    <tr><th>Category</th><th>Operators</th></tr>
+    <tr><td>Math</td><td><code>+ - * / %</code></td></tr>
+    <tr><td>Comparison</td><td><code>== != &lt; &gt; &lt;= &gt;=</code></td></tr>
+    <tr><td>Logical</td><td><code>&amp;&amp; || !</code></td></tr>
+    <tr><td>String concat</td><td><code>&amp;</code></td></tr>
+    <tr><td>Grouping</td><td><code>( )</code></td></tr>
+  </table>
+
+  <h2>Built-in functions</h2>
+
+  <h3>String</h3>
+  <table>
+    <tr><th>Function</th><th>Example</th><th>Result</th></tr>
+    <tr><td><code>upper(s)</code></td><td><code>upper("hi")</code></td><td>HI</td></tr>
+    <tr><td><code>lower(s)</code></td><td><code>lower("HI")</code></td><td>hi</td></tr>
+    <tr><td><code>trim(s)</code></td><td><code>trim("  x  ")</code></td><td>x</td></tr>
+    <tr><td><code>len(s)</code></td><td><code>len("abc")</code></td><td>3</td></tr>
+    <tr><td><code>substring(s, start, len)</code></td><td><code>substring("abcdef", 2, 3)</code></td><td>bcd</td></tr>
+    <tr><td><code>replace(s, find, repl)</code></td><td><code>replace("good job","good","great")</code></td><td>great job</td></tr>
+    <tr><td><code>contains(s, v)</code></td><td><code>contains("hello world", "world")</code></td><td>yes</td></tr>
+    <tr><td><code>startswith(s, v)</code></td><td><code>startswith("hello", "he")</code></td><td>yes</td></tr>
+    <tr><td><code>endswith(s, v)</code></td><td><code>endswith("hello", "lo")</code></td><td>yes</td></tr>
+    <tr><td><code>urlencode(s)</code></td><td><code>urlencode("a&amp;b")</code></td><td>a%26b</td></tr>
+  </table>
+
+  <h3>Math</h3>
+  <table>
+    <tr><th>Function</th><th>Example</th><th>Result</th></tr>
+    <tr><td><code>round(x)</code></td><td><code>round(1.7)</code></td><td>2</td></tr>
+    <tr><td><code>floor(x)</code></td><td><code>floor(1.7)</code></td><td>1</td></tr>
+    <tr><td><code>ceil(x)</code></td><td><code>ceil(1.2)</code></td><td>2</td></tr>
+    <tr><td><code>abs(x)</code></td><td><code>abs(-3)</code></td><td>3</td></tr>
+  </table>
+
+  <h3>Logic</h3>
+  <table>
+    <tr><th>Function</th><th>Example</th><th>Result</th></tr>
+    <tr><td><code>if(cond, a, b)</code></td><td><code>if(qty &gt; 5, "many", "few")</code></td><td>(depending on qty)</td></tr>
+  </table>
+
+  <h2>Worked examples</h2>
+
+  <h3>Greet by tone</h3>
+  <p>A snippet with a dropdown fill-in named <code>tone</code> and two output styles:</p>
+  <p><code>{if tone == "Formal"}Dear {fillIn:Name},{else}Hi {fillIn:Name}!{endif}</code></p>
+
+  <h3>Conditional follow-up</h3>
+  <p><code>Total: {=qty * price}{if qty &gt; 10} (bulk discount applies){endif}</code></p>
+
+  <h3>Format selection in transit</h3>
+  <p>With text highlighted in any app, this fires after the trigger:</p>
+  <p><code>The user typed: "{=upper(selection)}"</code></p>
+
+  <div class="callout info">
+    <div class="ct">Errors render inline</div>
+    <p>If a formula fails to parse or evaluate, the result is rendered inline as <code>«error: message»</code>. The rest of the expansion still fires. Useful for spotting typos without losing your work.</p>
+  </div>
+
+  <div class="callout warn">
+    <div class="ct">Rich text plus formulas</div>
+    <p>Expansions containing <code>{if}…{endif}</code> blocks render as plain text. <code>{=expr}</code> chips work in both plain and rich expansions.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     QUICK SEARCH
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-quick-search">
+  <div class="section-meta"><span class="section-num">17</span><span class="section-label">Quick Access</span></div>
   <div class="section-title">Quick Search</div>
   <div class="section-subtitle">Find and trigger any shortcut without remembering its key.</div>
 
-  <p>Quick Search is a floating overlay. Press the shortcut from anywhere on your computer, type a few characters, and trigger any Trigr shortcut — without leaving your current app.</p>
+  <p>Quick Search is a floating overlay. Press the shortcut from anywhere on your computer, type a few characters, and fire any Trigr shortcut without leaving your current app.</p>
 
   <h2>Opening Quick Search</h2>
-  <p>Press <kbd>Ctrl</kbd>+<kbd>Space</kbd> from anywhere. The overlay appears immediately over whatever you're doing. Press <kbd>Esc</kbd> to dismiss without triggering anything.</p>
+  <p>Press <kbd>Ctrl</kbd>+<kbd>Space</kbd> from anywhere. The overlay appears immediately over whatever you are doing. Press <kbd>Esc</kbd> to dismiss without triggering anything.</p>
 
   <div class="screenshot-slot">
-    <strong>Screenshot slot H — Quick Search overlay</strong>
-    Show the overlay floating over another app (e.g. a browser). Include a partial search query typed in the field and at least two results visible, with one highlighted.
+    <strong>Screenshot slot · Quick Search overlay</strong>
+    Overlay floating over another app (e.g. a browser). Show a partial search query typed in the field and at least two results visible, one highlighted.
   </div>
 
   <h2>Navigating results</h2>
   <ul>
     <li>Type any part of the shortcut name or action description. Results update as you type.</li>
     <li>Use <kbd>↑</kbd> / <kbd>↓</kbd> to move between results.</li>
-    <li>Press <kbd>Enter</kbd> to trigger the selected result.</li>
+    <li>Press <kbd>Enter</kbd> to fire the selected result.</li>
     <li>Press <kbd>Esc</kbd> to dismiss.</li>
   </ul>
 
+  <h2>What can it find?</h2>
+  <p>Every hotkey assignment, expansion, autocorrect entry, and quick action across all your profiles. Quick Search reaches everywhere. The result list includes the trigger and the action type.</p>
+
+  <h2>Search templates</h2>
+  <p>The Quick Search overlay also exposes <strong>search templates</strong>, prefab snippet packs you can import. Templates live in <strong>Settings → Templates</strong>.</p>
+
   <div class="callout info">
-    <div class="ct">ℹ️ Ctrl+Space is reserved</div>
-    <p>The Quick Search shortcut is fixed to <kbd>Ctrl</kbd>+<kbd>Space</kbd> and cannot be reassigned to a hotkey within Trigr. If your application uses this combination, Trigr's overlay takes priority.</p>
+    <div class="ct">Customise the shortcut</div>
+    <p>Change the Quick Search shortcut in <strong>Settings → Quick Search</strong>. Default is <kbd>Ctrl</kbd>+<kbd>Space</kbd>. If your app uses this combination, Trigr's overlay takes priority while focused.</p>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- LIST VIEW -->
+<!-- ════════════════════════════════════════════════════════════
+     RADIAL MENUS
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-radial">
+  <div class="section-meta"><span class="section-num">18</span><span class="section-label">Quick Access</span></div>
+  <div class="section-title">Radial menus</div>
+  <div class="section-subtitle">Pop a wheel of actions over your cursor. Click a wedge to fire it.</div>
+
+  <p>Radial menus are visual wheels of actions that appear under your cursor when triggered. Each wedge is an action. Click it to fire. Useful when you want a curated set of actions reachable without remembering individual hotkeys.</p>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Radial menu over a target app</strong>
+    A radial wheel with at least 6 wedges visible, each with an icon and label. Overlay sitting on top of another app like a browser or editor.
+  </div>
+
+  <h2>Building a radial menu</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Switch to the <strong>Radial</strong> tab in the title bar.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>+ New Menu</strong>.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Give the menu a name and pick a hotkey to open it.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Add segments by clicking <strong>+ Add Item</strong>. Each segment can hold an existing hotkey, expansion, or quick action.</div></div>
+  <div class="step-row"><div class="step-num">5</div><div class="step-text">Pick an icon (lucide or Simple Icons) and a label for each segment.</div></div>
+  <div class="step-row"><div class="step-num">6</div><div class="step-text">Save.</div></div>
+
+  <h2>Firing the menu</h2>
+  <p>Press the menu's hotkey from anywhere. The wheel appears under your cursor. Move the mouse over a wedge to highlight it, then click. The action fires in the app you were in before the menu opened.</p>
+
+  <h2>Nested radial menus</h2>
+  <p>Drag a folder onto the canvas to create a nested wheel. Clicking it opens a sub-radial of actions. Useful for grouping by category, for example a "Tools" folder containing six specific tool macros.</p>
+
+  <h2>Drag and drop</h2>
+  <p>Drag any existing hotkey or expansion from the sidebar into the radial editor to add it as a segment. Trigr stores a reference to the original, so editing the source updates the radial too. Labels propagate automatically.</p>
+
+  <div class="callout tip">
+    <div class="ct">Custom icons</div>
+    <p>The icon picker includes thousands of lucide icons and Simple Icons brand glyphs (GitHub, Slack, Photoshop, etc.). Search by name. Hit Enter on a result to select it.</p>
+  </div>
+
+  <h2>Behaviour over fullscreen apps</h2>
+  <p>Radial menus open over borderless fullscreen apps and most games. Firing an action sends input to whichever window had focus before the menu opened. Exclusive fullscreen apps (some DirectX games) may resist focus restoration. Borderless windowed mode is the reliable mode for gaming use.</p>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     CLIPBOARD MANAGER
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-clipboard">
+  <div class="section-meta"><span class="section-num">19</span><span class="section-label">Quick Access</span></div>
+  <div class="section-title">Clipboard manager</div>
+  <div class="section-subtitle">Everything you copy is searchable, taggable, and reusable. Locally stored, encrypted at rest.</div>
+
+  <p>Trigr captures everything you copy to the clipboard: text, links, code, and images. All data is stored locally in a SQLite database on your machine, encrypted at rest. Nothing is transmitted.</p>
+
+  <h2>The clipboard panel</h2>
+  <p>Open the <strong>Clipboard</strong> tab in the title bar to see your full clipboard history. Items are displayed as a masonry grid sorted by most recent, with pinned items always at the top.</p>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Clipboard panel</strong>
+    Full clipboard panel with masonry tile grid, tag filter pills at the top, source app dropdown, and the search bar.
+  </div>
+
+  <h2>Features</h2>
+  <table>
+    <tr><th>Feature</th><th>Description</th></tr>
+    <tr><td><strong>Auto-tagging</strong></td><td>Each item is tagged as Text, Link, Email, Colour, Number, or Image based on its content.</td></tr>
+    <tr><td><strong>Source app</strong></td><td>Shows which app you copied from (Chrome, VS Code, Outlook, etc.).</td></tr>
+    <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age.</td></tr>
+    <tr><td><strong>Search</strong></td><td>Filter items by text content. Combine with tag filter pills and source app dropdown.</td></tr>
+    <tr><td><strong>Inline editing</strong></td><td>Edit any text-based clipboard item directly. Click Edit in the detail pane.</td></tr>
+    <tr><td><strong>Image support</strong></td><td>Screenshots and copied images are captured as PNG with full preview and zoom.</td></tr>
+    <tr><td><strong>OCR</strong></td><td>Captured images run through OCR. Extracted text becomes searchable and copyable.</td></tr>
+    <tr><td><strong>Timeline grouping</strong></td><td>Items grouped by Pinned, Today, Yesterday, This Week, This Month, Older.</td></tr>
+    <tr><td><strong>Storage indicator</strong></td><td>Shows the total size of your clipboard database in the panel toolbar.</td></tr>
+    <tr><td><strong>Column toggle</strong></td><td>Switch between 1, 2, or auto-column grid. Useful when comparing long snippets.</td></tr>
+  </table>
+
+  <h2>Quick paste overlay</h2>
+  <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay, a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
+  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit).</p>
+
+  <h2>Scratchpad</h2>
+  <p>The clipboard overlay includes a slide-out scratchpad on the right side. Toggle it with the arrow button on the panel edge. Use it to jot notes, stage text, or keep references handy. Content auto-saves and persists across app restarts.</p>
+
+  <h2>Retention</h2>
+  <p>Clipboard history is retained for <strong>7 days</strong> on the Free plan and up to <strong>30 days</strong> on Pro. Pinned items are never automatically deleted. Adjust the retention period in <strong>Settings → Clipboard</strong>. Clear all history manually from the panel toolbar.</p>
+
+  <h2>Encryption at rest</h2>
+  <p>All clipboard content (text, OCR, image bytes, previews) is encrypted with AES-256-GCM. The encryption key is wrapped via Windows DPAPI and tied to your user account. Metadata (timestamps, app names, tags) stays plain so search filters work without decryption.</p>
+
+  <div class="callout info">
+    <div class="ct">Excluded apps</div>
+    <p>Add specific apps to the exclusion list in <strong>Settings → Clipboard → Exclusions</strong> to skip clipboard capture from those processes. Useful for password managers and other sensitive sources.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     LIST VIEW
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-list-view">
-  <div class="section-title">List View</div>
+  <div class="section-meta"><span class="section-num">20</span><span class="section-label">Quick Access</span></div>
+  <div class="section-title">List view</div>
   <div class="section-subtitle">A flat card grid instead of the keyboard canvas.</div>
 
   <p>List View replaces the keyboard canvas with a scrollable card grid showing all assignments. Useful when you have many shortcuts and want to browse or edit them without navigating the keyboard layout.</p>
 
   <div class="screenshot-slot">
-    <strong>Screenshot slot I — List view active</strong>
-    Show the full list view with the sidebar expanded. Include multiple assignment cards in the responsive grid, the modifier filter pills at the top with "Ctrl" selected, and the gold group header bar above the cards with the modifier label and count.
+    <strong>Screenshot slot · List view active</strong>
+    Full list view with the sidebar expanded. Multiple assignment cards in the responsive grid, modifier filter pills at the top with "Ctrl" selected, gold group header bar above the cards.
   </div>
 
-  <h2>Switching between views</h2>
-  <p>Click the <strong>List View toggle</strong> in the title bar. Your preference is saved between sessions. List View also activates automatically when the window is narrower than 800px — widening the window restores whichever view you were in before the auto-switch.</p>
+  <h2>Switching views</h2>
+  <p>Click the <strong>List View toggle</strong> in the title bar. Your preference is saved between sessions. List View also activates automatically when the window is narrower than 800px. Widening the window restores whichever view you were in before the auto-switch.</p>
 
   <h2>Modifier filter</h2>
-  <p>At the top of the list, modifier pills (All, Ctrl, Alt, Shift, etc.) filter by layer. Each shows a count badge. When a specific modifier is selected, a gold header bar appears above the cards labelling the layer — matching the All view's grouping style.</p>
+  <p>At the top of the list, modifier pills (All, Ctrl, Alt, Shift, etc.) filter by layer. Each shows a count badge. When a specific modifier is selected, a gold header bar appears above the cards labelling the layer.</p>
 
   <h2>Cards</h2>
-  <p>Each card shows the key combination, action type badge, and assignment name. Right-click any card for Rename, Duplicate, and Clear options — same as right-clicking on the keyboard canvas.</p>
+  <p>Each card shows the key combination, action type badge, and assignment name. Right-click any card for Rename, Duplicate, and Clear options, same as right-clicking on the keyboard canvas.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- GLOBAL PAUSE -->
-<div class="section-page" id="page-global-pause">
-  <div class="section-title">Pause &amp; Resume</div>
+<!-- ════════════════════════════════════════════════════════════
+     PROFILES
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-profiles">
+  <div class="section-meta"><span class="section-num">21</span><span class="section-label">Organisation</span></div>
+  <div class="section-title">Profiles</div>
+  <div class="section-subtitle">Separate shortcut sets for different contexts. Auto-switches per app.</div>
+
+  <p>A profile is a complete, independent set of assignments. Only one profile is active at a time. Its shortcuts are the ones Trigr fires. The active profile shows a green dot in the accordion.</p>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Profile accordion</strong>
+    Profile accordion expanded with at least 3 profiles. One General (active, green dot), one App-Specific (Windows icon), one more. Right-click context menu open on a profile row.
+  </div>
+
+  <h2>Creating and switching profiles</h2>
+  <p>Click <strong>+ New Folder</strong> at the top of the accordion. Click any profile name to switch to it. The switch is instant.</p>
+
+  <h2>Profile groups</h2>
+  <ul>
+    <li><strong>General</strong>: unlinked profiles, always available regardless of which app has focus.</li>
+    <li><strong>App-Specific</strong>: profiles linked to a .exe. When the linked app has focus, this profile activates automatically. When focus leaves, the previous profile resumes.</li>
+  </ul>
+
+  <h2>Linking a profile to an app <span class="pro-pill">PRO</span></h2>
+  <p>Auto-switching requires Pro. On Free, you can create app-linked profiles but the auto-switch does not fire. You can still switch manually.</p>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Right-click the profile row and choose <strong>Link to App</strong>.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Open the target app so it appears in the running processes.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Click <strong>Pick App</strong> and select it, or use <strong>Browse</strong> to find the .exe manually.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Click <strong>Confirm</strong>. The profile moves to the App-Specific group with a Windows icon.</div></div>
+  <p>To unlink, right-click and choose <strong>Unlink App</strong>.</p>
+
+  <h2>Right-click options</h2>
+  <table>
+    <tr><th>Option</th><th>What it does</th></tr>
+    <tr><td>Rename</td><td>Edit the profile name inline.</td></tr>
+    <tr><td>Duplicate</td><td>Creates a full copy of the profile including all assignments.</td></tr>
+    <tr><td>Link to App</td><td>Opens the app picker (shown on unlinked profiles).</td></tr>
+    <tr><td>Change App</td><td>Re-link to a different app (shown on linked profiles).</td></tr>
+    <tr><td>Unlink App</td><td>Removes the linked app (shown on linked profiles).</td></tr>
+    <tr><td>Export Profile</td><td>Saves the profile as a .json file.</td></tr>
+    <tr><td>Delete</td><td>Removes the profile (with confirmation, not available on Default).</td></tr>
+  </table>
+
+  <h2>Export and import</h2>
+  <p>Right-click any profile → <strong>Export Profile</strong>. This saves the profile name and all its assignments as a <code>.json</code> file. The linked app is not exported because it is machine-specific. Re-link after import on a new machine.</p>
+  <p>To import, click <strong>↓ Import Profile</strong> at the bottom of the accordion. If the name conflicts with an existing profile, you will be prompted: <strong>Copy</strong> (creates a new profile with a suffix) or <strong>Overwrite</strong> (replaces existing assignments, preserves the linked app).</p>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     TEMPLATES
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-templates">
+  <div class="section-meta"><span class="section-num">22</span><span class="section-label">Organisation</span></div>
+  <div class="section-title">Templates</div>
+  <div class="section-subtitle">Pre-built shortcut packs to get started fast.</div>
+
+  <p>Trigr includes starter template packs. Importing a template adds its shortcuts to your current profile without overwriting anything already there. Import is always additive.</p>
+
+  <h2>Accessing templates</h2>
+  <ul>
+    <li>Click the <strong>Templates</strong> pill in the title bar (visible until dismissed).</li>
+    <li>Go to <strong>Settings → Templates</strong>. Always available.</li>
+  </ul>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Templates panel</strong>
+    The template pack grid with the names, brief descriptions, and Import buttons.
+  </div>
+
+  <h2>Available packs</h2>
+
+  <div class="accordion" id="acc-t1">
+    <div class="accordion-header" onclick="toggleAcc('acc-t1')"><span>General / Office</span><span class="accordion-arrow">▼</span></div>
+    <div class="accordion-body"><p>Everyday office productivity shortcuts: email sign-offs, date stamps, navigation keys, common clipboard actions. Assigned to the Default profile under Ctrl and Ctrl+Shift layers.</p></div>
+  </div>
+
+  <div class="accordion" id="acc-t2">
+    <div class="accordion-header" onclick="toggleAcc('acc-t2')"><span>CAD / Engineering</span><span class="accordion-arrow">▼</span></div>
+    <div class="accordion-body"><p>Bare key shortcuts for CAD software. The most common commands on single keys: F = Fillet, X = Explode, H = Hatch, Z = Zoom Extents, A = Array, O = Offset, T = Trim, D = DimLinear. These use bare key Type Text macros in an app-linked profile. When you import this pack, Trigr guides you through creating a new app-specific profile and linking it to your CAD application.</p></div>
+  </div>
+
+  <div class="accordion" id="acc-t3">
+    <div class="accordion-header" onclick="toggleAcc('acc-t3')"><span>Sales / BD</span><span class="accordion-arrow">▼</span></div>
+    <div class="accordion-body"><p>Shortcuts for sales and business development workflows. CRM navigation, email response starters, meeting confirmation templates, follow-up boilerplate. Assigned to the Default profile.</p></div>
+  </div>
+
+  <h2>Search templates</h2>
+  <p>Separately from the main packs above, the Quick Search overlay supports <strong>search templates</strong>: prefab snippet packs designed for use from the search bar. Import them in <strong>Settings → Templates</strong>.</p>
+
+  <div class="callout tip">
+    <div class="ct">CAD pack: open your app first</div>
+    <p>Before importing the CAD pack, open your CAD software so it appears in the running processes list. The import flow will prompt you to pick it for the new app-linked profile.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SHARED CONFIG
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-shared-config">
+  <div class="section-meta"><span class="section-num">23</span><span class="section-label">Organisation</span></div>
+  <div class="section-title">Shared config</div>
+  <div class="section-subtitle">One config across all your machines. Live-synced via your existing cloud storage.</div>
+
+  <p>Point Trigr at a folder synced by OneDrive, Google Drive, Dropbox, or any cloud service. Trigr writes its config to that folder instead of the local AppData location. Every other machine running Trigr against the same folder sees the same hotkeys, expansions, and macros, refreshed automatically when the file changes.</p>
+
+  <h2>How to set it up</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Go to <strong>Settings → Privacy &amp; Security → Shared Config</strong>.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>Choose Folder</strong> and pick a folder inside your cloud-synced storage. Example: <code>OneDrive/Trigr</code>.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Trigr migrates your current config to the new location and starts watching it for changes.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">On other machines, point Trigr at the same folder. The shared config replaces the local one.</div></div>
+
+  <h2>Cross-device conflict handling</h2>
+  <p>When two machines edit the config at roughly the same time, Trigr does a three-way merge per top-level section. Edits to different sections from different machines combine cleanly. Edits to the same section apply last-writer-wins on incoming. A toast confirms when a remote change has been merged in.</p>
+
+  <h2>Teams use</h2>
+  <p>Shared Config is also useful for teams. Point everyone at the same network folder and your support reps, ops teams, or designers all get the same shortcut library. Updates propagate live. No retraining needed.</p>
+
+  <div class="callout warn">
+    <div class="ct">Local config when sharing</div>
+    <p>Some settings remain machine-specific (linked app paths, telemetry opt-out, theme preference). Trigr keeps those in a small <code>trigr-local-settings.json</code> on each machine, separate from the shared config.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     PAUSE & RESUME
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-pause">
+  <div class="section-meta"><span class="section-num">24</span><span class="section-label">Reference</span></div>
+  <div class="section-title">Pause &amp; resume</div>
   <div class="section-subtitle">Suspend all shortcuts without closing Trigr.</div>
 
-  <p>Pausing suspends all hotkeys and text expansions until you resume. Nothing changes in the app — your shortcuts stay configured, they just stop firing.</p>
+  <p>Pausing suspends all hotkeys and text expansions until you resume. Nothing changes in the app. Your shortcuts stay configured. They just stop firing.</p>
 
   <h2>How to pause</h2>
   <ul>
-    <li><strong>Tray icon:</strong> Right-click the Trigr tray icon → <strong>Pause</strong>.</li>
-    <li><strong>Global pause hotkey:</strong> If configured in Settings, press your designated key combination from anywhere.</li>
+    <li><strong>Tray icon</strong>: Right-click the Trigr tray icon → <strong>Pause</strong>.</li>
+    <li><strong>Global pause hotkey</strong>: If configured in Settings, press your designated key combination from anywhere.</li>
   </ul>
 
   <h2>Paused state</h2>
   <p>When paused, the tray icon dims. No hotkeys or expansions fire. The status bar inside the app shows the paused state. Resume from the tray or by pressing the pause hotkey again.</p>
 
   <div class="callout tip">
-    <div class="ct">💡 Hold mode releases on pause</div>
-    <p>If a Send Hotkey is in hold mode (tray icon red), pausing Trigr automatically releases the held key first. You won't get stuck with a key held down.</p>
+    <div class="ct">Hold mode releases on pause</div>
+    <p>If a Send Hotkey is in hold mode (tray icon red), pausing Trigr automatically releases the held key first. You will not get stuck with a key held down.</p>
   </div>
 
   <h2>Configuring the pause hotkey</h2>
-  <p>Go to <strong>Settings → Global Pause Hotkey</strong>. Click the capture field and press your chosen key combination. This hotkey fires regardless of profile, app focus, or whether that combination is assigned to something else in Trigr.</p>
+  <p>Go to <strong>Settings → Global Pause Hotkey</strong>. Click the capture field and press your chosen key combination. This hotkey fires regardless of profile, app focus, or whether that combination is assigned to something else in Trigr. The pause hotkey must include at least one modifier.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- SETTINGS -->
+<!-- ════════════════════════════════════════════════════════════
+     SETTINGS
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-settings">
+  <div class="section-meta"><span class="section-num">25</span><span class="section-label">Reference</span></div>
   <div class="section-title">Settings</div>
-  <div class="section-subtitle">Configure Trigr's behaviour.</div>
-
-  <p>Open Settings with the cog icon in the title bar.</p>
+  <div class="section-subtitle">Configure Trigr's behaviour. Open with the cog icon in the title bar.</div>
 
   <h2>Licence</h2>
-  <p>Enter and activate a Pro licence key, or deactivate an existing one. See the <strong>Licence</strong> page for full details.</p>
+  <p>Enter and activate a Pro licence key, or deactivate an existing one. See the <a onclick="show(event,'licence')" href="#">Licence</a> page for full details.</p>
 
   <h2>Help &amp; Documentation</h2>
-  <p>Open the user guide, restart the onboarding tour, or send feedback.</p>
+  <p>Open the user guide (this page), replay the onboarding tour, or send feedback.</p>
 
   <h2>Templates</h2>
-  <p>Permanent access to the starter template packs — available here after you dismiss the title bar pill button.</p>
+  <p>Permanent access to the starter template packs and search templates. Available here after you dismiss the title bar pill button.</p>
 
-  <h2>About</h2>
-  <p>Shows the app version and credits, including the GPL v2 licence notice for the bundled AutoHotkey executables.</p>
+  <h2>Global Variables <span class="pro-pill">PRO</span></h2>
+  <p>Define reusable text values referenced as <code>{{name}}</code> in expansions. Each variable has a name and a value. Update the value once and every expansion using it updates immediately.</p>
+
+  <h2>Default date format</h2>
+  <p>Sets the format used by the bare <code>{date}</code> token in expansions. Choose between DD/MM/YYYY, MM/DD/YYYY, and YYYY-MM-DD. Explicit-format date tokens (<code>{date:DD/MM/YYYY}</code> etc.) are unaffected.</p>
 
   <h2>Privacy &amp; Security</h2>
   <table>
     <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Anonymous telemetry</td><td>Toggle the once-daily anonymous summary. See <strong>Telemetry</strong> below for what is sent.</td></tr>
+    <tr><td>Shared Config</td><td>Point Trigr at a cloud folder to sync your config across machines.</td></tr>
+    <tr><td>Reset clipboard storage</td><td>Wipes all clipboard history. Cannot be undone.</td></tr>
     <tr><td>Config folder</td><td>Open the folder containing your config and log files.</td></tr>
     <tr><td>Open logs folder</td><td>Open the <code>trigr.log</code> file location. Attach to bug reports.</td></tr>
-    <tr><td>Shared Config</td><td>Point Trigr at a cloud folder (OneDrive, Google Drive, Dropbox) to sync your config across multiple machines. Trigr watches for file changes and reloads live.</td></tr>
   </table>
+
+  <h2>Telemetry</h2>
+  <p>Trigr sends a once-daily anonymous summary so we can see how the beta is used. It contains:</p>
+  <ul>
+    <li>Counts of actions fired by type (expansions, hotkeys, macros)</li>
+    <li>Counts of items in your library (assignments, expansions, etc.)</li>
+    <li>Your plan tier (Free or Pro)</li>
+    <li>The Trigr version</li>
+  </ul>
+  <p>No content, no identifiers, no IP logging. One click in Settings turns it off forever.</p>
 
   <h2>Clipboard</h2>
   <table>
     <tr><th>Setting</th><th>Description</th></tr>
-    <tr><td>History retention</td><td>Days to keep clipboard history. Free: up to 7 days. Pro: up to 30 days.</td></tr>
+    <tr><td>History retention</td><td>Days to keep clipboard history. Free: up to 7. Pro: up to 30.</td></tr>
+    <tr><td>Exclusions</td><td>Process names to skip clipboard capture from. Useful for password managers.</td></tr>
     <tr><td>Clear Clipboard History</td><td>Deletes all stored clipboard items. Cannot be undone.</td></tr>
   </table>
 
@@ -817,26 +1959,30 @@
     <tr><th>Setting</th><th>Description</th></tr>
     <tr><td>Start with Windows</td><td>Start Trigr automatically when Windows starts. Launches to the system tray.</td></tr>
     <tr><td>Enable macros on startup</td><td>Whether hotkeys are active immediately on launch or start paused.</td></tr>
+    <tr><td>Theme</td><td>Light, Dark, or System. System follows your Windows theme preference.</td></tr>
   </table>
 
   <h2>Global Pause Hotkey</h2>
-  <p>Click the capture field and press any key combination to set it as the global pause/resume toggle. Must include at least one modifier — bare keys cannot be used as the pause hotkey.</p>
+  <p>Click the capture field and press any key combination to set it as the global pause / resume toggle. Must include at least one modifier. Bare keys cannot be used as the pause hotkey.</p>
 
   <h2>Quick Search</h2>
   <table>
     <tr><th>Setting</th><th>Description</th></tr>
-    <tr><td>Search overlay hotkey</td><td>The hotkey to toggle Quick Search. Default: Ctrl+Space.</td></tr>
+    <tr><td>Search overlay hotkey</td><td>The hotkey to toggle Quick Search. Default <kbd>Ctrl</kbd>+<kbd>Space</kbd>.</td></tr>
     <tr><td>Show all items when empty</td><td>Whether to show all assignments when the search field is blank.</td></tr>
     <tr><td>Close after firing</td><td>Automatically close the overlay after executing a search result.</td></tr>
     <tr><td>Include autocorrect</td><td>Whether autocorrect entries appear in search results.</td></tr>
   </table>
+
+  <h2>Hold trigger threshold <span class="pro-pill">PRO</span></h2>
+  <p>How long you must hold a key before the hold action fires. Adjustable between 200ms and 700ms. Default 350ms.</p>
 
   <h2>Compatibility</h2>
   <table>
     <tr><th>Setting</th><th>Description</th></tr>
     <tr><td>Default input method</td><td>Global default for Type Text actions. Direct (simulated keypresses) or Clipboard (paste via clipboard). Individual assignments can override.</td></tr>
     <tr><td>Macro speed</td><td>Preset timing for macro execution. <strong>Safe</strong> (maximum compatibility), <strong>Fast</strong> (reduced delays), <strong>Instant</strong> (minimal delays), or <strong>Custom</strong> (manual slider control).</td></tr>
-    <tr><td>Keystroke delay</td><td>Milliseconds between simulated keystrokes. Lower = faster but may drop characters in slow apps.</td></tr>
+    <tr><td>Keystroke delay</td><td>Milliseconds between simulated keystrokes. Lower is faster but may drop characters in slow apps.</td></tr>
     <tr><td>Pre-execution delay</td><td>Milliseconds before the first keystroke of an action. Gives the target app time to receive focus.</td></tr>
     <tr><td>Double-tap window</td><td>Milliseconds to wait for a second press before firing the single-press action. Default 300ms.</td></tr>
   </table>
@@ -850,51 +1996,18 @@
     <tr><td>View Backups</td><td>Expand the accordion to see all automatic backups with date, profile count, and assignment count. Click Restore to revert to any backup.</td></tr>
   </table>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- CLIPBOARD MANAGER -->
-<div class="section-page" id="page-clipboard">
-  <div class="section-title">Clipboard Manager</div>
-  <div class="section-subtitle">Capture, search, and reuse everything you copy.</div>
-
-  <p>Trigr automatically captures everything you copy to the clipboard — text, links, code, and images. All data is stored locally in a SQLite database on your machine. Nothing is transmitted.</p>
-
-  <h2>Clipboard Panel</h2>
-  <p>Open the <strong>Clipboard</strong> tab in the title bar to see your full clipboard history. Items are displayed as a masonry grid sorted by most recent, with pinned items always at the top.</p>
-
-  <h2>Features</h2>
-  <table>
-    <tr><th>Feature</th><th>Description</th></tr>
-    <tr><td><strong>Auto-tagging</strong></td><td>Each item is automatically tagged as Text, Link, Email, Colour, Number, or Image based on its content.</td></tr>
-    <tr><td><strong>Source app</strong></td><td>Shows which app you copied from (Chrome, VS Code, Outlook, etc.).</td></tr>
-    <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age.</td></tr>
-    <tr><td><strong>Search</strong></td><td>Filter items by text content. Combine with tag filter pills and source app dropdown.</td></tr>
-    <tr><td><strong>Inline editing</strong></td><td>Edit any text-based clipboard item directly — click Edit in the detail pane.</td></tr>
-    <tr><td><strong>Image support</strong></td><td>Screenshots and copied images are captured as PNG with full preview and zoom support.</td></tr>
-    <tr><td><strong>Timeline grouping</strong></td><td>Items are grouped by Pinned, Today, Yesterday, This Week, This Month, Older.</td></tr>
-    <tr><td><strong>Storage indicator</strong></td><td>Shows the total size of your clipboard database in the panel toolbar.</td></tr>
-  </table>
-
-  <h2>Quick Paste Overlay (Ctrl+Shift+V)</h2>
-  <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay — a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
-  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit).</p>
-
-  <h2>Scratchpad</h2>
-  <p>The clipboard overlay includes a slide-out scratchpad on the right side. Toggle it with the arrow button on the panel edge. Use it to jot notes, stage text, or keep references handy. Content auto-saves and persists across app restarts.</p>
-
-  <h2>Retention</h2>
-  <p>Clipboard history is retained for <strong>7 days</strong> on the Free plan and up to <strong>30 days</strong> on Pro. Pinned items are never automatically deleted. Adjust the retention period in Settings &gt; Clipboard. You can clear all history manually from the panel toolbar.</p>
-
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
-</div>
-
-<!-- ANALYTICS -->
+<!-- ════════════════════════════════════════════════════════════
+     ANALYTICS
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-analytics">
+  <div class="section-meta"><span class="section-num">26</span><span class="section-label">Reference</span></div>
   <div class="section-title">Analytics</div>
-  <div class="section-subtitle">Track how much time Trigr saves you.</div>
+  <div class="section-subtitle">Track how much time Trigr saves you. Fully local.</div>
 
-  <p>Trigr logs every hotkey, expansion, and macro fired, entirely locally in a SQLite database. View your stats in the <strong>Analytics</strong> tab in the title bar. Separately, Trigr sends a once-daily anonymous summary (just the day's counts and the app version, never any content) so we can see how the beta is used. Turn it off any time in <strong>Settings &gt; Privacy &amp; Security</strong>.</p>
+  <p>Trigr logs every hotkey, expansion, and macro fired, entirely locally in a SQLite database on your machine. View your stats in the <strong>Analytics</strong> tab in the title bar.</p>
 
   <h2>Free analytics</h2>
   <p>Available to all users:</p>
@@ -913,26 +2026,34 @@
     <tr><th>Feature</th><th>Description</th></tr>
     <tr><td><strong>14-Day Activity Chart</strong></td><td>Daily bar chart showing actions fired per day over the last two weeks. Hover for exact numbers.</td></tr>
     <tr><td><strong>Hourly Heatmap</strong></td><td>7-day grid showing your most active hours. Gold intensity = more activity. Helps you understand your productivity patterns.</td></tr>
-    <tr><td><strong>Per-Assignment Breakdown</strong></td><td>Ranked table of your top 50 most-used assignments. Sort by most used, most time saved, or A–Z. Shows trigger, label, type, fire count, and time saved.</td></tr>
+    <tr><td><strong>Per-Assignment Breakdown</strong></td><td>Ranked table of your top 50 most-used assignments. Sort by most used, most time saved, or A to Z. Shows trigger, label, type, fire count, and time saved.</td></tr>
     <tr><td><strong>Streaks</strong></td><td>Current consecutive-day streak and longest streak ever. A day counts if at least one action was fired.</td></tr>
     <tr><td><strong>CSV Export</strong></td><td>Download your full action log as a CSV file for analysis in Excel or other tools.</td></tr>
   </table>
 
   <h2>Time saved calculation</h2>
-  <p>Trigr estimates time saved per action type: expansions = character count x 0.3 seconds, hotkeys = 3 seconds, macros and AHK scripts = 5 seconds. These are conservative estimates of the time each action saves versus doing it manually.</p>
+  <p>Trigr estimates time saved per action type: expansions = character count × 0.3 seconds, hotkeys = 3 seconds, macros and AHK scripts = 5 seconds. These are conservative estimates of the time each action saves versus doing it manually.</p>
 
   <h2>Reset</h2>
-  <p>Click <strong>Reset Statistics</strong> at the bottom of the analytics panel to delete all data and start fresh. This cannot be undone.</p>
+  <p>Click <strong>Reset Statistics</strong> at the bottom of the analytics panel to delete all data and start fresh. Cannot be undone.</p>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="callout info">
+    <div class="ct">Analytics vs telemetry</div>
+    <p>Analytics is your personal dashboard, stored locally only. Telemetry is the optional anonymous daily summary Trigr sends home. They are entirely separate. Turn telemetry off any time in Settings → Privacy &amp; Security.</p>
+  </div>
+
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- LICENCE -->
+<!-- ════════════════════════════════════════════════════════════
+     LICENCE
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-licence">
+  <div class="section-meta"><span class="section-num">27</span><span class="section-label">Reference</span></div>
   <div class="section-title">Licence</div>
   <div class="section-subtitle">Activate Pro features with a licence key.</div>
 
-  <p>Trigr is free to use with all core features included. A Pro licence unlocks additional capabilities including extended clipboard retention, detailed analytics, and future Pro-only features.</p>
+  <p>Trigr is free to use with all core features included. A Pro licence unlocks additional capabilities including formulas, hold triggers, multiple variants per expansion, image expansions, global variables, auto-switching app profiles, extended clipboard retention, and detailed analytics.</p>
 
   <h2>Activating a licence</h2>
   <div class="step-row"><div class="step-num">1</div><div class="step-text">Open Settings (cog icon in the title bar).</div></div>
@@ -940,32 +2061,45 @@
   <div class="step-row"><div class="step-num">3</div><div class="step-text">Enter your licence key and click <strong>Activate</strong>.</div></div>
   <div class="step-row"><div class="step-num">4</div><div class="step-text">On success, a <strong>PRO</strong> badge appears with your licence status.</div></div>
 
-  <h2>Deactivating</h2>
-  <p>Click <strong>Deactivate Licence</strong> in the Licence section to remove the Pro licence from this machine. This frees up the activation slot for use on another device. Each licence key can be activated on up to 3 machines.</p>
+  <h2>Beta licences</h2>
+  <p>During the beta period, Pro licences are free and request-based. Request one from the <strong>Upgrade</strong> modal inside Trigr. We email a key to the address you supply, normally within a day. Beta keys have a 30-day expiry and work on unlimited machines while the beta runs.</p>
 
-  <h2>Offline use</h2>
-  <p>Trigr validates your licence online every 24 hours. If you're offline, Pro features continue working for up to 7 days using the cached validation. After 7 days offline, features revert to Free until the next successful validation.</p>
+  <h2>Deactivating</h2>
+  <p>Click <strong>Deactivate Licence</strong> in the Licence section to remove the Pro licence from this machine. Post-beta this will free up an activation slot for use on another device.</p>
 
   <h2>What Pro unlocks</h2>
   <table>
     <tr><th>Feature</th><th>Free</th><th>Pro</th></tr>
+    <tr><td>Hotkeys, macros, AHK, mouse, double-press</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Text expansions, dynamic tokens, fill-ins</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Profiles (create, manage, link)</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Quick Search, radial menus, clipboard manager</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Profile auto-switch on app focus</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
+    <tr><td>Hold trigger</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
+    <tr><td>Formulas (<code>{=expr}</code>, <code>{if}…{endif}</code>)</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
+    <tr><td>Multiple variants per expansion</td><td>First only</td><td>All</td></tr>
+    <tr><td>Image expansions</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
+    <tr><td>Global variables</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Clipboard retention</td><td>Up to 7 days</td><td>Up to 30 days</td></tr>
-    <tr><td>Analytics</td><td>Basic (today, 7 days, records, breakdown)</td><td>Full dashboard (chart, heatmap, breakdown, streaks, CSV export)</td></tr>
+    <tr><td>Analytics</td><td>Basic</td><td>Full dashboard + CSV export</td></tr>
   </table>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<!-- TROUBLESHOOTING -->
+<!-- ════════════════════════════════════════════════════════════
+     TROUBLESHOOTING
+     ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-troubleshooting">
+  <div class="section-meta"><span class="section-num">28</span><span class="section-label">Reference</span></div>
   <div class="section-title">Troubleshooting</div>
   <div class="section-subtitle">Common issues and how to fix them.</div>
 
-  <h2>A hotkey isn't firing</h2>
+  <h2>A hotkey is not firing</h2>
 
   <div class="accordion" id="acc-ts1">
     <div class="accordion-header" onclick="toggleAcc('acc-ts1')"><span>Check Trigr is running and not paused</span><span class="accordion-arrow">▼</span></div>
-    <div class="accordion-body"><p>Look for the Trigr icon in the system tray. Dimmed icon = paused — right-click and resume. No icon = not running — open it from Start.</p></div>
+    <div class="accordion-body"><p>Look for the Trigr icon in the system tray. Dimmed icon means paused. Right-click and resume. No icon means not running. Open it from Start.</p></div>
   </div>
 
   <div class="accordion" id="acc-ts2">
@@ -975,7 +2109,7 @@
 
   <div class="accordion" id="acc-ts3">
     <div class="accordion-header" onclick="toggleAcc('acc-ts3')"><span>Check the modifier layer exactly</span><span class="accordion-arrow">▼</span></div>
-    <div class="accordion-body"><p>Ctrl+E and Ctrl+Shift+E are different layers. Make sure you're pressing exactly the right combination — one being assigned doesn't affect the other.</p></div>
+    <div class="accordion-body"><p>Ctrl+E and Ctrl+Shift+E are different layers. Make sure you are pressing exactly the right combination. One being assigned does not affect the other.</p></div>
   </div>
 
   <div class="accordion" id="acc-ts4">
@@ -983,26 +2117,38 @@
     <div class="accordion-body"><p>Some apps register global hotkeys that take priority over Trigr. If the issue is app-specific, try a different key combination for that shortcut.</p></div>
   </div>
 
-  <h2>A text expansion isn't triggering</h2>
+  <h2>A text expansion is not triggering</h2>
 
   <div class="accordion" id="acc-ts5">
     <div class="accordion-header" onclick="toggleAcc('acc-ts5')"><span>Check the trigger characters exactly</span><span class="accordion-arrow">▼</span></div>
-    <div class="accordion-body"><p>Triggers are case-sensitive. <code>/sig</code> and <code>/Sig</code> are different. Also make sure you're not typing the trigger immediately after other characters — it needs to be a standalone sequence.</p></div>
+    <div class="accordion-body"><p>Triggers are case-sensitive. <code>/sig</code> and <code>/Sig</code> are different. Also make sure you are not typing the trigger immediately after other characters. It needs to be a standalone sequence.</p></div>
   </div>
 
   <div class="accordion" id="acc-ts6">
     <div class="accordion-header" onclick="toggleAcc('acc-ts6')"><span>Try the Clipboard input method</span><span class="accordion-arrow">▼</span></div>
-    <div class="accordion-body"><p>Some apps intercept keystrokes in unusual ways. Open the expansion editor and switch the input method to <strong>Clipboard</strong> — this pastes the expansion rather than typing it character by character, which is more reliable in complex apps.</p></div>
+    <div class="accordion-body"><p>Some apps intercept keystrokes in unusual ways. Open the expansion editor and switch the input method to <strong>Clipboard</strong>. This pastes the expansion rather than typing it character by character, which is more reliable in complex apps.</p></div>
+  </div>
+
+  <h2>A formula is rendering as <code>«error: …»</code></h2>
+
+  <div class="accordion" id="acc-ts7">
+    <div class="accordion-header" onclick="toggleAcc('acc-ts7')"><span>Check identifier names match your fill-in labels exactly</span><span class="accordion-arrow">▼</span></div>
+    <div class="accordion-body"><p>Identifiers are case-sensitive. If your fill-in is labelled <code>Name</code> but the formula uses <code>name</code>, it will fail. Re-check the spelling. Multi-word labels need to match exactly.</p></div>
+  </div>
+
+  <div class="accordion" id="acc-ts8">
+    <div class="accordion-header" onclick="toggleAcc('acc-ts8')"><span>Wrap strings in double quotes</span><span class="accordion-arrow">▼</span></div>
+    <div class="accordion-body"><p>String literals in formulas use double quotes, not single quotes. <code>upper("hi")</code> is correct. <code>upper('hi')</code> will fail to parse.</p></div>
   </div>
 
   <h2>SmartScreen warning on install</h2>
-  <p>Expected for new apps that haven't built up a Windows reputation. Click <strong>More info</strong> → <strong>Run anyway</strong> — you should see <strong>Publisher: Node Group Ltd</strong> in the dialog, confirming the installer is genuine. The warning will fade once Microsoft has seen enough installs from our signed builds.</p>
+  <p>Expected for new apps that have not built up a Windows reputation. Click <strong>More info</strong> → <strong>Run anyway</strong>. You should see <strong>Publisher: Node Group Ltd</strong> in the dialog, confirming the installer is genuine. The warning fades once Microsoft has seen enough installs from our signed builds.</p>
 
   <h2>Something crashed or behaved unexpectedly</h2>
-  <p>Go to <strong>Settings → Open Logs Folder</strong> and find <code>trigr.log</code>. The log records everything Trigr was doing at the time. Attach it to a feedback form submission or email it to <strong>admin@usetrigr.com</strong>.</p>
+  <p>Go to <strong>Settings → Open Logs Folder</strong> and find <code>trigr.log</code>. The log records what Trigr was doing at the time. Attach it to a feedback form submission or email it to <a href="mailto:admin@usetrigr.com">admin@usetrigr.com</a>.</p>
 
   <div class="callout info">
-    <div class="ct">ℹ️ Config recovery</div>
+    <div class="ct">Config recovery</div>
     <p>Trigr uses atomic config writes with three-tier recovery. If your config file becomes corrupted, Trigr restores from the most recent backup automatically on next launch. Your assignments should survive.</p>
   </div>
 
@@ -1014,60 +2160,88 @@
   <div class="accordion" id="acc-ts-game">
     <div class="accordion-header" onclick="toggleAcc('acc-ts-game')"><span>Will Trigr get me banned in online games?</span><span class="accordion-arrow">▼</span></div>
     <div class="accordion-body">
-      <p>It might. Trigr uses a low-level Windows keyboard hook (WH_KEYBOARD_LL) to capture global keypresses — the same technique that tools like AutoHotkey, Razer Synapse, and Logitech G Hub use. Anti-cheat systems including Vanguard (Valorant), Easy Anti-Cheat (Fortnite, Apex Legends), and BattlEye (PUBG, Rainbow Six Siege) actively scan for this type of hook and can flag or ban accounts when they detect it, even if you are not using Trigr to gain any in-game advantage.</p>
+      <p>It might. Trigr uses a low-level Windows keyboard hook (WH_KEYBOARD_LL) to capture global keypresses. This is the same technique that tools like AutoHotkey, Razer Synapse, and Logitech G Hub use. Anti-cheat systems including Vanguard (Valorant), Easy Anti-Cheat (Fortnite, Apex Legends), and BattlEye (PUBG, Rainbow Six Siege) actively scan for this type of hook and can flag or ban accounts when they detect it, even if you are not using Trigr to gain any in-game advantage.</p>
       <p><strong>If you play competitive online games: close Trigr before launching the game.</strong> Right-click the tray icon and select <strong>Quit</strong> to ensure the hook is fully removed before the anti-cheat driver loads.</p>
       <p>Trigr is intended for productivity automation. Use while playing online multiplayer games may violate the game's terms of service and trigger anti-cheat systems, potentially resulting in account bans. Users assume all responsibility for such use.</p>
     </div>
   </div>
 
-  <div class="section-footer">Trigr &nbsp;·&nbsp; User Guide &nbsp;·&nbsp; Set it. Trigr it. &nbsp;·&nbsp; usetrigr.com</div>
+  <div class="section-footer">Trigr · User Guide · usetrigr.com</div>
 </div>
 
-<footer style="border-top:1px solid var(--border); padding:24px 44px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; max-width:960px; margin:0;">
-  <a href="index.html" class="ft-logo" style="display:flex; align-items:center; gap:10px; text-decoration:none;">
-    <div class="logo-mark" style="width:28px; height:28px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width:100%; height:100%; display:block;"><defs><linearGradient id="ft-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="ft-key" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#ft-base)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#ft-key)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
-    <span class="ft-wm" style="font-family:'Chakra Petch',sans-serif; font-weight:500; font-size:15px; color:var(--navy); letter-spacing:0.08em;">Trigr</span>
+<footer class="page-footer">
+  <a href="index.html" class="sidebar-logo" style="text-decoration:none;">
+    <div class="sidebar-logo-mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="ft-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient>
+          <linearGradient id="ft-key" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient>
+        </defs>
+        <rect width="64" height="64" rx="9" fill="url(#ft-base)"/>
+        <rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#ft-key)"/>
+        <rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/>
+        <rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>
+        <rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>
+      </svg>
+    </div>
+    <span class="sidebar-logo-name">Trigr</span>
   </a>
-  <div class="ft-links" style="display:flex; align-items:center; gap:22px; flex-wrap:wrap;">
-    <a href="index.html#features" style="font-size:13px; color:var(--muted); text-decoration:none;">Features</a>
-    <a href="trigr-help.html" style="font-size:13px; color:var(--muted); text-decoration:none;">Guide</a>
-    <a href="https://github.com/Trigr-it/trigr-tauri" style="font-size:13px; color:var(--muted); text-decoration:none;">GitHub</a>
-    <a href="terms.html" style="font-size:13px; color:var(--muted); text-decoration:none;">Terms</a>
-    <a href="privacy.html" style="font-size:13px; color:var(--muted); text-decoration:none;">Privacy</a>
-    <a href="refund.html" style="font-size:13px; color:var(--muted); text-decoration:none;">Refunds</a>
+  <div class="ft-links">
+    <a href="index.html#features">Features</a>
+    <a href="trigr-help.html">Guide</a>
+    <a href="pricing.html">Pricing</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+    <a href="terms.html">Terms</a>
+    <a href="privacy.html">Privacy</a>
   </div>
-  <span class="ft-copy" style="font-size:12px; color:var(--muted);">© 2026 Trigr</span>
-  <a href="https://peerpush.com/p/trigr" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; line-height:0; flex-shrink:0; transition:opacity 0.15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-    <img loading="lazy" alt="Trigr rating on PeerPush" width="246" height="40" style="display:block; width:246px; height:40px;" src="https://peerpush.com/p/trigr/rating-badge.png">
-  </a>
+  <span class="ft-copy">© 2026 Trigr</span>
 </footer>
 
 </main>
 
 <script>
-  function show(id) {
+  function show(e, id) {
+    if (e && e.preventDefault) e.preventDefault();
     document.querySelectorAll('.section-page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.getElementById('page-' + id).classList.add('active');
-    event.currentTarget.classList.add('active');
-    document.getElementById('main').scrollTop = 0;
+    var page = document.getElementById('page-' + id);
+    if (page) page.classList.add('active');
+    if (e && e.currentTarget) e.currentTarget.classList.add('active');
+    var main = document.getElementById('main');
+    if (main) main.scrollTop = 0;
   }
   function toggleAcc(id) {
-    document.getElementById(id).classList.toggle('open');
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('open');
   }
+
+  // Theme toggle
+  (function(){
+    var btn = document.getElementById('theme-toggle');
+    var icon = document.getElementById('theme-icon');
+    function updateIcon() {
+      var t = document.documentElement.getAttribute('data-theme');
+      icon.textContent = t === 'light' ? '☾' : '☀';
+    }
+    updateIcon();
+    btn.addEventListener('click', function(){
+      var cur = document.documentElement.getAttribute('data-theme');
+      var next = cur === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('trigr-site-theme', next); } catch(e){}
+      updateIcon();
+    });
+  })();
 
   // Fetch latest release version from GitHub
   fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
     .then(r => r.json())
     .then(data => {
-      const tag = data.tag_name || '';
-      const el = document.getElementById('version-label');
-      if (el && tag) el.innerHTML = 'User Guide &nbsp;&middot;&nbsp; ' + tag;
+      var tag = data.tag_name || '';
+      var el = document.getElementById('version-label');
+      if (el && tag) el.innerHTML = 'User Guide · ' + tag;
     })
-    .catch(() => {
-      const el = document.getElementById('version-label');
-      if (el) el.innerHTML = 'User Guide';
-    });
+    .catch(() => {});
 </script>
 </body>
 </html>
