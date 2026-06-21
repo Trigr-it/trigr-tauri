@@ -1644,12 +1644,14 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   }
 }
 
-/* Mobile — stack: text on top, keyboard below, restore original look */
+/* Mobile — stack: KEYBOARD on top, text below (flex column-reverse keeps DOM order for SEO/a11y) */
 @media (max-width: 860px) {
   .hero-inner {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column-reverse !important;
+    gap: 56px !important;
     text-align: center !important;
-    padding: 100px 24px 0 !important;
+    padding: 100px 24px 40px !important;
   }
   .hero-text-col {
     align-items: center;
@@ -1665,12 +1667,11 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .hero-text-col .hero-actions { justify-content: center; }
   /* Keyboard mockup: full-width and centred on mobile (was capped at 78% and left-aligned from desktop overlay layout) */
   .hero-inner > .mockup-wrap {
-    margin-top: 60px !important;
+    margin-top: 0 !important;
     width: 100% !important;
     max-width: 560px !important;
     margin-left: auto !important;
     margin-right: auto !important;
-    justify-self: center !important;
   }
   /* Hide the SVG callout line on mobile: the diagonal key-to-toast line cuts across keycaps when the keyboard is upscaled */
   .hero-inner > .mockup-wrap .key-callout-svg { display: none !important; }
