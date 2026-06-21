@@ -1672,6 +1672,16 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     margin-right: auto !important;
     justify-self: center !important;
   }
+  /* Hide the SVG callout line on mobile: the diagonal key-to-toast line cuts across keycaps when the keyboard is upscaled */
+  .hero-inner > .mockup-wrap .key-callout-svg { display: none !important; }
+  /* Profile toast: desktop pins it at left:30% for the side-by-side layout; recentre over the keyboard on mobile */
+  .hero-inner > .mockup-wrap .mockup-prof-toast {
+    left: 50% !important;
+    transform: translateX(-50%) translateY(-8px) !important;
+  }
+  .hero-inner > .mockup-wrap .mockup-prof-toast.show {
+    transform: translateX(-50%) translateY(0) !important;
+  }
 }
 
 </style>
@@ -2749,8 +2759,13 @@ function scaleMockup() {
   const available = outer.offsetWidth;
   if (available === 0) return;
   const naturalW = 1280;
-  const scale = available / naturalW;
-  scaler.style.transform = 'scale(' + scale + ')';
+  // Mobile: upscale the keyboard 1.5x and translateX to recentre
+  // (transform-origin is top-left, so an oversized scale would drift right without the shift)
+  const mobile = window.innerWidth <= 860;
+  const mult = mobile ? 1.5 : 1;
+  const scale = (available / naturalW) * mult;
+  const shiftX = mobile ? (available / 2) - (naturalW / 2) * scale : 0;
+  scaler.style.transform = 'translateX(' + shiftX + 'px) scale(' + scale + ')';
   scaler.style.transformOrigin = 'top left';
   const naturalH = shell.offsetHeight;
   viewport.style.height = (naturalH * scale) + 'px';
@@ -2765,7 +2780,9 @@ document.fonts.ready.then(() => { scaleMockup(); });
   var outer = document.getElementById('mockup-outer');
   if (!vp || !shell || !outer) return;
   var naturalW = 1280;
-  var scale = (outer.offsetWidth || window.innerWidth) / naturalW;
+  var mobile = window.innerWidth <= 860;
+  var mult = mobile ? 1.5 : 1;
+  var scale = ((outer.offsetWidth || window.innerWidth) / naturalW) * mult;
   var estimatedH = 596;
   vp.style.height = (estimatedH * scale) + 'px';
 })();
