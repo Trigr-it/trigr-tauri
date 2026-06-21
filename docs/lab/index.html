@@ -1460,17 +1460,11 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 .mockup-wrap .app-shell .k.sel .k-lbl,
 .mockup-wrap .app-shell .k.asgn .k-lbl { text-shadow: 0 0 8px rgba(232,160,32,0.5); }
 
-/* ── 10. Responsive ─────────────────────────────────────────── */
+/* ── 10. Responsive — keep rotation + key depth identical to desktop, only shrink kb-area padding for smaller viewports ─ */
 @media (max-width: 1024px) {
-  .mockup-wrap .app-shell .kb-outer { --kb-rx: 34deg; }
   .mockup-wrap .app-shell .kb-area { padding: 50px 40px 80px !important; }
 }
 @media (max-width: 768px) {
-  .mockup-wrap .app-shell .kb-outer { --kb-rx: 22deg !important; --kb-ry: 0deg !important; transition: none; }
-  .mockup-wrap .app-shell .k { --k-z: 10px; }
-  .mockup-wrap .app-shell .k::after { height: 10px; }
-  .mockup-wrap .app-shell .k:hover, .mockup-wrap .app-shell .k.sel { --k-z: 14px; }
-  .mockup-wrap .app-shell .k:hover::after, .mockup-wrap .app-shell .k.sel::after { height: 14px; }
   .mockup-wrap .app-shell .kb-area { padding: 30px 20px 50px !important; }
 }
 @media (prefers-reduced-motion: reduce) {
