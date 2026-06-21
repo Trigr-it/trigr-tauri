@@ -1665,7 +1665,15 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     margin-right: auto;
   }
   .hero-text-col .hero-actions { justify-content: center; }
-  .hero-inner > .mockup-wrap { margin-top: 60px !important; }
+  /* Keyboard mockup: full-width and centred on mobile (was capped at 78% and left-aligned from desktop overlay layout) */
+  .hero-inner > .mockup-wrap {
+    margin-top: 60px !important;
+    width: 100% !important;
+    max-width: 560px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    justify-self: center !important;
+  }
 }
 
 </style>
