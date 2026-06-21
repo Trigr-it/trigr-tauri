@@ -1343,8 +1343,8 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 /* ── 5. The keyboard chassis — slim physical base ───────────── */
 .mockup-wrap .app-shell .kb-outer {
   --kb-rx: 40deg;
-  --kb-ry: -5deg;
-  --kb-rz: 15deg;  /* clockwise rotation in screen plane */
+  --kb-ry: -20deg;
+  --kb-rz: 10deg;  /* clockwise rotation in screen plane */
   transform: rotateZ(var(--kb-rz)) rotateX(var(--kb-rx)) rotateY(var(--kb-ry));
   transform-style: preserve-3d;
   transform-origin: 50% 55%;
@@ -1398,7 +1398,6 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 .mockup-wrap .app-shell .k:hover  { --k-y: -1px; --k-z: 26px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
 .mockup-wrap .app-shell .k:active { --k-y:  1px; --k-z: 14px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
 .mockup-wrap .app-shell .k.sel    { --k-y: -1px; --k-z: 30px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
-.mockup-wrap .app-shell .k.sys:hover { --k-y: 0px; --k-z: 22px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
 
 .mockup-wrap .app-shell .k.asgn {
   background: var(--key-bg-assigned) !important;
@@ -1530,9 +1529,10 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .hero-inner > .mockup-wrap { transform: none !important; }
 }
 
-/* ── 12. Restore opacity on sys keys so depth is fully visible ─ */
+/* ── 12. Restore opacity + pointer cursor on sys keys so they read as clickable in the hero mockup ─ */
 .mockup-wrap .app-shell .k.sys {
   opacity: 1 !important;
+  cursor: pointer !important;
 }
 
 /* ── 13. RIGHT-SIDE face of each keycap (injected as <div class="k-side">)
@@ -2658,7 +2658,11 @@ function buildKB() {
       const ll = document.createElement('span'); ll.className = 'k-lbl'; ll.textContent = lbl; k.appendChild(ll);
       // Lab v3: inject right-side face element for 3D keycap depth (CSS rotates it)
       const ks = document.createElement('div'); ks.className = 'k-side'; k.appendChild(ks);
-      if (!sys) k.addEventListener('click', () => onKey(id, lbl));
+      k.addEventListener('click', () => {
+        // Click animates the key in and out, no sticky selection state. Sys keys get the same treatment in the hero mockup.
+        k.classList.add('fire');
+        setTimeout(() => k.classList.remove('fire'), 120);
+      });
       rowEl.appendChild(k);
     });
     container.appendChild(rowEl);
@@ -2916,23 +2920,13 @@ function toggleTheme() {
   document.querySelectorAll('.sticky-step').forEach(function(el){ io.observe(el); });
 })();
 
-/* ── MOCKUP AUTO-DEMO: cycling key fire + profile rotation ── */
+/* ── MOCKUP AUTO-DEMO: cycling key fire + profile rotation. Never pauses for user interaction — clicks and hovers don't break the cycle. ── */
 (function(){
-  var lastUserAction = 0;
-  var mockupOuter = document.getElementById('mockup-outer');
   var fireToast = document.getElementById('mockup-fire-toast');
   var profToast = document.getElementById('mockup-prof-toast');
 
-  if(mockupOuter){
-    ['mouseenter','click','mousemove'].forEach(function(evt){
-      mockupOuter.addEventListener(evt, function(){ lastUserAction = Date.now(); });
-    });
-  }
-
   var profOrder = ['default','chrome','autocad'];
   var profIdx = 0;
-
-  function userIsActive(){ return Date.now() - lastUserAction < 4500; }
 
   function showFireToast(combo, action){
     if(!fireToast) return;
@@ -3026,7 +3020,6 @@ function toggleTheme() {
   // Single sequencer: fires this profile's assignments in order, then a profile
   // change counts as a step, then the next profile's assignments, etc.
   function tickSequence(){
-    if(userIsActive()) return;
     if(typeof PROFILES === 'undefined' || typeof S === 'undefined') return;
     var assigns = PROFILES[S.prof].assigns;
     var keys = Object.keys(assigns);
@@ -3045,7 +3038,6 @@ function toggleTheme() {
   var fireRandomKey = tickSequence;
 
   function cycleProfile(){
-    if(userIsActive()) return;
     profIdx = (profIdx + 1) % profOrder.length;
     var next = profOrder[profIdx];
     var btn = document.querySelector('.t-ptab[onclick*="\''+next+'\'"]');
