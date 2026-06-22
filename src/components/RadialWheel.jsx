@@ -11,6 +11,11 @@ const INNER_R = 55, OUTER_R = 105;
 const OUTER_INNER_R = 113, OUTER_OUTER_R = 163;
 const CENTRE_R = 35;
 const MAX_SLOTS = 8;
+// Folder wedges extrude outward past the ring perimeter as the "nested items
+// inside" signal (matches the radial inspo's pop-out behaviour). Icon
+// positioning still uses the base outerR so all icons sit at the same radial
+// distance — the extruded portion reads as empty headroom above the icon.
+const FOLDER_EXTRUDE_PX = 10;
 
 // ── Type icons (matches SearchOverlay TYPE_META) ───────────────────────────────
 
@@ -143,6 +148,30 @@ export default function RadialWheel({
     return () => { cancelled = true; };
   }, [needsRenderers, renderers]);
 
+  // Sticky centre-label item. When the user's cursor passes from one wedge
+  // to another there's a tiny no-hover gap; without this the centre label
+  // flashes off-on-off-on. Holding the last item for ~80ms lets the gap
+  // disappear into a single visible transition instead.
+  const liveHovItem = (() => {
+    if (hoveredOuterIndex >= 0 && expandedFolder) {
+      const folder = items.find(i => i?.id === expandedFolder);
+      return folder?.children?.[hoveredOuterIndex] || null;
+    }
+    if (hoveredIndex >= 0 && hoveredIndex < count) {
+      return items[hoveredIndex] || null;
+    }
+    return null;
+  })();
+  const [stickyHovItem, setStickyHovItem] = useState(liveHovItem);
+  useEffect(() => {
+    if (liveHovItem) {
+      setStickyHovItem(liveHovItem);
+      return undefined;
+    }
+    const id = setTimeout(() => setStickyHovItem(null), 80);
+    return () => clearTimeout(id);
+  }, [liveHovItem]);
+
   // ── Compute inner wedges ─────────────────────────────────────────────
   const innerWedges = useMemo(() => {
     const wedges = [];
@@ -251,26 +280,44 @@ export default function RadialWheel({
   }, [items, expandedFolder]);
 
   // ── Render a single wedge ────────────────────────────────────────────
-  const WEDGE_GAP = 1.2; // degrees inset from each edge
-  const RADIAL_GAP = 2;  // pixels inset from inner/outer edges
+  // Hairline angular gap between adjacent wedges. A base donut fills the
+  // entire ring outline behind the wedges; what shows through the gap IS the
+  // separator. No more per-wedge gold outlines — the ring reads as one
+  // continuous shape with thin hairline dividers, matching the inspo.
+  const WEDGE_GAP = 0.35;
+  const RADIAL_GAP = 0;
 
   function renderWedge(w, isOuter = false) {
     const { index, startAngle, endAngle, bisector, item, isEmpty, folderId } = w;
     const iR = isOuter ? effectiveOuterInnerR : effectiveInnerR;
-    const oR = isOuter ? effectiveOuterOuterR : effectiveOuterR;
+    const baseOR = isOuter ? effectiveOuterOuterR : effectiveOuterR;
+    const isFolder = item?.type === 'folder';
+    const isFolderExpanded = isFolder && expandedFolder === item?.id;
 
     const isHovered = isOuter
       ? hoveredOuterIndex === index
       : hoveredIndex === index;
 
-    // Gap inset: shrink wedge by WEDGE_GAP degrees on each side + RADIAL_GAP pixels on inner/outer
-    // On hover: expand back to full size
-    const gapAngle = isHovered ? 0 : WEDGE_GAP;
-    const gapR = isHovered ? 0 : RADIAL_GAP;
+    // Parent folder shows full hover styling (gradient + stroke + glow) when
+    // ANY of its children is hovered, so the active context stays lit while
+    // the user travels into the outer ring.
+    const isChildHovered = !isOuter && isFolderExpanded && hoveredOuterIndex >= 0;
+
+    // Folder wedges extrude outward whenever the folder is in an active
+    // state: either directly hovered OR currently expanded (i.e. user is
+    // working with its children). Idle folders sit flush.
+    const oR = (!isOuter && isFolder && (isHovered || isFolderExpanded))
+      ? baseOR + FOLDER_EXTRUDE_PX
+      : baseOR;
+
+    // Constant hairline gap on every wedge edge — no longer changes on
+    // hover (the ring stays one continuous shape, only the wedge fill flips).
+    const gapAngle = WEDGE_GAP;
+    const gapR = RADIAL_GAP;
     const d = wedgePath(CX, CY, iR + gapR, oR - gapR, startAngle + gapAngle, endAngle - gapAngle);
-    const midR = (iR + oR) / 2;
-    const isFolder = item?.type === 'folder';
-    const isFolderExpanded = isFolder && expandedFolder === item?.id;
+    // Icon centring uses BASE outerR, not the extruded oR, so all wedge icons
+    // align at the same radial distance regardless of folder/non-folder state.
+    const midR = (iR + baseOR) / 2;
     const isMissing = item && item.exists === false;
 
     const meta = getItemMeta(item);
@@ -279,8 +326,9 @@ export default function RadialWheel({
     const [iconX, iconY] = polarToXY(CX, CY, midR, bisector);          // centred in wedge
     const [numX, numY] = polarToXY(CX, CY, iR + 10, bisector);        // inner edge
 
-    // Folder child count badge position
-    const [badgeX, badgeY] = polarToXY(CX, CY, oR - 14, bisector);
+    // Folder child count badge position (uses base outerR — keeps badge in
+    // the icon region rather than out in the extruded headroom).
+    const [badgeX, badgeY] = polarToXY(CX, CY, baseOR - 14, bisector);
 
     // Text rotation — align with wedge angle, flip bottom half for readability
     const rawAngle = bisector + 90; // perpendicular to radius = along arc
@@ -296,6 +344,7 @@ export default function RadialWheel({
     const classNames = [
       'rw-wedge',
       isHovered && 'rw-wedge--hovered',
+      isChildHovered && 'rw-wedge--child-hover',
       isFolder && 'rw-wedge--folder',
       isFolderExpanded && 'rw-wedge--folder-expanded',
       isMissing && 'rw-wedge--missing',
@@ -443,17 +492,10 @@ export default function RadialWheel({
                 pointerEvents="none"
               >{numLabel(index)}</text>
             )}
-            {/* Folder trim — gold arc along outer edge. Radius tracks gapR so
-                the band hugs the wedge edge in both rest and hover (grown)
-                states: band outer edge lands flush with the wedge's 1px
-                outline at oR - gapR. */}
-            {isFolder && (
-              <path
-                d={arcPath(CX, CY, oR - gapR - 2, startAngle + gapAngle + 1, endAngle - gapAngle - 1)}
-                className="rw-folder-trim"
-                pointerEvents="none"
-              />
-            )}
+            {/* Folder marker is now the +10px outward extrusion of the wedge
+                itself (set via oR computation above). The previous gold-arc
+                trim is removed — extrusion is sufficient signal and avoids
+                visual noise. */}
           </>
         );})()}
       </g>
@@ -467,6 +509,31 @@ export default function RadialWheel({
       className={`rw-svg${isEditor ? ' rw-svg--editor' : ''}`}
       xmlns="http://www.w3.org/2000/svg"
     >
+      {/* Vertical gold gradient used for the hovered wedge fill. Top→bottom
+          (--accent-hover lighter at top, --accent base at bottom) mirrors the
+          gold-button recipe from feedback_gold_button_pattern. CSS classes
+          drive the stops so the colours track the active theme. */}
+      <defs>
+        {/* Hovered-wedge gold gradient mirrors the "+ New Trigger" button
+            hover recipe (Sidebar.css .profile-action-btn--primary:hover):
+            linear-gradient(180deg, #ffbb44, #f0b030). Adding a near-white
+            top stop gives the "inset 0 1px 0 rgba(255,255,255,0.18)" sheen
+            from the button's box-shadow translated into the SVG fill. */}
+        <linearGradient id="rw-hover-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stopColor="#ffd87a" stopOpacity="1" />
+          <stop offset="8%"  stopColor="#ffbb44" stopOpacity="1" />
+          <stop offset="100%" stopColor="#e8a020" stopOpacity="1" />
+        </linearGradient>
+        <filter id="rw-ring-shadow" x="-25%" y="-25%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="6" stdDeviation="8" floodOpacity="0.35" />
+        </filter>
+        {/* Per-wedge glow used on hover — matches the button's outer drop
+            shadow (0 2px 10px rgba(--accent-rgb, 0.5)). */}
+        <filter id="rw-wedge-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="2" stdDeviation="5" floodColor="#e8a020" floodOpacity="0.55" />
+        </filter>
+      </defs>
+
       {/* Transparent backdrop for click-outside handling */}
       <rect
         x="0" y="0" width="420" height="420"
@@ -478,20 +545,78 @@ export default function RadialWheel({
         }}
       />
 
-      {/* Centre hover label — shows hovered item name + type */}
+      {/* Base donut sits BEHIND every wedge. Filled gold — the hairline
+          WEDGE_GAP between wedges shows this through as the separator colour,
+          so the ring reads as one continuous shape with thin gold dividers
+          instead of eight independently outlined tiles. Single drop shadow
+          here covers the whole ring at once. */}
       {(() => {
-        let hovItem = null;
-        if (hoveredOuterIndex >= 0 && expandedFolder) {
-          const folder = items.find(i => i?.id === expandedFolder);
-          hovItem = folder?.children?.[hoveredOuterIndex];
-        } else if (hoveredIndex >= 0 && hoveredIndex < count) {
-          hovItem = items[hoveredIndex];
-        }
+        const oR = effectiveOuterR;
+        const iR = effectiveInnerR;
+        const d = [
+          `M ${CX + oR} ${CY}`,
+          `A ${oR} ${oR} 0 1 1 ${CX - oR} ${CY}`,
+          `A ${oR} ${oR} 0 1 1 ${CX + oR} ${CY}`,
+          `M ${CX + iR} ${CY}`,
+          `A ${iR} ${iR} 0 1 0 ${CX - iR} ${CY}`,
+          `A ${iR} ${iR} 0 1 0 ${CX + iR} ${CY}`,
+          'Z',
+        ].join(' ');
+        return (
+          <path
+            d={d}
+            className="rw-base-donut"
+            fillRule="evenodd"
+            pointerEvents="none"
+          />
+        );
+      })()}
+
+      {/* Centre hover label — shows hovered item name + type.
+          Capped at 2 lines × 14 chars so the pill always fits inside
+          the wheel's inner ring (diameter ~110px). Long labels wrap on
+          the nearest space before the cut point; longer-still gets an
+          ellipsis. Uses `stickyHovItem` (managed by useEffect below) so
+          the label stays visible for a short grace period when hover
+          leaves — smooths cross-wedge transitions instead of flashing
+          off in the inter-segment gaps. */}
+      {(() => {
+        const hovItem = stickyHovItem;
         if (!hovItem) return null;
+
         const label = hovItem.label || '';
         const showType = isEditor && (hovItem.type === 'folder' ? 'Folder' : (hovItem.assignType || hovItem.type || ''));
-        const pillW = Math.max(label.length * 7.5, 60);
-        const pillH = showType ? 34 : 22;
+
+        const MAX_CHARS_PER_LINE = 13;
+        const MAX_LABEL_CHARS = 26;
+        const truncated = label.length > MAX_LABEL_CHARS
+          ? label.slice(0, MAX_LABEL_CHARS - 1) + '\u2026'
+          : label;
+        let line1 = truncated;
+        let line2 = '';
+        if (truncated.length > MAX_CHARS_PER_LINE) {
+          const breakAt = truncated.lastIndexOf(' ', MAX_CHARS_PER_LINE);
+          if (breakAt > 0) {
+            line1 = truncated.slice(0, breakAt);
+            line2 = truncated.slice(breakAt + 1);
+          } else {
+            line1 = truncated.slice(0, MAX_CHARS_PER_LINE);
+            line2 = truncated.slice(MAX_CHARS_PER_LINE);
+          }
+        }
+        const isTwoLines = !!line2;
+        const longestLine = Math.max(line1.length, line2.length);
+
+        const LINE_H = 14;
+        const TYPE_H = 13;
+        const pillW = Math.min(Math.max(longestLine * 6.6 + 14, 60), 100);
+        const textBlockH = (isTwoLines ? LINE_H * 2 : LINE_H) + (showType ? TYPE_H : 0);
+        const pillH = textBlockH + 10;
+        const topY = CY - textBlockH / 2;
+        const line1Y = topY + LINE_H / 2;
+        const line2Y = line1Y + LINE_H;
+        const typeY = (isTwoLines ? line2Y : line1Y) + LINE_H / 2 + TYPE_H / 2;
+
         return (
           <g className="rw-centre-label">
             <rect
@@ -500,11 +625,12 @@ export default function RadialWheel({
               rx={6}
               className="rw-centre-pill"
             />
-            <text x={CX} y={showType ? CY - 5 : CY} className="rw-centre-hover-name">{
-              label.length > 20 ? label.slice(0, 19) + '\u2026' : label
-            }</text>
+            <text x={CX} y={line1Y} className="rw-centre-hover-name">{line1}</text>
+            {isTwoLines && (
+              <text x={CX} y={line2Y} className="rw-centre-hover-name">{line2}</text>
+            )}
             {showType && (
-              <text x={CX} y={CY + 11} className="rw-centre-hover-type">{showType}</text>
+              <text x={CX} y={typeY} className="rw-centre-hover-type">{showType}</text>
             )}
           </g>
         );

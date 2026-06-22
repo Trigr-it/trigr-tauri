@@ -1,0 +1,133 @@
+.monitor-pick-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.monitor-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  text-align: left;
+  font-family: inherit;
+}
+
+.monitor-pick-btn:hover {
+  border-color: var(--border-hover, var(--accent));
+  background: var(--bg-input-hover, var(--bg-input));
+}
+
+.monitor-pick-btn-picked {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.monitor-pick-icon {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.monitor-pick-btn-picked .monitor-pick-icon {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.monitor-pick-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-pick-caret {
+  flex: 0 0 auto;
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+.monitor-pick-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  z-index: 50;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  padding: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.monitor-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.1s, color 0.1s;
+}
+
+.monitor-pick-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary);
+}
+
+.monitor-pick-item.is-active {
+  color: var(--accent);
+}
+
+.monitor-pick-item-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-pick-primary-tag {
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.6;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.monitor-pick-check {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.monitor-pick-sep {
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--border);
+  opacity: 0.6;
+}
+
+.monitor-pick-loading {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}

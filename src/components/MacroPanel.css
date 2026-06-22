@@ -641,6 +641,22 @@
   margin-top: 2px;
 }
 
+/* ── Monitor picker row (Open App / Open Folder) ─────────────── */
+.form-row-monitor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.form-sublabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 /* ── Paste method selector ───────────────────────────────────── */
 .paste-method-group {
   display: flex;

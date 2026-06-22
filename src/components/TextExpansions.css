@@ -1343,6 +1343,14 @@ button.te-col-header:hover {
   cursor: not-allowed;
 }
 
+/* Brief acknowledgement after Save — editor stays open, button flashes a
+   green-tinted "✓ Saved" for ~1.5s before reverting to "Save". */
+.te-save-btn--saved {
+  background: #2da465 !important;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(45, 164, 101, 0.3);
+}
+
 /* ── Trigger mode toggle ─────────────────────────────────────────────────── */
 
 .te-trigger-mode {
@@ -1467,6 +1475,7 @@ button.te-col-header:hover {
 .rte-chip-date       { background: rgba(80,200,120,0.12);  color: #50c878; border: 1px solid rgba(80,200,120,0.35);  }
 .rte-chip-cursor     { background: rgba(255,200,50,0.12);  color: #ffc832; border: 1px solid rgba(255,200,50,0.35);  }
 .rte-chip-fillin     { background: rgba(200,100,255,0.12); color: #c864ff; border: 1px solid rgba(200,100,255,0.35); }
+.rte-chip-formula    { background: rgba(120,200,255,0.10); color: #5cb8ff; border: 1px solid rgba(120,200,255,0.40); font-family: var(--font-mono, ui-monospace, monospace); font-style: italic; }
 .rte-chip-globalvar  { background: rgba(232,160,32,0.12);  color: #e8a020; border: 1px solid rgba(232,160,32,0.35);  }
 .rte-chip-key        { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); }
 .rte-chip-heading    { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); min-width: 22px; justify-content: center; }
@@ -1626,6 +1635,38 @@ button.te-col-header:hover {
   box-shadow: var(--shadow-overlay);
   min-width: 240px;
   max-width: calc(100vw - 16px);
+}
+
+/* Dropdown variant — two inputs (label + options), grid layout so the
+   options row sits beneath the label row instead of squeezing on one line. */
+.rte-fillin-rename--dropdown {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 6px;
+  min-width: 340px;
+}
+
+.rte-fillin-rename--dropdown .rte-fillin-rename-label {
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+}
+
+.rte-fillin-rename--dropdown .rte-fillin-input:first-of-type {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+}
+
+.rte-fillin-rename--dropdown .rte-fillin-input:nth-of-type(2) {
+  grid-column: 2 / 3;
+  grid-row: 2 / 3;
+}
+
+.rte-fillin-rename--dropdown .rte-fillin-ok {
+  grid-column: 3 / 4;
+  grid-row: 1 / 3;
+  align-self: stretch;
 }
 
 .rte-fillin-rename-label {
@@ -1881,6 +1922,212 @@ button.te-col-header:hover {
   background: var(--accent-glow);
   border-color: var(--border-accent);
   color: var(--accent);
+}
+
+/* Pro-locked toolbar button — subtle dimming + a hint marker. Click still
+   fires (the handler shows the upgrade modal) so users discover the feature
+   rather than wondering why a greyed-out button does nothing. */
+.rte-btn-pro-locked::after {
+  content: '·';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 8px;
+  color: var(--accent);
+  pointer-events: none;
+}
+.rte-btn-pro-locked {
+  position: relative;
+}
+
+/* Monospace styling for the inline formula expression input — matches the
+   chip style and helps read parens, quotes, and operators at a glance. */
+.rte-formula-input {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+/* Stack the textarea + button on the right so a multi-line expression isn't
+   cramped next to a single tall button. */
+.rte-formula-row {
+  align-items: flex-start;
+}
+
+/* Educational banner explaining the naming model. Pinned at the top of
+   the formula reference panel because every new user hits the same
+   "why don't my {=expr} results appear in the chip list" question. */
+.rte-formula-banner {
+  padding: 8px 10px;
+  margin: 0 10px 4px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 6px;
+  background: var(--accent-glow);
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.rte-formula-banner strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.rte-formula-banner code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Formula reference / help panel ──────────────────────────────────────── */
+
+.rte-formula-help {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 420px;
+}
+
+.rte-formula-help-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rte-formula-help-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.rte-formula-help-body {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.rte-formula-help-body code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  margin: 0 1px;
+  white-space: nowrap;
+}
+
+.rte-formula-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.rte-formula-chips-empty {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.rte-formula-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.rte-formula-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.rte-formula-chip--fillin { border-color: rgba(100, 180, 255, 0.5); }
+.rte-formula-chip--set    { border-color: rgba(100, 220, 160, 0.5); }
+.rte-formula-chip--var    { border-color: rgba(200, 100, 255, 0.5); }
+.rte-formula-chip--reserved { border-color: rgba(var(--accent-rgb), 0.5); }
+
+.rte-formula-else-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.rte-formula-else-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.rte-formula-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.rte-formula-example {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.rte-formula-example:hover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  color: var(--text-primary);
+}
+
+.rte-formula-example-label {
+  flex: 0 0 auto;
+}
+
+.rte-formula-example-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--accent);
+  opacity: 0.95;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  text-align: right;
+  min-width: 0;
 }
 
 .rte-bold { font-weight: 700; }

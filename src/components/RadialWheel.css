@@ -51,34 +51,50 @@
   transform-origin: 210px 210px;
 }
 
-/* Universal 1px gold trim defines every wedge edge in both the editor and the
-   live overlay. Fill matches the sidebar surface in both themes: --bg-hover
-   in dark mode (lifts above the dark canvas) and --bg-surface in light mode
-   (pure white, matching the sidebar). The two tokens go in opposite directions
-   per theme (dark-hover lighter, light-hover darker), so we override per theme. */
+/* Wedges and base donut are both white — the wheel reads as one continuous
+   white ring, with the hairline angular gap between wedges showing white-on-
+   white (effectively invisible). Idle ring is white in both themes; hover
+   picks out the wedge with the gold gradient. Icons keep their picked
+   colour and pop against the white background. */
 .rw-wedge .rw-wedge-path {
-  fill: var(--bg-hover);
-  stroke: var(--accent);
-  stroke-width: 1;
-  transition: fill 0.12s, stroke 0.12s, stroke-width 0.12s, filter 0.15s, d 0.1s ease;
+  fill: #ffffff;
+  stroke: none;
+  transition: fill 0.12s ease, d 0.12s ease;
 }
 
-[data-theme="light"] .rw-wedge .rw-wedge-path {
-  fill: var(--bg-surface);
+/* ── Base donut (sits behind all wedges) ─────────────────────────────────── */
+
+/* White fill — matches wedge fill so the segment gaps disappear. Drop shadow
+   applied here covers the whole ring at once instead of per-wedge filters
+   compounding. */
+.rw-base-donut {
+  fill: #ffffff;
+  opacity: 1;
+  filter: url(#rw-ring-shadow);
 }
+
+/* Gradient stop colours are set inline on the <stop> elements in
+   RadialWheel.jsx — CSS-class-driven stop-color has cross-browser quirks
+   inside SVG and was masking the gradient on the inner ring. */
 
 /* ── Hovered wedge ────────────────────────────────────────────────────────── */
 
-/* Opaque gold-tinted fills — must NOT use rgba transparency because the
-   live overlay window background is transparent. Semi-transparent fills
-   show through to the desktop and look invisible. Stroke + width inherit
-   from the base rule (gold 1px). Focus signal is the path-data nudge
-   transition + the fill flip — no drop-shadow glow. */
-.rw-wedge--hovered .rw-wedge-path {
-  fill: var(--accent-surface);
-}
+/* Hovered wedge — mirrors the "+ New Trigger" button hover recipe:
+   - Gold gradient fill (built into url(#rw-hover-grad) with a near-white
+     top stop for the inset-highlight sheen)
+   - 1px accent border (SVG stroke)
+   - Outer gold glow (SVG filter url(#rw-wedge-glow))
 
-/* Light-theme fill now handled by --accent-surface token override */
+   `.rw-wedge--child-hover` mirrors the same paint treatment so the parent
+   folder keeps its active appearance while the user mouses over its
+   expanded children. Extrusion stays direct-hover-only — see RadialWheel.jsx. */
+.rw-wedge--hovered .rw-wedge-path,
+.rw-wedge--child-hover .rw-wedge-path {
+  fill: url(#rw-hover-grad);
+  stroke: var(--accent);
+  stroke-width: 1;
+  filter: url(#rw-wedge-glow);
+}
 
 /* ── Folder wedge ─────────────────────────────────────────────────────────── */
 
@@ -86,11 +102,8 @@
    gold arc + folder icon are the type indicators. No dashed border. */
 
 .rw-wedge--folder-expanded .rw-wedge-path {
-  fill: var(--accent-surface);
-  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
+  fill: url(#rw-hover-grad);
 }
-
-/* Light-theme fill now handled by --accent-surface token override */
 
 /* ── Missing/orphaned item ────────────────────────────────────────────────── */
 
@@ -104,33 +117,29 @@
 
 /* ── Empty slot (editor mode) ─────────────────────────────────────────────── */
 
-/* Empty slots only ever render in the editor (live mode skips them), so
-   rgba fills are safe here despite the overlay-transparency rule above.
-   Faint gold dashed trim reads "slot available" against the canvas. */
+/* Empty slots only ever render in the editor (live mode skips them).
+   Subtle desaturated fill against the unified ring so an empty slot reads
+   as "available" without breaking the continuous-ring look. */
 .rw-wedge--empty .rw-wedge-path {
-  fill: rgba(128, 128, 128, 0.18);
-  stroke: rgba(var(--accent-rgb), 0.5);
-  stroke-dasharray: 4 6;
-  stroke-width: 1;
+  fill: rgba(128, 128, 128, 0.25);
+  stroke: none;
 }
 
 .rw-svg--editor .rw-wedge--empty .rw-wedge-path {
   cursor: pointer;
 }
 
-/* Hover: solid gold trim + glow, same treatment as the drop-target state,
-   so the segment about to be picked is unmistakable. */
+/* Hover empty: light gold fill — clearly picks out the slot you're about
+   to assign to without the dashed-outline noise. */
 .rw-svg--editor .rw-wedge--empty:hover .rw-wedge-path {
-  stroke: var(--accent);
-  stroke-dasharray: none;
   fill: var(--accent-glow);
-  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 /* ── Outer ring wedge ─────────────────────────────────────────────────────── */
 
 .rw-outer-ring {
   animation: rw-outer-appear 200ms ease-out both;
+  filter: url(#rw-ring-shadow);
 }
 
 @keyframes rw-outer-appear {
@@ -138,17 +147,19 @@
   to   { opacity: 1; }
 }
 
-/* Outer-ring children also get the gold trim by inheritance. Only the fill
-   differs. */
+/* Outer-ring children mirror the inner ring's white-on-shadow look. The
+   drop shadow comes from the rw-outer-ring group filter (set on the
+   .rw-outer-ring rule below), applied once across all visible children. */
 .rw-wedge--outer .rw-wedge-path {
-  fill: var(--bg-elevated);
+  fill: #ffffff;
 }
 
 .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {
-  fill: var(--accent-surface);
+  fill: url(#rw-hover-grad);
+  stroke: var(--accent);
+  stroke-width: 1;
+  filter: url(#rw-wedge-glow);
 }
-
-/* Light-theme fill now handled by --accent-surface token override */
 
 .rw-wedge--outer.rw-wedge--empty .rw-wedge-path {
   fill: rgba(128, 128, 128, 0.18);
@@ -164,10 +175,26 @@
 
 /* ── Centre hover label ───────────────────────────────────────────────────── */
 
+/* Smooth pill resize + reposition when the hovered segment changes. Modern
+   Chromium (which WebView2 ships) supports CSS transitions on SVG geometry
+   attrs (x/y/width/height/rx) — the pill glides between sizes instead of
+   snapping, hiding most of the jerkiness when the user sweeps across
+   segments. The whole group also fades opacity in/out so the gap between
+   wedges feels like a soft cross-fade rather than a hard flash. */
+.rw-centre-label {
+  animation: rw-label-fade-in 0.1s ease-out;
+}
+
+@keyframes rw-label-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .rw-centre-pill {
   fill: var(--bg-surface);
   stroke: var(--border-bright);
   stroke-width: 1;
+  transition: x 0.1s ease, y 0.1s ease, width 0.1s ease, height 0.1s ease;
 }
 
 .rw-centre-hover-name {
@@ -178,6 +205,7 @@
   font-weight: 700;
   fill: var(--accent);
   letter-spacing: 0.02em;
+  transition: x 0.1s ease, y 0.1s ease;
 }
 
 .rw-centre-hover-type {
@@ -189,6 +217,7 @@
   fill: var(--text-muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  transition: x 0.1s ease, y 0.1s ease;
 }
 
 .rw-wedge-num {
@@ -235,9 +264,6 @@
 
 .rw-wedge--drop-target .rw-wedge-path {
   fill: var(--accent-glow);
-  stroke-width: 2;
-  stroke-dasharray: none;
-  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 .rw-wedge--drop-target .rw-wedge-plus {
@@ -259,18 +285,9 @@
   80% { transform: translateX(4px); }
 }
 
-/* ── Folder trim — gold arc along outer edge ─────────────────────────────── */
-
-.rw-folder-trim {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  opacity: 0.8;
-  /* Animate with the wedge body's hover grow (same d transition as
-     .rw-wedge-path) so the trim moves as one piece with the segment. */
-  transition: d 0.1s ease;
-}
+/* Folder marker is now the +10px outward extrusion of the wedge itself
+   (handled in RadialWheel.jsx via per-wedge oR). The previous gold arc
+   trim is gone — extrusion is sufficient signal. */
 
 .rw-folder-chevron {
   fill: none;

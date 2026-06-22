@@ -189,16 +189,74 @@ pub fn fill_in_ready_tx() -> &'static Mutex<Option<mpsc::Sender<()>>> {
     FILL_IN_READY_TX.get_or_init(|| Mutex::new(None))
 }
 
-/// Extract {fillIn:Label} tokens from text. Returns list of field labels.
-fn extract_fill_in_fields(text: &str) -> Vec<String> {
-    let mut fields = Vec::new();
+/// Typed fill-in field. Parsed from `{fillIn:Label[:type[:options][:default=value]]}`.
+/// Backward-compat: bare `{fillIn:Label}` parses as `FillInField { label, kind: "text", options: [], default: None }`.
+#[derive(Clone, Debug, serde::Serialize)]
+pub(crate) struct FillInField {
+    pub label: String,
+    /// One of: "text", "multiline", "dropdown", "checkbox", "number", "date".
+    /// Unknown values fall back to "text" at render time.
+    pub kind: String,
+    /// Comma-separated values for `dropdown`. Empty for other kinds.
+    pub options: Vec<String>,
+    /// Default seed value. For `checkbox`, "yes"/"no". For `dropdown`, must match an option.
+    pub default: Option<String>,
+}
+
+/// Parse the content between `{fillIn:` and `}` into a FillInField.
+/// Grammar: `<label>[:<kind>[:<options>][:default=<value>]]`
+/// - `<options>` is comma-separated, only meaningful for kind=dropdown
+/// - `:default=` is always the last segment if present (so `default=` values can contain `:`)
+/// - Labels MAY NOT contain `:` or `}` (documented limitation)
+pub(crate) fn parse_fillin_token(content: &str) -> FillInField {
+    // Extract trailing `:default=...` suffix first so values can contain colons
+    let (head, default) = match content.rfind(":default=") {
+        Some(idx) => {
+            let val = content[idx + 9..].to_string();
+            (&content[..idx], Some(val))
+        }
+        None => (content, None),
+    };
+
+    // Remaining grammar: `<label>[:<kind>[:<options>]]`
+    let mut parts = head.splitn(3, ':');
+    let label = parts.next().unwrap_or("").to_string();
+    let kind_raw = parts.next().unwrap_or("").to_string();
+    let options_raw = parts.next().unwrap_or("");
+
+    // Normalise kind. Empty (legacy `{fillIn:Label}`) becomes "text".
+    let kind = if kind_raw.is_empty() {
+        "text".to_string()
+    } else {
+        kind_raw
+    };
+
+    let options: Vec<String> = if !options_raw.is_empty() && kind == "dropdown" {
+        options_raw
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    FillInField { label, kind, options, default }
+}
+
+/// Extract every `{fillIn:...}` token's field spec from text, deduped by label
+/// (first occurrence wins — if a label appears twice with different specs, the
+/// first one's type/options/default are used).
+fn extract_fill_in_fields(text: &str) -> Vec<FillInField> {
+    let mut fields: Vec<FillInField> = Vec::new();
     let mut rest = text;
     while let Some(start) = rest.find("{fillIn:") {
         let after = &rest[start + 8..];
         if let Some(end) = after.find('}') {
-            let label = after[..end].to_string();
-            if !label.is_empty() && !fields.contains(&label) {
-                fields.push(label);
+            let content = &after[..end];
+            let field = parse_fillin_token(content);
+            if !field.label.is_empty() && !fields.iter().any(|f| f.label == field.label) {
+                fields.push(field);
             }
             rest = &after[end + 1..];
         } else {
@@ -208,14 +266,69 @@ fn extract_fill_in_fields(text: &str) -> Vec<String> {
     fields
 }
 
-/// Substitute {fillIn:Label} tokens with user-supplied values.
+/// Substitute every `{fillIn:...}` token in `text` with the user-supplied value
+/// keyed by the token's label. Scans the source per-token rather than per-value
+/// so typed tokens (`{fillIn:Name:text:default=John}`) get matched alongside
+/// legacy `{fillIn:Name}` — both resolve to the same value from `values["Name"]`.
 fn resolve_fill_in_tokens(text: &str, values: &HashMap<String, String>) -> String {
-    let mut result = text.to_string();
-    for (label, value) in values {
-        let token = format!("{{fillIn:{}}}", label);
-        result = result.replace(&token, value);
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{fillIn:") {
+        result.push_str(&rest[..start]);
+        let after = &rest[start + 8..];
+        if let Some(end) = after.find('}') {
+            let content = &after[..end];
+            let field = parse_fillin_token(content);
+            let raw_value = values
+                .get(&field.label)
+                .cloned()
+                .or_else(|| field.default.clone())
+                .unwrap_or_default();
+            // Date fill-ins come back in ISO YYYY-MM-DD format (the HTML5
+            // date input's native shape). Reformat them on substitution to
+            // the user's preferred display format from Settings → Date
+            // Format. The raw ISO value stays in the values map so formula
+            // tokens like {=dateadd(label, 7)} can still parse it.
+            let value = if field.kind == "date" {
+                format_date_for_display(&raw_value)
+            } else {
+                raw_value
+            };
+            result.push_str(&value);
+            rest = &after[end + 1..];
+        } else {
+            // Unterminated — append the rest verbatim and stop
+            result.push_str(&rest[start..]);
+            return result;
+        }
     }
+    result.push_str(rest);
     result
+}
+
+/// Convert a YYYY-MM-DD ISO date string to the user's preferred display
+/// format (DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD). Returns the original string
+/// unchanged if it doesn't parse as ISO (e.g. empty, already formatted, or
+/// a fill-in default that wasn't a real date).
+fn format_date_for_display(iso: &str) -> String {
+    if iso.is_empty() { return String::new(); }
+    let trimmed = iso.trim();
+    let parsed = match chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => return iso.to_string(),
+    };
+    let pattern = {
+        let state = crate::hotkeys::engine_state().lock().unwrap();
+        state.default_date_format.clone()
+    };
+    let chrono_fmt = match pattern.as_str() {
+        "MM/DD/YYYY"  => "%m/%d/%Y",
+        "YYYY-MM-DD"  => "%Y-%m-%d",
+        "DD/MM/YY"    => "%d/%m/%y",
+        "D MMMM YYYY" => "%-d %B %Y",
+        _             => "%d/%m/%Y", // DD/MM/YYYY default
+    };
+    parsed.format(chrono_fmt).to_string()
 }
 
 // ── State ───────────────────────────────────────────────────────────────────
@@ -782,24 +895,28 @@ fn fire_expansion(
     }
     // Check for {fillIn:...} tokens — if present, spawn a dedicated thread for the
     // entire fill-in + injection flow so the processor thread is never blocked.
-    // Fill-in flow is plain-text only (rich text inside fill-in fields isn't supported yet).
+    // The HTML version (if present) is forwarded so rich-text formatting is
+    // preserved through the fill-in path — same as the no-fill-in path.
     let fill_in_fields = extract_fill_in_fields(text);
     if !fill_in_fields.is_empty() {
         if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
             return;
         }
         let text = text.to_string();
+        let html_owned: Option<String> = html.map(|s| s.to_string());
         let global_vars = global_vars.clone();
         let trigger_len = trigger_len;
         let trigger_str = _trigger.to_string();
         thread::spawn(move || {
-            fire_expansion_with_fillin(fill_in_fields, &text, trigger_len, delete_extra, &global_vars, &trigger_str, case_pattern);
+            fire_expansion_with_fillin(fill_in_fields, &text, html_owned.as_deref(), trigger_len, delete_extra, &global_vars, &trigger_str, case_pattern);
         });
         return;
     }
 
-    // No fill-in tokens — resolve and inject directly
-    let (resolved, cursor_back) = resolve_tokens(text, global_vars);
+    // No fill-in tokens — resolve and inject directly. Empty fill-in map since
+    // there are no field values to reference in expressions.
+    let empty_fillin: HashMap<String, String> = HashMap::new();
+    let (resolved, cursor_back) = resolve_tokens(text, global_vars, &empty_fillin);
     let resolved = apply_case(&resolved, case_pattern);
 
     // Resolve HTML in parallel. Only used when target app accepts CF_HTML —
@@ -810,7 +927,7 @@ fn fire_expansion(
         if h.is_empty() || h.contains("{key:") {
             None
         } else {
-            Some(resolve_tokens_html(h, global_vars))
+            Some(resolve_tokens_html(h, global_vars, &empty_fillin))
         }
     });
 
@@ -925,8 +1042,9 @@ fn fire_expansion(
 /// Fill-in flow: runs entirely on a dedicated thread so the processor thread is never blocked.
 /// Sequence: show window → wait for response → resolve tokens → inject.
 fn fire_expansion_with_fillin(
-    fill_in_fields: Vec<String>,
+    fill_in_fields: Vec<FillInField>,
     text: &str,
+    html: Option<&str>,
     trigger_len: usize,
     delete_extra: bool,
     global_vars: &HashMap<String, String>,
@@ -1014,7 +1132,8 @@ fn fire_expansion_with_fillin(
         let _ = ready_rx.recv_timeout(Duration::from_secs(5));
         *fill_in_ready_tx().lock().unwrap() = None;
 
-        // Renderer is ready — emit field data
+        // Renderer is ready — emit typed field data. Each field carries
+        // label/kind/options/default so FillInWindow.jsx can render the right input.
         let _ = win.emit("fill-in-show", serde_json::json!({
             "fields": fill_in_fields,
             "theme": theme,
@@ -1040,9 +1159,9 @@ fn fire_expansion_with_fillin(
     // Fill-in UI is fully closed — allow new fill-in invocations
     crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
 
-    let text_after_fillin = match response {
+    let (text_after_fillin, fillin_values) = match response {
         Ok(Some(values)) => {
-            resolve_fill_in_tokens(text, &values)
+            (resolve_fill_in_tokens(text, &values), values)
         }
         Ok(None) => {
             return;
@@ -1052,9 +1171,26 @@ fn fire_expansion_with_fillin(
         }
     };
 
-    // Resolve remaining tokens
-    let (resolved, cursor_back) = resolve_tokens(&text_after_fillin, global_vars);
+    // Resolve remaining tokens. fillin_values is passed in so `{=expr}` and
+    // `{if}` conditions can reference fields by their label as bare identifiers.
+    let (resolved, cursor_back) = resolve_tokens(&text_after_fillin, global_vars, &fillin_values);
     let resolved = apply_case(&resolved, case_pattern);
+
+    // Resolve the HTML alongside the text so rich-text targets (Word, Outlook,
+    // Gmail) still receive formatting when the expansion uses fill-in fields.
+    // The fillin_values are threaded through resolve_tokens_html so chips that
+    // reference fields (e.g. {=upper(name)}) render correctly in HTML too.
+    let resolved_html: Option<String> = html.and_then(|h| {
+        if h.is_empty() || h.contains("{key:") {
+            None
+        } else {
+            // Fill-in tokens may also appear in HTML as plain text outside of
+            // chip spans (legacy expansions). Resolve those first, then walk
+            // chip spans and resolve their embedded tokens.
+            let html_after_fillin = resolve_fill_in_tokens(h, &fillin_values);
+            Some(resolve_tokens_html(&html_after_fillin, global_vars, &fillin_values))
+        }
+    });
 
     if resolved.is_empty() {
         return;
@@ -1122,7 +1258,7 @@ fn fire_expansion_with_fillin(
     } else {
         let used_clipboard = should_use_clipboard(&resolved);
         if used_clipboard {
-            inject_via_clipboard(&resolved, None, target_hwnd);
+            inject_via_clipboard(&resolved, resolved_html.as_deref(), target_hwnd);
         } else {
             inject_via_sendinput(&resolved, target_hwnd);
         }
@@ -1147,13 +1283,35 @@ fn fire_expansion_with_fillin(
 
 // ── Token resolution ────────────────────────────────────────────────────────
 
-pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (String, usize) {
+pub fn resolve_tokens(
+    text: &str,
+    global_vars: &HashMap<String, String>,
+    fillin_values: &HashMap<String, String>,
+) -> (String, usize) {
     // Strip rich-text-editor artifacts baked into saved expansion text: ZWSP
     // cursor anchors (U+200B, inserted after every token chip) and the NBSPs
     // (U+00A0) contenteditable substitutes for spaces next to chips. The editor
     // now strips these on save, but fire-time stripping covers expansions saved
     // by older versions without a config migration.
     let mut result = text.replace('\u{200B}', "").replace('\u{00A0}', " ");
+
+    // Determine whether to pay the cost of selection capture / clipboard read
+    // once. Cached values feed both the legacy `{clipboard}` / `{selection}`
+    // tokens AND the expression scope, so a snippet with mixed tokens captures
+    // each source at most once per fire.
+    let needs_expr  = result.contains("{=") || result.contains("{if ");
+    let needs_clip  = result.contains("{clipboard") || needs_expr;
+    let needs_sel   = result.contains("{selection") || needs_expr;
+    let clipboard_text = if needs_clip {
+        read_clipboard().unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let selection_text = if needs_sel {
+        capture_selection_via_copy().unwrap_or_default()
+    } else {
+        String::new()
+    };
 
     // Substitute {{varName}} global variables — Pro-only.
     // (Dynamic tokens — date, time, clipboard, cursor — are unlocked for everyone:
@@ -1165,15 +1323,23 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
         }
     }
 
-    // {clipboard} and {clipboard:transform} tokens — read clipboard once
+    // {clipboard} and {clipboard:transform} legacy tokens — use the cached read.
     if result.contains("{clipboard") {
-        let clip = read_clipboard().unwrap_or_default();
         // Replace specific variants BEFORE bare {clipboard} to prevent prefix matching
-        result = result.replace("{clipboard:uppercase}", &clip.to_uppercase());
-        result = result.replace("{clipboard:lowercase}", &clip.to_lowercase());
-        result = result.replace("{clipboard:trim}", clip.trim());
-        result = result.replace("{clipboard:urlencode}", &url_encode(&clip));
-        result = result.replace("{clipboard}", &clip);
+        result = result.replace("{clipboard:uppercase}", &clipboard_text.to_uppercase());
+        result = result.replace("{clipboard:lowercase}", &clipboard_text.to_lowercase());
+        result = result.replace("{clipboard:trim}", clipboard_text.trim());
+        result = result.replace("{clipboard:urlencode}", &url_encode(&clipboard_text));
+        result = result.replace("{clipboard}", &clipboard_text);
+    }
+
+    // {selection} and {selection:transform} legacy tokens — use the cached capture.
+    if result.contains("{selection") {
+        result = result.replace("{selection:uppercase}", &selection_text.to_uppercase());
+        result = result.replace("{selection:lowercase}", &selection_text.to_lowercase());
+        result = result.replace("{selection:trim}", selection_text.trim());
+        result = result.replace("{selection:urlencode}", &url_encode(&selection_text));
+        result = result.replace("{selection}", &selection_text);
     }
 
     // {date:...} and {time:...} tokens
@@ -1265,6 +1431,52 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
         }
     }
 
+    // Single scope shared across {set}, {if}, and {=} passes. `local_vars`
+    // is populated by `{set name = expr}` tokens and read by the later if /
+    // expression scans, so the user can chain intermediate calculations.
+    let mut scope = crate::expression::Scope {
+        fillin_values,
+        global_vars,
+        local_vars: std::collections::HashMap::new(),
+        selection: &selection_text,
+        clipboard: &clipboard_text,
+    };
+
+    // {set name = expr} — intermediate named values. Runs FIRST so {if}/{=}
+    // can reference whatever the user defined. Outputs nothing.
+    //
+    // First pass is NON-FINAL: any {set} whose expression fails (e.g. because
+    // it depends on a value an {ifset} will produce later) is left in the
+    // text verbatim. The second {set} pass below — after {ifset} populates
+    // scope — retries those and finalises.
+    if result.contains("{set ") {
+        result = process_set_tokens(&result, &mut scope, false);
+    }
+
+    // {if expr}…[{else}…]{endif} — conditional blocks. Runs BEFORE {=expr}
+    // so discarded branches don't waste expression evaluation cycles. Nested
+    // {if} blocks are tracked by depth in process_if_blocks.
+    //
+    // Also handles {ifset NAME cond}…{endif} — same logic as {if} plus the
+    // chosen branch text gets stored in scope.local_vars[NAME] so the user
+    // can reference the conditional's resolved value in later formulas.
+    if result.contains("{if ") || result.contains("{ifset ") {
+        result = process_if_blocks(&result, &mut scope);
+    }
+
+    // Second {set} pass — finalises any sets that depended on an {ifset}
+    // value (which is now in scope after the if/ifset pass above). Anything
+    // still unresolved at this point is a genuine error and rendered inline.
+    if result.contains("{set ") {
+        result = process_set_tokens(&result, &mut scope, true);
+    }
+
+    // {=expr} — expression substitution. Errors render inline as `«error: msg»`
+    // so a single broken formula doesn't kill the whole expansion fire.
+    if result.contains("{=") {
+        result = process_expr_tokens(&result, &scope);
+    }
+
     // {cursor} — track position, then remove token
     let mut cursor_back = 0;
     if let Some(idx) = result.find("{cursor}") {
@@ -1273,6 +1485,375 @@ pub fn resolve_tokens(text: &str, global_vars: &HashMap<String, String>) -> (Str
     }
 
     (result, cursor_back)
+}
+
+/// Find the matching `}` for a token starting at the byte just past `{=` or
+/// `{if `. Respects string literals so `}` inside `"..."` doesn't terminate
+/// the expression early. Returns the byte index of the closing `}` relative
+/// to the start of the slice, or None if unterminated.
+fn find_expression_end(body: &str) -> Option<usize> {
+    let bytes = body.as_bytes();
+    let mut i = 0;
+    let mut in_string = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if b == b'\\' && i + 1 < bytes.len() {
+                i += 2;
+                continue;
+            }
+            if b == b'"' {
+                in_string = false;
+            }
+        } else {
+            if b == b'"' {
+                in_string = true;
+            } else if b == b'}' {
+                return Some(i);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Substitute every `{=expr}` token by evaluating the expression. On parse or
+/// evaluation error, the substitution becomes `«error: <msg>»` so the user
+/// sees what went wrong in-place rather than losing the whole expansion.
+fn process_expr_tokens(text: &str, scope: &crate::expression::Scope<'_>) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{=") {
+        out.push_str(&rest[..start]);
+        let body_start = start + 2;
+        let after = &rest[body_start..];
+        match find_expression_end(after) {
+            Some(end) => {
+                let expr_text = &after[..end];
+                let rendered = match crate::expression::evaluate(expr_text, scope) {
+                    Ok(s) => s,
+                    Err(msg) => format!("«error: {}»", msg),
+                };
+                out.push_str(&rendered);
+                rest = &after[end + 1..];
+            }
+            None => {
+                // Unterminated — append everything verbatim and stop scanning.
+                out.push_str(&rest[start..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `{set name = expr}` — declare a named intermediate value. Evaluates each
+/// `expr` against scope, stores results in `scope.local_vars`, and removes
+/// the tokens from the output. Subsequent `{=…}` / `{if …}` passes see the
+/// names.
+///
+/// Forward-reference safe: a `{set foo = bar}` can sit BEFORE a `{set bar = 5}`
+/// in the snippet. We do a two-pass scan — first collect every `{set}` site,
+/// then fixed-point evaluate until no more progress is made (capped at 10
+/// iterations so cyclic dependencies bail out cleanly rather than spinning).
+///
+/// `final_pass` controls what happens to sets whose expressions still can't
+/// evaluate after the fixed-point loop:
+/// - `false`: leave the `{set name = expr}` token in the output text. The
+///   caller will run this function again later (after `{ifset}` blocks have
+///   populated more scope entries) and retry these.
+/// - `true`: render the last evaluation error inline (`«error: …»`). This is
+///   the terminal state — anything still failing genuinely can't be resolved.
+fn process_set_tokens(text: &str, scope: &mut crate::expression::Scope<'_>, final_pass: bool) -> String {
+    struct SetEntry {
+        name: String,
+        expr: String,
+        start: usize,      // byte offset of `{set` in `text`
+        end: usize,        // byte offset just past the closing `}`
+        valid_name: bool,
+    }
+
+    // ── First pass: collect every {set name = expr} occurrence in source
+    // order. We don't evaluate yet — that happens in the fixed-point loop
+    // below, where forward references can resolve.
+    let mut entries: Vec<SetEntry> = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i + 5 <= bytes.len() {
+        if &bytes[i..i + 5] == b"{set " {
+            let body_start = i + 5;
+            let after = &text[body_start..];
+            if let Some(end_rel) = find_expression_end(after) {
+                let inner = &after[..end_rel];
+                if let Some(eq_pos) = inner.find('=') {
+                    let name = inner[..eq_pos].trim().to_string();
+                    let expr = inner[eq_pos + 1..].trim().to_string();
+                    let valid_name = !name.is_empty()
+                        && name.chars().next().map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+                        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+                    entries.push(SetEntry {
+                        name, expr,
+                        start: i,
+                        end: body_start + end_rel + 1,
+                        valid_name,
+                    });
+                } else {
+                    entries.push(SetEntry {
+                        name: String::new(),
+                        expr: String::new(),
+                        start: i,
+                        end: body_start + end_rel + 1,
+                        valid_name: false,
+                    });
+                }
+                i = body_start + end_rel + 1;
+                continue;
+            } else {
+                // Unterminated {set — emit everything from here verbatim and bail.
+                let mut out = String::with_capacity(text.len());
+                let mut cursor = 0;
+                for entry in &entries {
+                    out.push_str(&text[cursor..entry.start]);
+                    cursor = entry.end;
+                }
+                out.push_str(&text[cursor..]);
+                return out;
+            }
+        }
+        i += 1;
+    }
+
+    // ── Fixed-point evaluation. Each iteration tries every unresolved entry;
+    // if any newly succeed, repeat (since downstream entries may now have
+    // their deps in scope). Cap at 10 iterations — handles realistic chains
+    // and trips clean on cyclic / impossible references.
+    let mut resolved: Vec<bool> = vec![false; entries.len()];
+    let mut last_error: Vec<Option<String>> = vec![None; entries.len()];
+    for _ in 0..10 {
+        let mut progress = false;
+        for (idx, entry) in entries.iter().enumerate() {
+            if resolved[idx] || !entry.valid_name { continue; }
+            match crate::expression::evaluate(&entry.expr, scope) {
+                Ok(value) => {
+                    scope.set_local(entry.name.clone(), value);
+                    resolved[idx] = true;
+                    last_error[idx] = None;
+                    progress = true;
+                }
+                Err(msg) => {
+                    last_error[idx] = Some(msg);
+                }
+            }
+        }
+        if !progress { break; }
+    }
+
+    // ── Third pass: rebuild output text. Successful sets vanish; invalid-name
+    // sets render their error inline. Unresolved sets:
+    //   - non-final pass: keep the original `{set name = expr}` text so a
+    //     later pass can retry them (after {ifset} populates more scope).
+    //   - final pass: render the last error inline.
+    let mut out = String::with_capacity(text.len());
+    let mut cursor = 0;
+    for (idx, entry) in entries.iter().enumerate() {
+        out.push_str(&text[cursor..entry.start]);
+        if !entry.valid_name {
+            if entry.name.is_empty() {
+                out.push_str("«error: {set} needs `name = expression`»");
+            } else {
+                out.push_str(&format!("«error: invalid {{set}} name '{}'»", entry.name));
+            }
+        } else if !resolved[idx] {
+            if final_pass {
+                if let Some(msg) = &last_error[idx] {
+                    out.push_str(&format!("«error: set {}: {}»", entry.name, msg));
+                }
+            } else {
+                // Keep verbatim for a retry later.
+                out.push_str(&text[entry.start..entry.end]);
+            }
+        }
+        cursor = entry.end;
+    }
+    out.push_str(&text[cursor..]);
+    out
+}
+
+/// Resolve every `{if expr}…[{else}…]{endif}` block, keeping only the branch
+/// that matches the condition. Supports nested `{if}` blocks by depth-tracking
+/// — a stray `{else}` or `{endif}` at the same depth as the outer block
+/// terminates the branch.
+///
+/// Also handles `{ifset NAME cond}…{endif}` — the named variant. After
+/// picking and recursively processing the chosen branch, the resulting text
+/// is stored in `scope.local_vars[NAME]` so subsequent `{=NAME}` references
+/// resolve to the conditional's output. Nested `{ifset}` participates in
+/// depth tracking just like `{if}`.
+///
+/// On condition error the entire block is replaced with `«error: msg»` so the
+/// user gets a clear in-place signal rather than silent omission of content.
+fn process_if_blocks(text: &str, scope: &mut crate::expression::Scope<'_>) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+
+    loop {
+        // Find the earliest if-marker — `{if ` and `{ifset ` are disjoint
+        // (different chars at byte 3) so either-or-both may show up. We take
+        // whichever appears first; the other gets processed next iteration.
+        let if_pos = rest.find("{if ");
+        let ifset_pos = rest.find("{ifset ");
+        let (start, is_ifset) = match (if_pos, ifset_pos) {
+            (None, None) => { out.push_str(rest); return out; }
+            (Some(p), None) => (p, false),
+            (None, Some(p)) => (p, true),
+            (Some(p1), Some(p2)) => if p1 <= p2 { (p1, false) } else { (p2, true) },
+        };
+        out.push_str(&rest[..start]);
+
+        // Parse the header. `{if cond}` → name=None. `{ifset NAME cond}` →
+        // name=Some(NAME), cond starts after the space separating name from
+        // condition.
+        let (header_start, name_opt): (usize, Option<String>) = if is_ifset {
+            let name_start = start + 7; // past "{ifset "
+            let after_set = &rest[name_start..];
+            // Name terminates at the first space — condition follows.
+            let Some(space_pos) = after_set.find(' ') else {
+                out.push_str(&rest[start..]);
+                return out;
+            };
+            let name = after_set[..space_pos].to_string();
+            (name_start + space_pos + 1, Some(name))
+        } else {
+            (start + 4, None)
+        };
+
+        let after_header = &rest[header_start..];
+        let Some(header_end) = find_expression_end(after_header) else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let condition_text = &after_header[..header_end];
+        let after_open = &after_header[header_end + 1..];
+
+        // Scan body for matching `{else}` / `{endif}` at depth 0.
+        // Nested `{if` or `{ifset` opens are depth+1.
+        let mut depth = 0usize;
+        let mut else_at: Option<usize> = None;
+        let mut end_at: Option<usize> = None;
+        let bytes = after_open.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i..].starts_with(b"{if ") {
+                depth += 1;
+                i += 4;
+                continue;
+            }
+            if bytes[i..].starts_with(b"{ifset ") {
+                depth += 1;
+                i += 7;
+                continue;
+            }
+            if bytes[i..].starts_with(b"{endif}") {
+                if depth == 0 {
+                    end_at = Some(i);
+                    break;
+                }
+                depth -= 1;
+                i += 7;
+                continue;
+            }
+            if bytes[i..].starts_with(b"{else}") && depth == 0 && else_at.is_none() {
+                else_at = Some(i);
+                i += 6;
+                continue;
+            }
+            i += 1;
+        }
+
+        let Some(end_idx) = end_at else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+
+        let (then_branch, else_branch) = match else_at {
+            Some(else_idx) => (
+                &after_open[..else_idx],
+                &after_open[else_idx + 6..end_idx],
+            ),
+            None => (&after_open[..end_idx], ""),
+        };
+
+        let kept = match crate::expression::evaluate_bool(condition_text, scope) {
+            Ok(true)  => then_branch.to_string(),
+            Ok(false) => else_branch.to_string(),
+            Err(msg)  => format!("«error: {}»", msg),
+        };
+
+        // Recurse into the kept branch so nested blocks evaluate too.
+        let kept_processed = process_if_blocks(&kept, scope);
+
+        // For named {ifset NAME ...}: stash the kept text in local_vars so
+        // downstream {=NAME} resolves to it. Validate the name first; an
+        // invalid identifier means the user typed something garbled and we
+        // just skip storage (the block still renders normally).
+        if let Some(name) = name_opt {
+            let valid = !name.is_empty()
+                && name.chars().next().map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if valid {
+                scope.set_local(name, kept_processed.clone());
+            }
+        }
+
+        out.push_str(&kept_processed);
+        rest = &after_open[end_idx + 7..]; // skip past "{endif}"
+    }
+}
+
+/// Decode the HTML entities that browsers inject into attribute values when
+/// serializing innerHTML. Handles the named entities the editor actually
+/// produces (`&lt; &gt; &amp; &quot; &apos;`) plus numeric character
+/// references (`&#NN;` decimal, `&#xNN;` hex). Anything else passes through
+/// verbatim so we don't accidentally mangle user content.
+fn decode_html_entities(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(amp_pos) = rest.find('&') {
+        out.push_str(&rest[..amp_pos]);
+        let after_amp = &rest[amp_pos + 1..];
+        if let Some(semi_offset) = after_amp.find(';') {
+            let entity = &after_amp[..semi_offset];
+            let decoded: Option<char> = match entity {
+                "lt"   => Some('<'),
+                "gt"   => Some('>'),
+                "amp"  => Some('&'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                _ if entity.starts_with('#') => {
+                    let num = &entity[1..];
+                    let cp = if let Some(hex) = num.strip_prefix('x').or_else(|| num.strip_prefix('X')) {
+                        u32::from_str_radix(hex, 16).ok()
+                    } else {
+                        num.parse::<u32>().ok()
+                    };
+                    cp.and_then(char::from_u32)
+                }
+                _ => None,
+            };
+            if let Some(ch) = decoded {
+                out.push(ch);
+                rest = &after_amp[semi_offset + 1..];
+                continue;
+            }
+        }
+        // Not a recognised entity — emit the `&` literally and resume scanning
+        // from the char after it.
+        out.push('&');
+        rest = after_amp;
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Percent-encode a string per RFC 3986 (unreserved characters pass through).
@@ -1292,6 +1873,67 @@ fn url_encode(s: &str) -> String {
 }
 
 // ── Clipboard operations (Win32) ────────────────────────────────────────────
+
+/// Synchronously capture the user's current text selection by sending Ctrl+C,
+/// reading the resulting clipboard contents, and then restoring whatever was
+/// on the clipboard before. Returns None if no selection (clipboard didn't
+/// change) or the read failed.
+///
+/// Blocks the calling thread for ~50–200ms (waits for the clipboard sequence
+/// number to advance after the synthetic Ctrl+C). Callers must be on a thread
+/// that can absorb this — typically a spawned injection thread, not the LL
+/// hook callback.
+///
+/// Invariants:
+/// - Sets `SUPPRESS_NEXT_CLIPBOARD_WRITE` so the clipboard-history listener
+///   doesn't capture the Ctrl+C result OR the snapshot restore.
+/// - Sets `SUPPRESS_SIMULATED` around the SendInput burst so the LL hook
+///   doesn't re-trigger Ctrl+C-bound hotkeys.
+/// - Restores the previous clipboard via `restore_clipboard_snapshot` so the
+///   user's prior clipboard state is preserved (paste history, etc.).
+fn capture_selection_via_copy() -> Option<String> {
+    use std::sync::atomic::Ordering;
+
+    let snapshot = snapshot_clipboard();
+    let before_seq = clipboard_sequence_number();
+
+    // Mark BOTH the Ctrl+C clipboard write and the restore as ours so the
+    // clipboard-history listener ignores them. Cleared in the same scope on
+    // every return path.
+    crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::SeqCst);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+
+    // Release any user-held modifiers so the Ctrl+C lands cleanly; restored after.
+    let held = crate::actions::release_held_modifiers();
+
+    // Send Ctrl+C — same VK pattern as the Ctrl+V paste path below.
+    send_vk_key(0xA2, false); // LCtrl down
+    send_vk_key(0x43, false); // C down
+    thread::sleep(Duration::from_millis(15));
+    send_vk_key(0x43, true);  // C up
+    send_vk_key(0xA2, true);  // LCtrl up
+
+    crate::actions::restore_modifiers(&held);
+
+    // Wait for the clipboard sequence number to advance, up to 200ms.
+    let mut sel: Option<String> = None;
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_millis(200) {
+        thread::sleep(Duration::from_millis(15));
+        if clipboard_sequence_number() != before_seq {
+            sel = read_clipboard();
+            break;
+        }
+    }
+
+    // Restore previous clipboard contents (also suppressed from history).
+    restore_clipboard_snapshot(&snapshot);
+
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+    crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
+
+    sel.filter(|s| !s.is_empty())
+}
 
 fn read_clipboard() -> Option<String> {
     // Retry up to 5 times — clipboard may be briefly held by another process
@@ -1666,31 +2308,45 @@ fn html_escape(s: &str) -> String {
 ///
 /// `{cursor}` chips are stripped entirely — the cursor_back count is derived
 /// from the plain-text path which runs alongside.
-fn resolve_tokens_html(html: &str, global_vars: &HashMap<String, String>) -> String {
+fn resolve_tokens_html(
+    html: &str,
+    global_vars: &HashMap<String, String>,
+    fillin_values: &HashMap<String, String>,
+) -> String {
+    // Replace every chip span with its raw data-token text inline. This mirrors
+    // the frontend's htmlToPlainText chip-flattening behaviour so the engine
+    // sees the same content as the plain-text path.
     let re = match regex_lite::Regex::new(
         r#"<span\b[^>]*?\bdata-token="([^"]*)"[^>]*>[^<]*</span>"#
     ) {
         Ok(r) => r,
         Err(_) => return html.to_string(),
     };
-    let mut result = String::with_capacity(html.len());
-    let mut last_end = 0;
-    for caps in re.captures_iter(html) {
-        let Some(m) = caps.get(0) else { continue };
-        let token = caps.get(1).map(|t| t.as_str()).unwrap_or("");
-        result.push_str(&html[last_end..m.start()]);
-        if token != "{cursor}" {
-            let (resolved, _) = resolve_tokens(token, global_vars);
-            result.push_str(&html_escape(&resolved));
-        }
-        last_end = m.end();
-    }
-    result.push_str(&html[last_end..]);
-    // Literal ZWSPs sit in the fragment text between chips (editor cursor
-    // anchors serialized by innerHTML). Strip them so rich-paste targets don't
-    // receive invisible characters; &nbsp; entities are left alone — they're
-    // ASCII-safe and render correctly.
-    result.replace('\u{200B}', "")
+    let html_inline = re.replace_all(html, |caps: &regex_lite::Captures| {
+        let raw = caps.get(1).map(|t| t.as_str()).unwrap_or("");
+        // {cursor} produces no visible output in HTML — strip its span entirely.
+        if raw == "{cursor}" { return String::new(); }
+        // Captured group is the RAW attribute text from the serialized HTML,
+        // which still has entities. The engine expects literal characters
+        // (e.g. `>` not `&gt;`), so decode the common entities here.
+        decode_html_entities(raw)
+    }).to_string();
+
+    // Run the resolver ONCE across the full inlined HTML. Formatting tags
+    // (`<strong>`, `<em>`, `<span style="...">`, etc.) don't match the
+    // `{set}`/`{if}`/`{=}` token patterns the engine scans for, so they pass
+    // through unchanged. Cross-chip dependencies work because every chip's
+    // tokens are now visible to a single resolve pass — a `{set foo = …}` in
+    // chip A populates scope before a `{=foo}` in chip B is evaluated.
+    //
+    // Caveat: substituted values are NOT HTML-escaped, so if a fill-in or
+    // formula result contains literal `<` / `&` / `"` chars they'll render as
+    // raw HTML in the target. Invoice numbers / dates / typical text are
+    // safe; document if a user trips this.
+    let (resolved, _) = resolve_tokens(&html_inline, global_vars, fillin_values);
+
+    // Strip residual ZWSPs (editor cursor anchors serialized by innerHTML).
+    resolved.replace('\u{200B}', "")
 }
 
 // ── Hybrid injection — SendInput for short text, clipboard for long/terminal ─
@@ -2177,14 +2833,11 @@ fn fire_variant_expansion(
     }
 
     // If the selected variant contains {fillIn:LABEL} tokens, re-prompt the
-    // user for those values before injecting. Mirrors the main expansion
-    // path's fill-in flow (fire_expansion_with_fillin) — variant flow had no
-    // fill-in handling before, so tokens were pasted literally as text.
-    //
-    // Plain-text only when fill-in is involved: matches the main path
-    // (rich text inside fill-in fields isn't supported yet, see line 522).
+    // user for those values before injecting. HTML is also resolved alongside
+    // text using the collected fill-in values so rich-text targets keep their
+    // formatting even when fill-ins are involved.
     let fill_in_fields = extract_fill_in_fields(&selected_text);
-    let (final_text, final_html) = if !fill_in_fields.is_empty() {
+    let (final_text, final_html, fillin_values) = if !fill_in_fields.is_empty() {
         // Re-acquire FILL_IN_ACTIVE before re-showing the window
         crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -2237,12 +2890,18 @@ fn fire_variant_expansion(
         };
 
         let substituted = resolve_fill_in_tokens(&selected_text, &values);
-        (substituted, None) // plain-text only when fill-in is involved
+        // Substitute fill-in tokens in the HTML too (legacy plain-text fillin
+        // tokens live in the editor's text content, not chip spans). Chip-
+        // embedded fillin references resolve later via resolve_tokens_html
+        // using fillin_values.
+        let html_with_fillins = selected_html.as_deref()
+            .map(|h| resolve_fill_in_tokens(h, &values));
+        (substituted, html_with_fillins, values)
     } else {
-        (selected_text, selected_html)
+        (selected_text, selected_html, HashMap::new())
     };
 
-    let (resolved, cursor_back) = resolve_tokens(&final_text, global_vars);
+    let (resolved, cursor_back) = resolve_tokens(&final_text, global_vars, &fillin_values);
     if resolved.is_empty() {
         return;
     }
@@ -2254,7 +2913,7 @@ fn fire_variant_expansion(
         if h.is_empty() || h.contains("{key:") {
             None
         } else {
-            Some(resolve_tokens_html(&h, global_vars))
+            Some(resolve_tokens_html(&h, global_vars, &fillin_values))
         }
     });
 

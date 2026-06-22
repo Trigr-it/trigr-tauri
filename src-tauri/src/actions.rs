@@ -22,10 +22,9 @@ use windows_sys::Win32::System::Threading::{
     AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
-use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
-    SetForegroundWindow, SW_SHOW,
+    SetForegroundWindow,
 };
 
 /// Future clipboard manager checks this flag and skips logging if set.
@@ -252,51 +251,6 @@ pub fn cancel_loop_if_running(trigger_key: &str) -> bool {
 
 // ── Unified app launcher (path or AppsFolder AUMID) ───────────────────────
 //
-// Single helper for both single-action `app` assignments and macro `Open App`
-// steps. When `kind == "aumid"`, prefixes the AppID with `shell:AppsFolder\`
-// so `ShellExecuteW` resolves it through the Windows Apps namespace — this is
-// portable across devices because the AUMID is the same wherever the app is
-// installed. When `kind == "path"` (legacy default), launches the absolute
-// path directly.
-
-fn shell_launch_app(kind: &str, path: &str, app_id: &str, args: &str) {
-    let target = if kind == "aumid" && !app_id.is_empty() {
-        format!("shell:AppsFolder\\{}", app_id)
-    } else {
-        path.to_string()
-    };
-
-    if target.is_empty() {
-        warn!("[Trigr] Open App: empty target (kind={})", kind);
-        return;
-    }
-
-    let verb: Vec<u16> = "open\0".encode_utf16().collect();
-    let file: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
-    let params_wide: Vec<u16> = if !args.is_empty() {
-        args.encode_utf16().chain(std::iter::once(0)).collect()
-    } else {
-        Vec::new()
-    };
-    let params_ptr = if !args.is_empty() { params_wide.as_ptr() } else { std::ptr::null() };
-
-    let result = unsafe {
-        ShellExecuteW(
-            std::ptr::null_mut(),
-            verb.as_ptr(),
-            file.as_ptr(),
-            params_ptr,
-            std::ptr::null(),
-            SW_SHOW,
-        )
-    };
-    if (result as usize) > 32 {
-        info!("[Trigr] Open App: launched {}", target);
-    } else {
-        warn!("[Trigr] Open App: ShellExecuteW failed for {} (code {})", target, result as usize);
-    }
-}
-
 // ── AHK Script Runner process tracking ─────────────────────────────────────
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -628,12 +582,20 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
             let kind = data.and_then(|d| d.get("kind")).and_then(|v| v.as_str()).unwrap_or("path");
             let app_id = data.and_then(|d| d.get("appId")).and_then(|v| v.as_str()).unwrap_or("");
             let path = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()).unwrap_or("");
-            shell_launch_app(kind, path, app_id, "");
+            let monitor = crate::window_target::parse_monitor_target(data, target_hwnd);
+            crate::window_target::launch_with_monitor_target(
+                crate::window_target::LaunchKind::App { kind, path, app_id, args: "" },
+                monitor,
+            );
         }
 
         "folder" => {
             if let Some(path) = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()) {
-                let _ = opener::open(path);
+                let monitor = crate::window_target::parse_monitor_target(data, target_hwnd);
+                crate::window_target::launch_with_monitor_target(
+                    crate::window_target::LaunchKind::Folder { path },
+                    monitor,
+                );
             }
         }
 
@@ -878,7 +840,8 @@ fn resolve_input_method(data: Option<&Value>) -> String {
 /// positioning isn't honoured here — output_text has no caret-back hook.
 fn resolve_type_text_tokens(text: &str) -> String {
     let global_vars = crate::expansions::get_global_variables();
-    let (resolved, _cursor_back) = crate::expansions::resolve_tokens(text, &global_vars);
+    let empty_fillin: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let (resolved, _cursor_back) = crate::expansions::resolve_tokens(text, &global_vars, &empty_fillin);
     resolved
 }
 
@@ -2092,8 +2055,30 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         }
 
         "Open Folder" => {
-            if !step_value.is_empty() {
-                let _ = opener::open(step_value);
+            if step_value.is_empty() {
+                return true;
+            }
+            // Backward compat: legacy macros stored step.value as a plain path string.
+            // New writes emit JSON {path, monitor}. Detect by trying to parse JSON;
+            // fall back to treating the whole value as a bare path.
+            let trimmed = step_value.trim_start();
+            let (path_owned, monitor) = if trimmed.starts_with('{') {
+                match serde_json::from_str::<Value>(step_value) {
+                    Ok(parsed) => {
+                        let p = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let m = crate::window_target::parse_monitor_target(Some(&parsed), *target_hwnd);
+                        (p, m)
+                    }
+                    Err(_) => (step_value.to_string(), crate::window_target::MonitorTarget::None),
+                }
+            } else {
+                (step_value.to_string(), crate::window_target::MonitorTarget::None)
+            };
+            if !path_owned.is_empty() {
+                crate::window_target::launch_with_monitor_target(
+                    crate::window_target::LaunchKind::Folder { path: &path_owned },
+                    monitor,
+                );
             }
         }
 
@@ -2113,7 +2098,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let app_id = parsed.get("appId").and_then(|v| v.as_str()).unwrap_or("");
             let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
             let args = parsed.get("args").and_then(|v| v.as_str()).unwrap_or("");
-            shell_launch_app(kind, path, app_id, args);
+            let monitor = crate::window_target::parse_monitor_target(Some(&parsed), *target_hwnd);
+            crate::window_target::launch_with_monitor_target(
+                crate::window_target::LaunchKind::App { kind, path, app_id, args },
+                monitor,
+            );
         }
 
         "Focus Window" => {

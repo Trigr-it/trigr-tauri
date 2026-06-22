@@ -8,6 +8,7 @@ import {
   GripVertical, Copy, Sparkles,
 } from 'lucide-react';
 import './MacroPanel.css';
+import MonitorPicker from './MonitorPicker';
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
@@ -581,6 +582,13 @@ export function AppForm({ value, onChange }) {
           Absolute path — won't work on other devices unless the app is installed at the same location.
         </div>
       )}
+      <div className="form-row-monitor">
+        <label className="form-sublabel">Open on monitor</label>
+        <MonitorPicker
+          value={value.monitor || 'default'}
+          onChange={(m) => onChange({ ...value, monitor: m })}
+        />
+      </div>
       {/* Display name is set via the single top-level "Display label" field
           below this sub-form. Auto-populated `appName` (from the picker) still
           feeds the Display label placeholder and the Sidebar/SearchOverlay
@@ -608,6 +616,13 @@ function FolderForm({ value, onChange }) {
         <button className="browse-btn" type="button" onClick={handleBrowse}>Browse</button>
       </div>
       <div className="form-hint">Opens the folder in File Explorer when the key is pressed.</div>
+      <div className="form-row-monitor">
+        <label className="form-sublabel">Open on monitor</label>
+        <MonitorPicker
+          value={value.monitor || 'default'}
+          onChange={(m) => onChange({ ...value, monitor: m })}
+        />
+      </div>
     </div>
   );
 }
@@ -1035,6 +1050,10 @@ function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced })
       ) : (
         <button className="macro-advanced-toggle" type="button" onClick={toggleAdvanced}>+ Advanced</button>
       )}
+      <MonitorPicker
+        value={appData.monitor || 'default'}
+        onChange={(m) => updateValue({ ...appData, monitor: m })}
+      />
       {pickerOpen && <AppPickerModal onSelect={handlePick} onClose={() => setPickerOpen(false)} />}
     </div>
   );
@@ -1475,7 +1494,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
-  let appData = { kind: 'path', appId: '', appName: '', path: '', args: '' };
+  let appData = { kind: 'path', appId: '', appName: '', path: '', args: '', monitor: 'default' };
   if (step.type === 'Open App') { try { appData = { ...appData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
   let focusData = { process: '', title: '' };
   if (step.type === 'Focus Window') { try { focusData = { ...focusData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
@@ -1484,6 +1503,17 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   // (if set) AND title substring (if set) — see actions.rs Wait for Window arm.
   let waitWindowData = { process: '', title: '', timeoutMs: 30000 };
   if (step.type === 'Wait for Window') { try { waitWindowData = { ...waitWindowData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
+  // Open Folder: legacy stored step.value as a plain path string. New writes
+  // emit JSON {path, monitor}. Detect by leading '{' and parse-or-fallback.
+  let folderData = { path: '', monitor: 'default' };
+  if (step.type === 'Open Folder') {
+    const raw = step.value || '';
+    if (raw.trim().startsWith('{')) {
+      try { folderData = { ...folderData, ...JSON.parse(raw) }; } catch (_) { folderData.path = raw; }
+    } else {
+      folderData.path = raw;
+    }
+  }
 
   return (
     <div
@@ -1689,22 +1719,28 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         />
       )}
 
-      {/* Sub-row: Open Folder — path + browse */}
+      {/* Sub-row: Open Folder — path + browse + monitor picker. step.value is
+          JSON {path, monitor}; backward-compat reader above unwraps legacy
+          plain-string path values. */}
       {step.type === 'Open Folder' && (
-        <div className="wfi-config-row">
+        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
           <div className="file-input-row" style={{ flex: 1 }}>
             <input
               className="form-input"
               style={{ flex: 1 }}
               placeholder="C:\Users\Me\Documents"
-              value={step.value || ''}
+              value={folderData.path || ''}
               readOnly
             />
             <button className="browse-btn" type="button" onClick={async () => {
               const path = await window.electronAPI?.browseForFolder();
-              if (path) updateStep({ ...step, value: path });
+              if (path) updateStep({ ...step, value: JSON.stringify({ ...folderData, path }) });
             }}>Browse</button>
           </div>
+          <MonitorPicker
+            value={folderData.monitor || 'default'}
+            onChange={(m) => updateStep({ ...step, value: JSON.stringify({ ...folderData, monitor: m }) })}
+          />
         </div>
       )}
 

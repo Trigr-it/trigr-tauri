@@ -5,12 +5,12 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import {
   Bold as BoldIcon, Italic as ItalicIcon, Underline as UnderlineIcon,
-  List as ListIcon, ListOrdered as ListOrderedIcon,
+  List as ListIcon,
   Palette as PaletteIcon, Heading as HeadingIcon,
-  Calendar as CalendarIcon, Clock as ClockIcon, CalendarClock as CalendarClockIcon,
+  CalendarClock as CalendarClockIcon,
   Clipboard as ClipboardIcon, TextCursor as TextCursorIcon,
   Variable as VariableIcon, Keyboard as KeyboardIcon,
-  FormInput as FillInIcon,
+  FormInput as FillInIcon, FunctionSquare as FormulaIcon, Calendar as CalendarPickIcon,
 } from 'lucide-react';
 import './TextExpansions.css';
 import { SearchBar } from './SearchBar';
@@ -48,8 +48,10 @@ function htmlToPlainText(html) {
     .trim();
 }
 
-// Walk a chunk of editor HTML and return every {fillIn:LABEL} label found.
-// Used to surface reusable fields across the single editor body + variants.
+// Walk a chunk of editor HTML and return every fillIn LABEL found. Matches both
+// the legacy `{fillIn:Label}` shape and typed shapes like
+// `{fillIn:Label:dropdown:opts}` — the reusable-chip surface stays meaningful
+// across types (label is the only identifier the runtime values map cares about).
 function extractFillInLabels(html) {
   if (!html) return [];
   const tmp = document.createElement('div');
@@ -57,10 +59,50 @@ function extractFillInLabels(html) {
   const labels = [];
   tmp.querySelectorAll('[data-token]').forEach(el => {
     const t = el.dataset.token || '';
-    const m = t.match(/^\{fillIn:(.+)\}$/);
+    // Legacy: {fillIn:Label} — entire content is the label
+    let m = t.match(/^\{fillIn:([^:}]+)\}$/);
+    if (m) { labels.push(m[1]); return; }
+    // Typed: {fillIn:Label:...} — label is the first segment before the second colon
+    m = t.match(/^\{fillIn:([^:}]+):/);
     if (m) labels.push(m[1]);
   });
   return labels;
+}
+
+// Surface every named formula / set variable defined in the snippet so the
+// formula reference panel can show them as chips. Two sources:
+//   1. Plain-text {set name = …} — typed in directly via the Set variable
+//      button. Lives in the editor's text content.
+//   2. Chip data-tokens — named formulas built via the Expression popup's
+//      Name field produce a {set NAME = …}{=NAME} token, which lives in the
+//      chip's data-token attribute (NOT in textContent, since the chip's
+//      visible text is just "ƒ name").
+// Both paths get swept here.
+function extractSetVarNames(html) {
+  if (!html) return [];
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const out = new Set();
+  const re = /\{set\s+([A-Za-z_][A-Za-z0-9_]*)\s*=/g;
+  // Pass 1: plain-text occurrences (textContent decodes &nbsp; etc.).
+  const text = tmp.textContent || '';
+  let m;
+  while ((m = re.exec(text)) !== null) out.add(m[1]);
+  // Pass 2: chip-embedded named formulas.
+  tmp.querySelectorAll('[data-token]').forEach(el => {
+    const t = el.dataset.token || '';
+    re.lastIndex = 0;
+    while ((m = re.exec(t)) !== null) out.add(m[1]);
+  });
+  // Pass 3: named if-blocks via {ifset NAME …}{endif} chips.
+  const ifsetRe = /\{ifset\s+([A-Za-z_][A-Za-z0-9_]*)\s/g;
+  tmp.querySelectorAll('[data-token]').forEach(el => {
+    const t = el.dataset.token || '';
+    ifsetRe.lastIndex = 0;
+    let mm;
+    while ((mm = ifsetRe.exec(t)) !== null) out.add(mm[1]);
+  });
+  return Array.from(out);
 }
 
 // ── Insert token category menus ────────────────────────────────────────────
@@ -73,47 +115,78 @@ const CLIPBOARD_ITEMS = [
   { type: 'item', token: '{clipboard:lowercase}', label: 'Clipboard (lowercase)', display: 'clip ▼'    },
   { type: 'item', token: '{clipboard:trim}',      label: 'Clipboard (trimmed)',   display: 'Clip ✂'    },
   { type: 'item', token: '{clipboard:urlencode}', label: 'Clipboard (URL encode)', display: 'Clip %'    },
+  { type: 'sep' },
+  { type: 'header', label: 'Selection (Ctrl+C)' },
+  { type: 'item', token: '{selection}',           label: 'Selected Text',           display: 'Selection'  },
+  { type: 'item', token: '{selection:uppercase}', label: 'Selection (UPPERCASE)',   display: 'SEL ▲'     },
+  { type: 'item', token: '{selection:lowercase}', label: 'Selection (lowercase)',   display: 'sel ▼'     },
+  { type: 'item', token: '{selection:trim}',      label: 'Selection (trimmed)',     display: 'Sel ✂'     },
+  { type: 'item', token: '{selection:urlencode}', label: 'Selection (URL encode)',  display: 'Sel %'     },
 ];
 
-const DATE_ITEMS = [
+const DATETIME_ITEMS = [
+  { type: 'header', label: 'Pick a fixed date' },
+  { type: 'item', token: '__pick_date__',      label: 'Pick a date…',         display: <CalendarPickIcon size={14} strokeWidth={2} /> },
+  { type: 'sep' },
+  { type: 'header', label: 'Date' },
   { type: 'item', token: '{date}',             label: 'Date (your default)', display: 'Default'     },
+  { type: 'item', token: '{date:DD/MM/YYYY}',  label: 'Date (DD/MM/YYYY)',   display: 'DD/MM/YYYY'  },
+  { type: 'item', token: '{date:DD/MM/YY}',    label: 'Date (DD/MM/YY)',     display: 'DD/MM/YY'    },
+  { type: 'item', token: '{date:MM/DD/YYYY}',  label: 'Date (MM/DD/YYYY)',   display: 'MM/DD/YYYY'  },
+  { type: 'item', token: '{date:YYYY-MM-DD}',  label: 'Date (YYYY-MM-DD)',   display: 'YYYY-MM-DD'  },
+  { type: 'item', token: '{date:D MMMM YYYY}', label: 'Date (1 May 2026)',   display: 'D MMMM YYYY' },
   { type: 'sep' },
-  { type: 'item', token: '{date:DD/MM/YYYY}',  label: 'Date (DD/MM/YYYY)',  display: 'DD/MM/YYYY'  },
-  { type: 'item', token: '{date:DD/MM/YY}',    label: 'Date (DD/MM/YY)',    display: 'DD/MM/YY'    },
-  { type: 'item', token: '{date:MM/DD/YYYY}',  label: 'Date (MM/DD/YYYY)',  display: 'MM/DD/YYYY'  },
-  { type: 'item', token: '{date:YYYY-MM-DD}',  label: 'Date (YYYY-MM-DD)',  display: 'YYYY-MM-DD'  },
-  { type: 'item', token: '{date:D MMMM YYYY}', label: 'Date (1 May 2026)',  display: 'D MMMM YYYY' },
-  { type: 'sep' },
+  { type: 'header', label: 'Date Parts' },
   { type: 'item', token: '{dayofweek}', label: 'Day of Week',  display: 'Day'   },
   { type: 'item', token: '{month}',     label: 'Month Name',   display: 'Month' },
   { type: 'item', token: '{year}',      label: 'Year (YYYY)',  display: 'Year'  },
   { type: 'item', token: '{day}',       label: 'Day of Month', display: 'Day#'  },
-];
-
-const TIME_ITEMS = [
+  { type: 'sep' },
+  { type: 'header', label: 'Time' },
   { type: 'item', token: '{time:HH:MM}',    label: 'Time (HH:MM)',       display: 'HH:MM'    },
   { type: 'item', token: '{time:HH:MM:SS}', label: 'Time (HH:MM:SS)',    display: 'HH:MM:SS' },
   { type: 'item', token: '{isodate}',       label: 'ISO 8601 Date+Time', display: 'ISO Date' },
-];
-
-const DATE_MATH_ITEMS = [
+  { type: 'sep' },
+  { type: 'header', label: 'Date Math' },
   { type: 'item', token: '{date:+1d}', label: 'Tomorrow',   display: '+1 day'    },
   { type: 'item', token: '{date:-1d}', label: 'Yesterday',  display: '-1 day'    },
   { type: 'item', token: '{date:+7d}', label: 'Next Week',  display: '+7 days'   },
   { type: 'item', token: '{date:+1m}', label: 'Next Month', display: '+1 month'  },
 ];
 
-const CURSOR_FILLIN_ITEMS = [
+const LIST_ITEMS = [
+  { type: 'item', token: '__list_bullet__',   label: 'Bullet List',   display: '•' },
+  { type: 'item', token: '__list_numbered__', label: 'Numbered List', display: '1.' },
+];
+
+const CURSOR_ITEMS = [
   { type: 'item', token: '{cursor}',    label: 'Cursor Position', display: '↕ Cursor', chipClass: 'cursor' },
-  { type: 'item', token: '__fillin__',  label: 'Fill-in Field…',  display: <FillInIcon size={14} strokeWidth={2} />, chipClass: 'fillin' },
+];
+
+const FORMULA_ITEMS = [
+  { type: 'item', token: '__formula_expr__', label: 'Expression  {=…}',          display: 'ƒ',         chipClass: 'formula' },
+  { type: 'item', token: '__formula_set__',  label: 'Set variable  {set …}',     display: '=',         chipClass: 'formula' },
+  { type: 'item', token: '__formula_if__',   label: 'If / Else block',           display: '?',         chipClass: 'formula' },
+];
+
+const FILLIN_ITEMS = [
+  { type: 'item', token: '__fillin__',  label: 'Text Field…',     display: <FillInIcon size={14} strokeWidth={2} />, chipClass: 'fillin' },
+  { type: 'sep' },
+  { type: 'header', label: 'Typed Fill-ins' },
+  { type: 'item', token: '__fillin_multiline__', label: 'Multi-line Text…', display: '▭ Multi',    chipClass: 'fillin' },
+  { type: 'item', token: '__fillin_dropdown__',  label: 'Dropdown…',        display: '▭ Dropdown', chipClass: 'fillin' },
+  { type: 'item', token: '__fillin_checkbox__',  label: 'Yes/No Toggle…',   display: '▭ Toggle',   chipClass: 'fillin' },
+  { type: 'item', token: '__fillin_number__',    label: 'Number…',          display: '▭ Number',   chipClass: 'fillin' },
+  { type: 'item', token: '__fillin_date__',      label: 'Date Picker…',     display: '▭ Date',     chipClass: 'fillin' },
 ];
 
 const INSERT_CATEGORIES = {
-  clipboard: { items: CLIPBOARD_ITEMS,     label: 'Clipboard',         chipClass: 'clipboard' },
-  date:      { items: DATE_ITEMS,          label: 'Date',              chipClass: 'date' },
-  time:      { items: TIME_ITEMS,          label: 'Time',              chipClass: 'date' },
-  datemath:  { items: DATE_MATH_ITEMS,     label: 'Date Math',         chipClass: 'date' },
-  cursor:    { items: CURSOR_FILLIN_ITEMS, label: 'Cursor & Fill-in',  chipClass: null    },
+  clipboard: { items: CLIPBOARD_ITEMS, label: 'Clipboard',     chipClass: 'clipboard' },
+  datetime:  { items: DATETIME_ITEMS,  label: 'Date & Time',   chipClass: 'date'   },
+  lists:     { items: LIST_ITEMS,      label: 'Lists',         chipClass: null     },
+  cursor:    { items: CURSOR_ITEMS,    label: 'Cursor',        chipClass: 'cursor' },
+  fillin:    { items: FILLIN_ITEMS,    label: 'Fill-in Field', chipClass: 'fillin' },
+  formula:   { items: FORMULA_ITEMS,   label: 'Formulas',      chipClass: 'formula' },
 };
 
 // ── Text colour swatches (for foreColor) ───────────────────────────────────
@@ -216,7 +289,7 @@ function ColourPicker({ value, onChange }) {
 
 // ── Rich text editor ───────────────────────────────────────────────────────
 
-function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade, reusableFillInLabels = [] }) {
+function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade, reusableFillInLabels = [], setVarNames = [] }) {
   const editorRef      = useRef(null);
   const menuRef        = useRef(null);
   const keyBtnRef      = useRef(null);
@@ -232,10 +305,43 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   const [menuPos, setMenuPos] = useState(null);
   const [fillInEntry, setFillInEntry] = useState(false);
   const [fillInLabel, setFillInLabel] = useState('');
+  // Kind drives the token suffix at insert time. 'text' = legacy `{fillIn:Label}`.
+  // Other kinds: multiline / dropdown / checkbox / number / date.
+  const [fillInKind, setFillInKind] = useState('text');
+  // Comma-separated options string for the 'dropdown' kind only. Ignored for others.
+  const [fillInOptionsStr, setFillInOptionsStr] = useState('');
+  // Inline entry for a formula expression. `formulaEntry === true` shows the
+  // expression input row inside the formulas popup; the expression value is
+  // tracked separately so chip edits can prefill it.
+  const [formulaEntry, setFormulaEntry] = useState(false);
+  const [formulaExpr, setFormulaExpr] = useState('');
+  const [formulaName, setFormulaName] = useState('');
+  const [formulaEditChip, setFormulaEditChip] = useState(null); // existing chip being edited
+  const formulaInputRef = useRef(null);
+  // If/Else block popup state.
+  const [ifEntry, setIfEntry] = useState(false);
+  const [ifCondition, setIfCondition] = useState('');
+  const [ifThen, setIfThen] = useState('');
+  const [ifElse, setIfElse] = useState('');
+  const [ifHasElse, setIfHasElse] = useState(true);
+  const [ifName, setIfName] = useState('');
+  const [ifEditChip, setIfEditChip] = useState(null);
+  const ifConditionRef = useRef(null);
+  const ifThenRef = useRef(null);
+  const ifElseRef = useRef(null);
+  // Tracks which If/Else field last had focus — clicked chips insert into
+  // this field. Defaults to Condition since that's where formula references
+  // are most often used.
+  const [ifActiveField, setIfActiveField] = useState('condition');
   const fillInInputRef = useRef(null);
-  // Inline rename popover for fill-in chips clicked in the editor body
-  const [fillInRename, setFillInRename] = useState(null); // { label, x, y }
+  // Inline rename popover for fill-in chips clicked in the editor body.
+  // For typed chips (kind === 'dropdown' etc.) the popover also exposes the
+  // type-specific knobs — options for dropdown, currently. Default-value
+  // editing is deferred to a later iteration; tokens with a default suffix
+  // are preserved verbatim through the rename.
+  const [fillInRename, setFillInRename] = useState(null); // { label, x, y, kind, optionsStr, defaultSuffix }
   const [fillInRenameValue, setFillInRenameValue] = useState('');
+  const [fillInRenameOptions, setFillInRenameOptions] = useState('');
   const fillInRenameRef = useRef(null);
   const fillInRenameInputRef = useRef(null);
   const [showKeyPicker, setShowKeyPicker] = useState(false);
@@ -468,11 +574,92 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     savedRangeRef.current = null;
   }
 
+  // Map typed-fillin sentinels onto the canonical kind string consumed by
+  // insertFillInToken. The 'text' kind is the legacy single-input path.
+  const FILLIN_SENTINELS = {
+    '__fillin__':            'text',
+    '__fillin_multiline__':  'multiline',
+    '__fillin_dropdown__':   'dropdown',
+    '__fillin_checkbox__':   'checkbox',
+    '__fillin_number__':     'number',
+    '__fillin_date__':       'date',
+  };
+
   function handleInsertItem(e, item) {
     e.preventDefault();
-    if (item.token === '__fillin__') {
+    if (FILLIN_SENTINELS[item.token]) {
+      setFillInKind(FILLIN_SENTINELS[item.token]);
+      setFillInOptionsStr('');
       setFillInEntry(true);
       setFillInLabel('');
+      return;
+    }
+    if (item.token === '__formula_expr__') {
+      if (!isPro) { onShowUpgrade?.('Formula expressions'); return; }
+      // Always reset ALL formula state when opening the popup fresh from the
+      // toolbar — otherwise leftover state from a previous edit-chip session
+      // (formulaName, formulaEditChip) would either bleed into the new entry
+      // or, worse, cause Insert to mutate the previously-edited chip instead
+      // of inserting a new one.
+      setFormulaEntry(true);
+      setFormulaExpr('');
+      setFormulaName('');
+      setFormulaEditChip(null);
+      setTimeout(() => formulaInputRef.current?.focus(), 0);
+      return;
+    }
+    if (item.token === '__formula_if__') {
+      if (!isPro) { onShowUpgrade?.('Conditional blocks'); return; }
+      // Same reset story as above — clear ifName + ifEditChip so a fresh
+      // toolbar insert doesn't reopen the last-edited chip's state.
+      setIfEntry(true);
+      setIfCondition('');
+      setIfThen('');
+      setIfElse('');
+      setIfHasElse(true);
+      setIfName('');
+      setIfEditChip(null);
+      setTimeout(() => ifConditionRef.current?.focus(), 0);
+      return;
+    }
+    if (item.token === '__pick_date__') {
+      // Shortcut to creating a date-typed fill-in. The user is firing the
+      // expansion picks the date at fire time via the native calendar in
+      // the fill-in window; the snippet stores a {fillIn:Label:date} token.
+      // Same as Fill-in field → Date Picker… but located in the Date & Time
+      // dropdown for discoverability.
+      setFillInKind('date');
+      setFillInOptionsStr('');
+      setFillInEntry(true);
+      setFillInLabel('');
+      setTimeout(() => fillInInputRef.current?.focus(), 0);
+      return;
+    }
+    if (item.token === '__formula_set__') {
+      if (!isPro) { onShowUpgrade?.('Set variables'); return; }
+      // Insert a template the user edits in place. The token is invisible at
+      // fire time (zero-width substitution) — its only purpose is to let
+      // later {=…} / {if …} tokens reference the named result.
+      insertTextAtCursor('{set name = expression}');
+      setShowInsert(false);
+      setInsertCategory(null);
+      return;
+    }
+    if (item.token === '__list_bullet__') {
+      // Restore the saved selection before invoking execCommand, otherwise
+      // contentEditable converts the wrong line. Same pattern as the legacy
+      // direct-format buttons that lived in the toolbar before consolidation.
+      restoreSelection();
+      format('insertUnorderedList');
+      setShowInsert(false);
+      setInsertCategory(null);
+      return;
+    }
+    if (item.token === '__list_numbered__') {
+      restoreSelection();
+      format('insertOrderedList');
+      setShowInsert(false);
+      setInsertCategory(null);
       return;
     }
     insertTokenHtml(item.token, item.display);
@@ -480,10 +667,265 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     setInsertCategory(null);
   }
 
-  function insertFillInToken(label) {
-    insertTokenHtml(`{fillIn:${label}}`, `▭ ${label}`);
+  // Build a formula chip from the expression. Display abbreviates long
+  // expressions so the chip stays readable in the editor; the full text
+  // round-trips through data-token. Named formulas show "ƒ name" since the
+  // name is the user's mental anchor.
+  function buildFormulaChipDisplay(expr, name) {
+    const trimmed = (expr || '').trim();
+    const cleanName = (name || '').trim();
+    if (cleanName) return `ƒ ${cleanName}`;
+    const abbreviated = trimmed.length > 24 ? trimmed.slice(0, 22) + '…' : trimmed;
+    return `ƒ ${abbreviated}`;
+  }
+
+  // Named formulas store both a {set} definition and a {=name} render in a
+  // single chip so the user sees the value AND has a reusable name. Anonymous
+  // formulas keep the simple {=expr} shape. Both round-trip through this
+  // pair of build / parse helpers.
+  function buildFormulaToken(expr, name) {
+    const cleanExpr = (expr || '').trim();
+    const cleanName = (name || '').trim();
+    if (cleanName && /^[A-Za-z_][A-Za-z0-9_]*$/.test(cleanName)) {
+      return `{set ${cleanName} = ${cleanExpr}}{=${cleanName}}`;
+    }
+    return `{=${cleanExpr}}`;
+  }
+
+  function parseFormulaToken(token) {
+    if (!token) return null;
+    // Named: {set NAME = EXPR}{=NAME}
+    const named = token.match(/^\{set\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\s\S]*?)\}\{=\1\}$/);
+    if (named) return { name: named[1], expr: named[2] };
+    // Anonymous: {=EXPR}
+    if (token.startsWith('{=') && token.endsWith('}')) {
+      return { name: '', expr: token.slice(2, -1) };
+    }
+    return null;
+  }
+
+  // Insert a chip name (fill-in label, var name, reserved word) at the current
+  // textarea cursor position so the user can build expressions by clicking
+  // rather than retyping field names from memory.
+  function insertIntoFormula(text) {
+    const el = formulaInputRef.current;
+    if (!el) {
+      setFormulaExpr(prev => prev + text);
+      return;
+    }
+    const start = el.selectionStart ?? formulaExpr.length;
+    const end = el.selectionEnd ?? formulaExpr.length;
+    const next = formulaExpr.slice(0, start) + text + formulaExpr.slice(end);
+    setFormulaExpr(next);
+    const caret = start + text.length;
+    setTimeout(() => {
+      el.focus();
+      try { el.setSelectionRange(caret, caret); } catch (_) {}
+    }, 0);
+  }
+
+  function commitFormulaEntry() {
+    const expr = formulaExpr.trim();
+    if (!expr) { setFormulaEntry(false); return; }
+    const name = formulaName.trim();
+    if (name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      // Invalid identifier — refuse to commit. Inline error shown via title
+      // attribute; user fixes and retries.
+      return;
+    }
+    const token = buildFormulaToken(expr, name);
+    const display = buildFormulaChipDisplay(expr, name);
+    if (formulaEditChip) {
+      // Edit existing chip in place rather than inserting a new one.
+      formulaEditChip.setAttribute('data-token', token);
+      formulaEditChip.textContent = display;
+      notify();
+    } else {
+      insertTokenHtml(token, display);
+    }
+    setFormulaEntry(false);
+    setFormulaExpr('');
+    setFormulaName('');
+    setFormulaEditChip(null);
+    setShowInsert(false);
+    setInsertCategory(null);
+  }
+
+  // Insert chip text into whichever If/Else field last held focus. Mirrors
+  // the formula popup's insertIntoFormula behaviour so chip clicks feel
+  // identical across both editors.
+  function insertIntoIfField(text) {
+    const target =
+      ifActiveField === 'then' ? ifThenRef.current :
+      ifActiveField === 'else' ? ifElseRef.current :
+      ifConditionRef.current;
+    const setter =
+      ifActiveField === 'then' ? setIfThen :
+      ifActiveField === 'else' ? setIfElse :
+      setIfCondition;
+    const current =
+      ifActiveField === 'then' ? ifThen :
+      ifActiveField === 'else' ? ifElse :
+      ifCondition;
+    if (!target) {
+      setter(current + text);
+      return;
+    }
+    const start = target.selectionStart ?? current.length;
+    const end = target.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + text + current.slice(end);
+    setter(next);
+    const caret = start + text.length;
+    setTimeout(() => {
+      target.focus();
+      try { target.setSelectionRange(caret, caret); } catch (_) {}
+    }, 0);
+  }
+
+  function buildIfToken(condition, thenText, elseText, hasElse, name) {
+    const cleanName = (name || '').trim();
+    const named = cleanName && /^[A-Za-z_][A-Za-z0-9_]*$/.test(cleanName);
+    const opener = named ? `{ifset ${cleanName} ${condition}}` : `{if ${condition}}`;
+    return hasElse
+      ? `${opener}${thenText}{else}${elseText}{endif}`
+      : `${opener}${thenText}{endif}`;
+  }
+
+  function buildIfChipDisplay(condition, name) {
+    const cleanName = (name || '').trim();
+    if (cleanName) return cleanName;
+    const trimmed = (condition || '').trim();
+    return trimmed.length > 20 ? trimmed.slice(0, 18) + '…' : trimmed;
+  }
+
+  // Parse a stored if-block token back into editable fields. Handles both
+  // anonymous {if cond}…{endif} and named {ifset NAME cond}…{endif} shapes.
+  // V1 assumes a non-nested block — power users can still edit nested chains
+  // by clicking the chip's data-token directly.
+  function parseIfToken(token) {
+    if (!token || !token.endsWith('{endif}')) return null;
+    let name = '';
+    let headerStart;
+    if (token.startsWith('{ifset ')) {
+      const nameAndCondStart = 7;
+      const spaceIdx = token.indexOf(' ', nameAndCondStart);
+      if (spaceIdx < 0) return null;
+      name = token.slice(nameAndCondStart, spaceIdx);
+      headerStart = spaceIdx + 1;
+    } else if (token.startsWith('{if ')) {
+      headerStart = 4;
+    } else {
+      return null;
+    }
+    const condEnd = token.indexOf('}', headerStart);
+    if (condEnd < 0) return null;
+    const condition = token.slice(headerStart, condEnd);
+    const inner = token.slice(condEnd + 1, token.length - '{endif}'.length);
+    const elseIdx = inner.indexOf('{else}');
+    if (elseIdx >= 0) {
+      return {
+        name,
+        condition,
+        thenText: inner.slice(0, elseIdx),
+        elseText: inner.slice(elseIdx + '{else}'.length),
+        hasElse: true,
+      };
+    }
+    return { name, condition, thenText: inner, elseText: '', hasElse: false };
+  }
+
+  function commitIfEntry() {
+    const cond = ifCondition.trim();
+    if (!cond) { setIfEntry(false); return; }
+    const name = ifName.trim();
+    if (name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return;
+    const token = buildIfToken(cond, ifThen || '', ifElse || '', ifHasElse, name);
+    const display = buildIfChipDisplay(cond, name);
+    if (ifEditChip) {
+      const stillInDom = !!ifEditChip.parentNode && editorRef.current?.contains(ifEditChip);
+      if (!stillInDom) {
+        insertTokenHtml(token, display);
+      } else {
+        ifEditChip.setAttribute('data-token', token);
+        ifEditChip.textContent = display;
+        notify();
+      }
+    } else {
+      insertTokenHtml(token, display);
+    }
+    setIfEntry(false);
+    setIfCondition('');
+    setIfThen('');
+    setIfElse('');
+    setIfHasElse(true);
+    setIfName('');
+    setIfEditChip(null);
+    setShowInsert(false);
+    setInsertCategory(null);
+  }
+
+  // Plain text insert at saved cursor position — used for the {if}{endif}
+  // template. Mirrors the pattern used by insertTokenHtml but skips the chip
+  // wrapping so the result is editable inline as raw text.
+  function insertTextAtCursor(text) {
+    const range = savedRangeRef.current;
+    if (!range || !editorRef.current?.contains(range.startContainer)) {
+      // Fall back: append at end of editor.
+      editorRef.current?.focus();
+      const sel = window.getSelection();
+      sel?.selectAllChildren(editorRef.current);
+      sel?.collapseToEnd();
+      document.execCommand('insertText', false, text);
+    } else {
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      document.execCommand('insertText', false, text);
+    }
+    notify();
+    savedRangeRef.current = null;
+  }
+
+  // Build the appropriate token from the entry state. Legacy bare `{fillIn:Label}`
+  // produced when kind is 'text' so existing snippets and the reusable-chip path
+  // remain byte-identical.
+  function buildFillInToken(label, kind, optionsStr) {
+    if (kind === 'text' || !kind) {
+      return `{fillIn:${label}}`;
+    }
+    if (kind === 'dropdown') {
+      const opts = optionsStr
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .join(',');
+      // Bare `{fillIn:Label:dropdown}` with no options is still valid — backend
+      // falls back to a text input. Users can add options later by editing.
+      return opts
+        ? `{fillIn:${label}:dropdown:${opts}}`
+        : `{fillIn:${label}:dropdown}`;
+    }
+    return `{fillIn:${label}:${kind}}`;
+  }
+
+  // Chip display text. Plain `▭ Label` for the text kind (matches legacy),
+  // `▭ Label · type` for typed kinds so the editor surfaces which type the
+  // user picked without showing the full token.
+  function buildFillInChipDisplay(label, kind) {
+    if (kind === 'text' || !kind) return `▭ ${label}`;
+    return `▭ ${label} · ${kind}`;
+  }
+
+  function insertFillInToken(label, kindOverride, optionsOverride) {
+    const kind = kindOverride ?? fillInKind;
+    const opts = optionsOverride ?? fillInOptionsStr;
+    const token = buildFillInToken(label, kind, opts);
+    const display = buildFillInChipDisplay(label, kind);
+    insertTokenHtml(token, display);
     setFillInEntry(false);
     setFillInLabel('');
+    setFillInKind('text');
+    setFillInOptionsStr('');
     setShowInsert(false);
     setInsertCategory(null);
   }
@@ -491,29 +933,56 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   function commitFillInRename() {
     if (!fillInRename) return;
     const oldLabel = fillInRename.label;
-    const newLabel = fillInRenameValue.trim();
+    const newLabel = fillInRenameValue.trim() || oldLabel;
+    const renameKind = fillInRename.kind || 'text';
+    const renameDefaultSuffix = fillInRename.defaultSuffix || '';
+    // For dropdown chips the popover also edits options. Normalise comma input
+    // (trim, drop empty) so the resulting token is clean even if the user
+    // typed trailing commas or extra spaces.
+    const newOpts = renameKind === 'dropdown'
+      ? fillInRenameOptions
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+          .join(',')
+      : '';
     setFillInRename(null);
     setFillInRenameValue('');
-    if (!newLabel || newLabel === oldLabel) return;
-    // Update every chip in this editor with the matching label so renaming a
-    // field that appears multiple times stays consistent.
-    const oldToken = `{fillIn:${oldLabel}}`;
-    const newToken = `{fillIn:${newLabel}}`;
-    if (editorRef.current) {
-      const chips = editorRef.current.querySelectorAll('[data-token]');
-      chips.forEach(chip => {
-        if (chip.dataset.token === oldToken) {
-          chip.setAttribute('data-token', newToken);
-          chip.textContent = `▭ ${newLabel}`;
-        }
-      });
-    }
+    setFillInRenameOptions('');
+    if (!editorRef.current) return;
+
+    // Build the canonical new token for THE clicked chip's type. The token
+    // applies to every chip referencing the same label in this editor so the
+    // user's rename / options change propagates everywhere that field appears.
+    const buildNewToken = () => {
+      if (renameKind === 'text') return `{fillIn:${newLabel}}${''}`;
+      if (renameKind === 'dropdown') {
+        return newOpts
+          ? `{fillIn:${newLabel}:dropdown:${newOpts}${renameDefaultSuffix}}`
+          : `{fillIn:${newLabel}:dropdown${renameDefaultSuffix}}`;
+      }
+      return `{fillIn:${newLabel}:${renameKind}${renameDefaultSuffix}}`;
+    };
+    const newToken = buildNewToken();
+    const newChipText = renameKind === 'text' ? `▭ ${newLabel}` : `▭ ${newLabel} · ${renameKind}`;
+
+    const chips = editorRef.current.querySelectorAll('[data-token]');
+    const oldBare = `{fillIn:${oldLabel}}`;
+    const oldTypedPrefix = `{fillIn:${oldLabel}:`;
+    chips.forEach(chip => {
+      const tok = chip.dataset.token || '';
+      if (tok === oldBare || tok.startsWith(oldTypedPrefix)) {
+        chip.setAttribute('data-token', newToken);
+        chip.textContent = newChipText;
+      }
+    });
     notify();
   }
 
   function cancelFillInRename() {
     setFillInRename(null);
     setFillInRenameValue('');
+    setFillInRenameOptions('');
   }
 
   function handleInsertFillIn(e) {
@@ -532,6 +1001,23 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
       setFillInLabel('');
       return;
     }
+    // Reset every sub-editor state when opening a category menu from the
+    // toolbar. Without this, a popup still in chip-edit mode (formulaEntry
+    // or ifEntry truthy) hides the dropdown items behind its edit form and
+    // the user thinks the toolbar is "stuck" on the previous chip.
+    setFillInEntry(false);
+    setFillInLabel('');
+    setFormulaEntry(false);
+    setFormulaExpr('');
+    setFormulaName('');
+    setFormulaEditChip(null);
+    setIfEntry(false);
+    setIfCondition('');
+    setIfThen('');
+    setIfElse('');
+    setIfHasElse(true);
+    setIfName('');
+    setIfEditChip(null);
     const r = e.currentTarget.getBoundingClientRect();
     // Right-anchor the popup when the button sits in the right half of the
     // viewport. As the popup widens (e.g. when the fill-in input row appears),
@@ -550,33 +1036,59 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     setShowKeyPicker(false);
     setFillInEntry(false);
     setFillInLabel('');
+    setFillInKind('text');
+    setFillInOptionsStr('');
+    setFormulaEntry(false);
+    setFormulaExpr('');
+    setFormulaEditChip(null);
   }
 
-  // Flip popup vertically when it would overflow the viewport. Horizontal
-  // overflow is handled at click time by anchoring right vs left in menuPos
-  // (see openCategoryMenu). The right-anchor case naturally grows leftward
-  // when content widens (e.g. fill-in input row appearing) so no measure
-  // correction is needed for it.
+  // Position the popup vertically so it never clips. Re-runs whenever a
+  // sub-editor open/close state changes (formula, if-block, fill-in, etc.)
+  // because those expand the popup's content significantly. We measure the
+  // NATURAL height first (clear inline maxHeight + position), decide which
+  // way to open, then apply maxHeight to fit. A ResizeObserver here would
+  // feedback-loop — applying maxHeight changes the measured height, which
+  // would re-trigger the observer.
   useLayoutEffect(() => {
     if (!(showInsert && menuPos && menuRef.current)) return;
     const popup = menuRef.current;
+
+    // Clear previous inline placement so we measure the popup's intrinsic
+    // height (the height it WANTS to be) before deciding which way to open.
+    popup.style.maxHeight = '';
+    popup.style.top = '';
+
     const rect = popup.getBoundingClientRect();
     const margin = 8;
-    let top = menuPos.top;
-    if (rect.bottom > window.innerHeight - margin) {
-      top = menuPos.btnTop - rect.height - 4;
+    const availableBelow = window.innerHeight - menuPos.top - margin;
+    const availableAbove = Math.max(0, menuPos.btnTop - margin - 4);
+    let top;
+    let maxH;
+    if (rect.height > availableBelow && availableAbove > availableBelow) {
+      top = Math.max(margin, menuPos.btnTop - Math.min(rect.height, availableAbove) - 4);
+      maxH = availableAbove;
+    } else {
+      top = menuPos.top;
+      maxH = availableBelow;
     }
-    popup.style.top = `${Math.max(margin, top)}px`;
+    popup.style.top = `${top}px`;
+    popup.style.maxHeight = `${maxH}px`;
 
     if (!menuPos.anchorRight) {
-      // Left-anchored: shift left if content widened past right edge.
       let left = menuPos.left;
       if (rect.right > window.innerWidth - margin) {
         left = menuPos.btnRight - rect.width;
       }
       popup.style.left = `${Math.max(margin, left)}px`;
     }
-  }, [showInsert, insertCategory, menuPos, fillInEntry]);
+  }, [
+    showInsert, menuPos, insertCategory,
+    // Sub-editor visibility toggles — each adds significant height to the popup.
+    fillInEntry, fillInKind, formulaEntry, ifEntry, ifHasElse,
+    // Reference-panel chip count drives the "Named references" section height.
+    reusableFillInLabels.length, setVarNames.length,
+  ]);
 
   useLayoutEffect(() => {
     if (!(showKeyPicker && keyPickerPos && keyMenuRef.current)) return;
@@ -631,37 +1143,19 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         ><HeadingIcon size={14} strokeWidth={2} /></button>
         <button
           type="button"
-          className="rte-btn"
-          onMouseDown={e => { e.preventDefault(); format('insertUnorderedList'); }}
-          title="Bullet list"
+          className={`rte-btn${showInsert && insertCategory === 'lists' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'lists')}
+          title="Bullet or numbered list"
         ><ListIcon size={14} strokeWidth={2} /></button>
-        <button
-          type="button"
-          className="rte-btn"
-          onMouseDown={e => { e.preventDefault(); format('insertOrderedList'); }}
-          title="Numbered list"
-        ><ListOrderedIcon size={14} strokeWidth={2} /></button>
 
         <div className="rte-sep" />
 
         {/* ── Category dropdowns ── */}
         <button
           type="button"
-          className={`rte-btn${showInsert && insertCategory === 'date' ? ' rte-btn-on' : ''}`}
-          onMouseDown={e => openCategoryMenu(e, 'date')}
-          title="Insert date"
-        ><CalendarIcon size={14} strokeWidth={2} /></button>
-        <button
-          type="button"
-          className={`rte-btn${showInsert && insertCategory === 'time' ? ' rte-btn-on' : ''}`}
-          onMouseDown={e => openCategoryMenu(e, 'time')}
-          title="Insert time"
-        ><ClockIcon size={14} strokeWidth={2} /></button>
-        <button
-          type="button"
-          className={`rte-btn${showInsert && insertCategory === 'datemath' ? ' rte-btn-on' : ''}`}
-          onMouseDown={e => openCategoryMenu(e, 'datemath')}
-          title="Date math (tomorrow, next week…)"
+          className={`rte-btn${showInsert && insertCategory === 'datetime' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'datetime')}
+          title="Insert date, time, or date math"
         ><CalendarClockIcon size={14} strokeWidth={2} /></button>
         <button
           type="button"
@@ -671,9 +1165,21 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         ><ClipboardIcon size={14} strokeWidth={2} /></button>
         <button
           type="button"
+          className={`rte-btn${showInsert && insertCategory === 'fillin' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'fillin')}
+          title="Insert fill-in form field"
+        ><FillInIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'formula' ? ' rte-btn-on' : ''}${!isPro ? ' rte-btn-pro-locked' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'formula')}
+          title={isPro ? 'Insert formula or conditional block' : 'Formulas (Pro)'}
+        ><FormulaIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
           className={`rte-btn${showInsert && insertCategory === 'cursor' ? ' rte-btn-on' : ''}`}
           onMouseDown={e => openCategoryMenu(e, 'cursor')}
-          title="Cursor position & fill-in fields"
+          title="Insert cursor position marker"
         ><TextCursorIcon size={14} strokeWidth={2} /></button>
         {Object.keys(globalVariables).length > 0 && (
           <button
@@ -743,15 +1249,107 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             setShowInsert(false);
             return;
           }
+          // If/Else block chips — click to reopen the structured popup with
+          // condition/then/else parsed back from the stored token. Matches
+          // both anonymous {if } and named {ifset } chip shapes.
+          const ifChip = e.target.closest?.('[data-token^="{if "], [data-token^="{ifset "]');
+          if (ifChip) {
+            e.preventDefault();
+            if (!isPro) { onShowUpgrade?.('Conditional blocks'); return; }
+            const tok = ifChip.dataset.token || '';
+            const parsed = parseIfToken(tok);
+            if (!parsed) return;
+            // Close any sibling sub-editor that might still be open so its
+            // stale state doesn't bleed into this popup.
+            setFormulaEntry(false);
+            setFormulaEditChip(null);
+            setFillInEntry(false);
+            saveSelection();
+            setInsertCategory('formula');
+            const r = ifChip.getBoundingClientRect();
+            setMenuPos({
+              top: r.bottom + 4,
+              left: r.left,
+              btnTop: r.top,
+              btnRight: r.right,
+              anchorRight: false,
+              rightOffset: window.innerWidth - r.right,
+            });
+            setShowInsert(true);
+            setIfEntry(true);
+            setIfCondition(parsed.condition);
+            setIfThen(parsed.thenText);
+            setIfElse(parsed.elseText);
+            setIfHasElse(parsed.hasElse);
+            setIfName(parsed.name || '');
+            setIfEditChip(ifChip);
+            setIfActiveField('condition');
+            setTimeout(() => ifConditionRef.current?.focus(), 0);
+            return;
+          }
+          // Formula chips — click to edit the expression (and optional name)
+          // inline. Matches both anonymous `{=expr}` and named
+          // `{set NAME = expr}{=NAME}` chip shapes.
+          const formulaChip = e.target.closest?.('[data-token^="{="], [data-token^="{set "]');
+          if (formulaChip) {
+            const tok = formulaChip.dataset.token || '';
+            const parsed = parseFormulaToken(tok);
+            // Skip {set …} chips that AREN'T paired named formulas — those
+            // should be handled by the if-block selector above or treated as
+            // raw {set} text the user typed.
+            if (!parsed) return;
+            e.preventDefault();
+            if (!isPro) { onShowUpgrade?.('Formula expressions'); return; }
+            // Close any sibling sub-editor so its stale state doesn't bleed in.
+            setIfEntry(false);
+            setIfEditChip(null);
+            setFillInEntry(false);
+            saveSelection();
+            setInsertCategory('formula');
+            const r = formulaChip.getBoundingClientRect();
+            setMenuPos({
+              top: r.bottom + 4,
+              left: r.left,
+              btnTop: r.top,
+              btnRight: r.right,
+              anchorRight: false,
+              rightOffset: window.innerWidth - r.right,
+            });
+            setShowInsert(true);
+            setFormulaEntry(true);
+            setFormulaExpr(parsed.expr);
+            setFormulaName(parsed.name || '');
+            setFormulaEditChip(formulaChip);
+            setTimeout(() => formulaInputRef.current?.focus(), 0);
+            return;
+          }
+
           const fillinChip = e.target.closest?.('[data-token^="{fillIn:"]');
           if (fillinChip) {
             e.preventDefault();
-            const match = fillinChip.dataset.token.match(/^\{fillIn:(.+)\}$/);
-            if (match) {
-              const label = match[1];
+            // Parse the full token shape so the popover knows whether this is a
+            // legacy text chip (label only) or a typed chip (dropdown shows its
+            // options for inline editing; other types just rename the label).
+            // Token grammar: `{fillIn:<label>[:<kind>[:<opts>][:default=<v>]]}`
+            const tok = fillinChip.dataset.token || '';
+            const inner = tok.slice(8, -1); // strip "{fillIn:" and "}"
+            // Lift the optional `:default=...` suffix first so it can contain colons
+            let defaultSuffix = '';
+            let head = inner;
+            const defIdx = inner.lastIndexOf(':default=');
+            if (defIdx !== -1) {
+              defaultSuffix = inner.slice(defIdx); // includes leading ":default="
+              head = inner.slice(0, defIdx);
+            }
+            const parts = head.split(':');
+            const label = parts[0] || '';
+            const kind = parts[1] || 'text';
+            const optsRaw = parts.slice(2).join(':');
+            if (label) {
               const rect = fillinChip.getBoundingClientRect();
-              setFillInRename({ label, x: rect.left, y: rect.bottom + 4 });
+              setFillInRename({ label, x: rect.left, y: rect.bottom + 4, kind, defaultSuffix });
               setFillInRenameValue(label);
+              setFillInRenameOptions(kind === 'dropdown' ? optsRaw : '');
               setShowKeyPicker(false);
               setShowInsert(false);
             }
@@ -764,17 +1362,22 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
           ref={menuRef}
           className="rte-insert-menu"
           style={menuPos.anchorRight
-            ? { top: menuPos.top, right: Math.max(8, menuPos.rightOffset), maxHeight: window.innerHeight - menuPos.top - 16 }
-            : { top: menuPos.top, left: menuPos.left, maxHeight: window.innerHeight - menuPos.top - 16 }
+            ? { top: menuPos.top, right: Math.max(8, menuPos.rightOffset) }
+            : { top: menuPos.top, left: menuPos.left }
           }
         >
           {/* Fill-in label input — always mounted so ref is always valid,
-              toggled visible/hidden via CSS to avoid React render-timing races */}
+              toggled visible/hidden via CSS to avoid React render-timing races.
+              For typed kinds (multiline/dropdown/checkbox/number/date) the
+              header shows the kind, and dropdown adds a second row for the
+              comma-separated options. */}
           <div
             className="rte-fillin-row"
             style={{ display: fillInEntry ? 'flex' : 'none' }}
           >
-            <span className="rte-fillin-prompt-label">Field label:</span>
+            <span className="rte-fillin-prompt-label">
+              {fillInKind === 'text' ? 'Field label:' : `${fillInKind} label:`}
+            </span>
             <input
               ref={fillInInputRef}
               className="rte-fillin-input"
@@ -792,6 +1395,384 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
               onMouseDown={handleInsertFillIn}
             >Insert</button>
           </div>
+
+          {/* Formula expression editor — textarea-based so it visibly reads
+              as "write code here" rather than "name a thing". A reference
+              panel sits below with available data, functions, and
+              click-to-insert examples. Enter commits; Shift+Enter newline.
+
+              The optional Name field above the expression turns this into a
+              named formula — backend stores it as {set NAME = expr}{=NAME}
+              so the result both renders AND becomes referenceable in other
+              formulas by its name. */}
+          {formulaEntry && (() => {
+            const nameTrimmed = formulaName.trim();
+            const nameValid = !nameTrimmed || /^[A-Za-z_][A-Za-z0-9_]*$/.test(nameTrimmed);
+            return (
+            <>
+              <div className="rte-fillin-row rte-formula-row">
+                <span className="rte-fillin-prompt-label">Name <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></span>
+                <input
+                  className="rte-fillin-input rte-formula-input"
+                  type="text"
+                  value={formulaName}
+                  onChange={e => setFormulaName(e.target.value)}
+                  placeholder='e.g. total — gives this result a name so other formulas can reference it'
+                  spellCheck={false}
+                  style={!nameValid ? { borderColor: '#ff6464' } : undefined}
+                  title={!nameValid ? 'Use letters, digits, and underscores; cannot start with a digit.' : ''}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') { e.preventDefault(); formulaInputRef.current?.focus(); }
+                    if (e.key === 'Escape') { setFormulaEntry(false); setFormulaExpr(''); setFormulaName(''); setFormulaEditChip(null); }
+                  }}
+                />
+              </div>
+              <div className="rte-fillin-row rte-formula-row">
+                <span className="rte-fillin-prompt-label">{formulaEditChip ? 'Edit formula' : 'Formula'}</span>
+                <textarea
+                  ref={formulaInputRef}
+                  className="rte-fillin-input rte-formula-input"
+                  rows={2}
+                  value={formulaExpr}
+                  onChange={e => setFormulaExpr(e.target.value)}
+                  placeholder='e.g. upper(name) or qty * 1.2 or if(n > 5, "many", "few")'
+                  spellCheck={false}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitFormulaEntry(); }
+                    if (e.key === 'Escape') { setFormulaEntry(false); setFormulaExpr(''); setFormulaName(''); setFormulaEditChip(null); }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="rte-fillin-ok"
+                  onMouseDown={e => { e.preventDefault(); commitFormulaEntry(); }}
+                  disabled={!nameValid}
+                  title={!nameValid ? 'Fix the name first' : ''}
+                >{formulaEditChip ? 'Save' : 'Insert'}</button>
+              </div>
+
+              <div className="rte-formula-help">
+                <div className="rte-formula-banner">
+                  <strong>Want to reuse this result in another formula?</strong> Type a name in the Name field above — the result will both render here AND become a referenceable chip in other formulas.
+                </div>
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Named references in this expansion</div>
+                  <div className="rte-formula-chips">
+                    {reusableFillInLabels.length === 0
+                      && setVarNames.length === 0
+                      && Object.keys(globalVariables).length === 0 ? (
+                      <span className="rte-formula-chips-empty">
+                        Nothing named yet. Add a fill-in field, or type a name in the field above when inserting a formula — it'll appear here as a chip for the next formula.
+                      </span>
+                    ) : (
+                      <>
+                        {reusableFillInLabels.map(label => (
+                          <button
+                            key={`fillin-${label}`}
+                            type="button"
+                            className="rte-formula-chip rte-formula-chip--fillin"
+                            title={`Insert "${label}" (fill-in field)`}
+                            onMouseDown={e => { e.preventDefault(); insertIntoFormula(label); }}
+                          >{label}</button>
+                        ))}
+                        {setVarNames.map(name => (
+                          <button
+                            key={`set-${name}`}
+                            type="button"
+                            className="rte-formula-chip rte-formula-chip--set"
+                            title={`Insert "${name}" (set variable)`}
+                            onMouseDown={e => { e.preventDefault(); insertIntoFormula(name); }}
+                          >{name}</button>
+                        ))}
+                        {Object.keys(globalVariables).map(name => (
+                          <button
+                            key={`var-${name}`}
+                            type="button"
+                            className="rte-formula-chip rte-formula-chip--var"
+                            title={`Insert "${name}" (global variable)`}
+                            onMouseDown={e => { e.preventDefault(); insertIntoFormula(name); }}
+                          >{name}</button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Always available</div>
+                  <div className="rte-formula-chips">
+                    {['selection', 'clipboard', 'yes', 'no'].map(name => (
+                      <button
+                        key={`reserved-${name}`}
+                        type="button"
+                        className="rte-formula-chip rte-formula-chip--reserved"
+                        title={`Insert "${name}"`}
+                        onMouseDown={e => { e.preventDefault(); insertIntoFormula(name); }}
+                      >{name}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Operators</div>
+                  <div className="rte-formula-help-body">
+                    <code>+ - * / %</code> math · <code>== != &lt; &gt;</code> compare · <code>&amp;&amp; || !</code> logic · <code>&amp;</code> join text
+                  </div>
+                </div>
+
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Functions</div>
+                  <div className="rte-formula-help-body">
+                    <strong>Text:</strong> <code>upper</code> <code>lower</code> <code>trim</code> <code>len</code> <code>substring</code> <code>replace</code> <code>contains</code> <code>startswith</code> <code>endswith</code> <code>urlencode</code>
+                    <br />
+                    <strong>Math:</strong> <code>round</code> <code>floor</code> <code>ceil</code> <code>abs</code>
+                    <br />
+                    <strong>Date:</strong> <code>today()</code> <code>dateadd(date, days)</code> <code>dateformat(date, pattern)</code> <code>datediff(later, earlier)</code>
+                    <br />
+                    <strong>Logic:</strong> <code>if(cond, a, b)</code>
+                  </div>
+                </div>
+
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Click to try</div>
+                  <div className="rte-formula-examples">
+                    {[
+                      { label: 'Uppercase a fill-in',     expr: 'upper(name)' },
+                      { label: 'Add 20% VAT',             expr: 'qty * price * 1.2' },
+                      { label: 'URL-encode clipboard',    expr: 'urlencode(clipboard)' },
+                      { label: 'Conditional value',       expr: 'if(formal, "Hi", "Hey")' },
+                      { label: 'Joined string',           expr: '"Hello " & name & "!"' },
+                      { label: '7 days after a picked date', expr: 'dateformat(dateadd(eventdate, 7), "DD/MM/YYYY")' },
+                      { label: 'Days overdue from due date', expr: 'datediff(today(), duedate)' },
+                    ].map(ex => (
+                      <button
+                        key={ex.expr}
+                        type="button"
+                        className="rte-formula-example"
+                        onMouseDown={e => {
+                          e.preventDefault();
+                          setFormulaExpr(ex.expr);
+                          setTimeout(() => formulaInputRef.current?.focus(), 0);
+                        }}
+                        title={ex.expr}
+                      >
+                        <span className="rte-formula-example-label">{ex.label}</span>
+                        <code className="rte-formula-example-code">{ex.expr}</code>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+            );
+          })()}
+
+          {/* If / Else block popup — structured Condition + Then + Else fields
+              so the user doesn't have to learn the {if cond}then{else}…{endif}
+              syntax to insert one. The token still ships as plain editable
+              text so power users can refine it inline after insertion. */}
+          {ifEntry && (() => {
+            const ifNameTrimmed = ifName.trim();
+            const ifNameValid = !ifNameTrimmed || /^[A-Za-z_][A-Za-z0-9_]*$/.test(ifNameTrimmed);
+            return (
+            <>
+              <div className="rte-fillin-row rte-formula-row">
+                <span className="rte-fillin-prompt-label">Name <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></span>
+                <input
+                  className="rte-fillin-input rte-formula-input"
+                  type="text"
+                  value={ifName}
+                  onChange={e => setIfName(e.target.value)}
+                  placeholder='e.g. greeting — names this conditional so other formulas can reference its chosen branch'
+                  spellCheck={false}
+                  style={!ifNameValid ? { borderColor: '#ff6464' } : undefined}
+                  title={!ifNameValid ? 'Letters, digits, and underscores only; no leading digit.' : ''}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') { e.preventDefault(); ifConditionRef.current?.focus(); }
+                    if (e.key === 'Escape') { setIfEntry(false); setIfEditChip(null); setIfName(''); }
+                  }}
+                />
+              </div>
+              <div className="rte-fillin-row rte-formula-row">
+                <span className="rte-fillin-prompt-label">If</span>
+                <input
+                  ref={ifConditionRef}
+                  className="rte-fillin-input rte-formula-input"
+                  value={ifCondition}
+                  onChange={e => setIfCondition(e.target.value)}
+                  onFocus={() => setIfActiveField('condition')}
+                  placeholder='e.g. formal == "yes"  or  qty > 10'
+                  spellCheck={false}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitIfEntry(); }
+                    if (e.key === 'Escape') { setIfEntry(false); setIfEditChip(null); setIfName(''); }
+                  }}
+                />
+              </div>
+              <div className="rte-fillin-row rte-formula-row">
+                <span className="rte-fillin-prompt-label">Then</span>
+                <textarea
+                  ref={ifThenRef}
+                  className="rte-fillin-input rte-formula-input"
+                  rows={2}
+                  value={ifThen}
+                  onChange={e => setIfThen(e.target.value)}
+                  onFocus={() => setIfActiveField('then')}
+                  placeholder='Text inserted when the condition is true'
+                  onKeyDown={e => e.stopPropagation()}
+                />
+              </div>
+              <div className="rte-fillin-row" style={{ paddingTop: 0, paddingBottom: 4 }}>
+                <label className="rte-formula-else-toggle">
+                  <input
+                    type="checkbox"
+                    checked={ifHasElse}
+                    onChange={e => setIfHasElse(e.target.checked)}
+                  />
+                  <span>Include Else branch</span>
+                </label>
+              </div>
+              {ifHasElse && (
+                <div className="rte-fillin-row rte-formula-row">
+                  <span className="rte-fillin-prompt-label">Else</span>
+                  <textarea
+                    ref={ifElseRef}
+                    className="rte-fillin-input rte-formula-input"
+                    rows={2}
+                    value={ifElse}
+                    onChange={e => setIfElse(e.target.value)}
+                    onFocus={() => setIfActiveField('else')}
+                    placeholder='Text inserted when the condition is false'
+                    onKeyDown={e => e.stopPropagation()}
+                  />
+                </div>
+              )}
+              <div className="rte-fillin-row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                <button
+                  type="button"
+                  className="rte-fillin-ok"
+                  onMouseDown={e => { e.preventDefault(); commitIfEntry(); }}
+                >Insert</button>
+              </div>
+
+              <div className="rte-formula-help">
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">
+                    From this expansion <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(inserts into the {ifActiveField === 'then' ? 'Then' : ifActiveField === 'else' ? 'Else' : 'If'} field)</span>
+                  </div>
+                  <div className="rte-formula-chips">
+                    {reusableFillInLabels.length === 0
+                      && setVarNames.length === 0
+                      && Object.keys(globalVariables).length === 0 ? (
+                      <span className="rte-formula-chips-empty">
+                        No fill-in fields, set variables, or global variables defined yet.
+                      </span>
+                    ) : (
+                      <>
+                        {reusableFillInLabels.map(label => (
+                          <button
+                            key={`fillin-${label}`}
+                            type="button"
+                            className="rte-formula-chip rte-formula-chip--fillin"
+                            title={`Insert "${label}" (fill-in field)`}
+                            onMouseDown={e => { e.preventDefault(); insertIntoIfField(label); }}
+                          >{label}</button>
+                        ))}
+                        {setVarNames.map(name => (
+                          <button
+                            key={`set-${name}`}
+                            type="button"
+                            className="rte-formula-chip rte-formula-chip--set"
+                            title={`Insert "${name}" (set variable)`}
+                            onMouseDown={e => { e.preventDefault(); insertIntoIfField(name); }}
+                          >{name}</button>
+                        ))}
+                        {Object.keys(globalVariables).map(name => (
+                          <button
+                            key={`var-${name}`}
+                            type="button"
+                            className="rte-formula-chip rte-formula-chip--var"
+                            title={`Insert "${name}" (global variable)`}
+                            onMouseDown={e => { e.preventDefault(); insertIntoIfField(name); }}
+                          >{name}</button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Always available</div>
+                  <div className="rte-formula-chips">
+                    {['selection', 'clipboard', 'yes', 'no'].map(name => (
+                      <button
+                        key={`reserved-${name}`}
+                        type="button"
+                        className="rte-formula-chip rte-formula-chip--reserved"
+                        title={`Insert "${name}"`}
+                        onMouseDown={e => { e.preventDefault(); insertIntoIfField(name); }}
+                      >{name}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Hints for the condition</div>
+                  <div className="rte-formula-help-body">
+                    Use comparisons (<code>==</code> <code>!=</code> <code>&lt;</code> <code>&gt;</code>) and logic (<code>&amp;&amp;</code> <code>||</code> <code>!</code>). Reference any fill-in field or set variable by name. A checkbox fill-in returns <code>yes</code> / <code>no</code>.
+                  </div>
+                </div>
+                <div className="rte-formula-help-section">
+                  <div className="rte-formula-help-label">Click to try</div>
+                  <div className="rte-formula-examples">
+                    {[
+                      { label: 'Checkbox checked',     expr: 'formal' },
+                      { label: 'Equals a value',       expr: 'tier == "Pro"' },
+                      { label: 'Number threshold',     expr: 'qty > 10' },
+                      { label: 'Non-empty selection',  expr: 'len(selection) > 0' },
+                    ].map(ex => (
+                      <button
+                        key={ex.expr}
+                        type="button"
+                        className="rte-formula-example"
+                        onMouseDown={e => {
+                          e.preventDefault();
+                          setIfCondition(ex.expr);
+                          setTimeout(() => ifConditionRef.current?.focus(), 0);
+                        }}
+                        title={ex.expr}
+                      >
+                        <span className="rte-formula-example-label">{ex.label}</span>
+                        <code className="rte-formula-example-code">{ex.expr}</code>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+            );
+          })()}
+
+          {/* Dropdown-only: comma-separated options. Empty options ship a bare
+              `{fillIn:Label:dropdown}` token which the backend renders as a
+              text input fallback — user can add options later. */}
+          {fillInEntry && fillInKind === 'dropdown' && (
+            <div className="rte-fillin-row">
+              <span className="rte-fillin-prompt-label">Options:</span>
+              <input
+                className="rte-fillin-input"
+                value={fillInOptionsStr}
+                onChange={e => setFillInOptionsStr(e.target.value)}
+                placeholder="comma-separated · e.g. Formal,Casual,Friendly"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleInsertFillIn(e);
+                  if (e.key === 'Escape') { setFillInEntry(false); setFillInLabel(''); setFillInOptionsStr(''); }
+                }}
+              />
+            </div>
+          )}
 
           {/* Reusable fill-in fields from this editor + sibling variants.
               Lets users insert the same field multiple times so a single
@@ -819,8 +1800,8 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             </div>
           )}
 
-          {/* Menu items — hidden while fill-in label input is active */}
-          <div style={{ display: fillInEntry ? 'none' : 'contents' }}>
+          {/* Menu items — hidden while a structured entry popup is active */}
+          <div style={{ display: (fillInEntry || formulaEntry || ifEntry) ? 'none' : 'contents' }}>
             {insertCategory === 'color' ? (
               <>
                 <div className="rte-menu-section-label">Text Colour</div>
@@ -878,10 +1859,14 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             ) : (
               <>
                 <div className="rte-menu-section-label">{INSERT_CATEGORIES[insertCategory].label}</div>
-                {INSERT_CATEGORIES[insertCategory].items.map((item, i) =>
-                  item.type === 'sep' ? (
-                    <div key={`sep-${i}`} className="rte-menu-sep" />
-                  ) : (
+                {INSERT_CATEGORIES[insertCategory].items.map((item, i) => {
+                  if (item.type === 'sep') {
+                    return <div key={`sep-${i}`} className="rte-menu-sep" />;
+                  }
+                  if (item.type === 'header') {
+                    return <div key={`hdr-${i}`} className="rte-menu-section-label">{item.label}</div>;
+                  }
+                  return (
                     <button
                       key={item.token}
                       type="button"
@@ -893,8 +1878,8 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                       </span>
                       {item.label}
                     </button>
-                  )
-                )}
+                  );
+                })}
               </>
             )}
           </div>
@@ -1002,27 +1987,45 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
       {fillInRename && ReactDOM.createPortal(
         <div
           ref={fillInRenameRef}
-          className="rte-fillin-rename"
+          className={`rte-fillin-rename${fillInRename.kind === 'dropdown' ? ' rte-fillin-rename--dropdown' : ''}`}
           style={{ top: fillInRename.y, left: fillInRename.x }}
         >
-          <span className="rte-fillin-rename-label">Rename field</span>
+          <span className="rte-fillin-rename-label">
+            {fillInRename.kind === 'text' || !fillInRename.kind
+              ? 'Rename field'
+              : `Edit ${fillInRename.kind} field`}
+          </span>
           <input
             ref={fillInRenameInputRef}
             autoFocus
             className="rte-fillin-input"
             value={fillInRenameValue}
             onChange={e => setFillInRenameValue(e.target.value)}
+            placeholder="Field label"
             onKeyDown={e => {
               e.stopPropagation();
               if (e.key === 'Enter') commitFillInRename();
               if (e.key === 'Escape') cancelFillInRename();
             }}
           />
+          {fillInRename.kind === 'dropdown' && (
+            <input
+              className="rte-fillin-input"
+              value={fillInRenameOptions}
+              onChange={e => setFillInRenameOptions(e.target.value)}
+              placeholder="Options · comma-separated"
+              onKeyDown={e => {
+                e.stopPropagation();
+                if (e.key === 'Enter') commitFillInRename();
+                if (e.key === 'Escape') cancelFillInRename();
+              }}
+            />
+          )}
           <button
             type="button"
             className="rte-fillin-ok"
             onMouseDown={e => { e.preventDefault(); commitFillInRename(); }}
-          >Rename</button>
+          >Save</button>
         </div>,
         document.body
       )}
@@ -1101,6 +2104,7 @@ export default function TextExpansions({
 
   // ── Expansion form state ──
   const [editing, setEditing]             = useState(null);
+  const [justSaved, setJustSaved]         = useState(false);
   const [trigger, setTrigger]             = useState('');
   const [displayName, setDisplayName]     = useState('');
   const [editorValue, setEditorValue]     = useState({ html: '', text: '' });
@@ -1370,12 +2374,25 @@ export default function TextExpansions({
     const originalTrigger = editing.isNew ? null : editing.originalTrigger;
     const cleanedVariants = hasVariants ? variantOptions.filter(o => o.text?.trim()) : [];
     onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants, voicePhrases);
-    setEditing(null);
+    // Keep the editor open after Save. Flip editing.isNew to false (and
+    // re-anchor originalTrigger to the just-saved trigger) so the next Save
+    // updates the same row instead of trying to create a fresh one.
+    setEditing(prev => prev ? { ...prev, isNew: false, originalTrigger: t } : prev);
+    setJustSaved(true);
   }
 
   function handleCancel() {
     setEditing(null);
+    setJustSaved(false);
   }
+
+  // Reset the "Saved ✓" badge after ~1.5s so the button returns to its
+  // normal Save state. Cleared early if the user closes the editor.
+  useEffect(() => {
+    if (!justSaved) return;
+    const id = setTimeout(() => setJustSaved(false), 1500);
+    return () => clearTimeout(id);
+  }, [justSaved]);
 
   function handleAddCategory(e) {
     e.preventDefault();
@@ -1600,6 +2617,13 @@ export default function TextExpansions({
     const set = new Set();
     extractFillInLabels(editorValue.html).forEach(l => set.add(l));
     variantOptions.forEach(v => extractFillInLabels(v.html).forEach(l => set.add(l)));
+    return Array.from(set);
+  }, [editorValue.html, variantOptions]);
+
+  const setVarNames = useMemo(() => {
+    const set = new Set();
+    extractSetVarNames(editorValue.html).forEach(n => set.add(n));
+    variantOptions.forEach(v => extractSetVarNames(v.html).forEach(n => set.add(n)));
     return Array.from(set);
   }, [editorValue.html, variantOptions]);
 
@@ -2310,6 +3334,7 @@ export default function TextExpansions({
                             isPro={isPro}
                             onShowUpgrade={onShowUpgrade}
                             reusableFillInLabels={reusableFillInLabels}
+                            setVarNames={setVarNames}
                           />
                         </>
                       ) : (
@@ -2424,6 +3449,7 @@ export default function TextExpansions({
                               isPro={isPro}
                               onShowUpgrade={onShowUpgrade}
                               reusableFillInLabels={reusableFillInLabels}
+                              setVarNames={setVarNames}
                             />
                           )}
 
@@ -2524,8 +3550,13 @@ export default function TextExpansions({
 
                   <div className="te-panel-footer">
                     <div className="te-form-actions">
-                      <button className="te-save-btn" onClick={handleSave} disabled={!canSave} type="button">
-                        Save
+                      <button
+                        className={`te-save-btn${justSaved ? ' te-save-btn--saved' : ''}`}
+                        onClick={handleSave}
+                        disabled={!canSave}
+                        type="button"
+                      >
+                        {justSaved ? '✓ Saved' : 'Save'}
                       </button>
                       <button className="te-cancel-btn" onClick={handleCancel} type="button">Cancel</button>
                     </div>

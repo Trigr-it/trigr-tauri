@@ -25,10 +25,38 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Grid2X2, Edit3 } from 'lucide-react';
 import './FillInWindow.css';
 
+// Normalise an incoming field payload into a canonical typed shape. Backend
+// emits objects (typed fields) but variant-mode legacy payloads or older Rust
+// builds may send bare strings — coerce those to a text field.
+function normaliseField(raw) {
+  if (typeof raw === 'string') {
+    return { label: raw, kind: 'text', options: [], default: null };
+  }
+  const kind = (raw?.kind || 'text').toLowerCase();
+  const allowedKinds = ['text', 'multiline', 'dropdown', 'checkbox', 'number', 'date'];
+  return {
+    label: raw?.label || '',
+    kind: allowedKinds.includes(kind) ? kind : 'text',
+    options: Array.isArray(raw?.options) ? raw.options : [],
+    default: raw?.default ?? null,
+  };
+}
+
+// Seed an initial value for a field from its default. Different kinds need
+// different empty-state defaults to render their input correctly.
+function seedValue(field) {
+  if (field.default !== null && field.default !== undefined && field.default !== '') {
+    return String(field.default);
+  }
+  if (field.kind === 'checkbox') return 'no';
+  if (field.kind === 'dropdown' && field.options.length > 0) return field.options[0];
+  return '';
+}
+
 export default function FillInWindow() {
   const [mode, setMode] = useState(null); // 'fillin' | 'variant'
-  const [fields, setFields] = useState([]);
-  const [values, setValues] = useState({});
+  const [fields, setFields] = useState([]); // normalised FillInField objects
+  const [values, setValues] = useState({}); // keyed by label
   const [options, setOptions] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -55,11 +83,13 @@ export default function FillInWindow() {
         setFields([]);
         setValues({});
       } else {
-        // Fill-in fields mode (default)
+        // Fill-in fields mode (default). Coerce each raw field to typed shape
+        // so the renderer always sees label/kind/options/default.
+        const normalised = (data.fields || []).map(normaliseField).filter(f => f.label);
         setMode('fillin');
-        setFields(data.fields || []);
+        setFields(normalised);
         const init = {};
-        (data.fields || []).forEach(f => { init[f] = ''; });
+        normalised.forEach(f => { init[f.label] = seedValue(f); });
         setValues(init);
         setOptions([]);
         setPreviews([]);
@@ -69,15 +99,43 @@ export default function FillInWindow() {
     });
   }, []);
 
-  // Auto-resize window to match panel content height
+  // Auto-resize window to match panel content height.
+  //
+  // IMPORTANT: `panelRef.current.scrollHeight` is NOT a reliable measure of the
+  // natural content height. Because `.fillin-win` has `max-height` set (so the
+  // fields div can scroll internally when content exceeds the work area), and
+  // `.fillin-win-fields` is a flex:1 + overflow:auto child, scrollHeight on
+  // the panel returns the CAPPED (visible) height, not the true content size.
+  // That creates a feedback loop: the initial small window height becomes the
+  // reported scrollHeight, the resize asks for that, the window stays small.
+  //
+  // Measuring the three children separately works because the fields div's
+  // own scrollHeight reports its overflow-aware natural content height
+  // regardless of how its flex parent is sized.
   useEffect(() => {
     if (!mode) return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const el = panelRef.current;
         if (!el) return;
-        const FRAME_PAD = 12; // room for shadow within transparent window (clears the 0 2px 8px panel shadow on all sides; must match .fillin-win-frame padding)
-        const windowH = Math.ceil(el.scrollHeight) + FRAME_PAD * 2;
+        const FRAME_PAD = 12; // must match .fillin-win-frame padding (top+bottom each)
+        const header  = el.querySelector('.fillin-win-header');
+        const fields  = el.querySelector('.fillin-win-fields');
+        const actions = el.querySelector('.fillin-win-actions');
+        const variant = el.querySelector('.fillin-variant-list');
+        const variantHint = el.querySelector('.fillin-variant-hint');
+
+        // In fill-in mode: header + fields (scrollHeight, uncapped) + actions.
+        // In variant mode: header + variant list + hint.
+        const naturalContent =
+          (header?.offsetHeight || 0) +
+          (fields?.scrollHeight || 0) +
+          (actions?.offsetHeight || 0) +
+          (variant?.scrollHeight || 0) +
+          (variantHint?.offsetHeight || 0);
+
+        const panelBorders = 2; // .fillin-win has 1px top + 1px bottom border
+        const windowH = Math.ceil(naturalContent) + panelBorders + FRAME_PAD * 2;
         window.electronAPI?.resizeFillin(windowH);
       });
     });
@@ -95,13 +153,25 @@ export default function FillInWindow() {
     window.electronAPI?.submitFillIn({ __variant_index: String(idx) });
   }
 
-  function onFieldKeyDown(e, idx) {
-    if (e.key === 'Enter') {
-      if (idx < fields.length - 1) {
-        inputRefs.current[idx + 1]?.focus();
-      } else {
-        submit();
+  function updateValue(label, value) {
+    setValues(v => ({ ...v, [label]: value }));
+  }
+
+  function onFieldKeyDown(e, idx, kind) {
+    // Multiline accepts Enter as newline; Ctrl+Enter advances/submits.
+    if (kind === 'multiline') {
+      if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) return;
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (idx < fields.length - 1) inputRefs.current[idx + 1]?.focus();
+        else submit();
+        return;
       }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (idx < fields.length - 1) inputRefs.current[idx + 1]?.focus();
+      else submit();
+      return;
     }
     if (e.key === 'Escape') cancel();
   }
@@ -127,6 +197,91 @@ export default function FillInWindow() {
     window.addEventListener('keydown', onVariantKeyDown);
     return () => window.removeEventListener('keydown', onVariantKeyDown);
   }, [mode, onVariantKeyDown]);
+
+  function renderInput(field, idx) {
+    const value = values[field.label] ?? '';
+    const refCb = el => { inputRefs.current[idx] = el; };
+    const commonProps = {
+      ref: refCb,
+      onKeyDown: e => onFieldKeyDown(e, idx, field.kind),
+      spellCheck: false,
+    };
+
+    if (field.kind === 'multiline') {
+      return (
+        <textarea
+          {...commonProps}
+          className="fillin-win-input fillin-win-textarea"
+          value={value}
+          onChange={e => updateValue(field.label, e.target.value)}
+          placeholder={`Enter ${field.label}…`}
+          rows={3}
+        />
+      );
+    }
+    if (field.kind === 'dropdown') {
+      return (
+        <select
+          {...commonProps}
+          className="fillin-win-input fillin-win-select"
+          value={value}
+          onChange={e => updateValue(field.label, e.target.value)}
+        >
+          {field.options.map((opt, i) => (
+            <option key={i} value={opt}>{opt}</option>
+          ))}
+        </select>
+      );
+    }
+    if (field.kind === 'checkbox') {
+      const checked = value === 'yes' || value === 'true';
+      return (
+        <label className="fillin-win-checkbox-row">
+          <input
+            {...commonProps}
+            type="checkbox"
+            className="fillin-win-checkbox"
+            checked={checked}
+            onChange={e => updateValue(field.label, e.target.checked ? 'yes' : 'no')}
+          />
+          <span className="fillin-win-checkbox-hint">{checked ? 'Yes' : 'No'}</span>
+        </label>
+      );
+    }
+    if (field.kind === 'number') {
+      return (
+        <input
+          {...commonProps}
+          type="number"
+          className="fillin-win-input"
+          value={value}
+          onChange={e => updateValue(field.label, e.target.value)}
+          placeholder={`Enter ${field.label}…`}
+        />
+      );
+    }
+    if (field.kind === 'date') {
+      return (
+        <input
+          {...commonProps}
+          type="date"
+          className="fillin-win-input"
+          value={value}
+          onChange={e => updateValue(field.label, e.target.value)}
+        />
+      );
+    }
+    // text (default)
+    return (
+      <input
+        {...commonProps}
+        className="fillin-win-input"
+        value={value}
+        onChange={e => updateValue(field.label, e.target.value)}
+        placeholder={`Enter ${field.label}…`}
+      />
+    );
+  }
 
   if (!mode) return <div className="fillin-win-empty" />;
 
@@ -176,18 +331,10 @@ export default function FillInWindow() {
           <button className="fillin-win-close" onClick={cancel} tabIndex={-1} aria-label="Cancel">✕</button>
         </div>
         <div className="fillin-win-fields">
-          {fields.map((label, i) => (
-            <div key={label} className="fillin-win-field">
-              <label className="fillin-win-label">{label}</label>
-              <input
-                ref={el => { inputRefs.current[i] = el; }}
-                className="fillin-win-input"
-                value={values[label] || ''}
-                onChange={e => setValues(v => ({ ...v, [label]: e.target.value }))}
-                onKeyDown={e => onFieldKeyDown(e, i)}
-                placeholder={`Enter ${label}…`}
-                spellCheck={false}
-              />
+          {fields.map((field, i) => (
+            <div key={field.label} className="fillin-win-field">
+              <label className="fillin-win-label">{field.label}</label>
+              {renderInput(field, i)}
             </div>
           ))}
         </div>

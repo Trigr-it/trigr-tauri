@@ -6,6 +6,7 @@ mod analytics;
 mod clipboard;
 mod config;
 mod expansions;
+mod expression;
 mod foreground;
 mod hotkeys;
 mod licence;
@@ -14,6 +15,7 @@ mod telemetry;
 mod tray;
 mod voice;
 mod webview_mem;
+mod window_target;
 
 // ── Config (Phase 2) ────────────────────────────────────────────────────────
 
@@ -730,6 +732,11 @@ fn get_cursor_position() -> Value {
         windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point);
     }
     serde_json::json!({ "x": point.x, "y": point.y })
+}
+
+#[tauri::command]
+fn enum_monitors() -> Vec<window_target::MonitorInfo> {
+    window_target::enum_monitors()
 }
 
 #[tauri::command]
@@ -1895,7 +1902,8 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
             if let Some(raw_text) = result.get("text").and_then(|v| v.as_str()) {
                 // Resolve dynamic tokens ({date:...}, {time:...}, {clipboard}, {cursor}, etc.)
                 let global_vars = expansions::get_global_variables();
-                let (resolved, cursor_back) = expansions::resolve_tokens(raw_text, &global_vars);
+                let empty_fillin: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+                let (resolved, cursor_back) = expansions::resolve_tokens(raw_text, &global_vars, &empty_fillin);
 
                 let trigger = result.get("trigger").and_then(|v| v.as_str()).unwrap_or("");
                 analytics::log_action("expansion", resolved.chars().filter(|c| *c != '\r').count() as u32, trigger, trigger);
@@ -2727,10 +2735,71 @@ fn fill_in_ready() {
 
 #[tauri::command]
 fn fillin_resize(height: f64, app: tauri::AppHandle) {
-    let h = height.max(150.0).min(600.0);
-    if let Some(win) = app.get_webview_window("fillin") {
-        let _ = win.set_size(tauri::LogicalSize::new(448.0, h));
-    }
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+
+    let Some(win) = app.get_webview_window("fillin") else { return };
+    let win_w = 448.0;
+    let margin = 16.0;
+
+    // Read the work area of the monitor the window currently sits on. Used both
+    // to cap the window height (so it never extends past the screen) and to
+    // re-center it vertically after the content-driven resize.
+    let hwnd_isize = match win.hwnd() {
+        Ok(h) => h.0 as isize,
+        Err(_) => {
+            // No HWND yet — best-effort size only; centering not possible.
+            let _ = win.set_size(tauri::LogicalSize::new(win_w, height.max(150.0).min(600.0)));
+            return;
+        }
+    };
+    let scale = win.scale_factor().unwrap_or(1.0);
+
+    let work_area = unsafe {
+        let hmon = MonitorFromWindow(hwnd_isize as HWND, MONITOR_DEFAULTTONEAREST);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            Some((mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom))
+        } else {
+            None
+        }
+    };
+
+    let Some((wa_left, wa_top, wa_right, wa_bottom)) = work_area else {
+        // No work-area info — fall back to fixed cap, no recenter.
+        let _ = win.set_size(tauri::LogicalSize::new(win_w, height.max(150.0).min(600.0)));
+        return;
+    };
+
+    let log_left = wa_left as f64 / scale;
+    let log_top = wa_top as f64 / scale;
+    let log_w = (wa_right - wa_left) as f64 / scale;
+    let log_h = (wa_bottom - wa_top) as f64 / scale;
+
+    // Cap height at the actual work area (minus 2× margin) instead of a fixed
+    // 600px. Multi-field typed fill-ins (dropdown with many options, multiple
+    // multi-line fields) easily exceed 600; the old cap forced the panel to
+    // render beyond the window viewport. CSS `max-height` on `.fillin-win`
+    // makes `.fillin-win-fields` scroll internally when content still exceeds
+    // the new dynamic cap.
+    let max_h = (log_h - margin * 2.0).max(150.0);
+    let h = height.max(150.0).min(max_h);
+
+    let _ = win.set_size(tauri::LogicalSize::new(win_w, h));
+
+    // Re-center horizontally + vertically using the new dimensions. Clamp Y so
+    // the window can never land above or below the work area regardless of
+    // monitor size or content height.
+    let x = log_left + ((log_w - win_w) / 2.0).max(0.0);
+    let y_centered = log_top + (log_h - h) / 2.0;
+    let y_min = log_top + margin;
+    let y_max = log_top + log_h - h - margin;
+    let y = y_centered.max(y_min).min(y_max.max(y_min));
+
+    let _ = win.set_position(tauri::LogicalPosition::new(x, y));
 }
 
 #[tauri::command]
@@ -3332,6 +3401,7 @@ pub fn run() {
             // Window enumeration
             list_open_windows,
             get_cursor_position,
+            enum_monitors,
             // Startup
             get_startup_enabled,
             set_startup_enabled,

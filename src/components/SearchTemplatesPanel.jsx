@@ -5,6 +5,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './SearchTemplatesPanel.css';
 import { MacroSequenceForm, AppForm } from './MacroPanel';
+import MonitorPicker from './MonitorPicker';
 import { SearchBar } from './SearchBar';
 import { Zap } from 'lucide-react';
 import { findPresetIconForUrl } from '../utils/presetIcons';
@@ -1850,6 +1851,13 @@ export default function SearchTemplatesPanel({
                         const path = await window.electronAPI?.browseForFolder();
                         if (path) setQaFormValue(prev => ({ ...prev, path }));
                       }}>Browse</button>
+                    </div>
+                    <div className="form-row-monitor">
+                      <label className="form-sublabel">Open on monitor</label>
+                      <MonitorPicker
+                        value={qaFormValue.monitor || 'default'}
+                        onChange={(m) => setQaFormValue(prev => ({ ...prev, monitor: m }))}
+                      />
                     </div>
                   </div>
                 )}

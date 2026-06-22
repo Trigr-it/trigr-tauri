@@ -80,6 +80,13 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   height: auto;
+  /* Cap to the visible window viewport minus frame padding (24px = 12 top +
+     12 bottom from .fillin-win-frame). Without this, when content exceeds
+     the Rust-side height cap, the panel renders past the window edge
+     because flex children with overflow:auto need a constrained parent to
+     trigger scroll. With max-height set, .fillin-win-fields scrolls
+     internally and the panel chrome (header/buttons) stays visible. */
+  max-height: calc(100vh - 24px);
   margin: 0;
   box-shadow: var(--shadow-overlay);
   animation: overlay-enter var(--transition-expand) both;
@@ -193,6 +200,74 @@ html.using-keyboard .fillin-win-input:focus-visible {
 
 .fillin-win-input::placeholder {
   color: var(--text-muted);
+}
+
+/* Multiline textarea — auto-height up to a sensible cap so the auto-resize
+   IPC dance still produces a reasonable window. */
+.fillin-win-textarea {
+  height: auto;
+  min-height: 68px;
+  max-height: 200px;
+  padding: 8px 10px;
+  line-height: 1.4;
+  resize: vertical;
+  font-family: inherit;
+}
+
+/* Native <select> styled to match the text input chassis. The dropdown panel
+   itself stays system-default (WebView2 limitation — can't style the popup). */
+.fillin-win-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 26px;
+  cursor: pointer;
+}
+
+/* Checkbox — pill-shaped row with native checkbox + state hint */
+.fillin-win-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.fillin-win-checkbox-row:hover {
+  border-color: var(--border-accent);
+}
+
+.fillin-win-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+
+.fillin-win-checkbox-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  user-select: none;
+}
+
+/* Browser-default date picker icon contrast in dark mode */
+[data-theme="dark"] .fillin-win-input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
 }
 
 /* ── Action buttons ──────────────────────────────────────────────────────── */
