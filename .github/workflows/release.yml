@@ -136,6 +136,22 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-pc-windows-msvc
+      - name: Install trusted-signing-cli
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $dir = "$env:RUNNER_TEMP\signing"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/Levminer/trusted-signing-cli/releases/download/0.10.0/trusted-signing-cli.exe" -OutFile "$dir\trusted-signing-cli.exe"
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+          Write-Output "trusted-signing-cli: $dir\trusted-signing-cli.exe"
+      - name: Add signing script to PATH
+        shell: pwsh
+        run: |
+          $scriptDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri\scripts"
+          if (-not (Test-Path "$scriptDir\trigr-sign.cmd")) { throw "trigr-sign.cmd not found at $scriptDir" }
+          Add-Content -Path $env:GITHUB_PATH -Value $scriptDir
+          Write-Output "Added to PATH: $scriptDir"
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -148,12 +164,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Trigr ${{ github.ref_name }}'
           releaseDraft: false
           prerelease: false
-          args: --target aarch64-pc-windows-msvc
+          args: --target aarch64-pc-windows-msvc --config src-tauri/tauri.signing.conf.json
       - name: Upload versionless arm64 alias
         shell: pwsh
         env:
