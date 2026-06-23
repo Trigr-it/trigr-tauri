@@ -15,19 +15,7 @@
 <link rel="canonical" href="https://usetrigr.com/terms.html">
 
 <script>
-/* Theme: saved → OS preference → light fallback. Runs synchronously to prevent flash. */
-(function(){
-  try {
-    var saved = localStorage.getItem('trigr-site-theme');
-    var theme;
-    if (saved === 'light' || saved === 'dark') {
-      theme = saved;
-    } else {
-      theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-    }
-    document.documentElement.setAttribute('data-theme', theme);
-  } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
-})();
+document.documentElement.setAttribute('data-theme', 'light');
 </script>
 <link rel="preload" href="/fonts/SpaceGrotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/fonts.css">
@@ -153,7 +141,6 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
     <a href="blog/">Blog</a>
     <a href="pricing.html">Pricing</a>
     <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
   </div>
 </nav>
 
@@ -223,22 +210,5 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
   </a>
 </footer>
 
-<script>
-function toggleTheme() {
-  var html = document.documentElement;
-  var current = html.getAttribute('data-theme') || 'dark';
-  var next = current === 'light' ? 'dark' : 'light';
-  html.setAttribute('data-theme', next);
-  document.getElementById('theme-btn').textContent = next === 'light' ? '🌙' : '☀';
-  localStorage.setItem('trigr-site-theme', next);
-}
-(function() {
-  var btn = document.getElementById('theme-btn');
-  if (btn) {
-    var current = document.documentElement.getAttribute('data-theme') || 'dark';
-    btn.textContent = current === 'light' ? '🌙' : '☀';
-  }
-})();
-</script>
 </body>
 </html>

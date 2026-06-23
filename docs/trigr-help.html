@@ -31,19 +31,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=Chakra+Petch:wght@500;600&display=swap" rel="stylesheet">
 
   <script>
-    /* Theme: saved → OS preference → dark fallback. Runs synchronously to prevent flash. */
-    (function(){
-      try {
-        var saved = localStorage.getItem('trigr-site-theme');
-        var theme;
-        if (saved === 'light' || saved === 'dark') {
-          theme = saved;
-        } else {
-          theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-      } catch(e) { document.documentElement.setAttribute('data-theme', 'dark'); }
-    })();
+    document.documentElement.setAttribute('data-theme', 'light');
   </script>
 
   <style>
@@ -682,9 +670,6 @@
       </div>
       <span class="sidebar-logo-name">Trigr</span>
     </a>
-    <button class="theme-toggle" id="theme-toggle" title="Toggle light / dark" aria-label="Toggle theme">
-      <span id="theme-icon">☾</span>
-    </button>
   </div>
   <div class="sidebar-version" id="version-label">User Guide</div>
 
@@ -2214,24 +2199,6 @@
     var el = document.getElementById(id);
     if (el) el.classList.toggle('open');
   }
-
-  // Theme toggle
-  (function(){
-    var btn = document.getElementById('theme-toggle');
-    var icon = document.getElementById('theme-icon');
-    function updateIcon() {
-      var t = document.documentElement.getAttribute('data-theme');
-      icon.textContent = t === 'light' ? '☾' : '☀';
-    }
-    updateIcon();
-    btn.addEventListener('click', function(){
-      var cur = document.documentElement.getAttribute('data-theme');
-      var next = cur === 'light' ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', next);
-      try { localStorage.setItem('trigr-site-theme', next); } catch(e){}
-      updateIcon();
-    });
-  })();
 
   // Fetch latest release version from GitHub
   fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')

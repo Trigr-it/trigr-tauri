@@ -176,19 +176,7 @@
 </script>
 
 <script>
-/* Theme: saved → OS preference → light fallback. Runs synchronously to prevent flash. */
-(function(){
-  try {
-    var saved = localStorage.getItem('trigr-site-theme');
-    var theme;
-    if (saved === 'light' || saved === 'dark') {
-      theme = saved;
-    } else {
-      theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-    }
-    document.documentElement.setAttribute('data-theme', theme);
-  } catch(e) { document.documentElement.setAttribute('data-theme', 'light'); }
-})();
+document.documentElement.setAttribute('data-theme', 'light');
 </script>
 
 <!-- Privacy-friendly analytics by Plausible -->
@@ -1701,7 +1689,6 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     <a href="/blog/">Blog</a>
     <a href="/pricing.html">Pricing</a>
     <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">☀</button>
   </div>
 </nav>
 
@@ -2829,36 +2816,6 @@ function switchAhkVer(btn, ver) {
   document.getElementById('ahk-code-v1').style.display = ver === 'v1' ? '' : 'none';
   document.getElementById('ahk-code-v2').style.display = ver === 'v2' ? '' : 'none';
 }
-
-/* ── THEME TOGGLE ─────────────────────────────────────────────── */
-function toggleTheme() {
-  var html = document.documentElement;
-  var current = html.getAttribute('data-theme') || 'dark';
-  var next = current === 'light' ? 'dark' : 'light';
-  html.setAttribute('data-theme', next);
-  document.getElementById('theme-btn').textContent = next === 'light' ? '🌙' : '☀';
-  localStorage.setItem('trigr-site-theme', next);
-}
-/* Sync the toggle button icon to whatever the head script resolved, then listen for live OS-theme changes. */
-(function() {
-  var btn = document.getElementById('theme-btn');
-  if (btn) {
-    var current = document.documentElement.getAttribute('data-theme') || 'dark';
-    btn.textContent = current === 'light' ? '🌙' : '☀';
-  }
-  if (window.matchMedia) {
-    var mq = window.matchMedia('(prefers-color-scheme: dark)');
-    var onChange = function(e) {
-      if (localStorage.getItem('trigr-site-theme')) return; // user has manually picked — respect it
-      var theme = e.matches ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', theme);
-      var b = document.getElementById('theme-btn');
-      if (b) b.textContent = theme === 'light' ? '🌙' : '☀';
-    };
-    if (mq.addEventListener) mq.addEventListener('change', onChange);
-    else if (mq.addListener) mq.addListener(onChange);
-  }
-})();
 
 /* ════════════════════════════════════════════════════════════
    ENHANCEMENT JS
