@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Windows Macro Software. No-Code Macro Tool for Windows 10 &amp; 11 | Keyfire</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="description" content="Free Windows macro software. Record, edit, and run macros visually. No scripting, no config files. The no-code alternative to AutoHotkey for Windows 10 and 11.">
+
+<link rel="canonical" href="https://keyfire.app/macros.html">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://keyfire.app/macros.html">
+<meta property="og:title" content="Windows Macro Software. No-Code Macro Tool for Windows 10 &amp; 11 | Keyfire">
+<meta property="og:description" content="Free Windows macro software. Record, edit, and run macros visually. No scripting, no config files. The no-code alternative to AutoHotkey for Windows 10 and 11.">
+<meta property="og:image" content="https://keyfire.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Keyfire">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Windows Macro Software. No-Code Macro Tool for Windows 10 &amp; 11 | Keyfire">
+<meta name="twitter:description" content="Free Windows macro software. Record, edit, and run macros visually. No scripting, no config files. The no-code alternative to AutoHotkey for Windows.">
+<meta name="twitter:image" content="https://keyfire.app/og-image.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Keyfire",
+  "description": "Visual macro tool for Windows. Record, edit, and run macros without scripting. The no-code alternative to AutoHotkey for Windows 10 and 11.",
+  "url": "https://keyfire.app/macros.html",
+  "image": {
+    "@type": "ImageObject",
+    "url": "https://keyfire.app/og-image.png",
+    "width": 1200,
+    "height": 630
+  },
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Windows 10, Windows 11",
+  "softwareVersion": "0.6.0",
+  "downloadUrl": "https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe",
+  "featureList": [
+    "Visual macro recorder",
+    "Step-by-step macro builder",
+    "Macro sequences with delays",
+    "App-specific macro profiles",
+    "Built-in AutoHotkey v1 and v2 runner",
+    "Hotkey, text expansion, and clipboard manager in one app",
+    "Local storage, no account required"
+  ],
+  "offers": [
+    {
+      "@type": "Offer",
+      "name": "Free",
+      "price": "0",
+      "priceCurrency": "GBP",
+      "url": "https://keyfire.app/pricing.html"
+    },
+    {
+      "@type": "Offer",
+      "name": "Pro",
+      "price": "49",
+      "priceCurrency": "GBP",
+      "url": "https://keyfire.app/pricing.html"
+    }
+  ],
+  "publisher": {
+    "@type": "Organization",
+    "name": "Keyfire",
+    "url": "https://keyfire.app"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is Keyfire really a free macro tool?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Every feature is free during the public beta, including the macro recorder, the step-by-step macro builder, and the bundled AutoHotkey runner. Anyone who joins during the beta also gets Pro at half price for their first year." }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I record macros from my keyboard?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. The Phase 1 macro recorder ships in v0.6.0. Hit record, do the keystrokes you want to capture, then stop. Keyfire saves the sequence as a replayable macro you can assign to any key. Recorder features are expanding through the v0.x patches." }
+    },
+    {
+      "@type": "Question",
+      "name": "Will my macros work in Word, Outlook, Chrome, and Excel?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Keyfire fires macros at the Windows input layer, not through per-app plugins. Your macros work in Office, browsers, IDEs, terminals, CAD tools, and any other Windows app that accepts text or hotkeys." }
+    },
+    {
+      "@type": "Question",
+      "name": "How is the macro recorder different from AutoHotkey?",
+      "acceptedAnswer": { "@type": "Answer", "text": "AutoHotkey is a full scripting language. Keyfire is a visual macro builder with a recorder. You click to add steps, record macros from the keyboard, and see every binding at a glance. There are no .ahk files to debug. If you have existing AHK scripts you want to keep, Keyfire has both v1 and v2 runtimes bundled, so you can paste a script in and assign it to a key." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is the macro recorder safe for use at work?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Keyfire runs locally on your machine. Your macros, settings, and clipboard history are stored in local files. There is no account and no cloud sync. The installer is code-signed by Node Group Ltd, so corporate IT can verify the publisher. The only network call is an anonymous daily count of fired actions, which you can turn off in Settings." }
+    }
+  ]
+}
+</script>
+
+<script>
+document.documentElement.setAttribute('data-theme', 'light');
+})();
+</script>
+
+<!-- Privacy-friendly analytics by Plausible -->
+<script async src="/js/p.js"></script>
+<script>
+  window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+  plausible.init({ endpoint: 'https://keyfire.app/api/event' })
+</script>
+
+<link rel="preload" href="/fonts/SpaceGrotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+/* ════════════════════════════════════════════════════════════
+   RESET, TOKENS, BASE — mirrored from text-expander.html
+   ════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --gold:#e8a020; --gold-light:#f0b942; --gold-dark:#c8860a;
+  --gold-glow:rgba(232,160,32,0.15); --gold-line:rgba(232,160,32,0.22);
+  --bg:#080B14; --bg-2:#0D1120; --bg-3:#111827;
+  --bg-card:#0E1320; --bg-card-hi:#131829;
+  --hairline:rgba(255,255,255,0.06);
+  --hairline-strong:rgba(255,255,255,0.1);
+  --hairline-gold:rgba(232,160,32,0.18);
+  --text:#F1F5F9; --text-muted:#94A3B8; --text-dim:#475569;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-mono:'Rajdhani',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --font-label:'Chakra Petch',sans-serif;
+}
+[data-theme="light"] {
+  --bg:#F5F5FA; --bg-2:#FFFFFF; --bg-3:#EEEEF2;
+  --bg-card:#FFFFFF; --bg-card-hi:#FAFAFE;
+  --hairline:rgba(0,0,0,0.07);
+  --hairline-strong:rgba(0,0,0,0.12);
+  --hairline-gold:rgba(232,160,32,0.25);
+  --text:#1A1A2E; --text-muted:#4A4A6A; --text-dim:#9090B0;
+}
+html { scroll-behavior:smooth; }
+body { font-family:var(--font-body); background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; -webkit-font-smoothing:antialiased; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:0; opacity:0.4; }
+[data-theme="light"] body::before { opacity:0.08; }
+img { max-width:100%; display:block; }
+a { color:inherit; }
+
+/* ════════════════════════════════════════════════════════════
+   NAV — stripped: logo + theme toggle + download only
+   ════════════════════════════════════════════════════════════ */
+nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; height:64px; display:flex; align-items:center; justify-content:space-between; background:rgba(8,11,20,0.7); backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%); border-bottom:1px solid var(--hairline); }
+[data-theme="light"] nav { background:rgba(245,245,250,0.75); }
+.nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.logo-mark { width:30px; height:30px; border-radius:7px; }
+.logo-mark > svg { width:100%; height:100%; display:block; }
+.nav-wordmark { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); }
+.nav-links { display:flex; align-items:center; gap:16px; }
+.nav-cta { background:var(--gold); color:#0d0d11; padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; text-decoration:none; transition:transform 0.15s, box-shadow 0.2s; }
+.nav-cta:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,160,32,0.3); }
+[data-theme="light"] .nav-cta { color:#fff; }
+.theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.theme-toggle:hover { color:var(--gold); border-color:var(--hairline-gold); background:var(--gold-glow); }
+
+/* ════════════════════════════════════════════════════════════
+   HERO
+   ════════════════════════════════════════════════════════════ */
+.hero { position:relative; overflow:hidden; padding-top:64px; }
+.hero-bg { position:absolute; inset:0; pointer-events:none; }
+.hero-bg::before { content:''; position:absolute; inset:0; background-image:linear-gradient(rgba(232,160,32,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(232,160,32,0.04) 1px,transparent 1px); background-size:56px 56px; mask-image:radial-gradient(ellipse 70% 50% at 50% 0%,black 0%,transparent 75%); -webkit-mask-image:radial-gradient(ellipse 70% 50% at 50% 0%,black 0%,transparent 75%); }
+.hero-bg::after { content:''; position:absolute; top:-180px; left:50%; transform:translateX(-50%); width:1100px; height:700px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.13) 0%,rgba(232,160,32,0.04) 35%,transparent 70%); }
+[data-theme="light"] .hero-bg::before { background-image:linear-gradient(rgba(26,26,46,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(26,26,46,0.05) 1px,transparent 1px); }
+[data-theme="light"] .hero-bg::after { background:radial-gradient(ellipse at center,rgba(232,160,32,0.09) 0%,rgba(232,160,32,0.02) 35%,transparent 70%); }
+.hero-inner { position:relative; max-width:1200px; margin:0 auto; padding:110px 32px 0; text-align:center; }
+.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(232,160,32,0.08); border:1px solid var(--hairline-gold); border-radius:100px; padding:6px 14px; font-size:12px; font-weight:500; color:var(--gold-light); margin-bottom:32px; animation:fadeInUp 0.6s ease both; }
+[data-theme="light"] .hero-badge { color:var(--gold-dark); }
+.hero-h1 { font-family:var(--font-display); font-weight:700; font-size:clamp(40px,5.8vw,80px); line-height:1.04; letter-spacing:-0.035em; color:var(--text); margin-bottom:26px; animation:fadeInUp 0.7s 0.1s ease both; }
+.hero-h1 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 50%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; padding-right:0.12em; margin-right:-0.12em; }
+.hero-sub { font-size:clamp(16px,1.6vw,19px); color:var(--text-muted); max-width:560px; margin:0 auto 40px; font-weight:400; line-height:1.6; animation:fadeInUp 0.7s 0.2s ease both; }
+.hero-actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:center; animation:fadeInUp 0.7s 0.3s ease both; }
+.hero-arm-link { margin-top:14px; font-size:13px; color:var(--text-dim); animation:fadeInUp 0.7s 0.35s ease both; letter-spacing:0.01em; }
+.hero-arm-link a { color:var(--text-muted); text-decoration:underline; text-decoration-color:var(--hairline-strong); text-underline-offset:3px; transition:color 0.2s, text-decoration-color 0.2s; }
+.hero-arm-link a:hover { color:var(--gold-light); text-decoration-color:var(--gold); }
+[data-theme="light"] .hero-arm-link a:hover { color:var(--gold-dark); }
+.btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; transition:all 0.2s; border:none; cursor:pointer; }
+.btn-primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
+[data-theme="light"] .btn-primary { color:#fff; }
+.btn-ghost { display:inline-flex; align-items:center; gap:8px; background:transparent; color:var(--text); text-decoration:none; padding:14px 22px; border-radius:10px; font-size:14px; font-weight:500; border:1px solid var(--hairline-strong); transition:all 0.2s; }
+.btn-ghost:hover { border-color:var(--hairline-gold); background:var(--gold-glow); color:var(--gold-light); }
+[data-theme="light"] .btn-ghost:hover { color:var(--gold-dark); }
+.hero-trust { display:flex; align-items:center; justify-content:center; gap:26px; flex-wrap:wrap; margin-top:28px; font-size:13px; color:var(--text-muted); animation:fadeInUp 0.7s 0.4s ease both; }
+.hero-trust-item { display:flex; align-items:center; gap:8px; }
+.hero-trust-item svg { width:15px; height:15px; color:var(--gold); flex-shrink:0; }
+@keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+/* ════════════════════════════════════════════════════════════
+   MOCKUP — frame (copied from index.html)
+   ════════════════════════════════════════════════════════════ */
+.mockup-wrap { position:relative; margin-top:72px; padding-bottom:80px; animation:fadeInUp 0.9s 0.5s ease both; }
+.mockup-outer { width:100%; }
+.mockup-viewport { width:100%; overflow:hidden; border-radius:18px; border:1px solid var(--hairline-gold); box-shadow:0 0 0 1px rgba(255,255,255,0.04), 0 60px 120px rgba(0,0,0,0.7), 0 0 100px rgba(232,160,32,0.08); position:relative; }
+.mockup-viewport::after { content:''; position:absolute; inset:0; pointer-events:none; border-radius:17px; box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
+[data-theme="light"] .mockup-viewport { box-shadow:0 0 0 1px rgba(0,0,0,0.05), 0 30px 80px rgba(0,0,0,0.18), 0 0 50px rgba(232,160,32,0.06); border-color:var(--hairline-gold); }
+.mockup-scaler { transform-origin:top left; width:1280px; }
+.chip-floater { position:absolute; z-index:5; display:flex; align-items:center; gap:8px; padding:7px 13px; background:rgba(13,17,32,0.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid var(--hairline-gold); border-radius:100px; font-size:12px; font-weight:500; color:var(--text); box-shadow:0 12px 32px rgba(0,0,0,0.4), 0 0 0 1px var(--gold-glow); white-space:nowrap; }
+[data-theme="light"] .chip-floater { background:rgba(255,255,255,0.95); }
+.chip-floater .chip-icon { color:var(--gold); font-size:13px; }
+.chip-floater .chip-arrow { color:var(--text-dim); font-size:11px; }
+.chip-floater .chip-tag { font-family:var(--font-mono); color:var(--gold-light); font-weight:700; letter-spacing:0.04em; padding:1px 7px; background:var(--gold-glow); border-radius:5px; font-size:11px; }
+[data-theme="light"] .chip-floater .chip-tag { color:var(--gold-dark); }
+.chip-1 { top:8%; left:-3%; animation:floatChip 0.9s 1s ease both, bobbleA 6s 2s ease-in-out infinite; }
+.chip-2 { top:34%; right:-3%; animation:floatChip 0.9s 1.2s ease both, bobbleB 7s 2.2s ease-in-out infinite; }
+.chip-3 { top:68%; left:-2%; animation:floatChip 0.9s 1.4s ease both, bobbleA 6.5s 2.5s ease-in-out infinite; }
+@keyframes floatChip { from{opacity:0;transform:translateY(8px) scale(0.95)} to{opacity:1;transform:translateY(0) scale(1)} }
+@keyframes bobbleA { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+@keyframes bobbleB { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
+@media(max-width:980px){.chip-floater{display:none;}}
+
+/* Live key fire animation + fire toast (copied from index.html) */
+.k.fire { background:rgba(232,160,32,0.32)!important; border-color:var(--gold)!important; box-shadow:0 0 24px rgba(232,160,32,0.55), inset 0 0 12px rgba(232,160,32,0.2)!important; animation:keyFire 1.1s ease; }
+.k.fire .k-lbl { color:var(--gold-light)!important; }
+@keyframes keyFire { 0%{transform:translateY(0);} 18%{transform:translateY(-3px);} 40%{transform:translateY(0);} 100%{transform:translateY(0);} }
+.mockup-fire-toast { position:absolute; top:-22px; left:50%; transform:translateX(-50%) translateY(-8px); z-index:6; display:flex; align-items:center; gap:10px; padding:9px 16px; background:rgba(13,17,32,0.96); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid var(--hairline-gold); border-radius:100px; font-size:13px; color:var(--text); white-space:nowrap; box-shadow:0 12px 32px rgba(0,0,0,0.4), 0 0 0 1px var(--gold-glow); pointer-events:none; opacity:0; transition:opacity 0.35s, transform 0.35s; }
+[data-theme="light"] .mockup-fire-toast { background:rgba(255,255,255,0.97); }
+.mockup-fire-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.mft-key { font-family:var(--font-mono); font-weight:700; letter-spacing:0.04em; padding:1px 8px; background:var(--gold-glow); color:var(--gold-light); border-radius:5px; font-size:12px; }
+[data-theme="light"] .mft-key { color:var(--gold-dark); }
+.mft-arrow { color:var(--text-dim); font-size:11px; }
+.mockup-prof-toast { position:absolute; top:-22px; right:32px; z-index:6; padding:7px 14px; background:rgba(13,17,32,0.96); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid var(--hairline); border-radius:100px; font-size:11px; font-family:var(--font-mono); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-muted); white-space:nowrap; pointer-events:none; opacity:0; transform:translateY(-8px); transition:opacity 0.35s, transform 0.35s; }
+[data-theme="light"] .mockup-prof-toast { background:rgba(255,255,255,0.97); }
+.mockup-prof-toast.show { opacity:1; transform:translateY(0); }
+.mockup-prof-toast em { font-style:normal; color:var(--gold); margin-left:6px; }
+
+/* ════════════════════════════════════════════════════════════
+   APP MOCKUP INTERIOR (copied verbatim from index.html)
+   ════════════════════════════════════════════════════════════ */
+.app-shell { width:1280px; background:#0d0d11; font-family:'DM Sans',sans-serif; font-size:13px; color:#f0ede8; user-select:none;
+  --bg-base:#0d0d11; --bg-surface:#13131a; --bg-elevated:#1a1a24;
+  --bg-hover:#20202d; --bg-active:#252535;
+  --accent:#e8a020; --accent-glow:rgba(232,160,32,0.15);
+  --text-primary:#f0ede8; --text-secondary:#a8a6c2; --text-muted:#72708c;
+  --border:#262638; --border-bright:#3e3e56; --border-accent:rgba(232,160,32,0.4);
+  --key-bg:#1e1e2c; --key-bg-hover:#252538; --key-bg-assigned:#201f0c; --key-bg-selected:#1f1a08;
+  --key-border:#353550; --key-border-assigned:rgba(232,160,32,0.65); --key-border-selected:#e8a020; }
+.t-bar { height:48px; background:var(--bg-surface); border-bottom:1px solid var(--border-bright); display:flex; align-items:center; justify-content:space-between; padding:0 12px 0 16px; }
+.t-left { display:flex; align-items:center; gap:0; flex:1; min-width:0; overflow:hidden; }
+.t-logo { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-right:14px; }
+.t-logo-mark { width:22px; height:22px; border-radius:5px; }
+.t-logo-mark > svg { width:100%; height:100%; display:block; }
+.t-appname { font-family:'Rajdhani',sans-serif; font-size:18px; font-weight:700; color:var(--text-primary); letter-spacing:0.04em; }
+.t-div { width:1px; height:20px; background:var(--border-bright); margin:0 14px; flex-shrink:0; }
+.t-area-tabs { display:flex; gap:2px; flex-shrink:0; }
+.t-atab { height:30px; padding:0 14px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-family:var(--font-body); font-size:13px; font-weight:500; cursor:pointer; margin-bottom:-1px; transition:color 0.15s,border-color 0.15s; }
+.t-atab:hover { color:var(--text-primary); }
+.t-atab.on { color:var(--accent); border-bottom-color:var(--accent); }
+.t-profiles { display:flex; align-items:center; gap:2px; }
+.t-ptab { height:28px; padding:0 12px; background:transparent; border:1px solid transparent; border-radius:6px; color:var(--text-secondary); font-family:var(--font-body); font-size:12px; font-weight:500; cursor:pointer; display:flex; align-items:center; gap:4px; transition:all 0.15s; }
+.t-ptab:hover { color:var(--text-primary); background:var(--bg-hover); }
+.t-ptab.on { background:var(--accent-glow); border-color:var(--border-accent); color:var(--accent); }
+.t-ptab-add { color:var(--text-muted); font-size:16px; padding:0 10px; }
+.t-ldot { width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 4px var(--accent); display:inline-block; }
+.t-gdot { width:5px; height:5px; border-radius:50%; background:#50c878; box-shadow:0 0 5px rgba(80,200,120,0.7); display:inline-block; }
+.t-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.t-toggle { display:flex; align-items:center; gap:6px; height:26px; padding:0 12px; border-radius:13px; font-size:10px; font-weight:700; letter-spacing:0.08em; border:1px solid; background:rgba(80,200,120,0.1); border-color:rgba(80,200,120,0.3); color:#50c878; }
+.t-tdot { width:6px; height:6px; border-radius:50%; background:#50c878; box-shadow:0 0 6px #50c878; animation:pg 2s ease infinite; }
+@keyframes pg { 0%,100%{opacity:1} 50%{opacity:0.5} }
+.t-ibtn { width:28px; height:28px; border-radius:6px; background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center; }
+.t-ibtn:hover { background:var(--bg-hover); color:var(--text-primary); }
+.t-wc { display:flex; gap:4px; }
+.t-wb { width:28px; height:28px; border-radius:6px; background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:11px; display:flex; align-items:center; justify-content:center; }
+.t-wb:hover { background:var(--bg-hover); color:var(--text-primary); }
+.t-wclose:hover { background:rgba(255,80,80,0.15)!important; color:#ff5555!important; }
+.a-body { display:flex; height:500px; }
+.sb { width:190px; flex-shrink:0; background:var(--bg-surface); border-right:1px solid var(--border-bright); display:flex; flex-direction:column; }
+.sb-hdr { display:flex; align-items:center; justify-content:space-between; padding:14px 16px 10px; border-bottom:1px solid var(--border); }
+.sb-title { font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); }
+.sb-cnt { background:var(--bg-elevated); border:1px solid var(--border-bright); color:var(--text-secondary); font-size:10px; font-weight:600; padding:1px 7px; border-radius:10px; }
+.sb-tabs { display:flex; border-bottom:1px solid var(--border); padding:0 6px; overflow-x:auto; scrollbar-width:none; }
+.sb-tabs::-webkit-scrollbar { display:none; }
+.sb-tab { height:30px; padding:0 9px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:10px; font-weight:600; font-family:'Rajdhani',sans-serif; letter-spacing:0.05em; cursor:pointer; white-space:nowrap; margin-bottom:-1px; transition:color 0.15s; }
+.sb-tab:hover { color:var(--text-secondary); }
+.sb-tab.on { color:var(--accent); border-bottom-color:var(--accent); }
+.sb-list { flex:1; overflow-y:auto; padding:8px; }
+.sb-item { display:flex; align-items:flex-start; gap:8px; padding:8px; border-radius:4px; margin-bottom:2px; border:1px solid transparent; cursor:pointer; transition:background 0.15s; }
+.sb-item:hover { background:var(--bg-hover); border-color:var(--border-bright); }
+.sb-item.on { background:var(--accent-glow); border-color:var(--border-accent); }
+.sb-badge { background:var(--bg-elevated); border:1px solid var(--border-bright); color:var(--text-secondary); font-family:'Rajdhani',sans-serif; font-size:10px; font-weight:600; padding:2px 6px; border-radius:3px; min-width:28px; text-align:center; flex-shrink:0; }
+.sb-info { flex:1; min-width:0; }
+.sb-lbl { font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:2px; }
+.sb-item.on .sb-lbl { color:var(--accent); }
+.sb-type { font-size:10px; color:var(--text-muted); display:flex; align-items:center; gap:4px; }
+.sb-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+.kb-area { flex:1; background:var(--bg-base); display:flex; flex-direction:column; align-items:center; padding:16px; gap:10px; border-right:1px solid var(--border-bright); overflow:hidden; }
+.mod-bar { display:flex; align-items:center; gap:14px; padding:10px 18px; background:var(--bg-surface); border:1px solid var(--border-bright); border-radius:10px; width:100%; min-height:48px; }
+.mod-bar-lbl { font-family:'Rajdhani',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); flex-shrink:0; }
+.mod-btns { display:flex; gap:6px; }
+.mod-btn { height:30px; padding:0 14px; border-radius:6px; background:var(--bg-elevated); border:1px solid var(--border-bright); color:var(--text-secondary); font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:600; letter-spacing:0.04em; cursor:pointer; transition:all 0.15s; }
+.mod-btn:hover { background:var(--bg-hover); color:var(--text-primary); border-color:var(--border-accent); }
+.mod-btn.on { background:rgba(232,160,32,0.12); border-color:rgba(232,160,32,0.5); color:var(--accent); }
+.mod-sep { width:1px; height:18px; background:var(--border-bright); }
+.rec-btn { height:30px; padding:0 12px; border-radius:6px; background:var(--bg-elevated); border:1px solid var(--border-bright); color:var(--text-muted); font-family:var(--font-body); font-size:11px; cursor:pointer; display:flex; align-items:center; gap:5px; }
+.rec-btn:hover { color:var(--accent); border-color:var(--border-accent); }
+.mod-combo { flex:1; display:flex; align-items:center; overflow:hidden; }
+.combo-hint { font-size:11px; color:var(--text-muted); font-style:italic; }
+.combo-key { background:var(--bg-active); border:1px solid var(--border-bright); border-bottom-width:2px; color:var(--accent); font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; letter-spacing:0.04em; }
+.combo-plus { color:var(--text-muted); font-size:13px; margin:0 4px; }
+.kb-lbl { height:28px; display:flex; align-items:center; justify-content:center; width:100%; font-size:11px; color:var(--text-muted); font-style:italic; }
+.kb-outer { background:var(--bg-surface); border:1px solid var(--border-bright); border-radius:14px; padding:16px 18px 18px; box-shadow:0 0 0 1px var(--border),0 24px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.04); position:relative; flex-shrink:0; }
+.kb-outer::before { content:''; position:absolute; inset:0; border-radius:13px; background:linear-gradient(160deg,rgba(255,255,255,0.02) 0%,transparent 50%); pointer-events:none; }
+.kb-rows { display:flex; flex-direction:column; gap:4px; }
+.kb-row { display:flex; gap:4px; align-items:center; }
+.k { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:42px; border-radius:6px; background:var(--key-bg); border:1px solid var(--key-border); cursor:pointer; transition:all 0.1s; box-shadow:0 2px 8px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.04); overflow:hidden; flex-shrink:0; }
+.k::before { content:''; position:absolute; top:0; left:0; right:0; height:40%; background:linear-gradient(to bottom,rgba(255,255,255,0.05),transparent); border-radius:5px 5px 0 0; pointer-events:none; }
+.k:hover { background:var(--key-bg-hover); border-color:#484868; transform:translateY(-1px); }
+.k:active { transform:translateY(1px); }
+.k.asgn { background:var(--key-bg-assigned); border-color:var(--key-border-assigned); }
+.k.asgn:hover { border-color:rgba(232,160,32,0.8); }
+.k.sel { background:var(--key-bg-selected); border-color:var(--key-border-selected); box-shadow:0 0 18px rgba(232,160,32,0.25),inset 0 0 10px rgba(232,160,32,0.05); transform:translateY(-1px); }
+.k.sys { cursor:default; opacity:0.5; }
+.k.sys:hover { transform:none; background:var(--key-bg); border-color:var(--key-border); }
+.k-lbl { font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600; color:var(--text-secondary); letter-spacing:0.02em; line-height:1; pointer-events:none; z-index:1; position:relative; }
+.k.sel .k-lbl { color:var(--accent); }
+.k.asgn .k-lbl { color:var(--text-primary); }
+.k-sub { font-family:var(--font-body); font-size:7px; color:var(--text-muted); position:absolute; top:3px; left:4px; pointer-events:none; z-index:1; }
+.k-dot { position:absolute; top:3px; right:3px; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 4px var(--accent); z-index:1; }
+.kb-hints { display:flex; align-items:center; gap:20px; height:22px; width:100%; justify-content:center; }
+.hint-chip { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--text-muted); letter-spacing:0.04em; }
+.h-dot { width:8px; height:8px; border-radius:2px; border:1px solid; }
+.h-asgn { background:rgba(232,160,32,0.15); border-color:rgba(232,160,32,0.5); }
+.h-sel { background:rgba(232,160,32,0.3); border-color:var(--accent); }
+.h-sys { background:transparent; border-color:var(--border-bright); opacity:0.6; }
+.panel { width:300px; flex-shrink:0; background:var(--bg-surface); border-left:1px solid var(--border-bright); display:flex; flex-direction:column; overflow:hidden; }
+.p-tile { display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 6px; border-radius:6px; background:var(--bg-elevated); border:1px solid var(--border-bright); }
+.p-tile-icon { font-size:15px; line-height:1; color:var(--text-secondary); }
+.p-tile-label { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:0.02em; text-align:center; }
+.p-hdr { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; flex-shrink:0; }
+.p-title { display:flex; align-items:center; gap:10px; }
+.p-title-lbl { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:600; letter-spacing:0.04em; color:var(--text-secondary); text-transform:uppercase; }
+.p-lbl { font-size:10px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
+.s-bar { height:28px; background:var(--bg-surface); border-top:1px solid var(--border-bright); display:flex; align-items:center; justify-content:space-between; padding:0 16px; flex-shrink:0; }
+.s-left,.s-right { display:flex; align-items:center; gap:8px; }
+.s-active { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:500; color:#50c878; }
+.s-dot { width:6px; height:6px; border-radius:50%; background:#50c878; box-shadow:0 0 5px #50c878; animation:pg 2s ease infinite; }
+.s-sep { color:var(--text-muted); font-size:12px; }
+.s-info { font-size:11px; color:var(--text-muted); }
+.s-info strong { color:var(--accent); font-weight:600; }
+.s-chip { font-size:10px; font-weight:500; letter-spacing:0.04em; padding:2px 8px; border-radius:10px; border:1px solid; color:#50c878; border-color:rgba(80,200,120,0.2); background:rgba(80,200,120,0.05); }
+
+/* Light theme — app-shell scoped variable flips (copied from index.html) */
+[data-theme="light"] .app-shell {
+  --bg-base:#f0f0f5; --bg-surface:#ffffff; --bg-elevated:#f5f5fa;
+  --bg-hover:#ebebf0; --bg-active:#e0e0ea;
+  --accent:#c8860a; --accent-glow:rgba(232,160,32,0.12);
+  --text-primary:#1a1a2e; --text-secondary:#4a4a6a; --text-muted:#9090b0;
+  --border:#dcdce8; --border-bright:#c8c8dc; --border-accent:rgba(232,160,32,0.5);
+  --key-bg:#ffffff; --key-bg-hover:#f0f0fa;
+  --key-bg-assigned:#fffbf0; --key-bg-selected:#fff8e8;
+  --key-border:#d0d0e0; --key-border-assigned:rgba(232,160,32,0.5); --key-border-selected:#c8860a;
+  background:#f0f0f5; color:#1a1a2e;
+}
+[data-theme="light"] .app-shell .k { box-shadow:0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7); }
+[data-theme="light"] .app-shell .k::before { background:linear-gradient(to bottom, rgba(255,255,255,0.5), transparent); }
+[data-theme="light"] .app-shell .k:hover { background:var(--key-bg-hover); border-color:#c0c0d0; }
+[data-theme="light"] .app-shell .k.sel { box-shadow:0 0 18px rgba(232,160,32,0.18), inset 0 0 10px rgba(232,160,32,0.05); }
+[data-theme="light"] .app-shell .kb-outer { box-shadow:0 0 0 1px var(--border), 0 12px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.7); }
+[data-theme="light"] .app-shell .kb-outer::before { background:linear-gradient(160deg, rgba(255,255,255,0.5) 0%, transparent 50%); }
+[data-theme="light"] .app-shell .t-toggle { color:#1f8a4a; border-color:rgba(80,200,120,0.4); background:rgba(80,200,120,0.08); }
+[data-theme="light"] .app-shell .t-tdot { background:#1f8a4a; box-shadow:0 0 5px rgba(80,200,120,0.6); }
+[data-theme="light"] .app-shell .s-active { color:#1f8a4a; }
+[data-theme="light"] .app-shell .s-dot { background:#1f8a4a; box-shadow:0 0 4px rgba(80,200,120,0.6); }
+[data-theme="light"] .app-shell .s-chip { color:#1f8a4a; border-color:rgba(80,200,120,0.3); background:rgba(80,200,120,0.06); }
+[data-theme="light"] .app-shell .t-gdot { background:#1f8a4a; box-shadow:0 0 4px rgba(80,200,120,0.6); }
+
+/* ════════════════════════════════════════════════════════════
+   SECTIONS — shared header pattern (copied from index.html)
+   ════════════════════════════════════════════════════════════ */
+.section { position:relative; padding:120px 32px; }
+.section-inner { max-width:1180px; margin:0 auto; }
+.section-meta { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
+.section-num { font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--gold); letter-spacing:0.1em; padding:4px 12px; border:1px solid var(--hairline-gold); border-radius:6px; background:var(--gold-glow); }
+.section-label { font-family:var(--font-label); font-size:12px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-muted); }
+.section-h2 { font-family:var(--font-display); font-weight:700; font-size:clamp(32px,4.5vw,56px); letter-spacing:-0.03em; line-height:1.02; color:var(--text); margin-bottom:24px; max-width:880px; }
+.section-h2 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 60%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; padding-right:0.18em; margin-right:-0.18em; }
+.section-sub { font-size:17px; color:var(--text-muted); font-weight:400; max-width:600px; line-height:1.6; }
+.section-divider { height:1px; max-width:1180px; margin:0 auto; background:linear-gradient(90deg,transparent 0%,var(--hairline-strong) 20%,var(--hairline-strong) 80%,transparent 100%); }
+
+/* Reveal-on-scroll */
+.reveal { opacity:0; transform:translateY(28px); transition:opacity 0.7s ease, transform 0.7s ease; }
+.reveal.in { opacity:1; transform:translateY(0); }
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;}}
+
+/* ════════════════════════════════════════════════════════════
+   COMPARISON TABLE
+   ════════════════════════════════════════════════════════════ */
+.cmp-wrap { margin-top:64px; overflow-x:auto; border-radius:18px; border:1px solid var(--hairline); background:var(--bg-card); }
+[data-theme="light"] .cmp-wrap { background:var(--bg-2); }
+.cmp-table { width:100%; min-width:560px; border-collapse:collapse; font-size:14.5px; }
+.cmp-table th, .cmp-table td { padding:15px 24px; text-align:left; border-bottom:1px solid var(--hairline); }
+.cmp-table tr:last-child th, .cmp-table tr:last-child td { border-bottom:none; }
+.cmp-table thead th { font-family:var(--font-display); font-weight:700; font-size:15px; color:var(--text); padding-top:22px; padding-bottom:18px; border-bottom:1px solid var(--hairline-strong); }
+.cmp-table tbody th { font-weight:500; color:var(--text-muted); width:38%; }
+.cmp-table td { color:var(--text); width:31%; }
+.cmp-keyfire { background:rgba(232,160,32,0.05); border-left:1px solid var(--hairline-gold); border-right:1px solid var(--hairline-gold); }
+thead .cmp-keyfire { color:var(--gold-light)!important; }
+[data-theme="light"] thead .cmp-keyfire { color:var(--gold-dark)!important; }
+.cmp-yes { color:var(--gold); font-weight:700; }
+td:not(.cmp-keyfire) .cmp-yes { color:var(--text-muted); font-weight:500; }
+.cmp-no { color:var(--text-dim); }
+.cmp-note { font-size:12px; color:var(--text-dim); margin-top:14px; }
+
+/* ════════════════════════════════════════════════════════════
+   FEATURE / PAIN-POINT GRIDS
+   ════════════════════════════════════════════════════════════ */
+.feat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:64px; }
+.feat-card { position:relative; background:var(--bg-card); border:1px solid var(--hairline); border-radius:20px; padding:28px; display:flex; flex-direction:column; gap:12px; overflow:hidden; transition:border-color 0.3s, transform 0.3s, background 0.3s; }
+.feat-card::before { content:''; position:absolute; top:0; left:24px; right:24px; height:1px; background:linear-gradient(90deg,transparent,rgba(232,160,32,0.55),transparent); opacity:0; transition:opacity 0.35s; }
+.feat-card:hover { border-color:var(--hairline-gold); transform:translateY(-2px); background:var(--bg-card-hi); }
+.feat-card:hover::before { opacity:1; }
+[data-theme="light"] .feat-card { background:var(--bg-2); }
+.feat-icon { width:42px; height:42px; background:var(--gold-glow); border:1px solid var(--hairline-gold); border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.feat-icon svg { width:20px; height:20px; color:var(--gold-light); }
+[data-theme="light"] .feat-icon svg { color:var(--gold-dark); }
+.feat-title { font-family:var(--font-display); font-weight:700; font-size:19px; color:var(--text); letter-spacing:-0.01em; line-height:1.15; }
+.feat-desc { font-size:14px; color:var(--text-muted); line-height:1.6; font-weight:400; }
+.feat-desc code { font-family:var(--font-mono); font-size:13px; color:var(--gold-light); padding:1px 6px; background:var(--gold-glow); border-radius:4px; font-weight:600; }
+[data-theme="light"] .feat-desc code { color:var(--gold-dark); }
+
+/* ════════════════════════════════════════════════════════════
+   HONEST ANSWER — prose block
+   ════════════════════════════════════════════════════════════ */
+.honest-card { max-width:820px; margin:56px auto 0; background:var(--bg-card); border:1px solid var(--hairline-gold); border-radius:20px; padding:44px 48px; }
+[data-theme="light"] .honest-card { background:var(--bg-2); }
+.honest-card p { font-size:16px; color:var(--text-muted); line-height:1.75; }
+.honest-card p + p { margin-top:18px; }
+.honest-card strong { color:var(--text); font-weight:600; }
+@media(max-width:768px){ .honest-card { padding:28px 22px; } }
+
+/* ════════════════════════════════════════════════════════════
+   TRUST STRIP
+   ════════════════════════════════════════════════════════════ */
+.trust-grid { display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:18px; margin-top:64px; }
+.trust-card { background:var(--bg-card); border:1px solid var(--hairline); border-radius:20px; padding:28px; display:flex; flex-direction:column; gap:12px; }
+[data-theme="light"] .trust-card { background:var(--bg-2); }
+.trust-card .feat-icon { margin-bottom:2px; }
+.trust-title { font-family:var(--font-display); font-weight:700; font-size:19px; color:var(--text); letter-spacing:-0.01em; }
+.trust-desc { font-size:14px; color:var(--text-muted); line-height:1.65; }
+.trust-desc strong { color:var(--text); font-weight:600; }
+
+/* ════════════════════════════════════════════════════════════
+   FAQ accordion (copied from index.html)
+   ════════════════════════════════════════════════════════════ */
+.faq-list { max-width:920px; margin:64px auto 0; display:flex; flex-direction:column; gap:10px; }
+.faq-item { background:var(--bg-card); border:1px solid var(--hairline); border-radius:14px; overflow:hidden; transition:border-color 0.25s, background 0.25s; }
+[data-theme="light"] .faq-item { background:var(--bg-2); }
+.faq-item:hover { border-color:var(--hairline-strong); }
+.faq-item[open] { border-color:var(--hairline-gold); background:var(--bg-card-hi); }
+[data-theme="light"] .faq-item[open] { background:rgba(232,160,32,0.03); }
+.faq-q { padding:22px 28px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:16px; user-select:none; list-style:none; font-family:var(--font-display); font-size:17px; font-weight:600; color:var(--text); }
+.faq-q::-webkit-details-marker { display:none; }
+.faq-q .faq-q-text { font:inherit; color:inherit; margin:0; padding:0; }
+.faq-q-icon { width:28px; height:28px; flex-shrink:0; border:1px solid var(--hairline-strong); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.3s; position:relative; }
+.faq-q-icon::before, .faq-q-icon::after { content:''; position:absolute; background:currentColor; border-radius:1px; }
+.faq-q-icon::before { width:10px; height:1.5px; }
+.faq-q-icon::after { width:1.5px; height:10px; transition:transform 0.3s; }
+.faq-item[open] .faq-q-icon { background:var(--gold-glow); border-color:var(--hairline-gold); color:var(--gold-light); }
+.faq-item[open] .faq-q-icon::after { transform:rotate(90deg); }
+[data-theme="light"] .faq-item[open] .faq-q-icon { color:var(--gold-dark); }
+.faq-body { padding:0 28px 26px; font-size:14.5px; line-height:1.7; color:var(--text-muted); }
+.faq-body strong { color:var(--text); font-weight:500; }
+.faq-body a { color:var(--text); text-decoration:underline; text-decoration-color:var(--hairline-strong); text-underline-offset:3px; }
+.faq-body a:hover { color:var(--gold-light); }
+[data-theme="light"] .faq-body a:hover { color:var(--gold-dark); }
+
+/* ════════════════════════════════════════════════════════════
+   FINAL CTA (copied from index.html)
+   ════════════════════════════════════════════════════════════ */
+.cta-section { padding:60px 32px 120px; }
+.cta-card { max-width:1180px; margin:0 auto; position:relative; background:linear-gradient(140deg,rgba(232,160,32,0.08) 0%,rgba(232,160,32,0.02) 100%); border:1px solid var(--hairline-gold); border-radius:28px; padding:96px 48px; text-align:center; overflow:hidden; }
+.cta-card::before { content:''; position:absolute; bottom:-200px; left:50%; transform:translateX(-50%); width:900px; height:500px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.15) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
+[data-theme="light"] .cta-card::before { background:radial-gradient(ellipse at center,rgba(232,160,32,0.1) 0%,rgba(232,160,32,0.02) 40%,transparent 70%); }
+.cta-card > * { position:relative; z-index:1; }
+.cta-h2 { font-family:var(--font-display); font-weight:700; font-size:clamp(34px,5vw,60px); letter-spacing:-0.04em; line-height:1.02; color:var(--text); margin-bottom:20px; }
+.cta-sub { font-size:17px; color:var(--text-muted); font-weight:400; max-width:560px; margin:0 auto 40px; line-height:1.6; }
+.cta-actions { display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; }
+
+/* ════════════════════════════════════════════════════════════
+   MINIMAL FOOTER
+   ════════════════════════════════════════════════════════════ */
+footer { border-top:1px solid var(--hairline); padding:32px; text-align:center; font-size:13px; color:var(--text-dim); }
+footer a { color:var(--text-muted); text-decoration:none; transition:color 0.2s; }
+footer a:hover { color:var(--gold-light); }
+[data-theme="light"] footer a:hover { color:var(--gold-dark); }
+footer .ft-sep { margin:0 8px; color:var(--text-dim); }
+
+/* ════════════════════════════════════════════════════════════
+   SMARTSCREEN BYPASS MODAL (copied from index.html)
+   ════════════════════════════════════════════════════════════ */
+.ss-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(4,6,12,0.78);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: none; align-items: center; justify-content: center;
+  padding: 24px; animation: ss-fade 0.2s ease-out both;
+}
+.ss-overlay.is-open { display: flex; }
+@keyframes ss-fade { from { opacity: 0; } to { opacity: 1; } }
+.ss-modal {
+  width: 720px; max-width: 100%; max-height: 92vh; overflow-y: auto;
+  background: var(--bg-2); border: 1px solid var(--hairline-strong);
+  border-radius: 16px; padding: 32px 32px 28px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(232,160,32,0.08);
+  position: relative;
+  animation: ss-pop 0.28s cubic-bezier(0.2,0.7,0.3,1) both;
+}
+@keyframes ss-pop { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+.ss-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 32px; height: 32px; border-radius: 8px;
+  border: 1px solid var(--hairline); background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.ss-close:hover { color: var(--text); background: var(--hairline); }
+.ss-eyebrow {
+  font-family: var(--font-label); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-light);
+  margin-bottom: 8px;
+}
+[data-theme="light"] .ss-eyebrow { color: var(--gold-dark); }
+.ss-headline {
+  font-family: var(--font-display); font-weight: 700; font-size: 22px;
+  letter-spacing: -0.01em; color: var(--text); margin-bottom: 6px; line-height: 1.25;
+}
+.ss-sub { font-size: 13.5px; color: var(--text-muted); margin-bottom: 22px; line-height: 1.55; }
+.ss-stage {
+  background: #0d1120;
+  border: 1px solid var(--hairline);
+  border-radius: 12px; padding: 0;
+  display: flex; justify-content: center; align-items: center;
+  position: relative; overflow: hidden;
+  margin-bottom: 22px;
+  aspect-ratio: 2286 / 2160;
+  max-height: 60vh;
+}
+.ss-video {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #0d1120;
+}
+.ss-steps {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-bottom: 18px;
+}
+.ss-step {
+  background: var(--bg-card); border: 1px solid var(--hairline);
+  border-radius: 10px; padding: 14px 16px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.ss-step-num {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--gold-glow); border: 1px solid var(--hairline-gold);
+  color: var(--gold-light); font-family: var(--font-mono);
+  font-weight: 700; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+[data-theme="light"] .ss-step-num { color: var(--gold-dark); }
+.ss-step-text { font-size: 13px; color: var(--text); line-height: 1.5; }
+.ss-step-text strong { color: var(--gold-light); font-weight: 600; }
+[data-theme="light"] .ss-step-text strong { color: var(--gold-dark); }
+.ss-foot {
+  font-size: 12px; color: var(--text-dim); line-height: 1.5;
+  border-top: 1px solid var(--hairline); padding-top: 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  flex-wrap: wrap;
+}
+.ss-dismiss {
+  background: var(--gold); color: #0d0d11;
+  border: none; border-radius: 8px;
+  padding: 8px 18px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+}
+.ss-dismiss:hover { background: var(--gold-light); transform: translateY(-1px); }
+[data-theme="light"] .ss-dismiss { color: #fff; }
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ════════════════════════════════════════════════════════════ */
+@media(max-width:1100px){
+  .feat-grid{grid-template-columns:repeat(2,1fr);}
+  .trust-grid{grid-template-columns:1fr;}
+}
+@media(max-width:768px){
+  nav{padding:0 18px;}
+  .section{padding:64px 18px;}
+  /* Feature/pain-point + trust grids become horizontal swipe rails with a peeking next card */
+  .feat-grid, .trust-grid {
+    display:flex; gap:14px; align-items:stretch;
+    overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
+    scroll-snap-type:x mandatory; scroll-padding-left:18px;
+    -webkit-overflow-scrolling:touch;
+    margin:48px -18px 0; padding:2px 18px 16px;
+    scrollbar-width:none;
+  }
+  .feat-grid::-webkit-scrollbar, .trust-grid::-webkit-scrollbar { display:none; }
+  .feat-grid > .feat-card { flex:0 0 80vw; max-width:360px; scroll-snap-align:start; scroll-snap-stop:always; }
+  .trust-grid > .trust-card { flex:0 0 80vw; max-width:360px; scroll-snap-align:start; scroll-snap-stop:always; }
+  .cta-card{padding:60px 24px;}
+  .cta-section{padding:40px 18px 80px;}
+  .hero-inner{padding:100px 18px 0;}
+  .hero-trust{gap:14px;}
+  .ss-modal { padding: 24px 20px 22px; }
+  .ss-steps { grid-template-columns: 1fr; }
+  .ss-stage { padding: 20px 12px; min-height: 320px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════
+     NAV — logo + theme toggle + download CTA only
+     ════════════════════════════════════════════════════════════ -->
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="logo-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="logo-key-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#logo-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#logo-key-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><path d="M 33 14 C 36 18, 41 23, 41 30 C 41 37, 36 41, 32 41 C 26 41, 22 37, 22 32 C 22 28, 25 26, 27 23 C 28 26, 30 27, 30 24 C 30 20, 32 17, 33 14 Z" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">Keyfire</span>
+  </a>
+  <div class="nav-links">
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe?utm_source=google&utm_medium=cpc&utm_campaign=macros&utm_content={adgroupid}&utm_term={keyword}" class="nav-cta" data-loc="macros_nav" data-arch="x64">Download for Windows</a>
+  </div>
+</nav>
+
+<!-- ════════════════════════════════════════════════════════════
+     HERO + MOCKUP
+     ════════════════════════════════════════════════════════════ -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <div class="hero-badge">Free · Windows 10 &amp; 11 · No scripting required</div>
+    <h1 class="hero-h1">Windows <em>Macro</em><br>Software.</h1>
+    <p class="hero-sub">Record, edit, and run macros on Windows. No scripting. Works in any app.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe?utm_source=google&utm_medium=cpc&utm_campaign=macros&utm_content={adgroupid}&utm_term={keyword}" class="btn-primary" data-loc="macros_hero" data-arch="x64">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Download for Windows
+      </a>
+    </div>
+    <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_arm64-setup.exe?utm_source=google&utm_medium=cpc&utm_campaign=macros&utm_content={adgroupid}&utm_term={keyword}" data-loc="macros_hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
+    <div class="hero-trust">
+      <span class="hero-trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Signed by Node Group Ltd</span>
+      <span class="hero-trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Source code public on GitHub</span>
+      <span class="hero-trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Used daily by a 10-person engineering team</span>
+    </div>
+
+    <!-- ── MOCKUP (copied from index.html) ── -->
+    <div class="mockup-wrap">
+      <div class="chip-floater chip-1"><span class="chip-icon">⚡</span><span class="chip-tag">/sig</span><span class="chip-arrow">→</span><span>Email signature</span></div>
+      <div class="chip-floater chip-2"><span class="chip-icon">⌨</span><span class="chip-tag">Ctrl+E</span><span class="chip-arrow">→</span><span>Open terminal</span></div>
+      <div class="chip-floater chip-3"><span class="chip-icon">◈</span><span class="chip-tag">Ctrl+R</span><span class="chip-arrow">→</span><span>Run macro</span></div>
+
+      <div class="mockup-fire-toast" id="mockup-fire-toast"></div>
+      <div class="mockup-prof-toast" id="mockup-prof-toast"></div>
+
+      <div class="mockup-outer" id="mockup-outer">
+        <div class="mockup-viewport" id="mockup-viewport">
+          <div class="mockup-scaler" id="mockup-scaler">
+            <div class="app-shell" id="app-shell">
+
+              <!-- Titlebar -->
+              <div class="t-bar">
+                <div class="t-left">
+                  <div class="t-logo">
+                    <div class="t-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-mock" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-mock" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-mock)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-mock)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><path d="M 33 14 C 36 18, 41 23, 41 30 C 41 37, 36 41, 32 41 C 26 41, 22 37, 22 32 C 22 28, 25 26, 27 23 C 28 26, 30 27, 30 24 C 30 20, 32 17, 33 14 Z" fill="#c8860a"/></svg></div>
+                    <span class="t-appname">Keyfire</span>
+                  </div>
+                  <div class="t-div"></div>
+                  <div class="t-area-tabs">
+                    <button class="t-atab on" onclick="switchArea(this,'mapping')">Key Mapping</button>
+                    <button class="t-atab" onclick="switchArea(this,'expansions')">Text Expansions</button>
+                  </div>
+                  <div class="t-div"></div>
+                  <div class="t-profiles">
+                    <button class="t-ptab on" onclick="switchProf(this,'default')">Default <span class="t-gdot"></span></button>
+                    <button class="t-ptab" onclick="switchProf(this,'chrome')">Chrome <span class="t-ldot"></span></button>
+                    <button class="t-ptab" onclick="switchProf(this,'vscode')">VS Code <span class="t-ldot"></span></button>
+                    <button class="t-ptab t-ptab-add">+</button>
+                  </div>
+                </div>
+                <div class="t-right">
+                  <div class="t-toggle"><span class="t-tdot"></span>ACTIVE</div>
+                  <button class="t-ibtn">☀</button>
+                  <button class="t-ibtn">⚙</button>
+                  <div class="t-wc"><button class="t-wb">—</button><button class="t-wb">⬜</button><button class="t-wb t-wclose">✕</button></div>
+                </div>
+              </div>
+
+              <!-- Body -->
+              <div class="a-body">
+                <div class="sb">
+                  <div class="sb-hdr"><span class="sb-title">Assignments</span><span class="sb-cnt" id="sb-cnt">4</span></div>
+                  <div class="sb-tabs">
+                    <button class="sb-tab on" onclick="switchModTab(this,'Ctrl')">Ctrl</button>
+                    <button class="sb-tab" onclick="switchModTab(this,'Alt')">Alt</button>
+                    <button class="sb-tab" onclick="switchModTab(this,'Ctrl+Alt')">Ctrl+Alt</button>
+                    <button class="sb-tab" onclick="switchModTab(this,'Shift')">Shift</button>
+                  </div>
+                  <div class="sb-list" id="sb-list"></div>
+                </div>
+                <div class="kb-area">
+                  <div class="mod-bar">
+                    <span class="mod-bar-lbl">Modifier</span>
+                    <div class="mod-btns">
+                      <button class="mod-btn on" id="mb-Ctrl" onclick="selMod(this,'Ctrl')">Ctrl</button>
+                      <button class="mod-btn" id="mb-Alt" onclick="selMod(this,'Alt')">Alt</button>
+                      <button class="mod-btn" id="mb-Shift" onclick="selMod(this,'Shift')">Shift</button>
+                      <button class="mod-btn" id="mb-Win" onclick="selMod(this,'Win')">Win</button>
+                      <div class="mod-sep"></div>
+                      <button class="rec-btn" onclick="doRecord()">⏺ Capture</button>
+                    </div>
+                    <div class="mod-combo" id="mod-combo"><span class="combo-hint">Select a modifier, then click a key</span></div>
+                  </div>
+                  <div class="kb-lbl" id="kb-lbl">Click a key to assign an action</div>
+                  <div class="kb-outer"><div class="kb-rows" id="kb-rows"></div></div>
+                  <div class="kb-hints">
+                    <div class="hint-chip"><span class="h-dot h-asgn"></span>Assigned</div>
+                    <div class="hint-chip"><span class="h-dot h-sel"></span>Selected</div>
+                    <div class="hint-chip"><span class="h-dot h-sys"></span>System</div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <div class="p-hdr" style="border-bottom:1px solid var(--border);">
+                    <div class="p-title"><span class="p-title-lbl">Actions</span></div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:12px;">
+                    <div class="p-tile"><span class="p-tile-icon">✦</span><span class="p-tile-label">Type Text</span></div>
+                    <div class="p-tile"><span class="p-tile-icon">⌨</span><span class="p-tile-label">Send Hotkey</span></div>
+                    <div class="p-tile"><span class="p-tile-icon">⬡</span><span class="p-tile-label">Open App</span></div>
+                    <div class="p-tile"><span class="p-tile-icon">⊕</span><span class="p-tile-label">Open URL</span></div>
+                    <div class="p-tile"><span class="p-tile-icon">⬢</span><span class="p-tile-label">Open Folder</span></div>
+                    <div class="p-tile"><span class="p-tile-icon">◈</span><span class="p-tile-label">Macro Sequence</span></div>
+                    <div class="p-tile" style="grid-column:1/-1;"><span class="p-tile-icon">⟁</span><span class="p-tile-label">AHK Script</span></div>
+                  </div>
+                  <div style="padding:0 12px;"><div class="p-lbl">Select a key to assign an action</div></div>
+                </div>
+              </div>
+
+              <div class="s-bar">
+                <div class="s-left">
+                  <div class="s-active"><span class="s-dot"></span>Active</div>
+                  <span class="s-sep">·</span>
+                  <span class="s-info">Profile: <strong id="s-prof">Default</strong></span>
+                  <span class="s-sep">·</span>
+                  <span class="s-info"><strong id="s-count">4</strong> assignments</span>
+                </div>
+                <div class="s-right">
+                  <span class="s-chip">Hotkeys OK</span>
+                  <span class="s-info js-latest-version">v0.4.28</span>
+                </div>
+              </div>
+
+            </div><!-- /app-shell -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     01 — HOW IT WORKS
+     ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-inner">
+    <div class="section-meta reveal">
+      <span class="section-num">01</span>
+      <span class="section-label">How it works</span>
+    </div>
+    <h2 class="section-h2 reveal">How Keyfire's macro recorder <em>works.</em></h2>
+    <p class="section-sub reveal">Three steps. No scripting, no config files, no separate tool to learn. Build your first Windows macro in under two minutes.</p>
+
+    <div class="feat-grid">
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg></div>
+        <div class="feat-title">1. Pick a trigger key</div>
+        <div class="feat-desc">Choose any key combo, abbreviation, or mouse button. Hit the trigger and Keyfire runs the macro you assigned to it.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></div>
+        <div class="feat-title">2. Record or build the steps</div>
+        <div class="feat-desc">Hit record and Keyfire captures your keystrokes, or add steps by hand: type text, send hotkeys, open apps, wait, repeat. Every step is editable.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+        <div class="feat-title">3. Run it in any app</div>
+        <div class="feat-desc">Your macros fire in Word, Outlook, Excel, browsers, IDEs, terminals, and CAD tools. Anywhere Windows accepts input, the macro works.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     02 — EXAMPLES (6 CARDS)
+     ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-inner">
+    <div class="section-meta reveal">
+      <span class="section-num">02</span>
+      <span class="section-label">Examples</span>
+    </div>
+    <h2 class="section-h2 reveal">Common Windows macros people <em>build with Keyfire.</em></h2>
+    <p class="section-sub reveal">Real examples from people running the app every day. Pick a starting point, edit the steps, assign a key.</p>
+
+    <div class="feat-grid">
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+        <div class="feat-title">Sign emails in one tap</div>
+        <div class="feat-desc">Type a short abbreviation and Keyfire pastes your full email signature. One macro replaces hunting for the Outlook signature menu every time.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg></div>
+        <div class="feat-title">Excel command chains</div>
+        <div class="feat-desc">Chain multi-step Excel commands: select range, apply formatting, jump cell, repeat. Build the macro once, fire it with one key.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 01-2 2H5a2 2 0 01-2-2V3"/><path d="M8 21l4-4 4 4"/><path d="M12 17v4"/></svg></div>
+        <div class="feat-title">CAD and engineering shortcuts</div>
+        <div class="feat-desc">Automate AutoCAD, Revit, or SolidWorks shortcuts. Layer setups, view rotations, common dimensions, all on one trigger.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+        <div class="feat-title">Open your work setup in one key</div>
+        <div class="feat-desc">Launch a folder of apps for your morning routine: browser, Slack, email, project folder, terminal. Hit one macro and the whole stack opens.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <div class="feat-title">Paste boilerplate code instantly</div>
+        <div class="feat-desc">Drop <code>console.log()</code> blocks, function templates, or imports into your IDE without leaving the keyboard. Works in VS Code, JetBrains, and any text editor.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></div>
+        <div class="feat-title">Fill repeat forms without retyping</div>
+        <div class="feat-desc">Address fields, project IDs, file paths, billing codes: anywhere you type the same string daily, a macro types it for you.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     03 — COMPARISON TABLE
+     ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-inner">
+    <div class="section-meta reveal">
+      <span class="section-num">03</span>
+      <span class="section-label">Compare</span>
+    </div>
+    <h2 class="section-h2 reveal">Why Windows users choose Keyfire <em>over AutoHotkey.</em></h2>
+    <p class="section-sub reveal">AutoHotkey is a full scripting language. Keyfire is a macro tool. Side by side, the choice depends on whether you want to write code.</p>
+
+    <div class="cmp-wrap reveal">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="cmp-keyfire">Keyfire</th>
+            <th>AutoHotkey</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th>Setup</th><td class="cmp-keyfire">Click &amp; assign</td><td>Write scripts</td></tr>
+          <tr><th>Macro recorder</th><td class="cmp-keyfire"><span class="cmp-yes">✓</span> Built-in</td><td>Not included</td></tr>
+          <tr><th>Visual macro builder</th><td class="cmp-keyfire"><span class="cmp-yes">✓</span></td><td><span class="cmp-no">—</span></td></tr>
+          <tr><th>App-specific macros</th><td class="cmp-keyfire"><span class="cmp-yes">✓</span> Automatic</td><td><code>#IfWinActive</code> blocks</td></tr>
+          <tr><th>Hotkeys + text + macros</th><td class="cmp-keyfire">One app</td><td>Multiple scripts</td></tr>
+          <tr><th>Corporate IT signing</th><td class="cmp-keyfire">Signed by Node Group Ltd</td><td>Often blocked</td></tr>
+          <tr><th>Config files to maintain</th><td class="cmp-keyfire">None</td><td>.ahk script files</td></tr>
+          <tr><th>Learning curve</th><td class="cmp-keyfire">None</td><td>Steep</td></tr>
+          <tr><th>Custom scripting power</th><td class="cmp-keyfire">Limited</td><td>Unlimited</td></tr>
+          <tr><th>Runs .ahk scripts</th><td class="cmp-keyfire"><span class="cmp-yes">✓</span> v1 + v2 bundled</td><td><span class="cmp-yes">✓</span></td></tr>
+          <tr><th>Price</th><td class="cmp-keyfire">Free (beta)</td><td>Free</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cmp-note reveal">Comparison reflects AutoHotkey v2 as of June 2026.</p>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     04 — HONEST ANSWER
+     ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-inner">
+    <div class="section-meta reveal">
+      <span class="section-num">04</span>
+      <span class="section-label">But is it powerful?</span>
+    </div>
+    <h2 class="section-h2 reveal">Honest answer: Keyfire is a macro tool, <em>not a scripting language.</em></h2>
+
+    <div class="honest-card reveal">
+      <p>AutoHotkey is more flexible than Keyfire on the language side, and that is honest. If you write custom logic, parse text, loop over windows, or drive COM objects, AHK is a full programming language. Keyfire is not trying to be one.</p>
+      <p>Most people who want macro software are not writing custom logic. They want one key to paste a signature, open a set of apps, run a sequence of clicks, or chain Excel commands. That is exactly what Keyfire's macro builder does, without code.</p>
+      <p>And for the rare macros that genuinely need code, keep them. <strong>Keyfire bundles both AHK runtimes (v1 and v2)</strong>, so you can paste an existing script in, assign it to a key, and run it alongside your visual macros. Move the easy 90% to the editor, keep the hard 10% as scripts.</p>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     05 — TRUST
+     ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-inner">
+    <div class="section-meta reveal">
+      <span class="section-num">05</span>
+      <span class="section-label">Trust</span>
+    </div>
+    <h2 class="section-h2 reveal">Built for real work, <em>in the open.</em></h2>
+
+    <div class="trust-grid">
+      <div class="trust-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></div>
+        <div class="trust-title">Used daily on real projects</div>
+        <div class="trust-desc">Keyfire is used every day at <strong>Node Group</strong>, a 10-person civil engineering consultancy, where it replaced several internal AHK scripts for project documentation, RFI responses, and drawing markups.</div>
+      </div>
+      <div class="trust-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <div class="trust-title">Signed installer</div>
+        <div class="trust-desc">Every release is code-signed by <strong>Node Group Ltd</strong> through Microsoft Trusted Signing, so Windows can verify the publisher before you run it.</div>
+      </div>
+      <div class="trust-card reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <div class="trust-title">Public source code</div>
+        <div class="trust-desc">The complete source is published on GitHub. Anyone can read exactly what the app does with their keystrokes.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     06 — FAQ
+     ════════════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-inner">
+    <div class="section-meta reveal">
+      <span class="section-num">06</span>
+      <span class="section-label">FAQ</span>
+    </div>
+    <h2 class="section-h2 reveal">Questions, <em>answered.</em></h2>
+
+    <div class="faq-list">
+      <details class="faq-item reveal">
+        <summary class="faq-q"><h3 class="faq-q-text">Is Keyfire really a free macro tool?</h3><span class="faq-q-icon"></span></summary>
+        <div class="faq-body">Yes. Every feature is free during the public beta, including the macro recorder, the step-by-step macro builder, and the bundled AutoHotkey runner. Anyone who joins during the beta also gets <strong>Pro</strong> at half price for their first year.</div>
+      </details>
+      <details class="faq-item reveal">
+        <summary class="faq-q"><h3 class="faq-q-text">Can I record macros from my keyboard?</h3><span class="faq-q-icon"></span></summary>
+        <div class="faq-body">Yes. The Phase 1 macro recorder ships in v0.6.0. Hit record, do the keystrokes you want to capture, then stop. Keyfire saves the sequence as a replayable macro you can assign to any key. Recorder features are expanding through the v0.x patches, including a richer editor and timing controls.</div>
+      </details>
+      <details class="faq-item reveal">
+        <summary class="faq-q"><h3 class="faq-q-text">Will my macros work in Word, Outlook, Chrome, and Excel?</h3><span class="faq-q-icon"></span></summary>
+        <div class="faq-body">Yes. Keyfire fires macros at the Windows input layer, not through per-app plugins. Your macros work in Office, browsers, IDEs, terminals, CAD tools, and any other Windows app that accepts text or hotkeys.</div>
+      </details>
+      <details class="faq-item reveal">
+        <summary class="faq-q"><h3 class="faq-q-text">How is the macro recorder different from AutoHotkey?</h3><span class="faq-q-icon"></span></summary>
+        <div class="faq-body">AutoHotkey is a full scripting language. Keyfire is a visual macro builder with a recorder. You click to add steps, record macros from the keyboard, and see every binding at a glance. There are no .ahk files to debug. If you have existing AHK scripts you want to keep, Keyfire has both v1 and v2 runtimes bundled, so you can paste a script in and assign it to a key.</div>
+      </details>
+      <details class="faq-item reveal">
+        <summary class="faq-q"><h3 class="faq-q-text">Is the macro recorder safe for use at work?</h3><span class="faq-q-icon"></span></summary>
+        <div class="faq-body">Yes. Keyfire runs locally on your machine. Your macros, settings, and clipboard history are stored in local files. There is no account and no cloud sync. The installer is code-signed by <strong>Node Group Ltd</strong>, so corporate IT can verify the publisher. The only network call is an anonymous daily count of fired actions, which you can turn off in Settings.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     FINAL CTA
+     ════════════════════════════════════════════════════════════ -->
+<section class="cta-section reveal">
+  <div class="cta-card">
+    <h2 class="cta-h2">Start building<br>Windows macros.</h2>
+    <p class="cta-sub">Record, edit, and run macros in two minutes. No scripting, no config files, no account required.</p>
+    <div class="cta-actions">
+      <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe?utm_source=google&utm_medium=cpc&utm_campaign=macros&utm_content={adgroupid}&utm_term={keyword}" class="btn-primary" style="font-size:16px;padding:16px 36px;" data-loc="macros_final" data-arch="x64">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Download for Windows
+      </a>
+      <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_arm64-setup.exe?utm_source=google&utm_medium=cpc&utm_campaign=macros&utm_content={adgroupid}&utm_term={keyword}" class="btn-ghost" data-loc="macros_final_arm64" data-arch="arm64">ARM64 build</a>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     MINIMAL FOOTER
+     ════════════════════════════════════════════════════════════ -->
+<footer>
+  Keyfire © 2026 Node Group Ltd<span class="ft-sep">·</span><a href="terms.html">Terms</a><span class="ft-sep">·</span><a href="privacy.html">Privacy</a><span class="ft-sep">·</span><a href="refund.html">Refund Policy</a>
+</footer>
+
+<!-- ════════════════════════════════════════════════════════════
+     SMARTSCREEN BYPASS MODAL (copied from index.html)
+     ════════════════════════════════════════════════════════════ -->
+<div class="ss-overlay" id="ss-overlay" role="dialog" aria-modal="true" aria-labelledby="ss-headline">
+  <div class="ss-modal">
+    <button class="ss-close" aria-label="Close">✕</button>
+    <div class="ss-eyebrow">Your download has started</div>
+    <h2 class="ss-headline" id="ss-headline">Two clicks past the SmartScreen warning</h2>
+    <p class="ss-sub">Windows shows a SmartScreen popup the first time you run any new app. It is not an error, just an extra check. Here is how to get past it.</p>
+
+    <div class="ss-stage">
+      <video class="ss-video" autoplay loop muted playsinline preload="auto" aria-label="Animation showing the two clicks needed to bypass SmartScreen: More info, then Run anyway.">
+        <source src="windows-smartscreen-trigr.mp4" type="video/mp4">
+      </video>
+    </div>
+
+    <div class="ss-steps">
+      <div class="ss-step">
+        <span class="ss-step-num">1</span>
+        <span class="ss-step-text">Click <strong>More info</strong> on the blue SmartScreen popup.</span>
+      </div>
+      <div class="ss-step">
+        <span class="ss-step-num">2</span>
+        <span class="ss-step-text">Click <strong>Run anyway</strong> to launch the installer.</span>
+      </div>
+    </div>
+
+    <div class="ss-foot">
+      <span>Keyfire is built and signed by Node Group Ltd. You&rsquo;ll see this name as the publisher in the SmartScreen warning, confirming you have the real installer. The warning clears once Microsoft has seen enough installs from our signed builds.</span>
+      <button class="ss-dismiss">Got it</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── APP MOCKUP — interactive keyboard (copied verbatim from index.html) ── */
+const PROFILES = {
+  default: { name:'Default', assigns:{
+    'Ctrl-KeyE':{type:'tt',label:'Type Text',text:"Hello, thanks for reaching out!"},
+    'Ctrl-KeyR':{type:'mc',label:'Macro',steps:['Open terminal','Type: npm start','Wait 2s','Press Enter']},
+    'Ctrl-KeyT':{type:'ap',label:'Open App',path:'C:\\Program Files\\Notepad++\\notepad++.exe'},
+    'Alt-KeyQ': {type:'hk',label:'Send Hotkey',combo:'Win+Shift+S'},
+  }},
+  chrome: { name:'Chrome', assigns:{
+    'Ctrl-KeyD':{type:'tt',label:'Type Text',text:'https://github.com/Trigr-it/trigr-tauri'},
+    'Ctrl-KeyK':{type:'hk',label:'Send Hotkey',combo:'Ctrl+L'},
+    'Alt-KeyR': {type:'mc',label:'Macro',steps:['Ctrl+Shift+J','Wait 1s','Type: console.log(']},
+  }},
+  vscode: { name:'VS Code', assigns:{
+    'Ctrl-KeyG':{type:'tt',label:'Type Text',text:'console.log('},
+    'Ctrl-KeyB':{type:'hk',label:'Send Hotkey',combo:'Ctrl+Shift+P'},
+    'Alt-KeyF': {type:'ap',label:'Open App',path:'C:\\Windows\\System32\\cmd.exe'},
+  }}
+};
+const TYPE_COLORS = {tt:'#64b4ff',hk:'#c864ff',mc:'#ff783c',ap:'#50c878',url:'#ffc832'};
+const ROWS = [
+  [['Esc','Esc',1,null,true],['_',null,0.5],['F1','F1',1],['F2','F2',1],['F3','F3',1],['F4','F4',1],['_',null,0.35],['F5','F5',1],['F6','F6',1],['F7','F7',1],['F8','F8',1],['_',null,0.35],['F9','F9',1],['F10','F10',1],['F11','F11',1],['F12','F12',1]],
+  [['Backquote','`',1,'~'],['Digit1','1',1,'!'],['Digit2','2',1,'@'],['Digit3','3',1,'#'],['Digit4','4',1,'$'],['Digit5','5',1,'%'],['Digit6','6',1,'^'],['Digit7','7',1,'&'],['Digit8','8',1,'*'],['Digit9','9',1,'('],['Digit0','0',1,')'],['Minus','-',1,'_'],['Equal','=',1,'+'],['Backspace','⌫',2,null,true]],
+  [['Tab','Tab',1.5,null,true],['KeyQ','Q',1],['KeyW','W',1],['KeyE','E',1],['KeyR','R',1],['KeyT','T',1],['KeyY','Y',1],['KeyU','U',1],['KeyI','I',1],['KeyO','O',1],['KeyP','P',1],['BracketLeft','[',1,'{'],['BracketRight',']',1,'}'],['Backslash','\\',1.5,'|']],
+  [['CapsLock','Caps',1.75,null,true],['KeyA','A',1],['KeyS','S',1],['KeyD','D',1],['KeyF','F',1],['KeyG','G',1],['KeyH','H',1],['KeyJ','J',1],['KeyK','K',1],['KeyL','L',1],['Semicolon',';',1,':'],['Quote',"'",1,'"'],['Enter','Enter',2.25,null,true]],
+  [['ShiftLeft','Shift',2.25,null,true],['KeyZ','Z',1],['KeyX','X',1],['KeyC','C',1],['KeyV','V',1],['KeyB','B',1],['KeyN','N',1],['KeyM','M',1],['Comma',',',1,'<'],['Period','.',1,'>'],['Slash','/',1,'?'],['ShiftRight','Shift',2.75,null,true]],
+  [['CtrlL','Ctrl',1.25,null,true],['WinL','⊞',1.25,null,true],['AltL','Alt',1.25,null,true],['Space','',6.25,null,true],['AltR','Alt',1.25,null,true],['WinR','⊞',1.25,null,true],['Menu','☰',1.25,null,true],['CtrlR','Ctrl',1.25,null,true]]
+];
+const UNIT = 40, GAP = 4;
+let S = { prof:'default', mod:'Ctrl', selKey:null, modTab:'Ctrl' };
+
+function buildKB() {
+  const container = document.getElementById('kb-rows');
+  container.innerHTML = '';
+  ROWS.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'kb-row';
+    row.forEach(([id, lbl, w, sub, sys]) => {
+      if (id === '_') {
+        const sp = document.createElement('div');
+        sp.style.cssText = 'flex-shrink:0;width:' + (w * UNIT) + 'px;';
+        rowEl.appendChild(sp); return;
+      }
+      const k = document.createElement('div');
+      const px = w * UNIT + (w - 1) * GAP;
+      k.className = 'k' + (sys ? ' sys' : '');
+      k.style.width = px + 'px';
+      k.dataset.id = id;
+      if (sub) { const sl = document.createElement('span'); sl.className = 'k-sub'; sl.textContent = sub; k.appendChild(sl); }
+      const ll = document.createElement('span'); ll.className = 'k-lbl'; ll.textContent = lbl; k.appendChild(ll);
+      if (!sys) k.addEventListener('click', () => onKey(id, lbl));
+      rowEl.appendChild(k);
+    });
+    container.appendChild(rowEl);
+  });
+  refreshKeys();
+}
+function refreshKeys() {
+  const assigns = PROFILES[S.prof].assigns;
+  document.querySelectorAll('#kb-rows .k').forEach(el => {
+    const id = el.dataset.id;
+    el.classList.remove('asgn','sel');
+    el.querySelectorAll('.k-dot').forEach(d => d.remove());
+    if (assigns[S.mod + '-' + id]) {
+      el.classList.add('asgn');
+      const d = document.createElement('span'); d.className = 'k-dot';
+      el.appendChild(d);
+    }
+    if (S.selKey === id) el.classList.add('sel');
+  });
+}
+function onKey(id, lbl) {
+  S.selKey = id; refreshKeys();
+  document.getElementById('mod-combo').innerHTML =
+    '<span class="combo-key">' + S.mod + '</span><span class="combo-plus">+</span><span class="combo-key">' + lbl + '</span>';
+  document.getElementById('kb-lbl').innerHTML =
+    'Assigning: <strong style="color:#e8a020">' + S.mod + ' + ' + lbl + '</strong>';
+}
+function selMod(el, mod) {
+  S.mod = mod;
+  document.querySelectorAll('.mod-btn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  refreshKeys(); refreshSB();
+  if (!S.selKey) document.getElementById('mod-combo').innerHTML = '<span class="combo-hint">Now click a key to assign</span>';
+}
+function doRecord() {
+  const b = document.querySelector('.rec-btn');
+  b.textContent = b.textContent === '⏺ Capture' ? '⏹ Stop' : '⏺ Capture';
+}
+function switchModTab(el, tab) {
+  S.modTab = tab;
+  document.querySelectorAll('.sb-tab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  refreshSB();
+}
+function refreshSB() {
+  const list = document.getElementById('sb-list');
+  list.innerHTML = '';
+  const assigns = PROFILES[S.prof].assigns;
+  let shown = 0;
+  Object.entries(assigns).forEach(([key, val]) => {
+    const [mod] = key.split('-');
+    if (mod !== S.modTab) return;
+    shown++;
+    const keyId = key.split('-')[1];
+    const keyDef = ROWS.flat().find(r => Array.isArray(r) && r[0] === keyId);
+    const keyLbl = keyDef ? keyDef[1] : keyId;
+    const col = TYPE_COLORS[val.type] || '#aaa';
+    const item = document.createElement('div');
+    item.className = 'sb-item ' + val.type + (S.selKey === keyId ? ' on' : '');
+    item.innerHTML = '<span class="sb-badge" style="border-color:'+col+'44;color:'+col+'">'+mod+'+'+keyLbl+'</span><div class="sb-info"><div class="sb-lbl">'+val.label+'</div><div class="sb-type"><span class="sb-dot" style="background:'+col+'"></span>'+val.label+'</div></div>';
+    item.onclick = () => {
+      const kd = ROWS.flat().find(r => Array.isArray(r) && r[0] === keyId);
+      if (kd) onKey(keyId, kd[1]);
+      refreshSB();
+    };
+    list.appendChild(item);
+  });
+  if (!shown) list.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:16px;text-align:center;line-height:1.5;">No '+S.modTab+' assignments yet.</div>';
+  document.getElementById('sb-cnt').textContent = Object.keys(assigns).length;
+}
+function switchProf(el, prof) {
+  S.prof = prof; S.selKey = null;
+  document.querySelectorAll('.t-ptab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  refreshKeys(); refreshSB(); updateStatus();
+  document.getElementById('mod-combo').innerHTML = '<span class="combo-hint">Select a modifier, then click a key</span>';
+  document.getElementById('kb-lbl').textContent = 'Click a key to assign an action';
+}
+function switchArea(el) {
+  document.querySelectorAll('.t-atab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+}
+function updateStatus() {
+  const c = Object.keys(PROFILES[S.prof].assigns).length;
+  document.getElementById('s-count').textContent = c;
+  document.getElementById('s-prof').textContent = PROFILES[S.prof].name;
+  document.getElementById('sb-cnt').textContent = c;
+}
+function scaleMockup() {
+  const outer = document.getElementById('mockup-outer');
+  const scaler = document.getElementById('mockup-scaler');
+  const viewport = document.getElementById('mockup-viewport');
+  const shell = document.getElementById('app-shell');
+  if (!outer || !scaler || !viewport || !shell) return;
+  const available = outer.offsetWidth;
+  if (available === 0) return;
+  const naturalW = 1280;
+  const scale = available / naturalW;
+  scaler.style.transform = 'scale(' + scale + ')';
+  scaler.style.transformOrigin = 'top left';
+  const naturalH = shell.offsetHeight;
+  viewport.style.height = (naturalH * scale) + 'px';
+}
+
+buildKB(); refreshSB(); updateStatus();
+window.addEventListener('resize', scaleMockup);
+document.fonts.ready.then(() => { scaleMockup(); });
+(function() {
+  var vp = document.getElementById('mockup-viewport');
+  var shell = document.getElementById('app-shell');
+  var outer = document.getElementById('mockup-outer');
+  if (!vp || !shell || !outer) return;
+  var naturalW = 1280;
+  var scale = (outer.offsetWidth || window.innerWidth) / naturalW;
+  var estimatedH = 596;
+  vp.style.height = (estimatedH * scale) + 'px';
+})();
+setTimeout(scaleMockup, 50);
+
+/* ── REVEAL ON SCROLL ── */
+(function(){
+  if(!('IntersectionObserver' in window)){
+    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+})();
+
+/* ── MOCKUP AUTO-DEMO: cycling key fire + profile rotation (copied from index.html) ── */
+(function(){
+  var lastUserAction = 0;
+  var mockupOuter = document.getElementById('mockup-outer');
+  var fireToast = document.getElementById('mockup-fire-toast');
+  var profToast = document.getElementById('mockup-prof-toast');
+
+  if(mockupOuter){
+    ['mouseenter','click','mousemove'].forEach(function(evt){
+      mockupOuter.addEventListener(evt, function(){ lastUserAction = Date.now(); });
+    });
+  }
+
+  var profOrder = ['default','chrome','vscode'];
+  var profIdx = 0;
+
+  function userIsActive(){ return Date.now() - lastUserAction < 4500; }
+
+  function showFireToast(combo, action){
+    if(!fireToast) return;
+    fireToast.innerHTML = '<span class="mft-key">'+combo+'</span><span class="mft-arrow">→</span><span>'+action+'</span>';
+    fireToast.classList.add('show');
+    clearTimeout(fireToast._t);
+    fireToast._t = setTimeout(function(){ fireToast.classList.remove('show'); }, 2400);
+  }
+
+  function showProfToast(name){
+    if(!profToast) return;
+    profToast.innerHTML = 'Profile <em>'+name+'</em>';
+    profToast.classList.add('show');
+    clearTimeout(profToast._t);
+    profToast._t = setTimeout(function(){ profToast.classList.remove('show'); }, 2400);
+  }
+
+  function fireRandomKey(){
+    if(userIsActive()) return;
+    if(typeof PROFILES === 'undefined' || typeof S === 'undefined') return;
+    var assigns = PROFILES[S.prof].assigns;
+    var keys = Object.keys(assigns);
+    if(keys.length === 0) return;
+    var pick = keys[Math.floor(Math.random()*keys.length)];
+    var mod = pick.split('-')[0];
+    var keyId = pick.split('-')[1];
+    if(S.mod !== mod){
+      var modBtn = document.getElementById('mb-'+mod);
+      if(modBtn && typeof selMod === 'function') selMod(modBtn, mod);
+    }
+    var kEl = document.querySelector('#kb-rows .k[data-id="'+keyId+'"]');
+    if(!kEl) return;
+    kEl.classList.add('fire');
+    setTimeout(function(){ kEl.classList.remove('fire'); }, 1100);
+    var keyDef = ROWS.flat().find(function(r){ return Array.isArray(r) && r[0] === keyId; });
+    var keyLbl = keyDef ? keyDef[1] : keyId;
+    showFireToast(mod+'+'+keyLbl, assigns[pick].label);
+  }
+
+  function cycleProfile(){
+    if(userIsActive()) return;
+    profIdx = (profIdx + 1) % profOrder.length;
+    var next = profOrder[profIdx];
+    var btn = document.querySelector('.t-ptab[onclick*="\''+next+'\'"]');
+    if(btn && typeof switchProf === 'function'){
+      switchProf(btn, next);
+      if(typeof PROFILES !== 'undefined') showProfToast(PROFILES[next].name);
+    }
+  }
+
+  // Stagger so the demo feels alive but not chaotic
+  setTimeout(function(){
+    fireRandomKey();
+    setInterval(fireRandomKey, 4200);
+    setInterval(cycleProfile, 9000);
+  }, 2500);
+})();
+
+// Fetch latest release version from GitHub
+fetch('https://api.github.com/repos/Trigr-it/trigr-tauri/releases/latest')
+  .then(r => r.json())
+  .then(data => {
+    if (!data || !data.tag_name) return;
+    document.querySelectorAll('.js-latest-version').forEach(el => { el.textContent = data.tag_name; });
+  })
+  .catch(() => {}); // on failure keep the hardcoded fallback version in the markup
+</script>
+
+<script>
+// ────────────────────────────────────────────────────
+// SmartScreen bypass modal + download click tracking
+// Shown after a user clicks any .exe download link.
+// Download still proceeds in the background.
+// ────────────────────────────────────────────────────
+(function () {
+  var overlay = document.getElementById('ss-overlay');
+  if (!overlay) return;
+  var video = overlay.querySelector('.ss-video');
+  var closeBtn = overlay.querySelector('.ss-close');
+  var dismissBtn = overlay.querySelector('.ss-dismiss');
+
+  function openModal() {
+    overlay.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+    if (video) { try { video.currentTime = 0; video.play(); } catch (e) {} }
+  }
+  function closeModal() {
+    overlay.classList.remove('is-open');
+    document.body.style.overflow = '';
+    if (video) { try { video.pause(); } catch (e) {} }
+  }
+  closeBtn && closeBtn.addEventListener('click', closeModal);
+  dismissBtn && dismissBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && overlay.classList.contains('is-open')) closeModal();
+  });
+
+  // Map data-loc + data-arch attributes to Plausible-friendly event names.
+  // 'Macros' prefix keeps this landing page's events distinct from homepage goals.
+  var PLAUSIBLE_LOC_NAME = {
+    macros_nav:         'Macros Nav',
+    macros_hero:        'Macros Hero',
+    macros_hero_arm64:  'Macros Hero',
+    macros_final:       'Macros Final',
+    macros_final_arm64: 'Macros Final'
+  };
+  var PLAUSIBLE_ARCH_NAME = { x64: 'x64', arm64: 'ARM64' };
+
+  var links = document.querySelectorAll('a[href*="setup.exe"]');
+  links.forEach(function (a) {
+    a.addEventListener('click', function () {
+      var locKey  = a.getAttribute('data-loc')  || 'unknown';
+      var archKey = a.getAttribute('data-arch') || 'unknown';
+      var source  = resolveDownloadSource();
+
+      try {
+        if (typeof window.plausible === 'function') {
+          var locName  = PLAUSIBLE_LOC_NAME[locKey]   || locKey;
+          var archName = PLAUSIBLE_ARCH_NAME[archKey] || archKey;
+          window.plausible('Download ' + locName + ' ' + archName, {
+            props: { source: source }
+          });
+        }
+      } catch (e) { /* analytics failure must never block the download */ }
+
+      // Do not preventDefault, let the download proceed.
+      setTimeout(openModal, 120);
+    });
+  });
+
+  // Source resolver — utm_source query param wins, then referrer hostname,
+  // then 'direct'.
+  function resolveDownloadSource() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var utm = params.get('utm_source');
+      if (utm) return utm;
+      if (document.referrer) {
+        try {
+          var host = new URL(document.referrer).hostname;
+          if (host) return host;
+        } catch (e) { /* malformed referrer — fall through */ }
+      }
+      return 'direct';
+    } catch (e) {
+      return 'direct';
+    }
+  }
+})();
+</script>
+
+</body>
+</html>
