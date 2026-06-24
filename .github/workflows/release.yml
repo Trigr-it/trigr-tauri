@@ -39,7 +39,7 @@ jobs:
         shell: pwsh
         run: |
           $scriptDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri\scripts"
-          if (-not (Test-Path "$scriptDir\trigr-sign.cmd")) { throw "trigr-sign.cmd not found at $scriptDir" }
+          if (-not (Test-Path "$scriptDir\keyfire-sign.cmd")) { throw "keyfire-sign.cmd not found at $scriptDir" }
           Add-Content -Path $env:GITHUB_PATH -Value $scriptDir
           Write-Output "Added to PATH: $scriptDir"
       - name: Verify Azure signing connectivity
@@ -97,7 +97,7 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Trigr ${{ github.ref_name }}'
+          releaseName: 'Keyfire ${{ github.ref_name }}'
           releaseBody: |
             ## Download
             **Windows (most users):** trigr_x64-setup.exe
@@ -114,9 +114,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $bundleDir = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
-          $installer = Get-ChildItem -Path $bundleDir -Filter "Trigr_*_x64-setup.exe" -ErrorAction Stop | Select-Object -First 1
+          $installer = Get-ChildItem -Path $bundleDir -Filter "Keyfire_*_x64-setup.exe" -ErrorAction Stop | Select-Object -First 1
           if (-not $installer) { throw "No x64 installer found in $bundleDir" }
-          $dst = "Trigr_x64-setup.exe"
+          $dst = "Keyfire_x64-setup.exe"
           Copy-Item $installer.FullName $dst
           Write-Output "Uploading $($installer.Name) as $dst"
           gh release upload "${{ github.ref_name }}" $dst --clobber
@@ -149,7 +149,7 @@ jobs:
         shell: pwsh
         run: |
           $scriptDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri\scripts"
-          if (-not (Test-Path "$scriptDir\trigr-sign.cmd")) { throw "trigr-sign.cmd not found at $scriptDir" }
+          if (-not (Test-Path "$scriptDir\keyfire-sign.cmd")) { throw "keyfire-sign.cmd not found at $scriptDir" }
           Add-Content -Path $env:GITHUB_PATH -Value $scriptDir
           Write-Output "Added to PATH: $scriptDir"
       - name: Cache Rust dependencies
@@ -169,7 +169,7 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Trigr ${{ github.ref_name }}'
+          releaseName: 'Keyfire ${{ github.ref_name }}'
           releaseDraft: false
           prerelease: false
           args: --target aarch64-pc-windows-msvc --config src-tauri/tauri.signing.conf.json
@@ -179,9 +179,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $bundleDir = "src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis"
-          $installer = Get-ChildItem -Path $bundleDir -Filter "Trigr_*_arm64-setup.exe" -ErrorAction Stop | Select-Object -First 1
+          $installer = Get-ChildItem -Path $bundleDir -Filter "Keyfire_*_arm64-setup.exe" -ErrorAction Stop | Select-Object -First 1
           if (-not $installer) { throw "No arm64 installer found in $bundleDir" }
-          $dst = "Trigr_arm64-setup.exe"
+          $dst = "Keyfire_arm64-setup.exe"
           Copy-Item $installer.FullName $dst
           Write-Output "Uploading $($installer.Name) as $dst"
           gh release upload "${{ github.ref_name }}" $dst --clobber

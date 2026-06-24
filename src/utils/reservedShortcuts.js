@@ -1,5 +1,5 @@
 // Reserved Windows shortcuts that commonly cause real harm if shadowed by a
-// Trigr mapping. Combo strings use the same sorted-modifier format as the
+// Keyfire mapping. Combo strings use the same sorted-modifier format as the
 // comboString() helper in KeyboardCanvas.jsx (Ctrl, Shift, Alt, Win order).
 // Only single-press mappings are checked against this list — double-tap
 // variants of reserved combos are safe because the first press still passes

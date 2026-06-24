@@ -490,7 +490,7 @@ export default function SearchOverlay() {
     return () => stopListening();
   }, [mode, startListening, stopListening]);
 
-  // ── Voice mode: press to activate, speak, Trigr matches and fires ──
+  // ── Voice mode: press to activate, speak, Keyfire matches and fires ──
   useEffect(() => {
     if (!window.electronAPI?.onOverlayVoiceData) return;
     window.electronAPI.onOverlayVoiceData((data) => {

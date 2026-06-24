@@ -62,7 +62,7 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
           {nutjsAvailable ? '⬤' : '○'} Executor
         </span>
         <span className="status-sep">·</span>
-        <span className="status-info">Trigr {appVersion ? `v${appVersion}` : 'v…'}</span>
+        <span className="status-info">Keyfire {appVersion ? `v${appVersion}` : 'v…'}</span>
         {isDemoMode && (
           <>
             <span className="status-sep">·</span>

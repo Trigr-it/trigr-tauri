@@ -508,7 +508,7 @@ export default function SettingsPanel({
               {licenceStatus.status === 'expired' && (
                 <p className="settings-toggle-sub">
                   Your beta key has expired. Email{' '}
-                  <a href="mailto:admin@usetrigr.com?subject=Trigr%20beta%20key%20renewal">admin@usetrigr.com</a>
+                  <a href="mailto:admin@keyfire.app?subject=Keyfire%20beta%20key%20renewal">admin@keyfire.app</a>
                   {' '}for a new one.
                 </p>
               )}
@@ -516,7 +516,7 @@ export default function SettingsPanel({
                 <p className="settings-toggle-sub">
                   This key failed verification. It may be from an older build, or the file may have been edited.
                   Try entering it again, or email{' '}
-                  <a href="mailto:admin@usetrigr.com?subject=Trigr%20beta%20key%20issue">admin@usetrigr.com</a>.
+                  <a href="mailto:admin@keyfire.app?subject=Keyfire%20beta%20key%20issue">admin@keyfire.app</a>.
                 </p>
               )}
               <button
@@ -558,7 +558,7 @@ export default function SettingsPanel({
                   <button
                     type="button"
                     className="settings-action-btn"
-                    onClick={() => onShowUpgrade?.('Keep Trigr Pro')}
+                    onClick={() => onShowUpgrade?.('Keep Keyfire Pro')}
                   >
                     Request a beta key
                   </button>
@@ -566,7 +566,7 @@ export default function SettingsPanel({
               ) : licenceStatus.trial_used ? (
                 <div className="settings-trial-card settings-trial-card--expired">
                   <p className="settings-toggle-sub">
-                    <strong>Your Pro trial has ended.</strong> Trigr has dropped back to Free.
+                    <strong>Your Pro trial has ended.</strong> Keyfire has dropped back to Free.
                   </p>
                   <p className="settings-toggle-sub">
                     Request a free beta key to continue using Pro features, then activate it below.
@@ -574,7 +574,7 @@ export default function SettingsPanel({
                   <button
                     type="button"
                     className="settings-action-btn settings-action-btn--primary"
-                    onClick={() => onShowUpgrade?.('Keep Trigr Pro')}
+                    onClick={() => onShowUpgrade?.('Keep Keyfire Pro')}
                   >
                     Request a beta key
                   </button>
@@ -583,7 +583,7 @@ export default function SettingsPanel({
                 <div className="settings-trial-card settings-trial-card--offer">
                   <h3 className="settings-trial-title">Try Pro free for 14 days</h3>
                   <p className="settings-toggle-sub">
-                    Unlock app-specific profiles, shared config sync, double-tap actions and global variables. No card needed. Trigr drops back to Free automatically when the trial ends.
+                    Unlock app-specific profiles, shared config sync, double-tap actions and global variables. No card needed. Keyfire drops back to Free automatically when the trial ends.
                   </p>
                   <button
                     type="button"
@@ -759,7 +759,7 @@ export default function SettingsPanel({
           {isExpanded('about') && (<>
           <div className="settings-about">
             <div className="settings-about-header">
-              <span className="settings-about-name">Trigr</span>
+              <span className="settings-about-name">Keyfire</span>
               <span className="settings-about-version">{appVersion ? `v${appVersion}` : ''}</span>
             </div>
             <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect. All data stored locally.</p>
@@ -908,7 +908,7 @@ export default function SettingsPanel({
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Send anonymous usage stats</span>
               <span className="settings-toggle-sub">
-                Once per day Trigr sends daily counts of what fired by type (expansions, macros, app launches and so on), counts of what you have configured, your plan tier and the app version. No content, no identifiers. Helps prioritise what to build next during the beta.
+                Once per day Keyfire sends daily counts of what fired by type (expansions, macros, app launches and so on), counts of what you have configured, your plan tier and the app version. No content, no identifiers. Helps prioritise what to build next during the beta.
               </span>
             </div>
             <button
@@ -948,7 +948,7 @@ export default function SettingsPanel({
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Shared config <span className="pro-badge">PRO</span></span>
               <span className="settings-toggle-sub">
-                Sync your config across machines via a cloud folder (OneDrive, Dropbox, Google Drive). Trigr reads and writes <code>keyforge-config.json</code> there.
+                Sync your config across machines via a cloud folder (OneDrive, Dropbox, Google Drive). Keyfire reads and writes <code>keyforge-config.json</code> there.
               </span>
             </div>
 
@@ -1102,7 +1102,7 @@ export default function SettingsPanel({
           <div className="settings-pause-stack">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Pause hotkey</span>
-              <span className="settings-toggle-sub">Toggles Trigr on/off from any app. Modifier required.</span>
+              <span className="settings-toggle-sub">Toggles Keyfire on/off from any app. Modifier required.</span>
             </div>
             <div className="settings-qs-hotkey-ctrl">
               {capturingPauseKey ? (
@@ -1699,7 +1699,7 @@ export default function SettingsPanel({
           </div>
           {isExpanded('compatibility') && (<>
           <p className="settings-compat-desc">
-            How Trigr injects text into other apps. Use <strong>Type Each Key</strong> for CAD and games.
+            How Keyfire injects text into other apps. Use <strong>Type Each Key</strong> for CAD and games.
           </p>
 
           <label className="settings-field-label">Global input method</label>
@@ -1883,7 +1883,7 @@ export default function SettingsPanel({
           </div>
           {isExpanded('backup-restore') && (<>
           <p className="settings-backup-desc">
-            Export to back up or move your config to another machine. Import to restore. Trigr also creates automatic backups on every launch and save.
+            Export to back up or move your config to another machine. Import to restore. Keyfire also creates automatic backups on every launch and save.
           </p>
           <div className="settings-backup-row">
             <button

@@ -174,7 +174,7 @@ export default function TitleBar({
       <div className="titlebar-left">
         <div className="app-logo">
           <span className="trigr-mark">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Trigr">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Keyfire">
               <defs>
                 <linearGradient id="trigr-base" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#f0b942"/>
@@ -188,11 +188,10 @@ export default function TitleBar({
               <rect x="0" y="0" width="64" height="64" rx="9" fill="url(#trigr-base)"/>
               <rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#trigr-keytop)"/>
               <rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/>
-              <rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>
-              <rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>
+              <path d="M 33 14 C 36 18, 41 23, 41 30 C 41 37, 36 41, 32 41 C 26 41, 22 37, 22 32 C 22 28, 25 26, 27 23 C 28 26, 30 27, 30 24 C 30 20, 32 17, 33 14 Z" fill="#c8860a"/>
             </svg>
           </span>
-          <span className="app-name">Trigr</span>
+          <span className="app-name">Keyfire</span>
         </div>
 
         <div className="titlebar-divider" />
@@ -279,7 +278,7 @@ export default function TitleBar({
         <button
           className="tb-whatsnew-btn"
           onClick={() => window.Featurebase?.('manually_open_changelog_popup')}
-          title="See what's new in Trigr"
+          title="See what's new in Keyfire"
           data-drag="false"
           type="button"
           aria-label="What's new"

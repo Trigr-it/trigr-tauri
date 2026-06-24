@@ -28,7 +28,7 @@ static HOOKS_RUNNING: AtomicBool = AtomicBool::new(false);
 /// World of Warcraft). The hook adds per-event latency that disrupts games'
 /// SetCursorPos recentering loops used for infinite camera rotation. The
 /// foreground watcher in foreground.rs sets this flag on transition + posts
-/// WM_TRIGR_MOUSE_HOOK_PAUSE / RESUME to the hook thread. Watchdog reads it to
+/// WM_KEYFIRE_MOUSE_HOOK_PAUSE / RESUME to the hook thread. Watchdog reads it to
 /// skip its heartbeat-stale reinstall (which would otherwise undo our pause).
 /// Runtime only — never persisted to config.
 pub static MOUSE_HOOK_PAUSED: AtomicBool = AtomicBool::new(false);
@@ -37,8 +37,8 @@ pub static MOUSE_HOOK_PAUSED: AtomicBool = AtomicBool::new(false);
 /// to selectively uninstall / reinstall only the LL mouse hook (keyboard hook
 /// stays installed). WM_USER range is Windows-reserved for app-private use and
 /// won't collide with WM_QUIT or any system message.
-pub const WM_TRIGR_MOUSE_HOOK_PAUSE: u32 = 0x0400 + 1;  // WM_USER + 1
-pub const WM_TRIGR_MOUSE_HOOK_RESUME: u32 = 0x0400 + 2; // WM_USER + 2
+pub const WM_KEYFIRE_MOUSE_HOOK_PAUSE: u32 = 0x0400 + 1;  // WM_USER + 1
+pub const WM_KEYFIRE_MOUSE_HOOK_RESUME: u32 = 0x0400 + 2; // WM_USER + 2
 
 /// Hold trigger (v0.5, Pro): paused alongside MOUSE_HOOK_PAUSED by the
 /// foreground watcher's fullscreen detector. While true, keydowns don't arm
@@ -377,7 +377,7 @@ fn add_voice_to_suppress(voice: Option<(u8, u32)>) {
 ///
 /// Skipped entirely when clipboard capture is disabled, so the combo
 /// (default Ctrl+Shift+V) passes through to the OS instead of being
-/// hijacked by Trigr. The suppress add is re-applied automatically when
+/// hijacked by Keyfire. The suppress add is re-applied automatically when
 /// capture is re-enabled via `refresh_clipboard_paste_suppress`.
 fn add_clipboard_paste_to_suppress(combo: Option<(u8, u32)>) {
     if !crate::clipboard::is_capture_enabled() {
@@ -426,7 +426,7 @@ fn add_radial_menu_to_suppress(combo: Option<(u8, u32)>) {
     }
 }
 
-/// Map Trigr key ID back to VK code (reverse of vk_to_key_id).
+/// Map Keyfire key ID back to VK code (reverse of vk_to_key_id).
 fn key_id_to_vk(key_id: &str) -> Option<u32> {
     match key_id {
         "KeyA" => Some(0x41), "KeyB" => Some(0x42), "KeyC" => Some(0x43),
@@ -646,7 +646,7 @@ fn spawn_hold_watcher(app: AppHandle) {
                         }
                     }
                     let hold_trigger = format!("{}::hold", sk);
-                    info!("[Trigr] [HOLD] fired: {}", hold_trigger);
+                    info!("[Keyfire] [HOLD] fired: {}", hold_trigger);
                     fire_macro(hold_macro, is_bare, Some(hold_trigger), &app);
                 }
             }
@@ -801,7 +801,7 @@ fn send_event(event: HookEvent) {
     }
 }
 
-// ── VK code → Trigr key ID mapping ──────────────────────────────────────────
+// ── VK code → Keyfire key ID mapping ──────────────────────────────────────────
 
 fn vk_to_key_id(vk: u32) -> Option<&'static str> {
     match vk {
@@ -1259,7 +1259,7 @@ unsafe extern "system" fn keyboard_hook_proc(
     if n_code >= 0 && SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         // Mid-injection: our synthetic events pass through, but a real user keypress
         // for a suppressed key must still be blocked — otherwise it leaks to the game
-        // as raw input (e.g. "I" reaching the game instead of being consumed by Trigr).
+        // as raw input (e.g. "I" reaching the game instead of being consumed by Keyfire).
         //
         // LLKHF_INJECTED distinguishes synthetic (SendInput) events from real
         // hardware input. Required for the hold-only passthrough path: when we
@@ -1404,7 +1404,7 @@ unsafe extern "system" fn mouse_hook_proc(
         // ── Macro recorder ingestion ────────────────────────────────────────
         // Capture every real mouse event (clicks, wheel, throttled moves) while
         // a recording is active. Synthetic events (LLMHF_INJECTED) are skipped
-        // so Trigr's own SendInput doesn't loop back into the recording buffer.
+        // so Keyfire's own SendInput doesn't loop back into the recording buffer.
         if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst) {
             let ms = &*(l_param as *const MSLLHOOKSTRUCT);
             if (ms.flags & LLMHF_INJECTED) == 0 {
@@ -1563,18 +1563,18 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
         .name("trigr-event-processor".to_string())
         .spawn(move || {
             log::info!("[PROC] Event processor started");
-            info!("[Trigr] Event processor started");
+            info!("[Keyfire] Event processor started");
             let mut last_heartbeat_count: isize = 0;
             while let Ok(event) = receiver.recv() {
                 // Periodic heartbeat — log every 500 hook events
                 let count = HOOK_EVENT_COUNT.load(Ordering::SeqCst);
                 if count - last_heartbeat_count >= 500 {
-                    info!("[Trigr] Hook heartbeat: {} events processed", count);
+                    info!("[Keyfire] Hook heartbeat: {} events processed", count);
                     last_heartbeat_count = count;
                 }
                 // Log if hook callback received nCode < 0
                 if HOOK_NCODE_NEGATIVE.swap(false, Ordering::SeqCst) {
-                    info!("[Trigr] Hook nCode<0 received — hook may be dying");
+                    info!("[Keyfire] Hook nCode<0 received — hook may be dying");
                 }
                 // Recorder stop-hotkey signal — hook already suppressed the
                 // keystroke; emit to the frontend so it retrieves the buffer
@@ -1669,7 +1669,7 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     HookEvent::RecorderStopRequested => {}
                 }
             }
-            info!("[Trigr] Event processor stopped");
+            info!("[Keyfire] Event processor stopped");
         })
         .expect("Failed to spawn event processor thread");
 }
@@ -1793,7 +1793,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     }
 
     // ── Recording mode: capture combo and send to frontend ──────────────
-    // Must run BEFORE APP_INPUT_FOCUSED check — recording works while Trigr UI is focused.
+    // Must run BEFORE APP_INPUT_FOCUSED check — recording works while Keyfire UI is focused.
     if IS_RECORDING_HOTKEY.load(Ordering::SeqCst) {
         IS_RECORDING_HOTKEY.store(false, Ordering::SeqCst);
 
@@ -1811,7 +1811,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     }
 
     // ── Key capture mode: capture combo string for settings ─────────────
-    // Must run BEFORE APP_INPUT_FOCUSED check — capture works while Trigr UI is focused.
+    // Must run BEFORE APP_INPUT_FOCUSED check — capture works while Keyfire UI is focused.
     if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
         IS_CAPTURING_KEY.store(false, Ordering::SeqCst);
 
@@ -1827,7 +1827,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         return;
     }
 
-    // ── Overlay hotkey check (works even when Trigr is focused) ───────
+    // ── Overlay hotkey check (works even when Keyfire is focused) ───────
     if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
         let state = engine_state().lock().unwrap();
         if let Some((mod_bits, vk)) = state.overlay_hotkey {
@@ -1876,7 +1876,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                     // Key-repeat guard: only fire once per physical press.
                     let was_held = VOICE_KEY_HELD.swap(true, Ordering::SeqCst);
                     if !was_held {
-                        info!("[Trigr] Voice hotkey while active — closing overlay");
+                        info!("[Keyfire] Voice hotkey while active — closing overlay");
                         let _ = app.emit("voice-keydown", Value::Null);
                     }
                 } else {
@@ -1886,7 +1886,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                     VOICE_ACTIVE.store(true, Ordering::SeqCst);
                     VOICE_ACTION_VK.store(vk, Ordering::SeqCst);
                     VOICE_KEY_HELD.store(true, Ordering::SeqCst);
-                    info!("[Trigr] Voice hotkey first press — emitting voice-open");
+                    info!("[Keyfire] Voice hotkey first press — emitting voice-open");
                     let _ = app.emit("voice-open", Value::Null);
                 }
                 return;
@@ -1901,7 +1901,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         if vk != 0 && key_id_to_vk(key_id) == Some(vk) {
             // Suppress keyboard repeat — only emit on fresh press (after keyup)
             if !VOICE_KEY_HELD.swap(true, Ordering::SeqCst) {
-                info!("[Trigr] Voice bare-key press — emitting voice-keydown");
+                info!("[Keyfire] Voice bare-key press — emitting voice-keydown");
                 let _ = app.emit("voice-keydown", Value::Null);
             }
             return;
@@ -2013,8 +2013,8 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     }
 
     // CRITICAL: Recording and capture checks MUST remain above this guard.
-    // If moved below, capture will silently fail when Trigr has focus.
-    // Skip if Trigr input field is focused (normal hotkey matching suppressed)
+    // If moved below, capture will silently fail when Keyfire has focus.
+    // Skip if Keyfire input field is focused (normal hotkey matching suppressed)
     if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
         return;
     }
@@ -2109,7 +2109,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                                 cancel.store(true, Ordering::SeqCst);
                             }
                             state.last_hotkey_time.remove(&bare_key);
-                            info!("[Trigr] x2 Keydown double-tap (hold-armed bare key): {}", bare_key);
+                            info!("[Keyfire] x2 Keydown double-tap (hold-armed bare key): {}", bare_key);
                             // Sentinel so this press's auto-repeats hit the
                             // swallow check above — see the modified branch.
                             hold_timers().lock().unwrap().insert(vk, HoldEntry {
@@ -2180,7 +2180,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 if let Some(last) = state.last_hotkey_time.get(&bare_key) {
                     if now.duration_since(*last).as_millis() < dtw as u128 {
                         state.last_hotkey_time.remove(&bare_key);
-                        info!("[Trigr] x2 Double-only bare: {}", bare_key);
+                        info!("[Keyfire] x2 Double-only bare: {}", bare_key);
                         state.pending_macro = state.assignments.get(&double_key).cloned();
                         state.pending_storage_key = None;
                         state.pending_trigger_key = Some(bare_key);
@@ -2274,7 +2274,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                         cancel.store(true, Ordering::SeqCst);
                     }
                     state.last_hotkey_time.remove(&storage_key);
-                    info!("[Trigr] x2 Keydown double-tap (hold-armed key): {}", storage_key);
+                    info!("[Keyfire] x2 Keydown double-tap (hold-armed key): {}", storage_key);
                     // Sentinel so this press's auto-repeats hit the swallow
                     // check above. fired=true keeps the watcher and the keyup
                     // re-injection inert; the pending double set below still
@@ -2326,7 +2326,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                         cancel.store(true, Ordering::SeqCst);
                     }
                     state.last_hotkey_time.remove(&storage_key);
-                    info!("[Trigr] x2 Keydown double-tap: {}", storage_key);
+                    info!("[Keyfire] x2 Keydown double-tap: {}", storage_key);
                     state.pending_macro = double_macro;
                     state.pending_storage_key = None; // null → fire directly at keyup, no timer
                     state.pending_trigger_key = Some(storage_key);
@@ -2344,7 +2344,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             let cancel_flag = Arc::new(AtomicBool::new(false));
             state.pending_single_cancel.insert(storage_key.clone(), cancel_flag.clone());
 
-            info!("[Trigr] x1 First tap: {} — waiting {}ms", storage_key, dtw);
+            info!("[Keyfire] x1 First tap: {} — waiting {}ms", storage_key, dtw);
 
             let sk = storage_key.clone();
             let app_clone = app.clone();
@@ -2362,7 +2362,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                     state.pending_single_cancel.remove(&sk);
                     state.last_hotkey_time.remove(&sk);
                 }
-                info!("[Trigr] x1 Single confirmed: {}", sk);
+                info!("[Keyfire] x1 Single confirmed: {}", sk);
                 fire_macro(macro_clone, false, Some(sk), &app_clone);
             });
             // Don't set pending_macro — timer handles firing
@@ -2397,7 +2397,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             if let Some(last) = state.last_hotkey_time.get(&storage_key) {
                 if now.duration_since(*last).as_millis() < dtw as u128 {
                     state.last_hotkey_time.remove(&storage_key);
-                    info!("[Trigr] x2 Double-only: {}", storage_key);
+                    info!("[Keyfire] x2 Double-only: {}", storage_key);
                     state.pending_macro = state.assignments.get(&double_key).cloned();
                     state.pending_storage_key = None;
                     state.pending_trigger_key = Some(storage_key);
@@ -2585,7 +2585,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                                 state.pending_single_cancel.remove(&sk);
                                 state.last_hotkey_time.remove(&sk);
                             }
-                            info!("[Trigr] x1 Single confirmed (hold-deferred): {}", sk);
+                            info!("[Keyfire] x1 Single confirmed (hold-deferred): {}", sk);
                             fire_macro(single, is_bare, Some(sk), &app_clone);
                         });
                     } else {
@@ -2623,7 +2623,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                             state.pending_single_cancel.remove(&sk);
                             state.last_hotkey_time.remove(&sk);
                         }
-                        info!("[Trigr] [HOLD] tap passthrough (hold+double, no single): {}", sk);
+                        info!("[Keyfire] [HOLD] tap passthrough (hold+double, no single): {}", sk);
                         SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                         send_synthetic_tap(key_vk);
                         thread::sleep(Duration::from_millis(5));
@@ -2634,7 +2634,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                     // the app's native key behaviour fires (the LL hook suppressed
                     // the user's physical keydown). Modifiers held during this
                     // synthesis are naturally included in the app's view.
-                    info!("[Trigr] [HOLD] tap passthrough (hold-only): {}", entry.storage_key);
+                    info!("[Keyfire] [HOLD] tap passthrough (hold-only): {}", entry.storage_key);
                     SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                     send_synthetic_tap(normalised_vk);
                     thread::sleep(Duration::from_millis(5));
@@ -2786,7 +2786,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
                 add_voice_to_suppress(state.voice_hotkey);
                 add_radial_menu_to_suppress(state.radial_menu_hotkey);
                 MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
-                info!("[Trigr] Refocus-switched to profile \"{}\"", rp);
+                info!("[Keyfire] Refocus-switched to profile \"{}\"", rp);
                 let profile_name = rp.clone();
                 let app2 = app.clone();
                 // Notify frontend asynchronously (we hold state lock)
@@ -2882,7 +2882,7 @@ fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
     let allow_pending = button_has_hold_assignment(mouse_id);
     if let Some(label) = crate::actions::release_held_if_mouse_trigger(mouse_id, allow_pending) {
         crate::tray::update_tray_icon_normal(app);
-        info!("[Trigr] Mouse-up released hold: {}", label);
+        info!("[Keyfire] Mouse-up released hold: {}", label);
     }
 }
 
@@ -2963,7 +2963,7 @@ fn dispatch_double_only(storage_key: &str, double_macro: Option<Value>, app: &Ap
     if let Some(last) = state.last_hotkey_time.get(storage_key) {
         if now.duration_since(*last).as_millis() < dtw as u128 {
             state.last_hotkey_time.remove(storage_key);
-            info!("[Trigr] x2 Double-only: {}", storage_key);
+            info!("[Keyfire] x2 Double-only: {}", storage_key);
             if let Some(dm) = double_macro {
                 drop(state);
                 fire_macro(dm, false, Some(storage_key.to_string()), app);
@@ -3002,7 +3002,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Op
                 cancel.store(true, Ordering::SeqCst);
             }
             state.last_hotkey_time.remove(storage_key);
-            info!("[Trigr] x2 Double-tap: {}", storage_key);
+            info!("[Keyfire] x2 Double-tap: {}", storage_key);
             let dm = double_macro.unwrap();
             drop(state);
             fire_macro(dm, false, trigger_key, app);
@@ -3023,7 +3023,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Op
         .pending_single_cancel
         .insert(storage_key.to_string(), cancel_flag.clone());
 
-    info!("[Trigr] x1 First tap: {} — waiting {}ms", storage_key, dtw);
+    info!("[Keyfire] x1 First tap: {} — waiting {}ms", storage_key, dtw);
 
     let sk = storage_key.to_string();
     let app_clone = app.clone();
@@ -3041,7 +3041,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Op
             state.pending_single_cancel.remove(&sk);
             state.last_hotkey_time.remove(&sk);
         }
-        info!("[Trigr] x1 Single confirmed: {}", sk);
+        info!("[Keyfire] x1 Single confirmed: {}", sk);
         fire_macro(macro_clone, false, Some(sk), &app_clone);
     });
 }
@@ -3055,7 +3055,7 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
     // observes the flag at its next per-iter or inter-step check and exits.
     if let Some(ref key) = trigger_key {
         if crate::actions::cancel_loop_if_running(key) {
-            log::info!("[Trigr] Loop cancel signal: {}", key);
+            log::info!("[Keyfire] Loop cancel signal: {}", key);
             return;
         }
     }
@@ -3071,7 +3071,7 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
             Some(g) => Some(g),
             None => {
                 log::warn!(
-                    "[Trigr] Dropped re-fire: {} already running (H1 re-entrancy guard)",
+                    "[Keyfire] Dropped re-fire: {} already running (H1 re-entrancy guard)",
                     key
                 );
                 return;
@@ -3177,11 +3177,11 @@ fn spawn_hook_thread() {
                 );
                 if kb.is_null() {
                     let err = windows_sys::Win32::Foundation::GetLastError();
-                    error!("[Trigr] Failed to install keyboard hook — GetLastError={}", err);
+                    error!("[Keyfire] Failed to install keyboard hook — GetLastError={}", err);
                     HOOKS_RUNNING.store(false, Ordering::SeqCst);
                     return;
                 }
-                info!("[Trigr] LL hook registered: HHOOK=0x{:X}", kb as isize);
+                info!("[Keyfire] LL hook registered: HHOOK=0x{:X}", kb as isize);
                 KB_HOOK.store(kb as isize, Ordering::SeqCst);
 
                 let ms = SetWindowsHookExW(
@@ -3192,13 +3192,13 @@ fn spawn_hook_thread() {
                 );
                 if ms.is_null() {
                     let err = windows_sys::Win32::Foundation::GetLastError();
-                    error!("[Trigr] Failed to install mouse hook — GetLastError={}", err);
+                    error!("[Keyfire] Failed to install mouse hook — GetLastError={}", err);
                     UnhookWindowsHookEx(kb);
                     KB_HOOK.store(0, Ordering::SeqCst);
                     HOOKS_RUNNING.store(false, Ordering::SeqCst);
                     return;
                 }
-                info!("[Trigr] LL mouse hook registered: HHOOK=0x{:X}", ms as isize);
+                info!("[Keyfire] LL mouse hook registered: HHOOK=0x{:X}", ms as isize);
                 MOUSE_HOOK.store(ms as isize, Ordering::SeqCst);
                 HOOKS_RUNNING.store(true, Ordering::SeqCst);
                 HOOK_HEARTBEAT.store(0, Ordering::SeqCst);
@@ -3222,7 +3222,7 @@ fn spawn_hook_thread() {
                 MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
                 RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
                 RADIAL_ACTION_VK.store(0, Ordering::SeqCst);
-                info!("[Trigr] Hook reinstall: shared atomics reset to safe defaults");
+                info!("[Keyfire] Hook reinstall: shared atomics reset to safe defaults");
 
                 log::info!("[HOOK] Input hooks installed (dedicated thread, high priority)");
 
@@ -3231,8 +3231,8 @@ fn spawn_hook_thread() {
                 // to guarantee the thread is always responsive to hook dispatches.
                 //
                 // Custom messages handled here:
-                //  - WM_TRIGR_MOUSE_HOOK_PAUSE: uninstall ONLY the mouse hook
-                //  - WM_TRIGR_MOUSE_HOOK_RESUME: reinstall the mouse hook
+                //  - WM_KEYFIRE_MOUSE_HOOK_PAUSE: uninstall ONLY the mouse hook
+                //  - WM_KEYFIRE_MOUSE_HOOK_RESUME: reinstall the mouse hook
                 // Both posted from foreground.rs on fullscreen-state transition.
                 // Win32 thread affinity is respected — install/uninstall here on
                 // the same thread that originally installed the hooks.
@@ -3242,7 +3242,7 @@ fn spawn_hook_thread() {
                         if msg.message == WM_QUIT {
                             break 'pump;
                         }
-                        if msg.message == WM_TRIGR_MOUSE_HOOK_PAUSE {
+                        if msg.message == WM_KEYFIRE_MOUSE_HOOK_PAUSE {
                             let h = MOUSE_HOOK.load(Ordering::SeqCst);
                             if h != 0 {
                                 UnhookWindowsHookEx(h as _);
@@ -3251,7 +3251,7 @@ fn spawn_hook_thread() {
                             }
                             continue;
                         }
-                        if msg.message == WM_TRIGR_MOUSE_HOOK_RESUME {
+                        if msg.message == WM_KEYFIRE_MOUSE_HOOK_RESUME {
                             if MOUSE_HOOK.load(Ordering::SeqCst) == 0 {
                                 let ms = SetWindowsHookExW(
                                     WH_MOUSE_LL,
@@ -3413,7 +3413,7 @@ pub fn start_hooks(app: AppHandle) {
                             .unwrap_or_default()
                             .as_millis() as i64;
                         if now - started > 5000 {
-                            error!("[Trigr] INJECTION_IN_PROGRESS stuck for >5s — force-clearing to unfreeze keyboard");
+                            error!("[Keyfire] INJECTION_IN_PROGRESS stuck for >5s — force-clearing to unfreeze keyboard");
                             INJECTION_IN_PROGRESS.store(false, Ordering::SeqCst);
                             INJECTION_STARTED_MS.store(0, Ordering::SeqCst);
                             SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
@@ -3452,7 +3452,7 @@ pub fn hook_thread_id() -> isize {
 pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta: bool, app: &AppHandle) {
     let key_id = code;
 
-    // Check overlay hotkey (JS path — Trigr has focus)
+    // Check overlay hotkey (JS path — Keyfire has focus)
     if MACROS_ENABLED.load(Ordering::SeqCst) {
         let mut js_bits = 0u8;
         if ctrl { js_bits |= 1; }
@@ -3554,7 +3554,7 @@ pub fn set_input_focused(focused: bool) {
 }
 
 pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) {
-    log::info!("[Trigr] update_assignments: {} entries for profile '{}'", assignments.len(), profile);
+    log::info!("[Keyfire] update_assignments: {} entries for profile '{}'", assignments.len(), profile);
     // Armed hold timers reference clones of old macros — drop them.
     clear_hold_timers();
     // Auto-repeat tracking is keyed by raw VK and survives assignment
@@ -3570,7 +3570,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
     add_voice_to_suppress(state.voice_hotkey);
     add_radial_menu_to_suppress(state.radial_menu_hotkey);
-    log::info!("[Trigr] Assignments stored: {} entries", state.assignments.len());
+    log::info!("[Keyfire] Assignments stored: {} entries", state.assignments.len());
 }
 
 pub fn set_active_profile(profile: String) {
@@ -3585,7 +3585,7 @@ pub fn set_active_profile(profile: String) {
     add_radial_menu_to_suppress(state.radial_menu_hotkey);
     // Clear down-suppressed flags so stale button-ups aren't eaten after switch
     MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
-    info!("[Trigr] Active profile: {}", profile);
+    info!("[Keyfire] Active profile: {}", profile);
 }
 
 pub fn get_active_profile() -> String {

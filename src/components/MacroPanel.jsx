@@ -335,7 +335,7 @@ function HotkeyCaptureInput({ value, onChange }) {
     }
     // Win opens the Start menu — we can't stop that (WebView2 limitation),
     // but we keep capture alive so the rest of the combo gets picked up by
-    // the LL hook once Trigr loses focus. The advisory below explains the
+    // the LL hook once Keyfire loses focus. The advisory below explains the
     // +Win toggle for explicit Win-modifier composition.
     if (e.key === 'Meta') {
       e.preventDefault();
@@ -656,15 +656,15 @@ function AhkForm({ value, onChange }) {
       <textarea
         className="form-textarea"
         placeholder={isV2
-          ? "; Write your AutoHotkey v2 script here\nMsgBox \"Hello from Trigr!\"\nSend \"{Enter}\""
-          : "; Write your AutoHotkey v1 script here\nMsgBox, Hello from Trigr!\nSend, {Enter}"}
+          ? "; Write your AutoHotkey v2 script here\nMsgBox \"Hello from Keyfire!\"\nSend \"{Enter}\""
+          : "; Write your AutoHotkey v1 script here\nMsgBox, Hello from Keyfire!\nSend, {Enter}"}
         value={value.script || ''}
         onChange={e => onChange({ ...value, script: e.target.value })}
         rows={8}
         onKeyDown={e => e.stopPropagation()}
       />
       <div className="form-hint">
-        Paste your script as-is. Trigr is the trigger, so hotkey labels like <code>^!j::</code> are stripped automatically.
+        Paste your script as-is. Keyfire is the trigger, so hotkey labels like <code>^!j::</code> are stripped automatically.
       </div>
     </div>
   );
@@ -1003,7 +1003,7 @@ function KeyCaptureInput({ value, onChange, onWinPressed }) {
     }
     // Win opens the Start menu — we can't stop that (WebView2 limitation),
     // but we keep capture alive so the rest of the combo (e.g. Shift+S in
-    // Win+Shift+S) gets picked up by the LL hook once Trigr loses focus.
+    // Win+Shift+S) gets picked up by the LL hook once Keyfire loses focus.
     // The advisory below the row tells the user how to add Win explicitly.
     if (e.key === 'Meta') {
       e.preventDefault();
@@ -1117,7 +1117,7 @@ function WindowPicker({ value, onChange }) {
       const list = await invoke('list_open_windows');
       setWindowList(list || []);
     } catch (e) {
-      console.error('[Trigr] list_open_windows failed:', e);
+      console.error('[Keyfire] list_open_windows failed:', e);
       setWindowList([]);
     }
   };
@@ -1646,7 +1646,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   };
 
   // Press Key Win-advisory — the LL hook can't intercept the Win key when
-  // Trigr's own WebView2 has focus (documented Tauri/WebView2 limitation), so
+  // Keyfire's own WebView2 has focus (documented Tauri/WebView2 limitation), so
   // direct Win+X capture isn't possible inside our own UI. The advisory
   // sub-row is the deliberate alternative: shown whenever Win is in the combo
   // OR the user just pressed Win during capture.

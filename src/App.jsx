@@ -800,7 +800,7 @@ function App() {
       window.electronAPI?.checkLicenceRevalidation?.().then(ls => {
         if (ls) setLicenceStatus(ls);
         // Grace period state may have changed (timer ticked over while
-        // Trigr was unfocused, or migration just ran).
+        // Keyfire was unfocused, or migration just ran).
         window.electronAPI?.getGracePeriodState?.().then(g => setGracePeriodState(g));
       });
     };
@@ -850,7 +850,7 @@ function App() {
       // traceable from DevTools. No UI toast on success per spec.
       // Note: `placement` is intentionally omitted. Per Featurebase docs,
       // setting `placement` is what makes the SDK render its own edge-tab
-      // trigger. We provide a Trigr-branded trigger in the titlebar
+      // trigger. We provide a Keyfire-branded trigger in the titlebar
       // (TitleBar.jsx) and in Settings (SettingsPanel.jsx) instead, so the
       // auto-tab is suppressed by omission.
       window.Featurebase('initialize_feedback_widget', {
@@ -873,7 +873,7 @@ function App() {
   }, [theme]);
 
   // ── Featurebase Changelog Widget init (main window only) ──
-  // Surfaces published Trigr Updates inside the app. A "What's New" button
+  // Surfaces published Keyfire Updates inside the app. A "What's New" button
   // in the titlebar carries the data-featurebase-changelog attribute, which
   // auto-binds open once init succeeds. Unread count is rendered into
   // <span id="fb-update-badge"> by the SDK; we also log it for visibility.
@@ -919,7 +919,7 @@ function App() {
   // Test any changes with cargo tauri dev before releasing
   // Both x64 and ARM64 builds required in release.yml matrix
   // Runs once on mount + every 6h thereafter, so long-running instances
-  // (lid-closers who never restart Trigr) still receive update prompts.
+  // (lid-closers who never restart Keyfire) still receive update prompts.
   // isChecking guard prevents overlap if a prompt is open when the next tick fires.
   useEffect(() => {
     let isChecking = false;
@@ -944,15 +944,15 @@ function App() {
             if (!granted) granted = (await requestPermission()) === 'granted';
             if (granted) {
               sendNotification({
-                title: 'Trigr update available',
-                body: `Version ${update.version} is ready. Open Trigr to install.`,
+                title: 'Keyfire update available',
+                body: `Version ${update.version} is ready. Open Keyfire to install.`,
               });
             }
           } catch (notifyErr) {
             console.error('Update notification failed:', notifyErr);
           }
           const confirmed = await confirm(
-            `Trigr ${update.version} is available. Install now?`,
+            `Keyfire ${update.version} is available. Install now?`,
             { title: 'Update Available', kind: 'info' }
           );
           if (confirmed) {
@@ -1021,7 +1021,7 @@ function App() {
   // Push aggregated editing state to Rust. The foreground watcher uses this to
   // suppress auto-switching while any action editor is open — mapping panel
   // (selectedKey/draftAssignment, also covers radial segments via MacroPanel),
-  // expansion form, and quick action form. When all are closed, Trigr behaves
+  // expansion form, and quick action form. When all are closed, Keyfire behaves
   // the same whether the main window is visible (side-monitor parking) or
   // hidden — auto-switch runs normally.
   useEffect(() => {
@@ -1559,8 +1559,8 @@ function App() {
   }, [assignments, profiles, activeProfile, profileSettings, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
 
   // ── Live OS-theme tracking when theme === 'auto' ─────────────
-  // Subscribes to prefers-color-scheme changes so Trigr re-themes if the user
-  // flips Windows light/dark without restarting Trigr. No-op when theme is set
+  // Subscribes to prefers-color-scheme changes so Keyfire re-themes if the user
+  // flips Windows light/dark without restarting Keyfire. No-op when theme is set
   // to an explicit value (user override).
   useEffect(() => {
     if (theme !== 'auto') return;
@@ -1729,7 +1729,7 @@ function App() {
         showNotification(result.error, 'info');
       }
     } catch (e) {
-      console.error('[Trigr] Export expansions failed:', e);
+      console.error('[Keyfire] Export expansions failed:', e);
     }
   }, [assignments, expansionCategories, showNotification]);
 
@@ -1822,7 +1822,7 @@ function App() {
         return;
       }
       if (!parsed || !parsed.trigr_expansion_pack) {
-        showNotification('Not a valid Trigr expansion pack', 'info');
+        showNotification('Not a valid Keyfire expansion pack', 'info');
         return;
       }
       const packExpansions = Array.isArray(parsed.expansions) ? parsed.expansions : [];
@@ -1854,7 +1854,7 @@ function App() {
         totalCount: packExpansions.length,
       });
     } catch (e) {
-      console.error('[Trigr] Import expansions failed:', e);
+      console.error('[Keyfire] Import expansions failed:', e);
       showNotification('Expansion import failed', 'info');
     }
   }, [assignments, applyExpansionImport, showNotification]);
@@ -1934,7 +1934,7 @@ function App() {
         showNotification(result.error, 'info');
       }
     } catch (e) {
-      console.error('[Trigr] Export quick actions failed:', e);
+      console.error('[Keyfire] Export quick actions failed:', e);
     }
   }, [assignments, quickActionCategories, showNotification]);
 
@@ -2020,7 +2020,7 @@ function App() {
         return;
       }
       if (!parsed || !parsed.trigr_quick_action_pack) {
-        showNotification('Not a valid Trigr quick action pack', 'info');
+        showNotification('Not a valid Keyfire quick action pack', 'info');
         return;
       }
       const packActions = Array.isArray(parsed.quickActions) ? parsed.quickActions : [];
@@ -2054,7 +2054,7 @@ function App() {
         totalCount: packActions.length,
       });
     } catch (e) {
-      console.error('[Trigr] Import quick actions failed:', e);
+      console.error('[Keyfire] Import quick actions failed:', e);
       showNotification('Quick action import failed', 'info');
     }
   }, [assignments, applyQuickActionImport, showNotification]);
@@ -2223,7 +2223,7 @@ function App() {
         showNotification(result.error, 'info');
       }
     } catch (e) {
-      console.error('[Trigr] Export profile failed:', e);
+      console.error('[Keyfire] Export profile failed:', e);
     }
   }, [assignments, showNotification]);
 
@@ -2242,7 +2242,7 @@ function App() {
         return;
       }
       if (!parsed.trigr_profile) {
-        showNotification('Not a valid Trigr profile export', 'info');
+        showNotification('Not a valid Keyfire profile export', 'info');
         return;
       }
       const importName = parsed.name || 'Imported';
@@ -2269,7 +2269,7 @@ function App() {
       saveConfig(newAssignments, newProfiles, importName);
       showNotification(`Profile "${importName}" imported — ${assignmentCount} assignment${assignmentCount !== 1 ? 's' : ''} loaded`);
     } catch (e) {
-      console.error('[Trigr] Import profile failed:', e);
+      console.error('[Keyfire] Import profile failed:', e);
       showNotification('Profile import failed', 'info');
     }
   }, [profiles, assignments, saveConfig, showNotification]);
@@ -3892,9 +3892,9 @@ function App() {
           <span className="grace-banner-icon">⚠</span>
           <span className="grace-banner-text">
             {gracePeriodState.migration_deferred ? (
-              <>Couldn't reach your shared config file to move it to local right now. Your data is safe — Trigr is using a local snapshot and will keep retrying until the shared file is reachable again. The shared file in your cloud folder is never modified or deleted by Trigr.</>
+              <>Couldn't reach your shared config file to move it to local right now. Your data is safe — Keyfire is using a local snapshot and will keep retrying until the shared file is reachable again. The shared file in your cloud folder is never modified or deleted by Keyfire.</>
             ) : (gracePeriodState.days_remaining ?? 7) <= 0 ? (
-              <>Your Pro grace period has ended. Trigr will move your shared config to local on next restart.</>
+              <>Your Pro grace period has ended. Keyfire will move your shared config to local on next restart.</>
             ) : (
               <>Pro is required for shared config. Sync continues for {gracePeriodState.days_remaining} more day{gracePeriodState.days_remaining === 1 ? '' : 's'}, then your config will move to local storage automatically.</>
             )}
@@ -3938,7 +3938,7 @@ function App() {
           <div className="update-banner">
             {updateInfo.phase === 'ready' ? (
               <>
-                <span className="update-banner__text">Trigr {updateInfo.version} ready — click to install and relaunch</span>
+                <span className="update-banner__text">Keyfire {updateInfo.version} ready — click to install and relaunch</span>
                 <button
                   className="update-banner__btn update-banner__btn--restart"
                   // CRITICAL — DO NOT MODIFY: must be fire-and-forget, no await, no state changes
@@ -3954,7 +3954,7 @@ function App() {
             ) : updateInfo.phase === 'downloading' ? (
               <>
                 <span className="update-banner__text">
-                  Downloading Trigr {updateInfo.version}
+                  Downloading Keyfire {updateInfo.version}
                   {displaySize ? ` — ${displaySize}` : ''}
                   {eta ? ` · ${eta}` : ''}
                 </span>
@@ -3969,7 +3969,7 @@ function App() {
             ) : (
               <>
                 <span className="update-banner__text">
-                  Trigr {updateInfo.version} available
+                  Keyfire {updateInfo.version} available
                 </span>
                 <button
                   className="update-banner__btn update-banner__btn--restart"
@@ -4102,7 +4102,7 @@ function App() {
             <div className="profile-link-tip">
               <span className="profile-link-tip-badge">TIP</span>
               <span className="profile-link-tip-text">
-                Right-click any profile in the sidebar to link it to a specific app. Trigr auto-switches profiles when that app gains focus.
+                Right-click any profile in the sidebar to link it to a specific app. Keyfire auto-switches profiles when that app gains focus.
               </span>
               <button type="button" className="profile-link-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => handleHideTip('profile-link')}>&#10005;</button>
             </div>

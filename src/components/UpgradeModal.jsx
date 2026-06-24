@@ -14,7 +14,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
   const isTeamsLadder = TEAMS_LADDER_FEATURES.has(featureName);
-  const isRenewal = featureName === 'Keep Trigr Pro';
+  const isRenewal = featureName === 'Keep Keyfire Pro';
   const panelRef = useRef(null);
   useModalKeyboard(panelRef, onClose);
   const [email, setEmail] = useState('');
@@ -35,10 +35,10 @@ export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
         },
         body: JSON.stringify({
           access_key: WEB3FORMS_ACCESS_KEY,
-          subject: `Trigr Pro beta key request from ${email.trim()}`,
+          subject: `Keyfire Pro beta key request from ${email.trim()}`,
           email: email.trim(),
-          from_name: 'Trigr Beta Request',
-          message: `${email.trim()} requested a Pro beta key from inside the Trigr app.\n\nReply to this email with their TRIGR-PRO key.`,
+          from_name: 'Keyfire Beta Request',
+          message: `${email.trim()} requested a Pro beta key from inside the Keyfire app.\n\nReply to this email with their TRIGR-PRO key.`,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -73,17 +73,17 @@ export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
           </svg>
         </button>
 
-        <div className="upgrade-pill">{isRenewal ? 'Trigr Pro' : 'Pro feature'}</div>
+        <div className="upgrade-pill">{isRenewal ? 'Keyfire Pro' : 'Pro feature'}</div>
         <h1 className="upgrade-title" id="upgrade-title">{featureName}</h1>
 
         <p className="upgrade-body">
           {isRenewal
-            ? "Your trial unlocked everything in Trigr Pro. Most of Trigr stays free forever; a beta key keeps the Pro features you've been using."
-            : `${featureName} is part of Trigr Pro. Most of Trigr stays free forever; Pro adds the features power users reach for daily, including syncing your setup across every machine you work on.`}
+            ? "Your trial unlocked everything in Keyfire Pro. Most of Keyfire stays free forever; a beta key keeps the Pro features you've been using."
+            : `${featureName} is part of Keyfire Pro. Most of Keyfire stays free forever; Pro adds the features power users reach for daily, including syncing your setup across every machine you work on.`}
         </p>
         {isTeamsLadder && (
           <p className="upgrade-body upgrade-teams-note">
-            {featureName} also extends into Trigr Teams (planned for v1.0): shared libraries,
+            {featureName} also extends into Keyfire Teams (planned for v1.0): shared libraries,
             centrally deployed profiles, and team-wide variables. Pro users get the upgrade
             path when it ships.
           </p>

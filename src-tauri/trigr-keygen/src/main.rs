@@ -1,4 +1,4 @@
-// Trigr licence key generator.
+// Keyfire licence key generator.
 //
 // Subcommands:
 //   init                                          Generate keypair, save private key,
@@ -50,7 +50,7 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        r#"Trigr licence key generator
+        r#"Keyfire licence key generator
 
 Run from inside src-tauri/trigr-keygen/, or invoke the built binary at
 src-tauri/trigr-keygen/target/release/trigr-keygen.exe directly.

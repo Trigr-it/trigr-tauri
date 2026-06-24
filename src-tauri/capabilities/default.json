@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for Trigr",
+  "description": "Default capabilities for Keyfire",
   "windows": ["main", "overlay", "help", "fillin", "clipboardoverlay", "radialmenu"],
   "permissions": [
     "core:default",

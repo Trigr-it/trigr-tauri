@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/refs/heads/dev/crates/tauri-cli/schema.json",
-  "productName": "Trigr",
+  "productName": "Keyfire",
   "version": "0.5.6",
   "identifier": "com.nodescaffold.trigr",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "Trigr",
+        "title": "Keyfire",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

@@ -1,4 +1,4 @@
-//! Trigr formula language — small expression evaluator for `{=expr}` and
+//! Keyfire formula language — small expression evaluator for `{=expr}` and
 //! `{if expr}…{endif}` tokens.
 //!
 //! Grammar (precedence low → high):

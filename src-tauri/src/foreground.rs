@@ -144,7 +144,7 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
     let mut state = fg_state().lock().unwrap();
     state.current_fg_proc = name.clone();
 
-    // Never auto-switch when Trigr itself is focused
+    // Never auto-switch when Fire itself is focused
     if state.self_proc_names.iter().any(|s| s == &name) {
         return;
     }
@@ -153,7 +153,7 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
     // editor (mapping right-panel, expansion form, quick action form, radial
     // segment via MacroPanel). They may be testing their work in another app
     // and we don't want the profile to snap away mid-build. When no editor is
-    // open, Trigr behaves the same whether the main window is visible (parked
+    // open, Keyfire behaves the same whether the main window is visible (parked
     // on a side monitor) or hidden — auto-switching runs normally.
     if EDITING_ACTIVE.load(Ordering::SeqCst) {
         return;
@@ -162,7 +162,7 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
     // Also suppress across the ENTIRE recorder flow — set from the moment
     // the user clicks Record (main hides) through to stop/cancel. Broader
     // than IS_RECORDING_MACRO, which only flips true after the 3-second
-    // countdown. During the countdown the foreground change from Trigr to
+    // countdown. During the countdown the foreground change from Keyfire to
     // the target app would otherwise fire profile-switched → main clears
     // selectedKey → ReplayRecordingValue unmounts → cleanup discards the
     // recording and closes the modal.
@@ -198,7 +198,7 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
 
     // Note: do NOT early-return when `linked` is empty. Free users (no Pro
     // app-linking) should still snap back to active_global_profile when they
-    // unfocus Trigr after manually clicking a different profile in the sidebar.
+    // unfocus Keyfire after manually clicking a different profile in the sidebar.
     // Otherwise manual sidebar selection becomes a free workaround for the
     // Pro auto-switch feature.
 
@@ -219,7 +219,7 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
     //   - Free users: always fallback to active_global_profile (no linked-app
     //     activation — preserves Pro gating even if linked apps were configured
     //     during a lapsed Pro trial). Snap-back to fallback still happens so
-    //     manually-clicked profiles don't stick when the user unfocuses Trigr.
+    //     manually-clicked profiles don't stick when the user unfocuses Keyfire.
     let target = if crate::licence::is_pro() {
         matched
             .clone()
@@ -233,7 +233,7 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
 
     if target != current_profile {
         info!(
-            "[Trigr] Auto-switched to profile \"{}\" (foreground: {})",
+            "[Keyfire] Auto-switched to profile \"{}\" (foreground: {})",
             target, proc_name
         );
 
@@ -324,9 +324,9 @@ fn set_mouse_hook_paused(paused: bool) {
         return;
     }
     let msg = if paused {
-        crate::hotkeys::WM_TRIGR_MOUSE_HOOK_PAUSE
+        crate::hotkeys::WM_KEYFIRE_MOUSE_HOOK_PAUSE
     } else {
-        crate::hotkeys::WM_TRIGR_MOUSE_HOOK_RESUME
+        crate::hotkeys::WM_KEYFIRE_MOUSE_HOOK_RESUME
     };
     unsafe {
         PostThreadMessageW(tid as u32, msg, 0, 0);
@@ -342,7 +342,7 @@ pub fn start_watcher(app: AppHandle) {
     thread::Builder::new()
         .name("trigr-fg-watcher".to_string())
         .spawn(move || {
-            info!("[Trigr] Foreground watcher started ({}ms poll)", POLL_INTERVAL_MS);
+            info!("[Keyfire] Foreground watcher started ({}ms poll)", POLL_INTERVAL_MS);
 
             let mut prune_counter: u32 = 0;
             // Local transition tracker for fullscreen-detected mouse-hook pause.
@@ -400,7 +400,7 @@ pub fn start_watcher(app: AppHandle) {
                 thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
             }
 
-            info!("[Trigr] Foreground watcher stopped");
+            info!("[Keyfire] Foreground watcher stopped");
         })
         .expect("Failed to spawn foreground watcher thread");
 }

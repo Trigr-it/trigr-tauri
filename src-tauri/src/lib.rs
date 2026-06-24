@@ -50,7 +50,7 @@ fn load_config() -> Value {
         }
         None => {
             // Total config failure — write factory defaults so the file always exists
-            log::warn!("[Trigr] All config sources failed — writing factory defaults");
+            log::warn!("[Keyfire] All config sources failed — writing factory defaults");
             let defaults = serde_json::json!({
                 "profiles": ["Default"],
                 "assignments": {},
@@ -83,7 +83,7 @@ fn save_config(app: tauri::AppHandle, config: Value) -> bool {
         let outcome = config::merge_with_remote(base.as_ref().unwrap(), &config, &existing);
         if !outcome.remote_preserved.is_empty() {
             log::warn!(
-                "[Trigr] save_config: sync conflict — disk rev {} > loaded rev {}; preserved remote edits to {:?}",
+                "[Keyfire] save_config: sync conflict — disk rev {} > loaded rev {}; preserved remote edits to {:?}",
                 existing_rev,
                 last_loaded_rev,
                 outcome.remote_preserved
@@ -120,7 +120,7 @@ fn save_config(app: tauri::AppHandle, config: Value) -> bool {
     }
     if destructive {
         log::warn!(
-            "[Trigr] save_config: incoming change zeroes-out a previously-populated radial layout or assignment set. Backed up prior state; leaving last-known-good untouched so it stays recoverable."
+            "[Keyfire] save_config: incoming change zeroes-out a previously-populated radial layout or assignment set. Backed up prior state; leaving last-known-good untouched so it stays recoverable."
         );
     }
 
@@ -145,7 +145,7 @@ fn save_config(app: tauri::AppHandle, config: Value) -> bool {
                 "sync-conflict-resolved",
                 serde_json::json!({ "sections": remote_preserved }),
             ) {
-                log::error!("[Trigr] Failed to emit sync-conflict-resolved: {}", e);
+                log::error!("[Keyfire] Failed to emit sync-conflict-resolved: {}", e);
             }
         }
     }
@@ -196,7 +196,7 @@ async fn set_shared_config_path(app: tauri::AppHandle, path: String, mode: Optio
                             "error": format!("Cannot write to folder: {}", e)
                         });
                     }
-                    log::info!("[Trigr] Replaced shared config with current: {}", target_file.display());
+                    log::info!("[Keyfire] Replaced shared config with current: {}", target_file.display());
                 }
                 Err(e) => {
                     return serde_json::json!({
@@ -221,7 +221,7 @@ async fn set_shared_config_path(app: tauri::AppHandle, path: String, mode: Optio
                             "error": format!("Cannot write to folder: {}", e)
                         });
                     }
-                    log::info!("[Trigr] Copied config to shared location: {}", target_file.display());
+                    log::info!("[Keyfire] Copied config to shared location: {}", target_file.display());
                 }
                 Err(e) => {
                     return serde_json::json!({
@@ -270,7 +270,7 @@ async fn export_config(app: tauri::AppHandle) -> Value {
     let file_path = app
         .dialog()
         .file()
-        .set_title("Export Trigr Config")
+        .set_title("Export Keyfire Config")
         .set_file_name(&default_name)
         .add_filter("JSON", &["json"])
         .set_directory(desktop.parent().unwrap_or(std::path::Path::new("")))
@@ -286,14 +286,14 @@ async fn export_config(app: tauri::AppHandle) -> Value {
         Some(c) => {
             if let Some(rf) = &restored_from {
                 log::warn!(
-                    "[Trigr] Export — main config unreadable, using backup: {}",
+                    "[Keyfire] Export — main config unreadable, using backup: {}",
                     rf
                 );
             }
             match serde_json::to_string_pretty(&c) {
                 Ok(json) => match std::fs::write(&file_path, json) {
                     Ok(()) => {
-                        log::info!("[Trigr] Config exported to: {}", file_path.display());
+                        log::info!("[Keyfire] Config exported to: {}", file_path.display());
                         serde_json::json!({ "ok": true })
                     }
                     Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
@@ -314,7 +314,7 @@ async fn import_config(app: tauri::AppHandle) -> Value {
     let file_path = app
         .dialog()
         .file()
-        .set_title("Import Trigr Config")
+        .set_title("Import Keyfire Config")
         .add_filter("JSON", &["json"])
         .blocking_pick_file();
 
@@ -335,7 +335,7 @@ async fn import_config(app: tauri::AppHandle) -> Value {
                 {
                     return serde_json::json!({
                         "ok": false,
-                        "error": "Invalid Trigr config file — missing assignments object."
+                        "error": "Invalid Keyfire config file — missing assignments object."
                     });
                 }
 
@@ -352,7 +352,7 @@ async fn import_config(app: tauri::AppHandle) -> Value {
                 // Write directly to disk
                 if config::save_config(&cfg) {
                     config::update_last_known_good(&cfg);
-                    log::info!("[Trigr] Config imported from: {}", file_path.display());
+                    log::info!("[Keyfire] Config imported from: {}", file_path.display());
                     serde_json::json!({ "ok": true, "config": cfg })
                 } else {
                     serde_json::json!({ "ok": false, "error": "Could not write imported config to disk." })
@@ -393,7 +393,7 @@ async fn export_profile(app: tauri::AppHandle, filename_hint: String, content: S
     let file_path = app
         .dialog()
         .file()
-        .set_title("Export Trigr Profile")
+        .set_title("Export Keyfire Profile")
         .set_file_name(&filename_hint)
         .add_filter("JSON", &["json"])
         .set_directory(desktop.parent().unwrap_or(std::path::Path::new("")))
@@ -406,7 +406,7 @@ async fn export_profile(app: tauri::AppHandle, filename_hint: String, content: S
 
     match std::fs::write(&file_path, &content) {
         Ok(()) => {
-            log::info!("[Trigr] Profile exported to: {}", file_path.display());
+            log::info!("[Keyfire] Profile exported to: {}", file_path.display());
             serde_json::json!({ "ok": true })
         }
         Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
@@ -420,7 +420,7 @@ async fn import_profile(app: tauri::AppHandle) -> Value {
     let file_path = app
         .dialog()
         .file()
-        .set_title("Import Trigr Profile")
+        .set_title("Import Keyfire Profile")
         .add_filter("JSON", &["json"])
         .blocking_pick_file();
 
@@ -431,7 +431,7 @@ async fn import_profile(app: tauri::AppHandle) -> Value {
 
     match std::fs::read_to_string(&file_path) {
         Ok(raw) => {
-            log::info!("[Trigr] Profile file read from: {}", file_path.display());
+            log::info!("[Keyfire] Profile file read from: {}", file_path.display());
             serde_json::json!({ "ok": true, "content": raw })
         }
         Err(e) => serde_json::json!({ "ok": false, "error": format!("Could not read file: {}", e) }),
@@ -504,14 +504,14 @@ fn list_installed_apps() -> Value {
     let output = match output {
         Ok(o) => o,
         Err(e) => {
-            log::warn!("[Trigr] list_installed_apps: failed to run PowerShell: {}", e);
+            log::warn!("[Keyfire] list_installed_apps: failed to run PowerShell: {}", e);
             return Value::Array(vec![]);
         }
     };
 
     if !output.status.success() {
         log::warn!(
-            "[Trigr] list_installed_apps: PowerShell exited non-zero (stderr: {})",
+            "[Keyfire] list_installed_apps: PowerShell exited non-zero (stderr: {})",
             String::from_utf8_lossy(&output.stderr).trim()
         );
         return Value::Array(vec![]);
@@ -525,11 +525,11 @@ fn list_installed_apps() -> Value {
         // ConvertTo-Json emits a bare object when there's only one result.
         Ok(obj @ Value::Object(_)) => vec![obj],
         Ok(_) => {
-            log::warn!("[Trigr] list_installed_apps: unexpected JSON shape");
+            log::warn!("[Keyfire] list_installed_apps: unexpected JSON shape");
             return Value::Array(vec![]);
         }
         Err(e) => {
-            log::warn!("[Trigr] list_installed_apps: JSON parse error: {}", e);
+            log::warn!("[Keyfire] list_installed_apps: JSON parse error: {}", e);
             return Value::Array(vec![]);
         }
     };
@@ -553,7 +553,7 @@ fn list_installed_apps() -> Value {
         an.to_lowercase().cmp(&bn.to_lowercase())
     });
 
-    log::info!("[Trigr] list_installed_apps: returned {} apps", apps.len());
+    log::info!("[Keyfire] list_installed_apps: returned {} apps", apps.len());
     Value::Array(apps)
 }
 
@@ -897,7 +897,7 @@ fn stop_key_capture() {
     hotkeys::set_capturing(false);
 }
 
-/// JS keydown forwarder — alternative capture path when Trigr's WebView2 has focus.
+/// JS keydown forwarder — alternative capture path when Keyfire's WebView2 has focus.
 /// The LL hook can't see keypresses directed at the WebView2, so the JS keydown
 /// listener in tauriAPI.js calls this command during recording/capture mode.
 #[tauri::command]
@@ -931,7 +931,7 @@ fn show_recorder_countdown(app: tauri::AppHandle) {
         None => {
             let url = tauri::WebviewUrl::App("index.html?countdown=1".into());
             let builder = tauri::WebviewWindowBuilder::new(&app, "countdown", url)
-                .title("Trigr Recorder")
+                .title("Keyfire Recorder")
                 .inner_size(380.0, 320.0)
                 .decorations(false)
                 .transparent(true)
@@ -1118,7 +1118,7 @@ fn recorder_stop_from_pill(app: tauri::AppHandle) {
 /// `minimize()` because Windows brings minimised windows in the same process
 /// back to foreground when a sibling window (the countdown overlay) is
 /// shown — observed as "main bounces straight back to full size". hide() is
-/// the right primitive: the user sees their target app, Trigr disappears
+/// the right primitive: the user sees their target app, Keyfire disappears
 /// from the taskbar, EDITING_ACTIVE stays set (unlike hide_window_to_tray
 /// which deliberately clears it + emits reset-editing-on-hide). The macro
 /// editor selection therefore survives the recording round-trip.
@@ -1398,7 +1398,7 @@ fn get_app_version(app: tauri::AppHandle) -> String {
 
 #[tauri::command]
 fn open_help() {
-    let _ = opener::open("https://usetrigr.com/trigr-help.html");
+    let _ = opener::open("https://keyfire.app/trigr-help.html");
 }
 
 #[tauri::command]
@@ -1426,7 +1426,7 @@ fn open_clipboard_folder(_app: tauri::AppHandle) {
         let _ = std::fs::create_dir_all(&dir);
         let _ = opener::open(dir.to_string_lossy().as_ref());
     } else {
-        log::warn!("[Trigr] open_clipboard_folder: clipboard module not initialised yet");
+        log::warn!("[Keyfire] open_clipboard_folder: clipboard module not initialised yet");
     }
 }
 
@@ -1593,7 +1593,7 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow};
     use windows_sys::Win32::Foundation::POINT;
 
-    log::info!("[Trigr] show_voice_overlay: START");
+    log::info!("[Keyfire] show_voice_overlay: START");
 
     // Capture target HWND before we steal focus
     let target = unsafe { GetForegroundWindow() as isize };
@@ -1646,20 +1646,20 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
             "voiceMicId": cfg.get("voiceMicId").and_then(|v| v.as_str()).unwrap_or(""),
         })
     };
-    log::info!("[Trigr] show_voice_overlay: emitting overlay-voice-data");
+    log::info!("[Keyfire] show_voice_overlay: emitting overlay-voice-data");
     let _ = overlay.emit("overlay-voice-data", voice_data);
 
     // Brief pause so the frontend can commit React state resets (voiceContinuous=false etc.)
     // before the window becomes visible and clickable. Imperceptible — window is hidden.
     std::thread::sleep(std::time::Duration::from_millis(30));
 
-    log::info!("[Trigr] show_voice_overlay: showing window");
+    log::info!("[Keyfire] show_voice_overlay: showing window");
     let voice_open_now = StdInstant::now();
     *overlay_show_time().lock().unwrap() = Some(voice_open_now);
     *voice_overlay_open_time().lock().unwrap() = Some(voice_open_now);
     let _ = overlay.show();
     let _ = overlay.set_focus();
-    log::info!("[Trigr] show_voice_overlay: DONE");
+    log::info!("[Keyfire] show_voice_overlay: DONE");
 }
 
 fn hide_overlay(app: &tauri::AppHandle) {
@@ -2100,7 +2100,7 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
     // gates with no log output, making "clicked a segment, nothing happened"
     // reports undiagnosable. Every no-op gate below now warns.
     log::info!(
-        "[Trigr] Execute item: type=\"{}\" storageKey=\"{}\" label=\"{}\"",
+        "[Keyfire] Execute item: type=\"{}\" storageKey=\"{}\" label=\"{}\"",
         result_type,
         result.get("storageKey").and_then(|v| v.as_str()).unwrap_or("-"),
         result.get("label").and_then(|v| v.as_str()).unwrap_or("-")
@@ -2135,12 +2135,12 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                     analytics::log_action_ext(at, 0, storage_key, label, macro_steps);
                 } else {
                     log::warn!(
-                        "[Trigr] Execute item no-op: storageKey \"{}\" not found in engine state (source renamed/deleted, or assignments not synced)",
+                        "[Keyfire] Execute item no-op: storageKey \"{}\" not found in engine state (source renamed/deleted, or assignments not synced)",
                         storage_key
                     );
                 }
             } else {
-                log::warn!("[Trigr] Execute item no-op: {} payload has no storageKey", result_type);
+                log::warn!("[Keyfire] Execute item no-op: {} payload has no storageKey", result_type);
             }
         }
         "expansion" => {
@@ -2167,7 +2167,7 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 // plain text and logs analytics in each sub-path itself.
                 expansions::fire_expansion_by_trigger(trigger);
             } else {
-                log::warn!("[Trigr] Execute item no-op: expansion payload missing GLOBAL::EXPANSION:: storageKey");
+                log::warn!("[Keyfire] Execute item no-op: expansion payload missing GLOBAL::EXPANSION:: storageKey");
             }
         }
         "autocorrect" => {
@@ -2222,7 +2222,7 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
                     .store(false, std::sync::atomic::Ordering::Relaxed);
             } else {
-                log::warn!("[Trigr] Execute item no-op: autocorrect payload has no text field");
+                log::warn!("[Keyfire] Execute item no-op: autocorrect payload has no text field");
             }
         }
         "search_template" => {
@@ -2242,11 +2242,11 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 let _ = opener::open(&final_url);
                 analytics::log_action("search_template", 0, trigger, label);
             } else {
-                log::warn!("[Trigr] Execute item no-op: search_template missing url_template or query");
+                log::warn!("[Keyfire] Execute item no-op: search_template missing url_template or query");
             }
         }
         other => {
-            log::warn!("[Trigr] Execute item no-op: unknown type \"{}\"", other);
+            log::warn!("[Keyfire] Execute item no-op: unknown type \"{}\"", other);
         }
     }
 }
@@ -2286,7 +2286,7 @@ fn execute_radial_menu_item(result: Value, app: tauri::AppHandle) {
     if target_hwnd == 0 {
         // Gate 5: text-output actions (Type Text, Press Key, paste) silently
         // no-op without a target window. Open URL / Open App still work.
-        log::warn!("[Trigr] Radial fire with no target window captured — text-output actions will no-op");
+        log::warn!("[Keyfire] Radial fire with no target window captured — text-output actions will no-op");
     }
 
     std::thread::spawn(move || {
@@ -2427,7 +2427,7 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
         let _paste_guard = match actions::PasteOpGuard::try_acquire() {
             Some(g) => g,
             None => {
-                log::info!("[Trigr] paste_clipboard_item skipped — concurrent paste/copy op in flight");
+                log::info!("[Keyfire] paste_clipboard_item skipped — concurrent paste/copy op in flight");
                 return;
             }
         };
@@ -2547,7 +2547,7 @@ fn paste_text(text: String, source_id: Option<i64>, _app: tauri::AppHandle) {
         let _paste_guard = match actions::PasteOpGuard::try_acquire() {
             Some(g) => g,
             None => {
-                log::info!("[Trigr] paste_text skipped — concurrent paste/copy op in flight");
+                log::info!("[Keyfire] paste_text skipped — concurrent paste/copy op in flight");
                 return;
             }
         };
@@ -2619,7 +2619,7 @@ fn copy_clipboard_item(id: i64) {
         let _paste_guard = match actions::PasteOpGuard::try_acquire() {
             Some(g) => g,
             None => {
-                log::info!("[Trigr] copy_clipboard_item skipped — concurrent paste/copy op in flight");
+                log::info!("[Keyfire] copy_clipboard_item skipped — concurrent paste/copy op in flight");
                 return;
             }
         };
@@ -2758,7 +2758,7 @@ fn save_clipboard_image_as(id: i64, format: String, app: tauri::AppHandle) -> bo
 /// Write image to clipboard as CF_DIB + PNG stream + CF_UNICODETEXT.
 /// Self-contained version for the clipboard paste path. Applies the same three
 /// protections as text writes so the image doesn't leak into Win+V history or
-/// re-enter Trigr's own clipboard DB on the listener's WM_CLIPBOARDUPDATE:
+/// re-enter Keyfire's own clipboard DB on the listener's WM_CLIPBOARDUPDATE:
 ///   1. SUPPRESS_NEXT_CLIPBOARD_WRITE (level flag for synchronous window)
 ///   2. mark_clipboard_excluded (Windows Clipboard History opt-out)
 ///   3. record_self_clipboard_write (seqnum record for async H3 race)
@@ -3280,7 +3280,7 @@ pub fn run() {
                             loop {
                                 std::thread::sleep(std::time::Duration::from_secs(30));
                                 if shared_dir.exists() {
-                                    log::info!("[Trigr] Shared config dir became available: {}", shared_dir.display());
+                                    log::info!("[Keyfire] Shared config dir became available: {}", shared_dir.display());
                                     config::start_config_watcher(shared_dir, app_handle);
                                     break;
                                 }
@@ -3292,13 +3292,13 @@ pub fn run() {
 
             // Set up system tray
             if let Err(e) = tray::setup_tray(app) {
-                log::error!("[Trigr] Failed to create tray: {}", e);
+                log::error!("[Keyfire] Failed to create tray: {}", e);
             }
 
             // Pre-create overlay window hidden — prevents frozen first launch
             let overlay_url = tauri::WebviewUrl::App("index.html?overlay=1".into());
             let overlay_win = tauri::WebviewWindowBuilder::new(app, "overlay", overlay_url)
-                .title("Trigr Quick Search")
+                .title("Keyfire Quick Search")
                 .inner_size(620.0, 103.0)
                 .decorations(false)
                 .transparent(true)
@@ -3336,7 +3336,7 @@ pub fn run() {
             // both are required to prevent a visible background box around the panel.
             let fillin_url = tauri::WebviewUrl::App("index.html?fillin=1".into());
             let fillin_win = tauri::WebviewWindowBuilder::new(app, "fillin", fillin_url)
-                .title("Trigr — Fill In")
+                .title("Keyfire — Fill In")
                 .inner_size(420.0, 300.0)
                 .decorations(false)
                 .transparent(true)
@@ -3372,7 +3372,7 @@ pub fn run() {
             // Pre-create clipboard overlay window hidden
             let clipoverlay_url = tauri::WebviewUrl::App("index.html?clipboardoverlay=1".into());
             let clipoverlay_win = tauri::WebviewWindowBuilder::new(app, "clipboardoverlay", clipoverlay_url)
-                .title("Trigr Clipboard")
+                .title("Keyfire Clipboard")
                 .inner_size(400.0, 300.0)
                 .decorations(false)
                 .transparent(true)
@@ -3421,7 +3421,7 @@ pub fn run() {
             // Pre-create radial menu window hidden
             let radial_url = tauri::WebviewUrl::App("index.html?radialmenu=1".into());
             let radial_win = tauri::WebviewWindowBuilder::new(app, "radialmenu", radial_url)
-                .title("Trigr Radial Menu")
+                .title("Keyfire Radial Menu")
                 .inner_size(525.0, 525.0)
                 .decorations(false)
                 .transparent(true)
@@ -3460,7 +3460,7 @@ pub fn run() {
             // to appear, leaving main hidden and the flow stuck).
             let countdown_url = tauri::WebviewUrl::App("index.html?countdown=1".into());
             let countdown_win = tauri::WebviewWindowBuilder::new(app, "countdown", countdown_url)
-                .title("Trigr Recorder")
+                .title("Keyfire Recorder")
                 .inner_size(380.0, 320.0)
                 .decorations(false)
                 .transparent(true)
@@ -3582,7 +3582,7 @@ pub fn run() {
                     let _ = window.set_focus();
                 }
             } else {
-                log::info!("[Trigr] Autolaunch mode — starting hidden");
+                log::info!("[Keyfire] Autolaunch mode — starting hidden");
             }
 
             Ok(())

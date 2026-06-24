@@ -38,9 +38,9 @@ export default function ProTrialModal({ onClose }) {
         </button>
 
         <div className="protrial-pill">Pro trial active</div>
-        <h1 className="protrial-title" id="protrial-title">You're on Trigr Pro, free for 14 days</h1>
+        <h1 className="protrial-title" id="protrial-title">You're on Keyfire Pro, free for 14 days</h1>
         <p className="protrial-subtitle">
-          Everything below is unlocked, starting now. No card needed. Trigr drops back to Free automatically when the 14 days are up.
+          Everything below is unlocked, starting now. No card needed. Keyfire drops back to Free automatically when the 14 days are up.
         </p>
 
         <div className="protrial-hero-grid">
@@ -48,14 +48,14 @@ export default function ProTrialModal({ onClose }) {
             <span className="protrial-card-badge">Most popular</span>
             <h2 className="protrial-card-title">App-specific profiles</h2>
             <p className="protrial-card-body">
-              The same hotkey fires different actions in different apps. Trigr auto-switches profiles based on the foreground app. Build one set for Excel, another for Photoshop, another for your IDE.
+              The same hotkey fires different actions in different apps. Keyfire auto-switches profiles based on the foreground app. Build one set for Excel, another for Photoshop, another for your IDE.
             </p>
           </div>
           <div className="protrial-hero-card">
             <span className="protrial-card-badge">Most popular</span>
             <h2 className="protrial-card-title">Shared config sync</h2>
             <p className="protrial-card-body">
-              Point Trigr at a folder (Dropbox, OneDrive, network share). Your hotkeys and expansions sync across all 3 machines your licence covers.
+              Point Keyfire at a folder (Dropbox, OneDrive, network share). Your hotkeys and expansions sync across all 3 machines your licence covers.
             </p>
           </div>
         </div>

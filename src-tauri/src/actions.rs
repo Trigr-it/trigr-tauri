@@ -35,7 +35,7 @@ pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
 // SUPPRESS_NEXT_CLIPBOARD_WRITE is a level flag — it's cleared synchronously
 // after a write/restore, but Windows delivers WM_CLIPBOARDUPDATE asynchronously,
 // so the listener can process the event AFTER the flag is cleared and record
-// Trigr's own injected text into history (the H3 leak). To fix this precisely,
+// Keyfire's own injected text into history (the H3 leak). To fix this precisely,
 // every internal write records the resulting clipboard sequence number here; the
 // listener skips any update whose seqnum we produced. This is exact: a real user
 // copy (or a `Copy to Clipboard` macro step, which the target app performs) gets
@@ -43,7 +43,7 @@ pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
 static SELF_CLIPBOARD_SEQNUMS: LazyLock<Mutex<VecDeque<u32>>> =
     LazyLock::new(|| Mutex::new(VecDeque::new()));
 
-/// Record the current clipboard sequence number as a Trigr-internal write so the
+/// Record the current clipboard sequence number as a Keyfire-internal write so the
 /// listener won't log it. Call immediately after CloseClipboard on any internal
 /// write/restore. Best-effort — on lock failure the level flag still covers the
 /// synchronous window.
@@ -60,7 +60,7 @@ pub(crate) fn record_self_clipboard_write() {
     }
 }
 
-/// True if `seq` was produced by a Trigr-internal write. Consumes the match so a
+/// True if `seq` was produced by a Keyfire-internal write. Consumes the match so a
 /// single internal write is only ever skipped once.
 pub(crate) fn is_self_clipboard_seq(seq: u32) -> bool {
     if let Ok(mut q) = SELF_CLIPBOARD_SEQNUMS.lock() {
@@ -98,7 +98,7 @@ impl Drop for DepthGuard {
 
 // ── Suppression guard — ensures SUPPRESS_SIMULATED is always cleared ──────
 // Without this guard, a panic between store(true) and store(false) would
-// leave SUPPRESS_SIMULATED stuck true, silently disabling all Trigr hotkeys.
+// leave SUPPRESS_SIMULATED stuck true, silently disabling all Keyfire hotkeys.
 
 pub(crate) struct SuppressionGuard;
 
@@ -315,7 +315,7 @@ pub fn release_held_key() -> Option<String> {
             }
         }
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-        info!("[Trigr] Released held key: {}", state.label);
+        info!("[Keyfire] Released held key: {}", state.label);
         Some(state.label)
     } else {
         None
@@ -360,13 +360,13 @@ pub fn release_held_if_mouse_trigger(mouse_id: &str, allow_pending: bool) -> Opt
             }
         }
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-        info!("[Trigr] Released held key on mouse-up: {}", state.label);
+        info!("[Keyfire] Released held key on mouse-up: {}", state.label);
         Some(state.label)
     } else {
         if allow_pending {
             // Hold not stored yet — record that the button was released so the
             // hold action can release immediately when it finishes setting up.
-            info!("[Trigr] Mouse-up for {} but no held key yet — setting pending release", mouse_id);
+            info!("[Keyfire] Mouse-up for {} but no held key yet — setting pending release", mouse_id);
             mgr.pending_mouse_release = Some(mouse_id.to_string());
         }
         None
@@ -400,7 +400,7 @@ pub fn stop_repeating_key() -> Option<String> {
     let mut rep = REPEATING_KEY.lock().unwrap();
     if let Some(state) = rep.take() {
         state.stop.store(true, Ordering::SeqCst);
-        info!("[Trigr] Stopped repeating: {}", state.label);
+        info!("[Keyfire] Stopped repeating: {}", state.label);
         Some(state.label)
     } else {
         None
@@ -423,7 +423,7 @@ const MODIFIER_SETTLE_MS: u64 = 30;
 const KEYSTROKE_DELAY_MS: u64 = 10;
 
 // Open URL launches the default browser via ShellExecute, which is async.
-// Without a settle pause the next macro step targets Trigr's HWND instead of
+// Without a settle pause the next macro step targets Keyfire's HWND instead of
 // the new browser window. 250ms is enough for warm-cache launches; cold-start
 // browsers may still miss, in which case the user can add an explicit Wait step.
 const OPEN_URL_FOCUS_SETTLE_MS: u64 = 250;
@@ -492,7 +492,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
     let _depth_guard = DepthGuard;
     if depth > MAX_FIRE_DEPTH {
         warn!(
-            "[Trigr] Fire recursion limit hit (depth {}, max {}) — aborting. A trigger or text expansion is calling itself directly or via a chain.",
+            "[Keyfire] Fire recursion limit hit (depth {}, max {}) — aborting. A trigger or text expansion is calling itself directly or via a chain.",
             depth, MAX_FIRE_DEPTH
         );
         return;
@@ -509,7 +509,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
     let data = macro_val.get("data");
 
     log::info!("[ACTION] Firing: [{}] {} altgr={}", macro_type, label, is_altgr);
-    info!("[Trigr] Firing: [{}] {} (depth {})", macro_type, label, depth);
+    info!("[Keyfire] Firing: [{}] {} (depth {})", macro_type, label, depth);
 
     let (initial_ms, step_settle_ms, _fg_settle_ms, _clip_restore_ms) = speed_delays();
 
@@ -556,7 +556,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 .unwrap_or("")
                 .trim();
             if trigger.is_empty() {
-                warn!("[Trigr] expansion action: empty trigger, skipping");
+                warn!("[Keyfire] expansion action: empty trigger, skipping");
             } else {
                 if step_settle_ms > 0 { thread::sleep(Duration::from_millis(step_settle_ms)); }
                 crate::expansions::fire_expansion_by_trigger(trigger);
@@ -660,13 +660,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         }),
                     );
                     info!(
-                        "[Trigr] Macro loop: {} step(s) × {}, method={}",
+                        "[Keyfire] Macro loop: {} step(s) × {}, method={}",
                         steps.len(),
                         if loop_mode == "forever" { "forever".to_string() } else { max_iters.to_string() },
                         method
                     );
                 } else {
-                    info!("[Trigr] Macro sequence: {} step(s), method={}", steps.len(), method);
+                    info!("[Keyfire] Macro sequence: {} step(s), method={}", steps.len(), method);
                 }
 
                 // For clipboard method: snapshot once, batch pastes, restore once.
@@ -692,13 +692,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     //      one-shots, so Esc can cancel any running macro.
                     if let Some(ref lh) = loop_handle {
                         if lh.is_cancelled() {
-                            info!("[Trigr] Macro loop cancelled at iter {}", iter_index);
+                            info!("[Keyfire] Macro loop cancelled at iter {}", iter_index);
                             cancelled = true;
                             break;
                         }
                     }
                     if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
-                        info!("[Trigr] Macro cancelled (Esc) at iter {}", iter_index);
+                        info!("[Keyfire] Macro cancelled (Esc) at iter {}", iter_index);
                         cancelled = true;
                         break;
                     }
@@ -715,18 +715,18 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         while start.elapsed() < total {
                             if let Some(ref lh) = loop_handle {
                                 if lh.is_cancelled() {
-                                    info!("[Trigr] Macro loop cancelled during inter-iter delay");
+                                    info!("[Keyfire] Macro loop cancelled during inter-iter delay");
                                     cancelled = true;
                                     break 'outer;
                                 }
                             }
                             if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
-                                info!("[Trigr] Macro cancelled (Esc) during inter-iter delay");
+                                info!("[Keyfire] Macro cancelled (Esc) during inter-iter delay");
                                 cancelled = true;
                                 break 'outer;
                             }
                             if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
-                                info!("[Trigr] Macro aborted (paused) during inter-iter delay");
+                                info!("[Keyfire] Macro aborted (paused) during inter-iter delay");
                                 cancelled = true;
                                 break 'outer;
                             }
@@ -741,19 +741,19 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     // checks above (loop-specific flag + global ESC_LOOP_BREAK).
                     if let Some(ref lh) = loop_handle {
                         if lh.is_cancelled() {
-                            info!("[Trigr] Macro loop cancelled mid-iter at step {}/{}", i + 1, steps.len());
+                            info!("[Keyfire] Macro loop cancelled mid-iter at step {}/{}", i + 1, steps.len());
                             cancelled = true;
                             break 'outer;
                         }
                     }
                     if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
-                        info!("[Trigr] Macro cancelled (Esc) at step {}/{}", i + 1, steps.len());
+                        info!("[Keyfire] Macro cancelled (Esc) at step {}/{}", i + 1, steps.len());
                         cancelled = true;
                         break 'outer;
                     }
                     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
-                    info!("[Trigr]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
+                    info!("[Keyfire]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
 
                     if matches!(step_type, "Type Text" | "Dynamic Text") && uses_clipboard && !step_value.is_empty() {
                         if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
@@ -773,7 +773,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         }
                         let cont = execute_macro_step(step, &mut current_hwnd, &method, app);
                         if !cont {
-                            info!("[Trigr] Macro aborted at step {}/{} ({})", i + 1, steps.len(), step_type);
+                            info!("[Keyfire] Macro aborted at step {}/{} ({})", i + 1, steps.len(), step_type);
                             // Abort propagates out of the outer loop too — an explicit
                             // user-cancel (e.g. Wait for Input cancel) shouldn't restart.
                             // Post-loop clipboard restore (just below) still runs.
@@ -800,7 +800,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         if new_hwnd != 0 && new_hwnd != current_hwnd {
                             current_hwnd = new_hwnd;
                         } else if step_type == "Open URL" {
-                            warn!("[Trigr] Open URL: foreground HWND unchanged after {}ms settle. Subsequent steps will target the pre-launch window. Add a Wait step if the browser is slow to focus.", OPEN_URL_FOCUS_SETTLE_MS);
+                            warn!("[Keyfire] Open URL: foreground HWND unchanged after {}ms settle. Subsequent steps will target the pre-launch window. Add a Wait step if the browser is slow to focus.", OPEN_URL_FOCUS_SETTLE_MS);
                         }
                     }
                 }
@@ -829,7 +829,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         }),
                     );
                     info!(
-                        "[Trigr] Macro loop ended: {} iter(s), cancelled={}",
+                        "[Keyfire] Macro loop ended: {} iter(s), cancelled={}",
                         iter_index, cancelled
                     );
                 }
@@ -849,7 +849,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
         }
 
         _ => {
-            warn!("[Trigr] Unknown macro type: {}", macro_type);
+            warn!("[Keyfire] Unknown macro type: {}", macro_type);
         }
     }
 
@@ -896,12 +896,12 @@ fn output_text(text: &str, method: &str, target_hwnd: isize) {
     match method {
         "send-input" | "direct" => {
             // Character-by-character fallback for apps that don't support paste
-            info!("[Trigr] Output text (sendinput): \"{}\"", crate::expansions::log_preview(text));
+            info!("[Keyfire] Output text (sendinput): \"{}\"", crate::expansions::log_preview(text));
             send_unicode_text(text, target_hwnd);
         }
         _ => {
             // Default: clipboard paste (instant)
-            info!("[Trigr] Output text (clipboard): \"{}\"", crate::expansions::log_preview(text));
+            info!("[Keyfire] Output text (clipboard): \"{}\"", crate::expansions::log_preview(text));
             inject_via_clipboard(text, target_hwnd);
         }
     }
@@ -910,7 +910,7 @@ fn output_text(text: &str, method: &str, target_hwnd: isize) {
 // ── Clipboard paste injection ───────────────────────────────────────────────
 // CRITICAL: SUPPRESS_SIMULATED must be set true before any SendInput call.
 // SUPPRESS_NEXT_CLIPBOARD_WRITE must be set before any internal clipboard write.
-// New injection paths must follow this pattern or Trigr will intercept its own
+// New injection paths must follow this pattern or Keyfire will intercept its own
 // simulated keystrokes and/or log its own clipboard writes.
 
 fn inject_via_clipboard(text: &str, target_hwnd: isize) {
@@ -935,9 +935,9 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
 /// Does NOT save/restore the clipboard — caller is responsible for that.
 fn clipboard_paste_core(text: &str, target_hwnd: isize) {
     let write_ok = write_clipboard(text);
-    info!("[Trigr] Clipboard write (actions, ok={}): \"{}\"", write_ok, crate::expansions::log_preview(text));
+    info!("[Keyfire] Clipboard write (actions, ok={}): \"{}\"", write_ok, crate::expansions::log_preview(text));
     if !write_ok {
-        warn!("[Trigr] Skipping paste — clipboard write failed, would paste wrong content");
+        warn!("[Keyfire] Skipping paste — clipboard write failed, would paste wrong content");
         return;
     }
 
@@ -1077,7 +1077,7 @@ fn write_clipboard_impl(text: &str, suppress_listener: bool) -> bool {
                 CloseClipboard();
                 return false;
             }
-            // For Trigr's own paste writes (suppress_listener = true), keep the
+            // For Keyfire's own paste writes (suppress_listener = true), keep the
             // injected text out of Windows Clipboard History (Win+V) and Cloud
             // Clipboard. Recordable writes (Save as New etc.) pass false and are
             // deliberately left visible. Target apps read CF_UNICODETEXT either
@@ -1343,7 +1343,7 @@ pub fn execute_hotkey_inline(data: &Value, _app: &tauri::AppHandle) -> bool {
         .unwrap_or_default();
 
     // Release the physically held trigger modifiers (e.g. Ctrl from Ctrl+K).
-    // Done outside SuppressionGuard so the key-ups update Trigr's modifier tracking.
+    // Done outside SuppressionGuard so the key-ups update Keyfire's modifier tracking.
     let held = release_held_modifiers();
 
     // Batched SendInput: target mod_downs, target_down, target_up, target mod_ups.
@@ -1390,7 +1390,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         0
     } else if key_name.is_empty() {
         if modifiers.is_empty() {
-            warn!("[Trigr] Send Hotkey has no key or modifiers — nothing to send");
+            warn!("[Keyfire] Send Hotkey has no key or modifiers — nothing to send");
             return;
         }
         0
@@ -1398,7 +1398,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         match display_name_to_vk(key_name) {
             Some(vk) => vk,
             None => {
-                warn!("[Trigr] Unknown Send Hotkey key: {}", key_name);
+                warn!("[Keyfire] Unknown Send Hotkey key: {}", key_name);
                 return;
             }
         }
@@ -1434,7 +1434,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
     // hook processes them — without this drain window, the guard drops before
     // the hook finishes, and our synthetic events get treated as real input
     // (buffer push, modifier atomic churn, and suppress_keys swallow for any
-    // synthetic that matches a Trigr binding). 5ms covers typical dispatch.
+    // synthetic that matches a Keyfire binding). 5ms covers typical dispatch.
     const SUPPRESS_DRAIN_MS: u64 = 5;
     // Hold duration between synthetic KEYDOWN and KEYUP. Games poll key state
     // per-frame (60fps = ~16.67ms, 144fps = ~6.94ms). A back-to-back keydown
@@ -1453,7 +1453,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 if state.trigger_storage_key == trigger_storage_key {
                     // Same trigger — stop (toggle off)
                     state.stop.store(true, Ordering::SeqCst);
-                    info!("[Trigr] Repeat stopped (toggle): {}", combo_label);
+                    info!("[Keyfire] Repeat stopped (toggle): {}", combo_label);
                     *rep = None;
                     drop(rep);
                     crate::tray::update_tray_icon_normal(app);
@@ -1461,7 +1461,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 } else {
                     // Different trigger — stop old, start new
                     state.stop.store(true, Ordering::SeqCst);
-                    info!("[Trigr] Repeat stopped (switching): {}", state.label);
+                    info!("[Keyfire] Repeat stopped (switching): {}", state.label);
                     *rep = None;
                 }
             }
@@ -1487,7 +1487,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         }
 
         crate::tray::update_tray_icon_repeating(app, &combo_label, repeat_interval);
-        info!("[Trigr] Repeat started: {} ({}ms)", combo_label, repeat_interval);
+        info!("[Keyfire] Repeat started: {} ({}ms)", combo_label, repeat_interval);
 
         thread::spawn(move || {
             // Request 1ms timer resolution for the lifetime of this thread.
@@ -1598,7 +1598,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                     }
                 }
             }
-            info!("[Trigr] Hold released: {}", combo_label);
+            info!("[Keyfire] Hold released: {}", combo_label);
             drop(mgr);
             crate::tray::update_tray_icon_normal(app);
             return;
@@ -1619,7 +1619,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                     }
                 }
             }
-            info!("[Trigr] Hold released (switching): {}", state.label);
+            info!("[Keyfire] Hold released (switching): {}", state.label);
         }
 
         // Hold the new key/button
@@ -1677,7 +1677,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                     }
                 }
             }
-            info!("[Trigr] Hold immediately released — mouse was already up: {}", combo_label);
+            info!("[Keyfire] Hold immediately released — mouse was already up: {}", combo_label);
             drop(mgr);
             crate::tray::update_tray_icon_normal(app);
             return;
@@ -1690,7 +1690,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
 
     // ── Normal mode ──
     if is_mouse {
-        info!("[Trigr] Send Hotkey → mouse click: {}", key_name);
+        info!("[Keyfire] Send Hotkey → mouse click: {}", key_name);
         send_mouse_click(key_name);
     } else {
         let held = release_held_modifiers();
@@ -1840,7 +1840,7 @@ fn send_mouse_click(button: &str) {
         "RButton" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
         "MButton" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
         _ => {
-            warn!("[Trigr] Unknown mouse button: {}", button);
+            warn!("[Keyfire] Unknown mouse button: {}", button);
             return;
         }
     };
@@ -1885,7 +1885,7 @@ fn send_mouse_click(button: &str) {
     }
 
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-    info!("[Trigr] Mouse click: {}", button);
+    info!("[Keyfire] Mouse click: {}", button);
 }
 
 // ── Recorder replay helpers ─────────────────────────────────────────────────
@@ -1908,7 +1908,7 @@ fn replay_mouse_button(button: &str, is_down: bool) {
         ("Side2",  true)  => (MOUSEEVENTF_XDOWN,      2_u32),
         ("Side2",  false) => (MOUSEEVENTF_XUP,        2_u32),
         _ => {
-            warn!("[Trigr] Replay: unknown mouse button name: {}", button);
+            warn!("[Keyfire] Replay: unknown mouse button name: {}", button);
             return;
         }
     };
@@ -1997,7 +1997,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     let target_vk = match display_name_to_vk(key_name) {
                         Some(vk) => vk,
                         None => {
-                            warn!("[Trigr] Unknown macro step key: {}", key_name);
+                            warn!("[Keyfire] Unknown macro step key: {}", key_name);
                             return true;
                         }
                     };
@@ -2042,11 +2042,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let start = std::time::Instant::now();
             while start.elapsed() < total {
                 if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
-                    info!("[Trigr] Wait (ms) cancelled (Esc)");
+                    info!("[Keyfire] Wait (ms) cancelled (Esc)");
                     return false;  // abort whole macro
                 }
                 if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
-                    info!("[Trigr] Wait (ms) aborted (macros disabled)");
+                    info!("[Keyfire] Wait (ms) aborted (macros disabled)");
                     return false;
                 }
                 let remaining = total.saturating_sub(start.elapsed());
@@ -2057,9 +2057,9 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // Ctrl+C / Ctrl+V / Ctrl+A as first-class macro steps. Implemented as
         // a synthetic LCTRL + letter pulse — same path Press Key takes for the
         // equivalent chord, but exposed with a clearer label in the editor.
-        // Doesn't touch Trigr's own clipboard write path; the OS handles paste
+        // Doesn't touch Keyfire's own clipboard write path; the OS handles paste
         // semantics for whatever was last copied (per feedback_paste_architecture
-        // memory — that rule is about Trigr-injected content, not raw Ctrl+V).
+        // memory — that rule is about Keyfire-injected content, not raw Ctrl+V).
         "Copy to Clipboard" | "Paste Clipboard" | "Select All" => {
             const VK_C: u16 = 0x43;
             const VK_V: u16 = 0x56;
@@ -2096,13 +2096,13 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // required. Returns when match found or timeout expires.
         "Wait for Window" => {
             if step_value.is_empty() {
-                warn!("[Trigr] Wait for Window step: empty value");
+                warn!("[Keyfire] Wait for Window step: empty value");
                 return true;
             }
             let parsed: Value = match serde_json::from_str(step_value) {
                 Ok(v) => v,
                 Err(e) => {
-                    warn!("[Trigr] Wait for Window step: invalid JSON: {}", e);
+                    warn!("[Keyfire] Wait for Window step: invalid JSON: {}", e);
                     return true;
                 }
             };
@@ -2110,12 +2110,12 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let target_proc = process_raw.trim_end_matches(".exe").to_string();
             let target_title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_lowercase();
             if target_proc.is_empty() && target_title.is_empty() {
-                warn!("[Trigr] Wait for Window step: both process and title are empty");
+                warn!("[Keyfire] Wait for Window step: both process and title are empty");
                 return true;
             }
             // 30s hardcoded — kept off the UI per design. If a typo or stale
             // criterion never matches, the macro continues to the next step
-            // instead of hanging Trigr indefinitely.
+            // instead of hanging Keyfire indefinitely.
             const WAIT_FOR_WINDOW_TIMEOUT_MS: u64 = 30_000;
             let timeout_ms = WAIT_FOR_WINDOW_TIMEOUT_MS;
 
@@ -2151,7 +2151,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     if proc_ok && title_ok {
                         *target_hwnd = hwnd;
                         info!(
-                            "[Trigr] Wait for Window: matched (process='{}' title~='{}') after {:?}",
+                            "[Keyfire] Wait for Window: matched (process='{}' title~='{}') after {:?}",
                             target_proc, target_title, start.elapsed()
                         );
                         break;
@@ -2159,7 +2159,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 }
                 if start.elapsed() >= Duration::from_millis(timeout_ms) {
                     warn!(
-                        "[Trigr] Wait for Window: timeout ({} ms) waiting for process='{}' title~='{}' — aborting macro",
+                        "[Keyfire] Wait for Window: timeout ({} ms) waiting for process='{}' title~='{}' — aborting macro",
                         timeout_ms, target_proc, target_title
                     );
                     return false;
@@ -2205,13 +2205,13 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
 
         "Open App" => {
             if step_value.is_empty() {
-                warn!("[Trigr] Open App step: empty value");
+                warn!("[Keyfire] Open App step: empty value");
                 return true;
             }
             let parsed: Value = match serde_json::from_str(step_value) {
                 Ok(v) => v,
                 Err(e) => {
-                    warn!("[Trigr] Open App step: invalid JSON: {}", e);
+                    warn!("[Keyfire] Open App step: invalid JSON: {}", e);
                     return true;
                 }
             };
@@ -2228,20 +2228,20 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
 
         "Focus Window" => {
             if step_value.is_empty() {
-                warn!("[Trigr] Focus Window step: empty value");
+                warn!("[Keyfire] Focus Window step: empty value");
                 return true;
             }
             let parsed: Value = match serde_json::from_str(step_value) {
                 Ok(v) => v,
                 Err(e) => {
-                    warn!("[Trigr] Focus Window step: invalid JSON: {}", e);
+                    warn!("[Keyfire] Focus Window step: invalid JSON: {}", e);
                     return true;
                 }
             };
             let process = parsed.get("process").and_then(|v| v.as_str()).unwrap_or("");
             let title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("");
             if process.is_empty() && title.is_empty() {
-                warn!("[Trigr] Focus Window step: both process and title are empty");
+                warn!("[Keyfire] Focus Window step: both process and title are empty");
                 return true;
             }
             match find_window_by_criteria(process, title) {
@@ -2251,10 +2251,10 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     // Focus Window needs longer settle than normal foreground restore
                     thread::sleep(Duration::from_millis(fg_settle_ms.max(10) * 2));
                     *target_hwnd = hwnd;
-                    info!("[Trigr] Focus Window: found and focused HWND {} (process='{}' title='{}')", hwnd, process, title);
+                    info!("[Keyfire] Focus Window: found and focused HWND {} (process='{}' title='{}')", hwnd, process, title);
                 }
                 None => {
-                    warn!("[Trigr] Focus Window: no matching window found for process='{}' title='{}'", process, title);
+                    warn!("[Keyfire] Focus Window: no matching window found for process='{}' title='{}'", process, title);
                 }
             }
         }
@@ -2273,7 +2273,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         execute_ahk_script_sync(script, version, app);
                     }
                 } else {
-                    warn!("[Trigr] Run AHK Script step: invalid JSON");
+                    warn!("[Keyfire] Run AHK Script step: invalid JSON");
                 }
             }
         }
@@ -2297,7 +2297,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         (x, y)
                     };
 
-                    info!("[Trigr] Click at Position: ({}, {}) mode={} button={}", abs_x, abs_y, mode, button);
+                    info!("[Keyfire] Click at Position: ({}, {}) mode={} button={}", abs_x, abs_y, mode, button);
 
                     // Save original cursor position
                     let mut original_pos = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
@@ -2329,7 +2329,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(original_pos.x, original_pos.y);
                     }
                 } else {
-                    warn!("[Trigr] Click at Position: invalid JSON");
+                    warn!("[Keyfire] Click at Position: invalid JSON");
                 }
             }
         }
@@ -2342,7 +2342,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // the referenced trigger; the macro continues to the next step).
         "Fire Trigger" => {
             if step_value.is_empty() {
-                warn!("[Trigr] Fire Trigger: empty step value, skipping");
+                warn!("[Keyfire] Fire Trigger: empty step value, skipping");
                 return true;
             }
             let lookup = {
@@ -2351,7 +2351,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             };
             match lookup {
                 Some(target_macro) => {
-                    info!("[Trigr] Fire Trigger: invoking \"{}\"", step_value);
+                    info!("[Keyfire] Fire Trigger: invoking \"{}\"", step_value);
                     if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
                     // is_bare=false, is_altgr=false — we're firing programmatically,
                     // not from a real keypress, so no dead character to erase and no
@@ -2359,7 +2359,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     execute_action(&target_macro, false, *target_hwnd, false, None, app);
                 }
                 None => {
-                    warn!("[Trigr] Fire Trigger: assignment \"{}\" not found, skipping", step_value);
+                    warn!("[Keyfire] Fire Trigger: assignment \"{}\" not found, skipping", step_value);
                 }
             }
         }
@@ -2370,7 +2370,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // and immediate-trigger entry points use, so parity is automatic.
         "Fire Text Expansion" => {
             if step_value.is_empty() {
-                warn!("[Trigr] Fire Text Expansion: empty step value, skipping");
+                warn!("[Keyfire] Fire Text Expansion: empty step value, skipping");
                 return true;
             }
             if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
@@ -2381,31 +2381,31 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // Plays back exactly what was recorded with the same inter-event gaps,
         // capped at MAX_GAP_MS so absurd waits (clock drift, broken JSON) can't
         // freeze the macro forever. SUPPRESS_SIMULATED is held for the whole
-        // replay so our injected events don't bounce back into Trigr's hook
+        // replay so our injected events don't bounce back into Keyfire's hook
         // processing and fire other assignments. Captured coordinates are
         // absolute screen pixels — Phase 2 will introduce window-relative
         // coords + a Focus Window step in front of clicks targeted at a
         // specific window.
         "Record Macro" => {
             if step_value.is_empty() {
-                warn!("[Trigr] Record Macro: empty step value, skipping");
+                warn!("[Keyfire] Record Macro: empty step value, skipping");
                 return true;
             }
             let events: Vec<crate::recorder::RecordedEvent> =
                 match serde_json::from_str(step_value) {
                     Ok(v) => v,
                     Err(e) => {
-                        warn!("[Trigr] Record Macro: invalid JSON ({})", e);
+                        warn!("[Keyfire] Record Macro: invalid JSON ({})", e);
                         return true;
                     }
                 };
             info!(
-                "[Trigr] Record Macro: replaying {} events",
+                "[Keyfire] Record Macro: replaying {} events",
                 events.len()
             );
 
             // INTENTIONALLY NO SuppressionGuard here — we WANT replayed
-            // events to fire Trigr's own hotkey assignments, text
+            // events to fire Keyfire's own hotkey assignments, text
             // expansions, radial menu triggers, etc. Recursion is bounded
             // by the existing FIRE_DEPTH guard inside execute_action.
             // Side effect: user keystrokes during replay also reach the
@@ -2422,11 +2422,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 //      gives the user a single key to bail out of any
                 //      recorded replay mid-stream.
                 if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
-                    info!("[Trigr] Record Macro: aborted (macros disabled)");
+                    info!("[Keyfire] Record Macro: aborted (macros disabled)");
                     break;
                 }
                 if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
-                    info!("[Trigr] Record Macro: aborted (Esc)");
+                    info!("[Keyfire] Record Macro: aborted (Esc)");
                     break;
                 }
                 let evt_t = match evt {
@@ -2494,11 +2494,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             for vk in [VK_LSHIFT, VK_RSHIFT, VK_LCTRL, VK_RCTRL, VK_LALT, VK_RALT, VK_LWIN, VK_RWIN] {
                 send_vk_key(vk, true);
             }
-            info!("[Trigr] Record Macro: complete");
+            info!("[Keyfire] Record Macro: complete");
         }
 
         _ => {
-            warn!("[Trigr] Unknown macro step type: {}", step_type);
+            warn!("[Keyfire] Unknown macro step type: {}", step_type);
         }
     }
     true
@@ -2708,7 +2708,7 @@ pub fn set_foreground_robust(hwnd: isize) -> bool {
         };
         if !ok {
             log::warn!(
-                "[Trigr] [FOCUS-DIAG] SetForegroundWindow failed for hwnd 0x{:x}",
+                "[Keyfire] [FOCUS-DIAG] SetForegroundWindow failed for hwnd 0x{:x}",
                 hwnd
             );
         }
@@ -2861,7 +2861,7 @@ fn resolve_ahk_exe(app: &tauri::AppHandle, ahk_version: &str) -> Option<PathBuf>
             return Some(p.clone());
         }
     }
-    warn!("[Trigr] {} not found — AHK scripts will not execute", filename);
+    warn!("[Keyfire] {} not found — AHK scripts will not execute", filename);
     None
 }
 
@@ -2874,7 +2874,7 @@ fn ahk_scripts_dir(app: &tauri::AppHandle) -> PathBuf {
 }
 
 /// Normalise an AHK script body so users can paste scripts copied straight
-/// from existing .ahk files. Trigr is the trigger, so any hotkey labels
+/// from existing .ahk files. Keyfire is the trigger, so any hotkey labels
 /// (`^!j::`, `F1::`, etc.) would either swallow the body or sit waiting for
 /// a key that never fires. Strips standalone label lines, keeps the body of
 /// one-liner hotkeys, and drops persistence directives that conflict with
@@ -2935,7 +2935,7 @@ fn execute_ahk_script(script: &str, ahk_version: &str, trigger_key: Option<&str>
     }
 
     if let Err(e) = std::fs::write(&script_path, &content) {
-        warn!("[Trigr] AHK: failed to write temp script: {}", e);
+        warn!("[Keyfire] AHK: failed to write temp script: {}", e);
         return;
     }
 
@@ -2950,7 +2950,7 @@ fn execute_ahk_script(script: &str, ahk_version: &str, trigger_key: Option<&str>
 
     match child {
         Ok(child) => {
-            info!("[Trigr] AHK: spawned process (pid: {})", child.id());
+            info!("[Keyfire] AHK: spawned process (pid: {})", child.id());
             if let Some(key) = trigger_key {
                 let key_str = key.to_string();
                 let path_clone = script_path.clone();
@@ -2972,7 +2972,7 @@ fn execute_ahk_script(script: &str, ahk_version: &str, trigger_key: Option<&str>
                         let _ = entry.child.kill();
                         let _ = entry.child.wait();
                         let _ = std::fs::remove_file(&path_clone);
-                        info!("[Trigr] AHK: cleaned up stale process (pid: {})", pid);
+                        info!("[Keyfire] AHK: cleaned up stale process (pid: {})", pid);
                     }
                 });
             } else {
@@ -2986,7 +2986,7 @@ fn execute_ahk_script(script: &str, ahk_version: &str, trigger_key: Option<&str>
             }
         }
         Err(e) => {
-            warn!("[Trigr] AHK: failed to spawn process: {}", e);
+            warn!("[Keyfire] AHK: failed to spawn process: {}", e);
             let _ = std::fs::remove_file(&script_path);
         }
     }
@@ -3017,7 +3017,7 @@ fn execute_ahk_script_sync(script: &str, ahk_version: &str, app: &tauri::AppHand
     }
 
     if let Err(e) = std::fs::write(&script_path, &content) {
-        warn!("[Trigr] AHK sync: failed to write temp script: {}", e);
+        warn!("[Keyfire] AHK sync: failed to write temp script: {}", e);
         return;
     }
 
@@ -3030,21 +3030,21 @@ fn execute_ahk_script_sync(script: &str, ahk_version: &str, app: &tauri::AppHand
         .spawn()
     {
         Ok(mut child) => {
-            info!("[Trigr] AHK sync: waiting for process (pid: {})", child.id());
+            info!("[Keyfire] AHK sync: waiting for process (pid: {})", child.id());
             // Wait for process to finish (up to 60s for macro step context)
             match child.wait() {
                 Ok(status) => {
-                    info!("[Trigr] AHK sync: process exited with {}", status);
+                    info!("[Keyfire] AHK sync: process exited with {}", status);
                 }
                 Err(e) => {
-                    warn!("[Trigr] AHK sync: wait failed: {}", e);
+                    warn!("[Keyfire] AHK sync: wait failed: {}", e);
                     let _ = child.kill();
                 }
             }
             let _ = std::fs::remove_file(&script_path);
         }
         Err(e) => {
-            warn!("[Trigr] AHK sync: failed to spawn: {}", e);
+            warn!("[Keyfire] AHK sync: failed to spawn: {}", e);
             let _ = std::fs::remove_file(&script_path);
         }
     }
@@ -3057,7 +3057,7 @@ fn kill_ahk_for_key(key: &str) {
         let _ = entry.child.kill();
         let _ = entry.child.wait();
         let _ = std::fs::remove_file(&entry.script_path);
-        info!("[Trigr] AHK: killed previous instance for key: {}", key);
+        info!("[Keyfire] AHK: killed previous instance for key: {}", key);
     }
 }
 
@@ -3069,10 +3069,10 @@ pub fn kill_all_ahk_processes() {
         let _ = entry.child.kill();
         let _ = entry.child.wait();
         let _ = std::fs::remove_file(&entry.script_path);
-        info!("[Trigr] AHK: killed process for key: {}", key);
+        info!("[Keyfire] AHK: killed process for key: {}", key);
     }
     if count > 0 {
-        info!("[Trigr] AHK: cleaned up {} process(es) on quit", count);
+        info!("[Keyfire] AHK: cleaned up {} process(es) on quit", count);
     }
 }
 
@@ -3093,7 +3093,7 @@ pub fn cleanup_stale_ahk_scripts(app_data_dir: PathBuf) {
         }
     }
     if cleaned > 0 {
-        info!("[Trigr] AHK: cleaned up {} stale script(s) from previous session", cleaned);
+        info!("[Keyfire] AHK: cleaned up {} stale script(s) from previous session", cleaned);
     }
 }
 

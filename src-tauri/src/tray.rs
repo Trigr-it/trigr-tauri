@@ -54,7 +54,7 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Build tray with normal icon
     let tray_icon = Image::new_owned(rgba, width, height);
     build_tray(app.handle(), tray_icon)?;
-    info!("[Trigr] System tray created");
+    info!("[Keyfire] System tray created");
     Ok(())
 }
 
@@ -121,7 +121,7 @@ pub fn update_tray_icon_held(app: &AppHandle, held_label: &str) {
     if let Some(img) = TRAY_ICON_HELD.get() {
         if let Some(tray) = app.tray_by_id("trigr-tray") {
             let _ = tray.set_icon(Some(img.clone()));
-            let tip = format!("Trigr — Holding: {} — press again to release", held_label);
+            let tip = format!("Keyfire — Holding: {} — press again to release", held_label);
             let _ = tray.set_tooltip(Some(&tip));
         }
     }
@@ -132,7 +132,7 @@ pub fn update_tray_icon_repeating(app: &AppHandle, label: &str, interval_ms: u64
     if let Some(img) = TRAY_ICON_HELD.get() {
         if let Some(tray) = app.tray_by_id("trigr-tray") {
             let _ = tray.set_icon(Some(img.clone()));
-            let tip = format!("Trigr — Repeating: {} ({}ms) — press again to stop", label, interval_ms);
+            let tip = format!("Keyfire — Repeating: {} ({}ms) — press again to stop", label, interval_ms);
             let _ = tray.set_tooltip(Some(&tip));
         }
     }
@@ -142,7 +142,7 @@ pub fn update_tray_icon_repeating(app: &AppHandle, label: &str, interval_ms: u64
 pub fn update_tray_icon_normal(app: &AppHandle) {
     let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst);
     update_tray_icon(app, enabled);
-    let tooltip = if enabled { "Trigr — Active" } else { "Trigr — Paused" };
+    let tooltip = if enabled { "Keyfire — Active" } else { "Keyfire — Paused" };
     if let Some(tray) = app.tray_by_id("trigr-tray") {
         let _ = tray.set_tooltip(Some(tooltip));
     }
@@ -155,13 +155,13 @@ fn build_tray(
     let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
 
     // Menu items
-    let open_item = MenuItem::with_id(app, "open", "Open Trigr", true, None::<&str>)?;
+    let open_item = MenuItem::with_id(app, "open", "Open Keyfire", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
 
     let pause_label = if enabled {
-        "Pause Trigr"
+        "Pause Keyfire"
     } else {
-        "Resume Trigr"
+        "Resume Keyfire"
     };
     let pause_item = MenuItem::with_id(app, "pause", pause_label, true, None::<&str>)?;
 
@@ -172,7 +172,7 @@ fn build_tray(
         CheckMenuItem::with_id(app, "startup", "Start with Windows", true, startup_on, None::<&str>)?;
 
     let sep3 = PredefinedMenuItem::separator(app)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit Trigr", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit Keyfire", true, None::<&str>)?;
 
     let menu = Menu::with_items(
         app,
@@ -188,9 +188,9 @@ fn build_tray(
     )?;
 
     let tooltip = if enabled {
-        "Trigr — Active"
+        "Keyfire — Active"
     } else {
-        "Trigr — Paused"
+        "Keyfire — Paused"
     };
 
     // Remove existing tray icon if any (for rebuilds)
@@ -213,7 +213,7 @@ fn build_tray(
                     set_startup_enabled_impl(!currently_on);
                 }
                 "quit" => {
-                    info!("[Trigr] Quit requested from tray");
+                    info!("[Keyfire] Quit requested from tray");
                     app.exit(0);
                 }
                 _ => {}
@@ -241,27 +241,27 @@ pub fn rebuild_tray_menu(app: &AppHandle) {
         let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
 
         let tooltip = if enabled {
-            "Trigr — Active"
+            "Keyfire — Active"
         } else {
-            "Trigr — Paused"
+            "Keyfire — Paused"
         };
         let _ = tray.set_tooltip(Some(tooltip));
 
         // Rebuild menu items
         let pause_label = if enabled {
-            "Pause Trigr"
+            "Pause Keyfire"
         } else {
-            "Resume Trigr"
+            "Resume Keyfire"
         };
 
-        if let Ok(open_item) = MenuItem::with_id(app, "open", "Open Trigr", true, None::<&str>) {
+        if let Ok(open_item) = MenuItem::with_id(app, "open", "Open Keyfire", true, None::<&str>) {
             if let Ok(sep1) = PredefinedMenuItem::separator(app) {
                 if let Ok(pause_item) = MenuItem::with_id(app, "pause", pause_label, true, None::<&str>) {
                     if let Ok(sep2) = PredefinedMenuItem::separator(app) {
                         let startup_on = get_startup_enabled_sync();
                         if let Ok(startup_item) = CheckMenuItem::with_id(app, "startup", "Start with Windows", true, startup_on, None::<&str>) {
                             if let Ok(sep3) = PredefinedMenuItem::separator(app) {
-                                if let Ok(quit_item) = MenuItem::with_id(app, "quit", "Quit Trigr", true, None::<&str>) {
+                                if let Ok(quit_item) = MenuItem::with_id(app, "quit", "Quit Keyfire", true, None::<&str>) {
                                     if let Ok(menu) = Menu::with_items(app, &[&open_item, &sep1, &pause_item, &sep2, &startup_item, &sep3, &quit_item]) {
                                         let _ = tray.set_menu(Some(menu));
                                     }
@@ -346,7 +346,7 @@ pub fn hide_window_to_tray(app: &AppHandle) {
 
         // One-time log on first hide
         if !HAS_SHOWN_BALLOON.swap(true, Ordering::Relaxed) {
-            info!("[Trigr] Window hidden to tray");
+            info!("[Keyfire] Window hidden to tray");
         }
     }
 }
@@ -374,7 +374,7 @@ fn toggle_pause(app: &AppHandle) {
     let now_enabled = !was_enabled;
 
     info!(
-        "[Trigr] Global {} — macros {}",
+        "[Keyfire] Global {} — macros {}",
         if now_enabled { "resume" } else { "pause" },
         if now_enabled { "active" } else { "paused" }
     );
@@ -406,6 +406,10 @@ pub fn are_macros_enabled() -> bool {
 // ── Start with Windows (registry) ───────────────────────────────────────────
 
 const REG_RUN: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+// Registry value name stays "Trigr" across the rebrand to preserve existing
+// users' "Start with Windows" setting (the registry value name is invisible
+// to users; renaming it would orphan their existing entry and make the
+// setting appear OFF after update).
 const REG_NAME: &str = "Trigr";
 
 fn get_startup_enabled_sync() -> bool {
@@ -437,7 +441,7 @@ fn set_startup_enabled_impl(enable: bool) {
         // (the startup bootstrap had pinned the dev exe path in HKCU Run).
         // Disabling (the else branch) stays allowed in debug builds.
         if cfg!(debug_assertions) {
-            info!("[Trigr] Startup registration skipped (debug build — would pin the dev exe path)");
+            info!("[Keyfire] Startup registration skipped (debug build — would pin the dev exe path)");
             return;
         }
         // Get the current exe path
@@ -448,14 +452,14 @@ fn set_startup_enabled_impl(enable: bool) {
                 .args(["add", REG_RUN, "/v", REG_NAME, "/d", &value, "/f"])
                 .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .output();
-            info!("[Trigr] Startup enabled: {}", value);
+            info!("[Keyfire] Startup enabled: {}", value);
         }
     } else {
         let _ = Command::new("reg")
             .args(["delete", REG_RUN, "/v", REG_NAME, "/f"])
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output();
-        info!("[Trigr] Startup disabled");
+        info!("[Keyfire] Startup disabled");
     }
 }
 

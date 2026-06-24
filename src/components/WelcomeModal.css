@@ -39,7 +39,7 @@
 }
 
 /* Faint dot grid concentrated in the centre and fading at the edges —
-   on-brand nod to Trigr's keyboard motif without competing with the tiles. */
+   on-brand nod to Keyfire's keyboard motif without competing with the tiles. */
 .welcome-modal::after {
   content: '';
   position: absolute;

@@ -23,7 +23,7 @@ async function loadMonitors() {
     cachedAt = now;
     return cachedMonitors;
   } catch (e) {
-    console.error('[Trigr] enum_monitors failed:', e);
+    console.error('[Keyfire] enum_monitors failed:', e);
     return [];
   }
 }

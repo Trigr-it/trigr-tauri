@@ -77,7 +77,7 @@
 
 /* ── Type variants ────────────────────────────────────────────────────────
    Override border-left + icon colour. Success uses accent (gold) by default
-   since that's Trigr's primary "this worked" colour. */
+   since that's Keyfire's primary "this worked" colour. */
 
 .toast-success {
   border-left-color: var(--status-success, #50c878);

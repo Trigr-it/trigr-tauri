@@ -546,7 +546,7 @@ function ProfileAccordion({
                       unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
                       setLinkWindowList(unique);
                     } catch (e) {
-                      console.error('[Trigr] list_open_windows failed:', e);
+                      console.error('[Keyfire] list_open_windows failed:', e);
                       setLinkWindowList([]);
                     }
                   }}>

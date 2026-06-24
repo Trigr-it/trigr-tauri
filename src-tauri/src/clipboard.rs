@@ -89,7 +89,7 @@ fn note_decrypt_failure() {
     let n = DECRYPT_FAILURES.fetch_add(1, Ordering::SeqCst) + 1;
     if n == DECRYPT_FAILURE_TOAST_THRESHOLD && !DECRYPT_TOAST_SENT.swap(true, Ordering::SeqCst) {
         warn!(
-            "[Trigr] Clipboard: {} row decrypt failures this session — key/data mismatch likely",
+            "[Keyfire] Clipboard: {} row decrypt failures this session — key/data mismatch likely",
             n
         );
         if let Some(app) = APP_HANDLE.get() {
@@ -204,13 +204,13 @@ fn generate_and_save_master_key(key_path: &Path) -> Result<Zeroizing<[u8; 32]>, 
             let mut perms = meta.permissions();
             perms.set_readonly(true);
             if let Err(e) = std::fs::set_permissions(key_path, perms) {
-                warn!("[Trigr] Clipboard: failed to set key file read-only: {}", e);
+                warn!("[Keyfire] Clipboard: failed to set key file read-only: {}", e);
             }
         }
-        Err(e) => warn!("[Trigr] Clipboard: failed to read key file metadata: {}", e),
+        Err(e) => warn!("[Keyfire] Clipboard: failed to read key file metadata: {}", e),
     }
 
-    info!("[Trigr] Clipboard: generated new master key, wrapped with DPAPI");
+    info!("[Keyfire] Clipboard: generated new master key, wrapped with DPAPI");
     Ok(key)
 }
 
@@ -225,26 +225,26 @@ fn init_cipher(app_data_dir: &Path) -> bool {
                     match CLIPBOARD_CIPHER.write() {
                         Ok(mut guard) => *guard = Some(aead),
                         Err(_) => {
-                            error!("[Trigr] Clipboard: cipher lock poisoned during init");
+                            error!("[Keyfire] Clipboard: cipher lock poisoned during init");
                             return false;
                         }
                     }
-                    info!("[Trigr] Clipboard: AES-256-GCM cipher ready");
+                    info!("[Keyfire] Clipboard: AES-256-GCM cipher ready");
                     true
                 }
                 Err(e) => {
-                    error!("[Trigr] Clipboard: failed to build cipher: {}", e);
+                    error!("[Keyfire] Clipboard: failed to build cipher: {}", e);
                     false
                 }
             }
         }
         Err(e) => {
-            error!("[Trigr] Clipboard: failed to load/generate master key: {}", e);
+            error!("[Keyfire] Clipboard: failed to load/generate master key: {}", e);
             // Distinguish "key file exists but DPAPI can't unwrap it" (corrupt
             // file, copied from another user/machine) — the recovery path is
             // Settings → Reset clipboard storage. NEVER auto-wipe here.
             if app_data_dir.join(KEY_FILE_NAME).exists() {
-                error!("[Trigr] Clipboard: encryption key unreadable");
+                error!("[Keyfire] Clipboard: encryption key unreadable");
                 KEY_UNREADABLE.store(true, Ordering::SeqCst);
             }
             false
@@ -270,7 +270,7 @@ fn encrypt_blob(plaintext: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
     match cipher.encrypt(nonce, plaintext) {
         Ok(ct) => Some((ct, iv.to_vec())),
         Err(e) => {
-            warn!("[Trigr] Clipboard: encrypt failed: {:?}", e);
+            warn!("[Keyfire] Clipboard: encrypt failed: {:?}", e);
             None
         }
     }
@@ -285,7 +285,7 @@ fn decrypt_blob(ciphertext: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
     let cipher = guard.as_ref()?;
     if iv.len() != 12 {
         warn!(
-            "[Trigr] Clipboard: decrypt called with invalid iv length {} (expected 12)",
+            "[Keyfire] Clipboard: decrypt called with invalid iv length {} (expected 12)",
             iv.len()
         );
         return None;
@@ -297,7 +297,7 @@ fn decrypt_blob(ciphertext: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
             // Auth-tag mismatch: wrong key or tampered row. Debug level — a
             // mismatched key fails EVERY row on every fetch, info would flood
             // the log. The aggregate warn lives in note_decrypt_failure.
-            debug!("[Trigr] Clipboard: row decrypt failed (auth-tag mismatch)");
+            debug!("[Keyfire] Clipboard: row decrypt failed (auth-tag mismatch)");
             note_decrypt_failure();
             None
         }
@@ -396,14 +396,14 @@ fn cleanup_expired_plaintext_backup(db_path: &Path) {
     let expiry_str = match std::fs::read_to_string(&expiry_path) {
         Ok(s) => s,
         Err(e) => {
-            warn!("[Trigr] Clipboard: expiry file read failed: {}", e);
+            warn!("[Keyfire] Clipboard: expiry file read failed: {}", e);
             return;
         }
     };
     let expiry = match chrono::DateTime::parse_from_rfc3339(expiry_str.trim()) {
         Ok(dt) => dt.with_timezone(&chrono::Utc),
         Err(e) => {
-            warn!("[Trigr] Clipboard: expiry file unparseable ({}); leaving in place", e);
+            warn!("[Keyfire] Clipboard: expiry file unparseable ({}); leaving in place", e);
             return;
         }
     };
@@ -414,9 +414,9 @@ fn cleanup_expired_plaintext_backup(db_path: &Path) {
 
     if backup_path.exists() {
         match std::fs::remove_file(&backup_path) {
-            Ok(()) => info!("[Trigr] Clipboard: expired plaintext backup deleted"),
+            Ok(()) => info!("[Keyfire] Clipboard: expired plaintext backup deleted"),
             Err(e) => {
-                warn!("[Trigr] Clipboard: failed to delete expired backup: {}", e);
+                warn!("[Keyfire] Clipboard: failed to delete expired backup: {}", e);
                 return;
             }
         }
@@ -430,7 +430,7 @@ fn cleanup_expired_plaintext_backup(db_path: &Path) {
 /// the app keeps running with legacy rows still plaintext-readable.
 fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, String> {
     if !cipher_ready() {
-        info!("[Trigr] Clipboard: Phase 3b migration skipped (cipher unavailable)");
+        info!("[Keyfire] Clipboard: Phase 3b migration skipped (cipher unavailable)");
         return Ok(0);
     }
 
@@ -443,12 +443,12 @@ fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, Str
         .unwrap_or(0);
 
     if needs == 0 {
-        info!("[Trigr] Clipboard: Phase 3b migration not needed (no plaintext rows)");
+        info!("[Keyfire] Clipboard: Phase 3b migration not needed (no plaintext rows)");
         return Ok(0);
     }
 
     info!(
-        "[Trigr] Clipboard: Phase 3b migration starting ({} plaintext row(s))",
+        "[Keyfire] Clipboard: Phase 3b migration starting ({} plaintext row(s))",
         needs
     );
 
@@ -467,11 +467,11 @@ fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, Str
         std::fs::rename(&backup_tmp, &backup_path)
             .map_err(|e| format!("plaintext backup rename: {}", e))?;
         info!(
-            "[Trigr] Clipboard: plaintext backup saved to {}",
+            "[Keyfire] Clipboard: plaintext backup saved to {}",
             backup_path.display()
         );
     } else {
-        info!("[Trigr] Clipboard: reusing existing plaintext backup from prior attempt");
+        info!("[Keyfire] Clipboard: reusing existing plaintext backup from prior attempt");
     }
 
     // STEP 2: snapshot up to 3 row previews for post-migration sample verification.
@@ -600,7 +600,7 @@ fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, Str
         .map_err(|e| format!("commit migration: {}", e))?;
 
     info!(
-        "[Trigr] Clipboard: Phase 3b migration committed ({} row(s) encrypted, {} sample(s) verified)",
+        "[Keyfire] Clipboard: Phase 3b migration committed ({} row(s) encrypted, {} sample(s) verified)",
         migrated,
         sample.len()
     );
@@ -609,11 +609,11 @@ fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, Str
     let expiry_path = db_path.with_file_name(PLAINTEXT_BACKUP_EXPIRES_NAME);
     let expiry = chrono::Utc::now() + chrono::Duration::days(PLAINTEXT_BACKUP_RETENTION_DAYS);
     if let Err(e) = std::fs::write(&expiry_path, expiry.to_rfc3339()) {
-        warn!("[Trigr] Clipboard: failed to write expiry file: {}", e);
+        warn!("[Keyfire] Clipboard: failed to write expiry file: {}", e);
         // Non-fatal: the backup will just live forever until manually deleted.
     } else {
         info!(
-            "[Trigr] Clipboard: plaintext backup expires {}",
+            "[Keyfire] Clipboard: plaintext backup expires {}",
             expiry.to_rfc3339()
         );
     }
@@ -930,13 +930,13 @@ fn open_clipboard_db(db_path: &Path) -> Result<Connection, String> {
 /// continue the writer loop with (None only if no db could be reopened at
 /// all) and whether the reset fully succeeded.
 fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>, bool) {
-    info!("[Trigr] Clipboard: storage reset requested");
+    info!("[Keyfire] Clipboard: storage reset requested");
     let mut ok = true;
 
     // 1. Checkpoint + close so Windows releases the file locks.
     let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
     if let Err((c, e)) = conn.close() {
-        warn!("[Trigr] Clipboard: close before reset failed: {}", e);
+        warn!("[Keyfire] Clipboard: close before reset failed: {}", e);
         drop(c);
     }
 
@@ -968,7 +968,7 @@ fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>
             }
         }
         if let Err(e) = std::fs::remove_file(&path) {
-            error!("[Trigr] Clipboard: reset failed to delete {}: {}", path.display(), e);
+            error!("[Keyfire] Clipboard: reset failed to delete {}: {}", path.display(), e);
             ok = false;
         }
     }
@@ -982,7 +982,7 @@ fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>
     {
         Ok(c) => Some(c),
         Err(e) => {
-            error!("[Trigr] Clipboard: reset failed to generate new key: {}", e);
+            error!("[Keyfire] Clipboard: reset failed to generate new key: {}", e);
             ok = false;
             None
         }
@@ -1002,12 +1002,12 @@ fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>
     match open_clipboard_db(db_path) {
         Ok(c) => {
             if ok {
-                info!("[Trigr] Clipboard: storage reset complete (fresh db + key)");
+                info!("[Keyfire] Clipboard: storage reset complete (fresh db + key)");
             }
             (Some(c), ok)
         }
         Err(e) => {
-            error!("[Trigr] Clipboard: reset could not reopen db: {}", e);
+            error!("[Keyfire] Clipboard: reset could not reopen db: {}", e);
             (None, false)
         }
     }
@@ -1057,7 +1057,7 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             let mut conn = match open_clipboard_db(&db_path) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("[Trigr] Failed to open clipboard DB: {}", e);
+                    error!("[Keyfire] Failed to open clipboard DB: {}", e);
                     return;
                 }
             };
@@ -1070,11 +1070,11 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             cleanup_expired_plaintext_backup(&db_path);
             match run_phase3b_migration(&conn, &db_path) {
                 Ok(0) => {}
-                Ok(n) => info!("[Trigr] Clipboard: Phase 3b migrated {} row(s)", n),
-                Err(e) => error!("[Trigr] Clipboard: Phase 3b migration failed: {}", e),
+                Ok(n) => info!("[Keyfire] Clipboard: Phase 3b migrated {} row(s)", n),
+                Err(e) => error!("[Keyfire] Clipboard: Phase 3b migration failed: {}", e),
             }
 
-            info!("[Trigr] Clipboard DB ready: {}", db_path.display());
+            info!("[Keyfire] Clipboard DB ready: {}", db_path.display());
 
             for msg in rx {
                 match msg {
@@ -1146,7 +1146,7 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                             None => {
                                 // No usable db — same terminal state as a failed
                                 // open at startup. Reply, log, end the thread.
-                                error!("[Trigr] Clipboard: writer thread exiting after failed storage reset");
+                                error!("[Keyfire] Clipboard: writer thread exiting after failed storage reset");
                                 let _ = reply.send(false);
                                 return;
                             }
@@ -1289,10 +1289,10 @@ pub fn delete_plaintext_backup_now() -> bool {
     let backup = dir.join(PLAINTEXT_BACKUP_NAME);
     if backup.exists() {
         if let Err(e) = std::fs::remove_file(&backup) {
-            error!("[Trigr] Clipboard: failed to delete plaintext backup: {}", e);
+            error!("[Keyfire] Clipboard: failed to delete plaintext backup: {}", e);
             return false;
         }
-        info!("[Trigr] Clipboard: plaintext backup deleted via Settings");
+        info!("[Keyfire] Clipboard: plaintext backup deleted via Settings");
     }
     let _ = std::fs::remove_file(dir.join(PLAINTEXT_BACKUP_EXPIRES_NAME));
     true
@@ -1525,7 +1525,7 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
     );
 
     if let Err(e) = result {
-        error!("[Trigr] Failed to insert clipboard entry: {}", e);
+        error!("[Keyfire] Failed to insert clipboard entry: {}", e);
         return;
     }
 
@@ -1691,7 +1691,7 @@ fn search_history(
     let mut stmt = match conn.prepare(&scan_sql) {
         Ok(s) => s,
         Err(e) => {
-            error!("[Trigr] Clipboard: search scan prepare failed: {}", e);
+            error!("[Keyfire] Clipboard: search scan prepare failed: {}", e);
             return serde_json::json!({ "items": [], "total": 0 });
         }
     };
@@ -1735,14 +1735,14 @@ fn search_history(
                 .map(|iter| iter.filter_map(|r| r.ok()).collect())
                 .unwrap_or_default(),
             Err(e) => {
-                error!("[Trigr] Clipboard: search page fetch prepare failed: {}", e);
+                error!("[Keyfire] Clipboard: search page fetch prepare failed: {}", e);
                 Vec::new()
             }
         }
     };
 
     debug!(
-        "[Trigr] Clipboard: search scanned {} row(s), {} match(es) in {}ms",
+        "[Keyfire] Clipboard: search scanned {} row(s), {} match(es) in {}ms",
         scanned,
         total,
         started.elapsed().as_millis()
@@ -1779,7 +1779,7 @@ fn handle_delete_item(conn: &Connection, id: i64) -> bool {
 
 fn handle_clear_all(conn: &Connection) -> bool {
     if let Err(e) = conn.execute("DELETE FROM clipboard_history", []) {
-        error!("[Trigr] Failed to clear clipboard history: {}", e);
+        error!("[Keyfire] Failed to clear clipboard history: {}", e);
         return false;
     }
     // Reclaim disk space. DELETE alone leaves the file at its high-water mark, and in
@@ -1788,15 +1788,15 @@ fn handle_clear_all(conn: &Connection) -> bool {
     //   2. wal_checkpoint — flush WAL into .db and truncate .db-wal back to zero bytes.
     let mut vacuum_ok = true;
     if let Err(e) = conn.execute("VACUUM", []) {
-        error!("[Trigr] VACUUM after clear failed: {}", e);
+        error!("[Keyfire] VACUUM after clear failed: {}", e);
         vacuum_ok = false;
     }
     if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
-        error!("[Trigr] WAL truncate after clear failed: {}", e);
+        error!("[Keyfire] WAL truncate after clear failed: {}", e);
         vacuum_ok = false;
     }
     if vacuum_ok {
-        info!("[Trigr] Clipboard history cleared, database vacuumed and WAL truncated");
+        info!("[Keyfire] Clipboard history cleared, database vacuumed and WAL truncated");
     }
     // Always return true — the table is empty either way; only file size may not have shrunk.
     true
@@ -1961,19 +1961,19 @@ fn handle_prune(conn: &Connection) {
     );
     match conn.execute(&query, []) {
         Ok(deleted) if deleted > 0 => {
-            info!("[Trigr] Pruned {} expired clipboard items", deleted);
+            info!("[Keyfire] Pruned {} expired clipboard items", deleted);
             // Reclaim space — VACUUM rebuilds .db, wal_checkpoint(TRUNCATE) shrinks .db-wal.
             // Both are skipped when nothing was deleted (common case — handle_prune runs
             // after every new clipboard entry).
             if let Err(e) = conn.execute("VACUUM", []) {
-                error!("[Trigr] VACUUM after prune failed: {}", e);
+                error!("[Keyfire] VACUUM after prune failed: {}", e);
             }
             if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
-                error!("[Trigr] WAL truncate after prune failed: {}", e);
+                error!("[Keyfire] WAL truncate after prune failed: {}", e);
             }
         }
         Ok(_) => {} // nothing pruned — no space to reclaim
-        Err(e) => error!("[Trigr] Prune query failed: {}", e),
+        Err(e) => error!("[Keyfire] Prune query failed: {}", e),
     }
 }
 
@@ -2039,7 +2039,7 @@ unsafe fn read_clipboard_image() -> Option<(Vec<u8>, u32, u32)> {
 
 fn run_clipboard_listener() {
     unsafe {
-        let class_name: Vec<u16> = "TRIGRClipboardListener\0".encode_utf16().collect();
+        let class_name: Vec<u16> = "KEYFIREClipboardListener\0".encode_utf16().collect();
         let wc = WNDCLASSW {
             style: 0,
             lpfnWndProc: Some(clipboard_wnd_proc),
@@ -2052,7 +2052,7 @@ fn run_clipboard_listener() {
             lpszClassName: class_name.as_ptr(),
         };
         if RegisterClassW(&wc) == 0 {
-            error!("[Trigr] Failed to register clipboard window class");
+            error!("[Keyfire] Failed to register clipboard window class");
             return;
         }
 
@@ -2062,16 +2062,16 @@ fn run_clipboard_listener() {
             std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null(),
         );
         if hwnd.is_null() {
-            error!("[Trigr] Failed to create clipboard message-only window");
+            error!("[Keyfire] Failed to create clipboard message-only window");
             return;
         }
         if AddClipboardFormatListener(hwnd) == 0 {
-            error!("[Trigr] Failed to add clipboard format listener");
+            error!("[Keyfire] Failed to add clipboard format listener");
             DestroyWindow(hwnd);
             return;
         }
 
-        info!("[Trigr] Clipboard listener started (message-only HWND)");
+        info!("[Keyfire] Clipboard listener started (message-only HWND)");
 
         let mut msg: MSG = std::mem::zeroed();
         while GetMessageW(&mut msg, hwnd, 0, 0) > 0 {
@@ -2080,7 +2080,7 @@ fn run_clipboard_listener() {
 
         RemoveClipboardFormatListener(hwnd);
         DestroyWindow(hwnd);
-        info!("[Trigr] Clipboard listener stopped");
+        info!("[Keyfire] Clipboard listener stopped");
     }
 }
 
@@ -2095,11 +2095,11 @@ unsafe extern "system" fn clipboard_wnd_proc(
 }
 
 fn handle_clipboard_update() {
-    // Skip Trigr's own injected writes. Two layers: the level flag covers the
+    // Skip Keyfire's own injected writes. Two layers: the level flag covers the
     // synchronous write window, and the per-write sequence-number record covers
     // the async tail (a WM_CLIPBOARDUPDATE delivered after the flag was cleared —
     // the H3 leak). A real user copy, or a `Copy to Clipboard` macro step (the
-    // target app performs that copy), has a seqnum Trigr never recorded, so it is
+    // target app performs that copy), has a seqnum Keyfire never recorded, so it is
     // always still captured. Checked first so the self-seqnum is consumed even
     // when a later gate (capture-off / excluded app) would return early.
     let cur_seq = crate::expansions::clipboard_sequence_number();
@@ -2111,7 +2111,7 @@ fn handle_clipboard_update() {
     }
 
     // Master capture toggle. When off, the listener keeps running so re-enabling
-    // takes effect on the very next clipboard event without restarting Trigr.
+    // takes effect on the very next clipboard event without restarting Keyfire.
     if !CAPTURE_ENABLED.load(Ordering::SeqCst) {
         return;
     }
@@ -2146,7 +2146,7 @@ fn handle_clipboard_update() {
             std::thread::sleep(std::time::Duration::from_millis(15));
         }
         if !opened {
-            log::warn!("[Trigr] Clipboard: OpenClipboard still locked after 10 attempts — copy not captured");
+            log::warn!("[Keyfire] Clipboard: OpenClipboard still locked after 10 attempts — copy not captured");
             return;
         }
 
@@ -2183,7 +2183,7 @@ fn handle_clipboard_update() {
                 });
                 return;
             }
-            log::warn!("[Trigr] Clipboard: image read failed (DIB advertised) — falling through to text");
+            log::warn!("[Keyfire] Clipboard: image read failed (DIB advertised) — falling through to text");
         }
 
         if has_text {
@@ -2195,11 +2195,11 @@ fn handle_clipboard_update() {
                 handle = GetClipboardData(CF_UNICODETEXT);
             }
             if handle.is_null() {
-                log::warn!("[Trigr] Clipboard: CF_UNICODETEXT advertised but GetClipboardData returned null — copy not captured");
+                log::warn!("[Keyfire] Clipboard: CF_UNICODETEXT advertised but GetClipboardData returned null — copy not captured");
             } else {
                 let ptr = GlobalLock(handle) as *const u16;
                 if ptr.is_null() {
-                    log::warn!("[Trigr] Clipboard: GlobalLock failed on text handle — copy not captured");
+                    log::warn!("[Keyfire] Clipboard: GlobalLock failed on text handle — copy not captured");
                 } else {
                     let mut len = 0usize;
                     while *ptr.add(len) != 0 { len += 1; }

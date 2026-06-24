@@ -1,5 +1,5 @@
 @echo off
-REM Trigr signing wrapper. Invoked by Tauri's bundler (regular signCommand)
+REM Keyfire signing wrapper. Invoked by Tauri's bundler (regular signCommand)
 REM and by NSIS !uninstfinalize for the uninstaller. Kept short on purpose:
 REM the entire signCommand string is embedded verbatim into the generated
 REM NSIS script, and any inner double-quotes break NSIS's tokenization
@@ -20,5 +20,5 @@ if not exist "%TARGET%" (
 )
 
 echo [sign] %TARGET%
-trusted-signing-cli -e https://weu.codesigning.azure.net -a nodescaffold-signing -c node-public-trust -d Trigr "%TARGET%"
+trusted-signing-cli -e https://weu.codesigning.azure.net -a nodescaffold-signing -c node-public-trust -d Keyfire "%TARGET%"
 exit /b %ERRORLEVEL%

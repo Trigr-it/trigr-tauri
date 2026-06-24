@@ -25,7 +25,7 @@
 
   /* Middle ground between original near-invisible borders (1.6:1) and strict
      WCAG 3:1. Trades a small amount of accessibility headroom for the quieter
-     Trigr aesthetic — still clearly visible improvement over the original.
+     Keyfire aesthetic — still clearly visible improvement over the original.
      Verified vs --bg-base (L=0.00415):
      - #44445e → ~2.07:1 (general dividers)
      - #525272 → ~2.60:1 (emphasized borders) */
@@ -52,7 +52,7 @@
 
   --font-display: 'Rajdhani', sans-serif;
   --font-body: 'DM Sans', sans-serif;
-  /* Brand wordmark — matches usetrigr.com nav/footer. Used by every "Trigr"
+  /* Brand wordmark — matches keyfire.app nav/footer. Used by every "Keyfire"
      wordmark in the app (titlebar, onboarding welcome, WelcomeModal, Settings
      About). Weight 600 by default; 500 also bundled if a lighter cut is needed. */
   --font-label: 'Chakra Petch', sans-serif;

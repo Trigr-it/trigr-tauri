@@ -451,11 +451,11 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal">
-          {/* Trigr logo — same SVG as the titlebar wordmark, with unique
+          {/* Keyfire logo — same SVG as the titlebar wordmark, with unique
               gradient IDs so the two SVGs don't collide on `url(#id)` lookup
               when both are mounted in the document at once. */}
           <span className="onboarding-logo" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Trigr">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Keyfire">
               <defs>
                 <linearGradient id="onboarding-trigr-base" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#f0b942"/>
@@ -469,12 +469,11 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
               <rect x="0" y="0" width="64" height="64" rx="9" fill="url(#onboarding-trigr-base)"/>
               <rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#onboarding-trigr-keytop)"/>
               <rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000000" opacity="0.06"/>
-              <rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/>
-              <rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/>
+              <path d="M 33 14 C 36 18, 41 23, 41 30 C 41 37, 36 41, 32 41 C 26 41, 22 37, 22 32 C 22 28, 25 26, 27 23 C 28 26, 30 27, 30 24 C 30 20, 32 17, 33 14 Z" fill="#c8860a"/>
             </svg>
           </span>
-          <div className="onboarding-brand">Trigr</div>
-          <p className="onboarding-welcome-text">Welcome to Trigr — let's take a quick tour of what you can do.</p>
+          <div className="onboarding-brand">Keyfire</div>
+          <p className="onboarding-welcome-text">Welcome to Keyfire — let's take a quick tour of what you can do.</p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={() => setStep(2)}>
             Let's go
@@ -566,7 +565,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
                 <div className="onboarding-instruction-item">
                   <span className="onboarding-instruction-num">1</span>
                   <span className="onboarding-instruction-text">
-                    <strong>Minimise Trigr</strong> — click the Trigr icon on your taskbar.
+                    <strong>Minimise Keyfire</strong> — click the Keyfire icon on your taskbar.
                   </span>
                 </div>
                 <div className="onboarding-instruction-item">
@@ -590,19 +589,19 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
                 <div className="onboarding-instruction-item">
                   <span className="onboarding-instruction-num">3</span>
                   <span className="onboarding-instruction-text">
-                    Come back to Trigr — this step continues automatically.
+                    Come back to Keyfire — this step continues automatically.
                   </span>
                 </div>
               </div>
               <p className="onboarding-hint">
-                Trigr stays running in the background — your hotkey works anywhere on your PC, in any app.
+                Keyfire stays running in the background — your hotkey works anywhere on your PC, in any app.
               </p>
             </>
           ) : (
             <>
-              <p className="onboarding-success-text">You just used Trigr!</p>
+              <p className="onboarding-success-text">You just used Keyfire!</p>
               <p className="onboarding-hint">
-                Your hotkey works the same way in any app on your PC, <strong>except when Trigr itself is the focused window</strong>. Hotkeys are paused while you're in Trigr so you can configure them without firing them by accident.
+                Your hotkey works the same way in any app on your PC, <strong>except when Fire itself is the focused window</strong>. Hotkeys are paused while you're in Keyfire so you can configure them without firing them by accident.
               </p>
               <button className="onboarding-btn-primary" onClick={() => setStep(4)}>
                 Continue
@@ -664,7 +663,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
           <div className="onboarding-pro-inline">
             <span className="onboarding-pro-badge onboarding-pro-badge--inline">Pro</span>
             <span className="onboarding-pro-inline-text">
-              <strong>App-specific profiles</strong> link a profile to an app — Trigr auto-switches in the background as you change focus. Excel hotkeys when Excel is open, Photoshop hotkeys when Photoshop is open.
+              <strong>App-specific profiles</strong> link a profile to an app — Keyfire auto-switches in the background as you change focus. Excel hotkeys when Excel is open, Photoshop hotkeys when Photoshop is open.
             </span>
           </div>
           {stepDots}
@@ -747,7 +746,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
                 </div>
               </div>
               <p className="onboarding-hint">
-                Press the combo above — Trigr's Quick Search overlay will appear. This step continues automatically when it opens.
+                Press the combo above — Keyfire's Quick Search overlay will appear. This step continues automatically when it opens.
               </p>
             </>
           ) : (
@@ -839,7 +838,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     );
   }
 
-  // ── Step 12: Closing ≠ Quitting — Trigr lives in the tray ───
+  // ── Step 12: Closing ≠ Quitting — Keyfire lives in the tray ───
   if (step === 12) {
     return (
       <div className="onboarding-overlay">
@@ -848,10 +847,10 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-modal">
           <div className="onboarding-step-label">Step 12 of {TOTAL_STEPS}</div>
           <p className="onboarding-tooltip-text">
-            <strong>Closing Trigr hides it — it doesn't quit it.</strong>
+            <strong>Closing Keyfire hides it — it doesn't quit it.</strong>
           </p>
           <p className="onboarding-hint">
-            When you click the × on the window, Trigr keeps running in the system tray so your hotkeys, expansions and clipboard history all stay active. To fully quit Trigr, right-click the tray icon and choose <strong>Quit</strong>.
+            When you click the × on the window, Keyfire keeps running in the system tray so your hotkeys, expansions and clipboard history all stay active. To fully quit Keyfire, right-click the tray icon and choose <strong>Quit</strong>.
           </p>
           <div className="onboarding-tray-illustration">
             <span className="onboarding-tray-arrow">↘</span>
@@ -896,13 +895,13 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <kbd className="onboarding-kbd">Alt</kbd>
             <span className="onboarding-kbd-plus">+</span>
             <kbd className="onboarding-kbd">Q</kbd>
-            <span className="onboarding-shortcut-label">Global Pause — toggle Trigr on/off</span>
+            <span className="onboarding-shortcut-label">Global Pause — toggle Keyfire on/off</span>
           </div>
           <p className="onboarding-hint">
             All three shortcuts are <strong>customisable in Settings</strong>. Check <strong>Analytics</strong> for time saved.
           </p>
           <p className="onboarding-hint">
-            During the beta, Trigr sends one anonymous daily count (just totals: no content, no identifiers) to help us improve. Toggle off any time in <strong>Settings → Privacy &amp; Security</strong>.
+            During the beta, Keyfire sends one anonymous daily count (just totals: no content, no identifiers) to help us improve. Toggle off any time in <strong>Settings → Privacy &amp; Security</strong>.
           </p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={finish}>Finish</button>

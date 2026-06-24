@@ -203,7 +203,7 @@ export default function TemplatesPanel({ activeProfile, onImportTemplate, onImpo
                           unique.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
                           setCadWindowList(unique);
                         } catch (e) {
-                          console.error('[Trigr] list_open_windows failed:', e);
+                          console.error('[Keyfire] list_open_windows failed:', e);
                           setCadWindowList([]);
                         }
                       }}

@@ -1,29 +1,29 @@
-# Trigr
+# Keyfire
 
 **Visual hotkeys, macros, text expansions, and clipboard history for Windows. No scripting. Local-only.**
 
-[Website](https://usetrigr.com) · [Latest release](https://github.com/Trigr-it/trigr-tauri/releases/latest) · [Help guide](https://usetrigr.com/trigr-help.html) · [Roadmap](https://usetrigr.com/roadmap.html)
+[Website](https://keyfire.app) · [Latest release](https://github.com/Trigr-it/trigr-tauri/releases/latest) · [Help guide](https://keyfire.app/trigr-help.html) · [Roadmap](https://keyfire.app/roadmap.html)
 
 ---
 
-## What Trigr is
+## What Keyfire is
 
-Trigr is a Windows desktop app that lets non-technical users create keyboard hotkeys, macros, and text expansions through a visual interface. You see a keyboard on screen, click a key, pick what it does. No scripting language to learn.
+Keyfire is a Windows desktop app that lets non-technical users create keyboard hotkeys, macros, and text expansions through a visual interface. You see a keyboard on screen, click a key, pick what it does. No scripting language to learn.
 
 It was built to replace AutoHotkey for teams where the original script author is not always around to maintain things, starting with the civil engineering firm where the maintainer works.
 
 ## Why the source is public
 
-To prove the privacy claims on the website. Trigr runs fully locally, with no accounts, no cloud, no telemetry, and no data leaves your machine. You should not have to take that on faith. The source is here to be read and audited.
+To prove the privacy claims on the website. Keyfire runs fully locally, with no accounts, no cloud, no telemetry, and no data leaves your machine. You should not have to take that on faith. The source is here to be read and audited.
 
-**This is not an invitation to copy or redistribute.** Trigr is a commercial product. Read [LICENSE.md](LICENSE.md) before using anything from this repository beyond reading and auditing it.
+**This is not an invitation to copy or redistribute.** Keyfire is a commercial product. Read [LICENSE.md](LICENSE.md) before using anything from this repository beyond reading and auditing it.
 
 ## Install
 
 Download the latest installer for Windows 10 or 11:
 
-- [Trigr_x64-setup.exe](https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe) (x64)
-- [Trigr_arm64-setup.exe](https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_arm64-setup.exe) (ARM64, Surface Pro and Snapdragon devices)
+- [Keyfire_x64-setup.exe](https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe) (x64)
+- [Keyfire_arm64-setup.exe](https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_arm64-setup.exe) (ARM64, Surface Pro and Snapdragon devices)
 
 Around 10MB installer, 20 to 50MB RAM at runtime. Auto-updates from this repository's Releases.
 
@@ -76,7 +76,7 @@ src/              React frontend
   components/       UI panels (Sidebar, MacroPanel, TextExpansions, etc.)
   styles/           CSS variables and global styles
 
-docs/             GitHub Pages site (usetrigr.com)
+docs/             GitHub Pages site (keyfire.app)
 ```
 
 ## Building from source
@@ -100,7 +100,7 @@ The output installer lives in `src-tauri/target/release/bundle/nsis/`.
 ## Reporting bugs
 
 Inside the app: **Settings → Feedback**.
-By email: **admin@usetrigr.com**.
+By email: **admin@keyfire.app**.
 
 For security issues, please email directly rather than opening a public issue.
 
@@ -108,7 +108,7 @@ For security issues, please email directly rather than opening a public issue.
 
 Pull requests are accepted at the maintainer's discretion. By submitting a contribution you agree to the contribution terms in [LICENSE.md](LICENSE.md#contributions).
 
-Before opening a PR for anything non-trivial, please email admin@usetrigr.com first to check it aligns with the roadmap.
+Before opening a PR for anything non-trivial, please email admin@keyfire.app first to check it aligns with the roadmap.
 
 ## Licence
 
@@ -118,10 +118,10 @@ Source-available proprietary. See [LICENSE.md](LICENSE.md) for the full text. In
 - Redistribute the source, fork as a competing product, sell derivatives: not allowed
 - Compiled binaries are governed by a separate End User Licence shown inside the app
 
-For commercial licensing, OEM, or anything else: **admin@usetrigr.com**.
+For commercial licensing, OEM, or anything else: **admin@keyfire.app**.
 
 ## About
 
-Trigr is built and maintained by a small studio in London.
+Keyfire is built and maintained by a small studio in London.
 
-*Set it. Trigr it.*
+*Set it. Fire it.*

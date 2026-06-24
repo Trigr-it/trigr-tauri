@@ -73,7 +73,7 @@ pub fn init(app_data_dir: PathBuf) {
             let conn = match Connection::open(&db_path) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("[Trigr] Failed to open analytics DB: {}", e);
+                    error!("[Keyfire] Failed to open analytics DB: {}", e);
                     return;
                 }
             };
@@ -90,7 +90,7 @@ pub fn init(app_data_dir: PathBuf) {
                     time_saved  REAL NOT NULL
                 );",
             ) {
-                error!("[Trigr] Failed to create analytics table: {}", e);
+                error!("[Keyfire] Failed to create analytics table: {}", e);
                 return;
             }
 
@@ -145,7 +145,7 @@ pub fn init(app_data_dir: PathBuf) {
             );
             if migration_done.is_err() {
                 if let Ok(n) = conn.execute("DELETE FROM action_log WHERE action_type = 'hotkey'", []) {
-                    info!("[Trigr] Analytics migration: removed {} legacy hotkey-remap rows", n);
+                    info!("[Keyfire] Analytics migration: removed {} legacy hotkey-remap rows", n);
                 }
                 let _ = conn.execute(
                     "INSERT OR REPLACE INTO analytics_meta (key, value) VALUES ('hotkey_rows_purged', '1')",
@@ -153,7 +153,7 @@ pub fn init(app_data_dir: PathBuf) {
                 );
             }
 
-            info!("[Trigr] Analytics DB ready: {}", db_path.display());
+            info!("[Keyfire] Analytics DB ready: {}", db_path.display());
 
             for msg in rx {
                 match msg {
@@ -471,7 +471,7 @@ fn handle_log(conn: &Connection, event: AnalyticsEvent) {
         "INSERT INTO action_log (timestamp, action_type, char_count, time_saved, trigger_key, label, target_app) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![now, event.action_type, event.char_count, time_saved, event.trigger, event.label, event.target_app],
     ) {
-        error!("[Trigr] Failed to log analytics event: {}", e);
+        error!("[Keyfire] Failed to log analytics event: {}", e);
     }
 }
 
@@ -605,7 +605,7 @@ fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
     ) {
         Ok(s) => s,
         Err(e) => {
-            warn!("[Trigr] Daily chart query failed: {}", e);
+            warn!("[Keyfire] Daily chart query failed: {}", e);
             return serde_json::json!([]);
         }
     };
@@ -640,7 +640,7 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
 
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
-        Err(e) => { warn!("[Trigr] Type breakdown query failed: {}", e); return serde_json::json!({}); }
+        Err(e) => { warn!("[Keyfire] Type breakdown query failed: {}", e); return serde_json::json!({}); }
     };
 
     let mut expansions: i64 = 0;
@@ -693,7 +693,7 @@ fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Valu
     let mut stmt = match conn.prepare(query) {
         Ok(s) => s,
         Err(e) => {
-            warn!("[Trigr] Assignment breakdown query failed: {}", e);
+            warn!("[Keyfire] Assignment breakdown query failed: {}", e);
             return serde_json::json!([]);
         }
     };
@@ -733,7 +733,7 @@ fn handle_top_apps(conn: &Connection, days: u32) -> serde_json::Value {
 
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
-        Err(e) => { warn!("[Trigr] Top apps query failed: {}", e); return serde_json::json!([]); }
+        Err(e) => { warn!("[Keyfire] Top apps query failed: {}", e); return serde_json::json!([]); }
     };
 
     let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
@@ -836,7 +836,7 @@ fn handle_hourly_heatmap(conn: &Connection, days: u32) -> serde_json::Value {
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
         Err(e) => {
-            warn!("[Trigr] Heatmap query failed: {}", e);
+            warn!("[Keyfire] Heatmap query failed: {}", e);
             return serde_json::json!([]);
         }
     };
@@ -863,7 +863,7 @@ fn handle_streaks(conn: &Connection) -> serde_json::Value {
     ) {
         Ok(s) => s,
         Err(e) => {
-            warn!("[Trigr] Streaks query failed: {}", e);
+            warn!("[Keyfire] Streaks query failed: {}", e);
             return serde_json::json!({"current": 0, "longest": 0});
         }
     };
@@ -939,7 +939,7 @@ fn handle_export_csv(conn: &Connection) -> String {
     ) {
         Ok(s) => s,
         Err(e) => {
-            warn!("[Trigr] CSV export query failed: {}", e);
+            warn!("[Keyfire] CSV export query failed: {}", e);
             return csv;
         }
     };
@@ -976,11 +976,11 @@ fn handle_export_csv(conn: &Connection) -> String {
 fn handle_reset(conn: &Connection) -> bool {
     match conn.execute("DELETE FROM action_log", []) {
         Ok(_) => {
-            info!("[Trigr] Analytics data reset");
+            info!("[Keyfire] Analytics data reset");
             true
         }
         Err(e) => {
-            error!("[Trigr] Failed to reset analytics: {}", e);
+            error!("[Keyfire] Failed to reset analytics: {}", e);
             false
         }
     }
@@ -1006,7 +1006,7 @@ fn handle_migrate_time_saved(conn: &Connection, assignments: &std::collections::
     // Collect rows that need updating: old "hotkey" or "macro" entries
     let mut stmt = match conn.prepare("SELECT id, action_type, trigger_key, char_count FROM action_log WHERE action_type IN ('hotkey', 'macro')") {
         Ok(s) => s,
-        Err(e) => { error!("[Trigr] Migration query failed: {}", e); return; }
+        Err(e) => { error!("[Keyfire] Migration query failed: {}", e); return; }
     };
 
     let rows: Vec<(i64, String, String, u32)> = stmt
@@ -1018,7 +1018,7 @@ fn handle_migrate_time_saved(conn: &Connection, assignments: &std::collections::
         .collect();
 
     if rows.is_empty() {
-        info!("[Trigr] Analytics migration: no old entries to update");
+        info!("[Keyfire] Analytics migration: no old entries to update");
         return;
     }
 
@@ -1058,12 +1058,12 @@ fn handle_migrate_time_saved(conn: &Connection, assignments: &std::collections::
             "UPDATE action_log SET action_type = ?1, time_saved = ?2 WHERE id = ?3",
             rusqlite::params![new_type, new_time, id],
         ) {
-            error!("[Trigr] Migration update failed for id {}: {}", id, e);
+            error!("[Keyfire] Migration update failed for id {}: {}", id, e);
         } else {
             updated += 1;
         }
     }
-    info!("[Trigr] Analytics migration: updated {}/{} entries", updated, rows.len());
+    info!("[Keyfire] Analytics migration: updated {}/{} entries", updated, rows.len());
 
     // Mark migration as done
     let _ = conn.execute(

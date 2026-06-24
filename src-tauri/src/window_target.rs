@@ -347,7 +347,7 @@ fn launch_and_get_pid(kind: &LaunchKind) -> Option<u32> {
                 None
             } else {
                 if path.is_empty() {
-                    warn!("[Trigr] Open App: empty target (kind={})", lk);
+                    warn!("[Keyfire] Open App: empty target (kind={})", lk);
                     return None;
                 }
                 shell_execute_ex_capture_pid(path, args)
@@ -355,7 +355,7 @@ fn launch_and_get_pid(kind: &LaunchKind) -> Option<u32> {
         }
         LaunchKind::Folder { path } => {
             if path.is_empty() {
-                warn!("[Trigr] Open Folder: empty path");
+                warn!("[Keyfire] Open Folder: empty path");
                 return None;
             }
             // Explorer is shell-brokered too; no reliable child PID.
@@ -385,16 +385,16 @@ fn shell_execute_ex_capture_pid(target: &str, args: &str) -> Option<u32> {
 
     let ok = unsafe { ShellExecuteExW(&mut sei) };
     if ok == 0 {
-        warn!("[Trigr] Open App: ShellExecuteExW failed for {}", target);
+        warn!("[Keyfire] Open App: ShellExecuteExW failed for {}", target);
         return None;
     }
     if sei.hProcess.is_null() {
-        info!("[Trigr] Open App: launched {} (no process handle returned)", target);
+        info!("[Keyfire] Open App: launched {} (no process handle returned)", target);
         return None;
     }
     let pid = unsafe { GetProcessId(sei.hProcess) };
     unsafe { CloseHandle(sei.hProcess); }
-    info!("[Trigr] Open App: launched {} (pid {})", target, pid);
+    info!("[Keyfire] Open App: launched {} (pid {})", target, pid);
     if pid == 0 { None } else { Some(pid) }
 }
 
@@ -419,9 +419,9 @@ fn shell_execute_no_pid(target: &str, args: &str) {
         )
     };
     if (result as usize) > 32 {
-        info!("[Trigr] Launched (shell): {}", target);
+        info!("[Keyfire] Launched (shell): {}", target);
     } else {
-        warn!("[Trigr] ShellExecuteW failed for {} (code {})", target, result as usize);
+        warn!("[Keyfire] ShellExecuteW failed for {} (code {})", target, result as usize);
     }
 }
 
@@ -434,7 +434,7 @@ fn do_simple_launch(kind: &LaunchKind) {
                 path.to_string()
             };
             if target.is_empty() {
-                warn!("[Trigr] Open App: empty target (kind={})", lk);
+                warn!("[Keyfire] Open App: empty target (kind={})", lk);
                 return;
             }
             shell_execute_no_pid(&target, args);

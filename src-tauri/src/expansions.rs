@@ -85,7 +85,7 @@ fn fire_rate_ok(context: &str) -> bool {
     times.retain(|t| now.duration_since(*t) < Duration::from_secs(2));
     if times.len() >= 8 {
         log::error!(
-            "[Trigr] FIRE-RATE BREAKER: {} fires in 2s — suppressing \"{}\" (feedback loop suspected)",
+            "[Keyfire] FIRE-RATE BREAKER: {} fires in 2s — suppressing \"{}\" (feedback loop suspected)",
             times.len(),
             context
         );
@@ -115,7 +115,7 @@ fn replay_buffered_and_recheck(guard: InjectionGuard) {
         crate::hotkeys::injection_buffer().lock().unwrap().drain(..).collect();
 
     if !buffered.is_empty() {
-        log::info!("[Trigr] Replaying {} buffered keystrokes", buffered.len());
+        log::info!("[Keyfire] Replaying {} buffered keystrokes", buffered.len());
         crate::hotkeys::SUPPRESS_SIMULATED
             .store(true, std::sync::atomic::Ordering::SeqCst);
         for key in &buffered {
@@ -449,7 +449,7 @@ pub fn check_space_trigger() -> bool {
     //     s.buffer.clear();
     //     drop(s);
     //
-    //     info!("[Trigr] Autocorrect: \"{}\" → \"{}\"", buffer_lower, correction);
+    //     info!("[Keyfire] Autocorrect: \"{}\" → \"{}\"", buffer_lower, correction);
     //     let replacement = format!("{}", correction);
     //     fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
     //     return true;
@@ -463,7 +463,7 @@ pub fn check_space_trigger() -> bool {
     //         s.buffer.clear();
     //         drop(s);
     //
-    //         info!("[Trigr] Autocorrect (built-in): \"{}\" → \"{}\"", buffer_lower, correction);
+    //         info!("[Keyfire] Autocorrect (built-in): \"{}\" → \"{}\"", buffer_lower, correction);
     //         let replacement = format!("{}", correction);
     //         fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
     //         return true;
@@ -502,7 +502,7 @@ pub fn check_space_trigger() -> bool {
             if !crate::licence::is_pro() {
                 s.buffer.clear();
                 drop(s);
-                info!("[Trigr] Image expansion skipped (Free): \"{}\"", buffer_lower);
+                info!("[Keyfire] Image expansion skipped (Free): \"{}\"", buffer_lower);
                 return true;
             }
 
@@ -521,7 +521,7 @@ pub fn check_space_trigger() -> bool {
             s.buffer.clear();
             drop(s);
 
-            info!("[Trigr] Image expansion: \"{}\" → \"{}\"", buffer_lower, image_path);
+            info!("[Keyfire] Image expansion: \"{}\" → \"{}\"", buffer_lower, image_path);
             fire_image_expansion(&buffer_lower, trigger_len, delete_extra, &image_path, image_scale);
             return true;
         }
@@ -549,7 +549,7 @@ pub fn check_space_trigger() -> bool {
                     s.buffer.clear();
                     drop(s);
 
-                    info!("[Trigr] Variant expansion (Free → options[0]): \"{}\"", trigger_str);
+                    info!("[Keyfire] Variant expansion (Free → options[0]): \"{}\"", trigger_str);
                     let case_pattern = detect_case(&original_buffer);
                     let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
                     fire_expansion(&trigger_str, trigger_len, delete_extra, &text, html_opt, &global_vars, case_pattern);
@@ -559,7 +559,7 @@ pub fn check_space_trigger() -> bool {
                 s.buffer.clear();
                 drop(s);
 
-                info!("[Trigr] Variant expansion: \"{}\" with {} options", trigger_str, opts.len());
+                info!("[Keyfire] Variant expansion: \"{}\" with {} options", trigger_str, opts.len());
                 if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
                     return true;
                 }
@@ -587,7 +587,7 @@ pub fn check_space_trigger() -> bool {
         s.buffer.clear();
         drop(s);
 
-        info!("[Trigr] Expansion: \"{}\" → \"{}\"", buffer_lower, text);
+        info!("[Keyfire] Expansion: \"{}\" → \"{}\"", buffer_lower, text);
         let case_pattern = detect_case(&original_buffer);
         let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
         fire_expansion(&buffer_lower, trigger_len, delete_extra, &text, html_opt, &global_vars, case_pattern);
@@ -681,7 +681,7 @@ pub fn check_immediate_triggers() -> bool {
                         s.buffer.clear();
                         drop(s);
 
-                        info!("[Trigr] Variant expansion (immediate, Free → options[0]): \"{}\"", trigger_str);
+                        info!("[Keyfire] Variant expansion (immediate, Free → options[0]): \"{}\"", trigger_str);
                         let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
                         fire_expansion(&trigger_str, trigger_len, false, &text, html_opt, &global_vars, case_pattern);
                         return true;
@@ -690,7 +690,7 @@ pub fn check_immediate_triggers() -> bool {
                     s.buffer.clear();
                     drop(s);
 
-                    info!("[Trigr] Variant expansion (immediate): \"{}\" with {} options", trigger_str, opts.len());
+                    info!("[Keyfire] Variant expansion (immediate): \"{}\" with {} options", trigger_str, opts.len());
                     if !crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
                         thread::spawn(move || {
                             fire_variant_expansion(&trigger_str, trigger_len, false, &opts, &global_vars);
@@ -705,7 +705,7 @@ pub fn check_immediate_triggers() -> bool {
                 if !crate::licence::is_pro() {
                     s.buffer.clear();
                     drop(s);
-                    info!("[Trigr] Image expansion (immediate) skipped (Free): \"{}\"", imm.trigger);
+                    info!("[Keyfire] Image expansion (immediate) skipped (Free): \"{}\"", imm.trigger);
                     return true;
                 }
 
@@ -714,7 +714,7 @@ pub fn check_immediate_triggers() -> bool {
                 s.buffer.clear();
                 drop(s);
 
-                info!("[Trigr] Image expansion (immediate): \"{}\" → \"{}\"", imm.trigger, image_path);
+                info!("[Keyfire] Image expansion (immediate): \"{}\" → \"{}\"", imm.trigger, image_path);
                 fire_image_expansion(&imm.trigger, trigger_len, false, &image_path, image_scale);
                 return true;
             }
@@ -732,7 +732,7 @@ pub fn check_immediate_triggers() -> bool {
             s.buffer.clear();
             drop(s);
 
-            info!("[Trigr] Expansion (immediate): \"{}\" → \"{}\"", trigger, text);
+            info!("[Keyfire] Expansion (immediate): \"{}\" → \"{}\"", trigger, text);
             let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
             fire_expansion(&trigger, trigger_len, false, &text, html_opt, &global_vars, case_pattern);
             return true;
@@ -800,7 +800,7 @@ pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
     let entry = match entry {
         Some(e) => e,
         None => {
-            log::warn!("[Trigr] Fire Text Expansion: trigger \"{}\" not found, skipping", trigger);
+            log::warn!("[Keyfire] Fire Text Expansion: trigger \"{}\" not found, skipping", trigger);
             return;
         }
     };
@@ -813,7 +813,7 @@ pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
 
     if expansion_type == "image" {
         if !crate::licence::is_pro() {
-            log::info!("[Trigr] Fire Text Expansion (image, Free): \"{}\" — no-op", trigger);
+            log::info!("[Keyfire] Fire Text Expansion (image, Free): \"{}\" — no-op", trigger);
             return;
         }
         let image_path = entry
@@ -827,7 +827,7 @@ pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
             .and_then(|d| d.get("imageScale"))
             .and_then(|v| v.as_u64())
             .unwrap_or(100) as u32;
-        log::info!("[Trigr] Fire Text Expansion (image): \"{}\" → \"{}\"", trigger, image_path);
+        log::info!("[Keyfire] Fire Text Expansion (image): \"{}\" → \"{}\"", trigger, image_path);
         fire_image_expansion(trigger, 0, false, &image_path, image_scale);
         return;
     }
@@ -846,16 +846,16 @@ pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
                 let first = &opts[0];
                 let text = first.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let html = first.get("html").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                log::info!("[Trigr] Fire Text Expansion (variant, Free → options[0]): \"{}\"", trigger);
+                log::info!("[Keyfire] Fire Text Expansion (variant, Free → options[0]): \"{}\"", trigger);
                 let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
                 fire_expansion(trigger, 0, false, &text, html_opt, &global_vars, CasePattern::Lower);
                 return;
             }
             if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
-                log::info!("[Trigr] Fire Text Expansion (variant): \"{}\" skipped — fill-in already active", trigger);
+                log::info!("[Keyfire] Fire Text Expansion (variant): \"{}\" skipped — fill-in already active", trigger);
                 return;
             }
-            log::info!("[Trigr] Fire Text Expansion (variant): \"{}\" with {} options", trigger, opts.len());
+            log::info!("[Keyfire] Fire Text Expansion (variant): \"{}\" with {} options", trigger, opts.len());
             let trigger_str = trigger.to_string();
             thread::spawn(move || {
                 fire_variant_expansion(&trigger_str, 0, false, &opts, &global_vars);
@@ -876,7 +876,7 @@ pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    log::info!("[Trigr] Fire Text Expansion (text): \"{}\" → \"{}\"", trigger, text);
+    log::info!("[Keyfire] Fire Text Expansion (text): \"{}\" → \"{}\"", trigger, text);
     let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
     fire_expansion(trigger, 0, false, &text, html_opt, &global_vars, CasePattern::Lower);
 }
@@ -2029,7 +2029,7 @@ fn build_cf_html(fragment: &str) -> Vec<u8> {
 /// CF_HTML fall back to CF_UNICODETEXT automatically — no extra wiring needed.
 fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
     log::info!(
-        "[Trigr] Clipboard write (expansions{}): \"{}\"",
+        "[Keyfire] Clipboard write (expansions{}): \"{}\"",
         if html.is_some() { ", +html" } else { "" },
         log_preview(text)
     );
@@ -2076,7 +2076,7 @@ fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
                 }
             }
 
-            // Keep Trigr's injected text out of Windows Clipboard History (Win+V)
+            // Keep Keyfire's injected text out of Windows Clipboard History (Win+V)
             // and Cloud Clipboard. Target apps still read CF_UNICODETEXT/CF_HTML
             // normally — these marker formats are only read by the OS clipboard
             // monitor. Must be set while the clipboard is open, after the content.
@@ -2093,7 +2093,7 @@ fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
 }
 
 /// Mark the currently-open clipboard so Windows Clipboard History (Win+V) and
-/// Cloud Clipboard skip Trigr's own injected content. MUST be called while the
+/// Cloud Clipboard skip Keyfire's own injected content. MUST be called while the
 /// clipboard is OPEN and AFTER the real content formats have been set. Best
 /// effort: any failure is ignored (paste still works; the payload just isn't
 /// excluded). Pasting is unaffected — apps read the content formats, not these.
@@ -2141,7 +2141,7 @@ pub(crate) unsafe fn mark_clipboard_excluded() {
 // drops every other format the source app put on the clipboard — most damagingly
 // CF_DIB images from screenshot tools (Snagit, Snipping Tool, ShareX). After a
 // text expansion fires, the image is gone from the Windows clipboard and the
-// user's next Ctrl+V pastes Trigr's expansion text instead of their image.
+// user's next Ctrl+V pastes Keyfire's expansion text instead of their image.
 //
 // The fix below snapshots every HGLOBAL-backed format present on the clipboard
 // (CF_DIB, CF_DIBV5, CF_HDROP, CF_UNICODETEXT, CF_HTML, RTF, PNG, app-specific
@@ -2223,11 +2223,11 @@ pub(crate) fn snapshot_clipboard() -> Vec<(u32, Vec<u8>)> {
 /// after the listener has had a chance to process the event.
 ///
 /// An empty snapshot still calls EmptyClipboard — this matches the pre-state
-/// of "clipboard was empty before we wrote our text" and removes Trigr's
+/// of "clipboard was empty before we wrote our text" and removes Keyfire's
 /// expansion text from the Windows clipboard. Returns false if the clipboard
-/// couldn't be opened (clipboard contents are then left as Trigr wrote them).
+/// couldn't be opened (clipboard contents are then left as Keyfire wrote them).
 pub(crate) fn restore_clipboard_snapshot(snapshot: &[(u32, Vec<u8>)]) -> bool {
-    log::info!("[Trigr] Clipboard restore: {} formats", snapshot.len());
+    log::info!("[Keyfire] Clipboard restore: {} formats", snapshot.len());
     crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
         .store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -2243,7 +2243,7 @@ pub(crate) fn restore_clipboard_snapshot(snapshot: &[(u32, Vec<u8>)]) -> bool {
         if attempt < 9 { thread::sleep(Duration::from_millis(3)); }
     }
     if !opened {
-        log::warn!("[Trigr] restore_clipboard_snapshot: OpenClipboard failed after retries");
+        log::warn!("[Keyfire] restore_clipboard_snapshot: OpenClipboard failed after retries");
         return false;
     }
 
@@ -2279,7 +2279,7 @@ pub(crate) fn restore_clipboard_snapshot(snapshot: &[(u32, Vec<u8>)]) -> bool {
 
 /// Wraps `GetClipboardSequenceNumber` for the "did anyone else write to the
 /// clipboard during our paste window?" guard. The OS bumps this every time the
-/// clipboard contents change (any process — Trigr's own writes count too).
+/// clipboard contents change (any process — Keyfire's own writes count too).
 pub(crate) fn clipboard_sequence_number() -> u32 {
     unsafe { GetClipboardSequenceNumber() }
 }
@@ -2379,7 +2379,7 @@ pub(crate) fn target_needs_shift_insert(target_hwnd: isize) -> bool {
 
 /// Inject text via batched KEYEVENTF_UNICODE SendInput (single call).
 fn inject_via_sendinput(text: &str, target_hwnd: isize) {
-    log::info!("[Trigr] Inject (sendinput): \"{}\"", log_preview(text));
+    log::info!("[Keyfire] Inject (sendinput): \"{}\"", log_preview(text));
     // Release physically held modifiers
     let held = crate::actions::release_held_modifiers();
 
@@ -2466,10 +2466,10 @@ fn inject_via_sendinput(text: &str, target_hwnd: isize) {
 /// rich text (Word, Outlook, Gmail, Slack, Teams) receive formatted content.
 /// Apps that don't accept CF_HTML automatically fall back to CF_UNICODETEXT.
 fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
-    log::info!("[Trigr] Inject (clipboard): \"{}\"", log_preview(text));
+    log::info!("[Keyfire] Inject (clipboard): \"{}\"", log_preview(text));
     // Snapshot every format currently on the clipboard. Text-only save misses
     // CF_DIB images (Snagit, Snipping Tool), CF_HDROP file drops, RTF from
-    // Word, and registered formats from Office/Chromium — leaving Trigr's
+    // Word, and registered formats from Office/Chromium — leaving Keyfire's
     // expansion text on the clipboard when the user's next Ctrl+V expected
     // the image they had a moment ago.
     let snapshot = snapshot_clipboard();
@@ -2512,7 +2512,7 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
 
     // Write replacement to clipboard — if this fails, do NOT paste (would paste old clipboard content)
     if !write_clipboard_dual(&payload_text, payload_html.as_deref()) {
-        log::warn!("[Trigr] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
+        log::warn!("[Keyfire] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
         return;
     }
     let post_write_seq = clipboard_sequence_number();
@@ -2645,7 +2645,7 @@ fn write_clipboard_image(pixels: &[u8], width: u32, height: u32, raw_png_bytes: 
             }
         }
 
-        // Keep Trigr's injected image out of Win+V / Cloud Clipboard (same as text).
+        // Keep Keyfire's injected image out of Win+V / Cloud Clipboard (same as text).
         mark_clipboard_excluded();
         CloseClipboard();
         // Record the seqnum so the listener skips this image write's update event.
@@ -2957,7 +2957,7 @@ fn fire_image_expansion(
 
     // Check file exists
     if !std::path::Path::new(image_path).exists() {
-        log::warn!("[Trigr] Image expansion: file not found at \"{}\"", image_path);
+        log::warn!("[Keyfire] Image expansion: file not found at \"{}\"", image_path);
         return;
     }
 
@@ -2965,7 +2965,7 @@ fn fire_image_expansion(
     let file_bytes = match std::fs::read(image_path) {
         Ok(b) => b,
         Err(e) => {
-            log::warn!("[Trigr] Image expansion: failed to read \"{}\": {}", image_path, e);
+            log::warn!("[Keyfire] Image expansion: failed to read \"{}\": {}", image_path, e);
             return;
         }
     };
@@ -2980,7 +2980,7 @@ fn fire_image_expansion(
         "png" => image::ImageFormat::Png,
         "jpg" | "jpeg" => image::ImageFormat::Jpeg,
         _ => {
-            log::warn!("[Trigr] Image expansion: unsupported format \"{}\"", ext);
+            log::warn!("[Keyfire] Image expansion: unsupported format \"{}\"", ext);
             return;
         }
     };
@@ -2989,7 +2989,7 @@ fn fire_image_expansion(
     let mut img = match image::load_from_memory_with_format(&file_bytes, format) {
         Ok(i) => i,
         Err(e) => {
-            log::warn!("[Trigr] Image expansion: failed to decode \"{}\": {}", image_path, e);
+            log::warn!("[Keyfire] Image expansion: failed to decode \"{}\": {}", image_path, e);
             return;
         }
     };
@@ -3460,7 +3460,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>) {
         .map(|(k, _)| k["GLOBAL::EXPANSION::".len()..].to_string())
         .collect();
     info!(
-        "[Trigr] Expansion assignments updated: {} entries ({} space-triggers)",
+        "[Keyfire] Expansion assignments updated: {} entries ({} space-triggers)",
         s.assignments.len(),
         s.space_triggers.len()
     );
@@ -3469,7 +3469,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>) {
 
 pub fn set_autocorrect_enabled(enabled: bool) {
     state().lock().unwrap().autocorrect_enabled = enabled;
-    info!("[Trigr] Autocorrect config: {} (engine disabled for Alpha)", enabled);
+    info!("[Keyfire] Autocorrect config: {} (engine disabled for Alpha)", enabled);
 }
 
 pub fn update_global_variables(vars: HashMap<String, String>) {

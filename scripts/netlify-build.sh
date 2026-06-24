@@ -21,19 +21,19 @@ fi
 # ── 2. IndexNow ping ───────────────────────────────────────────────────────
 echo "IndexNow ping → api.indexnow.org"
 curl -sS -X POST -H 'Content-Type: application/json' --data-raw '{
-  "host": "usetrigr.com",
+  "host": "keyfire.app",
   "key": "24db6ec83ef4488ba706bf6cd5fcb81b",
-  "keyLocation": "https://usetrigr.com/24db6ec83ef4488ba706bf6cd5fcb81b.txt",
+  "keyLocation": "https://keyfire.app/24db6ec83ef4488ba706bf6cd5fcb81b.txt",
   "urlList": [
-    "https://usetrigr.com/",
-    "https://usetrigr.com/pricing.html",
-    "https://usetrigr.com/text-expander.html",
-    "https://usetrigr.com/autohotkey-alternative.html",
-    "https://usetrigr.com/roadmap.html",
-    "https://usetrigr.com/trigr-help.html",
-    "https://usetrigr.com/blog/",
-    "https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html",
-    "https://usetrigr.com/blog/best-text-expander-windows-11-2026.html"
+    "https://keyfire.app/",
+    "https://keyfire.app/pricing.html",
+    "https://keyfire.app/text-expander.html",
+    "https://keyfire.app/autohotkey-alternative.html",
+    "https://keyfire.app/roadmap.html",
+    "https://keyfire.app/trigr-help.html",
+    "https://keyfire.app/blog/",
+    "https://keyfire.app/blog/custom-hotkeys-windows-no-coding.html",
+    "https://keyfire.app/blog/best-text-expander-windows-11-2026.html"
   ]
 }' https://api.indexnow.org/indexnow || true
 

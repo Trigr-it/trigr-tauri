@@ -1,6 +1,6 @@
 name: Lighthouse CI
 
-# Runs Lighthouse against the deployed usetrigr.com pages on every push to
+# Runs Lighthouse against the deployed keyfire.app pages on every push to
 # main and on PRs that touch the docs/ tree. Asserts CWV thresholds per
 # the Phase 4 monitoring plan in docs/private/usetrigr-audit/IMPLEMENTATION-TODO.md.
 
@@ -37,11 +37,11 @@ jobs:
         uses: treosh/lighthouse-ci-action@v11
         with:
           urls: |
-            https://usetrigr.com/
-            https://usetrigr.com/pricing.html
-            https://usetrigr.com/text-expander.html
-            https://usetrigr.com/autohotkey-alternative.html
-            https://usetrigr.com/blog/best-text-expander-windows-11-2026.html
+            https://keyfire.app/
+            https://keyfire.app/pricing.html
+            https://keyfire.app/text-expander.html
+            https://keyfire.app/autohotkey-alternative.html
+            https://keyfire.app/blog/best-text-expander-windows-11-2026.html
           uploadArtifacts: true
           temporaryPublicStorage: true
           configPath: ./.lighthouserc.json

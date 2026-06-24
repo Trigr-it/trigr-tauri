@@ -3,6 +3,10 @@
 // Keys are signed strings of the form:
 //   TRIGR-PRO-<base64url(payload_json)>-<base64url(signature)>
 //
+// The "TRIGR-PRO" prefix is preserved across the Keyfire rebrand for backward
+// compatibility with existing signed beta keys. It is an opaque internal token,
+// not user-visible — users see the whole signed blob as a single line of text.
+//
 // The payload encodes { email, exp, tier, id }. The signature is verified
 // against PUBLIC_KEY_B64 (which is the base64 of the 32-byte Ed25519 public
 // key produced by `cargo run -- init` inside src-tauri/trigr-keygen).
@@ -99,7 +103,7 @@ pub fn init() {
     let pro = compute_is_pro(&state);
     IS_PRO.store(pro, Ordering::SeqCst);
     let _ = LICENCE_STATE.set(Mutex::new(state));
-    info!("[Trigr] Licence module initialized — is_pro: {}", pro);
+    info!("[Keyfire] Licence module initialized — is_pro: {}", pro);
 }
 
 pub fn is_pro() -> bool {
@@ -125,7 +129,7 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
     let exp_dt = chrono::DateTime::parse_from_rfc3339(&payload.exp)
         .map_err(|_| "Key payload has an invalid expiry".to_string())?;
     if exp_dt.to_utc() < chrono::Utc::now() {
-        return Err("This key has expired. Email admin@usetrigr.com for a new one.".to_string());
+        return Err("This key has expired. Email admin@keyfire.app for a new one.".to_string());
     }
 
     let prior = match LICENCE_STATE.get() {
@@ -145,7 +149,7 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
     };
     update_state(state.clone());
     info!(
-        "[Trigr] Licence activated for {} (tier {}, expires {})",
+        "[Keyfire] Licence activated for {} (tier {}, expires {})",
         payload.email, payload.tier, payload.exp
     );
     Ok(build_status(&state))
@@ -169,7 +173,7 @@ pub async fn start_trial() -> Result<LicenceStatus, String> {
     state.trial_used = true;
     update_state(state.clone());
     info!(
-        "[Trigr] Pro trial started at {} ({} days)",
+        "[Keyfire] Pro trial started at {} ({} days)",
         state.trial_started_at.as_deref().unwrap_or(""),
         TRIAL_DURATION_DAYS
     );
@@ -186,7 +190,7 @@ pub async fn mark_trial_offer_shown() -> LicenceStatus {
     if !state.trial_offer_shown {
         state.trial_offer_shown = true;
         update_state(state.clone());
-        info!("[Trigr] Trial offer marked as shown");
+        info!("[Keyfire] Trial offer marked as shown");
     }
     build_status(&state)
 }
@@ -203,7 +207,7 @@ pub async fn reset_trial() -> LicenceStatus {
     state.trial_used = false;
     state.trial_offer_shown = false;
     update_state(state.clone());
-    info!("[Trigr] Trial state reset (dev)");
+    info!("[Keyfire] Trial state reset (dev)");
     build_status(&state)
 }
 
@@ -221,7 +225,7 @@ pub async fn deactivate_licence() -> Result<LicenceStatus, String> {
         ..LicenceState::default()
     };
     update_state(state.clone());
-    info!("[Trigr] Licence deactivated");
+    info!("[Keyfire] Licence deactivated");
     Ok(build_status(&state))
 }
 
@@ -259,7 +263,7 @@ pub async fn check_and_revalidate() -> LicenceStatus {
             build_status(&new_state)
         }
         Err(e) => {
-            warn!("[Trigr] Saved licence key failed re-verification: {}", e);
+            warn!("[Keyfire] Saved licence key failed re-verification: {}", e);
             let new_state = LicenceState {
                 valid: false,
                 ..state
@@ -274,11 +278,12 @@ pub async fn check_and_revalidate() -> LicenceStatus {
 
 fn verify_key(key: &str) -> Result<Payload, String> {
     // Key format: TRIGR-PRO.<base64url(payload)>.<base64url(signature)>
+    // Prefix preserved across rebrand for backward compatibility — see header.
     // `.` is the separator — it is NOT in the base64url alphabet so it splits
     // cleanly even when payload/signature contain `-` or `_`.
     let body = key
         .strip_prefix("TRIGR-PRO.")
-        .ok_or_else(|| "Not a Trigr licence key".to_string())?;
+        .ok_or_else(|| "Not a Keyfire licence key".to_string())?;
     let (payload_b64, sig_b64) = body
         .split_once('.')
         .ok_or_else(|| "Key is malformed (missing signature)".to_string())?;
@@ -298,7 +303,7 @@ fn verify_key(key: &str) -> Result<Payload, String> {
 
     let verifying_key = load_public_key().map_err(|e| {
         format!(
-            "This build of Trigr is missing its signing public key ({}). \
+            "This build of Keyfire is missing its signing public key ({}). \
              Please reinstall the latest version.",
             e
         )
@@ -404,7 +409,7 @@ fn build_status(state: &LicenceState) -> LicenceStatus {
         key_entered,
         status,
         product_name: if is_pro {
-            "Trigr Pro".to_string()
+            "Keyfire Pro".to_string()
         } else {
             String::new()
         },
@@ -433,7 +438,7 @@ fn load_from_local_settings() -> LicenceState {
     let val = crate::config::load_local_settings_json();
     match val.get("licence") {
         Some(v) => serde_json::from_value::<LicenceState>(v.clone()).unwrap_or_else(|e| {
-            warn!("[Trigr] Failed to deserialize licence state: {}", e);
+            warn!("[Keyfire] Failed to deserialize licence state: {}", e);
             LicenceState::default()
         }),
         None => LicenceState::default(),
@@ -448,7 +453,7 @@ fn save_to_local_settings(state: &LicenceState) {
                 obj.insert("licence".to_string(), v);
             }
             Err(e) => {
-                error!("[Trigr] Failed to serialize licence state: {}", e);
+                error!("[Keyfire] Failed to serialize licence state: {}", e);
                 return;
             }
         }

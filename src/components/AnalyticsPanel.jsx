@@ -699,7 +699,7 @@ export default function AnalyticsPanel({ isPro = false }) {
                     <span className="analytics-assignment-count">{item.count}x</span>
                     <span className="analytics-assignment-saved">{formatTimeShort(item.time_saved)}</span>
                   </div>
-                )) : <div className="analytics-empty-tab">App data will appear as you use Trigr</div>}
+                )) : <div className="analytics-empty-tab">App data will appear as you use Keyfire</div>}
               </div>
             </section>
           </div>

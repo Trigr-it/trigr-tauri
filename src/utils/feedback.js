@@ -9,7 +9,7 @@
 // via Tauri's openExternal so the trigger is never a dead click.
 
 const FEEDBACK_BOARD = 'feature-requests';
-const FALLBACK_EMAIL = 'admin@usetrigr.com';
+const FALLBACK_EMAIL = 'admin@keyfire.app';
 
 export function openFeedback() {
   if (typeof window.Featurebase === 'function') {
@@ -19,9 +19,9 @@ export function openFeedback() {
     });
     return;
   }
-  const subject = encodeURIComponent('Trigr Feedback');
+  const subject = encodeURIComponent('Keyfire Feedback');
   const body = encodeURIComponent(
-    "What happened (or what would you like to see)?\n\n\n\nSent from Trigr"
+    "What happened (or what would you like to see)?\n\n\n\nSent from Keyfire"
   );
   window.electronAPI?.openExternal(`mailto:${FALLBACK_EMAIL}?subject=${subject}&body=${body}`);
 }

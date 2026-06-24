@@ -35,7 +35,7 @@ pub fn config_path() -> PathBuf {
                 return shared_path;
             }
             warn!(
-                "[Trigr] Shared config dir not found: {} — falling back to local",
+                "[Keyfire] Shared config dir not found: {} — falling back to local",
                 shared_dir.display()
             );
         }
@@ -66,11 +66,11 @@ pub fn load_local_settings_json() -> Value {
     }
     match fs::read_to_string(&path) {
         Ok(raw) => serde_json::from_str::<Value>(&raw).unwrap_or_else(|e| {
-            warn!("[Trigr] Failed to parse local settings: {}", e);
+            warn!("[Keyfire] Failed to parse local settings: {}", e);
             serde_json::json!({})
         }),
         Err(e) => {
-            warn!("[Trigr] Failed to read local settings: {}", e);
+            warn!("[Keyfire] Failed to read local settings: {}", e);
             serde_json::json!({})
         }
     }
@@ -83,16 +83,16 @@ pub fn save_local_settings_json(val: &Value) -> bool {
     match serde_json::to_string_pretty(val) {
         Ok(json) => match fs::write(&path, json) {
             Ok(()) => {
-                info!("[Trigr] Local settings saved");
+                info!("[Keyfire] Local settings saved");
                 true
             }
             Err(e) => {
-                error!("[Trigr] Failed to write local settings: {}", e);
+                error!("[Keyfire] Failed to write local settings: {}", e);
                 false
             }
         },
         Err(e) => {
-            error!("[Trigr] Failed to serialize local settings: {}", e);
+            error!("[Keyfire] Failed to serialize local settings: {}", e);
             false
         }
     }
@@ -103,7 +103,7 @@ fn load_local_settings() {
     if let Some(shared) = val.get("shared_config_path").and_then(|v| v.as_str()) {
         if !shared.is_empty() {
             let shared_path = PathBuf::from(shared);
-            info!("[Trigr] Shared config path from local settings: {}", shared_path.display());
+            info!("[Keyfire] Shared config path from local settings: {}", shared_path.display());
             set_shared_config_dir(Some(shared_path));
         }
     }
@@ -127,8 +127,8 @@ pub fn save_local_settings(shared_path: Option<&Path>) -> bool {
 pub fn set_shared_config_dir(path: Option<PathBuf>) {
     if let Ok(mut guard) = SHARED_CONFIG_DIR.write() {
         match &path {
-            Some(p) => info!("[Trigr] Shared config dir set to: {}", p.display()),
-            None => info!("[Trigr] Shared config dir cleared — using local AppData"),
+            Some(p) => info!("[Keyfire] Shared config dir set to: {}", p.display()),
+            None => info!("[Keyfire] Shared config dir cleared — using local AppData"),
         }
         *guard = path;
     }
@@ -278,7 +278,7 @@ pub fn migrate_shared_to_local() -> Result<(), String> {
         .map_err(|e| format!("Shared config is not valid JSON: {}", e))?;
 
     // Atomic write: temp file + rename. Avoids partial-write corruption if
-    // Trigr is killed mid-migration.
+    // Keyfire is killed mid-migration.
     let tmp_path = local_file.with_extension("tmp");
     fs::write(&tmp_path, &content)
         .map_err(|e| format!("Cannot write local config temp: {}", e))?;
@@ -292,7 +292,7 @@ pub fn migrate_shared_to_local() -> Result<(), String> {
     stop_config_watcher();
 
     info!(
-        "[Trigr] Migration complete: {} -> {}",
+        "[Keyfire] Migration complete: {} -> {}",
         shared_file.display(),
         local_file.display()
     );
@@ -310,7 +310,7 @@ pub fn check_and_migrate_if_due() {
 
     if is_pro {
         if expired_at.is_some() {
-            info!("[Trigr] Pro restored during grace period — cancelling shared migration");
+            info!("[Keyfire] Pro restored during grace period — cancelling shared migration");
             let _ = set_pro_expired_at(None);
             set_migration_deferred(false);
         }
@@ -332,14 +332,14 @@ pub fn check_and_migrate_if_due() {
             let _ = set_pro_expired_at(Some(now));
             let due = now + chrono::Duration::days(GRACE_PERIOD_DAYS);
             info!(
-                "[Trigr] Pro grace period started for shared config (migrates at {})",
+                "[Keyfire] Pro grace period started for shared config (migrates at {})",
                 due.to_rfc3339()
             );
         }
         Some(t) => {
             let elapsed = chrono::Utc::now().signed_duration_since(t);
             if elapsed.num_days() >= GRACE_PERIOD_DAYS {
-                info!("[Trigr] Pro grace expired, migrating shared config to local");
+                info!("[Keyfire] Pro grace expired, migrating shared config to local");
                 match migrate_shared_to_local() {
                     Ok(()) => {
                         let _ = set_pro_expired_at(None);
@@ -347,7 +347,7 @@ pub fn check_and_migrate_if_due() {
                     }
                     Err(e) => {
                         warn!(
-                            "[Trigr] Migration deferred — shared file unreachable: {}. Will retry.",
+                            "[Keyfire] Migration deferred — shared file unreachable: {}. Will retry.",
                             e
                         );
                         set_migration_deferred(true);
@@ -360,7 +360,7 @@ pub fn check_and_migrate_if_due() {
 
 // ── File watcher ────────────────────────────────────────────────────────────
 
-/// Set to true before Trigr writes config, cleared after. Prevents self-reload.
+/// Set to true before Keyfire writes config, cleared after. Prevents self-reload.
 pub static SELF_WRITE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 /// Hash of the last content we wrote, to detect our own writes after the flag clears.
@@ -419,17 +419,17 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
     let mut watcher = match watcher {
         Ok(w) => w,
         Err(e) => {
-            error!("[Trigr] Failed to create file watcher: {}", e);
+            error!("[Keyfire] Failed to create file watcher: {}", e);
             return;
         }
     };
 
     if let Err(e) = watcher.watch(&watched_dir, RecursiveMode::NonRecursive) {
-        error!("[Trigr] Failed to watch directory {}: {}", watched_dir.display(), e);
+        error!("[Keyfire] Failed to watch directory {}: {}", watched_dir.display(), e);
         return;
     }
 
-    info!("[Trigr] Config watcher started on: {}", watched_dir.display());
+    info!("[Keyfire] Config watcher started on: {}", watched_dir.display());
 
     // Store watcher handle so it stays alive
     if let Ok(mut guard) = WATCHER_HANDLE.lock() {
@@ -450,7 +450,7 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
 
             loop {
                 if WATCHER_STOP.load(Ordering::SeqCst) {
-                    info!("[Trigr] Config watcher thread stopping");
+                    info!("[Keyfire] Config watcher thread stopping");
                     break;
                 }
 
@@ -510,7 +510,7 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        info!("[Trigr] Config watcher channel disconnected");
+                        info!("[Keyfire] Config watcher channel disconnected");
                         break;
                     }
                 }
@@ -524,7 +524,7 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
 
                             // Self-write suppression
                             if SELF_WRITE_IN_PROGRESS.load(Ordering::SeqCst) {
-                                info!("[Trigr] Config watcher: ignoring self-write in progress");
+                                info!("[Keyfire] Config watcher: ignoring self-write in progress");
                                 continue;
                             }
 
@@ -538,7 +538,7 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
                             let content = match file_content {
                                 Some(c) => c,
                                 None => {
-                                    warn!("[Trigr] Config watcher: could not read file after retries");
+                                    warn!("[Keyfire] Config watcher: could not read file after retries");
                                     continue;
                                 }
                             };
@@ -548,7 +548,7 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
                             if let Ok(guard) = LAST_WRITTEN_HASH.lock() {
                                 if let Some(last_hash) = *guard {
                                     if content_hash == last_hash {
-                                        info!("[Trigr] Config watcher: content matches last write — skipping");
+                                        info!("[Keyfire] Config watcher: content matches last write — skipping");
                                         continue;
                                     }
                                 }
@@ -563,16 +563,16 @@ pub fn start_config_watcher(dir: PathBuf, app: tauri::AppHandle) {
                                     // Phase 2: the reloaded config is now the
                                     // frontend's base for any subsequent save.
                                     snapshot_loaded(&cfg);
-                                    info!("[Trigr] Config watcher: valid config change detected — emitting reload event");
+                                    info!("[Keyfire] Config watcher: valid config change detected — emitting reload event");
                                     if let Err(e) = app_handle.emit("config-reloaded-from-sync", &cfg) {
-                                        error!("[Trigr] Failed to emit config reload event: {}", e);
+                                        error!("[Keyfire] Failed to emit config reload event: {}", e);
                                     }
                                 }
                                 Ok(_) => {
-                                    warn!("[Trigr] Config watcher: changed file has invalid structure — ignoring");
+                                    warn!("[Keyfire] Config watcher: changed file has invalid structure — ignoring");
                                 }
                                 Err(e) => {
-                                    warn!("[Trigr] Config watcher: changed file is not valid JSON: {}", e);
+                                    warn!("[Keyfire] Config watcher: changed file is not valid JSON: {}", e);
                                 }
                             }
                         }
@@ -588,7 +588,7 @@ pub fn stop_config_watcher() {
     if let Ok(mut guard) = WATCHER_HANDLE.lock() {
         if guard.is_some() {
             *guard = None;
-            info!("[Trigr] Config watcher stopped");
+            info!("[Keyfire] Config watcher stopped");
         }
     }
 }
@@ -600,14 +600,14 @@ fn read_with_retry(path: &Path, retries: u32, delay: std::time::Duration) -> Opt
             Err(e) => {
                 if attempt < retries - 1 {
                     warn!(
-                        "[Trigr] Config read attempt {} failed ({}), retrying in {}ms",
+                        "[Keyfire] Config read attempt {} failed ({}), retrying in {}ms",
                         attempt + 1,
                         e,
                         delay.as_millis()
                     );
                     std::thread::sleep(delay);
                 } else {
-                    error!("[Trigr] Config read failed after {} attempts: {}", retries, e);
+                    error!("[Keyfire] Config read failed after {} attempts: {}", retries, e);
                 }
             }
         }
@@ -647,12 +647,12 @@ pub fn load_config() -> Option<Value> {
         Ok(raw) => match serde_json::from_str(&raw) {
             Ok(v) => Some(v),
             Err(e) => {
-                error!("[Trigr] Failed to parse config: {}", e);
+                error!("[Keyfire] Failed to parse config: {}", e);
                 None
             }
         },
         Err(e) => {
-            error!("[Trigr] Failed to read config: {}", e);
+            error!("[Keyfire] Failed to read config: {}", e);
             None
         }
     }
@@ -667,10 +667,10 @@ pub fn load_config_safe() -> (Option<Value>, Option<String>) {
         match fs::read_to_string(&path) {
             Ok(raw) => match serde_json::from_str::<Value>(&raw) {
                 Ok(cfg) if is_valid_config(&cfg) => return (Some(cfg), None),
-                Ok(_) => warn!("[Trigr] Main config has invalid structure — trying backup"),
-                Err(e) => error!("[Trigr] Main config parse error: {}", e),
+                Ok(_) => warn!("[Keyfire] Main config has invalid structure — trying backup"),
+                Err(e) => error!("[Keyfire] Main config parse error: {}", e),
             },
-            Err(e) => error!("[Trigr] Main config unreadable: {}", e),
+            Err(e) => error!("[Keyfire] Main config unreadable: {}", e),
         }
     }
 
@@ -680,7 +680,7 @@ pub fn load_config_safe() -> (Option<Value>, Option<String>) {
         match fs::read_to_string(&lkg_path) {
             Ok(raw) => match serde_json::from_str::<Value>(&raw) {
                 Ok(cfg) if is_valid_config(&cfg) => {
-                    info!("[Trigr] Restored from last-known-good backup");
+                    info!("[Keyfire] Restored from last-known-good backup");
                     return (
                         Some(cfg),
                         Some("keyforge-config-last-known-good.json".to_string()),
@@ -688,7 +688,7 @@ pub fn load_config_safe() -> (Option<Value>, Option<String>) {
                 }
                 _ => {}
             },
-            Err(e) => error!("[Trigr] last-known-good unreadable: {}", e),
+            Err(e) => error!("[Keyfire] last-known-good unreadable: {}", e),
         }
     }
 
@@ -713,7 +713,7 @@ pub fn load_config_safe() -> (Option<Value>, Option<String>) {
             if let Ok(raw) = fs::read_to_string(&fpath) {
                 if let Ok(cfg) = serde_json::from_str::<Value>(&raw) {
                     if is_valid_config(&cfg) {
-                        info!("[Trigr] Restored from backup: {}", f);
+                        info!("[Keyfire] Restored from backup: {}", f);
                         return (Some(cfg), Some(f.clone()));
                     }
                 }
@@ -729,7 +729,7 @@ pub fn load_config_safe() -> (Option<Value>, Option<String>) {
 pub fn save_config(config: &Value) -> bool {
     let path = config_path();
     let tmp_path = path.with_extension("json.tmp");
-    info!("[Trigr] Saving config to: {}", path.display());
+    info!("[Keyfire] Saving config to: {}", path.display());
 
     // Ensure parent dir exists
     if let Some(parent) = path.parent() {
@@ -743,17 +743,17 @@ pub fn save_config(config: &Value) -> bool {
             let result = match fs::write(&tmp_path, &json) {
                 Ok(()) => match fs::rename(&tmp_path, &path) {
                     Ok(()) => {
-                        info!("[Trigr] Config saved ({} bytes)", json.len());
+                        info!("[Keyfire] Config saved ({} bytes)", json.len());
                         true
                     }
                     Err(e) => {
-                        error!("[Trigr] Failed to rename config tmp file: {}", e);
+                        error!("[Keyfire] Failed to rename config tmp file: {}", e);
                         let _ = fs::remove_file(&tmp_path);
                         false
                     }
                 },
                 Err(e) => {
-                    error!("[Trigr] Failed to write config tmp file: {}", e);
+                    error!("[Keyfire] Failed to write config tmp file: {}", e);
                     let _ = fs::remove_file(&tmp_path);
                     false
                 }
@@ -762,7 +762,7 @@ pub fn save_config(config: &Value) -> bool {
             result
         }
         Err(e) => {
-            error!("[Trigr] Failed to serialize config: {}", e);
+            error!("[Keyfire] Failed to serialize config: {}", e);
             false
         }
     }
@@ -792,12 +792,12 @@ pub fn create_timestamped_backup(config: &Value) {
     match serde_json::to_string_pretty(config) {
         Ok(json) => match fs::write(&dest, json) {
             Ok(()) => {
-                info!("[Trigr] Backup created: keyforge-config-{}.json", stamp);
+                info!("[Keyfire] Backup created: keyforge-config-{}.json", stamp);
                 prune_backups();
             }
-            Err(e) => error!("[Trigr] Failed to create timestamped backup: {}", e),
+            Err(e) => error!("[Keyfire] Failed to create timestamped backup: {}", e),
         },
-        Err(e) => error!("[Trigr] Failed to serialize backup: {}", e),
+        Err(e) => error!("[Keyfire] Failed to serialize backup: {}", e),
     }
 }
 
@@ -810,10 +810,10 @@ pub fn update_last_known_good(config: &Value) {
     match serde_json::to_string_pretty(config) {
         Ok(json) => {
             if let Err(e) = fs::write(&dest, json) {
-                error!("[Trigr] Failed to update last-known-good: {}", e);
+                error!("[Keyfire] Failed to update last-known-good: {}", e);
             }
         }
-        Err(e) => error!("[Trigr] Failed to serialize LKG: {}", e),
+        Err(e) => error!("[Keyfire] Failed to serialize LKG: {}", e),
     }
 }
 
@@ -834,9 +834,9 @@ fn prune_backups() {
         for f in &files[..excess] {
             let path = bdir.join(f);
             if let Err(e) = fs::remove_file(&path) {
-                error!("[Trigr] Failed to prune backup {}: {}", f, e);
+                error!("[Keyfire] Failed to prune backup {}: {}", f, e);
             } else {
-                info!("[Trigr] Pruned old backup: {}", f);
+                info!("[Keyfire] Pruned old backup: {}", f);
             }
         }
     }
@@ -905,7 +905,7 @@ fn guard_destructive_sync(incoming: &Value) {
         let good = radial_item_count(&lkg);
         if good > 0 && radial_item_count(incoming) == 0 {
             warn!(
-                "[Trigr] Config watcher: synced change drops radial layout from {} segments to 0 — snapshotting last-known-good before applying (possible cross-device clobber)",
+                "[Keyfire] Config watcher: synced change drops radial layout from {} segments to 0 — snapshotting last-known-good before applying (possible cross-device clobber)",
                 good
             );
             create_timestamped_backup(&lkg);
@@ -928,7 +928,7 @@ static LAST_LOADED_BASE: Mutex<Option<Value>> = Mutex::new(None);
 
 /// Top-level fields that are not persistent user state and must be excluded
 /// when diffing the frontend's view against on-disk state during a merge.
-/// `configRevision` and `lastModifiedUtc` are written by Trigr itself on every
+/// `configRevision` and `lastModifiedUtc` are written by Fire itself on every
 /// save; `_restoredFrom` is injected at load time and never belongs in the
 /// merge calculus.
 pub const INTERNAL_CONFIG_KEYS: &[&str] = &["configRevision", "lastModifiedUtc", "_restoredFrom"];
@@ -1243,7 +1243,7 @@ pub fn restore_backup(filename: &str) -> Value {
                     return serde_json::json!({ "ok": false, "error": "Backup file is not a valid config" });
                 }
                 if save_config(&cfg) {
-                    info!("[Trigr] Restored from backup: {}", filename);
+                    info!("[Keyfire] Restored from backup: {}", filename);
                     serde_json::json!({ "ok": true, "config": cfg })
                 } else {
                     serde_json::json!({ "ok": false, "error": "Failed to write restored config" })

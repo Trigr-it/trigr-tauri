@@ -383,14 +383,14 @@ window.electronAPI = {
 };
 
 // ── Suppress webview browser accelerators ──────────────────────────────────
-// Trigr is a desktop app, not a browser. Prevent Ctrl+F (find), Ctrl+P (print),
+// Keyfire is a desktop app, not a browser. Prevent Ctrl+F (find), Ctrl+P (print),
 // Ctrl+R (reload), etc. from triggering built-in WebView2 browser UI.
-// Preserve Ctrl+C/V/X/A/Z for normal text editing within the Trigr UI.
+// Preserve Ctrl+C/V/X/A/Z for normal text editing within the Keyfire UI.
 document.addEventListener('keydown', (e) => {
   // Block browser accelerator Ctrl/Meta combos
   if ((e.ctrlKey || e.metaKey) && !['c', 'v', 'x', 'a', 'z'].includes(e.key.toLowerCase())) {
     e.preventDefault();
-    // Ctrl+Space: toggle overlay (JS path for when Trigr has focus)
+    // Ctrl+Space: toggle overlay (JS path for when Keyfire has focus)
     if (e.code === 'Space' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
       e.stopPropagation();
       invoke('js_key_event', { code: 'Space', ctrl: true, shift: false, alt: false, meta: false });
@@ -406,11 +406,11 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
   }
 
-  // CRITICAL: Two-path capture: JS listener (Trigr focused) + LL hook (other apps).
+  // CRITICAL: Two-path capture: JS listener (Keyfire focused) + LL hook (other apps).
   // __trigr_recording and __trigr_capturing MUST be kept in sync with the
   // Rust IS_RECORDING_HOTKEY / IS_CAPTURING_KEY flags.
   // Any new capture entry point must set these flags AND call the Rust command.
-  // The LL hook can't see keypresses when Trigr's WebView2 has focus,
+  // The LL hook can't see keypresses when Keyfire's WebView2 has focus,
   // so this JS listener provides an alternative capture path.
   if (window.__trigr_capturing || window.__trigr_recording) {
     // Do not intercept when focus is on a text input — let typing work normally

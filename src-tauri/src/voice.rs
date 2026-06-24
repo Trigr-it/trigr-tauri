@@ -1,4 +1,4 @@
-//! WinRT-based voice recognition for Trigr voice commands.
+//! WinRT-based voice recognition for Keyfire voice commands.
 //!
 //! Uses Windows.Media.SpeechRecognition with SpeechRecognitionListConstraint
 //! for offline, grammar-constrained phrase matching.  100% local — no cloud.

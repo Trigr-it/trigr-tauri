@@ -5,7 +5,7 @@
 //!   - date (local YYYY-MM-DD)
 //!   - triggers (total count of logged actions that day)
 //!   - expansions / macros (breakdowns)
-//!   - app_version (the running Trigr version)
+//!   - app_version (the running Keyfire version)
 //!   - request_id (one-shot UUID, NOT persisted, lets the backend dedupe
 //!     duplicate retries without us needing a persistent install ID)
 //!   - extra (payload v2, v0.5+): per-type fire counts, double/hold fire
@@ -41,8 +41,8 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 // ── Endpoint + auth ─────────────────────────────────────────────────────────
-// Live Railway service (repo: Trigr-it/trigr-telemetry-backend). Raw Railway
-// domain for now; if we later front it with telemetry.usetrigr.com, swapping
+// Live Railway service (repo: Keyfire-it/trigr-telemetry-backend). Raw Railway
+// domain for now; if we later front it with telemetry.keyfire.app, swapping
 // this constant is a client release. The X-Ingest-Key ships in this
 // source-available binary, so it is spam filtering, not security — the
 // backend's validation and rate limiting are the real defences. Rotating it
