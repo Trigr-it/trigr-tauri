@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What is text expansion, and how do you use it on Windows? — Keyfire</title>
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../favicon-192.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="description" content="Text expansion explained: from the simple ;sig snippet to dynamic templates with date tokens, fill-in fields, and inline formulae. A practical guide for Windows.">
+
+<!-- SEO: canonical -->
+<link rel="canonical" href="https://keyfire.app/blog/what-is-text-expansion.html">
+
+<!-- Open Graph -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="What is text expansion, and how do you use it on Windows?">
+<meta property="og:description" content="Text expansion explained: from the simple ;sig snippet to dynamic templates with date tokens, fill-in fields, and inline formulae.">
+<meta property="og:url" content="https://keyfire.app/blog/what-is-text-expansion.html">
+<meta property="og:site_name" content="Keyfire">
+<meta property="article:published_time" content="2026-06-23">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="What is text expansion, and how do you use it on Windows?">
+<meta name="twitter:description" content="Text expansion explained: from the simple ;sig snippet to dynamic templates with date tokens, fill-in fields, and inline formulae.">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "What is text expansion, and how do you use it on Windows?",
+  "description": "Text expansion explained: from the simple ;sig snippet to dynamic templates with date tokens, fill-in fields, and inline formulae. A practical guide for Windows.",
+  "url": "https://keyfire.app/blog/what-is-text-expansion.html",
+  "datePublished": "2026-06-23",
+  "dateModified": "2026-06-23",
+  "image": {
+    "@type": "ImageObject",
+    "url": "https://keyfire.app/og-image.png",
+    "width": 1200,
+    "height": 630
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "The Keyfire team",
+    "url": "https://keyfire.app"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Keyfire",
+    "url": "https://keyfire.app",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://keyfire.app/favicon-192.png",
+      "width": 192,
+      "height": 192
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://keyfire.app/blog/what-is-text-expansion.html"
+  },
+  "isPartOf": {
+    "@type": "Blog",
+    "@id": "https://keyfire.app/blog/",
+    "name": "Keyfire Blog"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://keyfire.app/" },
+    { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://keyfire.app/blog/" },
+    { "@type": "ListItem", "position": 3, "name": "What is text expansion?", "item": "https://keyfire.app/blog/what-is-text-expansion.html" }
+  ]
+}
+</script>
+
+<script>
+document.documentElement.setAttribute('data-theme', 'light');
+</script>
+<link rel="preload" href="/fonts/SpaceGrotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="blog.css">
+</head>
+<body>
+
+<nav>
+  <a href="../index.html" class="nav-logo">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="logo-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="logo-key-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#logo-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#logo-key-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">KEYFIRE</span>
+  </a>
+  <div class="nav-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#how">How it works</a>
+    <a href="../trigr-help.html">Guide</a>
+    <a href="../roadmap.html">Roadmap</a>
+    <a href="./">Blog</a>
+    <a href="../pricing.html">Pricing</a>
+    <a href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+  </div>
+</nav>
+
+<main>
+  <div class="blog-container">
+    <article>
+      <header>
+        <span class="eyebrow">Guide</span>
+        <h1>What is text expansion, and how do you use it on Windows?</h1>
+        <div class="meta-row">
+          <span>By The Keyfire team</span>
+          <span class="dot"></span>
+          <time datetime="2026-06-23">23 June 2026</time>
+          <span class="dot"></span>
+          <span>5 min read</span>
+        </div>
+      </header>
+
+      <div class="prose">
+        <p>Text expansion turns a short trigger you type into a longer block of text the app sees. You type <code>;sig</code> and your email signature appears. You type <code>;addr</code> and your full postal address fills in. The mechanic is simple. The hours it gives back over a year are not.</p>
+
+        <p>This post walks through the idea from the absolute basics (typing <code>;sig</code>) all the way through to dynamic templates that fill in dates, prompt for variables, and run small calculations inline. By the end you should be able to pick the right level of sophistication for the writing you actually do.</p>
+
+        <h2>The simplest version</h2>
+
+        <p>You define a snippet. The snippet has a trigger string and a payload.</p>
+
+        <ul>
+          <li>Trigger: <code>;ack</code></li>
+          <li>Payload:
+            <pre><code>Hi,
+
+Thanks for getting in touch. We've received your message and one of the team will respond within one business day.
+
+In the meantime, if it would help to share any screenshots or extra context, just reply to this email.
+
+Best,
+The team</code></pre>
+          </li>
+        </ul>
+
+        <p>You install a text expansion tool. You type <code>;ack</code> in any reply. The four characters disappear and a six-line acknowledgement takes their place. Outlook, Gmail in the browser, the Slack DM box, a support tool, a Notepad window. Anywhere you can type, the snippet fires.</p>
+
+        <p>If that is all you ever use text expansion for, you have already won most of the value. Five or six common templates (acknowledgements, refund declines, &ldquo;your invoice is attached&rdquo; lines, the four-sentence reply you send to recruiters) pay back the setup time in the first week.</p>
+
+        <h2>Dynamic tokens (the easy upgrade)</h2>
+
+        <p>Most people stop at flat text snippets. That is fine, but it leaves three useful features on the table: dates that auto-fill, fill-in fields for the variable parts of a template, and inline computation. The first one is the easiest to adopt.</p>
+
+        <p>A token is a placeholder inside the snippet that the expander replaces at the moment you fire it. The most common ones:</p>
+
+        <ul>
+          <li><code>{date}</code> inserts today's date. In Keyfire you can format it: <code>{date:DD MMM YYYY}</code> gives <code>23 Jun 2026</code>. <code>{date+7}</code> jumps a week forward, handy for &ldquo;reply by next Tuesday&rdquo; templates.</li>
+          <li><code>{time}</code> inserts the current time.</li>
+          <li><code>{clipboard}</code> drops in whatever is currently on your clipboard. Useful for &ldquo;quote the thing I just copied&rdquo; reply patterns.</li>
+          <li>Cursor positioning. You can leave a marker inside the snippet so the cursor lands ready for you to type the specific part.</li>
+        </ul>
+
+        <p>A worked example. The snippet for a meeting follow-up:</p>
+
+        <pre><code>Hi {clipboard},
+
+Thanks for the chat today, {date:dddd}.
+
+Three things to action this week:
+1.
+2.
+3.
+
+Best,
+The team</code></pre>
+
+        <p>You copy the recipient's name, type <code>;mfu</code>, and the whole template appears with their name in the greeting, today's day of the week in the second line, and the cursor parked on the first action item. The work of writing it is gone. The work of thinking about what to say is still yours.</p>
+
+        <h2>Fill-in fields</h2>
+
+        <p>Tokens cover the parts the expander can fill in by itself. For everything else there are fill-in fields: prompts that appear when you fire the snippet and ask you to supply the values.</p>
+
+        <p>The typical pattern: you press the trigger, a small floating window pops up asking for one or more values, you type them in, press Enter, and the completed snippet writes out.</p>
+
+        <p>A customer-service reply template:</p>
+
+        <pre><code>Hi {name},
+
+Thank you for getting in touch about ticket {ticket}.
+We've reviewed the issue and {resolution}.
+
+If you have any further questions please let me know.
+
+Best,
+The team</code></pre>
+
+        <p>Fire the trigger, the prompt asks for <em>name</em>, <em>ticket</em>, and <em>resolution</em>, you type them in once, the formatted reply lands. Three minutes of writing reduced to forty seconds of filling in three fields.</p>
+
+        <p>The advanced tools (Keyfire included) also let you set the field <em>type</em>. Some fields are short text, some are multi-line, some are dropdowns with preset options, some are dates. The right type for the field gives you the right input control when you fire the snippet.</p>
+
+        <h2>Formulae and conditional output</h2>
+
+        <p>This is where text expansion stops being a typing aid and starts looking like a tiny template engine.</p>
+
+        <p>Keyfire has an expression engine that lets you do arithmetic and conditional logic inside a snippet. Two examples to give you the flavour.</p>
+
+        <p>A VAT-inclusive quote. You fill in the subtotal once, the expander does the maths:</p>
+
+        <pre><code>Subtotal: &pound;{subtotal}
+VAT (20%): &pound;{= subtotal * 0.2}
+Total: &pound;{= subtotal * 1.2}</code></pre>
+
+        <p>An invoice with a conditional late fee. The fee only appears if the days-overdue value crosses thirty:</p>
+
+        <pre><code>Amount due: &pound;{amount}
+{if days_overdue > 30}
+Late fee (10%): &pound;{= amount * 0.1}
+Total payable: &pound;{= amount * 1.1}
+{else}
+Total payable: &pound;{amount}
+{/if}</code></pre>
+
+        <p>You set the fill-in fields for <code>subtotal</code>, <code>amount</code>, and <code>days_overdue</code>. The maths and the branching happen at the moment of expansion. The output is a clean block of text ready to paste.</p>
+
+        <p>For most people most days, formulae are overkill. For the days when you would otherwise have opened Excel to compute a single number before pasting it back into an email, they are the feature that closes the loop.</p>
+
+        <h2>Picking good triggers</h2>
+
+        <p>The biggest cause of text-expansion fatigue is picking triggers that fire by accident. Three rules of thumb: use a prefix rare in normal typing (<code>;ack</code>, <code>/ack</code>) so the trigger never appears inside a real word; make it memorable (<code>;addr</code> is obvious, <code>;k7q2</code> is not); group related snippets under a shared prefix (<code>;cs</code> for customer-service replies) so you can list them when you forget the exact name.</p>
+
+        <h2>Common Windows text expanders</h2>
+
+        <p>A very short shortlist with one honest catch per tool (the full comparison is in <a href="best-text-expander-windows-11-2026.html">our text-expander comparison post</a>):</p>
+
+        <ul>
+          <li><strong>BeefText.</strong> Free, open source, easy to start with. Plain text only, no rich formatting, no images, no fill-in dialogs. You will outgrow it if you want anything past flat snippets.</li>
+          <li><strong>Espanso.</strong> Free, open source, very capable. Configuration is YAML files you edit by hand. The learning curve is real and the GUI is minimal.</li>
+          <li><strong>PhraseExpress.</strong> Long-established, deeply featureful, suitable for enterprise. The UI feels its age and the licensing tiers are confusing.</li>
+          <li><strong>TextExpander.</strong> Polished cross-platform tool with cloud sync. Subscription-only, vendor-cloud-only (no fully local mode), and the price climbed again in 2026.</li>
+          <li><strong>Keyfire.</strong> Free during Beta. Visual UI for hotkeys, macros, text expansion, and a clipboard manager in one tool. Rich text, fill-in fields, the formulae described above. Windows only at the moment and still in Beta.</li>
+        </ul>
+
+        <h2>Things to know before you start</h2>
+
+        <p>A handful of gotchas worth knowing in advance:</p>
+
+        <ul>
+          <li><strong>Terminals.</strong> Command prompts and Linux-on-Windows shells (WSL, Git Bash, ConEmu, Windows Terminal) don't always accept the standard paste path that text expanders use. Good tools detect the terminal and switch to a compatible injection method automatically.</li>
+          <li><strong>Passwords.</strong> Never put credentials in a snippet. A trigger that fires by accident is a leak.</li>
+          <li><strong>Trigger collisions.</strong> If you type <code>;sig</code> as part of a normal sentence (rare, but it happens), the expander will fire. Plan for an undo. Ctrl+Z usually puts the original three characters back.</li>
+          <li><strong>Rich vs plain.</strong> Some tools store snippets as plain text only. Some store rich text (bold, links, images). If your email signature has formatting, check the tool supports rich-text expansion before committing.</li>
+        </ul>
+
+        <h2>Where to start</h2>
+
+        <p>The lowest-effort, highest-payoff starting point: pick three phrases you type more than once a week. Your email signature. Your address. One stock reply you find yourself reusing. Bind those three. Use them for a fortnight. You will notice yourself reaching for the trigger automatically by the second week, which is the moment the feature has earned its place.</p>
+
+        <p>After that, you add new snippets when you catch yourself typing the same thing twice. The library grows in the background. The only rule is to keep using consistent prefixes so you can remember what you set up.</p>
+
+        <aside class="cta-card">
+          <h3>Try Keyfire free</h3>
+          <p>Text expansion, hotkeys, macros, and a clipboard manager in one tool. Rich text, fill-in fields, dynamic tokens, and the inline formulae described above. Free during Beta. Windows 10 and 11, x64 and ARM64.</p>
+          <a class="cta-btn" href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" data-loc="blog_cta" data-arch="x64">Download Now</a>
+        </aside>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-top">
+    <div class="footer-brand">
+      <a href="../index.html" class="ft-logo">
+        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+        <span class="ft-wm">KEYFIRE</span>
+      </a>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
+    </div>
+    <div class="footer-cols">
+      <div class="ft-col">
+        <h4>Product</h4>
+        <a href="../index.html#features">Features</a>
+        <a href="../index.html#how">How it works</a>
+        <a href="../roadmap.html">Roadmap</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
+      </div>
+      <div class="ft-col">
+        <h4>Resources</h4>
+        <a href="../trigr-help.html">Guide</a>
+        <a href="../trigr-alpha-tester-guide.html">Tester guide</a>
+        <a href="https://keyfire.featurebase.app" target="_blank" rel="noopener">Feedback &amp; Roadmap</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri">GitHub</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri/issues">Report a bug</a>
+      </div>
+      <div class="ft-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:admin@keyfire.app">admin@keyfire.app</a>
+        <a href="https://github.com/keyfire-it">@keyfire-it</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span class="ft-copy">&copy; 2026 Keyfire &middot; Designed by a human, built by an AI, shipped by both</span>
+    <div class="ft-meta">
+      <a href="../privacy.html">Privacy</a>
+      <a href="https://github.com/keyfire-it/keyfire-tauri/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

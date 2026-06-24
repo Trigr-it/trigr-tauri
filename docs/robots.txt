@@ -3,4 +3,4 @@ Allow: /
 Disallow: /private/
 Disallow: /lab/
 
-Sitemap: https://usetrigr.com/sitemap.xml
+Sitemap: https://keyfire.app/sitemap.xml

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What is a Windows macro? (And how to make one without coding) — Keyfire</title>
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../favicon-192.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="description" content="A plain-English guide to Windows macros. What they are, the three places they live, and how to set one up without writing a single line of code.">
+
+<!-- SEO: canonical -->
+<link rel="canonical" href="https://keyfire.app/blog/what-is-a-windows-macro.html">
+
+<!-- Open Graph -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="What is a Windows macro? (And how to make one without coding)">
+<meta property="og:description" content="A plain-English guide to Windows macros. What they are, the three places they live, and how to set one up without writing a single line of code.">
+<meta property="og:url" content="https://keyfire.app/blog/what-is-a-windows-macro.html">
+<meta property="og:site_name" content="Keyfire">
+<meta property="article:published_time" content="2026-06-23">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="What is a Windows macro? (And how to make one without coding)">
+<meta name="twitter:description" content="A plain-English guide to Windows macros. What they are, the three places they live, and how to set one up without writing a single line of code.">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "What is a Windows macro? (And how to make one without coding)",
+  "description": "A plain-English guide to Windows macros. What they are, the three places they live, and how to set one up without writing a single line of code.",
+  "url": "https://keyfire.app/blog/what-is-a-windows-macro.html",
+  "datePublished": "2026-06-23",
+  "dateModified": "2026-06-23",
+  "image": {
+    "@type": "ImageObject",
+    "url": "https://keyfire.app/og-image.png",
+    "width": 1200,
+    "height": 630
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "The Keyfire team",
+    "url": "https://keyfire.app"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Keyfire",
+    "url": "https://keyfire.app",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://keyfire.app/favicon-192.png",
+      "width": 192,
+      "height": 192
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://keyfire.app/blog/what-is-a-windows-macro.html"
+  },
+  "isPartOf": {
+    "@type": "Blog",
+    "@id": "https://keyfire.app/blog/",
+    "name": "Keyfire Blog"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://keyfire.app/" },
+    { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://keyfire.app/blog/" },
+    { "@type": "ListItem", "position": 3, "name": "What is a Windows macro?", "item": "https://keyfire.app/blog/what-is-a-windows-macro.html" }
+  ]
+}
+</script>
+
+<script>
+document.documentElement.setAttribute('data-theme', 'light');
+</script>
+<link rel="preload" href="/fonts/SpaceGrotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="blog.css">
+</head>
+<body>
+
+<nav>
+  <a href="../index.html" class="nav-logo">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="logo-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="logo-key-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#logo-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#logo-key-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">KEYFIRE</span>
+  </a>
+  <div class="nav-links">
+    <a href="../index.html#features">Features</a>
+    <a href="../index.html#how">How it works</a>
+    <a href="../trigr-help.html">Guide</a>
+    <a href="../roadmap.html">Roadmap</a>
+    <a href="./">Blog</a>
+    <a href="../pricing.html">Pricing</a>
+    <a href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+  </div>
+</nav>
+
+<main>
+  <div class="blog-container">
+    <article>
+      <header>
+        <span class="eyebrow">Guide</span>
+        <h1>What is a Windows macro? (And how to make one without coding)</h1>
+        <div class="meta-row">
+          <span>By The Keyfire team</span>
+          <span class="dot"></span>
+          <time datetime="2026-06-23">23 June 2026</time>
+          <span class="dot"></span>
+          <span>5 min read</span>
+        </div>
+      </header>
+
+      <div class="prose">
+        <p>You hear the word &ldquo;macro&rdquo; in two very different places. The first is the Excel power user who built a script that does ten minutes of cleanup in two seconds. The second is the gaming-keyboard ad promising that one key can fire a six-button combo. Same word, slightly different things. This post explains what a Windows macro actually is, where they live, and how you can set one up without writing a single line of code.</p>
+
+        <h2>The plain definition</h2>
+
+        <p>A macro is a stored sequence of input actions that you can replay with a single trigger. The trigger is usually a keystroke. The sequence can be anything your computer would normally do in response to keys, clicks, or short pauses: type some text, switch a window, click a button, run another app, paste from the clipboard, press Enter.</p>
+
+        <p>If you have ever done the same four-step routine over and over (open a folder, copy a file, switch to email, paste it) a macro is what flattens that routine into one keypress.</p>
+
+        <h2>The three places macros live on Windows</h2>
+
+        <p>Not every macro is created equal. There are three families, and picking the right one matters more than the macro itself.</p>
+
+        <h3>1. App-specific macros</h3>
+
+        <p>Excel and Word are the classic examples. They have their own scripting layer (VBA) and a recorder that captures what you do inside the app and turns it into replayable code. Photoshop has its Actions panel. Each app's macro engine is tied to that app. Powerful inside the boundary, useless outside it.</p>
+
+        <p>If your task is &ldquo;reformat a spreadsheet column the same way every Monday morning&rdquo;, an Excel macro is the right tool. If your task crosses apps, keep reading.</p>
+
+        <h3>2. Hardware macros</h3>
+
+        <p>Gaming keyboards (Logitech, Razer, Corsair) and stream-deck devices come with software that lets you bind multi-step sequences to a physical key or button. The macro lives on the device. Move to another laptop and you lose it. Plug the keyboard in to a fresh PC and it follows.</p>
+
+        <p>Scope is the catch. Hardware macros are usually limited to keystroke playback and a basic delay step. A few of the higher-end devices add app-launch and clipboard primitives, but most stop there. If you want conditional logic (&ldquo;only run step 3 if the focused window is Outlook&rdquo;), prompted inputs, or dynamic text like today's date, the keyboard firmware is the wrong layer for it. The other ceiling is the number of macro keys themselves: gaming boards typically expose six to twelve, and once you've assigned them, you've assigned them.</p>
+
+        <p>Hardware macros are fine if you only ever work at one desk with one keyboard, and the work you want to automate is a fixed key sequence. They stop working the moment either of those changes.</p>
+
+        <h3>3. System-wide macros</h3>
+
+        <p>System-wide macro tools sit between Windows and your apps, listening for the trigger and firing the sequence into whatever window has focus. The three options most people end up considering:</p>
+
+        <ul>
+          <li><strong>PowerToys Keyboard Manager.</strong> Free, signed by Microsoft. Remaps one key to another, or one shortcut to another. It does not do multi-step sequences. If you want CapsLock to behave as Esc, this is the answer. If you want F8 to do four things in a row, it is not.</li>
+          <li><strong>AutoHotkey.</strong> A scripting language for Windows automation. Decades old, free, extremely capable. The cost of entry is that you write code. The trust cost is that many corporate IT teams now block the runtime because it is also used by malware authors.</li>
+          <li><strong>Visual macro tools.</strong> Apps that give you the flexibility of AutoHotkey through a point-and-click interface. Keyfire is the one we make, so it is the worked example below. PhraseExpress is another in this category.</li>
+        </ul>
+
+        <h2>A simple macro, end to end</h2>
+
+        <p>Let's set one up. The macro: press F8, the app types your address, then presses Enter.</p>
+
+        <p>Without code, in Keyfire, the flow is:</p>
+
+        <ol>
+          <li>Open Keyfire. A picture of a keyboard is on the screen.</li>
+          <li>Click F8 on the visual keyboard.</li>
+          <li>From the action menu, choose <strong>Macro</strong>.</li>
+          <li>Add a step: <em>Type Text</em>. Paste your address.</li>
+          <li>Add another step: <em>Press Key</em>. Pick Enter.</li>
+          <li>Save.</li>
+        </ol>
+
+        <p>F8 is now a macro. The hotkey is live the moment you save. No compile step, no script file, no syntax to debug. If you change your mind, you click F8 again and edit the steps.</p>
+
+        <h2>The same idea, scaled up</h2>
+
+        <p>Once you have one macro working, the obvious next move is to chain more steps. A few patterns that come up often:</p>
+
+        <ul>
+          <li><strong>Copy, switch, paste.</strong> Copy the current selection, switch to your notes app, paste, press Enter. Three steps. One key.</li>
+          <li><strong>Open and arrange.</strong> Launch Outlook, wait half a second, send Win+Right to snap it to the right half of the screen. Useful as a morning start-up sequence.</li>
+          <li><strong>Fill a form.</strong> Type your name, press Tab, type your email, press Tab, type your phone number, press Enter. Form-fill macros pay back in any app where browser autofill doesn't cover the fields.</li>
+          <li><strong>Templated reply.</strong> Type a multi-line response and stop the cursor at a specific spot ready for the bespoke part. Tools that support text expansion can do this in one step (more on that in the text-expansion guide).</li>
+        </ul>
+
+        <h2>Things to know before you start</h2>
+
+        <p>Macros are powerful, which means a few of them push against the edges of what apps expect. The handful of pitfalls worth knowing:</p>
+
+        <ul>
+          <li><strong>Games and anti-cheat.</strong> Multiplayer games often treat macros as automation cheats, even harmless ones. Read the game's policy before binding gameplay actions to a macro.</li>
+          <li><strong>Banking and high-security apps.</strong> A small number of secure apps refuse synthetic input (paste from a macro looks identical to paste from malware). If a macro silently fails inside one specific app, this is usually why.</li>
+          <li><strong>Focus matters.</strong> A macro that targets a specific window needs that window to be reachable. If the app is minimised or behind another window, the macro fires into whatever is in front instead.</li>
+          <li><strong>Don't bind macros to single letter keys.</strong> Bind to function keys (F8, F9), to combinations (Ctrl+Alt+something), or to a tap-tap pattern. Bind a macro to plain letter <code>k</code> and you will fire it every time you type the word &ldquo;makro&rdquo;. (Yes, we've seen it happen.)</li>
+        </ul>
+
+        <h2>So which family do you need?</h2>
+
+        <p>Three quick guides to choose:</p>
+
+        <ul>
+          <li>If the work happens entirely inside Excel, Word, or Photoshop, learn that app's built-in macro recorder. You already have it.</li>
+          <li>If you sit at one desk with one keyboard and never travel, hardware macros on a gaming keyboard are fine.</li>
+          <li>If your work crosses apps, or if you ever use more than one machine, you want a system-wide tool. PowerToys for simple remaps. AutoHotkey if you write code. A visual tool like Keyfire if you don't.</li>
+        </ul>
+
+        <p>The reason &ldquo;system-wide visual tool&rdquo; is the answer for most people is that it covers the most common case (multi-step sequences across multiple apps) without the cost of either being locked to one device or learning a scripting language.</p>
+
+        <aside class="cta-card">
+          <h3>Try Keyfire free</h3>
+          <p>Visual macros, hotkeys, text expansion, and a clipboard manager in one tool. No scripting. Free during Beta. Windows 10 and 11, x64 and ARM64.</p>
+          <a class="cta-btn" href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" data-loc="blog_cta" data-arch="x64">Download Now</a>
+        </aside>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-top">
+    <div class="footer-brand">
+      <a href="../index.html" class="ft-logo">
+        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
+        <span class="ft-wm">KEYFIRE</span>
+      </a>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
+    </div>
+    <div class="footer-cols">
+      <div class="ft-col">
+        <h4>Product</h4>
+        <a href="../index.html#features">Features</a>
+        <a href="../index.html#how">How it works</a>
+        <a href="../roadmap.html">Roadmap</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
+      </div>
+      <div class="ft-col">
+        <h4>Resources</h4>
+        <a href="../trigr-help.html">Guide</a>
+        <a href="../trigr-alpha-tester-guide.html">Tester guide</a>
+        <a href="https://keyfire.featurebase.app" target="_blank" rel="noopener">Feedback &amp; Roadmap</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri">GitHub</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri/issues">Report a bug</a>
+      </div>
+      <div class="ft-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:admin@keyfire.app">admin@keyfire.app</a>
+        <a href="https://github.com/keyfire-it">@keyfire-it</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span class="ft-copy">&copy; 2026 Keyfire &middot; Designed by a human, built by an AI, shipped by both</span>
+    <div class="ft-meta">
+      <a href="../privacy.html">Privacy</a>
+      <a href="https://github.com/keyfire-it/keyfire-tauri/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

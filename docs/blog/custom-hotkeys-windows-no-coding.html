@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>How to set up custom hotkeys on Windows without writing code — Trigr</title>
+<title>How to set up custom hotkeys on Windows without writing code — Keyfire</title>
 <link rel="icon" href="../favicon.ico" sizes="any">
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">
@@ -12,14 +12,14 @@
 <meta name="description" content="Step-by-step guide to creating custom Windows hotkeys using a visual keyboard. No scripting required.">
 
 <!-- SEO: canonical -->
-<link rel="canonical" href="https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html">
+<link rel="canonical" href="https://keyfire.app/blog/custom-hotkeys-windows-no-coding.html">
 
 <!-- Open Graph -->
 <meta property="og:type" content="article">
 <meta property="og:title" content="How to set up custom hotkeys on Windows without writing code">
 <meta property="og:description" content="Step-by-step guide to creating custom Windows hotkeys using a visual keyboard. No scripting required.">
-<meta property="og:url" content="https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html">
-<meta property="og:site_name" content="Trigr">
+<meta property="og:url" content="https://keyfire.app/blog/custom-hotkeys-windows-no-coding.html">
+<meta property="og:site_name" content="Keyfire">
 <meta property="article:published_time" content="2026-05-26">
 
 <!-- Twitter -->
@@ -33,39 +33,39 @@
   "@type": "BlogPosting",
   "headline": "How to set up custom hotkeys on Windows without writing code",
   "description": "A practical guide to assigning hotkeys, macros, and text expansions on Windows without AutoHotkey scripts.",
-  "url": "https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html",
+  "url": "https://keyfire.app/blog/custom-hotkeys-windows-no-coding.html",
   "datePublished": "2026-05-26",
   "dateModified": "2026-05-26",
   "image": {
     "@type": "ImageObject",
-    "url": "https://usetrigr.com/og-image.png",
+    "url": "https://keyfire.app/og-image.png",
     "width": 1200,
     "height": 630
   },
   "author": {
     "@type": "Organization",
-    "name": "The Trigr team",
-    "url": "https://usetrigr.com"
+    "name": "The Keyfire team",
+    "url": "https://keyfire.app"
   },
   "publisher": {
     "@type": "Organization",
-    "name": "Trigr",
-    "url": "https://usetrigr.com",
+    "name": "Keyfire",
+    "url": "https://keyfire.app",
     "logo": {
       "@type": "ImageObject",
-      "url": "https://usetrigr.com/favicon-192.png",
+      "url": "https://keyfire.app/favicon-192.png",
       "width": 192,
       "height": 192
     }
   },
   "mainEntityOfPage": {
     "@type": "WebPage",
-    "@id": "https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html"
+    "@id": "https://keyfire.app/blog/custom-hotkeys-windows-no-coding.html"
   },
   "isPartOf": {
     "@type": "Blog",
-    "@id": "https://usetrigr.com/blog/",
-    "name": "Trigr Blog"
+    "@id": "https://keyfire.app/blog/",
+    "name": "Keyfire Blog"
   }
 }
 </script>
@@ -74,9 +74,9 @@
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
-    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://usetrigr.com/" },
-    { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://usetrigr.com/blog/" },
-    { "@type": "ListItem", "position": 3, "name": "How to set up custom hotkeys on Windows without writing code", "item": "https://usetrigr.com/blog/custom-hotkeys-windows-no-coding.html" }
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://keyfire.app/" },
+    { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://keyfire.app/blog/" },
+    { "@type": "ListItem", "position": 3, "name": "How to set up custom hotkeys on Windows without writing code", "item": "https://keyfire.app/blog/custom-hotkeys-windows-no-coding.html" }
   ]
 }
 </script>
@@ -93,7 +93,7 @@ document.documentElement.setAttribute('data-theme', 'light');
 <nav>
   <a href="../index.html" class="nav-logo">
     <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="logo-base-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="logo-key-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#logo-base-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#logo-key-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
-    <span class="nav-wordmark">TRIGR</span>
+    <span class="nav-wordmark">KEYFIRE</span>
   </a>
   <div class="nav-links">
     <a href="../index.html#features">Features</a>
@@ -102,7 +102,7 @@ document.documentElement.setAttribute('data-theme', 'light');
     <a href="../roadmap.html">Roadmap</a>
     <a href="./">Blog</a>
     <a href="../pricing.html">Pricing</a>
-    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+    <a href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
   </div>
 </nav>
 
@@ -113,7 +113,7 @@ document.documentElement.setAttribute('data-theme', 'light');
         <span class="eyebrow">Guide</span>
         <h1>How to set up custom hotkeys on Windows without writing code</h1>
         <div class="meta-row">
-          <span>By The Trigr team</span>
+          <span>By The Keyfire team</span>
           <span class="dot"></span>
           <time datetime="2026-05-26">26 May 2026</time>
           <span class="dot"></span>
@@ -146,11 +146,11 @@ document.documentElement.setAttribute('data-theme', 'light');
 
         <h2>Route 3: Visual hotkey tools (middle)</h2>
 
-        <p>A newer category of Windows tools gives you the binding flexibility of AutoHotkey through a visual interface, without the scripting language. Trigr is the one we build, so we will use it as the worked example. Others in this space include PhraseExpress and Macro Recorder, with different feature focuses.</p>
+        <p>A newer category of Windows tools gives you the binding flexibility of AutoHotkey through a visual interface, without the scripting language. Keyfire is the one we build, so we will use it as the worked example. Others in this space include PhraseExpress and Macro Recorder, with different feature focuses.</p>
 
-        <p>If you already have AutoHotkey scripts you do not want to rewrite, Trigr can run them directly. The AHK Script Runner action wraps your existing v1 or v2 script and ties it to whatever key you choose in the visual UI, no separate AHK install required.</p>
+        <p>If you already have AutoHotkey scripts you do not want to rewrite, Keyfire can run them directly. The AHK Script Runner action wraps your existing v1 or v2 script and ties it to whatever key you choose in the visual UI, no separate AHK install required.</p>
 
-        <p>The flow looks like this in Trigr:</p>
+        <p>The flow looks like this in Keyfire:</p>
 
         <ol>
           <li>Open the app. A picture of a keyboard is on the screen.</li>
@@ -159,7 +159,7 @@ document.documentElement.setAttribute('data-theme', 'light');
           <li>Save. The hotkey is live immediately.</li>
         </ol>
 
-        <p>No syntax to learn, no compile step, nothing to debug. If you change your mind, you click the key again and edit the binding. If you want the hotkey to behave differently in Excel than in your browser, you create an app-specific profile and Trigr switches automatically based on the focused window.</p>
+        <p>No syntax to learn, no compile step, nothing to debug. If you change your mind, you click the key again and edit the binding. If you want the hotkey to behave differently in Excel than in your browser, you create an app-specific profile and Keyfire switches automatically based on the focused window.</p>
 
         <h2>Example use cases</h2>
 
@@ -167,14 +167,14 @@ document.documentElement.setAttribute('data-theme', 'light');
 
         <ul>
           <li><strong>Launch your most-used app.</strong> Ctrl+Alt+O opens Outlook. Ctrl+Alt+S opens Slack. The Win key is reserved for the operating system, so use Ctrl+Alt as your launcher modifier.</li>
-          <li><strong>Paste your email signature.</strong> F8 fires a multi-line block with your name, role, and links. Trigr's text expansions can include rich formatting and even images, so a stamped signature with a logo works.</li>
+          <li><strong>Paste your email signature.</strong> F8 fires a multi-line block with your name, role, and links. Keyfire's text expansions can include rich formatting and even images, so a stamped signature with a logo works.</li>
           <li><strong>Open a folder you use daily.</strong> Ctrl+Alt+P opens <code>C:\Projects\Current</code>. Useful for anyone working out of a fixed folder tree.</li>
           <li><strong>Run a macro.</strong> F9 fires a sequence: copy the selection, switch to another window, paste, then press Enter. A three-step routine that took five seconds now takes one keypress.</li>
         </ul>
 
         <h2>Beyond key remapping</h2>
 
-        <p>A visual hotkey tool usually covers more than keys. In Trigr's case, the same UI lets you set up:</p>
+        <p>A visual hotkey tool usually covers more than keys. In Keyfire's case, the same UI lets you set up:</p>
 
         <ul>
           <li><strong>Text expansions.</strong> Type <code>;addr</code> and your full address fills in. Date placeholders, fill-in fields, and rich text are supported.</li>
@@ -192,9 +192,9 @@ document.documentElement.setAttribute('data-theme', 'light');
         <p>If a hotkey appears to do nothing when you press it, the first thing to check is whether another app already claimed it.</p>
 
         <aside class="cta-card">
-          <h3>Download Trigr free</h3>
+          <h3>Download Keyfire free</h3>
           <p>Visual hotkeys, macros, text expansion, and a clipboard manager in one tool. No scripting. Free during Beta. Windows 10 and 11, x64 and ARM64.</p>
-          <a class="cta-btn" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="blog_cta" data-arch="x64">Download Now</a>
+          <a class="cta-btn" href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" data-loc="blog_cta" data-arch="x64">Download Now</a>
         </aside>
       </div>
     </article>
@@ -206,7 +206,7 @@ document.documentElement.setAttribute('data-theme', 'light');
     <div class="footer-brand">
       <a href="../index.html" class="ft-logo">
         <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><rect x="19" y="20" width="26" height="8" rx="1.5" fill="#c8860a"/><rect x="28" y="24" width="8" height="11" rx="1.5" fill="#c8860a"/></svg></div>
-        <span class="ft-wm">TRIGR</span>
+        <span class="ft-wm">KEYFIRE</span>
       </a>
       <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
     </div>
@@ -216,28 +216,28 @@ document.documentElement.setAttribute('data-theme', 'light');
         <a href="../index.html#features">Features</a>
         <a href="../index.html#how">How it works</a>
         <a href="../roadmap.html">Roadmap</a>
-        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Trigr_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri/releases/latest/download/Keyfire_x64-setup.exe" data-loc="footer_link" data-arch="x64">Download</a>
       </div>
       <div class="ft-col">
         <h4>Resources</h4>
         <a href="../trigr-help.html">Guide</a>
         <a href="../trigr-alpha-tester-guide.html">Tester guide</a>
-        <a href="https://trigr.featurebase.app" target="_blank" rel="noopener">Feedback &amp; Roadmap</a>
-        <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
-        <a href="https://github.com/Trigr-it/trigr-tauri/issues">Report a bug</a>
+        <a href="https://keyfire.featurebase.app" target="_blank" rel="noopener">Feedback &amp; Roadmap</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri">GitHub</a>
+        <a href="https://github.com/keyfire-it/keyfire-tauri/issues">Report a bug</a>
       </div>
       <div class="ft-col">
         <h4>Get in touch</h4>
-        <a href="mailto:admin@usetrigr.com">admin@usetrigr.com</a>
-        <a href="https://github.com/Trigr-it">@Trigr-it</a>
+        <a href="mailto:admin@keyfire.app">admin@keyfire.app</a>
+        <a href="https://github.com/keyfire-it">@keyfire-it</a>
       </div>
     </div>
   </div>
   <div class="footer-bottom">
-    <span class="ft-copy">&copy; 2026 Trigr &middot; Designed by a human, built by an AI, shipped by both</span>
+    <span class="ft-copy">&copy; 2026 Keyfire &middot; Designed by a human, built by an AI, shipped by both</span>
     <div class="ft-meta">
       <a href="../privacy.html">Privacy</a>
-      <a href="https://github.com/Trigr-it/trigr-tauri/blob/main/LICENSE">License</a>
+      <a href="https://github.com/keyfire-it/keyfire-tauri/blob/main/LICENSE">License</a>
     </div>
   </div>
 </footer>
