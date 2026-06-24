@@ -39,6 +39,13 @@ const IDLE_SECS: u64 = 300;
 const TICK_SECS: u64 = 30;
 
 /// Refresh-on-show windows — full TrySuspend when idle-hidden.
+/// "countdown" is intentionally NOT here — the countdown's React state is
+/// driven by a reset event delivered at show time, and TrySuspend's
+/// resume/IPC-reconnect race can lose that event (phase stays 'idle' →
+/// no 3-2-1 → no recorder::start). The other overlays receive full data
+/// payloads on show and recover cleanly from suspend; the countdown does
+/// not. Memory cost is ~10MB shared via the WebView2 process — worth it
+/// for reliability.
 const SUSPEND_LABELS: [&str; 4] = ["overlay", "fillin", "clipboardoverlay", "radialmenu"];
 /// Cache-trim only — must keep running JS while hidden (see module docs).
 const TRIM_ONLY_LABELS: [&str; 1] = ["main"];

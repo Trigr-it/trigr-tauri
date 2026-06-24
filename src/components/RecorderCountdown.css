@@ -1,0 +1,169 @@
+/* Recorder pill window — fixed top-right position, no movement during a
+   recording flow. Layout: small "Recording starts in N" pill stacked on
+   top of the main recording bar. Countdown pill collapses when phase
+   transitions to 'recording'; the main bar stays put. */
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  width: 100%;
+  height: 100%;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #f0f0f0;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+.rc-root {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+/* Single pill, centred in the window. */
+.rc-root--bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+/* ── Countdown pill (small, appears above main bar during 3-2-1) ────────── */
+.rc-countdown-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 12px;
+  background: linear-gradient(180deg, rgba(28, 28, 32, 0.94), rgba(18, 18, 22, 0.98));
+  border: 1px solid rgba(255, 200, 80, 0.45);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(255, 200, 80, 0.12),
+    0 6px 18px rgba(0, 0, 0, 0.4),
+    0 0 16px rgba(255, 200, 80, 0.18);
+  font-size: 11px;
+  font-weight: 600;
+  color: #e8e8e8;
+  white-space: nowrap;
+}
+.rc-countdown-num {
+  display: inline-block;
+  min-width: 14px;
+  text-align: center;
+  font-family: 'Rajdhani', 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffc850;
+  text-shadow: 0 0 6px rgba(255, 200, 80, 0.6);
+  animation: rc-num-pop 0.35s ease-out;
+}
+@keyframes rc-num-pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.rc-countdown-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: #aaa;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 100ms, color 100ms;
+}
+.rc-countdown-cancel:hover {
+  background: rgba(229, 64, 64, 0.2);
+  color: #ff8a8a;
+}
+
+/* ── Main recording bar (always shown) ──────────────────────────────────── */
+.rc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  background: linear-gradient(180deg, rgba(28, 28, 32, 0.94), rgba(18, 18, 22, 0.98));
+  border: 1px solid rgba(229, 64, 64, 0.5);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(229, 64, 64, 0.12),
+    0 10px 26px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(229, 64, 64, 0.18);
+  font-size: 12px;
+  color: #f0f0f0;
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+}
+.rc-pill-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e54040;
+  box-shadow: 0 0 8px rgba(229, 64, 64, 0.8);
+  animation: rc-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes rc-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.8); }
+}
+.rc-pill-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rc-pill-stop {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 12px;
+  margin-left: 2px;
+  background: rgba(229, 64, 64, 0.85);
+  border: 1px solid rgba(229, 64, 64, 1);
+  border-radius: 999px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 120ms, transform 100ms, opacity 120ms;
+}
+.rc-pill-stop:hover { background: rgba(229, 64, 64, 1); }
+.rc-pill-stop:active { transform: scale(0.96); }
+.rc-pill-stop:disabled {
+  background: rgba(229, 64, 64, 0.3);
+  border-color: rgba(229, 64, 64, 0.4);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.rc-pill-hint {
+  font-size: 10.5px;
+  color: #aaa;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+}
+.rc-pill-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 1px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  font-family: 'Chakra Petch', 'DM Sans', monospace;
+  font-size: 9.5px;
+  color: #ccc;
+}

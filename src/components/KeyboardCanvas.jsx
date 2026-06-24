@@ -155,7 +155,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
   );
 }
 
-function Key({ keyDef, isSelected, isAssigned, isDouble, isSystem, isFiring, noLayer, onClick, onContextMenu }) {
+function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFiring, noLayer, onClick, onContextMenu }) {
   const width = keyDef.width * KEY_UNIT + (keyDef.width - 1) * KEY_GAP;
 
   const classNames = [
@@ -184,6 +184,7 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isSystem, isFiring, noL
     >
       {isAssigned && !isSelected && <span className="key-assigned-dot" />}
       {isDouble && <span className="key-double-badge">×2</span>}
+      {isHold && <span className="key-hold-badge" title="Hold trigger">⏱</span>}
       {keyDef.sublabel && <span className="key-sublabel">{keyDef.sublabel}</span>}
       <span className="key-label">{keyDef.label}</span>
     </div>
@@ -195,6 +196,7 @@ export default function KeyboardCanvas({
   onKeySelect,
   getKeyAssignment,
   hasDoubleAssignment,
+  hasHoldAssignment,
   lastFired,
   activeModifiers,
   onToggleModifier,
@@ -369,8 +371,13 @@ export default function KeyboardCanvas({
                       return <div key={keyDef.id} style={{ width: keyDef.width * KEY_UNIT, flexShrink: 0 }} />;
                     }
                     const isSelected = selectedKey === keyDef.id;
-                    const isAssigned = !!getKeyAssignment(keyDef.id);
+                    const hasSingle  = !!getKeyAssignment(keyDef.id);
                     const isDouble   = hasDoubleAssignment ? hasDoubleAssignment(keyDef.id) : false;
+                    const isHold     = hasHoldAssignment ? hasHoldAssignment(keyDef.id) : false;
+                    // "Assigned" = any of single / double / hold so hold-only
+                    // keys still get the highlight + dot. The visual badge
+                    // distinguishes which trigger modes are bound.
+                    const isAssigned = hasSingle || isDouble || isHold;
                     const isSystem   = SYSTEM_KEYS.has(keyDef.id);
                     const isFiring   = firingKeyId === keyDef.id;
                     // Block character keys in bare mode on static profiles
@@ -383,6 +390,7 @@ export default function KeyboardCanvas({
                         isSelected={isSelected}
                         isAssigned={isAssigned}
                         isDouble={isDouble}
+                        isHold={isHold}
                         isSystem={isSystem}
                         isFiring={isFiring}
                         noLayer={noLayer || blocked}

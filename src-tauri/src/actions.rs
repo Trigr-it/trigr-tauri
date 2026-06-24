@@ -15,7 +15,8 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
     KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE,
     MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
-    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, VIRTUAL_KEY,
+    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
+    MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, VIRTUAL_KEY,
 };
 use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
 use windows_sys::Win32::System::Threading::{
@@ -606,6 +607,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 let mut current_hwnd = target_hwnd;
                 let (_, settle_ms, _, clip_restore_ms) = speed_delays();
 
+                // Clear any stale Esc-cancel flag so a pre-press doesn't
+                // immediately abort the macro we're about to fire. The flag
+                // is set globally on every real Esc keydown — once we're
+                // running, any subsequent Esc press will set it again and
+                // the per-step check below will catch it.
+                ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+
                 // Loop config — backward compatible: missing `loop` = single fire.
                 // `count` clamped to >= 1; `forever` runs until cancelled.
                 let loop_cfg = data.and_then(|d| d.get("loop"));
@@ -678,9 +686,10 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 let mut iter_index: u64 = 0;
 
                 'outer: while iter_index < max_iters {
-                    // Per-iteration cancel check — covers re-press (sets per-loop flag)
-                    // and Esc (sets global ESC_LOOP_BREAK). Drains responsively because
-                    // the inter-step check below also polls between every step.
+                    // Per-iteration cancel checks.
+                    //   1) Loop-specific flag (re-press) — only applies when looping.
+                    //   2) Global ESC_LOOP_BREAK — applies to BOTH loops and
+                    //      one-shots, so Esc can cancel any running macro.
                     if let Some(ref lh) = loop_handle {
                         if lh.is_cancelled() {
                             info!("[Trigr] Macro loop cancelled at iter {}", iter_index);
@@ -688,21 +697,59 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                             break;
                         }
                     }
+                    if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                        info!("[Trigr] Macro cancelled (Esc) at iter {}", iter_index);
+                        cancelled = true;
+                        break;
+                    }
 
                     if iter_index > 0 && loop_delay_ms > 0 {
-                        thread::sleep(Duration::from_millis(loop_delay_ms));
+                        // Polled sleep — chunks of 100ms so Esc/re-press/pause
+                        // is honoured within 100ms even on very long delays
+                        // (e.g. 5-minute inter-iteration waits). A single
+                        // thread::sleep here would block all cancel paths
+                        // for the entire delay.
+                        let sleep_chunk = std::time::Duration::from_millis(100);
+                        let total = std::time::Duration::from_millis(loop_delay_ms);
+                        let start = std::time::Instant::now();
+                        while start.elapsed() < total {
+                            if let Some(ref lh) = loop_handle {
+                                if lh.is_cancelled() {
+                                    info!("[Trigr] Macro loop cancelled during inter-iter delay");
+                                    cancelled = true;
+                                    break 'outer;
+                                }
+                            }
+                            if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                                info!("[Trigr] Macro cancelled (Esc) during inter-iter delay");
+                                cancelled = true;
+                                break 'outer;
+                            }
+                            if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                                info!("[Trigr] Macro aborted (paused) during inter-iter delay");
+                                cancelled = true;
+                                break 'outer;
+                            }
+                            let remaining = total.saturating_sub(start.elapsed());
+                            thread::sleep(sleep_chunk.min(remaining));
+                        }
                     }
 
                 for (i, step) in steps.iter().enumerate() {
                     // Inter-step cancel poll — keeps Esc/re-press response time bounded
-                    // by step duration even inside long macros (the per-iter check would
-                    // otherwise only fire between full iterations).
+                    // by step duration even inside long macros. Mirrors the per-iter
+                    // checks above (loop-specific flag + global ESC_LOOP_BREAK).
                     if let Some(ref lh) = loop_handle {
                         if lh.is_cancelled() {
                             info!("[Trigr] Macro loop cancelled mid-iter at step {}/{}", i + 1, steps.len());
                             cancelled = true;
                             break 'outer;
                         }
+                    }
+                    if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                        info!("[Trigr] Macro cancelled (Esc) at step {}/{}", i + 1, steps.len());
+                        cancelled = true;
+                        break 'outer;
                     }
                     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
@@ -743,7 +790,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     // may itself contain Focus Window / Open App / Open URL — without
                     // a re-capture, subsequent parent-macro steps would target the
                     // pre-fire window.
-                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Click at Position" | "Open URL" | "Fire Trigger" | "Fire Text Expansion") {
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Click at Position" | "Open URL" | "Fire Trigger" | "Fire Text Expansion" | "Record Macro") {
                         if step_type == "Open URL" {
                             thread::sleep(Duration::from_millis(OPEN_URL_FOCUS_SETTLE_MS));
                         }
@@ -1841,6 +1888,63 @@ fn send_mouse_click(button: &str) {
     info!("[Trigr] Mouse click: {}", button);
 }
 
+// ── Recorder replay helpers ─────────────────────────────────────────────────
+//
+// Used only by the "Record Macro" macro step's replay path. Unlike send_mouse_click,
+// these helpers send a single button-down OR a single button-up — never
+// fused — because the recording carries down + up as separate events with
+// their original gap. The caller wraps the whole replay in a SuppressionGuard.
+
+fn replay_mouse_button(button: &str, is_down: bool) {
+    let (flag, mouse_data) = match (button, is_down) {
+        ("Left",   true)  => (MOUSEEVENTF_LEFTDOWN,   0_u32),
+        ("Left",   false) => (MOUSEEVENTF_LEFTUP,     0_u32),
+        ("Right",  true)  => (MOUSEEVENTF_RIGHTDOWN,  0_u32),
+        ("Right",  false) => (MOUSEEVENTF_RIGHTUP,    0_u32),
+        ("Middle", true)  => (MOUSEEVENTF_MIDDLEDOWN, 0_u32),
+        ("Middle", false) => (MOUSEEVENTF_MIDDLEUP,   0_u32),
+        ("Side1",  true)  => (MOUSEEVENTF_XDOWN,      1_u32),
+        ("Side1",  false) => (MOUSEEVENTF_XUP,        1_u32),
+        ("Side2",  true)  => (MOUSEEVENTF_XDOWN,      2_u32),
+        ("Side2",  false) => (MOUSEEVENTF_XUP,        2_u32),
+        _ => {
+            warn!("[Trigr] Replay: unknown mouse button name: {}", button);
+            return;
+        }
+    };
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: mouse_data,
+                dwFlags: flag,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
+}
+
+fn replay_wheel(delta: i32) {
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: delta as u32,
+                dwFlags: MOUSEEVENTF_WHEEL,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
+}
+
 // ── Macro sequence step executor ────────────────────────────────────────────
 
 /// Returns true to continue the macro, false to abort it (caller breaks out of
@@ -1930,7 +2034,24 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
 
         "Wait (ms)" => {
             let ms: u64 = step_value.parse().unwrap_or(500).min(30000);
-            thread::sleep(Duration::from_millis(ms));
+            // Polled sleep — chunks of 100ms so Esc / pause toggle reach
+            // the user within 100ms even on long waits. A single uninter-
+            // ruptible thread::sleep here would block all cancel paths
+            // for the entire wait. Mirror of the loop-delay treatment.
+            let total = Duration::from_millis(ms);
+            let start = std::time::Instant::now();
+            while start.elapsed() < total {
+                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    info!("[Trigr] Wait (ms) cancelled (Esc)");
+                    return false;  // abort whole macro
+                }
+                if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                    info!("[Trigr] Wait (ms) aborted (macros disabled)");
+                    return false;
+                }
+                let remaining = total.saturating_sub(start.elapsed());
+                thread::sleep(Duration::from_millis(100).min(remaining));
+            }
         }
 
         // Ctrl+C / Ctrl+V / Ctrl+A as first-class macro steps. Implemented as
@@ -2254,6 +2375,126 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             }
             if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
             crate::expansions::fire_expansion_by_trigger(step_value);
+        }
+
+        // Phase 1 macro recorder — literal replay of a captured event stream.
+        // Plays back exactly what was recorded with the same inter-event gaps,
+        // capped at MAX_GAP_MS so absurd waits (clock drift, broken JSON) can't
+        // freeze the macro forever. SUPPRESS_SIMULATED is held for the whole
+        // replay so our injected events don't bounce back into Trigr's hook
+        // processing and fire other assignments. Captured coordinates are
+        // absolute screen pixels — Phase 2 will introduce window-relative
+        // coords + a Focus Window step in front of clicks targeted at a
+        // specific window.
+        "Record Macro" => {
+            if step_value.is_empty() {
+                warn!("[Trigr] Record Macro: empty step value, skipping");
+                return true;
+            }
+            let events: Vec<crate::recorder::RecordedEvent> =
+                match serde_json::from_str(step_value) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[Trigr] Record Macro: invalid JSON ({})", e);
+                        return true;
+                    }
+                };
+            info!(
+                "[Trigr] Record Macro: replaying {} events",
+                events.len()
+            );
+
+            // INTENTIONALLY NO SuppressionGuard here — we WANT replayed
+            // events to fire Trigr's own hotkey assignments, text
+            // expansions, radial menu triggers, etc. Recursion is bounded
+            // by the existing FIRE_DEPTH guard inside execute_action.
+            // Side effect: user keystrokes during replay also reach the
+            // hook (not blocked); a macro that takes 30 seconds will see
+            // any keys the user types interleaved with the synthetic ones.
+            // Esc still cancels via the ESC_LOOP_BREAK check below.
+            let mut prev_t: u64 = 0;
+            const MAX_GAP_MS: u64 = 5000;
+
+            for evt in events.iter() {
+                // Per-event abort guards.
+                //   1) MACROS_ENABLED off (user paused via tray/hotkey).
+                //   2) ESC_LOOP_BREAK — Esc keydown sets this globally;
+                //      gives the user a single key to bail out of any
+                //      recorded replay mid-stream.
+                if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                    info!("[Trigr] Record Macro: aborted (macros disabled)");
+                    break;
+                }
+                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    info!("[Trigr] Record Macro: aborted (Esc)");
+                    break;
+                }
+                let evt_t = match evt {
+                    crate::recorder::RecordedEvent::KeyDown { t, .. }
+                    | crate::recorder::RecordedEvent::KeyUp { t, .. }
+                    | crate::recorder::RecordedEvent::MouseDown { t, .. }
+                    | crate::recorder::RecordedEvent::MouseUp { t, .. }
+                    | crate::recorder::RecordedEvent::MouseMove { t, .. }
+                    | crate::recorder::RecordedEvent::Wheel { t, .. } => *t,
+                };
+                let gap = evt_t.saturating_sub(prev_t).min(MAX_GAP_MS);
+                if gap > 0 {
+                    thread::sleep(Duration::from_millis(gap));
+                }
+                prev_t = evt_t;
+
+                match evt {
+                    crate::recorder::RecordedEvent::KeyDown { vk, .. } => {
+                        send_vk_key(*vk as u16, false);
+                    }
+                    crate::recorder::RecordedEvent::KeyUp { vk, .. } => {
+                        send_vk_key(*vk as u16, true);
+                    }
+                    crate::recorder::RecordedEvent::MouseDown { button, x, y, .. } => {
+                        unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                        }
+                        replay_mouse_button(button, true);
+                    }
+                    crate::recorder::RecordedEvent::MouseUp { button, x, y, .. } => {
+                        unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                        }
+                        replay_mouse_button(button, false);
+                    }
+                    crate::recorder::RecordedEvent::MouseMove { x, y, .. } => {
+                        unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                        }
+                    }
+                    crate::recorder::RecordedEvent::Wheel { delta, x, y, .. } => {
+                        unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                        }
+                        replay_wheel(*delta);
+                    }
+                }
+            }
+            // Defensive cleanup: release all modifiers in case any KEYDOWNS
+            // in the buffer were replayed without matching KEYUPS. Without
+            // this, a recording that ended mid-modifier-press (e.g. the
+            // user pressing Ctrl+Shift+R to stop, where R is suppressed
+            // but Ctrl/Shift keydowns leaked into the buffer) leaves the
+            // OS with stuck modifiers — every subsequent keypress is
+            // garbled and the macro hotkey can't fire again. Sending a
+            // keyup for a key that's already up is a harmless no-op.
+            const VK_LSHIFT: u16 = 0xA0;
+            const VK_RSHIFT: u16 = 0xA1;
+            const VK_LCTRL: u16 = 0xA2;
+            const VK_RCTRL: u16 = 0xA3;
+            const VK_LALT: u16 = 0xA4;
+            const VK_RALT: u16 = 0xA5;
+            const VK_LWIN: u16 = 0x5B;
+            const VK_RWIN: u16 = 0x5C;
+            for vk in [VK_LSHIFT, VK_RSHIFT, VK_LCTRL, VK_RCTRL, VK_LALT, VK_RALT, VK_LWIN, VK_RWIN] {
+                send_vk_key(vk, true);
+            }
+            info!("[Trigr] Record Macro: complete");
         }
 
         _ => {

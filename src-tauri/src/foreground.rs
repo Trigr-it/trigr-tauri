@@ -159,6 +159,20 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
         return;
     }
 
+    // Also suppress across the ENTIRE recorder flow — set from the moment
+    // the user clicks Record (main hides) through to stop/cancel. Broader
+    // than IS_RECORDING_MACRO, which only flips true after the 3-second
+    // countdown. During the countdown the foreground change from Trigr to
+    // the target app would otherwise fire profile-switched → main clears
+    // selectedKey → ReplayRecordingValue unmounts → cleanup discards the
+    // recording and closes the modal.
+    if crate::recorder::RECORDER_FLOW_ACTIVE.load(Ordering::SeqCst) {
+        return;
+    }
+    if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+        return;
+    }
+
     // Find linked profiles — tuple: (profile_name, app_name, optional_title_filter)
     let linked: Vec<(String, String, Option<String>)> = state
         .profile_settings

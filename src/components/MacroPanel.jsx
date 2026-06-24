@@ -5,7 +5,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import {
   Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, FileCode,
-  GripVertical, Copy, Sparkles,
+  GripVertical, Copy, Sparkles, Circle, Square, Trash2,
 } from 'lucide-react';
 import './MacroPanel.css';
 import MonitorPicker from './MonitorPicker';
@@ -97,6 +97,12 @@ const TRIGGER_KEYS = [
 // plus a single AHK leaf under a divider. Add new step types into the matching
 // group; the dropdown reads from this structure directly.
 const MACRO_STEP_CATEGORIES = [
+  // "Record Macro" is the literal-replay recorder (Phase 1). Pinned at the
+  // top with a divider below so it reads as a distinct affordance, not as
+  // one option among many. Backend step.type is "Record Macro" — actions.rs
+  // match arm + execute_macro_step focus-recapture list both use that string.
+  { kind: 'leaf',  label: 'Record Macro' },
+  { kind: 'divider' },
   { kind: 'group', label: 'Type & Keys',     items: ['Type Text', 'Dynamic Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
   { kind: 'group', label: 'Mouse',           items: ['Click Mouse', 'Click at Position'] },
   { kind: 'group', label: 'Open',            items: ['Open App', 'Open URL', 'Open Folder'] },
@@ -685,6 +691,174 @@ function MacroDynamicTextValue({ value, onChange }) {
         </optgroup>
       ))}
     </select>
+  );
+}
+
+// Inline value for the "Record Macro" macro step. Hosts the Record / Stop
+// / Re-record / Discard buttons + a live duration+event-count readout.
+// While recording the LL hooks observe input and push to recorder.rs; pressing
+// Ctrl+Shift+R from anywhere on the system stops the recording (the hook
+// detects it and emits a Tauri event we listen for here).
+function formatRecordingDuration(ms) {
+  if (!ms || ms < 0) return '0:00';
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function summariseRecording(rawValue) {
+  if (!rawValue) return null;
+  try {
+    const events = JSON.parse(rawValue);
+    if (!Array.isArray(events) || events.length === 0) return null;
+    const lastT = events[events.length - 1]?.t ?? 0;
+    return { duration: formatRecordingDuration(lastT), count: events.length };
+  } catch (_) {
+    return null;
+  }
+}
+
+function ReplayRecordingValue({ value, onChange }) {
+  const [isRecording, setIsRecording] = useState(false);
+  const [liveStatus, setLiveStatus] = useState({ count: 0, durationMs: 0 });
+
+  const summary = useMemo(() => summariseRecording(value), [value]);
+
+  const finishRecording = useCallback(async () => {
+    try {
+      const events = await window.electronAPI.stopMacroRecording();
+      // events is the parsed JSON value array from Rust. If it's empty the
+      // user effectively cancelled — keep prior value.
+      if (Array.isArray(events) && events.length > 0) {
+        onChange(JSON.stringify(events));
+      }
+    } catch (e) {
+      console.error('[recorder] stop failed', e);
+    } finally {
+      setIsRecording(false);
+      await window.electronAPI.removeAllListeners('recorder-stop-requested');
+      await window.electronAPI.removeAllListeners('recorder-countdown-cancelled');
+      // Tidy up the countdown overlay and restore the main window.
+      try { await window.electronAPI.hideRecorderCountdown(); } catch (_) {}
+      try { await window.electronAPI.recorderRestoreMain(); } catch (_) {}
+    }
+  }, [onChange]);
+
+  const cancelRecording = useCallback(async () => {
+    // Esc / Cancel hit during the 3-2-1 — countdown was emitting cancelled,
+    // recorder::start() was never called by Rust, so just unwind UI state.
+    setIsRecording(false);
+    await window.electronAPI.removeAllListeners('recorder-stop-requested');
+    await window.electronAPI.removeAllListeners('recorder-countdown-cancelled');
+    try { await window.electronAPI.hideRecorderCountdown(); } catch (_) {}
+    try { await window.electronAPI.restoreMainWindow(); } catch (_) {}
+  }, []);
+
+  // Safety cleanup: if the component unmounts mid-recording (user navigated
+  // away, changed step type), discard the in-flight recording so the LL
+  // hooks stop pushing into a buffer no one will retrieve. Discarding only
+  // touches Rust state when IS_RECORDING_MACRO is still true.
+  const isRecordingRef = useRef(false);
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+  useEffect(() => {
+    return () => {
+      if (isRecordingRef.current) {
+        window.electronAPI.removeAllListeners('recorder-stop-requested');
+        window.electronAPI.removeAllListeners('recorder-countdown-cancelled');
+        window.electronAPI.discardMacroRecording().catch(() => {});
+        window.electronAPI.hideRecorderCountdown().catch(() => {});
+        window.electronAPI.recorderRestoreMain().catch(() => {});
+      }
+    };
+  }, []);
+
+  // Poll status while recording — counter-update ONLY. Stop detection comes
+  // exclusively from the `recorder-stop-requested` event, never from
+  // `!status.recording` here. During the 3-second countdown isRecording is
+  // true but recorder::start() hasn't run yet, so the backend correctly
+  // reports recording=false — treating that as a stop signal caused the
+  // recorder to "finish" in the same millisecond it was requested.
+  useEffect(() => {
+    if (!isRecording) return undefined;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const status = await window.electronAPI.getRecordingStatus();
+        if (cancelled || !status?.recording) return;
+        setLiveStatus({ count: status.count || 0, durationMs: status.durationMs || 0 });
+      } catch (_) { /* ignore transient errors */ }
+    };
+    const interval = setInterval(tick, 250);
+    tick();
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isRecording]);
+
+  async function startRecording() {
+    setLiveStatus({ count: 0, durationMs: 0 });
+    // Defensive clean-slate: discard any leftover recorder state from a
+    // previous attempt (in dev, HMR reloads can desync React/Rust; in prod,
+    // a cleanup path could have silently failed).
+    try { await window.electronAPI.discardMacroRecording(); } catch (_) {}
+    window.electronAPI.onRecorderStopRequested(() => { finishRecording(); });
+    window.electronAPI.onRecorderCountdownCancelled(() => { cancelRecording(); });
+    setIsRecording(true);
+    // CRITICAL ORDER: show the countdown overlay BEFORE hiding main.
+    // Chromium throttles JS in hidden webviews, which left the next invoke
+    // (`showRecorderCountdown`) hanging forever — the main window's JS was
+    // paused awaiting an IPC response that couldn't be delivered. Showing
+    // the overlay first keeps main alive long enough to issue the hide call,
+    // and the overlay is always-on-top so the user sees the countdown card
+    // immediately rather than the brief flash of main.
+    await window.electronAPI.showRecorderCountdown();
+    try { await window.electronAPI.recorderHideMain(); } catch (_) {}
+  }
+
+  async function stopRecording() {
+    await finishRecording();
+  }
+
+  async function discardRecording() {
+    onChange('');
+  }
+
+  if (isRecording) {
+    return (
+      <div className="macro-step-value replay-rec replay-rec--recording" role="status">
+        <span className="replay-rec-dot" aria-hidden="true" />
+        <span className="replay-rec-label">
+          Recording {formatRecordingDuration(liveStatus.durationMs)} · {liveStatus.count} events
+          <span className="replay-rec-hint"> · Ctrl+Shift+R to stop</span>
+        </span>
+        <button type="button" className="replay-rec-btn replay-rec-btn--stop" onClick={stopRecording}>
+          <Square size={11} fill="currentColor" strokeWidth={0} /> Stop
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="macro-step-value replay-rec">
+      {summary ? (
+        <>
+          <span className="replay-rec-label">{summary.duration} · {summary.count} events captured</span>
+          <button type="button" className="replay-rec-btn" onClick={startRecording}>
+            <Circle size={11} fill="currentColor" strokeWidth={0} /> Re-record
+          </button>
+          <button type="button" className="replay-rec-btn replay-rec-btn--ghost" onClick={discardRecording} title="Discard recording">
+            <Trash2 size={12} />
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="replay-rec-label replay-rec-empty">No recording yet</span>
+          <button type="button" className="replay-rec-btn" onClick={startRecording}>
+            <Circle size={11} fill="currentColor" strokeWidth={0} /> Record
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1563,6 +1737,12 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             onChange={v => updateStep({ ...step, value: v })}
           />
         )}
+        {step.type === 'Record Macro' && (
+          <ReplayRecordingValue
+            value={step.value || ''}
+            onChange={v => updateStep({ ...step, value: v })}
+          />
+        )}
         {(step.type === 'Fire Trigger' || step.type === 'Fire Text Expansion') && (() => {
           const mode = step.type === 'Fire Trigger' ? 'trigger' : 'expansion';
           // Resolve the friendly label for the currently selected target.
@@ -1998,12 +2178,11 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
               type="number"
               className="seq-loop-delay-input"
               min={0}
-              max={60000}
               step={50}
               value={loopCfg.delayMs ?? 0}
               onChange={e => {
                 const n = parseInt(e.target.value, 10);
-                updateLoop({ delayMs: Number.isFinite(n) ? Math.max(0, Math.min(60000, n)) : 0 });
+                updateLoop({ delayMs: Number.isFinite(n) ? Math.max(0, n) : 0 });
               }}
             />
             <span>ms</span>

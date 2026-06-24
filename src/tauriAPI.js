@@ -194,6 +194,43 @@ window.electronAPI = {
     }).then(u => { listeners['key-captured'] = u; });
   },
 
+  // ── Macro recorder (Phase 1 — literal replay) ──────────────────────────────
+  // Start captures the LL keyboard + mouse stream. Stop returns the captured
+  // events as a JSON array; the caller stuffs the JSON into a "Replay
+  // Recording" macro step value and saves via the normal config flow.
+  startMacroRecording:   () => invoke('start_macro_recording'),
+  stopMacroRecording:    () => invoke('stop_macro_recording'),
+  discardMacroRecording: () => invoke('discard_macro_recording'),
+  getRecordingStatus:    () => invoke('get_recording_status'),
+  // Countdown overlay — orchestrates the minimise → 3-2-1 → record → restore
+  // flow. Show positions the window centred on the cursor's monitor; the
+  // countdown component animates and emits recorder-countdown-recording when
+  // the count finishes (Rust listens, morphs to pill, calls start). The
+  // listener below fires when the LL hook detects Ctrl+Shift+R.
+  showRecorderCountdown: () => invoke('show_recorder_countdown'),
+  hideRecorderCountdown: () => invoke('hide_recorder_countdown'),
+  // Hide / restore the main window for the recorder flow. We use hide()
+  // (not minimize) because Windows bounces minimised windows back when a
+  // sibling window in the same process is shown. hide() also skips the
+  // tray-hide side effects so the macro editor selection survives.
+  recorderHideMain:    () => invoke('recorder_hide_main'),
+  recorderRestoreMain: () => invoke('recorder_restore_main'),
+  // Countdown emits this if the user hits Esc / Cancel during the 3-2-1.
+  onRecorderCountdownCancelled: (callback) => {
+    listeners['recorder-countdown-cancelled'] = listen(
+      'recorder-countdown-cancelled',
+      (event) => callback(event.payload),
+    );
+  },
+  // Fired by the hook when the Ctrl+Shift+R stop hotkey is detected. The
+  // listener should call stopMacroRecording() to retrieve the captured buffer.
+  onRecorderStopRequested: (callback) => {
+    listeners['recorder-stop-requested'] = listen(
+      'recorder-stop-requested',
+      (event) => callback(event.payload),
+    );
+  },
+
   // ── Quick Search overlay ────────────────────────────────────────────────────
   closeOverlay:          ()          => invoke('close_overlay'),
   resizeOverlay:         (height)    => invoke('overlay_resize', { height }),

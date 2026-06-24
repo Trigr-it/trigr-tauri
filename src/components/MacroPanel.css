@@ -2179,7 +2179,7 @@
 
 .seq-loop-count,
 .seq-loop-delay-input {
-  width: 72px;
+  width: 144px;
   height: 28px;
   padding: 0 8px;
   background: var(--bg-surface);
@@ -2612,4 +2612,90 @@
   white-space: nowrap;
   font-size: 10px;
   color: var(--text-muted);
+}
+
+/* ── Replay Recording inline value ─────────────────────────────────────────
+   Phase 1 macro recorder UI. Sits in the same slot as .macro-step-value for
+   the "Replay Recording" step type. Shows Record / Stop / Re-record buttons
+   plus a live duration+event-count readout while the recorder is running. */
+.replay-rec {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+.replay-rec-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replay-rec-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.replay-rec-hint {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: 4px;
+}
+.replay-rec-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.replay-rec-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+.replay-rec-btn--stop {
+  background: rgba(229, 64, 64, 0.15);
+  border-color: rgba(229, 64, 64, 0.5);
+  color: #ff8a8a;
+}
+.replay-rec-btn--stop:hover {
+  background: rgba(229, 64, 64, 0.25);
+  border-color: rgba(229, 64, 64, 0.8);
+}
+.replay-rec-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+  padding: 0 6px;
+}
+.replay-rec-btn--ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-bright);
+}
+.replay-rec-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e54040;
+  box-shadow: 0 0 8px rgba(229, 64, 64, 0.7);
+  animation: replay-rec-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.replay-rec--recording .replay-rec-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+@keyframes replay-rec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(0.8); }
 }

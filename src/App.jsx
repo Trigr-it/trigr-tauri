@@ -1462,6 +1462,11 @@ function App() {
     return assignments[makeHoldKey(activeProfile, currentCombo, keyId)] || null;
   }, [assignments, activeProfile, currentCombo, activeModifiers, makeHoldKey]);
 
+  const hasHoldAssignment = useCallback((keyId) => {
+    if (activeModifiers.length === 0) return false;
+    return !!assignments[makeHoldKey(activeProfile, currentCombo, keyId)];
+  }, [assignments, activeProfile, currentCombo, activeModifiers, makeHoldKey]);
+
   const handleAssignHold = useCallback((keyId, macro) => {
     const key = makeHoldKey(activeProfile, currentCombo, keyId);
     const newAssignments = { ...assignments, [key]: macro };
@@ -4109,6 +4114,7 @@ function App() {
                 onKeySelect={handleKeySelect}
                 getKeyAssignment={getKeyAssignment}
                 hasDoubleAssignment={hasDoubleAssignment}
+                hasHoldAssignment={hasHoldAssignment}
                 lastFired={lastFired}
                 activeModifiers={activeModifiers}
                 onToggleModifier={handleToggleModifier}

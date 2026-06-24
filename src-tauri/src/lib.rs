@@ -11,6 +11,7 @@ mod foreground;
 mod hotkeys;
 mod licence;
 mod ocr;
+mod recorder;
 mod telemetry;
 mod tray;
 mod voice;
@@ -902,6 +903,280 @@ fn stop_key_capture() {
 #[tauri::command]
 fn js_key_event(code: String, ctrl: bool, shift: bool, alt: bool, meta: bool, app: tauri::AppHandle) {
     hotkeys::handle_js_key_event(&code, ctrl, shift, alt, meta, &app);
+}
+
+// ── Macro recorder (Phase 1 — literal replay) ───────────────────────────────
+
+/// Show the countdown overlay positioned bottom-centre on the cursor's
+/// monitor, 100px above the work-area bottom. The countdown JS animates
+/// 3-2-1 then invokes `recorder_countdown_complete` directly (we used to
+/// rely on a JS-emit → Rust-listen handshake, but the event bus wasn't
+/// reliably crossing webviews — the listener never fired ~50% of the time).
+/// If the user hits Esc or Cancel, the component invokes
+/// `recorder_countdown_abort` which hides the window and emits a Tauri
+/// event so the main window can unwind UI state.
+#[tauri::command]
+fn show_recorder_countdown(app: tauri::AppHandle) {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    // Build the countdown window on demand if it doesn't exist. This is the
+    // zero-idle-RAM path — the window only exists for the duration of a
+    // recording flow, then hide_recorder_countdown destroys it.
+    let win = match app.get_webview_window("countdown") {
+        Some(w) => w,
+        None => {
+            let url = tauri::WebviewUrl::App("index.html?countdown=1".into());
+            let builder = tauri::WebviewWindowBuilder::new(&app, "countdown", url)
+                .title("Trigr Recorder")
+                .inner_size(380.0, 320.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false);
+            let built = match builder.build() {
+                Ok(w) => w,
+                Err(e) => {
+                    log::error!("[RECORDER] Failed to build countdown window: {}", e);
+                    return;
+                }
+            };
+            #[cfg(target_os = "windows")]
+            {
+                let _ = built.with_webview(|webview| unsafe {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::{
+                        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+                    };
+                    use windows_core::Interface;
+                    let controller = webview.controller();
+                    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                        let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                            R: 0, G: 0, B: 0, A: 0,
+                        });
+                    }
+                });
+            }
+            built
+        }
+    };
+    let _ = webview_mem::resume_for_show(&app, "countdown");
+
+    // Pick the monitor the MAIN window is on, not the cursor's. The user just
+    // clicked Record inside main, so that's the screen they're looking at —
+    // cursor may have moved away in the milliseconds before the command ran,
+    // landing the modal on a different monitor (observed: y=1700 off-screen).
+    // Fall back to the cursor's monitor only if main has no HWND yet.
+    let (wa_left, wa_top, wa_right, wa_bottom, scale) = unsafe {
+        let hmon = app
+            .get_webview_window("main")
+            .and_then(|w| w.hwnd().ok())
+            .map(|h| windows_sys::Win32::Graphics::Gdi::MonitorFromWindow(
+                h.0 as _,
+                windows_sys::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST,
+            ))
+            .unwrap_or_else(|| {
+                let mut pt = POINT { x: 0, y: 0 };
+                GetCursorPos(&mut pt);
+                MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
+            });
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let s = monitor_scale_factor(hmon);
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, s)
+        } else {
+            (0, 0, 1920, 1080, s)
+        }
+    };
+
+    // Fixed bottom-centre — single recording bar. Bar shows "Starts in N"
+    // during the 3-second countdown, then transitions to live "Recording
+    // 0:00" tick-up when the recorder actually starts.
+    let w_logical = 320.0_f64;
+    let h_logical = 50.0_f64;
+    let phys_w = (w_logical * scale).round() as i32;
+    let phys_h = (h_logical * scale).round() as i32;
+    let margin = (30.0 * scale).round() as i32;
+    let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+    let phys_y = wa_bottom - phys_h - margin;
+
+    let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
+    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+    let _ = win.show();
+    // No set_focus — the user's target app must keep keyboard focus during
+    // the 3-2-1 (and during recording itself).
+    log::info!("[RECORDER] Countdown overlay shown at {}x{} ({}x{})", phys_x, phys_y, phys_w, phys_h);
+
+    // No countdown — start the recorder the instant the modal appears.
+    // The 200ms grace window inside recorder::start() filters out the
+    // mouse-up from the user's click on the Record button so it doesn't
+    // leak into the captured buffer. Matches the behaviour of
+    // AutoHotkey / Pulover's / most other macro recorders.
+    recorder::COUNTDOWN_CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
+    recorder::start();
+    log::info!("[RECORDER] Recording started (immediate, no countdown)");
+}
+
+/// Resize + reposition the countdown window into the small top-right pill
+/// shown while a recording is in progress. Called by
+/// `recorder_countdown_complete` at the moment 3-2-1 finishes.
+fn morph_countdown_to_pill(app: &tauri::AppHandle) {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    let Some(win) = app.get_webview_window("countdown") else { return; };
+
+    let (wa_left, wa_top, wa_right, _wa_bottom, scale) = unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut pt);
+        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let s = monitor_scale_factor(hmon);
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, s)
+        } else {
+            (0, 0, 1920, 1080, s)
+        }
+    };
+
+    // 420x60 logical, top-right corner with 20px margin from edges. CSS in
+    // RecorderCountdown.css already aligns the pill to top-right inside the
+    // window — we just resize the window itself to match.
+    let w_logical = 420.0_f64;
+    let h_logical = 60.0_f64;
+    let phys_w = (w_logical * scale).round() as i32;
+    let phys_h = (h_logical * scale).round() as i32;
+    let margin = (20.0 * scale).round() as i32;
+    let phys_x = wa_right - phys_w - margin;
+    let phys_y = wa_top + margin;
+
+    let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
+    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+}
+
+#[tauri::command]
+fn hide_recorder_countdown(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("countdown") {
+        let _ = win.hide();
+        log::info!("[RECORDER] Countdown overlay hidden");
+    }
+}
+
+/// Called by the countdown component the moment the 3-2-1 finishes. Direct
+/// invoke (not event emit) so we don't depend on JS→Rust event-bus delivery
+/// crossing webviews. Morphs the window into the recording pill and flips
+/// IS_RECORDING_MACRO to true via recorder::start().
+#[tauri::command]
+fn recorder_countdown_complete(app: tauri::AppHandle) {
+    morph_countdown_to_pill(&app);
+    recorder::start();
+    log::info!("[RECORDER] Countdown done -> recording started");
+}
+
+/// Called by the countdown component when the user hits Esc or Cancel during
+/// the 3-2-1. Hides the overlay and emits a Tauri event to the main window
+/// so it can restore itself + clear the recording UI state.
+#[tauri::command]
+fn recorder_countdown_abort(app: tauri::AppHandle) {
+    // Tell the countdown timer thread to bail before it morphs + starts.
+    recorder::COUNTDOWN_CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("countdown") {
+        let _ = win.hide();
+    }
+    use tauri::Emitter as _;
+    let _ = app.emit("recorder-countdown-cancelled", ());
+    log::info!("[RECORDER] Countdown aborted");
+}
+
+/// Stop the recording from the pill's Stop button. Mirrors what the LL hook
+/// does when it detects Ctrl+Shift+R: flips IS_RECORDING_MACRO false and
+/// emits `recorder-stop-requested` so main's listener retrieves the buffer
+/// + restores everything.
+#[tauri::command]
+fn recorder_stop_from_pill(app: tauri::AppHandle) {
+    recorder::IS_RECORDING_MACRO.store(false, std::sync::atomic::Ordering::SeqCst);
+    let (count, dur) = recorder::status_snapshot();
+    use tauri::Emitter as _;
+    let _ = app.emit(
+        "recorder-stop-requested",
+        serde_json::json!({ "count": count, "durationMs": dur }),
+    );
+    log::info!("[RECORDER] Stop button clicked → stop relayed to frontend");
+}
+
+/// Hide the main window for the recorder flow. We use `hide()` rather than
+/// `minimize()` because Windows brings minimised windows in the same process
+/// back to foreground when a sibling window (the countdown overlay) is
+/// shown — observed as "main bounces straight back to full size". hide() is
+/// the right primitive: the user sees their target app, Trigr disappears
+/// from the taskbar, EDITING_ACTIVE stays set (unlike hide_window_to_tray
+/// which deliberately clears it + emits reset-editing-on-hide). The macro
+/// editor selection therefore survives the recording round-trip.
+#[tauri::command]
+fn recorder_hide_main(app: tauri::AppHandle) {
+    // Open the flow gate FIRST so the foreground watcher can't fire a
+    // profile-switch in the brief window between hide() and the countdown
+    // becoming visible. Without this, switching to the target app post-hide
+    // unmounts the ReplayRecordingValue component and closes everything.
+    recorder::RECORDER_FLOW_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.hide();
+        log::info!("[RECORDER] Main hidden for recording (flow gate opened)");
+    }
+}
+
+/// Restore the main window after a recording flow. Reuses the tray-restore
+/// path which handles unminimize + show + AttachThreadInput focus dance.
+#[tauri::command]
+fn recorder_restore_main(app: tauri::AppHandle) {
+    tray::show_window(&app);
+    recorder::RECORDER_FLOW_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+    log::info!("[RECORDER] Main restored after recording (flow gate closed)");
+}
+
+#[tauri::command]
+fn start_macro_recording() {
+    log::info!("[RECORDER] start_macro_recording called");
+    recorder::start();
+}
+
+/// Stop the recording and return the captured events as a JSON value. The
+/// frontend stuffs this into a "Replay Recording" macro step's value field
+/// (serialised), then saves the assignment via the normal config flow.
+#[tauri::command]
+fn stop_macro_recording() -> Value {
+    log::info!("[RECORDER] stop_macro_recording called");
+    let events = recorder::stop();
+    serde_json::to_value(&events).unwrap_or(serde_json::Value::Array(Vec::new()))
+}
+
+#[tauri::command]
+fn discard_macro_recording() {
+    log::info!("[RECORDER] discard_macro_recording called");
+    recorder::discard();
+}
+
+/// Returns `{ recording: bool, count: usize, durationMs: u64 }`. Polled by the
+/// recording-status indicator. Cheap — atomic reads + a mutex lock on the
+/// events vec for the count.
+#[tauri::command]
+fn get_recording_status() -> Value {
+    let (count, dur) = recorder::status_snapshot();
+    serde_json::json!({
+        "recording": recorder::is_recording(),
+        "count": count,
+        "durationMs": dur,
+    })
 }
 
 // ── Profiles (Phase 6) ──────────────────────────────────────────────────────
@@ -3176,6 +3451,43 @@ pub fn run() {
             }
             let _ = &radial_win;
 
+            // Pre-create recorder countdown window hidden. Same pattern as
+            // fillin / clipboard / radial overlays — Tauri shares one
+            // WebView2 process across all windows so each additional one is
+            // incremental (~10-15MB), and webview_mem suspends it after
+            // 5min idle. On-demand creation was attempted but proved
+            // unreliable (destroy/rebuild race made the modal silently fail
+            // to appear, leaving main hidden and the flow stuck).
+            let countdown_url = tauri::WebviewUrl::App("index.html?countdown=1".into());
+            let countdown_win = tauri::WebviewWindowBuilder::new(app, "countdown", countdown_url)
+                .title("Trigr Recorder")
+                .inner_size(380.0, 320.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build()?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let _ = countdown_win.with_webview(|webview| unsafe {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::{
+                        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+                    };
+                    use windows_core::Interface;
+                    let controller = webview.controller();
+                    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                        let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                            R: 0, G: 0, B: 0, A: 0,
+                        });
+                    }
+                });
+            }
+            let _ = &countdown_win;
+
             // Store app handle for fill-in IPC from the expansion engine
             expansions::init_app_handle(app.handle().clone());
 
@@ -3359,6 +3671,18 @@ pub fn run() {
             start_key_capture,
             stop_key_capture,
             js_key_event,
+            // Macro recorder
+            start_macro_recording,
+            stop_macro_recording,
+            discard_macro_recording,
+            get_recording_status,
+            show_recorder_countdown,
+            hide_recorder_countdown,
+            recorder_countdown_complete,
+            recorder_countdown_abort,
+            recorder_stop_from_pill,
+            recorder_hide_main,
+            recorder_restore_main,
             // Profiles
             set_active_global_profile,
             update_profile_settings,

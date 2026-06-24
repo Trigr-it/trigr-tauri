@@ -266,6 +266,22 @@
   letter-spacing: -0.01em;
 }
 
+/* Hold badge — shown when a hold-trigger assignment exists. Uses the same
+   ⏱ stopwatch glyph as the sidebar hold chip ([[Sidebar.jsx]] line 1033).
+   Sits at the bottom-left so it doesn't collide with the ×2 double-tap
+   badge at bottom-right. */
+.key-hold-badge {
+  position: absolute;
+  bottom: 2px;
+  left: 3px;
+  font-size: 9px;
+  color: var(--accent);
+  line-height: 1;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* ── HINT ROW ─────────────────────────────────────────── */
 .keyboard-hint-row {
   display: flex;

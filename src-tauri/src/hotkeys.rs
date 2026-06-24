@@ -10,8 +10,8 @@ use tauri::{AppHandle, Emitter};
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, PeekMessageW, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
-    KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSLLHOOKSTRUCT, MSG, PM_REMOVE,
-    WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_QUIT,
+    KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSLLHOOKSTRUCT, MSG, PM_REMOVE,
+    WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_MOUSEMOVE, WM_QUIT,
     WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEWHEEL,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
@@ -736,6 +736,9 @@ enum HookEvent {
     MouseDown { button: MouseButton },
     MouseUp { button: MouseButton },
     MouseWheel { delta: i16 },
+    // Recorder stop hotkey detected in the keyboard hook. Processor thread
+    // sees this and emits a Tauri event so the frontend retrieves the buffer.
+    RecorderStopRequested,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1221,20 +1224,16 @@ unsafe extern "system" fn keyboard_hook_proc(
         HOOK_NCODE_NEGATIVE.store(true, Ordering::SeqCst);
     }
 
-    // Macro-loop Esc cancel. Cheap path: single atomic read gates the rest, so
-    // zero cost while no loop is active. When a loop IS active and Esc is pressed
-    // (real, not injected), set the global break flag — the loop iteration
-    // observes it at its next per-iter or inter-step check and exits cleanly.
-    // We do NOT suppress Esc — the target app should still see it (a stuck macro
-    // typing into a textbox should still cancel any modal the user opens).
-    if n_code >= 0
-        && crate::actions::LOOPING_COUNT.load(Ordering::SeqCst) > 0
-        && matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN)
-    {
+    // Esc → cancel any running macro (loop OR one-shot OR Record Macro replay).
+    // Single atomic store on every real Esc keydown. Macro execution paths
+    // reset the flag at start and poll it per step / per event; no harm if
+    // the flag is set while no macro is running because the next macro fire
+    // resets it. We do NOT suppress Esc — the target app should still see
+    // it so any open modal closes too.
+    if n_code >= 0 && matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN) {
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         if kb.vkCode == 0x1B /* VK_ESCAPE */ && (kb.flags & LLKHF_INJECTED) == 0 {
             crate::actions::ESC_LOOP_BREAK.store(true, Ordering::SeqCst);
-            log::info!("[Trigr] Esc pressed during active loop — cancel signal sent");
         }
     }
     // Buffer real user keystrokes during injection — swallow them so they don't land in the target app.
@@ -1285,6 +1284,38 @@ unsafe extern "system" fn keyboard_hook_proc(
     }
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+
+        // ── Macro recorder ingestion ────────────────────────────────────────
+        // When a recording is in progress, observe every real (non-injected)
+        // keystroke. Stop-hotkey detection on KEYDOWN suppresses the keystroke
+        // entirely (don't leak the stop combo to the target app) and signals
+        // the processor to emit a Tauri event. All other keystrokes fall
+        // through to the normal flow — recording is a side observation, the
+        // user's keys must still reach the target app.
+        if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst)
+            && (kb.flags & LLKHF_INJECTED) == 0
+        {
+            let is_down = matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+            let is_up = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
+            if is_down {
+                let ctrl = MOD_CTRL.load(Ordering::SeqCst);
+                let shift = MOD_SHIFT.load(Ordering::SeqCst);
+                let alt = MOD_ALT.load(Ordering::SeqCst);
+                let win = MOD_META.load(Ordering::SeqCst);
+                if crate::recorder::is_stop_hotkey(kb.vkCode, ctrl, shift, alt, win) {
+                    // Flip the flag IMMEDIATELY so the Ctrl/Shift/R keyups
+                    // that follow don't leak into the buffer. Frontend
+                    // retrieves the events via stop_macro_recording.
+                    crate::recorder::IS_RECORDING_MACRO.store(false, Ordering::SeqCst);
+                    send_event(HookEvent::RecorderStopRequested);
+                    return 1;
+                }
+            }
+            if is_down || is_up {
+                crate::recorder::push_key(kb.vkCode, kb.scanCode, is_down);
+            }
+        }
+
         match w_param as u32 {
             WM_KEYDOWN | WM_SYSKEYDOWN => {
                 // CRITICAL: for Space pre-swallow, evaluate the swallow decision
@@ -1369,6 +1400,43 @@ unsafe extern "system" fn mouse_hook_proc(
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         let mut suppress_id: Option<u8> = None;
         let mut is_button_down = false;
+
+        // ── Macro recorder ingestion ────────────────────────────────────────
+        // Capture every real mouse event (clicks, wheel, throttled moves) while
+        // a recording is active. Synthetic events (LLMHF_INJECTED) are skipped
+        // so Trigr's own SendInput doesn't loop back into the recording buffer.
+        if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+            let ms = &*(l_param as *const MSLLHOOKSTRUCT);
+            if (ms.flags & LLMHF_INJECTED) == 0 {
+                let mx = ms.pt.x;
+                let my = ms.pt.y;
+                match w_param as u32 {
+                    WM_LBUTTONDOWN => crate::recorder::push_mouse_button("Left", mx, my, true),
+                    WM_LBUTTONUP   => crate::recorder::push_mouse_button("Left", mx, my, false),
+                    WM_RBUTTONDOWN => crate::recorder::push_mouse_button("Right", mx, my, true),
+                    WM_RBUTTONUP   => crate::recorder::push_mouse_button("Right", mx, my, false),
+                    WM_MBUTTONDOWN => crate::recorder::push_mouse_button("Middle", mx, my, true),
+                    WM_MBUTTONUP   => crate::recorder::push_mouse_button("Middle", mx, my, false),
+                    WM_XBUTTONDOWN => {
+                        let xbutton = ((ms.mouseData >> 16) & 0xFFFF) as u16;
+                        let name = if xbutton == 1 { "Side1" } else { "Side2" };
+                        crate::recorder::push_mouse_button(name, mx, my, true);
+                    }
+                    WM_XBUTTONUP => {
+                        let xbutton = ((ms.mouseData >> 16) & 0xFFFF) as u16;
+                        let name = if xbutton == 1 { "Side1" } else { "Side2" };
+                        crate::recorder::push_mouse_button(name, mx, my, false);
+                    }
+                    WM_MOUSEWHEEL => {
+                        let delta = (ms.mouseData >> 16) as i16;
+                        crate::recorder::push_wheel(delta as i32, mx, my);
+                    }
+                    WM_MOUSEMOVE => crate::recorder::push_mouse_move(mx, my),
+                    _ => {}
+                }
+            }
+        }
+
         match w_param as u32 {
             WM_LBUTTONDOWN => {
                 send_event(HookEvent::MouseDown { button: MouseButton::Left });
@@ -1508,6 +1576,20 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                 if HOOK_NCODE_NEGATIVE.swap(false, Ordering::SeqCst) {
                     info!("[Trigr] Hook nCode<0 received — hook may be dying");
                 }
+                // Recorder stop-hotkey signal — hook already suppressed the
+                // keystroke; emit to the frontend so it retrieves the buffer
+                // and clears IS_RECORDING_MACRO. Handled BEFORE the
+                // macros-disabled / pause-hotkey branch so stop still works
+                // when the user has paused macros mid-recording.
+                if matches!(event, HookEvent::RecorderStopRequested) {
+                    let (count, dur) = crate::recorder::status_snapshot();
+                    let _ = app.emit(
+                        "recorder-stop-requested",
+                        serde_json::json!({ "count": count, "durationMs": dur }),
+                    );
+                    log::info!("[RECORDER] Stop hotkey relayed to frontend");
+                    continue;
+                }
                 if !MACROS_ENABLED.load(Ordering::SeqCst) && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst) && !IS_CAPTURING_KEY.load(Ordering::SeqCst) {
                     // Still track modifiers even when paused
                     if let HookEvent::KeyDown { vk_code, .. } | HookEvent::KeyUp { vk_code, .. } = &event {
@@ -1583,6 +1665,8 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     HookEvent::MouseDown { button } => handle_mouse_down(button, &app),
                     HookEvent::MouseUp { button } => handle_mouse_up(button, &app),
                     HookEvent::MouseWheel { delta } => handle_mouse_wheel(delta, &app),
+                    // Already handled above via `continue`. Compiler exhaustiveness.
+                    HookEvent::RecorderStopRequested => {}
                 }
             }
             info!("[Trigr] Event processor stopped");
@@ -2663,7 +2747,15 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // over it, detect the profile so we can still fire the remap.
     // Pro gate: app-specific profile switching is Pro-only — Free users never
     // get the refocus switch even when cursor is over a linked app.
-    let refocus_profile = if !cursor_over_app && !in_dialog && crate::licence::is_pro() {
+    // Recorder gate: suppressed entirely while a recording flow is active
+    // (main hidden + countdown showing). A refocus-switch mid-flow fires
+    // profile-switched → main clears selectedKey → ReplayRecordingValue
+    // unmounts → cleanup discards the recording.
+    let refocus_profile = if !cursor_over_app
+        && !in_dialog
+        && crate::licence::is_pro()
+        && !crate::recorder::RECORDER_FLOW_ACTIVE.load(Ordering::SeqCst)
+    {
         cursor_over_unfocused_linked_app()
     } else {
         None

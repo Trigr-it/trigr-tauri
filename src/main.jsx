@@ -56,6 +56,13 @@ if (params.get('overlay') === '1') {
       <ClipboardOverlay />
     </React.Suspense>
   );
+} else if (params.get('countdown') === '1') {
+  const RecorderCountdown = React.lazy(() => import('./components/RecorderCountdown'));
+  root.render(
+    <React.Suspense fallback={null}>
+      <RecorderCountdown />
+    </React.Suspense>
+  );
 } else {
   // Only import App (and its global.css/app.css) for the main window
   const App = React.lazy(() => import('./App'));
