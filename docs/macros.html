@@ -168,8 +168,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .logo-mark > svg { width:100%; height:100%; display:block; }
 .nav-wordmark { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); }
 .nav-links { display:flex; align-items:center; gap:16px; }
-.nav-cta { background:var(--gold); color:#0d0d11; padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; text-decoration:none; transition:transform 0.15s, box-shadow 0.2s; }
-.nav-cta:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,160,32,0.3); }
+.nav-cta { background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; text-decoration:none; border:1px solid var(--gold); box-shadow:0 1px 6px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); transition:transform 0.15s, box-shadow 0.2s, background 0.2s; }
+.nav-cta:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); transform:translateY(-1px); box-shadow:0 4px 14px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
 [data-theme="light"] .nav-cta { color:#fff; }
 .theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
 .theme-toggle:hover { color:var(--gold); border-color:var(--hairline-gold); background:var(--gold-glow); }
@@ -194,8 +194,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .hero-arm-link a { color:var(--text-muted); text-decoration:underline; text-decoration-color:var(--hairline-strong); text-underline-offset:3px; transition:color 0.2s, text-decoration-color 0.2s; }
 .hero-arm-link a:hover { color:var(--gold-light); text-decoration-color:var(--gold); }
 [data-theme="light"] .hero-arm-link a:hover { color:var(--gold-dark); }
-.btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; transition:all 0.2s; border:none; cursor:pointer; }
-.btn-primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
+.btn-primary { display:inline-flex; align-items:center; gap:10px; background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; border:1px solid var(--gold); box-shadow:0 4px 20px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); transition:all 0.2s; cursor:pointer; }
+.btn-primary:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); transform:translateY(-1px); box-shadow:0 6px 26px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
 [data-theme="light"] .btn-primary { color:#fff; }
 .btn-ghost { display:inline-flex; align-items:center; gap:8px; background:transparent; color:var(--text); text-decoration:none; padding:14px 22px; border-radius:10px; font-size:14px; font-weight:500; border:1px solid var(--hairline-strong); transition:all 0.2s; }
 .btn-ghost:hover { border-color:var(--hairline-gold); background:var(--gold-glow); color:var(--gold-light); }
@@ -238,6 +238,11 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .mft-key { font-family:var(--font-mono); font-weight:700; letter-spacing:0.04em; padding:1px 8px; background:var(--gold-glow); color:var(--gold-light); border-radius:5px; font-size:12px; }
 [data-theme="light"] .mft-key { color:var(--gold-dark); }
 .mft-arrow { color:var(--text-dim); font-size:11px; }
+
+/* Callout SVG — thin line drawing on from pressed key to fire-toast */
+.key-callout-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:5; overflow:visible; }
+.key-callout-svg path { stroke:#e8a020; stroke-width:1.5; fill:none; stroke-linecap:round; stroke-linejoin:round; opacity:0; filter:drop-shadow(0 0 3px rgba(232,160,32,0.5)); transition:stroke-dashoffset 0.55s cubic-bezier(0.2,0.8,0.3,1), opacity 0.2s; }
+.key-callout-svg.show path { opacity:1; }
 .mockup-prof-toast { position:absolute; top:-22px; right:32px; z-index:6; padding:7px 14px; background:rgba(13,17,32,0.96); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid var(--hairline); border-radius:100px; font-size:11px; font-family:var(--font-mono); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-muted); white-space:nowrap; pointer-events:none; opacity:0; transform:translateY(-8px); transition:opacity 0.35s, transform 0.35s; }
 [data-theme="light"] .mockup-prof-toast { background:rgba(255,255,255,0.97); }
 .mockup-prof-toast.show { opacity:1; transform:translateY(0); }
@@ -626,6 +631,214 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
   .ss-steps { grid-template-columns: 1fr; }
   .ss-stage { padding: 20px 12px; min-height: 320px; }
 }
+
+/* ════════════════════════════════════════════════════════════
+   2D FULL-UI SHOWCASE — sits below the hero, displays the
+   whole app at a glance with all the chrome visible.
+   ════════════════════════════════════════════════════════════ */
+.ui-showcase { padding: 0 24px 80px; max-width: 1480px; margin: 0 auto; position: relative; z-index: 1; }
+.showcase-eyebrow { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-light); text-align: center; margin-bottom: 16px; }
+[data-theme="light"] .showcase-eyebrow { color: var(--gold-dark); }
+.showcase-h2 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 4.2vw, 48px); letter-spacing: -0.025em; line-height: 1.05; color: var(--text); text-align: center; margin: 0 0 14px; }
+.showcase-h2 em { font-style: normal; background: linear-gradient(135deg,#f5cb6a 0%,#e8a020 60%,#c8860a 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.showcase-sub { font-size: 17px; color: var(--text-muted); max-width: 620px; margin: 0 auto 40px; line-height: 1.6; text-align: center; }
+.mockup-static { margin-top: 0 !important; padding-bottom: 0 !important; animation: none !important; pointer-events: none; }
+.mockup-static button, .mockup-static a { pointer-events: none !important; cursor: default !important; }
+.mockup-static .k-side { display: none !important; }
+.mockup-static .key-callout-svg { display: none !important; }
+@media (max-width: 768px) { .ui-showcase { padding: 0 16px 60px; } }
+
+/* ════════════════════════════════════════════════════════════
+   LAB v3 — STANDALONE 3D KEYBOARD + OVERLAY HERO LAYOUT
+   (ported from index.html — keep in sync)
+   ════════════════════════════════════════════════════════════ */
+.mockup-3d .app-shell .t-bar,
+.mockup-3d .app-shell .sb,
+.mockup-3d .app-shell .panel,
+.mockup-3d .app-shell .s-bar,
+.mockup-3d .app-shell .mod-bar,
+.mockup-3d .app-shell .kb-lbl,
+.mockup-3d .app-shell .kb-hints { display: none !important; }
+
+.mockup-3d .mockup-viewport { background: transparent !important; border: none !important; box-shadow: none !important; overflow: visible !important; }
+.mockup-3d .mockup-viewport::after { display: none !important; }
+.mockup-3d .app-shell { background: transparent !important; border: none !important; box-shadow: none !important; }
+.mockup-3d .app-shell .a-body { background: transparent !important; }
+
+.mockup-scaler { transform-style: preserve-3d; }
+
+.mockup-3d .app-shell .kb-area {
+  perspective: 1600px; perspective-origin: 50% 60%;
+  overflow: visible; position: relative;
+  background: transparent !important; border: none !important;
+  padding: 70px 60px 100px !important;
+  gap: 0 !important; align-items: center; justify-content: center;
+}
+.mockup-3d .app-shell .kb-area::after {
+  content: ''; position: absolute; left: 18%; right: 18%; bottom: 60px; height: 40px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, transparent 65%);
+  filter: blur(18px); z-index: 0; pointer-events: none;
+}
+[data-theme="light"] .mockup-3d .app-shell .kb-area::after { background: radial-gradient(ellipse at center, rgba(0,0,0,0.22) 0%, transparent 65%); }
+
+.mockup-3d .app-shell .kb-outer {
+  --kb-rx: 40deg; --kb-ry: -20deg; --kb-rz: 10deg;
+  transform: rotateZ(var(--kb-rz)) rotateX(var(--kb-rx)) rotateY(var(--kb-ry));
+  transform-style: preserve-3d; transform-origin: 50% 55%;
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform; z-index: 1;
+  background: linear-gradient(180deg, #1f1f2d 0%, #0d0d14 100%) !important;
+  border: 1px solid #2a2a3a !important; border-radius: 18px !important;
+  padding: 18px 19px 21px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -3px 8px rgba(0,0,0,0.6), 0 4px 0 #050509, 0 6px 0 #050509 !important;
+}
+.mockup-3d .app-shell .kb-outer::before { background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%) !important; }
+[data-theme="light"] .mockup-3d .app-shell .kb-outer {
+  background: linear-gradient(180deg, #ebe8de 0%, #c8c4b6 100%) !important;
+  border: 1px solid #b8b4a4 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), inset 0 -3px 8px rgba(0,0,0,0.08), 0 4px 0 #8a8676, 0 6px 0 #8a8676 !important;
+}
+.mockup-3d .app-shell .kb-area.is-tracking .kb-outer { transition: transform 0.15s linear; }
+
+.mockup-3d .app-shell .kb-rows,
+.mockup-3d .app-shell .kb-row { transform-style: preserve-3d; }
+
+.mockup-3d .app-shell .k {
+  --k-y: 0px; --k-z: 22px;
+  transform: translateY(var(--k-y)) translateZ(var(--k-z));
+  transform-style: preserve-3d;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  overflow: visible !important;
+  background: var(--key-bg) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.18) !important;
+}
+.mockup-3d .app-shell .k:hover  { --k-y: -1px; --k-z: 26px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-3d .app-shell .k:active { --k-y:  1px; --k-z: 14px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-3d .app-shell .k.sel    { --k-y: -1px; --k-z: 30px; transform: translateY(var(--k-y)) translateZ(var(--k-z)); }
+.mockup-3d .app-shell .k.asgn { background: var(--key-bg-assigned) !important; }
+.mockup-3d .app-shell .k.sel {
+  background: var(--key-bg-selected) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.18), 0 0 22px rgba(232,160,32,0.35) !important;
+}
+
+.mockup-3d .app-shell .k::after {
+  content: ''; position: absolute; left: -1px; right: -1px; top: 100%;
+  height: 22px;
+  background: #0e0e16 !important;
+  border-left: 1px solid var(--key-border); border-right: 1px solid var(--key-border); border-bottom: 1px solid var(--key-border);
+  border-radius: 0 0 5px 5px;
+  transform-origin: top center; transform: rotateX(-90deg); pointer-events: none;
+}
+.mockup-3d .app-shell .k.asgn::after { background: #1c1408 !important; border-color: var(--key-border-assigned, var(--key-border)); }
+.mockup-3d .app-shell .k.sel::after { background: #3a2810 !important; border-color: rgba(232,160,32,0.55); }
+[data-theme="light"] .mockup-3d .app-shell .k { background: var(--key-bg) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 0 rgba(0,0,0,0.05) !important; }
+[data-theme="light"] .mockup-3d .app-shell .k::after { background: #948c7c !important; border-color: rgba(0,0,0,0.15); }
+[data-theme="light"] .mockup-3d .app-shell .k.asgn::after { background: #b48030 !important; }
+.mockup-3d .app-shell .k::after { height: var(--k-z, 22px); transition: height 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.12s, border-color 0.12s; }
+.mockup-3d .app-shell .k:hover::after,
+.mockup-3d .app-shell .k.sel::after,
+.mockup-3d .app-shell .k:active::after { height: var(--k-z, 22px); }
+
+.mockup-3d .app-shell .k.sel .k-lbl,
+.mockup-3d .app-shell .k.asgn .k-lbl { text-shadow: 0 0 8px rgba(232,160,32,0.5); }
+
+@media (max-width: 1024px) { .mockup-3d .app-shell .kb-area { padding: 20px 40px 30px !important; } }
+@media (max-width: 768px)  { .mockup-3d .app-shell .kb-area { padding: 12px 20px 18px !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .mockup-3d .app-shell .kb-outer { transition: none !important; --kb-rx: 32deg !important; --kb-ry: -33deg !important; }
+  .mockup-3d .app-shell .k { transition: background 0.15s, border-color 0.15s !important; }
+}
+
+/* OVERLAY HERO LAYOUT — text left, keyboard right, overlapping */
+.hero-inner {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto;
+  position: relative; align-items: center;
+  text-align: left !important;
+  padding: 100px 32px 60px !important;
+  max-width: 1700px !important;
+}
+.hero-text-col {
+  grid-area: 1 / 1; z-index: 2; position: relative;
+  display: flex; flex-direction: column;
+  align-items: flex-start; align-self: center; justify-self: start;
+  max-width: 720px; width: 100%;
+}
+.hero-text-col .hero-h1,
+.hero-text-col .hero-sub,
+.hero-text-col .hero-arm-link,
+.hero-text-col .hero-meta {
+  text-align: left; margin-left: 0; margin-right: 0; max-width: none;
+}
+.hero-text-col .hero-actions { justify-content: flex-start; }
+.hero-text-col .hero-badge { align-self: flex-start; }
+.hero-text-col .hero-trust { justify-content: flex-start; }
+
+.hero-inner > .mockup-wrap {
+  grid-area: 1 / 1; z-index: 1;
+  align-self: center; justify-self: end;
+  width: min(78%, 1280px);
+  margin-top: 0 !important; padding-bottom: 40px !important;
+  animation: none !important;
+  transform: translateX(15%) !important;
+}
+@media (max-width: 860px) { .hero-inner > .mockup-wrap { transform: none !important; } }
+
+.mockup-3d .app-shell .k.sys { opacity: 1 !important; cursor: pointer !important; }
+
+.mockup-3d .app-shell .k-side {
+  position: absolute !important; top: 0 !important; left: 100% !important; right: auto !important;
+  width: 22px !important; height: 100% !important;
+  background: #0e0e16 !important;
+  border-top: 1px solid var(--key-border) !important;
+  border-right: 1px solid var(--key-border) !important;
+  border-bottom: 1px solid var(--key-border) !important;
+  border-radius: 0 5px 5px 0 !important;
+  transform-origin: 0 50% !important; transform: rotateY(90deg) !important;
+  transition: background 0.12s, border-color 0.12s !important;
+  pointer-events: none !important;
+}
+.mockup-3d .app-shell .k.asgn .k-side { background: #1c1408 !important; }
+.mockup-3d .app-shell .k.sel  .k-side { background: #3a2810 !important; border-color: rgba(232,160,32,0.55) !important; }
+[data-theme="light"] .mockup-3d .app-shell .k-side { background: #948c7c !important; border-color: rgba(0,0,0,0.22) !important; }
+[data-theme="light"] .mockup-3d .app-shell .k.asgn .k-side { background: #b48030 !important; }
+
+.mockup-3d .mockup-prof-toast {
+  right: auto !important; left: 30% !important;
+  transform: translateX(-50%) translateY(-8px) !important;
+  border-color: rgba(232,160,32,0.45) !important;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45), 0 0 18px rgba(232,160,32,0.22) !important;
+}
+.mockup-3d .mockup-prof-toast.show { transform: translateX(-50%) translateY(0) !important; }
+
+.mockup-3d .app-shell .k.fire {
+  --k-y: 2px; --k-z: 6px !important;
+  transform: translateY(var(--k-y)) translateZ(var(--k-z)) !important;
+  transition: transform 0.08s cubic-bezier(0.6, 0, 0.5, 1) !important;
+  animation: none !important;
+}
+
+.hero-inner > .mockup-3d .chip-floater { display: none !important; }
+
+@media (max-width: 1100px) {
+  .hero-inner { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 32px; padding: 80px 28px 40px !important; }
+}
+@media (max-width: 860px) {
+  .hero-inner { display: flex !important; flex-direction: column-reverse !important; gap: 10px !important; text-align: center !important; padding: 65px 24px 40px !important; }
+  .hero-text-col { align-items: center; }
+  .hero-text-col .hero-h1,
+  .hero-text-col .hero-sub,
+  .hero-text-col .hero-arm-link,
+  .hero-text-col .hero-meta { text-align: center; margin-left: auto; margin-right: auto; }
+  .hero-text-col .hero-actions { justify-content: center; }
+  .hero-text-col .hero-badge { align-self: center; }
+  .hero-text-col .hero-trust { justify-content: center; }
+  .hero-inner > .mockup-wrap { margin-top: 0 !important; width: 100% !important; max-width: 560px !important; margin-left: auto !important; margin-right: auto !important; }
+  .hero-inner > .mockup-3d .key-callout-svg { display: none !important; }
+  .hero-inner > .mockup-3d .mockup-prof-toast { left: 50% !important; transform: translateX(-50%) translateY(-8px) !important; }
+  .hero-inner > .mockup-3d .mockup-prof-toast.show { transform: translateX(-50%) translateY(0) !important; }
+}
 </style>
 </head>
 <body>
@@ -649,6 +862,7 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
 <section class="hero">
   <div class="hero-bg"></div>
   <div class="hero-inner">
+    <div class="hero-text-col">
     <div class="hero-badge">Free · Windows 10 &amp; 11 · No scripting required</div>
     <h1 class="hero-h1">Windows <em>Macro</em><br>Software.</h1>
     <p class="hero-sub">Record, edit, and run macros on Windows. No scripting. Works in any app.</p>
@@ -664,15 +878,26 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
       <span class="hero-trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Source code public on GitHub</span>
       <span class="hero-trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Used daily by a 10-person engineering team</span>
     </div>
+    </div><!-- /.hero-text-col -->
 
-    <!-- ── MOCKUP (copied from index.html) ── -->
-    <div class="mockup-wrap">
+    <!-- ── MOCKUP (3D hero keyboard) ── -->
+    <div class="mockup-wrap mockup-3d">
       <div class="chip-floater chip-1"><span class="chip-icon">⚡</span><span class="chip-tag">/sig</span><span class="chip-arrow">→</span><span>Email signature</span></div>
       <div class="chip-floater chip-2"><span class="chip-icon">⌨</span><span class="chip-tag">Ctrl+E</span><span class="chip-arrow">→</span><span>Open terminal</span></div>
       <div class="chip-floater chip-3"><span class="chip-icon">◈</span><span class="chip-tag">Ctrl+R</span><span class="chip-arrow">→</span><span>Run macro</span></div>
 
       <div class="mockup-fire-toast" id="mockup-fire-toast"></div>
       <div class="mockup-prof-toast" id="mockup-prof-toast"></div>
+
+      <!-- Callout line from pressed key to fire-toast -->
+      <svg class="key-callout-svg" aria-hidden="true">
+        <defs>
+          <marker id="callout-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#e8a020"/>
+          </marker>
+        </defs>
+        <path id="key-callout-path" d="" marker-end="url(#callout-arrow)"></path>
+      </svg>
 
       <div class="mockup-outer" id="mockup-outer">
         <div class="mockup-viewport" id="mockup-viewport">
@@ -773,6 +998,24 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
 
             </div><!-- /app-shell -->
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     2D FULL-UI SHOWCASE — what the actual app looks like
+     ════════════════════════════════════════════════════════════ -->
+<section class="ui-showcase reveal" aria-label="The full Keyfire app interface">
+  <div class="showcase-eyebrow">The full app</div>
+  <h2 class="showcase-h2">Everything in <em>one window</em>.</h2>
+  <p class="showcase-sub">Visual editor, profile tabs, action panel, live status. No config files, no scripting, no hunting through menus.</p>
+  <div class="mockup-wrap mockup-static">
+    <div class="mockup-outer" id="mockup-outer-2">
+      <div class="mockup-viewport" id="mockup-viewport-2">
+        <div class="mockup-scaler" id="mockup-scaler-2">
+          <div id="showcase-host" aria-hidden="true"></div>
         </div>
       </div>
     </div>
@@ -1105,6 +1348,8 @@ function buildKB() {
       k.dataset.id = id;
       if (sub) { const sl = document.createElement('span'); sl.className = 'k-sub'; sl.textContent = sub; k.appendChild(sl); }
       const ll = document.createElement('span'); ll.className = 'k-lbl'; ll.textContent = lbl; k.appendChild(ll);
+      // Lab v3: right-side face for 3D keycap depth (CSS rotates it 90deg)
+      const ks = document.createElement('div'); ks.className = 'k-side'; k.appendChild(ks);
       if (!sys) k.addEventListener('click', () => onKey(id, lbl));
       rowEl.appendChild(k);
     });
@@ -1195,33 +1440,51 @@ function updateStatus() {
   document.getElementById('sb-cnt').textContent = c;
 }
 function scaleMockup() {
-  const outer = document.getElementById('mockup-outer');
-  const scaler = document.getElementById('mockup-scaler');
-  const viewport = document.getElementById('mockup-viewport');
-  const shell = document.getElementById('app-shell');
-  if (!outer || !scaler || !viewport || !shell) return;
-  const available = outer.offsetWidth;
-  if (available === 0) return;
-  const naturalW = 1280;
-  const scale = available / naturalW;
-  scaler.style.transform = 'scale(' + scale + ')';
-  scaler.style.transformOrigin = 'top left';
-  const naturalH = shell.offsetHeight;
-  viewport.style.height = (naturalH * scale) + 'px';
+  ['', '-2'].forEach(function(suffix){
+    const outer = document.getElementById('mockup-outer' + suffix);
+    const scaler = document.getElementById('mockup-scaler' + suffix);
+    const viewport = document.getElementById('mockup-viewport' + suffix);
+    const shell = document.getElementById('app-shell' + suffix);
+    if (!outer || !scaler || !viewport || !shell) return;
+    const available = outer.offsetWidth;
+    if (available === 0) return;
+    const naturalW = 1280;
+    const scale = available / naturalW;
+    scaler.style.transform = 'scale(' + scale + ')';
+    scaler.style.transformOrigin = 'top left';
+    const naturalH = shell.offsetHeight;
+    viewport.style.height = (naturalH * scale) + 'px';
+  });
+}
+
+/* Clone the rendered hero app-shell into the static 2D showcase below */
+function buildShowcase() {
+  const host = document.getElementById('showcase-host');
+  const src = document.getElementById('app-shell');
+  if (!host || !src) return;
+  host.innerHTML = '';
+  const clone = src.cloneNode(true);
+  clone.id = 'app-shell-2';
+  clone.querySelectorAll('[id]').forEach(function(el){ el.id = el.id + '-2'; });
+  clone.querySelectorAll('[onclick]').forEach(function(el){ el.removeAttribute('onclick'); });
+  host.appendChild(clone);
 }
 
 buildKB(); refreshSB(); updateStatus();
+buildShowcase();
 window.addEventListener('resize', scaleMockup);
 document.fonts.ready.then(() => { scaleMockup(); });
 (function() {
-  var vp = document.getElementById('mockup-viewport');
-  var shell = document.getElementById('app-shell');
-  var outer = document.getElementById('mockup-outer');
-  if (!vp || !shell || !outer) return;
-  var naturalW = 1280;
-  var scale = (outer.offsetWidth || window.innerWidth) / naturalW;
-  var estimatedH = 596;
-  vp.style.height = (estimatedH * scale) + 'px';
+  ['', '-2'].forEach(function(suffix){
+    var vp = document.getElementById('mockup-viewport' + suffix);
+    var shell = document.getElementById('app-shell' + suffix);
+    var outer = document.getElementById('mockup-outer' + suffix);
+    if (!vp || !shell || !outer) return;
+    var naturalW = 1280;
+    var scale = (outer.offsetWidth || window.innerWidth) / naturalW;
+    var estimatedH = 596;
+    vp.style.height = (estimatedH * scale) + 'px';
+  });
 })();
 setTimeout(scaleMockup, 50);
 
@@ -1242,23 +1505,13 @@ setTimeout(scaleMockup, 50);
   document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
 })();
 
-/* ── MOCKUP AUTO-DEMO: cycling key fire + profile rotation (copied from index.html) ── */
+/* ── MOCKUP AUTO-DEMO: cycling key fire + profile rotation. Never pauses for user interaction — clicks and hovers don't break the cycle. ── */
 (function(){
-  var lastUserAction = 0;
-  var mockupOuter = document.getElementById('mockup-outer');
   var fireToast = document.getElementById('mockup-fire-toast');
   var profToast = document.getElementById('mockup-prof-toast');
 
-  if(mockupOuter){
-    ['mouseenter','click','mousemove'].forEach(function(evt){
-      mockupOuter.addEventListener(evt, function(){ lastUserAction = Date.now(); });
-    });
-  }
-
   var profOrder = ['default','chrome','vscode'];
   var profIdx = 0;
-
-  function userIsActive(){ return Date.now() - lastUserAction < 4500; }
 
   function showFireToast(combo, action){
     if(!fireToast) return;
@@ -1270,36 +1523,86 @@ setTimeout(scaleMockup, 50);
 
   function showProfToast(name){
     if(!profToast) return;
-    profToast.innerHTML = 'Profile <em>'+name+'</em>';
+    profToast.innerHTML = 'Auto Profile Switch <em>'+name+'</em>';
     profToast.classList.add('show');
     clearTimeout(profToast._t);
     profToast._t = setTimeout(function(){ profToast.classList.remove('show'); }, 2400);
   }
 
-  function fireRandomKey(){
-    if(userIsActive()) return;
-    if(typeof PROFILES === 'undefined' || typeof S === 'undefined') return;
+  var fireIdx = 0;
+  var MOD_KEY_IDS = { 'Ctrl': 'CtrlL', 'Alt': 'AltL', 'Shift': 'ShiftLeft', 'Win': 'WinL' };
+  function pulseKeysById(ids){
+    ids.forEach(function(id){
+      var el = document.querySelector('#kb-rows .k[data-id="'+id+'"]');
+      if(!el) return;
+      el.classList.add('fire');
+      setTimeout(function(){ el.classList.remove('fire'); }, 1100);
+    });
+  }
+  function drawCallout(unpressedKeyRect){
+    var svg = document.querySelector('.key-callout-svg');
+    var path = document.getElementById('key-callout-path');
+    var wrap = document.querySelector('.mockup-wrap');
+    var toast = document.getElementById('mockup-fire-toast');
+    if(!unpressedKeyRect || !svg || !path || !wrap || !toast) return;
+    var wrapRect = wrap.getBoundingClientRect();
+    var toastRect = toast.getBoundingClientRect();
+    var startX = unpressedKeyRect.left + unpressedKeyRect.width/2 - wrapRect.left;
+    var startY = unpressedKeyRect.top + unpressedKeyRect.height/2 - wrapRect.top;
+    var endX = toastRect.left + toastRect.width/2 - wrapRect.left;
+    var endY = toastRect.top + toastRect.height - wrapRect.top;
+    path.setAttribute('d',
+      'M ' + startX + ' ' + startY +
+      ' L ' + startX + ' ' + endY +
+      ' L ' + endX + ' ' + endY
+    );
+    var len = path.getTotalLength();
+    path.style.transition = 'none';
+    path.style.strokeDasharray = len;
+    path.style.strokeDashoffset = len;
+    svg.classList.add('show');
+    void path.getBoundingClientRect();
+    requestAnimationFrame(function(){
+      path.style.transition = '';
+      path.style.strokeDashoffset = 0;
+    });
+  }
+  function clearCallout(){
+    var svg = document.querySelector('.key-callout-svg');
+    if(svg) svg.classList.remove('show');
+  }
+  function fireKey(pick){
     var assigns = PROFILES[S.prof].assigns;
-    var keys = Object.keys(assigns);
-    if(keys.length === 0) return;
-    var pick = keys[Math.floor(Math.random()*keys.length)];
     var mod = pick.split('-')[0];
     var keyId = pick.split('-')[1];
     if(S.mod !== mod){
       var modBtn = document.getElementById('mb-'+mod);
       if(modBtn && typeof selMod === 'function') selMod(modBtn, mod);
     }
-    var kEl = document.querySelector('#kb-rows .k[data-id="'+keyId+'"]');
-    if(!kEl) return;
-    kEl.classList.add('fire');
-    setTimeout(function(){ kEl.classList.remove('fire'); }, 1100);
+    var mainKey = document.querySelector('#kb-rows .k[data-id="'+keyId+'"]');
+    var unpressedRect = mainKey ? mainKey.getBoundingClientRect() : null;
+    var modIds = mod.split('+').map(function(m){ return MOD_KEY_IDS[m]; }).filter(Boolean);
+    pulseKeysById(modIds.concat([keyId]));
     var keyDef = ROWS.flat().find(function(r){ return Array.isArray(r) && r[0] === keyId; });
     var keyLbl = keyDef ? keyDef[1] : keyId;
     showFireToast(mod+'+'+keyLbl, assigns[pick].label);
+    setTimeout(function(){ drawCallout(unpressedRect); }, 80);
+    setTimeout(clearCallout, 2300);
+  }
+  function tickSequence(){
+    if(typeof PROFILES === 'undefined' || typeof S === 'undefined') return;
+    var assigns = PROFILES[S.prof].assigns;
+    var keys = Object.keys(assigns);
+    if(keys.length === 0) return;
+    if(fireIdx < keys.length){
+      fireKey(keys[fireIdx]);
+      fireIdx++;
+    } else {
+      cycleProfile();
+    }
   }
 
   function cycleProfile(){
-    if(userIsActive()) return;
     profIdx = (profIdx + 1) % profOrder.length;
     var next = profOrder[profIdx];
     var btn = document.querySelector('.t-ptab[onclick*="\''+next+'\'"]');
@@ -1307,14 +1610,13 @@ setTimeout(scaleMockup, 50);
       switchProf(btn, next);
       if(typeof PROFILES !== 'undefined') showProfToast(PROFILES[next].name);
     }
+    fireIdx = 0;
   }
 
-  // Stagger so the demo feels alive but not chaotic
   setTimeout(function(){
-    fireRandomKey();
-    setInterval(fireRandomKey, 4200);
-    setInterval(cycleProfile, 9000);
-  }, 2500);
+    tickSequence();
+    setInterval(tickSequence, 3000);
+  }, 1500);
 })();
 
 // Fetch latest release version from GitHub

@@ -248,8 +248,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .nav-links { display:flex; align-items:center; gap:28px; }
 .nav-links a { font-size:13px; font-weight:500; color:var(--text-muted); text-decoration:none; transition:color 0.2s; letter-spacing:0.01em; }
 .nav-links a:hover { color:var(--text); }
-.nav-cta { background:var(--gold); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; transition:transform 0.15s, box-shadow 0.2s; }
-.nav-cta:hover { color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,160,32,0.3); }
+.nav-cta { background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; border:1px solid var(--gold); box-shadow:0 1px 6px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); transition:transform 0.15s, box-shadow 0.2s, background 0.2s; }
+.nav-cta:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 4px 14px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
 [data-theme="light"] .nav-cta { color:#fff; }
 [data-theme="light"] .nav-cta:hover { color:#fff!important; }
 .theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
@@ -275,8 +275,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .hero-arm-link a { color:var(--text-muted); text-decoration:underline; text-decoration-color:var(--hairline-strong); text-underline-offset:3px; transition:color 0.2s, text-decoration-color 0.2s; }
 .hero-arm-link a:hover { color:var(--gold-light); text-decoration-color:var(--gold); }
 [data-theme="light"] .hero-arm-link a:hover { color:var(--gold-dark); }
-.btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; transition:all 0.2s; border:none; cursor:pointer; }
-.btn-primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
+.btn-primary { display:inline-flex; align-items:center; gap:10px; background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; border:1px solid var(--gold); box-shadow:0 4px 20px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); transition:all 0.2s; cursor:pointer; }
+.btn-primary:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); transform:translateY(-1px); box-shadow:0 6px 26px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
 [data-theme="light"] .btn-primary { color:#fff; }
 .hero-meta { margin-top:24px; font-size:12px; color:var(--text-dim); animation:fadeInUp 0.7s 0.4s ease both; letter-spacing:0.02em; }
 .hero-meta span { color:var(--text-muted); }
@@ -649,13 +649,15 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .step p { font-size:14px; color:var(--text-muted); line-height:1.65; font-weight:400; max-width:340px; }
 
 /* ════════════════════════════════════════════════════════════
-   FINAL CTA
+   FINAL CTA — full-bleed banner, centered content
    ════════════════════════════════════════════════════════════ */
-.cta-section { padding:120px 32px 80px; }
-.cta-card { max-width:1180px; margin:0 auto; position:relative; background:linear-gradient(140deg,rgba(232,160,32,0.08) 0%,rgba(232,160,32,0.02) 100%); border:1px solid var(--hairline-gold); border-radius:28px; padding:96px 48px; text-align:center; overflow:hidden; }
-.cta-card::before { content:''; position:absolute; bottom:-200px; left:50%; transform:translateX(-50%); width:900px; height:500px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.15) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
-[data-theme="light"] .cta-card::before { background:radial-gradient(ellipse at center,rgba(232,160,32,0.1) 0%,rgba(232,160,32,0.02) 40%,transparent 70%); }
-.cta-card > * { position:relative; z-index:1; }
+.cta-section { position:relative; margin-top:80px; padding:clamp(80px,10vw,140px) clamp(24px,5vw,48px); border-top:1px solid var(--hairline-gold); background:linear-gradient(180deg, transparent 0%, rgba(232,160,32,0.05) 35%, rgba(13,17,32,0.55) 100%); overflow:hidden; text-align:center; }
+[data-theme="light"] .cta-section { background:linear-gradient(180deg, transparent 0%, rgba(232,160,32,0.06) 35%, rgba(255,250,240,0.75) 100%); }
+.cta-section::before { content:''; position:absolute; inset:0; background-image:linear-gradient(rgba(232,160,32,0.06) 1px,transparent 1px); background-size:100% 64px; mask-image:linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%); -webkit-mask-image:linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%); pointer-events:none; opacity:0.45; }
+[data-theme="light"] .cta-section::before { background-image:linear-gradient(rgba(26,26,46,0.06) 1px,transparent 1px); opacity:0.35; }
+.cta-section::after { content:''; position:absolute; bottom:-220px; left:50%; transform:translateX(-50%); width:1100px; height:560px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.18) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
+[data-theme="light"] .cta-section::after { background:radial-gradient(ellipse at center,rgba(232,160,32,0.12) 0%,rgba(232,160,32,0.02) 40%,transparent 70%); }
+.cta-inner { position:relative; z-index:1; max-width:760px; margin:0 auto; }
 .cta-h2 { font-family:var(--font-display); font-weight:800; font-size:clamp(40px,6vw,72px); letter-spacing:-0.04em; line-height:0.98; color:var(--text); margin-bottom:20px; }
 .cta-h2 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 60%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .cta-sub { font-size:17px; color:var(--text-muted); font-weight:400; max-width:560px; margin:0 auto 40px; line-height:1.6; }
@@ -710,7 +712,8 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
   .section{padding:80px 18px;}
   .demo-panels{grid-template-columns:1fr;}
   footer{flex-direction:column; align-items:flex-start; padding:24px 18px;}
-  .cta-card{padding:60px 24px;}
+  .cta-section{padding:72px 18px;}
+  .cta-meta{gap:18px;}
   .b-tile-hero .b-title{font-size:26px;}
   .b-ahk-feats{grid-template-columns:1fr;}
 }
@@ -1706,7 +1709,6 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       </a>
     </div>
     <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
-    <p class="hero-meta">Windows 10 / 11 <span>·</span> ~10MB <span>·</span> Your data stays on your machine <span>·</span> Latest: <span class="js-latest-version">v0.4.22</span></p>
     </div>
 
     <!-- ── MOCKUP ── -->
@@ -2340,10 +2342,10 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 </section>
 
 <!-- ════════════════════════════════════════════════════════════
-     FINAL CTA
+     FINAL CTA — full-bleed banner, centered content
      ════════════════════════════════════════════════════════════ -->
 <section class="cta-section reveal">
-  <div class="cta-card">
+  <div class="cta-inner">
     <h2 class="cta-h2">Set a key.<br><em>Fire it.</em></h2>
     <p class="cta-sub">Core features are free, always. Pro and Teams licences land at v1.0. Everyone testing now gets a thank-you discount at launch.</p>
     <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe" class="btn-primary" style="font-size:16px;padding:16px 36px;" data-loc="footer_cta" data-arch="x64">
@@ -2353,9 +2355,9 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
     <p class="cta-arm-link" style="margin-top:14px;font-size:13px;opacity:0.72;">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_arm64-setup.exe" data-loc="footer_cta_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
     <div class="cta-meta">
       <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Windows 10 / 11</span>
-      <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>~10MB · runtime included</span>
-      <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>Auto-updates</span>
+      <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>~10MB</span>
       <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Your data stays on your machine</span>
+      <span class="cta-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>Latest: <span class="js-latest-version">v0.6.0</span></span>
     </div>
   </div>
 </section>

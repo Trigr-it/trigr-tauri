@@ -70,8 +70,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .nav-links a:hover { color:var(--text); }
 .nav-links a.active { color:var(--gold-light); }
 [data-theme="light"] .nav-links a.active { color:var(--gold-dark); }
-.nav-cta { background:var(--gold); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; transition:transform 0.15s, box-shadow 0.2s; }
-.nav-cta:hover { color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,160,32,0.3); }
+.nav-cta { background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; border:1px solid var(--gold); box-shadow:0 1px 6px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); transition:transform 0.15s, box-shadow 0.2s, background 0.2s; }
+.nav-cta:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 4px 14px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
 [data-theme="light"] .nav-cta { color:#fff; }
 [data-theme="light"] .nav-cta:hover { color:#fff!important; }
 .theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
@@ -212,8 +212,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 @media(max-width:640px){.team-grid{grid-template-columns:1fr;}}
 
 /* Buttons */
-.btn-primary { display:inline-flex; align-items:center; gap:10px; background:var(--gold); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; transition:all 0.2s; border:none; cursor:pointer; }
-.btn-primary:hover { background:var(--gold-light); transform:translateY(-1px); box-shadow:0 12px 32px rgba(232,160,32,0.32); }
+.btn-primary { display:inline-flex; align-items:center; gap:10px; background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; text-decoration:none; padding:14px 26px; border-radius:10px; font-size:15px; font-weight:600; border:1px solid var(--gold); box-shadow:0 4px 20px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); transition:all 0.2s; cursor:pointer; }
+.btn-primary:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); transform:translateY(-1px); box-shadow:0 6px 26px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
 [data-theme="light"] .btn-primary { color:#fff; }
 
 /* CTA */
@@ -297,6 +297,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 .sv-frame[data-active="v0.3"] .sv-screen[data-phase="v0.3"] { opacity:1; pointer-events:auto; }
 .sv-frame[data-active="v0.4"] .sv-screen[data-phase="v0.4"] { opacity:1; pointer-events:auto; }
 .sv-frame[data-active="v0.5"] .sv-screen[data-phase="v0.5"] { opacity:1; pointer-events:auto; }
+.sv-frame[data-active="v0.6"] .sv-screen[data-phase="v0.6"] { opacity:1; pointer-events:auto; }
 .sv-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .sv-title { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); }
 .sv-version { font-family:var(--font-mono); font-size:10px; font-weight:700; padding:3px 9px; border:1px solid var(--hairline-gold); border-radius:5px; background:var(--gold-glow); color:var(--gold-light); }
@@ -518,6 +519,45 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 .sv-vault-game-tag { font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:4px 10px; border-radius:100px; background:rgba(80,200,120,0.12); color:#5cd687; border:1px solid rgba(80,200,120,0.3); flex-shrink:0; }
 [data-theme="light"] .sv-vault-game-tag { color:#1f8a4a; }
 
+/* v0.6 — Macro Recorder */
+.sv-rec-header { display:flex; align-items:center; gap:12px; padding:12px 14px; background:rgba(232,80,80,0.06); border:1px solid rgba(232,80,80,0.28); border-radius:10px; }
+[data-theme="light"] .sv-rec-header { background:rgba(232,80,80,0.05); }
+.sv-rec-dot { width:11px; height:11px; border-radius:50%; background:#ff5555; box-shadow:0 0 10px rgba(255,85,85,0.7); animation:svRecPulse 1.6s ease-in-out infinite; flex-shrink:0; }
+@keyframes svRecPulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:0.45;transform:scale(0.82);} }
+.sv-rec-label { font-family:var(--font-mono); font-size:11px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:#ff7676; }
+[data-theme="light"] .sv-rec-label { color:#c84141; }
+.sv-rec-elapsed { font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--text-muted); margin-left:auto; letter-spacing:0.04em; }
+.sv-rec-stop { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:6px; background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; border:1px solid var(--gold); box-shadow:0 1px 6px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; }
+[data-theme="light"] .sv-rec-stop { color:#fff; }
+.sv-rec-events { display:flex; flex-direction:column; gap:5px; flex:1; min-height:0; overflow:hidden; padding:2px 0; }
+.sv-rec-row { display:flex; align-items:center; gap:10px; padding:8px 12px; background:rgba(13,17,32,0.4); border:1px solid var(--hairline); border-radius:7px; font-size:12px; }
+[data-theme="light"] .sv-rec-row { background:rgba(0,0,0,0.02); }
+.sv-rec-row.fresh { background:rgba(232,160,32,0.07); border-color:var(--hairline-gold); animation:svRecFresh 0.5s ease both; }
+@keyframes svRecFresh { from{transform:translateX(-4px);opacity:0;} to{transform:translateX(0);opacity:1;} }
+.sv-rec-time { font-family:var(--font-mono); font-size:10px; color:var(--text-dim); width:50px; flex-shrink:0; letter-spacing:0.04em; }
+.sv-rec-kind { font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:2px 7px; border-radius:4px; flex-shrink:0; }
+.sv-rec-kind.key { background:rgba(100,180,255,0.12); color:#7ec5ff; border:1px solid rgba(100,180,255,0.3); }
+[data-theme="light"] .sv-rec-kind.key { color:#3a7fc4; }
+.sv-rec-kind.mouse { background:rgba(80,200,120,0.12); color:#82d8a3; border:1px solid rgba(80,200,120,0.3); }
+[data-theme="light"] .sv-rec-kind.mouse { color:#1f8a4a; }
+.sv-rec-kind.wait { background:rgba(200,100,255,0.1); color:#d4a8ff; border:1px solid rgba(200,100,255,0.28); }
+[data-theme="light"] .sv-rec-kind.wait { color:#8a4dc4; }
+.sv-rec-desc { flex:1; min-width:0; color:var(--text); font-family:var(--font-mono); font-size:11.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sv-rec-desc .k { font-weight:700; color:var(--gold-light); padding:0 5px; }
+[data-theme="light"] .sv-rec-desc .k { color:var(--gold-dark); }
+.sv-rec-foot { display:flex; align-items:center; gap:10px; padding:11px 14px; background:rgba(13,17,32,0.5); border:1px solid var(--hairline); border-radius:10px; margin-top:auto; }
+[data-theme="light"] .sv-rec-foot { background:rgba(0,0,0,0.03); }
+.sv-rec-foot-ico { width:30px; height:30px; flex-shrink:0; border-radius:7px; background:var(--gold-glow); border:1px solid var(--hairline-gold); display:flex; align-items:center; justify-content:center; color:var(--gold-light); }
+[data-theme="light"] .sv-rec-foot-ico { color:var(--gold-dark); }
+.sv-rec-foot-ico svg { width:14px; height:14px; stroke-width:2.2; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; }
+.sv-rec-foot-body { flex:1; min-width:0; }
+.sv-rec-foot-title { font-size:12.5px; font-weight:600; color:var(--text); line-height:1.3; }
+.sv-rec-foot-meta { font-family:var(--font-mono); font-size:10px; color:var(--text-muted); margin-top:3px; letter-spacing:0.04em; }
+.sv-rec-foot-cancel { font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:4px 10px; border-radius:5px; background:rgba(13,17,32,0.6); border:1px solid var(--hairline-strong); color:var(--text-muted); flex-shrink:0; }
+[data-theme="light"] .sv-rec-foot-cancel { background:#fff; border-color:#dcdce8; color:#4a4a6a; }
+.sv-rec-foot-cancel kbd { font-family:inherit; font-weight:700; color:var(--gold-light); margin-left:5px; padding:1px 5px; background:var(--gold-glow); border-radius:3px; }
+[data-theme="light"] .sv-rec-foot-cancel kbd { color:var(--gold-dark); }
+
 </style>
 
 <!-- Privacy-friendly analytics by Plausible -->
@@ -551,8 +591,8 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   <div class="hero-inner">
     <div class="hero-eyebrow">Roadmap</div>
     <h1>What we've <em>built</em><br>and what's<br><em>next</em>.</h1>
-    <p>Development started February 2026. 60+ releases shipped across three major versions. Here's everything that's live, what we're working on now, and where we're headed.</p>
-    <div class="hero-badge"><span class="hero-badge-dot"></span><strong>Updated</strong> · May 2026</div>
+    <p>Development started February 2026. 100+ releases shipped across seven major versions. Here's everything that's live, what we're working on now, and where we're headed.</p>
+    <div class="hero-badge"><span class="hero-badge-dot"></span><strong>Updated</strong> · Jun 2026</div>
   </div>
 </section>
 
@@ -585,7 +625,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">01</span><span class="section-label">Shipped</span></div>
     <h2 class="section-h2">What we've <em>built</em>.</h2>
-    <p class="section-sub">Six major releases, 100+ patch versions, every feature visible. Filter by tier to focus on what matters.</p>
+    <p class="section-sub">Seven major releases, 100+ patch versions, every feature visible. Filter by tier to focus on what matters.</p>
 
     <div class="filter-row">
       <span class="filter-label">Filter</span>
@@ -888,6 +928,46 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
         </div>
       </div>
 
+      <!-- v0.6 -->
+      <div class="phase" data-phase="v0.6">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.6 — Macro Recorder &amp; Polish</span>
+          <span class="phase-date">Jun 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <div class="feature-grid">
+          <div class="feature feature-hero" data-tier="free pro">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Macro Recorder — Phase 1 <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
+              <div class="feature-desc">Hit record, do the thing, play it back. Captures keystrokes, mouse clicks and movement, modifier state, and the timing between every event. Saved as a fully editable macro you can re-bind to any trigger.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Radial Menu Refresh <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Wedges now read as raised against the desktop with a dedicated idle surface variable. Hover gradient keeps its gold treatment in both themes. Light theme gets a clean white wedge base.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Esc = Global Macro Cancel <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Press Esc to bail out of any running macro — loops, one-shots, and recorded replays. Chunked sleep polling honours the cancel within 100ms, even on long Wait steps.</div>
+            </div>
+          </div>
+          <div class="feature" data-tier="free">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4z"/></svg></span>
+            <div class="feature-body">
+              <div class="feature-name">Replay Without Suppression <span class="feature-pill pill-free">Free</span></div>
+              <div class="feature-desc">Recorded macros replay through the low-level hook so other Trigr features still fire during playback. Trailing modifier keys are trimmed on stop so Ctrl/Shift never stick.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
       </div><!-- /.shipped-text -->
 
@@ -1175,6 +1255,57 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
             </div>
           </div>
 
+          <!-- v0.6 — Macro Recorder -->
+          <div class="sv-screen" data-phase="v0.6">
+            <div class="sv-head"><span class="sv-title">Macro Recorder</span><span class="sv-version">v0.6</span></div>
+
+            <div class="sv-rec-header">
+              <span class="sv-rec-dot"></span>
+              <span class="sv-rec-label">Recording</span>
+              <span class="sv-rec-elapsed">00:02.84</span>
+              <span class="sv-rec-stop">■ Stop</span>
+            </div>
+
+            <div class="sv-rec-events">
+              <div class="sv-rec-row">
+                <span class="sv-rec-time">+0.00s</span>
+                <span class="sv-rec-kind key">Key</span>
+                <span class="sv-rec-desc"><span class="k">Ctrl</span>+<span class="k">Shift</span>+<span class="k">T</span> down</span>
+              </div>
+              <div class="sv-rec-row">
+                <span class="sv-rec-time">+0.21s</span>
+                <span class="sv-rec-kind key">Key</span>
+                <span class="sv-rec-desc">Type "Hello team,"</span>
+              </div>
+              <div class="sv-rec-row">
+                <span class="sv-rec-time">+1.04s</span>
+                <span class="sv-rec-kind mouse">Mouse</span>
+                <span class="sv-rec-desc">Click <span class="k">L</span> @ 642, 318</span>
+              </div>
+              <div class="sv-rec-row">
+                <span class="sv-rec-time">+1.62s</span>
+                <span class="sv-rec-kind wait">Wait</span>
+                <span class="sv-rec-desc">580 ms</span>
+              </div>
+              <div class="sv-rec-row fresh">
+                <span class="sv-rec-time">+2.81s</span>
+                <span class="sv-rec-kind key">Key</span>
+                <span class="sv-rec-desc"><span class="k">Enter</span> down</span>
+              </div>
+            </div>
+
+            <div class="sv-rec-foot">
+              <div class="sv-rec-foot-ico">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg>
+              </div>
+              <div class="sv-rec-foot-body">
+                <div class="sv-rec-foot-title">Save as macro · attach to any trigger</div>
+                <div class="sv-rec-foot-meta">Editable steps · timing preserved · re-bindable</div>
+              </div>
+              <span class="sv-rec-foot-cancel">Cancel <kbd>Esc</kbd></span>
+            </div>
+          </div>
+
         </div>
       </div>
     </div><!-- /.shipped-grid -->
@@ -1211,8 +1342,8 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <div class="feature">
             <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg></span>
             <div class="feature-body">
-              <div class="feature-name">Macro Recorder</div>
-              <div class="feature-desc">Record keystrokes and mouse actions, replay as a macro. Build complex sequences without manual step entry.</div>
+              <div class="feature-name">Macro Recorder — Phase 2</div>
+              <div class="feature-desc">Phase 1 shipped in v0.6 (literal replay with full timing). Phase 2 distils raw captures into structured, editable steps — Pro-only, the layer that makes recorded macros readable not just replayable.</div>
             </div>
           </div>
           <div class="feature">
