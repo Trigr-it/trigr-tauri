@@ -12,6 +12,11 @@ export default function RecorderCountdown() {
   // render anything on app launch.
   const [phase, setPhase] = useState('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
+  // Configured record hotkey — refreshed on every show so the hint reflects
+  // the current user choice (default Ctrl+Alt+R; Settings → Quick Record can
+  // change it). Same hotkey stops the recording in BOTH the editor and global
+  // flows, so showing it here is accurate regardless of how recording started.
+  const [recordHotkey, setRecordHotkey] = useState('Ctrl+Alt+R');
 
   // Visibility-driven phase. Chromium fires visibilitychange synchronously
   // the moment Rust calls win.show(), so the bar appears in lockstep with
@@ -21,6 +26,11 @@ export default function RecorderCountdown() {
       if (document.visibilityState === 'visible') {
         setElapsedMs(0);
         setPhase('recording');
+        // Refresh the record hotkey string in case the user changed it
+        // between the last recording and this one.
+        invoke('get_temp_macro_status').then(s => {
+          if (s?.recordHotkey) setRecordHotkey(s.recordHotkey);
+        }).catch(() => {});
       } else {
         setElapsedMs(0);
         setPhase('idle');
@@ -30,6 +40,9 @@ export default function RecorderCountdown() {
     if (document.visibilityState === 'visible') {
       setElapsedMs(0);
       setPhase('recording');
+      invoke('get_temp_macro_status').then(s => {
+        if (s?.recordHotkey) setRecordHotkey(s.recordHotkey);
+      }).catch(() => {});
     }
     return () => document.removeEventListener('visibilitychange', onVisChange);
   }, []);
@@ -86,7 +99,14 @@ export default function RecorderCountdown() {
         <button type="button" className="rc-pill-stop" onClick={handleStop}>
           Stop
         </button>
-        <span className="rc-pill-hint"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></span>
+        <span className="rc-pill-hint">
+          {recordHotkey.split('+').map((p, i, arr) => (
+            <React.Fragment key={i}>
+              <kbd>{p}</kbd>
+              {i < arr.length - 1 && '+'}
+            </React.Fragment>
+          ))}
+        </span>
       </div>
     </div>
   );

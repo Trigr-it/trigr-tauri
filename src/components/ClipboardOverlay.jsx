@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Type, Link2, Mail, Hash, Star, ExternalLink, Pin } from 'lucide-react';
+import { Type, Link2, Mail, Hash, ExternalLink, Pin } from 'lucide-react';
 import './ClipboardOverlay.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -127,36 +127,6 @@ export default function ClipboardOverlay() {
 
   const selectedEntry = groupedFlat.find(e => e.type === 'item' && e.flatIndex === selectedIndex);
   const selected = selectedEntry?.item || null;
-
-  // ── Keyboard nav ──────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    function handleKeyDown(e) {
-      // Don't intercept keys when editing text
-      if (editing) {
-        if (e.key === 'Escape') { e.preventDefault(); setEditing(false); setEditText(''); }
-        return;
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex(i => Math.min(i + 1, filtered.length - 1));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex(i => Math.max(i - 1, 0));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (selected) {
-          window.electronAPI?.closeClipboardOverlay();
-          window.electronAPI?.pasteClipboardItem(selected.id);
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        window.electronAPI?.closeClipboardOverlay();
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filtered, selectedIndex, selected, editing]);
 
   // ── LL hook keyboard routing (WS_EX_NOACTIVATE path) ─────────────────────
   // When the overlay is open it never steals OS focus (WS_EX_NOACTIVATE).
@@ -360,7 +330,7 @@ export default function ClipboardOverlay() {
                     )}
                     {item.pinned && (
                       <span className="co-row-pin-badge" aria-label="Pinned">
-                        <Star size={11} strokeWidth={2} fill="currentColor" />
+                        <Pin size={11} strokeWidth={2} fill="currentColor" />
                       </span>
                     )}
                   </div>

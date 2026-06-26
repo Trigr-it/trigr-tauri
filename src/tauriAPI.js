@@ -266,6 +266,9 @@ window.electronAPI = {
     appFilter: filters.appFilter ?? null,
     tagFilter: filters.tagFilter ?? null,
     search: filters.search ?? null,
+    // Main UI: promoteStarred=true puts starred items above pinned. Popup
+    // omits this flag so only pinned items promote (starred stays in timeline).
+    promoteStarred: filters.promoteStarred === true,
   }),
   pasteClipboardItem:     (id)            => invoke('paste_clipboard_item', { id }),
   pasteText:              (text, sourceId = null) => invoke('paste_text', { text, sourceId }),
@@ -276,7 +279,18 @@ window.electronAPI = {
   saveClipboardImageAs:   (id, format)    => invoke('save_clipboard_image_as', { id, format }),
   deleteClipboardItem:    (id)            => invoke('delete_clipboard_item', { id }),
   clearClipboardHistory:  ()              => invoke('clear_clipboard_history'),
+  // Quick Record (temp macro) — global hotkeys, persistent slot.
+  setTempMacroRecordHotkey: (combo)   => invoke('set_temp_macro_record_hotkey', { combo }),
+  clearTempMacroRecordHotkey: ()      => invoke('clear_temp_macro_record_hotkey'),
+  setTempMacroPlayHotkey: (combo)     => invoke('set_temp_macro_play_hotkey', { combo }),
+  clearTempMacroPlayHotkey: ()        => invoke('clear_temp_macro_play_hotkey'),
+  getTempMacroStatus:     ()          => invoke('get_temp_macro_status'),
+  clearTempMacro:         ()          => invoke('clear_temp_macro'),
+
   pinClipboardItem:       (id, pinned)    => invoke('pin_clipboard_item', { id, pinned }),
+  starClipboardItem:      (id, starred)   => invoke('star_clipboard_item', { id, starred }),
+  reorderClipboardPinned: (ids)           => invoke('reorder_clipboard_pinned', { ids }),
+  reorderClipboardStarred:(ids)           => invoke('reorder_clipboard_starred', { ids }),
   getClipboardImage:      (id)            => invoke('get_clipboard_image', { id }),
   getDistinctSourceApps:  ()              => invoke('get_distinct_source_apps'),
   getClipboardDateBuckets: (filters = {}) => invoke('get_clipboard_date_buckets', {

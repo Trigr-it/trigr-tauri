@@ -237,6 +237,20 @@ export default function SettingsPanel({
   const [capturingClipPasteKey, setCapturingClipPasteKey] = useState(false);
   const [capturedClipPasteKey, setCapturedClipPasteKey]   = useState(null);
   const [clipPasteConflict, setClipPasteConflict]         = useState(null);
+  // Quick Record (temp macro) — config-side hotkeys + saved-event-stream status.
+  // tempMacroStatus refreshes on mount AND on the temp-macro-saved event.
+  const [tempMacroStatus, setTempMacroStatus] = useState({
+    hasEvents: false, eventCount: 0, capturedAt: null,
+    // null = no hotkey configured → Settings UI shows "Set hotkey" buttons.
+    // Quick Record is opt-in; getTempMacroStatus fills these from engine state.
+    recordHotkey: null, playHotkey: null,
+  });
+  const [capturingTempRecordKey, setCapturingTempRecordKey] = useState(false);
+  const [capturedTempRecordKey, setCapturedTempRecordKey]   = useState(null);
+  const [tempRecordConflict, setTempRecordConflict]         = useState(null);
+  const [capturingTempPlayKey, setCapturingTempPlayKey] = useState(false);
+  const [capturedTempPlayKey, setCapturedTempPlayKey]   = useState(null);
+  const [tempPlayConflict, setTempPlayConflict]         = useState(null);
   const [backupList, setBackupList]           = useState(null);
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
@@ -269,6 +283,15 @@ export default function SettingsPanel({
       if (s?.retention_days) setClipboardRetention(s.retention_days);
     });
     window.electronAPI?.getClipboardEncryptionStatus?.().then(s => setEncStatus(s || null));
+    window.electronAPI?.getTempMacroStatus?.().then(s => { if (s) setTempMacroStatus(s); });
+    // Refresh temp macro status whenever the global-flow recorder saves a
+    // new capture — the Settings panel might be open while the user records.
+    let unlistenSaved;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('temp-macro-saved', () => {
+        window.electronAPI?.getTempMacroStatus?.().then(s => { if (s) setTempMacroStatus(s); });
+      }).then(u => { unlistenSaved = u; });
+    });
     // Refresh the shared-config row if the grace-period banner triggers a
     // migration while this panel is open. Without this, the path display
     // would stay stale until the user closes + reopens Settings.
@@ -276,6 +299,7 @@ export default function SettingsPanel({
       setSharedConfigPath(null);
       window.electronAPI?.getConfigPath().then(p => setConfigPath(p || ''));
     });
+    return () => { if (typeof unlistenSaved === 'function') unlistenSaved(); };
   }, []);
 
   // ESC dismisses the currently-open inline confirmation first; closes the
@@ -319,6 +343,7 @@ export default function SettingsPanel({
     'quick-search',
     'clipboard',
     'voice-commands',
+    'quick-record',
     'compatibility',
     'backup-restore',
   ];
@@ -1685,6 +1710,245 @@ export default function SettingsPanel({
             </div>
           )}
           </>)}
+          </>)}
+        </section>
+
+        {/* ── QUICK RECORD ───────────────────────────────── */}
+        <section className="settings-section">
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('quick-record')}
+          >
+            QUICK RECORD
+            <span className={`settings-accordion-chevron${isExpanded('quick-record') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('quick-record') && (<>
+            <p className="settings-section-sub">
+              Press the record hotkey from any app to start capturing keystrokes and mouse input.
+              Press it again to save. Replay with the play hotkey. The saved recording stays
+              available across restarts; overwrite by recording again, or clear it below.
+            </p>
+
+            {/* ── Record hotkey ── */}
+            <div className="settings-pause-stack">
+              <div className="settings-toggle-info">
+                <span className="settings-toggle-label">Record hotkey</span>
+                <span className="settings-toggle-sub">Start / stop quick recording from any app. Modifier required.</span>
+              </div>
+              <div className="settings-qs-hotkey-ctrl">
+                {capturingTempRecordKey ? (
+                  <div
+                    className="settings-qs-capture"
+                    tabIndex={0}
+                    ref={el => el?.focus()}
+                    onBlur={() => { setCapturingTempRecordKey(false); setCapturedTempRecordKey(null); setTempRecordConflict(null); }}
+                    onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                    onKeyDown={async e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                      const mods = [];
+                      if (e.ctrlKey)  mods.push('Ctrl');
+                      if (e.shiftKey) mods.push('Shift');
+                      if (e.altKey)   mods.push('Alt');
+                      if (e.metaKey)  mods.push('Win');
+                      if (mods.length === 0) return;
+                      mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                      const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                      const combo = [...mods, e.code].join('+');
+                      const label = [...mods, keyDisplay].join('+');
+                      const result = await window.electronAPI?.checkHotkeyConflict?.(combo, 'temp_macro_record');
+                      setTempRecordConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
+                      setCapturedTempRecordKey({ combo, label });
+                    }}
+                  >
+                    {capturedTempRecordKey ? (
+                      <span className="settings-qs-captured">{capturedTempRecordKey.label}</span>
+                    ) : (
+                      <span className="settings-qs-waiting">Press combo…</span>
+                    )}
+                    {capturedTempRecordKey && !tempRecordConflict && (
+                      <button
+                        className="settings-qs-save-btn"
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={async () => {
+                          await window.electronAPI?.setTempMacroRecordHotkey?.(capturedTempRecordKey.combo);
+                          const s = await window.electronAPI?.getTempMacroStatus?.();
+                          if (s) setTempMacroStatus(s);
+                          setCapturingTempRecordKey(false);
+                          setCapturedTempRecordKey(null);
+                          setTempRecordConflict(null);
+                        }}
+                      >Save</button>
+                    )}
+                    <button
+                      className="settings-qs-cancel-btn"
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { setCapturingTempRecordKey(false); setCapturedTempRecordKey(null); setTempRecordConflict(null); }}
+                    >✕</button>
+                  </div>
+                ) : tempMacroStatus.recordHotkey ? (
+                  <>
+                    <span className="settings-qs-hotkey-badge">
+                      {tempMacroStatus.recordHotkey.split('+').map((p, i, arr) => (
+                        <React.Fragment key={i}>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                        </React.Fragment>
+                      ))}
+                    </span>
+                    <button
+                      className="settings-action-btn"
+                      type="button"
+                      onClick={() => setCapturingTempRecordKey(true)}
+                    >Change</button>
+                    <button
+                      className="settings-action-btn settings-danger-btn"
+                      type="button"
+                      onClick={async () => {
+                        await window.electronAPI?.clearTempMacroRecordHotkey?.();
+                        const s = await window.electronAPI?.getTempMacroStatus?.();
+                        if (s) setTempMacroStatus(s);
+                      }}
+                      title="Remove record hotkey (disables quick record)"
+                    >Remove</button>
+                  </>
+                ) : (
+                  <button
+                    className="settings-action-btn"
+                    type="button"
+                    onClick={() => setCapturingTempRecordKey(true)}
+                  >Set hotkey</button>
+                )}
+              </div>
+            </div>
+            {tempRecordConflict && (
+              <div className="settings-conflict-warn">{tempRecordConflict}</div>
+            )}
+
+            {/* ── Play hotkey ── */}
+            <div className="settings-pause-stack">
+              <div className="settings-toggle-info">
+                <span className="settings-toggle-label">Play hotkey</span>
+                <span className="settings-toggle-sub">Replay the last saved quick recording. No-op when empty.</span>
+              </div>
+              <div className="settings-qs-hotkey-ctrl">
+                {capturingTempPlayKey ? (
+                  <div
+                    className="settings-qs-capture"
+                    tabIndex={0}
+                    ref={el => el?.focus()}
+                    onBlur={() => { setCapturingTempPlayKey(false); setCapturedTempPlayKey(null); setTempPlayConflict(null); }}
+                    onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                    onKeyDown={async e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                      const mods = [];
+                      if (e.ctrlKey)  mods.push('Ctrl');
+                      if (e.shiftKey) mods.push('Shift');
+                      if (e.altKey)   mods.push('Alt');
+                      if (e.metaKey)  mods.push('Win');
+                      if (mods.length === 0) return;
+                      mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                      const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                      const combo = [...mods, e.code].join('+');
+                      const label = [...mods, keyDisplay].join('+');
+                      const result = await window.electronAPI?.checkHotkeyConflict?.(combo, 'temp_macro_play');
+                      setTempPlayConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
+                      setCapturedTempPlayKey({ combo, label });
+                    }}
+                  >
+                    {capturedTempPlayKey ? (
+                      <span className="settings-qs-captured">{capturedTempPlayKey.label}</span>
+                    ) : (
+                      <span className="settings-qs-waiting">Press combo…</span>
+                    )}
+                    {capturedTempPlayKey && !tempPlayConflict && (
+                      <button
+                        className="settings-qs-save-btn"
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={async () => {
+                          await window.electronAPI?.setTempMacroPlayHotkey?.(capturedTempPlayKey.combo);
+                          const s = await window.electronAPI?.getTempMacroStatus?.();
+                          if (s) setTempMacroStatus(s);
+                          setCapturingTempPlayKey(false);
+                          setCapturedTempPlayKey(null);
+                          setTempPlayConflict(null);
+                        }}
+                      >Save</button>
+                    )}
+                    <button
+                      className="settings-qs-cancel-btn"
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { setCapturingTempPlayKey(false); setCapturedTempPlayKey(null); setTempPlayConflict(null); }}
+                    >✕</button>
+                  </div>
+                ) : tempMacroStatus.playHotkey ? (
+                  <>
+                    <span className="settings-qs-hotkey-badge">
+                      {tempMacroStatus.playHotkey.split('+').map((p, i, arr) => (
+                        <React.Fragment key={i}>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                        </React.Fragment>
+                      ))}
+                    </span>
+                    <button
+                      className="settings-action-btn"
+                      type="button"
+                      onClick={() => setCapturingTempPlayKey(true)}
+                    >Change</button>
+                    <button
+                      className="settings-action-btn settings-danger-btn"
+                      type="button"
+                      onClick={async () => {
+                        await window.electronAPI?.clearTempMacroPlayHotkey?.();
+                        const s = await window.electronAPI?.getTempMacroStatus?.();
+                        if (s) setTempMacroStatus(s);
+                      }}
+                      title="Remove play hotkey (disables quick replay)"
+                    >Remove</button>
+                  </>
+                ) : (
+                  <button
+                    className="settings-action-btn"
+                    type="button"
+                    onClick={() => setCapturingTempPlayKey(true)}
+                  >Set hotkey</button>
+                )}
+              </div>
+            </div>
+            {tempPlayConflict && (
+              <div className="settings-conflict-warn">{tempPlayConflict}</div>
+            )}
+
+            {/* ── Saved recording status ── */}
+            <div className="settings-pause-stack">
+              <div className="settings-toggle-info">
+                <span className="settings-toggle-label">Saved recording</span>
+                <span className="settings-toggle-sub">
+                  {tempMacroStatus.hasEvents
+                    ? `${tempMacroStatus.eventCount} event${tempMacroStatus.eventCount === 1 ? '' : 's'} captured${tempMacroStatus.capturedAt ? ' ' + new Date(tempMacroStatus.capturedAt).toLocaleString() : ''}`
+                    : 'No recording saved yet. Press the record hotkey to capture one.'}
+                </span>
+              </div>
+              {tempMacroStatus.hasEvents && (
+                <button
+                  className="settings-action-btn settings-danger-btn"
+                  type="button"
+                  onClick={async () => {
+                    await window.electronAPI?.clearTempMacro?.();
+                    const s = await window.electronAPI?.getTempMacroStatus?.();
+                    if (s) setTempMacroStatus(s);
+                  }}
+                >Clear recording</button>
+              )}
+            </div>
           </>)}
         </section>
 

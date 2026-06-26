@@ -51,24 +51,23 @@
   transform-origin: 210px 210px;
 }
 
-/* Wedges and base donut are both white — the wheel reads as one continuous
-   white ring, with the hairline angular gap between wedges showing white-on-
-   white (effectively invisible). Idle ring is white in both themes; hover
-   picks out the wedge with the gold gradient. Icons keep their picked
-   colour and pop against the white background. */
+/* Wedges and base donut share the same fill (--radial-wedge) so the wheel
+   reads as one continuous ring, with the hairline angular gap between wedges
+   matching the fill (effectively invisible). Light theme: pure white. Dark
+   theme: elevated surface that reads as raised against the desktop. Hover
+   picks out the wedge with the gold gradient in both themes. */
 .rw-wedge .rw-wedge-path {
-  fill: #ffffff;
+  fill: var(--radial-wedge);
   stroke: none;
   transition: fill 0.12s ease, d 0.12s ease;
 }
 
 /* ── Base donut (sits behind all wedges) ─────────────────────────────────── */
 
-/* White fill — matches wedge fill so the segment gaps disappear. Drop shadow
-   applied here covers the whole ring at once instead of per-wedge filters
-   compounding. */
+/* Matches wedge fill so the segment gaps disappear. Drop shadow applied here
+   covers the whole ring at once instead of per-wedge filters compounding. */
 .rw-base-donut {
-  fill: #ffffff;
+  fill: var(--radial-wedge);
   opacity: 1;
   filter: url(#rw-ring-shadow);
 }
@@ -147,11 +146,11 @@
   to   { opacity: 1; }
 }
 
-/* Outer-ring children mirror the inner ring's white-on-shadow look. The
-   drop shadow comes from the rw-outer-ring group filter (set on the
-   .rw-outer-ring rule below), applied once across all visible children. */
+/* Outer-ring children mirror the inner ring's fill. The drop shadow comes
+   from the rw-outer-ring group filter (set on the .rw-outer-ring rule above),
+   applied once across all visible children. */
 .rw-wedge--outer .rw-wedge-path {
-  fill: #ffffff;
+  fill: var(--radial-wedge);
 }
 
 .rw-wedge--outer.rw-wedge--hovered .rw-wedge-path {

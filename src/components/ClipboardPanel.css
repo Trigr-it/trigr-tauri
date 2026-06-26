@@ -108,6 +108,10 @@
   color: var(--accent);
 }
 
+.cbg-date-row-starred .cbg-date-row-icon {
+  color: var(--accent);
+}
+
 .cbg-date-count {
   background: var(--bg-active);
   color: var(--text-muted);
@@ -523,6 +527,12 @@
   align-items: center;
 }
 
+/* Starred group header uses gold so the higher tier reads as more prominent
+   than the muted Pinned header below it. */
+.cbg-timeline-icon-star {
+  color: var(--accent);
+}
+
 .cbg-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -581,14 +591,41 @@
 .cbg-tag-number   { background: color-mix(in srgb, var(--text-muted) 20%, transparent); color: var(--text-secondary); }
 .cbg-tag-image    { background: color-mix(in srgb, var(--accent) 25%, transparent); color: var(--accent); }
 
-/* ── Pin badge ───────────────────────────────────────────────────────────── */
+/* ── Tier badges (star + pin) ────────────────────────────────────────────── */
 
-.cbg-card-pin {
+/* Stack star + pin vertically in the top-left of the card so a starred-AND-
+   pinned item shows both indicators without overlap. Star sits on top because
+   it's the higher tier in the Main UI. */
+.cbg-card-badges {
   position: absolute;
   top: 6px;
   left: 8px;
-  font-size: 0.7rem;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
   z-index: 1;
+  pointer-events: none;
+}
+
+.cbg-card-star,
+.cbg-card-pin {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+
+/* ── Sortable affordance (Starred + Pinned tiers only) ────────────────────── */
+
+/* grab cursor signals the card is draggable; PointerSensor's 5px activation
+   distance keeps a click-to-select still feeling instant. dnd-kit toggles
+   cursor:grabbing via inline style once a drag starts, so we only set grab. */
+.cbg-card-sortable {
+  cursor: grab;
+}
+
+.cbg-card-sortable:active {
+  cursor: grabbing;
 }
 
 /* ── Text card ───────────────────────────────────────────────────────────── */

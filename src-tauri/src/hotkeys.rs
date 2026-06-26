@@ -689,6 +689,20 @@ pub(crate) struct EngineState {
     pub(crate) voice_hotkey: Option<(u8, u32)>,
     // Radial menu hotkey — parsed as (modifier_bits, vk_code)
     pub(crate) radial_menu_hotkey: Option<(u8, u32)>,
+    // Quick Record (temp macro) hotkeys — parsed as (modifier_bits, vk_code).
+    // Record toggle: start-if-idle / stop-if-recording. Play: replay the
+    // most recently saved temp macro (no-op if empty). Both configurable via
+    // Settings → Quick Record; defaults Ctrl+Alt+R / Ctrl+Alt+P. Shorthand
+    // alternatives to ship: store None when user removes them.
+    pub(crate) temp_macro_record_hotkey: Option<(u8, u32)>,
+    pub(crate) temp_macro_record_hotkey_str: Option<String>,
+    pub(crate) temp_macro_play_hotkey: Option<(u8, u32)>,
+    pub(crate) temp_macro_play_hotkey_str: Option<String>,
+    // Cached temp macro events + capture timestamp. Persisted to config so
+    // the slot survives restart. Play hotkey reads directly from here without
+    // a disk round-trip. Cleared via Settings → Quick Record → Clear.
+    pub(crate) temp_macro_events: Option<Vec<crate::recorder::RecordedEvent>>,
+    pub(crate) temp_macro_captured_at: Option<String>,
     // Default date format for bare {date} token and unformatted Date Math tokens.
     // One of: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD". Existing v0.4.6 users
     // with no config field land on DD/MM/YYYY (the prior implicit default).
@@ -722,6 +736,17 @@ impl Default for EngineState {
             voice_hotkey: None, // Voice ships unmapped; user picks a hotkey when they enable voice (Pro-gated).
             clipboard_paste_hotkey: Some((3, 0x56)), // Default: Ctrl+Shift+V (bits=3, vk=0x56)
             radial_menu_hotkey: None, // Set via set_radial_menu_hotkey command
+            // OFF by default — Quick Record captures keystrokes, a privacy
+            // implication users should opt into via Settings → Quick Record.
+            // Suggested combos when they enable: Ctrl+Alt+R / Ctrl+Alt+P
+            // (avoiding Ctrl+Shift+R / Ctrl+Shift+T which collide with browser
+            // hard-refresh + reopen-closed-tab on every Chromium app).
+            temp_macro_record_hotkey: None,
+            temp_macro_record_hotkey_str: None,
+            temp_macro_play_hotkey: None,
+            temp_macro_play_hotkey_str: None,
+            temp_macro_events: None,
+            temp_macro_captured_at: None,
             default_date_format: "DD/MM/YYYY".to_string(),
         }
     }
@@ -739,6 +764,14 @@ enum HookEvent {
     // Recorder stop hotkey detected in the keyboard hook. Processor thread
     // sees this and emits a Tauri event so the frontend retrieves the buffer.
     RecorderStopRequested,
+    // Quick Record: user pressed the record hotkey while NOT recording. The
+    // processor checks recorder::TEMP_RECORDING_ACTIVE — when false, starts
+    // a temp recording (sets the flag, calls recorder::start, emits a "saved"
+    // toast on the next stop). Always handled by the processor, never the hook.
+    TempMacroRecordRequested,
+    // Quick Record: user pressed the play hotkey. Processor checks the engine's
+    // cached temp_macro_events; if non-empty, spawns a replay thread.
+    TempMacroPlayRequested,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1298,14 +1331,12 @@ unsafe extern "system" fn keyboard_hook_proc(
             let is_down = matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
             let is_up = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
             if is_down {
-                let ctrl = MOD_CTRL.load(Ordering::SeqCst);
-                let shift = MOD_SHIFT.load(Ordering::SeqCst);
-                let alt = MOD_ALT.load(Ordering::SeqCst);
-                let win = MOD_META.load(Ordering::SeqCst);
-                if crate::recorder::is_stop_hotkey(kb.vkCode, ctrl, shift, alt, win) {
-                    // Flip the flag IMMEDIATELY so the Ctrl/Shift/R keyups
-                    // that follow don't leak into the buffer. Frontend
-                    // retrieves the events via stop_macro_recording.
+                let bits = modifier_bits();
+                if crate::recorder::matches_record_hotkey(kb.vkCode, bits) {
+                    // Flip the flag IMMEDIATELY so modifier keyups that
+                    // follow don't leak into the buffer. The processor
+                    // event routes to the appropriate stop handler based
+                    // on TEMP_RECORDING_ACTIVE (editor vs global flow).
                     crate::recorder::IS_RECORDING_MACRO.store(false, Ordering::SeqCst);
                     send_event(HookEvent::RecorderStopRequested);
                     return 1;
@@ -1313,6 +1344,26 @@ unsafe extern "system" fn keyboard_hook_proc(
             }
             if is_down || is_up {
                 crate::recorder::push_key(kb.vkCode, kb.scanCode, is_down);
+            }
+        } else if (kb.flags & LLKHF_INJECTED) == 0
+            && matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN)
+        {
+            // Not currently recording — check the Quick Record start + play
+            // hotkeys. Both must be suppressed so they don't leak to the
+            // underlying app even on subsequent keyup. Only fires when
+            // MACROS_ENABLED so a paused engine doesn't trigger record/play.
+            if MACROS_ENABLED.load(Ordering::SeqCst) {
+                let bits = modifier_bits();
+                if !is_modifier_vk(kb.vkCode) && bits != 0 {
+                    if crate::recorder::matches_record_hotkey(kb.vkCode, bits) {
+                        send_event(HookEvent::TempMacroRecordRequested);
+                        return 1;
+                    }
+                    if crate::recorder::matches_play_hotkey(kb.vkCode, bits) {
+                        send_event(HookEvent::TempMacroPlayRequested);
+                        return 1;
+                    }
+                }
             }
         }
 
@@ -1583,11 +1634,85 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                 // when the user has paused macros mid-recording.
                 if matches!(event, HookEvent::RecorderStopRequested) {
                     let (count, dur) = crate::recorder::status_snapshot();
-                    let _ = app.emit(
-                        "recorder-stop-requested",
-                        serde_json::json!({ "count": count, "durationMs": dur }),
-                    );
-                    log::info!("[RECORDER] Stop hotkey relayed to frontend");
+                    // Branch on TEMP_RECORDING_ACTIVE: editor flow lets the
+                    // frontend retrieve events via stop_macro_recording;
+                    // global flow finalises here without a UI round-trip.
+                    if crate::recorder::TEMP_RECORDING_ACTIVE.load(Ordering::SeqCst) {
+                        crate::recorder::TEMP_RECORDING_ACTIVE.store(false, Ordering::SeqCst);
+                        let events = crate::recorder::stop();
+                        let captured_at = chrono::Local::now().to_rfc3339();
+                        // Cache in engine state for fast play + persist to disk.
+                        if let Ok(mut state) = engine_state().lock() {
+                            state.temp_macro_events = Some(events.clone());
+                            state.temp_macro_captured_at = Some(captured_at.clone());
+                        }
+                        crate::persist_temp_macro(&events, &captured_at);
+                        // Hide the recording bar — global flow has no UI round-trip
+                        // through the frontend, so Rust hides directly.
+                        crate::hide_recorder_bar(app.clone());
+                        let _ = app.emit(
+                            "temp-macro-saved",
+                            serde_json::json!({
+                                "count": events.len(),
+                                "durationMs": dur,
+                                "capturedAt": captured_at,
+                            }),
+                        );
+                        log::info!("[RECORDER] Temp macro saved ({} events, {}ms)", events.len(), dur);
+                    } else {
+                        let _ = app.emit(
+                            "recorder-stop-requested",
+                            serde_json::json!({ "count": count, "durationMs": dur }),
+                        );
+                        log::info!("[RECORDER] Stop hotkey relayed to frontend");
+                    }
+                    continue;
+                }
+                if matches!(event, HookEvent::TempMacroRecordRequested) {
+                    crate::recorder::TEMP_RECORDING_ACTIVE.store(true, Ordering::SeqCst);
+                    // show_recorder_bar shows the bottom-centre recording bar
+                    // AND calls recorder::start internally — reuse the same
+                    // pill the editor flow uses so the user gets identical
+                    // visual feedback whether they hit Record in-app or via
+                    // the global hotkey.
+                    crate::show_recorder_bar(app.clone());
+                    let _ = app.emit("temp-macro-recording-started", serde_json::json!({}));
+                    log::info!("[RECORDER] Quick Record: recording started via global hotkey");
+                    continue;
+                }
+                if matches!(event, HookEvent::TempMacroPlayRequested) {
+                    let snapshot: Option<(Vec<crate::recorder::RecordedEvent>, String)> = engine_state()
+                        .lock()
+                        .ok()
+                        .and_then(|s| {
+                            match (&s.temp_macro_events, &s.temp_macro_captured_at) {
+                                (Some(ev), Some(ts)) if !ev.is_empty() => Some((ev.clone(), ts.clone())),
+                                _ => None,
+                            }
+                        });
+                    match snapshot {
+                        Some((events, captured_at)) => {
+                            // Clear any stale Esc from before this fire — the
+                            // hook sets ESC_LOOP_BREAK on every real Esc keydown
+                            // and editor-flow macro fires reset it via the
+                            // MacroRunningGuard, but Quick Replay bypasses that
+                            // infrastructure. Without this, a single Esc press
+                            // at any point in the past makes every future
+                            // Quick Replay abort on the first event.
+                            crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+                            let _ = app.emit(
+                                "temp-macro-replay-started",
+                                serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
+                            );
+                            std::thread::spawn(move || {
+                                crate::actions::replay_recorded_events(&events, "Quick Replay");
+                            });
+                        }
+                        None => {
+                            let _ = app.emit("temp-macro-replay-empty", serde_json::json!({}));
+                            log::info!("[RECORDER] Quick Replay: no temp macro saved");
+                        }
+                    }
                     continue;
                 }
                 if !MACROS_ENABLED.load(Ordering::SeqCst) && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst) && !IS_CAPTURING_KEY.load(Ordering::SeqCst) {
@@ -1667,6 +1792,8 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     HookEvent::MouseWheel { delta } => handle_mouse_wheel(delta, &app),
                     // Already handled above via `continue`. Compiler exhaustiveness.
                     HookEvent::RecorderStopRequested => {}
+                    HookEvent::TempMacroRecordRequested => {}
+                    HookEvent::TempMacroPlayRequested => {}
                 }
             }
             info!("[Keyfire] Event processor stopped");
@@ -3702,6 +3829,50 @@ pub fn set_pause_hotkey(combo: &str) {
         add_voice_to_suppress(state.voice_hotkey);
         add_radial_menu_to_suppress(state.radial_menu_hotkey);
         log::info!("[HOOK] Pause hotkey set: {} → bits={} vk=0x{:02X}", combo, parsed.0, parsed.1);
+    }
+}
+
+/// Quick Record (temp macro) record-toggle hotkey. Mirrors set_pause_hotkey:
+/// parses the combo, updates engine state, and refreshes the hook-readable
+/// atomics in recorder.rs so the LL hook can match without a lock. Pass an
+/// empty combo to clear (record disabled).
+pub fn set_temp_macro_record_hotkey(combo: &str) {
+    let parsed = parse_hotkey_combo(combo);
+    let mut state = engine_state().lock().unwrap();
+    match parsed {
+        Some((bits, vk)) => {
+            state.temp_macro_record_hotkey = Some((bits, vk));
+            state.temp_macro_record_hotkey_str = Some(combo.to_string());
+            crate::recorder::TEMP_MACRO_RECORD_BITS.store(bits, Ordering::SeqCst);
+            crate::recorder::TEMP_MACRO_RECORD_VK.store(vk, Ordering::SeqCst);
+            log::info!("[HOOK] Temp macro record hotkey set: {} → bits={} vk=0x{:02X}", combo, bits, vk);
+        }
+        None => {
+            state.temp_macro_record_hotkey = None;
+            state.temp_macro_record_hotkey_str = None;
+            crate::recorder::TEMP_MACRO_RECORD_VK.store(0, Ordering::SeqCst);
+            log::info!("[HOOK] Temp macro record hotkey cleared");
+        }
+    }
+}
+
+pub fn set_temp_macro_play_hotkey(combo: &str) {
+    let parsed = parse_hotkey_combo(combo);
+    let mut state = engine_state().lock().unwrap();
+    match parsed {
+        Some((bits, vk)) => {
+            state.temp_macro_play_hotkey = Some((bits, vk));
+            state.temp_macro_play_hotkey_str = Some(combo.to_string());
+            crate::recorder::TEMP_MACRO_PLAY_BITS.store(bits, Ordering::SeqCst);
+            crate::recorder::TEMP_MACRO_PLAY_VK.store(vk, Ordering::SeqCst);
+            log::info!("[HOOK] Temp macro play hotkey set: {} → bits={} vk=0x{:02X}", combo, bits, vk);
+        }
+        None => {
+            state.temp_macro_play_hotkey = None;
+            state.temp_macro_play_hotkey_str = None;
+            crate::recorder::TEMP_MACRO_PLAY_VK.store(0, Ordering::SeqCst);
+            log::info!("[HOOK] Temp macro play hotkey cleared");
+        }
     }
 }
 

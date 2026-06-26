@@ -2399,102 +2399,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         return true;
                     }
                 };
-            info!(
-                "[Keyfire] Record Macro: replaying {} events",
-                events.len()
-            );
-
-            // INTENTIONALLY NO SuppressionGuard here — we WANT replayed
-            // events to fire Keyfire's own hotkey assignments, text
-            // expansions, radial menu triggers, etc. Recursion is bounded
-            // by the existing FIRE_DEPTH guard inside execute_action.
-            // Side effect: user keystrokes during replay also reach the
-            // hook (not blocked); a macro that takes 30 seconds will see
-            // any keys the user types interleaved with the synthetic ones.
-            // Esc still cancels via the ESC_LOOP_BREAK check below.
-            let mut prev_t: u64 = 0;
-            const MAX_GAP_MS: u64 = 5000;
-
-            for evt in events.iter() {
-                // Per-event abort guards.
-                //   1) MACROS_ENABLED off (user paused via tray/hotkey).
-                //   2) ESC_LOOP_BREAK — Esc keydown sets this globally;
-                //      gives the user a single key to bail out of any
-                //      recorded replay mid-stream.
-                if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
-                    info!("[Keyfire] Record Macro: aborted (macros disabled)");
-                    break;
-                }
-                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
-                    info!("[Keyfire] Record Macro: aborted (Esc)");
-                    break;
-                }
-                let evt_t = match evt {
-                    crate::recorder::RecordedEvent::KeyDown { t, .. }
-                    | crate::recorder::RecordedEvent::KeyUp { t, .. }
-                    | crate::recorder::RecordedEvent::MouseDown { t, .. }
-                    | crate::recorder::RecordedEvent::MouseUp { t, .. }
-                    | crate::recorder::RecordedEvent::MouseMove { t, .. }
-                    | crate::recorder::RecordedEvent::Wheel { t, .. } => *t,
-                };
-                let gap = evt_t.saturating_sub(prev_t).min(MAX_GAP_MS);
-                if gap > 0 {
-                    thread::sleep(Duration::from_millis(gap));
-                }
-                prev_t = evt_t;
-
-                match evt {
-                    crate::recorder::RecordedEvent::KeyDown { vk, .. } => {
-                        send_vk_key(*vk as u16, false);
-                    }
-                    crate::recorder::RecordedEvent::KeyUp { vk, .. } => {
-                        send_vk_key(*vk as u16, true);
-                    }
-                    crate::recorder::RecordedEvent::MouseDown { button, x, y, .. } => {
-                        unsafe {
-                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                        }
-                        replay_mouse_button(button, true);
-                    }
-                    crate::recorder::RecordedEvent::MouseUp { button, x, y, .. } => {
-                        unsafe {
-                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                        }
-                        replay_mouse_button(button, false);
-                    }
-                    crate::recorder::RecordedEvent::MouseMove { x, y, .. } => {
-                        unsafe {
-                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                        }
-                    }
-                    crate::recorder::RecordedEvent::Wheel { delta, x, y, .. } => {
-                        unsafe {
-                            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                        }
-                        replay_wheel(*delta);
-                    }
-                }
-            }
-            // Defensive cleanup: release all modifiers in case any KEYDOWNS
-            // in the buffer were replayed without matching KEYUPS. Without
-            // this, a recording that ended mid-modifier-press (e.g. the
-            // user pressing Ctrl+Shift+R to stop, where R is suppressed
-            // but Ctrl/Shift keydowns leaked into the buffer) leaves the
-            // OS with stuck modifiers — every subsequent keypress is
-            // garbled and the macro hotkey can't fire again. Sending a
-            // keyup for a key that's already up is a harmless no-op.
-            const VK_LSHIFT: u16 = 0xA0;
-            const VK_RSHIFT: u16 = 0xA1;
-            const VK_LCTRL: u16 = 0xA2;
-            const VK_RCTRL: u16 = 0xA3;
-            const VK_LALT: u16 = 0xA4;
-            const VK_RALT: u16 = 0xA5;
-            const VK_LWIN: u16 = 0x5B;
-            const VK_RWIN: u16 = 0x5C;
-            for vk in [VK_LSHIFT, VK_RSHIFT, VK_LCTRL, VK_RCTRL, VK_LALT, VK_RALT, VK_LWIN, VK_RWIN] {
-                send_vk_key(vk, true);
-            }
-            info!("[Keyfire] Record Macro: complete");
+            replay_recorded_events(&events, "Record Macro");
         }
 
         _ => {
@@ -2502,6 +2407,96 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         }
     }
     true
+}
+
+// ── Recorded-event replay ────────────────────────────────────────────────────
+
+/// Replay a captured RecordedEvent stream via SendInput, preserving original
+/// inter-event gaps (capped at MAX_GAP_MS so absurd waits can't freeze the
+/// macro forever). INTENTIONALLY NO SuppressionGuard — replayed events fire
+/// Keyfire's own hotkey assignments / text expansions / radial triggers.
+/// Recursion bounded by FIRE_DEPTH inside execute_action. Esc cancels mid-
+/// stream via ESC_LOOP_BREAK; macros-disabled also aborts. Always finishes
+/// with a defensive modifier release so a buffer that ended mid-modifier-
+/// press doesn't leave Ctrl/Shift/Alt/Win stuck down. Shared by the macro
+/// step path AND the global temp-macro play hotkey.
+pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: &str) {
+    info!("[Keyfire] {}: replaying {} events", label, events.len());
+
+    let mut prev_t: u64 = 0;
+    const MAX_GAP_MS: u64 = 5000;
+
+    for evt in events.iter() {
+        if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+            info!("[Keyfire] {}: aborted (macros disabled)", label);
+            break;
+        }
+        if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+            info!("[Keyfire] {}: aborted (Esc)", label);
+            break;
+        }
+        let evt_t = match evt {
+            crate::recorder::RecordedEvent::KeyDown { t, .. }
+            | crate::recorder::RecordedEvent::KeyUp { t, .. }
+            | crate::recorder::RecordedEvent::MouseDown { t, .. }
+            | crate::recorder::RecordedEvent::MouseUp { t, .. }
+            | crate::recorder::RecordedEvent::MouseMove { t, .. }
+            | crate::recorder::RecordedEvent::Wheel { t, .. } => *t,
+        };
+        let gap = evt_t.saturating_sub(prev_t).min(MAX_GAP_MS);
+        if gap > 0 {
+            thread::sleep(Duration::from_millis(gap));
+        }
+        prev_t = evt_t;
+
+        match evt {
+            crate::recorder::RecordedEvent::KeyDown { vk, .. } => {
+                send_vk_key(*vk as u16, false);
+            }
+            crate::recorder::RecordedEvent::KeyUp { vk, .. } => {
+                send_vk_key(*vk as u16, true);
+            }
+            crate::recorder::RecordedEvent::MouseDown { button, x, y, .. } => {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                }
+                replay_mouse_button(button, true);
+            }
+            crate::recorder::RecordedEvent::MouseUp { button, x, y, .. } => {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                }
+                replay_mouse_button(button, false);
+            }
+            crate::recorder::RecordedEvent::MouseMove { x, y, .. } => {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                }
+            }
+            crate::recorder::RecordedEvent::Wheel { delta, x, y, .. } => {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
+                }
+                replay_wheel(*delta);
+            }
+        }
+    }
+    // Defensive cleanup: release all modifiers. A buffer that ended mid-
+    // modifier-press would otherwise leave the OS with stuck modifiers
+    // (every subsequent keypress garbled). Keyup on already-up key is a
+    // harmless no-op.
+    const VK_LSHIFT: u16 = 0xA0;
+    const VK_RSHIFT: u16 = 0xA1;
+    const VK_LCTRL: u16 = 0xA2;
+    const VK_RCTRL: u16 = 0xA3;
+    const VK_LALT: u16 = 0xA4;
+    const VK_RALT: u16 = 0xA5;
+    const VK_LWIN: u16 = 0x5B;
+    const VK_RWIN: u16 = 0x5C;
+    for vk in [VK_LSHIFT, VK_RSHIFT, VK_LCTRL, VK_RCTRL, VK_LALT, VK_RALT, VK_LWIN, VK_RWIN] {
+        send_vk_key(vk, true);
+    }
+    info!("[Keyfire] {}: complete", label);
 }
 
 // ── Wait for Input step ─────────────────────────────────────────────────────

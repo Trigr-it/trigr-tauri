@@ -917,6 +917,15 @@ fn js_key_event(code: String, ctrl: bool, shift: bool, alt: bool, meta: bool, ap
 /// event so the main window can unwind UI state.
 #[tauri::command]
 fn show_recorder_countdown(app: tauri::AppHandle) {
+    show_recorder_bar(app);
+}
+
+/// Build (if needed), position and show the bottom-centre recording bar, then
+/// start the recorder. Shared by the editor-flow command above and the global
+/// Quick Record processor handler in hotkeys.rs. Separate from the Tauri
+/// command because #[tauri::command] generates a sibling __cmd__ macro that
+/// conflicts with cross-module pub(crate) visibility.
+pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
@@ -1066,6 +1075,13 @@ fn morph_countdown_to_pill(app: &tauri::AppHandle) {
 
 #[tauri::command]
 fn hide_recorder_countdown(app: tauri::AppHandle) {
+    hide_recorder_bar(app);
+}
+
+/// Hide the recording bar window. Shared by the Tauri command above and the
+/// global Quick Record processor handler. See `show_recorder_bar` for the
+/// pub(crate) / #[tauri::command] split rationale.
+pub(crate) fn hide_recorder_bar(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("countdown") {
         let _ = win.hide();
         log::info!("[RECORDER] Countdown overlay hidden");
@@ -1079,6 +1095,11 @@ fn hide_recorder_countdown(app: tauri::AppHandle) {
 #[tauri::command]
 fn recorder_countdown_complete(app: tauri::AppHandle) {
     morph_countdown_to_pill(&app);
+    // Clear TEMP_RECORDING_ACTIVE before start — the editor flow owns this
+    // recording, not the global temp slot. Without this, a stale flag from
+    // a prior global-flow start (e.g. user aborted mid-record) would cause
+    // the next editor-flow stop to misroute events into the temp slot.
+    recorder::TEMP_RECORDING_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
     recorder::start();
     log::info!("[RECORDER] Countdown done -> recording started");
 }
@@ -1099,19 +1120,42 @@ fn recorder_countdown_abort(app: tauri::AppHandle) {
 }
 
 /// Stop the recording from the pill's Stop button. Mirrors what the LL hook
-/// does when it detects Ctrl+Shift+R: flips IS_RECORDING_MACRO false and
-/// emits `recorder-stop-requested` so main's listener retrieves the buffer
-/// + restores everything.
+/// does when it detects the configured record hotkey: flips IS_RECORDING_MACRO
+/// false and branches on TEMP_RECORDING_ACTIVE — editor flow emits to frontend
+/// so the React listener retrieves the buffer; global flow finalises here,
+/// saves to the temp slot, and hides the pill.
 #[tauri::command]
 fn recorder_stop_from_pill(app: tauri::AppHandle) {
-    recorder::IS_RECORDING_MACRO.store(false, std::sync::atomic::Ordering::SeqCst);
+    use std::sync::atomic::Ordering as O;
+    recorder::IS_RECORDING_MACRO.store(false, O::SeqCst);
     let (count, dur) = recorder::status_snapshot();
     use tauri::Emitter as _;
-    let _ = app.emit(
-        "recorder-stop-requested",
-        serde_json::json!({ "count": count, "durationMs": dur }),
-    );
-    log::info!("[RECORDER] Stop button clicked → stop relayed to frontend");
+    if recorder::TEMP_RECORDING_ACTIVE.load(O::SeqCst) {
+        recorder::TEMP_RECORDING_ACTIVE.store(false, O::SeqCst);
+        let events = recorder::stop();
+        let captured_at = chrono::Local::now().to_rfc3339();
+        if let Ok(mut state) = hotkeys::engine_state().lock() {
+            state.temp_macro_events = Some(events.clone());
+            state.temp_macro_captured_at = Some(captured_at.clone());
+        }
+        persist_temp_macro(&events, &captured_at);
+        hide_recorder_bar(app.clone());
+        let _ = app.emit(
+            "temp-macro-saved",
+            serde_json::json!({
+                "count": events.len(),
+                "durationMs": dur,
+                "capturedAt": captured_at,
+            }),
+        );
+        log::info!("[RECORDER] Temp macro saved via pill Stop ({} events, {}ms)", events.len(), dur);
+    } else {
+        let _ = app.emit(
+            "recorder-stop-requested",
+            serde_json::json!({ "count": count, "durationMs": dur }),
+        );
+        log::info!("[RECORDER] Stop button clicked → stop relayed to frontend");
+    }
 }
 
 /// Hide the main window for the recorder flow. We use `hide()` rather than
@@ -1261,6 +1305,164 @@ fn clear_voice_hotkey() {
     hotkeys::clear_voice_hotkey();
 }
 
+// ── Quick Record (temp macro) ───────────────────────────────────────────────
+
+#[tauri::command]
+fn set_temp_macro_record_hotkey(combo: String) -> Value {
+    hotkeys::set_temp_macro_record_hotkey(&combo);
+    persist_temp_macro_hotkeys();
+    serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+fn clear_temp_macro_record_hotkey() {
+    hotkeys::set_temp_macro_record_hotkey("");
+    persist_temp_macro_hotkeys();
+}
+
+#[tauri::command]
+fn set_temp_macro_play_hotkey(combo: String) -> Value {
+    hotkeys::set_temp_macro_play_hotkey(&combo);
+    persist_temp_macro_hotkeys();
+    serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+fn clear_temp_macro_play_hotkey() {
+    hotkeys::set_temp_macro_play_hotkey("");
+    persist_temp_macro_hotkeys();
+}
+
+#[tauri::command]
+fn get_temp_macro_status() -> Value {
+    if let Ok(state) = hotkeys::engine_state().lock() {
+        let event_count = state.temp_macro_events.as_ref().map(|v| v.len()).unwrap_or(0);
+        return serde_json::json!({
+            "hasEvents": event_count > 0,
+            "eventCount": event_count,
+            "capturedAt": state.temp_macro_captured_at.clone(),
+            "recordHotkey": state.temp_macro_record_hotkey_str.clone(),
+            "playHotkey": state.temp_macro_play_hotkey_str.clone(),
+        });
+    }
+    serde_json::json!({
+        "hasEvents": false,
+        "eventCount": 0,
+        "capturedAt": serde_json::Value::Null,
+        "recordHotkey": serde_json::Value::Null,
+        "playHotkey": serde_json::Value::Null,
+    })
+}
+
+#[tauri::command]
+fn clear_temp_macro() -> bool {
+    if let Ok(mut state) = hotkeys::engine_state().lock() {
+        state.temp_macro_events = None;
+        state.temp_macro_captured_at = None;
+    }
+    let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let mut merged = existing;
+    // Only remove the events + timestamp keys — the user's record/play hotkey
+    // choices live in the same tempMacro object and must survive a Clear so
+    // they don't silently revert to defaults on the next restart.
+    if let Some(obj) = merged.as_object_mut() {
+        if let Some(temp) = obj.get_mut("tempMacro").and_then(|v| v.as_object_mut()) {
+            temp.remove("events");
+            temp.remove("capturedAt");
+        }
+    }
+    config::save_config(&merged)
+}
+
+/// One-shot startup cleanup for users who auto-updated from a pre-rebrand
+/// install (≤ v0.5.6). The old NSIS installer placed `Trigr.lnk` in the user's
+/// Start Menu pointing at `trigr.exe`. v0.6.0 rebranded the product to Keyfire
+/// AND renamed the binary to `keyfire.exe` — the new installer creates
+/// `Keyfire.lnk` but Tauri's NSIS template only manages shortcuts named
+/// `${PRODUCTNAME}.lnk`, so the stale `Trigr.lnk` survives auto-update as a
+/// broken shortcut pointing at a now-missing binary. We delete it from every
+/// known location on startup. Idempotent: silent no-op when nothing's there.
+/// Covers per-user Start Menu (currentUser install mode) and Desktop.
+fn cleanup_stale_trigr_shortcuts() {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let start_menu = std::path::PathBuf::from(&appdata)
+            .join("Microsoft").join("Windows").join("Start Menu").join("Programs");
+        // Both layouts the old installer might have produced — flat .lnk or
+        // a "Trigr" subfolder containing the .lnk.
+        candidates.push(start_menu.join("Trigr.lnk"));
+        candidates.push(start_menu.join("Trigr").join("Trigr.lnk"));
+    }
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        // Optional desktop icon — only present if the user ticked it during install.
+        candidates.push(std::path::PathBuf::from(userprofile).join("Desktop").join("Trigr.lnk"));
+    }
+
+    let mut removed = 0;
+    for path in &candidates {
+        if path.exists() {
+            match std::fs::remove_file(path) {
+                Ok(_) => {
+                    log::info!("[Keyfire] Removed stale Trigr shortcut: {}", path.display());
+                    removed += 1;
+                }
+                Err(e) => log::warn!("[Keyfire] Failed to remove stale Trigr shortcut {}: {}", path.display(), e),
+            }
+        }
+    }
+
+    // Tidy: if the old installer used a "Trigr" subfolder under Programs and
+    // it's now empty, remove it too. remove_dir only succeeds on empty dirs,
+    // so this is safe — a non-empty Trigr folder (user customised) survives.
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let trigr_subfolder = std::path::PathBuf::from(appdata)
+            .join("Microsoft").join("Windows").join("Start Menu").join("Programs").join("Trigr");
+        if trigr_subfolder.exists() && trigr_subfolder.is_dir() {
+            let _ = std::fs::remove_dir(&trigr_subfolder);
+        }
+    }
+
+    if removed > 0 {
+        log::info!("[Keyfire] Stale Trigr shortcut cleanup: {} removed", removed);
+    }
+}
+
+/// Persist the cached temp macro hotkey strings to config. Called after each
+/// setter so the user's choice survives restart. Hotkeys + macro-event slot
+/// live under a single `tempMacro` object in config to keep the schema tidy.
+fn persist_temp_macro_hotkeys() {
+    let (record, play) = match hotkeys::engine_state().lock() {
+        Ok(s) => (s.temp_macro_record_hotkey_str.clone(), s.temp_macro_play_hotkey_str.clone()),
+        Err(_) => return,
+    };
+    let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let mut merged = existing;
+    if let Some(obj) = merged.as_object_mut() {
+        let temp = obj.entry("tempMacro".to_string()).or_insert_with(|| serde_json::json!({}));
+        if let Some(t) = temp.as_object_mut() {
+            t.insert("recordHotkey".to_string(), record.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
+            t.insert("playHotkey".to_string(), play.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
+        }
+    }
+    config::save_config(&merged);
+}
+
+/// Persist a freshly captured temp macro to disk. Called from the processor
+/// after the global-flow stop saves events into engine state. Stored as a
+/// JSON-serialised array under `tempMacro.events` alongside `capturedAt`.
+pub fn persist_temp_macro(events: &[crate::recorder::RecordedEvent], captured_at: &str) {
+    let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let mut merged = existing;
+    if let Some(obj) = merged.as_object_mut() {
+        let temp = obj.entry("tempMacro".to_string()).or_insert_with(|| serde_json::json!({}));
+        if let Some(t) = temp.as_object_mut() {
+            t.insert("events".to_string(), serde_json::to_value(events).unwrap_or(serde_json::Value::Null));
+            t.insert("capturedAt".to_string(), serde_json::Value::String(captured_at.to_string()));
+        }
+    }
+    config::save_config(&merged);
+}
+
 #[tauri::command]
 fn start_voice_recognition(phrases: Vec<String>, app: tauri::AppHandle) {
     voice::start_recognition(phrases, app);
@@ -1304,6 +1506,12 @@ fn check_hotkey_conflict(combo: String, from_slot: Option<String>) -> Value {
     }
     if from != "clipboard_paste" && state.clipboard_paste_hotkey == Some(parsed) {
         return serde_json::json!({ "conflict": true, "conflictWith": "Clipboard quick paste" });
+    }
+    if from != "temp_macro_record" && state.temp_macro_record_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Quick Record (record)" });
+    }
+    if from != "temp_macro_play" && state.temp_macro_play_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Quick Record (play)" });
     }
 
     // Regular per-profile assignments — only check active profile single-press
@@ -1685,6 +1893,7 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
 
     let target = unsafe { GetForegroundWindow() as isize };
     CLIPBOARD_OVERLAY_TARGET.store(target, std::sync::atomic::Ordering::SeqCst);
+    log::info!("[CLIP-FOCUS] show_overlay: captured target_hwnd=0x{:X}", target);
 
     let win = match app.get_webview_window("clipboardoverlay") {
         Some(w) => w,
@@ -1737,11 +1946,10 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let phys_y = ideal_y.min(max_y).max(wa_top + 16);
 
     let phys_x = wa_left + (wa_w - phys_w) / 2;
-    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
-    let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
-    // Send recent clipboard history + theme to the overlay
-    let history = clipboard::get_history(1, 500, None, None, None, None);
+    // Send recent clipboard history + theme to the overlay BEFORE the show
+    // so the webview has the data when it becomes visible.
+    let history = clipboard::get_history(1, 500, None, None, None, None, false);
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
     let mut payload = history;
@@ -1751,26 +1959,69 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     use tauri::Emitter;
     let _ = win.emit("clipboard-overlay-data", payload);
 
-    let _ = win.show();
-    // No set_focus() — WS_EX_NOACTIVATE prevents focus steal; keyboard routed via LL hook.
-    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
-    // Track HWND so the mouse hook can dismiss on click-outside (blur won't fire
-    // because WS_EX_NOACTIVATE means the window never receives focus on show).
+    // Raw Win32 show — bypass Tauri's win.show() which calls ShowWindow(SW_SHOW)
+    // and *tries* to activate. WS_EX_NOACTIVATE *should* prevent activation but
+    // Tauri/WebView2 also calls SetFocus on the inner Chromium webview after
+    // show, which races the activation and can briefly steal focus from the
+    // target thread. Transient inline editors (emClient calendar drag-out item,
+    // Outlook subject-in-place) listen for WM_KILLFOCUS and destroy themselves
+    // on any focus blip — even one too short to see. SetWindowPos with
+    // SWP_NOACTIVATE + SWP_SHOWWINDOW shows the window WITHOUT generating any
+    // activation event, position + size set in the same atomic call.
     if let Ok(hwnd) = win.hwnd() {
+        unsafe {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST};
+            const SWP_NOACTIVATE: u32 = 0x0010;
+            const SWP_SHOWWINDOW: u32 = 0x0040;
+            SetWindowPos(
+                hwnd.0 as _,
+                HWND_TOPMOST,
+                phys_x,
+                phys_y,
+                phys_w,
+                phys_h,
+                SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
+        }
         crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
     }
+    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // Diagnostic: did focus actually stay on the target? If foreground_after !=
+    // target_hwnd we've lost focus despite WS_EX_NOACTIVATE + SWP_NOACTIVATE
+    // and need to investigate further (probably Chromium SetFocus on webview).
+    let foreground_after = unsafe { GetForegroundWindow() as isize };
+    log::info!(
+        "[CLIP-FOCUS] show_overlay: foreground_after=0x{:X} (target=0x{:X}, match={})",
+        foreground_after, target, foreground_after == target
+    );
 }
 
 fn hide_clipboard_overlay(app: &tauri::AppHandle) {
     crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(false, std::sync::atomic::Ordering::SeqCst);
     crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
+    // Raw Win32 hide — symmetric with the raw SetWindowPos show. Tauri's
+    // win.hide() was no-opping because we bypassed Tauri's internal visible
+    // state when we showed via SetWindowPos; the runtime saw the window as
+    // already "hidden" and skipped ShowWindow(SW_HIDE). Going raw both ways
+    // keeps the actual window state in lockstep regardless of what Tauri's
+    // cached visibility flag thinks.
     if let Some(win) = app.get_webview_window("clipboardoverlay") {
-        let _ = win.hide();
+        if let Ok(hwnd) = win.hwnd() {
+            unsafe {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+                ShowWindow(hwnd.0 as _, SW_HIDE);
+            }
+        } else {
+            let _ = win.hide();
+        }
     }
-    let hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
-    if hwnd != 0 {
-        actions::set_foreground_robust(hwnd);
-    }
+    log::info!("[CLIP-FOCUS] hide_overlay: hidden");
+    // NO focus restore — the overlay uses WS_EX_NOACTIVATE so the target app
+    // never lost foreground. Calling set_foreground_robust here was the bug
+    // that broke emClient calendar dialog inputs etc: SetForegroundWindow only
+    // restores the top-level HWND, NOT the focused child control, so on apps
+    // with modal dialogs the caret would land in the wrong place.
 }
 
 fn restore_overlay_target() {
@@ -2404,8 +2655,14 @@ fn get_clipboard_history(
     app_filter: Option<String>,
     tag_filter: Option<String>,
     search: Option<String>,
+    // Main UI passes true so starred items sort above pinned. Popup omits or
+    // passes false so only pinned promote (starred items stay in the timeline).
+    promote_starred: Option<bool>,
 ) -> Value {
-    clipboard::get_history(page, per_page, date_filter, app_filter, tag_filter, search)
+    clipboard::get_history(
+        page, per_page, date_filter, app_filter, tag_filter, search,
+        promote_starred.unwrap_or(false),
+    )
 }
 
 #[tauri::command]
@@ -2432,9 +2689,23 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
             }
         };
 
+        // Diagnostic: snapshot foreground at paste-thread entry. If this isn't
+        // the captured target_hwnd, focus drifted during the popup's lifetime
+        // (likely Chromium SetFocus on the overlay webview racing our
+        // SWP_NOACTIVATE show, or the target app reacted to some other event).
+        unsafe {
+            use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+            let fg_now = GetForegroundWindow() as isize;
+            log::info!(
+                "[CLIP-FOCUS] paste_thread: foreground=0x{:X} (target_capture=0x{:X}, match={})",
+                fg_now, target_hwnd, fg_now == target_hwnd
+            );
+        }
+
         // Counter is incremented after the paste path succeeds (set inside the match below).
         let mut pasted_ok = false;
-        // Hide the overlay first so focus transfer is clean
+        // Brief settle delay before paste — lets the overlay's win.hide()
+        // commit fully so any in-flight Tauri events finish before Ctrl+V.
         std::thread::sleep(std::time::Duration::from_millis(30));
 
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
@@ -2443,11 +2714,14 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
 
         let held = actions::release_held_modifiers();
 
-        // Restore focus to the original target app
-        if target_hwnd != 0 {
-            actions::set_foreground_robust(target_hwnd);
-            std::thread::sleep(std::time::Duration::from_millis(30));
-        }
+        // NO focus restore — overlay is WS_EX_NOACTIVATE, target app held
+        // foreground throughout. The previous `set_foreground_robust` call
+        // restored the top-level HWND captured at show-time, NOT the focused
+        // child control, so apps with modal dialogs (emClient calendar name
+        // field, Slack composer, Notion sidebars) pasted into the wrong
+        // place. Removing the restore lets the paste land on whatever child
+        // still has keyboard focus — which is what the user expects.
+        let _ = target_hwnd; // kept for future diagnostic logging if needed
 
         match item.content_type.as_str() {
             "text" => {
@@ -2880,6 +3154,21 @@ fn pin_clipboard_item(id: i64, pinned: bool) -> bool {
 }
 
 #[tauri::command]
+fn star_clipboard_item(id: i64, starred: bool) -> bool {
+    clipboard::star_item(id, starred)
+}
+
+#[tauri::command]
+fn reorder_clipboard_pinned(ids: Vec<i64>) -> bool {
+    clipboard::reorder_pinned(ids)
+}
+
+#[tauri::command]
+fn reorder_clipboard_starred(ids: Vec<i64>) -> bool {
+    clipboard::reorder_starred(ids)
+}
+
+#[tauri::command]
 fn get_clipboard_image(id: i64) -> Option<String> {
     clipboard::get_image_blob(id).map(|bytes| {
         // Base64 encode without external crate
@@ -3244,9 +3533,34 @@ pub fn run() {
                         assignments.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                     analytics::migrate_time_saved(map);
                 }
+                // Restore Quick Record (temp macro) state — hotkey combos +
+                // the most recently captured event stream. Engine defaults
+                // (Ctrl+Alt+R / Ctrl+Alt+P) apply when config has no entry.
+                if let Some(temp) = cfg.get("tempMacro").and_then(|v| v.as_object()) {
+                    if let Some(combo) = temp.get("recordHotkey").and_then(|v| v.as_str()) {
+                        hotkeys::set_temp_macro_record_hotkey(combo);
+                    }
+                    if let Some(combo) = temp.get("playHotkey").and_then(|v| v.as_str()) {
+                        hotkeys::set_temp_macro_play_hotkey(combo);
+                    }
+                    if let Some(events_val) = temp.get("events") {
+                        if let Ok(events) = serde_json::from_value::<Vec<recorder::RecordedEvent>>(events_val.clone()) {
+                            if let Ok(mut state) = hotkeys::engine_state().lock() {
+                                let captured_at = temp.get("capturedAt")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                if !events.is_empty() {
+                                    state.temp_macro_events = Some(events);
+                                    state.temp_macro_captured_at = captured_at;
+                                }
+                            }
+                        }
+                    }
+                }
             }
             clipboard::init(app_data.clone(), app.handle().clone());
             actions::cleanup_stale_ahk_scripts(app_data);
+            cleanup_stale_trigr_shortcuts();
 
             // Telemetry timer thread — 30s after startup, then every 6h. Owns
             // its own read-only SQLite connection (no contention with the
@@ -3699,6 +4013,12 @@ pub fn run() {
             clear_clipboard_paste_key,
             set_voice_hotkey,
             clear_voice_hotkey,
+            set_temp_macro_record_hotkey,
+            clear_temp_macro_record_hotkey,
+            set_temp_macro_play_hotkey,
+            clear_temp_macro_play_hotkey,
+            get_temp_macro_status,
+            clear_temp_macro,
             start_voice_recognition,
             stop_voice_recognition,
             start_voice_continuous,
@@ -3777,6 +4097,9 @@ pub fn run() {
             delete_clipboard_item,
             clear_clipboard_history,
             pin_clipboard_item,
+            star_clipboard_item,
+            reorder_clipboard_pinned,
+            reorder_clipboard_starred,
             get_clipboard_image,
             get_distinct_source_apps,
             get_clipboard_date_buckets,

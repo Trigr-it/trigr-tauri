@@ -99,6 +99,11 @@
   /* ── Accent-tinted surface (radial wedge hover, inset rows) ──────────── */
   --accent-surface: #3d2e10;
   --accent-surface-hover: #4a3814;
+
+  /* Radial wheel idle wedge + base donut fill. Dark theme uses an elevated
+     surface so wedges read as raised against the desktop; light theme is pure
+     white. Hover state stays gold in both themes (gradient in RadialWheel.jsx). */
+  --radial-wedge: #1a1a24;
 }
 
 /* ── Light theme ──────────────────────────────────────────── */
@@ -147,6 +152,8 @@
 
   --accent-surface: #f5e0b0;
   --accent-surface-hover: #f0d090;
+
+  --radial-wedge: #ffffff;
 }
 
 html, body, #root {

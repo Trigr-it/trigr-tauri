@@ -15,7 +15,7 @@
 // recording captured today plays back identically next week.
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -32,6 +32,13 @@ pub static IS_RECORDING_MACRO: AtomicBool = AtomicBool::new(false);
 /// ReplayRecordingValue mid-flow, triggering its cleanup which discarded
 /// the recording and restored main.
 pub static RECORDER_FLOW_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// True when the current recording was initiated via the global Quick Record
+/// hotkey (Settings → Quick Record), false when initiated via the macro
+/// editor's Record button. Set by the global-hotkey start path BEFORE
+/// recorder::start(); cleared on stop in either flow. The stop handler reads
+/// this to decide where the captured events go — temp-macro slot vs editor.
+pub static TEMP_RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Set true to abort the countdown timer thread mid-tick. Polled on each
 /// 1-second iteration. Cleared at the start of every show_recorder_countdown
@@ -278,10 +285,31 @@ pub fn push_wheel(delta: i32, x: i32, y: i32) {
     }
 }
 
-/// Detect the hardcoded Phase 1 stop hotkey (Ctrl+Shift+R). Caller (hook proc)
-/// suppresses the keystroke + calls stop() when this returns true. Phase 2
-/// will read this from settings instead of hardcoding.
-pub fn is_stop_hotkey(vk: u32, ctrl: bool, shift: bool, alt: bool, win: bool) -> bool {
-    const VK_R: u32 = 0x52;
-    vk == VK_R && ctrl && shift && !alt && !win
+// ── Quick Record hotkey cache (hook-readable atomics) ───────────────────────
+//
+// The hook callback can't lock engine_state on every keystroke (300ms
+// watchdog), so we mirror the two configured hotkeys into atomics. Bits
+// layout matches engine_state's (modifier_bits, vk) tuple. vk = 0 ⇒
+// hotkey unset/disabled (suppressed entirely). Updated by lib.rs setters
+// when the user changes them in Settings; defaults Ctrl+Alt+R / Ctrl+Alt+P.
+
+// vk = 0 ⇒ hotkey unset / disabled. matches_*_hotkey returns false in that case.
+// Users opt in via Settings → Quick Record; the lib.rs setter mirrors their
+// choice into these atomics. See feedback_noactivate_overlay_pattern.md for
+// the parent rationale on opt-in default vs default-on.
+pub static TEMP_MACRO_RECORD_BITS: AtomicU8 = AtomicU8::new(0);
+pub static TEMP_MACRO_RECORD_VK:   AtomicU32 = AtomicU32::new(0);
+pub static TEMP_MACRO_PLAY_BITS:   AtomicU8 = AtomicU8::new(0);
+pub static TEMP_MACRO_PLAY_VK:     AtomicU32 = AtomicU32::new(0);
+
+/// True iff (mod_bits, vk) matches the configured record-toggle hotkey AND
+/// it's actually configured (vk != 0). Caller holds modifier-state atomics.
+pub fn matches_record_hotkey(vk: u32, mod_bits: u8) -> bool {
+    let target_vk = TEMP_MACRO_RECORD_VK.load(Ordering::SeqCst);
+    target_vk != 0 && vk == target_vk && mod_bits == TEMP_MACRO_RECORD_BITS.load(Ordering::SeqCst)
+}
+
+pub fn matches_play_hotkey(vk: u32, mod_bits: u8) -> bool {
+    let target_vk = TEMP_MACRO_PLAY_VK.load(Ordering::SeqCst);
+    target_vk != 0 && vk == target_vk && mod_bits == TEMP_MACRO_PLAY_BITS.load(Ordering::SeqCst)
 }

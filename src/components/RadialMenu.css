@@ -24,6 +24,8 @@
      Mirrors global.css token — must be redeclared here because the radial
      window doesn't import global.css (would break window transparency). */
   --accent-surface: #3d2e10;
+  /* Radial wheel idle wedge + base donut fill (dark surface in dark theme). */
+  --radial-wedge: #1a1a24;
 }
 
 [data-theme="light"] {
@@ -41,6 +43,7 @@
   --border-accent: rgba(232, 160, 32, 0.5);
   --backdrop-blur:  blur(20px) saturate(130%);
   --accent-surface: #f5e0b0;
+  --radial-wedge:   #ffffff;
 }
 
 /* ── Transparent window reset ─────────────────────────────────────────────── */

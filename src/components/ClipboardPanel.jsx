@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { Pin, PinOff, Link2, Maximize2, Clipboard, Square, Columns2, LayoutGrid } from 'lucide-react';
+import { Pin, PinOff, Star, Link2, Maximize2, Clipboard, Square, Columns2, LayoutGrid } from 'lucide-react';
+import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { friendlyKeyName } from './keyboardLayout';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
@@ -64,6 +67,33 @@ function formatDateSidebarLabel(dateKey, todayKey) {
   return `${day} ${month}`;
 }
 
+// ── Sortable card wrapper (Starred + Pinned tiers in Main UI) ─────────────
+// Drag-to-reorder via dnd-kit. PointerSensor 5px activation distance keeps
+// click-to-select snappy — only a real drag triggers reorder. Listeners go
+// on the card root so the whole tile is the drag handle (no separate gutter).
+function SortableCardWrap({ sortableId, className, onClick, onContextMenu, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 20 : undefined,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={className}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Timeline grouping ──────────────────────────────────────────────────────
 
 function groupByTimeline(items) {
@@ -73,9 +103,13 @@ function groupByTimeline(items) {
   const weekStart = new Date(todayStart); weekStart.setDate(todayStart.getDate() - todayStart.getDay());
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const groups = { Pinned: [], Today: [], Yesterday: [], 'This Week': [], 'This Month': [], Older: [] };
+  // Starred sits above Pinned. An item that's BOTH starred and pinned shows
+  // only under Starred (the higher tier) — the popup, which ignores starred,
+  // still treats it as pinned via its own ORDER BY.
+  const groups = { Starred: [], Pinned: [], Today: [], Yesterday: [], 'This Week': [], 'This Month': [], Older: [] };
 
   for (const item of items) {
+    if (item.starred) { groups.Starred.push(item); continue; }
     if (item.pinned) { groups.Pinned.push(item); continue; }
     const d = new Date(item.timestamp);
     if (d >= todayStart) groups.Today.push(item);
@@ -231,9 +265,9 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
   const [sourceApps, setSourceApps] = useState([]);
   const [filterApp, setFilterApp] = useState('');
   const [filterTag, setFilterTag] = useState('All');
-  // Date sidebar state. selectedDate: 'all' (timeline grouping) | 'pinned'
-  // (all pinned items) | 'YYYY-MM-DD' (single local date).
-  const [dateBuckets, setDateBuckets] = useState({ dates: [], pinned_count: 0 });
+  // Date sidebar state. selectedDate: 'all' (timeline grouping) | 'starred'
+  // (all starred items) | 'pinned' (all pinned items) | 'YYYY-MM-DD' (single local date).
+  const [dateBuckets, setDateBuckets] = useState({ dates: [], pinned_count: 0, starred_count: 0 });
   const [selectedDate, setSelectedDate] = useState('all');
   // Re-derived once a minute so the "Today" / "Yesterday" labels refresh on
   // midnight rollover without requiring the user to reopen the panel.
@@ -296,6 +330,8 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
         appFilter: f.app || null,
         tagFilter: f.tag && f.tag !== 'All' ? f.tag : null,
         search: f.search?.trim() || null,
+        // Main UI: promote starred items above pinned. Popup omits this flag.
+        promoteStarred: true,
       };
       const result = await window.electronAPI?.getClipboardHistory(p, PER_PAGE, filters);
       if (result) {
@@ -561,17 +597,80 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
   const handlePin = async (id, pinned) => {
     const ok = await window.electronAPI?.pinClipboardItem(id, !pinned);
     if (ok) {
-      setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !pinned } : i));
+      // Unpin also clears pinned_order server-side; mirror that locally so the
+      // next reload doesn't show stale rank state.
+      setItems(prev => prev.map(i => i.id === id
+        ? { ...i, pinned: !pinned, pinned_order: pinned ? null : i.pinned_order }
+        : i));
       loadDateBuckets();
     }
     setCtxMenu(null);
   };
 
+  const handleStar = async (id, starred) => {
+    const ok = await window.electronAPI?.starClipboardItem(id, !starred);
+    if (ok) {
+      setItems(prev => prev.map(i => i.id === id
+        ? { ...i, starred: !starred, starred_order: starred ? null : i.starred_order }
+        : i));
+      loadDateBuckets();
+    }
+    setCtxMenu(null);
+  };
+
+  // dnd-kit sensor mirrors the RadialWheel pattern — 5px activation distance
+  // so a click on a card still selects the item (no accidental drags).
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  // Drag-end handler: same-tier reorder only. Cross-tier drag is ignored —
+  // the user changes tier explicitly via Star/Pin toggles. id format
+  // "starred-<n>" / "pinned-<n>" encodes the tier so we don't need to look up
+  // the active item to know which sortable list owns it.
+  const handleDragEnd = useCallback(async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const [aTier, aIdStr] = String(active.id).split('-');
+    const [oTier, oIdStr] = String(over.id).split('-');
+    if (aTier !== oTier) return; // cross-tier drag not supported
+    const tier = aTier;
+    if (tier !== 'starred' && tier !== 'pinned') return;
+
+    // Snapshot the tier's current order from items, apply arrayMove, persist.
+    const tierItems = items.filter(i => tier === 'starred' ? i.starred : (i.pinned && !i.starred));
+    const oldIdx = tierItems.findIndex(i => String(i.id) === aIdStr);
+    const newIdx = tierItems.findIndex(i => String(i.id) === oIdStr);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const reorderedIds = arrayMove(tierItems, oldIdx, newIdx).map(i => i.id);
+
+    // Rebuild items state: starred chunk first, then pinned-only chunk, then
+    // rest in their existing order. New ranks land in *_order on next reload.
+    setItems(prev => {
+      const byId = new Map(prev.map(i => [i.id, i]));
+      const starredIds = tier === 'starred'
+        ? reorderedIds
+        : prev.filter(i => i.starred).map(i => i.id);
+      const pinnedIds = tier === 'pinned'
+        ? reorderedIds
+        : prev.filter(i => !i.starred && i.pinned).map(i => i.id);
+      const restIds = prev.filter(i => !i.starred && !i.pinned).map(i => i.id);
+      return [...starredIds, ...pinnedIds, ...restIds]
+        .map(id => byId.get(id)).filter(Boolean);
+    });
+
+    if (tier === 'starred') {
+      await window.electronAPI?.reorderClipboardStarred?.(reorderedIds);
+    } else {
+      await window.electronAPI?.reorderClipboardPinned?.(reorderedIds);
+    }
+  }, [items]);
+
   const handleClearAll = async () => {
     const ok = await window.electronAPI?.clearClipboardHistory();
     if (ok) {
       setItems([]); setTotal(0); setSelectedId(null);
-      setDateBuckets({ dates: [], pinned_count: 0 });
+      setDateBuckets({ dates: [], pinned_count: 0, starred_count: 0 });
       setSelectedDate('all');
       // Refresh storage size so the toolbar reflects post-VACUUM file size,
       // not the stale value cached when the panel mounted.
@@ -631,23 +730,31 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
   // wrong-bucket item in a filtered view.
   const filtered = items.filter(i => {
     if (selectedDate === 'pinned' && !i.pinned) return false;
-    if (selectedDate !== 'all' && selectedDate !== 'pinned' && itemLocalDateKey(i) !== selectedDate) return false;
+    if (selectedDate === 'starred' && !i.starred) return false;
+    if (selectedDate !== 'all' && selectedDate !== 'pinned' && selectedDate !== 'starred' && itemLocalDateKey(i) !== selectedDate) return false;
     if (filterApp && i.source_app !== filterApp) return false;
     if (filterTag !== 'All' && i.content_tag !== filterTag) return false;
     if (search.trim() && !(i.preview || '').toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  // Timeline grouping only when 'all' is selected. For a single date or pinned
-  // view a flat list under a single header reads cleaner than re-bucketing.
+  // Timeline grouping only when 'all' is selected. For a single date / pinned /
+  // starred view a flat list under a single header reads cleaner than re-bucketing.
   const grouped = selectedDate === 'all'
     ? groupByTimeline(filtered)
     : (() => {
         const label = selectedDate === 'pinned'
           ? 'Pinned'
-          : formatDateSidebarLabel(selectedDate, todayKey);
+          : selectedDate === 'starred'
+            ? 'Starred'
+            : formatDateSidebarLabel(selectedDate, todayKey);
         return filtered.length > 0 ? [[label, filtered]] : [];
       })();
+
+  // ids for each tier's SortableContext. Prefix encodes the tier so handleDragEnd
+  // can route to the correct backend reorder without an extra lookup.
+  const starredIds = filtered.filter(i => i.starred).map(i => `starred-${i.id}`);
+  const pinnedIds = filtered.filter(i => !i.starred && i.pinned).map(i => `pinned-${i.id}`);
 
   const selected = items.find(i => i.id === selectedId) || null;
 
@@ -789,11 +896,22 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
             >
               <span className="cbg-date-row-name">All</span>
               {/* Derived from dateBuckets so it stays constant when the user
-                  picks a single date or Pinned (total gets overwritten by each
-                  filtered backend query). dates excludes pinned rows by
-                  design, so add pinned_count back in to get the true total. */}
-              <span className="cbg-date-count">{dateBuckets.dates.reduce((s, d) => s + d.count, 0) + dateBuckets.pinned_count}</span>
+                  picks a single date / Pinned / Starred (total gets overwritten
+                  by each filtered backend query). dates excludes pinned + starred
+                  rows by design, so add both counts back in for the true total. */}
+              <span className="cbg-date-count">{dateBuckets.dates.reduce((s, d) => s + d.count, 0) + dateBuckets.pinned_count + (dateBuckets.starred_count || 0)}</span>
             </button>
+            {(dateBuckets.starred_count || 0) > 0 && (
+              <button
+                type="button"
+                className={`cbg-date-row cbg-date-row-starred${selectedDate === 'starred' ? ' cbg-date-row-active' : ''}`}
+                onClick={() => setSelectedDate('starred')}
+              >
+                <span className="cbg-date-row-icon"><Star size={10} strokeWidth={2} fill="currentColor" /></span>
+                <span className="cbg-date-row-name">Starred</span>
+                <span className="cbg-date-count">{dateBuckets.starred_count}</span>
+              </button>
+            )}
             {dateBuckets.pinned_count > 0 && (
               <button
                 type="button"
@@ -826,82 +944,135 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
               {items.length === 0 ? 'No clipboard history yet — copy something to get started' : 'No results'}
             </div>
           ) : (
-            grouped.map(([label, groupItems]) => (
-              <div key={label} className="cbg-timeline-group">
-                <div className="cbg-timeline-header">
-                  {label === 'Pinned' && (
-                    <span className="cbg-timeline-icon">
-                      <Pin size={10} strokeWidth={2} fill="currentColor" />
-                    </span>
-                  )}
-                  <span className="cbg-timeline-name">{label}</span>
-                  <span className="cbg-timeline-count">{groupItems.length}</span>
-                  <span className="cbg-timeline-rule" />
-                </div>
-                <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`} data-cols={columnMode}>
-                  {groupItems.map(item => {
-                    const isImage = item.content_type === 'image';
-                    const tag = item.content_tag || 'Text';
-                    const colourVal = tag === 'Colour' ? parseColour(item.text_content || item.preview) : null;
-                    const isLink = tag === 'Link';
-                    const isSel = item.id === selectedId;
+            <DndContext sensors={dndSensors} onDragEnd={handleDragEnd}>
+              {grouped.map(([label, groupItems]) => {
+                const isStarredTier = label === 'Starred';
+                const isPinnedTier = label === 'Pinned';
+                const sortable = isStarredTier || isPinnedTier;
+                const tierPrefix = isStarredTier ? 'starred' : 'pinned';
+                const sortableIds = sortable
+                  ? groupItems.map(i => `${tierPrefix}-${i.id}`)
+                  : null;
 
+                const renderCard = (item) => {
+                  const isImage = item.content_type === 'image';
+                  const tag = item.content_tag || 'Text';
+                  const colourVal = tag === 'Colour' ? parseColour(item.text_content || item.preview) : null;
+                  const isLink = tag === 'Link';
+                  const isSel = item.id === selectedId;
+                  const className = `cbg-card${isImage ? ' cbg-card-img' : ' cbg-card-text'}${isSel ? ' cbg-card-sel' : ''}${sortable ? ' cbg-card-sortable' : ''}`;
+                  const onClick = () => setSelectedId(isSel ? null : item.id);
+                  const onContextMenu = e => {
+                    e.preventDefault();
+                    setCtxMenu({ id: item.id, x: e.clientX, y: e.clientY, pinned: item.pinned, starred: item.starred });
+                  };
+
+                  const inner = (
+                    <>
+                      <span className={`cbg-tag cbg-tag-${tag.toLowerCase()}`}>{tag}</span>
+                      {(item.starred || item.pinned) && (
+                        <span className="cbg-card-badges" aria-hidden="true">
+                          {item.starred && (
+                            <span className="cbg-card-star" aria-label="Starred">
+                              <Star size={11} strokeWidth={2} fill="currentColor" />
+                            </span>
+                          )}
+                          {item.pinned && (
+                            <span className="cbg-card-pin" aria-label="Pinned">
+                              <Pin size={11} strokeWidth={2} fill="currentColor" />
+                            </span>
+                          )}
+                        </span>
+                      )}
+
+                      {isImage ? (
+                        <>
+                          <ImageThumb id={item.id} className="cbg-card-image" />
+                          <div className="cbg-card-img-overlay">
+                            {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                            <span className="cbg-overlay-right">{item.image_width}×{item.image_height} · {formatTime(item.timestamp)}</span>
+                          </div>
+                        </>
+                      ) : colourVal ? (
+                        <>
+                          <div className="cbg-colour-swatch" style={{ background: colourVal }} />
+                          <div className="cbg-card-body cbg-colour-value">{item.text_content || item.preview || ''}</div>
+                          <div className="cbg-card-meta">
+                            {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                            <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="cbg-card-body">
+                            {isLink && (
+                              <span className="cbg-link-icon" aria-hidden="true">
+                                <Link2 size={12} strokeWidth={1.75} style={{ verticalAlign: -2, marginRight: 4 }} />
+                              </span>
+                            )}
+                            {(item.text_content || item.preview || '').slice(0, 1000)}
+                          </div>
+                          <div className="cbg-card-meta">
+                            {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                            <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+
+                  if (sortable) {
                     return (
-                      <div
+                      <SortableCardWrap
                         key={item.id}
-                        className={`cbg-card${isImage ? ' cbg-card-img' : ' cbg-card-text'}${isSel ? ' cbg-card-sel' : ''}`}
-                        onClick={() => setSelectedId(isSel ? null : item.id)}
-                        onContextMenu={e => {
-                          e.preventDefault();
-                          setCtxMenu({ id: item.id, x: e.clientX, y: e.clientY, pinned: item.pinned });
-                        }}
+                        sortableId={`${tierPrefix}-${item.id}`}
+                        className={className}
+                        onClick={onClick}
+                        onContextMenu={onContextMenu}
                       >
-                        <span className={`cbg-tag cbg-tag-${tag.toLowerCase()}`}>{tag}</span>
-                        {item.pinned && (
-                          <span className="cbg-card-pin" aria-label="Pinned">
-                            <Pin size={11} strokeWidth={2} fill="currentColor" />
-                          </span>
-                        )}
-
-                        {isImage ? (
-                          <>
-                            <ImageThumb id={item.id} className="cbg-card-image" />
-                            <div className="cbg-card-img-overlay">
-                              {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
-                              <span className="cbg-overlay-right">{item.image_width}×{item.image_height} · {formatTime(item.timestamp)}</span>
-                            </div>
-                          </>
-                        ) : colourVal ? (
-                          <>
-                            <div className="cbg-colour-swatch" style={{ background: colourVal }} />
-                            <div className="cbg-card-body cbg-colour-value">{item.text_content || item.preview || ''}</div>
-                            <div className="cbg-card-meta">
-                              {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
-                              <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="cbg-card-body">
-                              {isLink && (
-                                <span className="cbg-link-icon" aria-hidden="true">
-                                  <Link2 size={12} strokeWidth={1.75} style={{ verticalAlign: -2, marginRight: 4 }} />
-                                </span>
-                              )}
-                              {(item.text_content || item.preview || '').slice(0, 1000)}
-                            </div>
-                            <div className="cbg-card-meta">
-                              {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
-                              <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                        {inner}
+                      </SortableCardWrap>
                     );
-                  })}
-                </div>
-              </div>
-            ))
+                  }
+                  return (
+                    <div key={item.id} className={className} onClick={onClick} onContextMenu={onContextMenu}>
+                      {inner}
+                    </div>
+                  );
+                };
+
+                const gridContent = (
+                  <div className={`cbg-grid${selected ? ' cbg-grid-2col' : ''}`} data-cols={columnMode}>
+                    {groupItems.map(renderCard)}
+                  </div>
+                );
+
+                return (
+                  <div key={label} className="cbg-timeline-group">
+                    <div className="cbg-timeline-header">
+                      {isStarredTier && (
+                        <span className="cbg-timeline-icon cbg-timeline-icon-star">
+                          <Star size={10} strokeWidth={2} fill="currentColor" />
+                        </span>
+                      )}
+                      {isPinnedTier && (
+                        <span className="cbg-timeline-icon">
+                          <Pin size={10} strokeWidth={2} fill="currentColor" />
+                        </span>
+                      )}
+                      <span className="cbg-timeline-name">{label}</span>
+                      <span className="cbg-timeline-count">{groupItems.length}</span>
+                      <span className="cbg-timeline-rule" />
+                    </div>
+                    {sortable ? (
+                      <SortableContext items={sortableIds}>
+                        {gridContent}
+                      </SortableContext>
+                    ) : gridContent}
+                  </div>
+                );
+              })}
+            </DndContext>
           )}
           {loading && <div className="cbg-loading">Loading…</div>}
         </div>
@@ -1111,6 +1282,10 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
             </div>
             <div className="cbg-detail-actions">
               <div className="cbg-detail-actions-l">
+                <button className="cbg-dbtn cbg-dbtn-icon" onClick={() => handleStar(selected.id, selected.starred)} type="button">
+                  <Star size={13} strokeWidth={1.75} fill={selected.starred ? 'currentColor' : 'none'} />
+                  {selected.starred ? ' Unstar' : ' Star'}
+                </button>
                 <button className="cbg-dbtn cbg-dbtn-icon" onClick={() => handlePin(selected.id, selected.pinned)} type="button">
                   {selected.pinned ? (
                     <><PinOff size={13} strokeWidth={1.75} /> Unpin</>
@@ -1157,6 +1332,9 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
 
       {ctxMenu && (
         <div ref={ctxRef} className="cbg-ctx" style={{ top: ctxMenu.y, left: ctxMenu.x }}>
+          <button className="cbg-ctx-item" onClick={() => handleStar(ctxMenu.id, ctxMenu.starred)} type="button">
+            {ctxMenu.starred ? 'Unstar' : 'Star'}
+          </button>
           <button className="cbg-ctx-item" onClick={() => handlePin(ctxMenu.id, ctxMenu.pinned)} type="button">
             {ctxMenu.pinned ? 'Unpin' : 'Pin'}
           </button>

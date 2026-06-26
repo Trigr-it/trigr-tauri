@@ -646,6 +646,7 @@ enum ClipboardMsg {
         per_page: u32,
         /// None       → default view (all visible rows in effective window)
         /// Some("pinned")     → only pinned items, ignoring age
+        /// Some("starred")    → only starred items, ignoring age
         /// Some("YYYY-MM-DD") → only rows whose local date matches
         date_filter: Option<String>,
         /// Exact match on source_app column (e.g. "chrome.exe"). None = no filter.
@@ -654,6 +655,9 @@ enum ClipboardMsg {
         tag_filter: Option<String>,
         /// Case-insensitive substring match against the preview column. None / empty = no filter.
         search: Option<String>,
+        /// Main UI sorts starred items above pinned; popup ignores starred
+        /// (only pinned promotes). True = Main UI ordering, false = popup ordering.
+        promote_starred: bool,
         reply: mpsc::Sender<Value>,
     },
     GetItemFull {
@@ -670,6 +674,19 @@ enum ClipboardMsg {
     PinItem {
         id: i64,
         pinned: bool,
+        reply: mpsc::Sender<bool>,
+    },
+    StarItem {
+        id: i64,
+        starred: bool,
+        reply: mpsc::Sender<bool>,
+    },
+    ReorderPinned {
+        ids: Vec<i64>,
+        reply: mpsc::Sender<bool>,
+    },
+    ReorderStarred {
+        ids: Vec<i64>,
         reply: mpsc::Sender<bool>,
     },
     GetImageBlob {
@@ -920,6 +937,15 @@ fn open_clipboard_db(db_path: &Path) -> Result<Connection, String> {
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_ocr BLOB", []);
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_preview BLOB", []);
 
+    // starred: second tier above pinned, Main UI only. Independent of `pinned`
+    // — an item can be both. Popup UI ignores `starred` (popup only promotes
+    // pinned). pinned_order / starred_order: nullable rank within each tier;
+    // NULL means "unranked, fall back to id DESC tiebreaker". COALESCE(...,
+    // 999999) in ORDER BY pushes NULLs to the bottom of their tier.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN starred INTEGER NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN pinned_order INTEGER", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN starred_order INTEGER", []);
+
     Ok(conn)
 }
 
@@ -1079,13 +1105,14 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             for msg in rx {
                 match msg {
                     ClipboardMsg::NewEntry(entry) => handle_new_entry(&conn, entry),
-                    ClipboardMsg::GetHistory { page, per_page, date_filter, app_filter, tag_filter, search, reply } => {
+                    ClipboardMsg::GetHistory { page, per_page, date_filter, app_filter, tag_filter, search, promote_starred, reply } => {
                         let result = handle_get_history(
                             &conn, page, per_page,
                             date_filter.as_deref(),
                             app_filter.as_deref(),
                             tag_filter.as_deref(),
                             search.as_deref(),
+                            promote_starred,
                         );
                         let _ = reply.send(result);
                     }
@@ -1103,6 +1130,18 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                     }
                     ClipboardMsg::PinItem { id, pinned, reply } => {
                         let ok = handle_pin_item(&conn, id, pinned);
+                        let _ = reply.send(ok);
+                    }
+                    ClipboardMsg::StarItem { id, starred, reply } => {
+                        let ok = handle_star_item(&conn, id, starred);
+                        let _ = reply.send(ok);
+                    }
+                    ClipboardMsg::ReorderPinned { ids, reply } => {
+                        let ok = handle_reorder_tier(&mut conn, &ids, "pinned_order");
+                        let _ = reply.send(ok);
+                    }
+                    ClipboardMsg::ReorderStarred { ids, reply } => {
+                        let ok = handle_reorder_tier(&mut conn, &ids, "starred_order");
                         let _ = reply.send(ok);
                     }
                     ClipboardMsg::GetImageBlob { id, reply } => {
@@ -1173,12 +1212,13 @@ pub fn get_history(
     app_filter: Option<String>,
     tag_filter: Option<String>,
     search: Option<String>,
+    promote_starred: bool,
 ) -> Value {
     if let Some(tx) = CLIPBOARD_TX.get() {
         if let Ok(tx) = tx.lock() {
             let (reply_tx, reply_rx) = mpsc::channel();
             if tx.send(ClipboardMsg::GetHistory {
-                page, per_page, date_filter, app_filter, tag_filter, search,
+                page, per_page, date_filter, app_filter, tag_filter, search, promote_starred,
                 reply: reply_tx,
             }).is_ok() {
                 if let Ok(result) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
@@ -1312,6 +1352,48 @@ pub fn pin_item(id: i64, pinned: bool) -> bool {
     false
 }
 
+pub fn star_item(id: i64, starred: bool) -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::StarItem { id, starred, reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn reorder_pinned(ids: Vec<i64>) -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::ReorderPinned { ids, reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn reorder_starred(ids: Vec<i64>) -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::ReorderStarred { ids, reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
 pub fn get_image_blob(id: i64) -> Option<Vec<u8>> {
     if let Some(tx) = CLIPBOARD_TX.get() {
         if let Ok(tx) = tx.lock() {
@@ -1351,7 +1433,7 @@ pub fn get_date_buckets(app_filter: Option<String>, tag_filter: Option<String>) 
             }
         }
     }
-    serde_json::json!({ "dates": [], "pinned_count": 0 })
+    serde_json::json!({ "dates": [], "pinned_count": 0, "starred_count": 0 })
 }
 
 pub fn update_item(id: i64, new_text: String) -> Option<String> {
@@ -1545,6 +1627,9 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 "image_width": entry.image_width,
                 "image_height": entry.image_height,
                 "pinned": false,
+                "starred": false,
+                "pinned_order": serde_json::Value::Null,
+                "starred_order": serde_json::Value::Null,
                 "source_app": entry.source_app,
                 "content_tag": entry.content_tag,
             }),
@@ -1560,15 +1645,18 @@ fn handle_get_history(
     app_filter: Option<&str>,
     tag_filter: Option<&str>,
     search: Option<&str>,
+    promote_starred: bool,
 ) -> Value {
     let offset = page.saturating_sub(1) * per_page;
     // Pro-gated visibility window (used by the default + per-date views).
-    // Pinned rows always bypass age. Per [[feedback_sqlite_localtime_pattern]]
+    // Pinned + starred rows always bypass age. Per [[feedback_sqlite_localtime_pattern]]
     // we compare local-time dates via DATE(timestamp, 'localtime').
     let days = effective_retention_days();
     let date_clause = match date_filter {
         // Sidebar "Pinned" bucket — every pinned row, ignoring age.
         Some("pinned") => "pinned = 1".to_string(),
+        // Sidebar "Starred" bucket — every starred row, ignoring age. Main UI only.
+        Some("starred") => "starred = 1".to_string(),
         // Sidebar single-date bucket — match a specific local calendar date.
         // No Pro-gate filter here because the bucket query already excluded
         // dates outside the effective window before listing them.
@@ -1579,7 +1667,7 @@ fn handle_get_history(
             format!("DATE(timestamp, 'localtime') = '{}'", safe)
         }
         // Default / unrecognised filter — Pro-gated default view.
-        _ => format!("(pinned = 1 OR timestamp >= datetime('now', '-{} days'))", days),
+        _ => format!("(starred = 1 OR pinned = 1 OR timestamp >= datetime('now', '-{} days'))", days),
     };
 
     // Toolbar filters (app, tag) layer on top of the date clause via
@@ -1604,7 +1692,7 @@ fn handle_get_history(
     // decrypt-and-scan path instead, which applies the same date/app/tag
     // window and substring-matches decrypted previews in memory.
     if let Some(needle) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        return search_history(conn, &where_clause, &where_binds, &needle.to_lowercase(), per_page, offset);
+        return search_history(conn, &where_clause, &where_binds, &needle.to_lowercase(), per_page, offset, promote_starred);
     }
 
     // COUNT — same WHERE, just the toolbar binds.
@@ -1614,12 +1702,17 @@ fn handle_get_history(
         .query_row(&count_sql, rusqlite::params_from_iter(count_refs.iter()), |row| row.get(0))
         .unwrap_or(0);
 
+    // ORDER BY: Main UI promotes starred above pinned; popup ignores starred
+    // (only pinned promotes). COALESCE pushes NULL ranks to the bottom of
+    // their tier so unranked items fall back to id DESC ordering within tier.
+    let order_clause = order_by_clause(promote_starred);
+
     // LIST — same WHERE, then LIMIT/OFFSET appended after the toolbar binds.
     // text_content/preview/ocr_text are bound as BLOB and resolved per-row by
     // the helpers below: NON-NULL iv_* → decrypt; NULL iv_* → legacy plaintext.
     let list_sql = format!(
-        "SELECT {} FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC LIMIT ? OFFSET ?",
-        HISTORY_LIST_COLUMNS, where_clause
+        "SELECT {} FROM clipboard_history WHERE {} ORDER BY {} LIMIT ? OFFSET ?",
+        HISTORY_LIST_COLUMNS, where_clause, order_clause
     );
     let mut list_binds: Vec<Box<dyn rusqlite::ToSql>> = where_binds;
     list_binds.push(Box::new(per_page as i64));
@@ -1637,8 +1730,10 @@ fn handle_get_history(
 }
 
 /// Column list for both history-list SELECTs (normal + search page fetch).
-/// history_row_to_json reads by position — keep order in sync.
-const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr";
+/// history_row_to_json reads by position — keep order in sync. New columns
+/// (starred, pinned_order, starred_order) are APPENDED to preserve existing
+/// positions for the iv_* / ocr_* indices.
+const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr, starred, pinned_order, starred_order";
 
 /// Shared row → JSON mapping for the history list (normal + search paths).
 /// Reads HISTORY_LIST_COLUMNS by position.
@@ -1662,7 +1757,23 @@ fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
         "paste_count": row.get::<_, i64>(10).unwrap_or(0),
         "ocr_text": resolve_optional_text(ocr_ct, iv_ocr),
+        "starred": row.get::<_, i32>(15).unwrap_or(0) != 0,
+        "pinned_order": row.get::<_, Option<i64>>(16).unwrap_or(None),
+        "starred_order": row.get::<_, Option<i64>>(17).unwrap_or(None),
     }))
+}
+
+/// ORDER BY for the history list. Two variants share the same NULL-handling
+/// pattern via COALESCE so unranked items fall to the bottom of their tier.
+///   Main UI: starred items above pinned, then by tier-rank, then id DESC.
+///   Popup: only pinned promote, by pinned_order, then id DESC (starred items
+///   stay in the timeline at their natural id position).
+fn order_by_clause(promote_starred: bool) -> &'static str {
+    if promote_starred {
+        "starred DESC, pinned DESC, COALESCE(starred_order, 999999) ASC, COALESCE(pinned_order, 999999) ASC, id DESC"
+    } else {
+        "pinned DESC, COALESCE(pinned_order, 999999) ASC, id DESC"
+    }
 }
 
 /// Phase 3c: decrypt-and-scan search. SQL LIKE can't see into ciphertext, so
@@ -1680,12 +1791,14 @@ fn search_history(
     needle: &str,
     per_page: u32,
     offset: u32,
+    promote_starred: bool,
 ) -> Value {
     let started = std::time::Instant::now();
+    let order_clause = order_by_clause(promote_starred);
 
     let scan_sql = format!(
-        "SELECT id, preview, iv_preview FROM clipboard_history WHERE {} ORDER BY pinned DESC, id DESC",
-        where_clause
+        "SELECT id, preview, iv_preview FROM clipboard_history WHERE {} ORDER BY {}",
+        where_clause, order_clause
     );
     let bind_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
     let mut stmt = match conn.prepare(&scan_sql) {
@@ -1726,8 +1839,8 @@ fn search_history(
         // ORDER BY re-applied to the id subset preserves the scan's order.
         let id_list = page_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
         let list_sql = format!(
-            "SELECT {} FROM clipboard_history WHERE id IN ({}) ORDER BY pinned DESC, id DESC",
-            HISTORY_LIST_COLUMNS, id_list
+            "SELECT {} FROM clipboard_history WHERE id IN ({}) ORDER BY {}",
+            HISTORY_LIST_COLUMNS, id_list, order_clause
         );
         match conn.prepare(&list_sql) {
             Ok(mut stmt) => stmt
@@ -1804,7 +1917,63 @@ fn handle_clear_all(conn: &Connection) -> bool {
 
 fn handle_pin_item(conn: &Connection, id: i64, pinned: bool) -> bool {
     let val: i32 = if pinned { 1 } else { 0 };
-    conn.execute("UPDATE clipboard_history SET pinned = ?1 WHERE id = ?2", rusqlite::params![val, id]).is_ok()
+    // Unpinning also clears the explicit rank — next pin starts unranked at
+    // the bottom of the tier (id DESC tiebreaker), matching the popup default.
+    let sql = if pinned {
+        "UPDATE clipboard_history SET pinned = ?1 WHERE id = ?2"
+    } else {
+        "UPDATE clipboard_history SET pinned = ?1, pinned_order = NULL WHERE id = ?2"
+    };
+    conn.execute(sql, rusqlite::params![val, id]).is_ok()
+}
+
+fn handle_star_item(conn: &Connection, id: i64, starred: bool) -> bool {
+    let val: i32 = if starred { 1 } else { 0 };
+    let sql = if starred {
+        "UPDATE clipboard_history SET starred = ?1 WHERE id = ?2"
+    } else {
+        "UPDATE clipboard_history SET starred = ?1, starred_order = NULL WHERE id = ?2"
+    };
+    conn.execute(sql, rusqlite::params![val, id]).is_ok()
+}
+
+/// Rewrites the ranks for one tier (`pinned_order` or `starred_order`) so the
+/// passed `ids` slice becomes the visual order (index 0 = top). Single
+/// transaction — either every row updates or none, so the tier never enters a
+/// partially-reordered state. `column` MUST be a static column name (caller
+/// passes a literal), never user input.
+fn handle_reorder_tier(conn: &mut Connection, ids: &[i64], column: &str) -> bool {
+    if ids.is_empty() {
+        return true;
+    }
+    let tx = match conn.transaction() {
+        Ok(t) => t,
+        Err(e) => {
+            error!("[Keyfire] Clipboard: reorder begin transaction failed: {}", e);
+            return false;
+        }
+    };
+    {
+        let sql = format!("UPDATE clipboard_history SET {} = ?1 WHERE id = ?2", column);
+        let mut stmt = match tx.prepare(&sql) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("[Keyfire] Clipboard: reorder prepare failed: {}", e);
+                return false;
+            }
+        };
+        for (rank, id) in ids.iter().enumerate() {
+            if let Err(e) = stmt.execute(rusqlite::params![rank as i64, id]) {
+                error!("[Keyfire] Clipboard: reorder execute failed at rank {}: {}", rank, e);
+                return false;
+            }
+        }
+    }
+    if let Err(e) = tx.commit() {
+        error!("[Keyfire] Clipboard: reorder commit failed: {}", e);
+        return false;
+    }
+    true
 }
 
 fn handle_get_image_blob(conn: &Connection, id: i64) -> Option<Vec<u8>> {
@@ -1826,7 +1995,7 @@ fn handle_get_distinct_source_apps(conn: &Connection) -> Vec<String> {
     let days = effective_retention_days();
     let sql = format!(
         "SELECT DISTINCT source_app FROM clipboard_history
-         WHERE source_app != '' AND (pinned = 1 OR timestamp >= datetime('now', '-{} days'))
+         WHERE source_app != '' AND (starred = 1 OR pinned = 1 OR timestamp >= datetime('now', '-{} days'))
          ORDER BY source_app ASC",
         days
     );
@@ -1838,11 +2007,11 @@ fn handle_get_distinct_source_apps(conn: &Connection) -> Vec<String> {
 }
 
 /// Returns the date buckets used by the ClipboardPanel sidebar:
-///   { "dates": [{ "date": "YYYY-MM-DD", "count": N }, ...], "pinned_count": M }
-/// One row per distinct local-calendar date that has non-pinned content within
-/// the effective Pro-gated retention window. Pinned items are bucketed
-/// separately (the sidebar shows them under a "Pinned" entry that ignores age),
-/// so they're not counted in the date rows. Per [[feedback_sqlite_localtime_pattern]]
+///   { "dates": [{ "date": "YYYY-MM-DD", "count": N }, ...], "pinned_count": M, "starred_count": K }
+/// One row per distinct local-calendar date that has timeline content (not
+/// pinned and not starred) within the effective Pro-gated retention window.
+/// Pinned + starred items are bucketed separately (sidebar shortcuts ignore age)
+/// so they're excluded from the date rows. Per [[feedback_sqlite_localtime_pattern]]
 /// we store UTC and convert with DATE(timestamp, 'localtime') for grouping.
 fn handle_get_date_buckets(
     conn: &Connection,
@@ -1858,6 +2027,7 @@ fn handle_get_date_buckets(
     // the sidebar hides empty dates without extra filtering on the JS side.
     let mut clauses: Vec<String> = vec![
         "pinned = 0".to_string(),
+        "starred = 0".to_string(),
         format!("timestamp >= datetime('now', '-{} days')", days),
     ];
     let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -1882,7 +2052,7 @@ fn handle_get_date_buckets(
 
     let mut stmt = match conn.prepare(&dates_sql) {
         Ok(s) => s,
-        Err(_) => return serde_json::json!({ "dates": [], "pinned_count": 0 }),
+        Err(_) => return serde_json::json!({ "dates": [], "pinned_count": 0, "starred_count": 0 }),
     };
     let dates_refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|p| p.as_ref()).collect();
     let dates: Vec<Value> = stmt
@@ -1895,28 +2065,31 @@ fn handle_get_date_buckets(
         .map(|iter| iter.filter_map(|r| r.ok()).collect())
         .unwrap_or_default();
 
-    // Pinned count also respects the active filters so the "Pinned" bucket
-    // reflects what the user would actually see if they clicked it.
-    let mut pin_clauses: Vec<String> = vec!["pinned = 1".to_string()];
-    let mut pin_binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
-        pin_clauses.push("source_app = ?".to_string());
-        pin_binds.push(Box::new(app.to_string()));
-    }
-    if let Some(tag) = tag_filter.filter(|s| !s.is_empty() && *s != "All") {
-        pin_clauses.push("content_tag = ?".to_string());
-        pin_binds.push(Box::new(tag.to_string()));
-    }
-    let pin_sql = format!(
-        "SELECT COUNT(*) FROM clipboard_history WHERE {}",
-        pin_clauses.join(" AND ")
-    );
-    let pin_refs: Vec<&dyn rusqlite::ToSql> = pin_binds.iter().map(|p| p.as_ref()).collect();
-    let pinned_count: i64 = conn
-        .query_row(&pin_sql, rusqlite::params_from_iter(pin_refs.iter()), |row| row.get(0))
-        .unwrap_or(0);
+    // Pinned + starred counts also respect the active filters so each sidebar
+    // bucket reflects what the user would actually see if they clicked it.
+    let tier_count = |flag_clause: &str| -> i64 {
+        let mut tier_clauses: Vec<String> = vec![flag_clause.to_string()];
+        let mut tier_binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
+            tier_clauses.push("source_app = ?".to_string());
+            tier_binds.push(Box::new(app.to_string()));
+        }
+        if let Some(tag) = tag_filter.filter(|s| !s.is_empty() && *s != "All") {
+            tier_clauses.push("content_tag = ?".to_string());
+            tier_binds.push(Box::new(tag.to_string()));
+        }
+        let sql = format!(
+            "SELECT COUNT(*) FROM clipboard_history WHERE {}",
+            tier_clauses.join(" AND ")
+        );
+        let refs: Vec<&dyn rusqlite::ToSql> = tier_binds.iter().map(|p| p.as_ref()).collect();
+        conn.query_row(&sql, rusqlite::params_from_iter(refs.iter()), |row| row.get(0))
+            .unwrap_or(0)
+    };
+    let pinned_count = tier_count("pinned = 1");
+    let starred_count = tier_count("starred = 1");
 
-    serde_json::json!({ "dates": dates, "pinned_count": pinned_count })
+    serde_json::json!({ "dates": dates, "pinned_count": pinned_count, "starred_count": starred_count })
 }
 
 fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<String> {
@@ -1956,7 +2129,7 @@ fn handle_prune(conn: &Connection) {
     // Always-Free users still naturally cap at 7 because raw = 7 default.
     let days = retention_days();
     let query = format!(
-        "DELETE FROM clipboard_history WHERE pinned = 0 AND timestamp < datetime('now', '-{} days')",
+        "DELETE FROM clipboard_history WHERE pinned = 0 AND starred = 0 AND timestamp < datetime('now', '-{} days')",
         days
     );
     match conn.execute(&query, []) {
