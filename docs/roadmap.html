@@ -140,7 +140,12 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 @keyframes dotPulse { 0%,100%{box-shadow:0 0 0 3px rgba(232,160,32,0.25), 0 0 24px rgba(232,160,32,0.6);} 50%{box-shadow:0 0 0 8px rgba(232,160,32,0.1), 0 0 32px rgba(232,160,32,0.85);} }
 .phase-dot.upcoming { background:var(--bg-card); border-color:var(--text-dim); }
 .phase-header { display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
-.phase-name { font-family:var(--font-display); font-weight:700; font-size:24px; letter-spacing:-0.01em; color:var(--text); }
+.phase-name { font-family:var(--font-display); font-weight:700; font-size:24px; letter-spacing:-0.01em; color:var(--text); display:inline-flex; align-items:center; gap:14px; flex-wrap:wrap; }
+/* Gold pill on the major-version chunk inside .phase-name. Build script splits
+   the header into <span class="phase-version">v0.6</span> + <span class="phase-subtitle">— Macro Recorder & Polish</span>.
+   Same recipe as .nav-cta / .btn-primary so the pill reads as a brand token. */
+.phase-version { display:inline-block; font-family:var(--font-display); font-weight:700; font-size:18px; letter-spacing:-0.01em; color:#fff; background:linear-gradient(180deg, var(--gold-light), var(--gold)); padding:5px 14px 6px; border-radius:8px; border:1px solid var(--gold); box-shadow:0 2px 12px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.22); line-height:1.25; }
+.phase-subtitle { font-weight:600; color:var(--text); }
 .phase-date { font-family:var(--font-mono); font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim); }
 .phase-tag { font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding:4px 12px; border-radius:100px; }
 .tag-shipped { background:rgba(34,197,94,0.1); color:#5cd687; border:1px solid rgba(34,197,94,0.3); }
@@ -297,10 +302,7 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 .release-entry { padding:18px 0 22px; border-bottom:1px dashed var(--hairline); }
 .release-entry:last-child { border-bottom:none; padding-bottom:8px; }
 .release-head { display:flex; align-items:baseline; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
-/* Gold pill around each release version — same recipe as .nav-cta / .btn-primary
-   so it reads as the same brand token. White text in both themes (the existing
-   gold-button convention). */
-.release-version { display:inline-block; font-family:var(--font-display); font-weight:700; font-size:17px; letter-spacing:-0.01em; color:#fff; background:linear-gradient(180deg, var(--gold-light), var(--gold)); padding:4px 12px 5px; border-radius:7px; border:1px solid var(--gold); box-shadow:0 2px 10px rgba(232,160,32,0.32), inset 0 1px 0 rgba(255,255,255,0.22); line-height:1.25; }
+.release-version { font-family:var(--font-display); font-weight:700; font-size:20px; letter-spacing:-0.01em; color:var(--text); }
 .release-date { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.06em; color:var(--text-dim); }
 .release-body { display:flex; flex-direction:column; gap:14px; }
 .re-cat { font-family:var(--font-label); font-size:10px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; padding:3px 9px; border-radius:4px; display:inline-block; align-self:flex-start; margin:0; }
@@ -666,7 +668,9 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="phase" data-phase="v0.6">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">v0.6 — Macro Recorder &amp; Polish</span>
+          <span class="phase-name">
+            <span class="phase-version">v0.6</span><span class="phase-subtitle">Macro Recorder &amp; Polish</span>
+          </span>
           <span class="phase-date">Jun 2026 · 2 releases published</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
@@ -693,7 +697,9 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="phase" data-phase="v0.5">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">v0.5 — Encryption &amp; Game Compatibility</span>
+          <span class="phase-name">
+            <span class="phase-version">v0.5</span><span class="phase-subtitle">Encryption &amp; Game Compatibility</span>
+          </span>
           <span class="phase-date">Jun 2026 · 6 releases published</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
@@ -756,7 +762,9 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="phase" data-phase="v0.4">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">v0.4 — Hardening &amp; Trust</span>
+          <span class="phase-name">
+            <span class="phase-version">v0.4</span><span class="phase-subtitle">Hardening &amp; Trust</span>
+          </span>
           <span class="phase-date">May — Jun 2026 · 21 releases published</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
@@ -954,7 +962,9 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="phase" data-phase="v0.3">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">v0.3 — Radial Menu</span>
+          <span class="phase-name">
+            <span class="phase-version">v0.3</span><span class="phase-subtitle">Radial Menu</span>
+          </span>
           <span class="phase-date">May 2026</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
@@ -964,7 +974,9 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="phase" data-phase="v0.2">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">v0.2 — Quick Search Overlay</span>
+          <span class="phase-name">
+            <span class="phase-version">v0.2</span><span class="phase-subtitle">Quick Search Overlay</span>
+          </span>
           <span class="phase-date">Apr 2026</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
@@ -974,7 +986,9 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="phase" data-phase="v0.1">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">v0.1 — The Foundation</span>
+          <span class="phase-name">
+            <span class="phase-version">v0.1</span><span class="phase-subtitle">The Foundation</span>
+          </span>
           <span class="phase-date">Apr 2026</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
@@ -984,7 +998,9 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="phase" data-phase="v0">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">v0 — The Prototype</span>
+          <span class="phase-name">
+            <span class="phase-version">v0</span><span class="phase-subtitle">The Prototype</span>
+          </span>
           <span class="phase-date">Feb — Mar 2026</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>

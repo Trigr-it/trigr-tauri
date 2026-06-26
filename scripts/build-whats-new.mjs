@@ -181,10 +181,21 @@ ${mdToCategoryBlocks(e.markdownContent || e.content || '').split('\n').map(l => 
   const releaseCount = entries.length;
   const releaseCountSuffix = releaseCount > 0 ? ` · ${releaseCount} release${releaseCount === 1 ? '' : 's'} published` : '';
 
+  // Split the phase name "v0.6 — Macro Recorder & Polish" into two parts so
+  // we can render the gold pill only around the version label (left) and
+  // leave the subtitle as plain weighted text (right). The em-dash separator
+  // is conventional in the metadata above; fall back to "no subtitle" if a
+  // name doesn't follow that shape.
+  const dashIdx = phase.name.indexOf(' — ');
+  const versionLabel = dashIdx >= 0 ? phase.name.slice(0, dashIdx) : phase.name;
+  const subtitleLabel = dashIdx >= 0 ? phase.name.slice(dashIdx + 3) : '';
+
   return `      <div class="phase" data-phase="${phase.key}">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
-          <span class="phase-name">${htmlEscape(phase.name)}</span>
+          <span class="phase-name">
+            <span class="phase-version">${htmlEscape(versionLabel)}</span>${subtitleLabel ? `<span class="phase-subtitle">${htmlEscape(subtitleLabel)}</span>` : ''}
+          </span>
           <span class="phase-date">${htmlEscape(phase.date)}${releaseCountSuffix}</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
