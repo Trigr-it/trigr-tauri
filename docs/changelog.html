@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keyfire — Changelog</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="description" content="What is new in Keyfire. Every release shipped to date — features, improvements and fixes for the Windows hotkey, macro and text expansion tool.">
+
+<link rel="canonical" href="https://keyfire.app/changelog.html">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://keyfire.app/changelog.html">
+<meta property="og:title" content="Keyfire — Changelog">
+<meta property="og:description" content="What is new in Keyfire. Every release shipped to date.">
+<meta property="og:image" content="https://keyfire.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Keyfire">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Keyfire — Changelog">
+<meta name="twitter:description" content="What is new in Keyfire. Every release shipped to date.">
+<meta name="twitter:image" content="https://keyfire.app/og-image.png">
+
+<!-- JSON-LD: SoftwareApplication with the latest version -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Keyfire",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Windows 10, Windows 11",
+  "softwareVersion": "0.6.1",
+  "datePublished": "2026-06-26T10:56:53.990Z",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "GBP"
+  },
+  "url": "https://keyfire.app/changelog.html"
+}
+</script>
+
+<script>
+(function(){
+  var saved = localStorage.getItem('keyfire-theme');
+  document.documentElement.setAttribute('data-theme', saved || 'light');
+})();
+</script>
+<link rel="preload" href="/fonts/SpaceGrotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --gold:#e8a020; --gold-light:#f0b942; --gold-dark:#c8860a;
+  --gold-glow:rgba(232,160,32,0.15); --gold-line:rgba(232,160,32,0.22);
+  --bg:#080B14; --bg-2:#0D1120; --bg-3:#111827;
+  --bg-card:#0E1320; --bg-card-hi:#131829;
+  --hairline:rgba(255,255,255,0.06); --hairline-strong:rgba(255,255,255,0.1); --hairline-gold:rgba(232,160,32,0.18);
+  --text:#F1F5F9; --text-muted:#94A3B8; --text-dim:#475569;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-mono:'Rajdhani',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --font-label:'Chakra Petch',sans-serif;
+  --green:#3ec47a; --green-glow:rgba(62,196,122,0.15);
+  --blue:#5b9cff; --blue-glow:rgba(91,156,255,0.15);
+  --red:#ff7a7a; --red-glow:rgba(255,122,122,0.12);
+}
+[data-theme="light"] {
+  --bg:#F5F5FA; --bg-2:#FFFFFF; --bg-3:#EEEEF2;
+  --bg-card:#FFFFFF; --bg-card-hi:#FAFAFE;
+  --hairline:rgba(0,0,0,0.07); --hairline-strong:rgba(0,0,0,0.12); --hairline-gold:rgba(232,160,32,0.25);
+  --text:#1A1A2E; --text-muted:#4A4A6A; --text-dim:#9090B0;
+  --green:#1f8a4a; --green-glow:rgba(31,138,74,0.1);
+  --blue:#3a7fc4; --blue-glow:rgba(58,127,196,0.1);
+  --red:#c64545; --red-glow:rgba(198,69,69,0.08);
+}
+html { scroll-behavior:smooth; }
+body { font-family:var(--font-body); background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; -webkit-font-smoothing:antialiased; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:0; opacity:0.4; }
+[data-theme="light"] body::before { opacity:0.08; }
+
+/* Nav */
+nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; height:64px; display:flex; align-items:center; justify-content:space-between; background:rgba(8,11,20,0.7); backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%); border-bottom:1px solid var(--hairline); }
+[data-theme="light"] nav { background:rgba(245,245,250,0.75); }
+.nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.logo-mark { width:30px; height:30px; border-radius:7px; }
+.logo-mark > svg { width:100%; height:100%; display:block; }
+.nav-wordmark { font-family:var(--font-label); font-weight:600; font-size:15px; color:var(--text); }
+.nav-links { display:flex; align-items:center; gap:28px; }
+.nav-links a { font-size:13px; font-weight:500; color:var(--text-muted); text-decoration:none; transition:color 0.2s; letter-spacing:0.01em; }
+.nav-links a:hover { color:var(--text); }
+.nav-links a.active { color:var(--gold-light); }
+[data-theme="light"] .nav-links a.active { color:var(--gold-dark); }
+.nav-cta { background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; padding:8px 18px; border-radius:8px; font-weight:600!important; border:1px solid var(--gold); box-shadow:0 1px 6px rgba(232,160,32,0.35), inset 0 1px 0 rgba(255,255,255,0.18); transition:transform 0.15s, box-shadow 0.2s, background 0.2s; }
+.nav-cta:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); color:#0d0d11!important; transform:translateY(-1px); box-shadow:0 4px 14px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
+[data-theme="light"] .nav-cta { color:#fff; }
+[data-theme="light"] .nav-cta:hover { color:#fff!important; }
+.theme-toggle { width:34px; height:34px; border-radius:8px; border:1px solid var(--hairline); background:transparent; color:var(--text-muted); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.theme-toggle:hover { color:var(--gold); border-color:var(--hairline-gold); background:var(--gold-glow); }
+
+/* Hero */
+.hero { position:relative; padding:140px 32px 60px; text-align:center; overflow:hidden; }
+.hero-bg { position:absolute; inset:0; pointer-events:none; }
+.hero-bg::before { content:''; position:absolute; top:-180px; left:50%; transform:translateX(-50%); width:1100px; height:600px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.13) 0%,rgba(232,160,32,0.04) 35%,transparent 70%); }
+[data-theme="light"] .hero-bg::before { background:radial-gradient(ellipse at center,rgba(232,160,32,0.09) 0%,rgba(232,160,32,0.02) 35%,transparent 70%); }
+.hero-inner { position:relative; max-width:780px; margin:0 auto; }
+.hero-eyebrow { font-family:var(--font-label); font-size:12px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-muted); margin-bottom:18px; }
+.hero h1 { font-family:var(--font-display); font-weight:700; font-size:clamp(36px,5vw,60px); line-height:1.05; letter-spacing:-0.03em; color:var(--text); margin-bottom:24px; }
+.hero h1 em { font-style:normal; background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 50%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hero p { font-size:17px; color:var(--text-muted); max-width:560px; margin:0 auto; font-weight:400; line-height:1.6; }
+
+/* Changelog list */
+.changelog { position:relative; padding:60px 32px 100px; }
+.changelog-inner { max-width:820px; margin:0 auto; position:relative; }
+
+.cl-entry { position:relative; padding:32px 0; border-bottom:1px solid var(--hairline); }
+.cl-entry:last-child { border-bottom:none; }
+.cl-entry-head { display:flex; align-items:center; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
+.cl-version { font-family:var(--font-display); font-weight:700; font-size:clamp(24px,3vw,32px); line-height:1.1; letter-spacing:-0.02em; color:var(--text); }
+.cl-entry-latest .cl-version em, .cl-entry-latest .cl-version { background:linear-gradient(135deg,#f5cb6a 0%,#e8a020 60%,#c8860a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.cl-date { font-family:var(--font-mono); font-size:13px; font-weight:600; letter-spacing:0.04em; color:var(--text-muted); }
+.cl-latest-pill { font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding:3px 9px; border:1px solid var(--hairline-gold); border-radius:5px; background:var(--gold-glow); color:var(--gold-light); }
+[data-theme="light"] .cl-latest-pill { color:var(--gold-dark); }
+
+.cl-body { display:flex; flex-direction:column; gap:18px; }
+.cl-body > * { margin:0; }
+
+.cl-cat { font-family:var(--font-label); font-size:11px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase; padding:4px 11px; border-radius:5px; display:inline-block; align-self:flex-start; margin-top:6px; }
+.cl-cat-new      { background:var(--green-glow); color:var(--green); border:1px solid color-mix(in srgb, var(--green) 35%, transparent); }
+.cl-cat-improved { background:var(--blue-glow);  color:var(--blue);  border:1px solid color-mix(in srgb, var(--blue) 35%, transparent); }
+.cl-cat-fixed    { background:var(--red-glow);   color:var(--red);   border:1px solid color-mix(in srgb, var(--red) 35%, transparent); }
+
+.cl-bullets { list-style:none; padding:0; display:flex; flex-direction:column; gap:12px; }
+.cl-bullets li { position:relative; padding-left:22px; font-size:15px; line-height:1.65; color:var(--text); }
+.cl-bullets li::before { content:''; position:absolute; left:4px; top:11px; width:6px; height:6px; border-radius:50%; background:var(--gold); opacity:0.6; }
+.cl-bullets li strong { color:var(--text); font-weight:600; }
+.cl-bullets li code { font-family:var(--font-mono); font-size:0.92em; background:rgba(232,160,32,0.1); border:1px solid var(--hairline-gold); border-radius:4px; padding:1px 6px; color:var(--gold-light); }
+[data-theme="light"] .cl-bullets li code { color:var(--gold-dark); }
+.cl-bullets li a { color:var(--gold-light); text-decoration:underline; text-decoration-color:var(--hairline-gold); text-underline-offset:2px; }
+[data-theme="light"] .cl-bullets li a { color:var(--gold-dark); }
+.cl-bullets li a:hover { text-decoration-color:var(--gold); }
+.cl-para { font-size:15px; line-height:1.65; color:var(--text); }
+
+/* Bottom CTA */
+.cl-cta-strip { margin-top:80px; padding:48px 36px; background:linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-hi) 100%); border:1px solid var(--hairline-gold); border-radius:14px; text-align:center; box-shadow:0 12px 36px rgba(0,0,0,0.18); }
+[data-theme="light"] .cl-cta-strip { box-shadow:0 12px 36px rgba(0,0,0,0.06); }
+.cl-cta-title { font-family:var(--font-display); font-weight:700; font-size:24px; letter-spacing:-0.02em; color:var(--text); margin-bottom:10px; }
+.cl-cta-sub { font-size:14px; color:var(--text-muted); margin-bottom:22px; }
+.cl-cta-btn { display:inline-flex; align-items:center; gap:10px; background:linear-gradient(180deg,var(--gold-light),var(--gold)); color:#0d0d11; text-decoration:none; padding:12px 24px; border-radius:9px; font-size:14px; font-weight:600; border:1px solid var(--gold); box-shadow:0 4px 16px rgba(232,160,32,0.32), inset 0 1px 0 rgba(255,255,255,0.18); transition:transform 0.15s, box-shadow 0.2s; }
+.cl-cta-btn:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(232,160,32,0.46), inset 0 1px 0 rgba(255,255,255,0.22); }
+[data-theme="light"] .cl-cta-btn { color:#fff; }
+.cl-cta-link { display:inline-block; margin-left:18px; font-size:14px; color:var(--text-muted); text-decoration:none; border-bottom:1px solid var(--hairline-strong); padding-bottom:1px; }
+.cl-cta-link:hover { color:var(--text); border-color:var(--text); }
+
+/* Footer */
+footer { background:var(--bg-2); border-top:1px solid var(--hairline); padding:60px 32px 32px; position:relative; z-index:1; }
+.footer-inner { max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1.4fr 2fr; gap:60px; padding-bottom:40px; border-bottom:1px solid var(--hairline); }
+.footer-brand .ft-logo { display:flex; align-items:center; gap:10px; text-decoration:none; margin-bottom:14px; }
+.ft-wm { font-family:var(--font-label); font-weight:600; font-size:16px; color:var(--text); }
+.footer-tagline { font-size:13px; color:var(--text-muted); max-width:340px; line-height:1.5; }
+.footer-links { display:grid; grid-template-columns:repeat(3,1fr); gap:36px; }
+.ft-col h4 { font-family:var(--font-label); font-size:11px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:var(--text); margin-bottom:14px; }
+.ft-col a { display:block; font-size:13px; color:var(--text-muted); text-decoration:none; margin-bottom:8px; transition:color 0.15s; }
+.ft-col a:hover { color:var(--gold-light); }
+[data-theme="light"] .ft-col a:hover { color:var(--gold-dark); }
+.footer-bottom { max-width:1180px; margin:0 auto; padding-top:24px; display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--text-dim); flex-wrap:wrap; gap:12px; }
+.ft-legal { display:flex; gap:18px; }
+.ft-legal a { color:var(--text-dim); text-decoration:none; transition:color 0.15s; }
+.ft-legal a:hover { color:var(--text-muted); }
+
+@media (max-width: 768px) {
+  nav { padding:0 16px; }
+  .nav-links { gap:14px; }
+  .nav-links a:not(.nav-cta) { display:none; }
+  .hero { padding:120px 20px 40px; }
+  .changelog { padding:40px 20px 80px; }
+  .cl-cta-strip { padding:36px 20px; }
+  .footer-inner { grid-template-columns:1fr; gap:36px; }
+  .footer-links { grid-template-columns:repeat(2,1fr); gap:24px; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="index.html">
+    <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-nav)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-nav)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><path d="M 33 14 C 36 18, 41 23, 41 30 C 41 37, 36 41, 32 41 C 26 41, 22 37, 22 32 C 22 28, 25 26, 27 23 C 28 26, 30 27, 30 24 C 30 20, 32 17, 33 14 Z" fill="#c8860a"/></svg></div>
+    <span class="nav-wordmark">Keyfire</span>
+  </a>
+  <div class="nav-links">
+    <a href="index.html#features">Features</a>
+    <a href="trigr-help.html">Guide</a>
+    <a href="roadmap.html">Roadmap</a>
+    <a href="changelog.html" class="active">Changelog</a>
+    <a href="blog/">Blog</a>
+    <a href="pricing.html">Pricing</a>
+    <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe" class="nav-cta" data-loc="nav" data-arch="x64">Download</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">Changelog</div>
+    <h1>What is <em>new</em> in Keyfire.</h1>
+    <p>Every release, line by line. New features at the top, fixes at the bottom, all the way back to the start.</p>
+  </div>
+</section>
+
+<section class="changelog">
+  <div class="changelog-inner">
+
+      <article class="cl-entry cl-entry-latest" id="v061">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.6.1</h2>
+          <time class="cl-date">26 June 2026</time>
+          <span class="cl-latest-pill">Latest</span>
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li>Quick Record (opt-in): capture a macro from anywhere with one hotkey, replay with another. Press the record hotkey from any app to start recording your keystrokes and mouse, press it again to save. Replay anytime with the play hotkey. Saved recordings survive restarts. Off by default. Turn it on in Settings, Quick Record and pick your combos (suggested: Ctrl+Alt+R / Ctrl+Alt+P).</li>
+<li>Starred clipboard items: new tier above Pinned in the main Clipboard Manager. Star items you reach for daily so they stay at the top of the timeline. Starred items show in the main panel only, so the popup stays focused on recents and pinned. Right-click any item to star.</li>
+<li>Drag-to-reorder pinned and starred items: custom order both tiers however you like. Drag the cards in the main Clipboard Manager.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Radial wheel respects your theme. Wedges now follow dark/light mode instead of staying white in both.</li>
+<li>Pin icons unified across clipboard surfaces. Popup and main panel use the same pin icon for pinned items.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Clipboard popup no longer steals focus from your text field. Pasting into transient inline editors (emClient calendar items, Outlook in-place subject lines, similar) now works correctly. The popup is fully non-activating, so your cursor caret never moves.</li>
+<li>Old Trigr Start Menu shortcut is cleaned up automatically for users who auto-updated from v0.5.x. The new Keyfire shortcut takes its place, the broken old one disappears.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v060-7">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.6.0</h2>
+          <time class="cl-date">24 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-rebrand">Rebrand</h3>
+<ul class="cl-bullets">
+<li><strong>Trigr is now Keyfire.</strong> Full rebrand following a UK trademark conflict. Same product, same team, same code. The website is now keyfire.app (usetrigr.com still works via 301 redirect indefinitely). Your existing config, clipboard history, analytics, licence keys, and Start with Windows setting all carry through untouched. Auto-update flips the branding without losing anything.</li>
+</ul>
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li><strong>Macro Recording (Phase 1).</strong> Record any sequence of keyboard and mouse actions, replay with one hotkey. Add a Record Macro step in the macro editor, hit Record, do the workflow, hit Stop or press Ctrl+Shift+R. Replay triggers your other Keyfire features (mapped hotkeys, text expansions) as if you typed them live. Known limits in this release: Quick Search overlay and Radial menus do not capture typed text or appear during replay; recordings use absolute screen coordinates. Distillation engine, scroll/drag steps, and configurable stop hotkey coming in v0.7+.</li>
+</ul>
+<ul class="cl-bullets">
+<li><strong>Global Esc cancel.</strong> Pressing Esc now stops ANY running macro (not just loops). Works mid-Wait too. Honoured within 100ms.</li>
+</ul>
+<ul class="cl-bullets">
+<li><strong>Cancellable long sleeps.</strong> Macros with multi-second Wait steps or long inter-iteration delays now honour cancel within 100ms instead of running out the full duration.</li>
+</ul>
+<ul class="cl-bullets">
+<li><strong>Hold-only key indicator.</strong> Keys mapped only to a hold action now display a stopwatch icon on the keyboard canvas.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v056-3">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.5.6</h2>
+          <time class="cl-date">22 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li>Multi-monitor support for Open App and Open Folder actions. Pick which display the app or folder opens on: Primary, Monitor under cursor, Same as foreground window, or any connected display by name.</li>
+<li>Formula engine for text expansions. Inline math, string functions, conditional logic, and date math inside snippets via the new Formulas toolbar.</li>
+<li>Typed fill-in fields. Multi-line, dropdown, yes/no toggle, number, and date picker on top of the legacy plain text.</li>
+<li>Set variable and named if/else blocks. Give intermediate results and conditionals a name, reference them in later formulas.</li>
+<li>Selection token <code>{selection}</code>. Capture highlighted text at fire time inside an expansion.</li>
+<li>Date functions: <code>today()</code>, <code>dateadd</code>, <code>dateformat</code>, <code>datediff</code> for working with picked dates.</li>
+<li>Redesigned radial menu. White ring, gold gradient hover, and folder wedges that extrude outward when active.</li>
+<li>Pick a date entry in the Date &amp; Time toolbar. Shortcut to creating a date-typed fill-in.</li>
+<li>New help guide rewritten end-to-end to match the current UI.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Rich-text formatting preserved with fill-in fields. Bold, lists, colours all survive to Outlook, Word, and Gmail.</li>
+<li>Save in the expansion editor keeps the editor open with a brief Saved acknowledgement.</li>
+<li>Toolbar consolidation. Date, time, and date math under one Date &amp; Time dropdown. Bullet and numbered lists under Lists.</li>
+<li>Optional Name field on the Formula popup. Type a name to make the result reusable.</li>
+<li>Reference chips in formula and if/else popups for every fill-in, set variable, and global variable. Click to insert at the cursor.</li>
+<li>Smoother radial centre label when sweeping between segments. Pill resizes and fades instead of snapping.</li>
+<li>Numbers in formulas round to two decimal places.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Formula popups flip upward when low in the editor instead of clipping.</li>
+<li>Formulas using <code>&gt;</code> or <code>&lt;</code> now work in rich-text output.</li>
+<li>Set variables with forward references resolve correctly regardless of position in the snippet.</li>
+<li>Date fill-ins now insert in your preferred Settings format, not ISO YYYY-MM-DD.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v055-2">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.5.5</h2>
+          <time class="cl-date">20 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>The Link to App dialog's Pick App dropdown is clickable again. The picker had been rendering behind the modal backdrop in recent builds.</li>
+<li>Radial menu actions now reach fullscreen and borderless windowed apps reliably. Firing a wedge over a game could previously miss the target window.</li>
+<li>Paste and fire actions from the clipboard popup and Quick Search now land correctly in apps like Chrome, VS Code, and Slack. Focus was sometimes being refused, sending the action to whatever window held focus instead.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>The Link to App dialog now reads &quot;Make sure the app is running, then use Pick App below or browse for the app directly.&quot; This clears up that Browse is an alternative path, not a follow-up step.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v054-10">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.5.4</h2>
+          <time class="cl-date">18 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li><strong>Macro looping.</strong> Configure any macro to run multiple times or loop forever, with an optional delay between iterations. Re-press the trigger or hit Esc to stop a running loop.</li>
+<li><strong>Filter clipboard history by app.</strong> The sidebar date counts now mirror the active app or tag filter, and dates with nothing matching hide from the list.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li><strong>Cross-device radial menu sync.</strong> When two machines edit the shared config out of sync, edits from both sides are now preserved rather than the second save wiping the first. A toast confirms when a merge happens.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li><strong>Click Mouse macro step fires reliably.</strong> It now defaults to Left Click immediately so the step actually does something on first save. Existing macros with an empty value also fire correctly after updating.</li>
+<li><strong>Right-click in Arc browser.</strong> The synthetic click now holds briefly between press and release so context menus open in Arc and other Chromium-based apps.</li>
+<li><strong>Macros no longer freeze on rapid re-fire.</strong> A macro that's still running won't have a second copy of itself race it; subsequent triggers are dropped until the first finishes. Different macros still run concurrently.</li>
+<li><strong>Type Text waits for the last character.</strong> Macro steps that follow Type Text (Open URL, Open App, Click at Position, Focus Window) now wait for the typed text to land before running.</li>
+<li><strong>Overlay popups no longer clip on some 4K and TV setups.</strong> The clipboard popup and quick-search panels shrink gracefully when the visible area is narrower than expected, so rounded corners stay intact.</li>
+<li><strong>Clipboard popup search no longer duplicates characters.</strong> Typing in the popup produces one character per keystroke even under timing races.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v052-4">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.5.2</h2>
+          <time class="cl-date">14 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li>Clipboard panel now has a column-layout toggle. Choose 1 column, 2 columns, or auto-flow from the new switcher in the clipboard header. Single-column mode lets long text items expand to show their full content without needing to open the preview pane.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Hold-only key actions and double-press hotkey actions now work in fullscreen games. Keys mapped to a hold or double-press action no longer kill the standard press of that key in titles using DirectInput or Raw Input (FPS games, racing sims), and double-press actions that send a key (for example tap-tap-W to send the equals key for autorun) now reach the game's input system correctly.</li>
+</ul>
+<ul class="cl-bullets">
+<li>Clipboard popup no longer renders off the bottom of the screen on high-DPI displays. At 225% scaling and above on smaller panels, the popup buttons could be inaccessible. The popup now fits inside the available work area with a safe margin on top and bottom.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v051-3">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.5.1</h2>
+          <time class="cl-date">13 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>New in-app tip pointing to the right-click profile menu, so users can discover how to link a profile to a specific app and have Trigr auto-switch when that app gains focus.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Clipboard popup, Quick Search, voice overlay and radial menu now position correctly on high-DPI displays. Previously these could land partly off-screen on 4K monitors at non-default scaling (e.g. 200% / 225% / 250%).</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v050-12">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.5.0</h2>
+          <time class="cl-date">12 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li><strong>Clipboard encryption at rest.</strong> Your clipboard history (text, images, OCR, search index) is now encrypted with AES-256-GCM. The encryption key is bound to your Windows account via DPAPI, so a copied database file on another machine reads as gibberish. Existing history migrates automatically on first launch, with a 7-day plaintext backup beside the database in case anything goes wrong.</li>
+<li><strong>Hold trigger (Pro).</strong> A third trigger mode alongside single press and double tap. Hold a key past the configurable threshold (default 350ms) to fire its assigned action. Threshold slider in Settings.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Profile switching on hotkey press is now instant. Clicking into an app and firing a hotkey no longer waits for the 1500ms foreground poll to catch up.</li>
+<li>Settings Privacy and Security block now shows clipboard encryption status, the auto-delete date for the upgrade backup, and a Reset clipboard storage option.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Hold-only mappings no longer suppress the underlying key's native behaviour. A tap of F8 still toggles ortho in BricsCAD; only a hold past the threshold fires the Trigr action.</li>
+<li>Holding a hotkey while a launched app steals focus no longer fires the new profile's hold action under the same physical gesture.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0434">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.34</h2>
+          <time class="cl-date">11 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li>Extracted image text in the Clipboard Manager now has two copy options. Copy as shown keeps the line breaks from the image, and Copy as paragraphs joins them into flowing text.</li>
+<li>Tip boxes across the app now show the exact hotkey for each feature, covering the radial wheel, Quick Search, text expansions and the Clipboard Manager. Each tip has a close button if you know your way around, and Settings has a Show Feature Tips Again option to bring them back.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>The active tab on header switchers is now a clear gold button with white icons, so it is obvious which view you are in.</li>
+<li>The trigger picker for macros groups each profile under a gold header. Your Default profile is always listed first and the rest follow your sidebar order.</li>
+<li>Empty radial wheel segments are easier to see, glow gold on hover, and stay highlighted while you edit them. Folder segments' gold trim now sits cleanly on the segment edge and grows with the hover effect.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Setting a feature hotkey (radial wheel, Quick Search, pause, clipboard popup) no longer needs the combo pressed twice. The first press registers.</li>
+<li>Copies from apps like Word and the Snipping Tool could occasionally be missed by clipboard history. Trigr now retries when another app is briefly holding the clipboard.</li>
+<li>Copying long extracted text created a clipboard item that appeared cut short until the app reloaded. The full text now shows immediately.</li>
+<li>Duplicating a Wait for Input macro step no longer pushed the Key field onto its own row.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0433">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.33</h2>
+          <time class="cl-date">10 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Alongside its once-a-day housekeeping, Trigr now sends one anonymous usage summary: a count of how many triggers, expansions and macros fired that day, plus the app version. It never includes what you typed, your snippets, or anything that could identify you or your machine. We cannot even tell that two days of counts came from the same person. It simply helps us see which features earn their place during the beta. Prefer not to share even that? One toggle in Settings &gt; Privacy &amp; Security turns it off.</li>
+<li>The privacy policy at usetrigr.com now spells out exactly what is and is not sent.</li>
+<li>Settings tidy-up: the Privacy &amp; Security section now leads with the usage toggle, with the config and log folder shortcuts grouped below it.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0432">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.32</h2>
+          <time class="cl-date">10 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Trigr now uses far less memory when idle. Background windows go to sleep after five minutes of not being used and wake instantly when you open them. In our testing, idle memory use dropped from around 500MB to between 100MB and 200MB.</li>
+<li>Faster startup and a smaller memory footprint. The icon libraries behind the radial menu now load only when they are needed.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Fixed a background watchdog that needlessly restarted Trigr's input monitoring after 30 seconds away from the keyboard.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0431">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.31</h2>
+          <time class="cl-date">10 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li><strong>Fire any saved text expansion straight from a hotkey.</strong> Pick the new Expansion type under the Text button, then choose a saved trigger. Pressing the key fires that expansion.</li>
+<li><strong>Each action type on a key now has its own display label.</strong> Switching between Text, Hotkey, Macro and so on swaps the label too. Clearing one type leaves the others labels intact.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li><strong>Clear Action now wipes only the type you are editing, and the cleared state persists across close and reopen.</strong> Drafts of other types on the same key are preserved. The editor stays on the tab you were using.</li>
+<li><strong>Action editor layout is tighter.</strong> App, URL and Folder collapse into a single Open button with sub-pills. Macro Sequence and AHK Script each take a half-row to balance the grid.</li>
+<li><strong>Quick Action editor matches the main action editor.</strong> Open App / URL / Folder collapse into one Open button, the type buttons span the full row, and a separator line divides the type picker from the form below.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0430-3">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.30</h2>
+          <time class="cl-date">5 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Some games using infinite mouse-look (MMOs, FPS) had camera rotation broken while Trigr was running. Trigr now automatically pauses its mouse listener when a fullscreen or borderless app has focus, and resumes when you switch back to a normal windowed app. Keyboard hotkeys, text expansions and macros continue working as normal. No configuration needed.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0429">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.29</h2>
+          <time class="cl-date">5 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Pasting a clipboard item now ignores repeated Enter presses or clicks that arrive while the first paste is still in progress. Previously, rapid input during a laggy paste could flood your clipboard history with hundreds of alternating entries.</li>
+<li>Copying or pasting an image from clipboard history no longer adds the image to Windows clipboard history (Win+V). Images now stay out of the Windows clipboard the same way text expansions already do.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0428">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.28</h2>
+          <time class="cl-date">5 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Clicking a radial menu segment whose linked action was renamed or deleted now shows a short notice explaining how to re-link it, instead of doing nothing.</li>
+<li>Custom radial menu icons are now stored at icon size. Existing oversized icons are cleaned up automatically, which can shrink your settings file significantly.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Your settings file is no longer rewritten every time you switch between apps. This cuts sync churn for shared setups across multiple machines and makes them safer.</li>
+<li>Fixed a rare case where a hold-style mouse remap could leave its key stuck down after very fast clicking.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0427">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.27</h2>
+          <time class="cl-date">4 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Fixed a serious bug where text expansions could rapidly re-fire in a loop, flooding the clipboard and pasting old clipboard content instead of the expansion text. Expansions now also have a built-in safety brake that stops any runaway firing within a second.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0426">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.26</h2>
+          <time class="cl-date">4 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Text expansions with fill-in fields no longer insert hidden characters around your entries. These invisible characters could break links built from fill-in values and showed up as strange symbols in some apps. Existing expansions are cleaned up automatically, with no action needed.</li>
+<li>The upgrade window now correctly shows Trigr Teams as planned for v1.0.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0425">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.25</h2>
+          <time class="cl-date">4 June 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Removing a variant when only two remain now asks for confirmation before it collapses the expansion back to a single value.</li>
+<li>Shared configurations now back up your radial menu before syncing, protecting the layout from being cleared when you use Trigr across multiple devices.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Fixed expansions and macros adding their inserted text to Windows clipboard history (Win+V) and cloud clipboard. Your clipboard history now stays clean.</li>
+<li>Closing Trigr to the tray now clears the open editor and resumes automatic profile switching. Minimising or switching to another app still keeps your place while you test a shortcut.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0424">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.24</h2>
+          <time class="cl-date">28 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>More control over your clipboard hotkey. Open Settings ? Clipboard and map the popup shortcut to any combo you want (default Ctrl+Shift+V).</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Various small clearing fixes around clipboard and hotkeys.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0423-2">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.23</h2>
+          <time class="cl-date">27 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li>Your 14-day Pro trial now starts automatically when you finish setting up Trigr. Every Pro feature is unlocked from the first launch, with no card and no button to press. Trigr returns to Free on its own when the trial ends.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>The trial welcome screen now highlights what Pro unlocks, from app-specific profiles to config that syncs across your machines.</li>
+<li>You can now request a beta key straight from the trial card in Settings, instead of sending an email.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0422-2">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.22</h2>
+          <time class="cl-date">27 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Text expansions with fill-in fields or variant options now work when you trigger them from Quick Search or the radial menu. Before, they pasted the raw text instead of prompting you.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>The fill-in and variant popup now matches the Quick Search and clipboard popups, with a cleaner shadow and no extra box around it.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0421-2">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.21</h2>
+          <time class="cl-date">26 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Trigr now checks for updates automatically in the background, so you no longer need to restart the app to stay on the latest version.</li>
+<li>You will get a desktop notification when an update is ready, even if Trigr is minimised to the system tray.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0420-2">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.20</h2>
+          <time class="cl-date">26 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li>Macros can now fire your existing triggers and text expansions as steps. Look for the new <code>Existing Trigger</code> group in the macro step dropdown, with options for Trigger and Text Expansion.</li>
+<li>New Shortcut button in the modifier bar clears your current selection so you can start a fresh hotkey in one click.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li>Repeat hotkey runs at the speed you set. At 100ms it previously fired around 8 times a second instead of 10. That drift is gone.</li>
+<li>Repeat hotkey now registers reliably inside games. Each press is held long enough for game frame-polling to catch it.</li>
+<li>The modifier bar and view tabs trim down gracefully as you narrow the Trigr window. Buttons drop to a second row before anything gets cramped, and tab labels collapse to icons.</li>
+<li>The right-hand editor panel auto-hides below 1200px when no key is selected, giving the keyboard view more room. It returns the moment you click a key.</li>
+<li>Auto-switch to list view kicks in slightly later (900px) so the modifier pills always stay readable on the main row.</li>
+</ul>
+<h3 class="cl-cat cl-cat-fixed">Fixed</h3>
+<ul class="cl-bullets">
+<li>Clicking the tray icon now reliably brings the Trigr window to focus. Previously the window would sometimes open but stay in the background.</li>
+<li>Opening Trigr from the tray now restores it from the taskbar if it was minimised.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0419">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.19</h2>
+          <time class="cl-date">26 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li><strong>&quot;What's New&quot; button in the title bar.</strong> A new button next to the window controls (look for the megaphone icon) opens a popup with the full history of Trigr updates. Click it any time to see what's changed, plus react or comment on any release. This is the first version where these notes will appear inside the app, so you'll see the last few releases when you open it.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0418">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.18</h2>
+          <time class="cl-date">25 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-what-s-new-in-v0-4-18">What's new in v0.4.18</h3>
+<ul class="cl-bullets">
+<li><strong>Insert dates, times, and clipboard content into macros.</strong> A new &quot;Dynamic Text&quot; step under Type &amp; Keys lets you drop in placeholders for today's date, the current time, or your clipboard contents. Pick the format you want from a dropdown, no need to remember any syntax.</li>
+<li><strong>Type Text steps now read dynamic tokens.</strong> If you've typed something like <code>{date}</code> or <code>{time:HH:MM}</code> inside a Type Text step, it now expands to the real value at runtime instead of being typed literally.</li>
+<li><strong>Run AutoHotkey scripts without editing them first.</strong> Paste any AutoHotkey snippet into a Run AHK Script step and Trigr automatically strips hotkey labels like <code>^!j::</code> so the body runs straight away. No more hand-editing scripts to get them working</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0417">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.17</h2>
+          <time class="cl-date">22 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-new">New</h3>
+<ul class="cl-bullets">
+<li><strong>Date sidebar in the clipboard panel.</strong> Jump straight to Today, Yesterday, This Week, or any prior date instead of scrolling through history. The sidebar updates live as you copy new items.</li>
+<li><strong>Image lightbox.</strong> Click any clipboard image to view it full-size in a centred overlay. Click anywhere to close.</li>
+<li><strong>Settings sections collapse and expand.</strong> Each settings section is now an accordion you can fold up to focus on what you care about. Section order is also tidier.</li>
+</ul>
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li><strong>Clipboard search and filters happen at the database level.</strong> Date, app, tag, and text filters now scan your entire clipboard history rather than only the rows currently loaded on screen. Much faster and more complete for power users with thousands of entries.</li>
+<li><strong>Pro gating consistency pass.</strong> Several Pro features (double-press hotkeys, search template packs beyond 5, expansion variants, image expansions, custom clipboard retention) now correctly prompt for upgrade rather than silently failing or resetting on app restart.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0416">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.16</h2>
+          <time class="cl-date">21 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li><strong>Request a beta key from inside the app.</strong> The Request Beta Key button in the upgrade screen now opens a native form right inside Trigr. Enter your email, hit submit, and the request lands straight in our inbox. No more opening your email client or copying the address by hand.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0415">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.15</h2>
+          <time class="cl-date">21 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li><strong>Pop-up menus no longer get cut off at the bottom of the screen.</strong> Menus like the macro step picker, the radial editor right-click menu, and the window picker now flip upward when they would otherwise overflow the viewport.</li>
+<li><strong>Submenus shift left when they would overflow the right edge.</strong> Previously some side menus could disappear off-screen on smaller windows or when the app was docked to the right side. They now reposition themselves to stay visible.</li>
+<li><strong>Polish across macros, clipboard, settings, templates, sidebar, expansions, and the title bar.</strong> Many small layout, spacing, and interaction tweaks that add up to a calmer, more consistent feel throughout the app.</li>
+</ul>
+        </div>
+      </article>
+
+      <article class="cl-entry" id="v0414">
+        <div class="cl-entry-head">
+          <h2 class="cl-version">v0.4.14</h2>
+          <time class="cl-date">21 May 2026</time>
+          
+        </div>
+        <div class="cl-body">
+<h3 class="cl-cat cl-cat-improved">Improved</h3>
+<ul class="cl-bullets">
+<li><strong>Auto-switch profile is smarter about editing.</strong> Trigr now suppresses profile auto-switching only when you're actively editing inside the app, not just whenever the main window is open in the background. Less surprise switching, more accurate when you do want it.</li>
+<li><strong>Clipboard privacy controls.</strong> New master toggle to pause clipboard capture entirely, plus an exclusion list so password managers, terminals, or any app you name will never have its clipboard contents stored.</li>
+<li><strong>Remappable clipboard paste hotkey.</strong> The shortcut that opens the clipboard popup is now changeable in Settings instead of locked to Ctrl+Shift+V.</li>
+<li><strong>Pro trial grace period.</strong> If your Pro trial expires while you're using a shared config, Trigr keeps things working for 7 days while it migrates you back to local settings, with a banner so you know what's happening.</li>
+<li><strong>Settings copy clarified.</strong> Cleaner labels and descriptions across every section. Tighter, less repetitive, easier to scan.</li>
+</ul>
+        </div>
+      </article>
+
+    <div class="cl-cta-strip">
+      <div class="cl-cta-title">Try the latest release.</div>
+      <div class="cl-cta-sub">Free during Beta. Windows 10 and 11. Around 10 MB.</div>
+      <a class="cl-cta-btn" href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe" data-loc="changelog_cta">Download v0.6.1</a>
+      <a class="cl-cta-link" href="roadmap.html">See the roadmap</a>
+    </div>
+
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <a href="index.html" class="ft-logo">
+        <div class="logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="lb-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0b942"/><stop offset="100%" stop-color="#c8860a"/></linearGradient><linearGradient id="lk-ft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e8e5dc"/></linearGradient></defs><rect width="64" height="64" rx="9" fill="url(#lb-ft)"/><rect x="7.68" y="6.4" width="48.64" height="43.52" rx="6.5" fill="url(#lk-ft)"/><rect x="7.68" y="46.5" width="48.64" height="3.42" rx="1.5" fill="#000" opacity="0.06"/><path d="M 33 14 C 36 18, 41 23, 41 30 C 41 37, 36 41, 32 41 C 26 41, 22 37, 22 32 C 22 28, 25 26, 27 23 C 28 26, 30 27, 30 24 C 30 20, 32 17, 33 14 Z" fill="#c8860a"/></svg></div>
+        <span class="ft-wm">Keyfire</span>
+      </a>
+      <p class="footer-tagline">Productivity automation for Windows. No scripting. Built solo in London, free during Beta.</p>
+    </div>
+    <div class="footer-links">
+      <div class="ft-col">
+        <h4>Product</h4>
+        <a href="index.html#features">Features</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="roadmap.html">Roadmap</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe">Download</a>
+      </div>
+      <div class="ft-col">
+        <h4>Resources</h4>
+        <a href="trigr-help.html">Guide</a>
+        <a href="blog/">Blog</a>
+        <a href="https://github.com/Trigr-it/trigr-tauri">GitHub</a>
+      </div>
+      <div class="ft-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:admin@keyfire.app">admin@keyfire.app</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span class="ft-copy">© 2026 Keyfire</span>
+    <div class="ft-legal">
+      <a href="terms.html">Terms</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="refund.html">Refunds</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
