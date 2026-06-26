@@ -288,6 +288,35 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 .shipped-grid { display:grid; grid-template-columns:1fr 1.15fr; gap:60px; align-items:flex-start; margin-top:8px; }
 .shipped-text { min-width:0; }
 .shipped-visual { position:sticky; top:100px; height:560px; }
+
+/* Per-release entries (left column, build-whats-new.mjs output) ─────────────
+   Compact text-only timeline. Each .phase wrapper keeps the existing
+   data-phase attribute so the sticky-scroll IO observer (lines further down)
+   still drives the right-column mockup. Inside each phase: header + N release
+   entries (newest first). */
+.release-entry { padding:18px 0 22px; border-bottom:1px dashed var(--hairline); }
+.release-entry:last-child { border-bottom:none; padding-bottom:8px; }
+.release-head { display:flex; align-items:baseline; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
+.release-version { font-family:var(--font-display); font-weight:700; font-size:20px; letter-spacing:-0.01em; color:var(--text); }
+.release-date { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.06em; color:var(--text-dim); }
+.release-body { display:flex; flex-direction:column; gap:14px; }
+.re-cat { font-family:var(--font-label); font-size:10px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; padding:3px 9px; border-radius:4px; display:inline-block; align-self:flex-start; margin:0; }
+.re-cat-new      { background:rgba(62,196,122,0.12);  color:#3ec47a; border:1px solid rgba(62,196,122,0.32); }
+.re-cat-improved { background:rgba(91,156,255,0.12);  color:#5b9cff; border:1px solid rgba(91,156,255,0.32); }
+.re-cat-fixed    { background:rgba(255,122,122,0.10); color:#ff7a7a; border:1px solid rgba(255,122,122,0.30); }
+[data-theme="light"] .re-cat-new      { color:#1f8a4a; }
+[data-theme="light"] .re-cat-improved { color:#3a7fc4; }
+[data-theme="light"] .re-cat-fixed    { color:#c64545; }
+.re-bullets { list-style:none; padding:0; margin:-2px 0 0; display:flex; flex-direction:column; gap:8px; }
+.re-bullets li { position:relative; padding-left:18px; font-size:14px; line-height:1.6; color:var(--text); }
+.re-bullets li::before { content:''; position:absolute; left:3px; top:10px; width:5px; height:5px; border-radius:50%; background:var(--gold); opacity:0.55; }
+.re-bullets li strong { color:var(--text); font-weight:600; }
+.re-bullets li code { font-family:var(--font-mono); font-size:0.9em; background:rgba(232,160,32,0.1); border:1px solid var(--hairline-gold); border-radius:4px; padding:1px 5px; color:var(--gold-light); }
+[data-theme="light"] .re-bullets li code { color:var(--gold-dark); }
+.re-bullets li a { color:var(--gold-light); text-decoration:underline; text-decoration-color:var(--hairline-gold); text-underline-offset:2px; }
+[data-theme="light"] .re-bullets li a { color:var(--gold-dark); }
+.re-para { font-size:14px; line-height:1.6; color:var(--text); margin:0; }
+.release-empty { font-size:13px; color:var(--text-muted); font-style:italic; line-height:1.6; padding:14px 0 4px; }
 .sv-frame { position:relative; width:100%; height:100%; background:var(--bg-card); border:1px solid var(--hairline-gold); border-radius:18px; overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,0.5), 0 0 60px rgba(232,160,32,0.06); }
 [data-theme="light"] .sv-frame { background:var(--bg-2); box-shadow:0 24px 60px rgba(0,0,0,0.12); }
 .sv-screen { position:absolute; inset:0; padding:24px; opacity:0; transition:opacity 0.5s ease; pointer-events:none; display:flex; flex-direction:column; gap:14px; overflow:hidden; }
@@ -621,25 +650,334 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 <div class="section-divider"></div>
 
 <!-- 01 — SHIPPED -->
-<section class="section reveal" id="shipped">
+<section class="section" id="shipped">
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">01</span><span class="section-label">Shipped</span></div>
-    <h2 class="section-h2">What we've <em>built</em>.</h2>
-    <p class="section-sub">Seven major releases, 100+ patch versions, every feature visible. Filter by tier to focus on what matters.</p>
-
-    <div class="filter-row">
-      <span class="filter-label">Filter</span>
-      <button class="filter-chip active" data-filter="all" onclick="setFilter(this,'all')">All</button>
-      <button class="filter-chip" data-filter="free" onclick="setFilter(this,'free')">Free</button>
-      <button class="filter-chip" data-filter="pro" onclick="setFilter(this,'pro')">Pro</button>
-      <button class="filter-chip" data-filter="exp" onclick="setFilter(this,'exp')">Experimental</button>
-    </div>
+    <h2 class="section-h2">Every <em>release</em>, line by line.</h2>
+    <p class="section-sub">Seven major phases, every patch within them. The right-hand panel switches mockups as you scroll through each major version.</p>
 
     <div class="shipped-grid">
       <div class="shipped-text">
     <div class="timeline">
+      <!-- WHATS-NEW:START -->
+      <div class="phase" data-phase="v0.6">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.6 — Macro Recorder &amp; Polish</span>
+          <span class="phase-date">Jun 2026 · 2 releases published</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.6.1</span>
+            <time class="release-date">26 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Quick Record (opt-in): capture a macro from anywhere with one hotkey, replay with another. Press the record hotkey from any app to start recording your keystrokes and mouse, press it again to save. Replay anytime with the play hotkey. Saved recordings survive restarts. Off by default. Turn it on in Settings, Quick Record and pick your combos (suggested: Ctrl+Alt+R / Ctrl+Alt+P).</li><li>Starred clipboard items: new tier above Pinned in the main Clipboard Manager. Star items you reach for daily so they stay at the top of the timeline. Starred items show in the main panel only, so the popup stays focused on recents and pinned. Right-click any item to star.</li><li>Drag-to-reorder pinned and starred items: custom order both tiers however you like. Drag the cards in the main Clipboard Manager.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Radial wheel respects your theme. Wedges now follow dark/light mode instead of staying white in both.</li><li>Pin icons unified across clipboard surfaces. Popup and main panel use the same pin icon for pinned items.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Clipboard popup no longer steals focus from your text field. Pasting into transient inline editors (emClient calendar items, Outlook in-place subject lines, similar) now works correctly. The popup is fully non-activating, so your cursor caret never moves.</li><li>Old Trigr Start Menu shortcut is cleaned up automatically for users who auto-updated from v0.5.x. The new Keyfire shortcut takes its place, the broken old one disappears.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.6.0</span>
+            <time class="release-date">24 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-rebrand">Rebrand</h5><ul class="re-bullets"><li><strong>Trigr is now Keyfire.</strong> Full rebrand following a UK trademark conflict. Same product, same team, same code. The website is now keyfire.app (usetrigr.com still works via 301 redirect indefinitely). Your existing config, clipboard history, analytics, licence keys, and Start with Windows setting all carry through untouched. Auto-update flips the branding without losing anything.</li></ul><h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Macro Recording (Phase 1).</strong> Record any sequence of keyboard and mouse actions, replay with one hotkey. Add a Record Macro step in the macro editor, hit Record, do the workflow, hit Stop or press Ctrl+Shift+R. Replay triggers your other Keyfire features (mapped hotkeys, text expansions) as if you typed them live. Known limits in this release: Quick Search overlay and Radial menus do not capture typed text or appear during replay; recordings use absolute screen coordinates. Distillation engine, scroll/drag steps, and configurable stop hotkey coming in v0.7+.</li><li><strong>Global Esc cancel.</strong> Pressing Esc now stops ANY running macro (not just loops). Works mid-Wait too. Honoured within 100ms.</li><li><strong>Cancellable long sleeps.</strong> Macros with multi-second Wait steps or long inter-iteration delays now honour cancel within 100ms instead of running out the full duration.</li><li><strong>Hold-only key indicator.</strong> Keys mapped only to a hold action now display a stopwatch icon on the keyboard canvas.</li></ul>
+          </div>
+        </article>
+      </div>
 
-      <!-- v0 -->
+      <div class="phase" data-phase="v0.5">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.5 — Encryption &amp; Game Compatibility</span>
+          <span class="phase-date">Jun 2026 · 6 releases published</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.5.6</span>
+            <time class="release-date">22 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Multi-monitor support for Open App and Open Folder actions. Pick which display the app or folder opens on: Primary, Monitor under cursor, Same as foreground window, or any connected display by name.</li><li>Formula engine for text expansions. Inline math, string functions, conditional logic, and date math inside snippets via the new Formulas toolbar.</li><li>Typed fill-in fields. Multi-line, dropdown, yes/no toggle, number, and date picker on top of the legacy plain text.</li><li>Set variable and named if/else blocks. Give intermediate results and conditionals a name, reference them in later formulas.</li><li>Selection token <code>{selection}</code>. Capture highlighted text at fire time inside an expansion.</li><li>Date functions: <code>today()</code>, <code>dateadd</code>, <code>dateformat</code>, <code>datediff</code> for working with picked dates.</li><li>Redesigned radial menu. White ring, gold gradient hover, and folder wedges that extrude outward when active.</li><li>Pick a date entry in the Date &amp; Time toolbar. Shortcut to creating a date-typed fill-in.</li><li>New help guide rewritten end-to-end to match the current UI.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Rich-text formatting preserved with fill-in fields. Bold, lists, colours all survive to Outlook, Word, and Gmail.</li><li>Save in the expansion editor keeps the editor open with a brief Saved acknowledgement.</li><li>Toolbar consolidation. Date, time, and date math under one Date &amp; Time dropdown. Bullet and numbered lists under Lists.</li><li>Optional Name field on the Formula popup. Type a name to make the result reusable.</li><li>Reference chips in formula and if/else popups for every fill-in, set variable, and global variable. Click to insert at the cursor.</li><li>Smoother radial centre label when sweeping between segments. Pill resizes and fades instead of snapping.</li><li>Numbers in formulas round to two decimal places.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Formula popups flip upward when low in the editor instead of clipping.</li><li>Formulas using <code>&gt;</code> or <code>&lt;</code> now work in rich-text output.</li><li>Set variables with forward references resolve correctly regardless of position in the snippet.</li><li>Date fill-ins now insert in your preferred Settings format, not ISO YYYY-MM-DD.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.5.5</span>
+            <time class="release-date">20 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>The Link to App dialog's Pick App dropdown is clickable again. The picker had been rendering behind the modal backdrop in recent builds.</li><li>Radial menu actions now reach fullscreen and borderless windowed apps reliably. Firing a wedge over a game could previously miss the target window.</li><li>Paste and fire actions from the clipboard popup and Quick Search now land correctly in apps like Chrome, VS Code, and Slack. Focus was sometimes being refused, sending the action to whatever window held focus instead.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>The Link to App dialog now reads &quot;Make sure the app is running, then use Pick App below or browse for the app directly.&quot; This clears up that Browse is an alternative path, not a follow-up step.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.5.4</span>
+            <time class="release-date">18 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Macro looping.</strong> Configure any macro to run multiple times or loop forever, with an optional delay between iterations. Re-press the trigger or hit Esc to stop a running loop.</li><li><strong>Filter clipboard history by app.</strong> The sidebar date counts now mirror the active app or tag filter, and dates with nothing matching hide from the list.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Cross-device radial menu sync.</strong> When two machines edit the shared config out of sync, edits from both sides are now preserved rather than the second save wiping the first. A toast confirms when a merge happens.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li><strong>Click Mouse macro step fires reliably.</strong> It now defaults to Left Click immediately so the step actually does something on first save. Existing macros with an empty value also fire correctly after updating.</li><li><strong>Right-click in Arc browser.</strong> The synthetic click now holds briefly between press and release so context menus open in Arc and other Chromium-based apps.</li><li><strong>Macros no longer freeze on rapid re-fire.</strong> A macro that's still running won't have a second copy of itself race it; subsequent triggers are dropped until the first finishes. Different macros still run concurrently.</li><li><strong>Type Text waits for the last character.</strong> Macro steps that follow Type Text (Open URL, Open App, Click at Position, Focus Window) now wait for the typed text to land before running.</li><li><strong>Overlay popups no longer clip on some 4K and TV setups.</strong> The clipboard popup and quick-search panels shrink gracefully when the visible area is narrower than expected, so rounded corners stay intact.</li><li><strong>Clipboard popup search no longer duplicates characters.</strong> Typing in the popup produces one character per keystroke even under timing races.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.5.2</span>
+            <time class="release-date">14 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Clipboard panel now has a column-layout toggle. Choose 1 column, 2 columns, or auto-flow from the new switcher in the clipboard header. Single-column mode lets long text items expand to show their full content without needing to open the preview pane.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Hold-only key actions and double-press hotkey actions now work in fullscreen games. Keys mapped to a hold or double-press action no longer kill the standard press of that key in titles using DirectInput or Raw Input (FPS games, racing sims), and double-press actions that send a key (for example tap-tap-W to send the equals key for autorun) now reach the game's input system correctly.</li><li>Clipboard popup no longer renders off the bottom of the screen on high-DPI displays. At 225% scaling and above on smaller panels, the popup buttons could be inaccessible. The popup now fits inside the available work area with a safe margin on top and bottom.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.5.1</span>
+            <time class="release-date">13 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>New in-app tip pointing to the right-click profile menu, so users can discover how to link a profile to a specific app and have Trigr auto-switch when that app gains focus.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Clipboard popup, Quick Search, voice overlay and radial menu now position correctly on high-DPI displays. Previously these could land partly off-screen on 4K monitors at non-default scaling (e.g. 200% / 225% / 250%).</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.5.0</span>
+            <time class="release-date">12 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Clipboard encryption at rest.</strong> Your clipboard history (text, images, OCR, search index) is now encrypted with AES-256-GCM. The encryption key is bound to your Windows account via DPAPI, so a copied database file on another machine reads as gibberish. Existing history migrates automatically on first launch, with a 7-day plaintext backup beside the database in case anything goes wrong.</li><li><strong>Hold trigger (Pro).</strong> A third trigger mode alongside single press and double tap. Hold a key past the configurable threshold (default 350ms) to fire its assigned action. Threshold slider in Settings.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Profile switching on hotkey press is now instant. Clicking into an app and firing a hotkey no longer waits for the 1500ms foreground poll to catch up.</li><li>Settings Privacy and Security block now shows clipboard encryption status, the auto-delete date for the upgrade backup, and a Reset clipboard storage option.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Hold-only mappings no longer suppress the underlying key's native behaviour. A tap of F8 still toggles ortho in BricsCAD; only a hold past the threshold fires the Trigr action.</li><li>Holding a hotkey while a launched app steals focus no longer fires the new profile's hold action under the same physical gesture.</li></ul>
+          </div>
+        </article>
+      </div>
+
+      <div class="phase" data-phase="v0.4">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.4 — Hardening &amp; Trust</span>
+          <span class="phase-date">May — Jun 2026 · 21 releases published</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.34</span>
+            <time class="release-date">11 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Extracted image text in the Clipboard Manager now has two copy options. Copy as shown keeps the line breaks from the image, and Copy as paragraphs joins them into flowing text.</li><li>Tip boxes across the app now show the exact hotkey for each feature, covering the radial wheel, Quick Search, text expansions and the Clipboard Manager. Each tip has a close button if you know your way around, and Settings has a Show Feature Tips Again option to bring them back.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>The active tab on header switchers is now a clear gold button with white icons, so it is obvious which view you are in.</li><li>The trigger picker for macros groups each profile under a gold header. Your Default profile is always listed first and the rest follow your sidebar order.</li><li>Empty radial wheel segments are easier to see, glow gold on hover, and stay highlighted while you edit them. Folder segments' gold trim now sits cleanly on the segment edge and grows with the hover effect.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Setting a feature hotkey (radial wheel, Quick Search, pause, clipboard popup) no longer needs the combo pressed twice. The first press registers.</li><li>Copies from apps like Word and the Snipping Tool could occasionally be missed by clipboard history. Trigr now retries when another app is briefly holding the clipboard.</li><li>Copying long extracted text created a clipboard item that appeared cut short until the app reloaded. The full text now shows immediately.</li><li>Duplicating a Wait for Input macro step no longer pushed the Key field onto its own row.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.33</span>
+            <time class="release-date">10 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Alongside its once-a-day housekeeping, Trigr now sends one anonymous usage summary: a count of how many triggers, expansions and macros fired that day, plus the app version. It never includes what you typed, your snippets, or anything that could identify you or your machine. We cannot even tell that two days of counts came from the same person. It simply helps us see which features earn their place during the beta. Prefer not to share even that? One toggle in Settings &gt; Privacy &amp; Security turns it off.</li><li>The privacy policy at usetrigr.com now spells out exactly what is and is not sent.</li><li>Settings tidy-up: the Privacy &amp; Security section now leads with the usage toggle, with the config and log folder shortcuts grouped below it.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.32</span>
+            <time class="release-date">10 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Trigr now uses far less memory when idle. Background windows go to sleep after five minutes of not being used and wake instantly when you open them. In our testing, idle memory use dropped from around 500MB to between 100MB and 200MB.</li><li>Faster startup and a smaller memory footprint. The icon libraries behind the radial menu now load only when they are needed.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Fixed a background watchdog that needlessly restarted Trigr's input monitoring after 30 seconds away from the keyboard.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.31</span>
+            <time class="release-date">10 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Fire any saved text expansion straight from a hotkey.</strong> Pick the new Expansion type under the Text button, then choose a saved trigger. Pressing the key fires that expansion.</li><li><strong>Each action type on a key now has its own display label.</strong> Switching between Text, Hotkey, Macro and so on swaps the label too. Clearing one type leaves the others labels intact.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Clear Action now wipes only the type you are editing, and the cleared state persists across close and reopen.</strong> Drafts of other types on the same key are preserved. The editor stays on the tab you were using.</li><li><strong>Action editor layout is tighter.</strong> App, URL and Folder collapse into a single Open button with sub-pills. Macro Sequence and AHK Script each take a half-row to balance the grid.</li><li><strong>Quick Action editor matches the main action editor.</strong> Open App / URL / Folder collapse into one Open button, the type buttons span the full row, and a separator line divides the type picker from the form below.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.30</span>
+            <time class="release-date">5 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Some games using infinite mouse-look (MMOs, FPS) had camera rotation broken while Trigr was running. Trigr now automatically pauses its mouse listener when a fullscreen or borderless app has focus, and resumes when you switch back to a normal windowed app. Keyboard hotkeys, text expansions and macros continue working as normal. No configuration needed.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.29</span>
+            <time class="release-date">5 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Pasting a clipboard item now ignores repeated Enter presses or clicks that arrive while the first paste is still in progress. Previously, rapid input during a laggy paste could flood your clipboard history with hundreds of alternating entries.</li><li>Copying or pasting an image from clipboard history no longer adds the image to Windows clipboard history (Win+V). Images now stay out of the Windows clipboard the same way text expansions already do.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.28</span>
+            <time class="release-date">5 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Clicking a radial menu segment whose linked action was renamed or deleted now shows a short notice explaining how to re-link it, instead of doing nothing.</li><li>Custom radial menu icons are now stored at icon size. Existing oversized icons are cleaned up automatically, which can shrink your settings file significantly.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Your settings file is no longer rewritten every time you switch between apps. This cuts sync churn for shared setups across multiple machines and makes them safer.</li><li>Fixed a rare case where a hold-style mouse remap could leave its key stuck down after very fast clicking.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.27</span>
+            <time class="release-date">4 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Fixed a serious bug where text expansions could rapidly re-fire in a loop, flooding the clipboard and pasting old clipboard content instead of the expansion text. Expansions now also have a built-in safety brake that stops any runaway firing within a second.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.26</span>
+            <time class="release-date">4 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Text expansions with fill-in fields no longer insert hidden characters around your entries. These invisible characters could break links built from fill-in values and showed up as strange symbols in some apps. Existing expansions are cleaned up automatically, with no action needed.</li><li>The upgrade window now correctly shows Trigr Teams as planned for v1.0.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.25</span>
+            <time class="release-date">4 June 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Removing a variant when only two remain now asks for confirmation before it collapses the expansion back to a single value.</li><li>Shared configurations now back up your radial menu before syncing, protecting the layout from being cleared when you use Trigr across multiple devices.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Fixed expansions and macros adding their inserted text to Windows clipboard history (Win+V) and cloud clipboard. Your clipboard history now stays clean.</li><li>Closing Trigr to the tray now clears the open editor and resumes automatic profile switching. Minimising or switching to another app still keeps your place while you test a shortcut.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.24</span>
+            <time class="release-date">28 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>More control over your clipboard hotkey. Open Settings ? Clipboard and map the popup shortcut to any combo you want (default Ctrl+Shift+V).</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Various small clearing fixes around clipboard and hotkeys.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.23</span>
+            <time class="release-date">27 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Your 14-day Pro trial now starts automatically when you finish setting up Trigr. Every Pro feature is unlocked from the first launch, with no card and no button to press. Trigr returns to Free on its own when the trial ends.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>The trial welcome screen now highlights what Pro unlocks, from app-specific profiles to config that syncs across your machines.</li><li>You can now request a beta key straight from the trial card in Settings, instead of sending an email.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.22</span>
+            <time class="release-date">27 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Text expansions with fill-in fields or variant options now work when you trigger them from Quick Search or the radial menu. Before, they pasted the raw text instead of prompting you.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>The fill-in and variant popup now matches the Quick Search and clipboard popups, with a cleaner shadow and no extra box around it.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.21</span>
+            <time class="release-date">26 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Trigr now checks for updates automatically in the background, so you no longer need to restart the app to stay on the latest version.</li><li>You will get a desktop notification when an update is ready, even if Trigr is minimised to the system tray.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.20</span>
+            <time class="release-date">26 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Macros can now fire your existing triggers and text expansions as steps. Look for the new <code>Existing Trigger</code> group in the macro step dropdown, with options for Trigger and Text Expansion.</li><li>New Shortcut button in the modifier bar clears your current selection so you can start a fresh hotkey in one click.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Repeat hotkey runs at the speed you set. At 100ms it previously fired around 8 times a second instead of 10. That drift is gone.</li><li>Repeat hotkey now registers reliably inside games. Each press is held long enough for game frame-polling to catch it.</li><li>The modifier bar and view tabs trim down gracefully as you narrow the Trigr window. Buttons drop to a second row before anything gets cramped, and tab labels collapse to icons.</li><li>The right-hand editor panel auto-hides below 1200px when no key is selected, giving the keyboard view more room. It returns the moment you click a key.</li><li>Auto-switch to list view kicks in slightly later (900px) so the modifier pills always stay readable on the main row.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Clicking the tray icon now reliably brings the Trigr window to focus. Previously the window would sometimes open but stay in the background.</li><li>Opening Trigr from the tray now restores it from the taskbar if it was minimised.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.19</span>
+            <time class="release-date">26 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>&quot;What's New&quot; button in the title bar.</strong> A new button next to the window controls (look for the megaphone icon) opens a popup with the full history of Trigr updates. Click it any time to see what's changed, plus react or comment on any release. This is the first version where these notes will appear inside the app, so you'll see the last few releases when you open it.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.18</span>
+            <time class="release-date">25 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-what-s-new-in-v0-4-18">What's new in v0.4.18</h5><ul class="re-bullets"><li><strong>Insert dates, times, and clipboard content into macros.</strong> A new &quot;Dynamic Text&quot; step under Type &amp; Keys lets you drop in placeholders for today's date, the current time, or your clipboard contents. Pick the format you want from a dropdown, no need to remember any syntax.</li><li><strong>Type Text steps now read dynamic tokens.</strong> If you've typed something like <code>{date}</code> or <code>{time:HH:MM}</code> inside a Type Text step, it now expands to the real value at runtime instead of being typed literally.</li><li><strong>Run AutoHotkey scripts without editing them first.</strong> Paste any AutoHotkey snippet into a Run AHK Script step and Trigr automatically strips hotkey labels like <code>^!j::</code> so the body runs straight away. No more hand-editing scripts to get them working</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.17</span>
+            <time class="release-date">22 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Date sidebar in the clipboard panel.</strong> Jump straight to Today, Yesterday, This Week, or any prior date instead of scrolling through history. The sidebar updates live as you copy new items.</li><li><strong>Image lightbox.</strong> Click any clipboard image to view it full-size in a centred overlay. Click anywhere to close.</li><li><strong>Settings sections collapse and expand.</strong> Each settings section is now an accordion you can fold up to focus on what you care about. Section order is also tidier.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Clipboard search and filters happen at the database level.</strong> Date, app, tag, and text filters now scan your entire clipboard history rather than only the rows currently loaded on screen. Much faster and more complete for power users with thousands of entries.</li><li><strong>Pro gating consistency pass.</strong> Several Pro features (double-press hotkeys, search template packs beyond 5, expansion variants, image expansions, custom clipboard retention) now correctly prompt for upgrade rather than silently failing or resetting on app restart.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.16</span>
+            <time class="release-date">21 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Request a beta key from inside the app.</strong> The Request Beta Key button in the upgrade screen now opens a native form right inside Trigr. Enter your email, hit submit, and the request lands straight in our inbox. No more opening your email client or copying the address by hand.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.15</span>
+            <time class="release-date">21 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Pop-up menus no longer get cut off at the bottom of the screen.</strong> Menus like the macro step picker, the radial editor right-click menu, and the window picker now flip upward when they would otherwise overflow the viewport.</li><li><strong>Submenus shift left when they would overflow the right edge.</strong> Previously some side menus could disappear off-screen on smaller windows or when the app was docked to the right side. They now reposition themselves to stay visible.</li><li><strong>Polish across macros, clipboard, settings, templates, sidebar, expansions, and the title bar.</strong> Many small layout, spacing, and interaction tweaks that add up to a calmer, more consistent feel throughout the app.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.4.14</span>
+            <time class="release-date">21 May 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Auto-switch profile is smarter about editing.</strong> Trigr now suppresses profile auto-switching only when you're actively editing inside the app, not just whenever the main window is open in the background. Less surprise switching, more accurate when you do want it.</li><li><strong>Clipboard privacy controls.</strong> New master toggle to pause clipboard capture entirely, plus an exclusion list so password managers, terminals, or any app you name will never have its clipboard contents stored.</li><li><strong>Remappable clipboard paste hotkey.</strong> The shortcut that opens the clipboard popup is now changeable in Settings instead of locked to Ctrl+Shift+V.</li><li><strong>Pro trial grace period.</strong> If your Pro trial expires while you're using a shared config, Trigr keeps things working for 7 days while it migrates you back to local settings, with a banner so you know what's happening.</li><li><strong>Settings copy clarified.</strong> Cleaner labels and descriptions across every section. Tighter, less repetitive, easier to scan.</li></ul>
+          </div>
+        </article>
+      </div>
+
+      <div class="phase" data-phase="v0.3">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.3 — Radial Menu</span>
+          <span class="phase-date">May 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <p class="release-empty">No detailed changelog published for this phase. Older releases pre-date the Featurebase changelog. See the public GitHub release notes for raw commit-level history.</p>
+      </div>
+
+      <div class="phase" data-phase="v0.2">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.2 — Quick Search Overlay</span>
+          <span class="phase-date">Apr 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <p class="release-empty">No detailed changelog published for this phase. Older releases pre-date the Featurebase changelog. See the public GitHub release notes for raw commit-level history.</p>
+      </div>
+
+      <div class="phase" data-phase="v0.1">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">v0.1 — The Foundation</span>
+          <span class="phase-date">Apr 2026</span>
+          <span class="phase-tag tag-shipped">Shipped</span>
+        </div>
+        <p class="release-empty">No detailed changelog published for this phase. Older releases pre-date the Featurebase changelog. See the public GitHub release notes for raw commit-level history.</p>
+      </div>
+
       <div class="phase" data-phase="v0">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
@@ -647,328 +985,10 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <span class="phase-date">Feb — Mar 2026</span>
           <span class="phase-tag tag-shipped">Shipped</span>
         </div>
-        <div class="feature-grid">
-          <div class="feature feature-hero" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Visual Keyboard UI <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Click any key to assign an action. Full keyboard, modifier bar, arrow keys, numpad, and all 7 mouse buttons. No scripting, no config files. The core idea that started Keyfire.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">7 Action Types + Macro Sequences <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Type Text, Send Hotkey (hold/repeat modes), Macro Sequence, Open App/URL/Folder, Focus Window. Chain steps with drag-drop reorder, repeat counters, and Wait for Input.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Text Expansions <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Trigger word + Space fires replacement text anywhere. Fill-in fields, global variables, image expansions, categories with colour-coding and drag-reorder.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">AHK Script Runner <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Paste any AutoHotkey script body as a macro step or standalone action. Bundles AHK — no installation needed. v1 and v2 syntax.</div>
-            </div>
-          </div>
-        </div>
+        <p class="release-empty">No detailed changelog published for this phase. Older releases pre-date the Featurebase changelog. See the public GitHub release notes for raw commit-level history.</p>
       </div>
-
-      <!-- v0.1 -->
-      <div class="phase" data-phase="v0.1">
-        <div class="phase-dot shipped"></div>
-        <div class="phase-header">
-          <span class="phase-name">v0.1 — The Foundation</span>
-          <span class="phase-date">46 releases · Apr 2026</span>
-          <span class="phase-tag tag-shipped">Shipped</span>
+      <!-- WHATS-NEW:END -->
         </div>
-        <div class="feature-grid">
-          <div class="feature feature-hero" data-tier="free pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Clipboard Manager <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">History, search, pin, edit, auto-tagging (Text/Link/Email/Colour/Number/Image), source app capture, Ctrl+Shift+V quick-paste overlay, scratchpad. Free: 7-day retention. Pro: 30-day retention, source tagging.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">App-Specific Profiles <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Free: up to 3 global profiles. Pro: unlimited profiles, app auto-switching via foreground watcher. Profile export/import, right-click link/unlink, drag-drop reorder.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="6"/><line x1="12" y1="6" x2="12" y2="10"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Mouse Button Remapping <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">All 7 buttons assignable in app-linked profiles. Hold/release mirroring, modifier passthrough, bare key support, double-press detection.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Onboarding + Infrastructure</div>
-              <div class="feature-desc">5-step onboarding tour, starter template packs, list view toggle, macro speed presets, shared config sync via Dropbox/OneDrive, automatic rolling backups.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- v0.2 -->
-      <div class="phase" data-phase="v0.2">
-        <div class="phase-dot shipped"></div>
-        <div class="phase-header">
-          <span class="phase-name">v0.2 — Quick Search Overlay</span>
-          <span class="phase-date">5 releases · Apr 27 — 30</span>
-          <span class="phase-tag tag-shipped">Shipped</span>
-        </div>
-        <div class="feature-grid">
-          <div class="feature feature-hero" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Quick Search Overlay <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Ctrl+Space from anywhere. Instantly search all assignments, expansions (including body text), and search templates. Fire ChatGPT, Perplexity, Google queries with trigger+Space. User categories with colours and drag-reorder.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Analytics Dashboard <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Period summaries (Today/7/14/30 days), activity chart + heatmap, streak tracking, three-column leaderboards, ROI calculator, expansion efficiency ratio. All local.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">UI Overhaul</div>
-              <div class="feature-desc">Keyboard layout rebuilt with arrow keys and nav cluster. Macro panel widened to 450px with inline inputs. Clipboard overlay redesigned. Consistent edit panels across all views.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Smart Case + Sorting</div>
-              <div class="feature-desc">Smart case matching — type "Brb" to get "Be right back", "BRB" for "BE RIGHT BACK". Sortable columns in expansion and assignment lists.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M7 10l5-5 5 5M7 14l5 5 5-5"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Double-Press Hotkeys <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Assign separate actions to single press and double press of the same key. Configurable detection timer (150-500ms). Works for both keyboard and mouse buttons.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Hold Mode + Repeat Mode <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Hold mode: first press holds, second press releases. Repeat mode: first press starts auto-firing at a configurable interval, second press stops. Works for keyboard and mouse targets.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Starter Templates <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Three ready-made packs: General/Office, CAD/Engineering, Sales/BD. One-click import with app-specific profile creation for CAD workflows.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- v0.3 -->
-      <div class="phase" data-phase="v0.3">
-        <div class="phase-dot shipped"></div>
-        <div class="phase-header">
-          <span class="phase-name">v0.3 — Radial Menu</span>
-          <span class="phase-date">10 releases · May 1 — 5</span>
-          <span class="phase-tag tag-shipped">Shipped</span>
-        </div>
-        <div class="feature-grid">
-          <div class="feature feature-hero" data-tier="pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Radial Menu <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Hotkey-triggered SVG wheel at cursor position. 8 segments per ring, folder nesting, per-profile configuration, 1500+ Lucide icons, Simple Icons, custom images, drag-drop reorder. Originally planned for v1.2 — shipped 6 months ahead of schedule.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="exp">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Voice Triggers <span class="feature-pill pill-exp">Experimental</span></div>
-              <div class="feature-desc">Say a phrase, fire an action. WinRT speech recognition with grammar-constrained matching. 100% offline — audio never leaves your device. Per-action voice phrases, mic test with live level meter.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Image Expansions <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Paste PNG or JPEG images via trigger word. Scalable (10-100%), clipboard paste with CF_DIB + PNG stream for compatibility across Office, browsers, and design tools.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Dynamic Tokens <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Date/time tokens with date math ({date:+7d}), clipboard transforms ({clipboard:uppercase}, {clipboard:trim}), cursor placement. Expansions that adapt to context.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Profile Export/Import <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Right-click any profile to export as .json. Share with colleagues or move between machines. Import with copy/overwrite collision handling.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Config Sync <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Point Keyfire at a Dropbox or OneDrive folder. Config syncs across machines automatically with file watching, conflict detection, and self-write suppression.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- v0.4 -->
-      <div class="phase" data-phase="v0.4">
-        <div class="phase-dot shipped"></div>
-        <div class="phase-header">
-          <span class="phase-name">v0.4 — Hardening &amp; Trust</span>
-          <span class="phase-date">35 releases · May — Jun 2026</span>
-          <span class="phase-tag tag-shipped">Shipped</span>
-        </div>
-        <div class="feature-grid">
-          <div class="feature feature-hero" data-tier="free pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Microsoft Code Signing</div>
-              <div class="feature-desc">Microsoft Azure Trusted Signing on every installer. SmartScreen-clean installs out of the box, no more "unknown publisher" warnings.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Offline Beta Keys <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Ed25519 offline beta keys, manually issued on email request. 30-day expiry, fully local verification. No accounts, no phone-home.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Anonymous Daily Telemetry <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Once-daily anonymous usage summary, opt-out in Settings. No IDs, no IPs, no third-party SDKs. Per-day action counts only, no persistent install ID by design.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M3 8h18M3 14h18M3 20h18"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Clipboard Stability + OCR <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Re-entrancy guards on paste and copy operations. OCR-from-image clipboard modes (as shown, as paragraphs). Full text emitted on every new clipboard event.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Game-Friendly Hooks <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">LL mouse hook auto-pauses while a fullscreen or borderless app has focus, eliminating input lag in games. WebView2 windows suspend after 5 min idle for a lower RAM footprint when minimised to tray.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M2 12l5 5L20 4"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Macro Polish: Wait for Input <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Wait-for-Input macro trigger pauses execution until you press a key. Condensed type selector. App, URL, and Folder merged into a single Open step. Per-type macro labels.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- v0.5 -->
-      <div class="phase" data-phase="v0.5">
-        <div class="phase-dot shipped"></div>
-        <div class="phase-header">
-          <span class="phase-name">v0.5 — Encryption &amp; Game Compatibility</span>
-          <span class="phase-date">3 releases · Jun 2026</span>
-          <span class="phase-tag tag-shipped">Shipped</span>
-        </div>
-        <div class="feature-grid">
-          <div class="feature feature-hero" data-tier="free pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Clipboard Encryption at Rest <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">AES-256-GCM encryption on the clipboard history database, with a DPAPI-wrapped master key tied to your Windows user. Legacy plaintext rows migrated automatically. Search still works, decryption happens in memory.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Scancode Injection for Games <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Every synthetic keystroke now uses scancode-mode SendInput. DirectInput and Raw Input games (FPS engines, fighting games, BricsCAD) finally see Keyfire's keypresses where VK-only injection was silently invisible.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Hold Trigger Mode <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Third trigger mode alongside single press and double press. Fires a separate action when you hold a key past a configurable threshold. Race-condition fixes for overlapping triggers.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Quality of Life <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Clipboard column toggle. Overlay HiDPI positioning fix at non-default display scaling. Popup height clamp on long lists. Profile-link discoverability tip. Live diagnostics for mouse, keyboard, and outside-click events.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- v0.6 -->
-      <div class="phase" data-phase="v0.6">
-        <div class="phase-dot shipped"></div>
-        <div class="phase-header">
-          <span class="phase-name">v0.6 — Macro Recorder &amp; Polish</span>
-          <span class="phase-date">Jun 2026</span>
-          <span class="phase-tag tag-shipped">Shipped</span>
-        </div>
-        <div class="feature-grid">
-          <div class="feature feature-hero" data-tier="free pro">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Macro Recorder — Phase 1 <span class="feature-pill pill-free">Free</span> <span class="feature-pill pill-pro">Pro</span></div>
-              <div class="feature-desc">Hit record, do the thing, play it back. Captures keystrokes, mouse clicks and movement, modifier state, and the timing between every event. Saved as a fully editable macro you can re-bind to any trigger.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Radial Menu Refresh <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Wedges now read as raised against the desktop with a dedicated idle surface variable. Hover gradient keeps its gold treatment in both themes. Light theme gets a clean white wedge base.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Esc = Global Macro Cancel <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Press Esc to bail out of any running macro — loops, one-shots, and recorded replays. Chunked sleep polling honours the cancel within 100ms, even on long Wait steps.</div>
-            </div>
-          </div>
-          <div class="feature" data-tier="free">
-            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4z"/></svg></span>
-            <div class="feature-body">
-              <div class="feature-name">Replay Without Suppression <span class="feature-pill pill-free">Free</span></div>
-              <div class="feature-desc">Recorded macros replay through the low-level hook so other Trigr features still fire during playback. Trailing modifier keys are trimmed on stop so Ctrl/Shift never stick.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
       </div><!-- /.shipped-text -->
 
       <div class="shipped-visual">
