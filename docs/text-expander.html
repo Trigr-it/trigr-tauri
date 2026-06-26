@@ -831,6 +831,24 @@ footer .ft-sep { margin:0 8px; color:var(--text-dim); }
   .hero-inner > .mockup-3d .mockup-prof-toast { left: 50% !important; transform: translateX(-50%) translateY(-8px) !important; }
   .hero-inner > .mockup-3d .mockup-prof-toast.show { transform: translateX(-50%) translateY(0) !important; }
 }
+
+/* ════════════════════════════════════════════════════════════
+   FULL-BLEED BOTTOM CTA — overrides any earlier .cta-card box
+   styling on this page. Source-order trumps: rules below win.
+   Matches the pattern shipped on docs/index.html so every page
+   ends with the same full-width gradient banner instead of the
+   older bordered card. Targets BOTH <section class="cta-section">
+   (newer pages) AND <section class="cta"> (pricing legacy).
+   ════════════════════════════════════════════════════════════ */
+.cta-section, section.cta { position:relative; padding:clamp(80px,10vw,140px) clamp(24px,5vw,48px); margin:0; border-top:1px solid var(--hairline-gold); border-bottom:none; background:linear-gradient(180deg, transparent 0%, rgba(232,160,32,0.05) 35%, rgba(13,17,32,0.55) 100%); overflow:hidden; text-align:center; }
+[data-theme="light"] .cta-section, [data-theme="light"] section.cta { background:linear-gradient(180deg, transparent 0%, rgba(232,160,32,0.06) 35%, rgba(255,250,240,0.75) 100%); }
+.cta-section::before, section.cta::before { content:''; position:absolute; inset:0; background-image:linear-gradient(rgba(232,160,32,0.06) 1px,transparent 1px); background-size:100% 64px; mask-image:linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%); -webkit-mask-image:linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%); pointer-events:none; opacity:0.45; }
+[data-theme="light"] .cta-section::before, [data-theme="light"] section.cta::before { background-image:linear-gradient(rgba(26,26,46,0.06) 1px,transparent 1px); opacity:0.35; }
+.cta-section::after, section.cta::after { content:''; position:absolute; bottom:-220px; left:50%; transform:translateX(-50%); width:1100px; height:560px; background:radial-gradient(ellipse at center,rgba(232,160,32,0.18) 0%,rgba(232,160,32,0.04) 40%,transparent 70%); pointer-events:none; }
+[data-theme="light"] .cta-section::after, [data-theme="light"] section.cta::after { background:radial-gradient(ellipse at center,rgba(232,160,32,0.12) 0%,rgba(232,160,32,0.02) 40%,transparent 70%); }
+.cta-section .cta-card, section.cta .cta-card { max-width:760px; margin:0 auto; padding:0; border:0; background:none; border-radius:0; box-shadow:none; position:relative; z-index:1; }
+.cta-section .cta-card::before, section.cta .cta-card::before { display:none; }
+@media(max-width:768px) { .cta-section, section.cta { padding:72px 18px; } }
 </style>
 </head>
 <body>
