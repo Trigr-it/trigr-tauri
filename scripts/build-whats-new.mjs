@@ -34,7 +34,7 @@ const repoRoot = join(__dirname, '..');
 
 const MAJOR_PHASES = [
   { key: 'v0.6', name: 'v0.6 — Macro Recorder & Polish',         date: 'Jun 2026' },
-  { key: 'v0.5', name: 'v0.5 — Encryption & Game Compatibility', date: 'Jun 2026' },
+  { key: 'v0.5', name: 'v0.5 — Encryption', date: 'Jun 2026' },
   { key: 'v0.4', name: 'v0.4 — Hardening & Trust',               date: 'May — Jun 2026' },
   { key: 'v0.3', name: 'v0.3 — Radial Menu',                     date: 'May 2026' },
   { key: 'v0.2', name: 'v0.2 — Quick Search Overlay',            date: 'Apr 2026' },
@@ -197,7 +197,6 @@ ${mdToCategoryBlocks(e.markdownContent || e.content || '').split('\n').map(l => 
             <span class="phase-version">${htmlEscape(versionLabel)}</span>${subtitleLabel ? `<span class="phase-subtitle">${htmlEscape(subtitleLabel)}</span>` : ''}
           </span>
           <span class="phase-date">${htmlEscape(phase.date)}${releaseCountSuffix}</span>
-          <span class="phase-tag tag-shipped">Shipped</span>
         </div>
 ${releaseHtml}${emptyNote}
       </div>`;
