@@ -279,10 +279,8 @@ nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:0 32px; heigh
 .btn-primary:hover { background:linear-gradient(180deg,#ffbb44,var(--gold-light)); transform:translateY(-1px); box-shadow:0 6px 26px rgba(232,160,32,0.5), inset 0 1px 0 rgba(255,255,255,0.22); }
 [data-theme="light"] .btn-primary { color:#fff; }
 .hero-actions { display:inline-flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.btn-whats-new { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:9px; font-size:13px; font-weight:600; color:var(--text); background:rgba(232,160,32,0.06); border:1px solid var(--hairline-gold); text-decoration:none; letter-spacing:0.01em; transition:background 0.2s, border-color 0.2s, transform 0.15s; }
+.btn-whats-new { display:inline-flex; align-items:center; padding:11px 18px; border-radius:9px; font-size:13px; font-weight:600; color:var(--text); background:rgba(232,160,32,0.06); border:1px solid var(--hairline-gold); text-decoration:none; letter-spacing:0.01em; transition:background 0.2s, border-color 0.2s, transform 0.15s; }
 .btn-whats-new:hover { background:var(--gold-glow); border-color:rgba(232,160,32,0.4); transform:translateY(-1px); }
-.btn-whats-new-pulse { width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 0 rgba(232,160,32,0.55); animation:btnWNPulse 2s infinite; flex-shrink:0; }
-@keyframes btnWNPulse { 0%{box-shadow:0 0 0 0 rgba(232,160,32,0.55);} 70%{box-shadow:0 0 0 6px rgba(232,160,32,0);} 100%{box-shadow:0 0 0 0 rgba(232,160,32,0);} }
 .hero-meta { margin-top:24px; font-size:12px; color:var(--text-dim); animation:fadeInUp 0.7s 0.4s ease both; letter-spacing:0.02em; }
 .hero-meta span { color:var(--text-muted); }
 @keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
@@ -1712,10 +1710,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
         Download for Windows
       </a>
-      <a href="/roadmap.html" class="btn-whats-new" data-loc="hero_whatsnew">
-        <span class="btn-whats-new-pulse"></span>
-        What's New
-      </a>
+      <a href="/roadmap.html" class="btn-whats-new" data-loc="hero_whatsnew">What's New</a>
     </div>
     <p class="hero-arm-link">On a Windows ARM device? <a href="https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_arm64-setup.exe" data-loc="hero_arm64" data-arch="arm64">Download the ARM64 build</a>.</p>
     </div>
