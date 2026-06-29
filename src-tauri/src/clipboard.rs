@@ -1891,7 +1891,12 @@ fn handle_delete_item(conn: &Connection, id: i64) -> bool {
 }
 
 fn handle_clear_all(conn: &Connection) -> bool {
-    if let Err(e) = conn.execute("DELETE FROM clipboard_history", []) {
+    // Preserve pinned + starred tiers. Users opt items into a tier expecting them
+    // to survive a Clear All; only ephemeral history should go.
+    if let Err(e) = conn.execute(
+        "DELETE FROM clipboard_history WHERE pinned = 0 AND starred = 0",
+        [],
+    ) {
         error!("[Keyfire] Failed to clear clipboard history: {}", e);
         return false;
     }

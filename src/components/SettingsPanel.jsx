@@ -1538,7 +1538,7 @@ export default function SettingsPanel({
             type="button"
             className="settings-action-btn"
             onClick={async () => {
-              if (window.confirm('Clear all clipboard history? This cannot be undone.')) {
+              if (window.confirm('Clear clipboard history? Pinned and starred items will be kept. This cannot be undone.')) {
                 const ok = await window.electronAPI?.clearClipboardHistory();
                 if (!ok) {
                   window.alert('Failed to clear clipboard history. Check the log for details.');

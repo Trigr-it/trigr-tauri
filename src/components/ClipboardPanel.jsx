@@ -669,9 +669,14 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
   const handleClearAll = async () => {
     const ok = await window.electronAPI?.clearClipboardHistory();
     if (ok) {
-      setItems([]); setTotal(0); setSelectedId(null);
-      setDateBuckets({ dates: [], pinned_count: 0, starred_count: 0 });
+      // Pinned + starred items survive the clear, so reload from the backend
+      // rather than zeroing local state (which would lie about what's left).
+      setSelectedId(null);
       setSelectedDate('all');
+      const next = { date: 'all', app: filterApp, tag: filterTag, search };
+      filtersRef.current = next;
+      loadHistory(1, false, next);
+      loadDateBuckets(next);
       // Refresh storage size so the toolbar reflects post-VACUUM file size,
       // not the stale value cached when the panel mounted.
       const size = await window.electronAPI?.getClipboardStorageSize?.();
