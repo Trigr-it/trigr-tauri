@@ -698,6 +698,11 @@ pub(crate) struct EngineState {
     pub(crate) temp_macro_record_hotkey_str: Option<String>,
     pub(crate) temp_macro_play_hotkey: Option<(u8, u32)>,
     pub(crate) temp_macro_play_hotkey_str: Option<String>,
+    // Continuous-replay loop hotkey — press once to start, press again to
+    // stop. Esc also stops via the global ESC_LOOP_BREAK gate per
+    // [[feedback_esc_global_macro_cancel]]. None when unset/disabled.
+    pub(crate) temp_macro_loop_hotkey: Option<(u8, u32)>,
+    pub(crate) temp_macro_loop_hotkey_str: Option<String>,
     // Cached temp macro events + capture timestamp. Persisted to config so
     // the slot survives restart. Play hotkey reads directly from here without
     // a disk round-trip. Cleared via Settings → Quick Record → Clear.
@@ -745,6 +750,8 @@ impl Default for EngineState {
             temp_macro_record_hotkey_str: None,
             temp_macro_play_hotkey: None,
             temp_macro_play_hotkey_str: None,
+            temp_macro_loop_hotkey: None,
+            temp_macro_loop_hotkey_str: None,
             temp_macro_events: None,
             temp_macro_captured_at: None,
             default_date_format: "DD/MM/YYYY".to_string(),
@@ -772,6 +779,12 @@ enum HookEvent {
     // Quick Record: user pressed the play hotkey. Processor checks the engine's
     // cached temp_macro_events; if non-empty, spawns a replay thread.
     TempMacroPlayRequested,
+    // Quick Record: user pressed the loop hotkey. Processor toggles
+    // recorder::TEMP_MACRO_LOOP_ACTIVE — if false, spawns a thread running
+    // replay_recorded_events_loop until the flag flips or Esc fires. If true,
+    // sets the flag to false; the in-flight thread observes at its next
+    // checkpoint and exits.
+    TempMacroLoopRequested,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1363,6 +1376,10 @@ unsafe extern "system" fn keyboard_hook_proc(
                         send_event(HookEvent::TempMacroPlayRequested);
                         return 1;
                     }
+                    if crate::recorder::matches_loop_hotkey(kb.vkCode, bits) {
+                        send_event(HookEvent::TempMacroLoopRequested);
+                        return 1;
+                    }
                 }
             }
         }
@@ -1669,6 +1686,14 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     continue;
                 }
                 if matches!(event, HookEvent::TempMacroRecordRequested) {
+                    // Ignore record press while the Loop is running — user
+                    // must stop the loop first (Loop hotkey again or Esc).
+                    // Otherwise the new recording's user input would arrive
+                    // mid-replay, mixing the two streams.
+                    if crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst) {
+                        log::info!("[RECORDER] Quick Record press ignored — Quick Loop is running");
+                        continue;
+                    }
                     crate::recorder::TEMP_RECORDING_ACTIVE.store(true, Ordering::SeqCst);
                     // show_recorder_bar shows the bottom-centre recording bar
                     // AND calls recorder::start internally — reuse the same
@@ -1681,6 +1706,13 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     continue;
                 }
                 if matches!(event, HookEvent::TempMacroPlayRequested) {
+                    // While the Loop is running, ignore single-Play presses —
+                    // user must stop the loop first (Loop hotkey again or Esc).
+                    // Avoids double-replay collisions on the same input queue.
+                    if crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst) {
+                        log::info!("[RECORDER] Quick Replay press ignored — Quick Loop is running");
+                        continue;
+                    }
                     let snapshot: Option<(Vec<crate::recorder::RecordedEvent>, String)> = engine_state()
                         .lock()
                         .ok()
@@ -1711,6 +1743,47 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                         None => {
                             let _ = app.emit("temp-macro-replay-empty", serde_json::json!({}));
                             log::info!("[RECORDER] Quick Replay: no temp macro saved");
+                        }
+                    }
+                    continue;
+                }
+                if matches!(event, HookEvent::TempMacroLoopRequested) {
+                    // Toggle behaviour: if the loop is already running, the
+                    // press is a stop request — flip the flag and the
+                    // in-flight thread observes at its next checkpoint.
+                    if crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst) {
+                        crate::recorder::TEMP_MACRO_LOOP_ACTIVE.store(false, Ordering::SeqCst);
+                        let _ = app.emit("temp-macro-loop-stopped", serde_json::json!({}));
+                        log::info!("[RECORDER] Quick Loop: stop requested via hotkey");
+                        continue;
+                    }
+                    let snapshot: Option<(Vec<crate::recorder::RecordedEvent>, String)> = engine_state()
+                        .lock()
+                        .ok()
+                        .and_then(|s| {
+                            match (&s.temp_macro_events, &s.temp_macro_captured_at) {
+                                (Some(ev), Some(ts)) if !ev.is_empty() => Some((ev.clone(), ts.clone())),
+                                _ => None,
+                            }
+                        });
+                    match snapshot {
+                        Some((events, captured_at)) => {
+                            // Same stale-Esc reset as Quick Replay — the loop
+                            // thread reads ESC_LOOP_BREAK on every checkpoint
+                            // so a leftover true would terminate the loop
+                            // before its first iteration completes.
+                            crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+                            let _ = app.emit(
+                                "temp-macro-loop-started",
+                                serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
+                            );
+                            std::thread::spawn(move || {
+                                crate::actions::replay_recorded_events_loop(&events, "Quick Loop");
+                            });
+                        }
+                        None => {
+                            let _ = app.emit("temp-macro-replay-empty", serde_json::json!({}));
+                            log::info!("[RECORDER] Quick Loop: no temp macro saved");
                         }
                     }
                     continue;
@@ -1794,6 +1867,7 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     HookEvent::RecorderStopRequested => {}
                     HookEvent::TempMacroRecordRequested => {}
                     HookEvent::TempMacroPlayRequested => {}
+                    HookEvent::TempMacroLoopRequested => {}
                 }
             }
             info!("[Keyfire] Event processor stopped");
@@ -3872,6 +3946,30 @@ pub fn set_temp_macro_play_hotkey(combo: &str) {
             state.temp_macro_play_hotkey_str = None;
             crate::recorder::TEMP_MACRO_PLAY_VK.store(0, Ordering::SeqCst);
             log::info!("[HOOK] Temp macro play hotkey cleared");
+        }
+    }
+}
+
+/// Continuous-replay loop hotkey for the Quick Record temp macro. Pass an
+/// empty combo to clear (loop disabled). Identical setter pattern to the
+/// Record + Play hotkeys, with the dedicated TEMP_MACRO_LOOP_* atomics so
+/// the LL hook can match without acquiring engine_state.
+pub fn set_temp_macro_loop_hotkey(combo: &str) {
+    let parsed = parse_hotkey_combo(combo);
+    let mut state = engine_state().lock().unwrap();
+    match parsed {
+        Some((bits, vk)) => {
+            state.temp_macro_loop_hotkey = Some((bits, vk));
+            state.temp_macro_loop_hotkey_str = Some(combo.to_string());
+            crate::recorder::TEMP_MACRO_LOOP_BITS.store(bits, Ordering::SeqCst);
+            crate::recorder::TEMP_MACRO_LOOP_VK.store(vk, Ordering::SeqCst);
+            log::info!("[HOOK] Temp macro loop hotkey set: {} → bits={} vk=0x{:02X}", combo, bits, vk);
+        }
+        None => {
+            state.temp_macro_loop_hotkey = None;
+            state.temp_macro_loop_hotkey_str = None;
+            crate::recorder::TEMP_MACRO_LOOP_VK.store(0, Ordering::SeqCst);
+            log::info!("[HOOK] Temp macro loop hotkey cleared");
         }
     }
 }

@@ -14,9 +14,10 @@ use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, 
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
     KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE,
-    MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
-    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
-    MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, VIRTUAL_KEY,
+    MOUSEINPUT, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN,
+    MOUSEEVENTF_XUP, VIRTUAL_KEY,
 };
 use windows_sys::Win32::Foundation::CloseHandle as CloseHandleWin;
 use windows_sys::Win32::System::Threading::{
@@ -24,8 +25,9 @@ use windows_sys::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
-    SetForegroundWindow,
+    BringWindowToTop, EnumWindows, GetSystemMetrics, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindowVisible, SetForegroundWindow, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
 };
 
 /// Future clipboard manager checks this flag and skips logging if set.
@@ -1928,6 +1930,53 @@ fn replay_mouse_button(button: &str, is_down: bool) {
     unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
 }
 
+/// Replay a mouse cursor move during macro playback. Crucially uses SendInput
+/// with MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK so
+/// the OS generates real WM_MOUSEMOVE messages to whatever window the cursor
+/// is over. SetCursorPos alone would teleport the pointer but emit no move
+/// messages, so apps that detect drags by tracking WM_MOUSEMOVE between
+/// LBUTTONDOWN and LBUTTONUP (Excel image drag, Explorer drag-drop, Paint
+/// strokes, lasso-select etc.) see a click-in-place instead of a drag.
+///
+/// Coords are absolute virtual-desktop pixels (multi-monitor aware). We
+/// normalise to the 0..=65535 range Windows expects for absolute mouse
+/// SendInput, mapped over the virtual screen rect from GetSystemMetrics.
+fn replay_mouse_move(x: i32, y: i32) {
+    let (vsx, vsy, vsw, vsh) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    };
+    // Guard against pathological zero sizes — fall back to SetCursorPos so the
+    // replay still advances visually rather than dividing by zero. Realistic
+    // monitors always return non-zero metrics; this is a defensive belt.
+    if vsw <= 1 || vsh <= 1 {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y);
+        }
+        return;
+    }
+    let nx = (((x - vsx) as i64 * 65535) / (vsw - 1) as i64) as i32;
+    let ny = (((y - vsy) as i64 * 65535) / (vsh - 1) as i64) as i32;
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: nx,
+                dy: ny,
+                mouseData: 0,
+                dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
+}
+
 fn replay_wheel(delta: i32) {
     let input = INPUT {
         r#type: INPUT_MOUSE,
@@ -2457,26 +2506,27 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
                 send_vk_key(*vk as u16, true);
             }
             crate::recorder::RecordedEvent::MouseDown { button, x, y, .. } => {
-                unsafe {
-                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                }
+                // Real WM_MOUSEMOVE first so apps see the cursor arrive at
+                // the click target, then the button-down. SendInput preserves
+                // event ordering so this is a clean move-then-down sequence.
+                replay_mouse_move(*x, *y);
                 replay_mouse_button(button, true);
             }
             crate::recorder::RecordedEvent::MouseUp { button, x, y, .. } => {
-                unsafe {
-                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                }
+                // Ensure cursor is at the release point (via a real move
+                // message) before the button-up fires, so the OS reports the
+                // up coords consistently with what the recording captured.
+                replay_mouse_move(*x, *y);
                 replay_mouse_button(button, false);
             }
             crate::recorder::RecordedEvent::MouseMove { x, y, .. } => {
-                unsafe {
-                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                }
+                // SendInput-with-MOVE — NOT SetCursorPos alone — so apps under
+                // the cursor receive WM_MOUSEMOVE messages and detect drags
+                // between LBUTTONDOWN and LBUTTONUP. See replay_mouse_move().
+                replay_mouse_move(*x, *y);
             }
             crate::recorder::RecordedEvent::Wheel { delta, x, y, .. } => {
-                unsafe {
-                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(*x, *y);
-                }
+                replay_mouse_move(*x, *y);
                 replay_wheel(*delta);
             }
         }
@@ -2497,6 +2547,40 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
         send_vk_key(vk, true);
     }
     info!("[Keyfire] {}: complete", label);
+}
+
+/// Continuous-replay wrapper for the Quick Record temp macro. Runs
+/// `replay_recorded_events` in a loop until the user presses the configured
+/// Loop hotkey again, presses Esc (via the global ESC_LOOP_BREAK gate
+/// per [[feedback_esc_global_macro_cancel]]), or disables macros entirely.
+///
+/// Inter-iteration pause polled in 100ms chunks per
+/// [[feedback_polled_sleep_for_cancel]] so a stop signal mid-pause is honoured
+/// without waiting the full 500ms.
+pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], label: &str) {
+    crate::recorder::TEMP_MACRO_LOOP_ACTIVE.store(true, Ordering::SeqCst);
+    info!("[Keyfire] {}: loop started", label);
+    let mut iter: u64 = 0;
+    while crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst)
+        && !ESC_LOOP_BREAK.load(Ordering::SeqCst)
+        && crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+    {
+        iter += 1;
+        let iter_label = format!("{} (loop iter {})", label, iter);
+        replay_recorded_events(events, &iter_label);
+        // 500ms breathing room between iterations, polled cancellable.
+        for _ in 0..5 {
+            if !crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst)
+                || ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+    crate::recorder::TEMP_MACRO_LOOP_ACTIVE.store(false, Ordering::SeqCst);
+    info!("[Keyfire] {}: loop stopped after {} iter(s)", label, iter);
 }
 
 // ── Wait for Input step ─────────────────────────────────────────────────────

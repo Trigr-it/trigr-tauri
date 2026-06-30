@@ -284,6 +284,8 @@ window.electronAPI = {
   clearTempMacroRecordHotkey: ()      => invoke('clear_temp_macro_record_hotkey'),
   setTempMacroPlayHotkey: (combo)     => invoke('set_temp_macro_play_hotkey', { combo }),
   clearTempMacroPlayHotkey: ()        => invoke('clear_temp_macro_play_hotkey'),
+  setTempMacroLoopHotkey: (combo)     => invoke('set_temp_macro_loop_hotkey', { combo }),
+  clearTempMacroLoopHotkey: ()        => invoke('clear_temp_macro_loop_hotkey'),
   getTempMacroStatus:     ()          => invoke('get_temp_macro_status'),
   clearTempMacro:         ()          => invoke('clear_temp_macro'),
 

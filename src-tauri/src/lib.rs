@@ -1334,15 +1334,31 @@ fn clear_temp_macro_play_hotkey() {
 }
 
 #[tauri::command]
+fn set_temp_macro_loop_hotkey(combo: String) -> Value {
+    hotkeys::set_temp_macro_loop_hotkey(&combo);
+    persist_temp_macro_hotkeys();
+    serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+fn clear_temp_macro_loop_hotkey() {
+    hotkeys::set_temp_macro_loop_hotkey("");
+    persist_temp_macro_hotkeys();
+}
+
+#[tauri::command]
 fn get_temp_macro_status() -> Value {
     if let Ok(state) = hotkeys::engine_state().lock() {
         let event_count = state.temp_macro_events.as_ref().map(|v| v.len()).unwrap_or(0);
+        let loop_active = recorder::TEMP_MACRO_LOOP_ACTIVE.load(std::sync::atomic::Ordering::SeqCst);
         return serde_json::json!({
             "hasEvents": event_count > 0,
             "eventCount": event_count,
             "capturedAt": state.temp_macro_captured_at.clone(),
             "recordHotkey": state.temp_macro_record_hotkey_str.clone(),
             "playHotkey": state.temp_macro_play_hotkey_str.clone(),
+            "loopHotkey": state.temp_macro_loop_hotkey_str.clone(),
+            "loopActive": loop_active,
         });
     }
     serde_json::json!({
@@ -1351,6 +1367,8 @@ fn get_temp_macro_status() -> Value {
         "capturedAt": serde_json::Value::Null,
         "recordHotkey": serde_json::Value::Null,
         "playHotkey": serde_json::Value::Null,
+        "loopHotkey": serde_json::Value::Null,
+        "loopActive": false,
     })
 }
 
@@ -1431,8 +1449,12 @@ fn cleanup_stale_trigr_shortcuts() {
 /// setter so the user's choice survives restart. Hotkeys + macro-event slot
 /// live under a single `tempMacro` object in config to keep the schema tidy.
 fn persist_temp_macro_hotkeys() {
-    let (record, play) = match hotkeys::engine_state().lock() {
-        Ok(s) => (s.temp_macro_record_hotkey_str.clone(), s.temp_macro_play_hotkey_str.clone()),
+    let (record, play, loop_combo) = match hotkeys::engine_state().lock() {
+        Ok(s) => (
+            s.temp_macro_record_hotkey_str.clone(),
+            s.temp_macro_play_hotkey_str.clone(),
+            s.temp_macro_loop_hotkey_str.clone(),
+        ),
         Err(_) => return,
     };
     let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
@@ -1442,6 +1464,7 @@ fn persist_temp_macro_hotkeys() {
         if let Some(t) = temp.as_object_mut() {
             t.insert("recordHotkey".to_string(), record.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
             t.insert("playHotkey".to_string(), play.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
+            t.insert("loopHotkey".to_string(), loop_combo.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
         }
     }
     config::save_config(&merged);
@@ -1512,6 +1535,9 @@ fn check_hotkey_conflict(combo: String, from_slot: Option<String>) -> Value {
     }
     if from != "temp_macro_play" && state.temp_macro_play_hotkey == Some(parsed) {
         return serde_json::json!({ "conflict": true, "conflictWith": "Quick Record (play)" });
+    }
+    if from != "temp_macro_loop" && state.temp_macro_loop_hotkey == Some(parsed) {
+        return serde_json::json!({ "conflict": true, "conflictWith": "Quick Record (loop)" });
     }
 
     // Regular per-profile assignments — only check active profile single-press
@@ -3543,6 +3569,9 @@ pub fn run() {
                     if let Some(combo) = temp.get("playHotkey").and_then(|v| v.as_str()) {
                         hotkeys::set_temp_macro_play_hotkey(combo);
                     }
+                    if let Some(combo) = temp.get("loopHotkey").and_then(|v| v.as_str()) {
+                        hotkeys::set_temp_macro_loop_hotkey(combo);
+                    }
                     if let Some(events_val) = temp.get("events") {
                         if let Ok(events) = serde_json::from_value::<Vec<recorder::RecordedEvent>>(events_val.clone()) {
                             if let Ok(mut state) = hotkeys::engine_state().lock() {
@@ -4017,6 +4046,8 @@ pub fn run() {
             clear_temp_macro_record_hotkey,
             set_temp_macro_play_hotkey,
             clear_temp_macro_play_hotkey,
+            set_temp_macro_loop_hotkey,
+            clear_temp_macro_loop_hotkey,
             get_temp_macro_status,
             clear_temp_macro,
             start_voice_recognition,

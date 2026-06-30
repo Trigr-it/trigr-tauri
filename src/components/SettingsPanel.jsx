@@ -251,6 +251,9 @@ export default function SettingsPanel({
   const [capturingTempPlayKey, setCapturingTempPlayKey] = useState(false);
   const [capturedTempPlayKey, setCapturedTempPlayKey]   = useState(null);
   const [tempPlayConflict, setTempPlayConflict]         = useState(null);
+  const [capturingTempLoopKey, setCapturingTempLoopKey] = useState(false);
+  const [capturedTempLoopKey, setCapturedTempLoopKey]   = useState(null);
+  const [tempLoopConflict, setTempLoopConflict]         = useState(null);
   const [backupList, setBackupList]           = useState(null);
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
@@ -1925,6 +1928,105 @@ export default function SettingsPanel({
             </div>
             {tempPlayConflict && (
               <div className="settings-conflict-warn">{tempPlayConflict}</div>
+            )}
+
+            {/* ── Loop hotkey ── */}
+            <div className="settings-pause-stack">
+              <div className="settings-toggle-info">
+                <span className="settings-toggle-label">Loop hotkey</span>
+                <span className="settings-toggle-sub">Replay the saved quick recording continuously until you press this hotkey again or Esc.</span>
+              </div>
+              <div className="settings-qs-hotkey-ctrl">
+                {capturingTempLoopKey ? (
+                  <div
+                    className="settings-qs-capture"
+                    tabIndex={0}
+                    ref={el => el?.focus()}
+                    onBlur={() => { setCapturingTempLoopKey(false); setCapturedTempLoopKey(null); setTempLoopConflict(null); }}
+                    onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                    onKeyDown={async e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                      const mods = [];
+                      if (e.ctrlKey)  mods.push('Ctrl');
+                      if (e.shiftKey) mods.push('Shift');
+                      if (e.altKey)   mods.push('Alt');
+                      if (e.metaKey)  mods.push('Win');
+                      if (mods.length === 0) return;
+                      mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                      const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                      const combo = [...mods, e.code].join('+');
+                      const label = [...mods, keyDisplay].join('+');
+                      const result = await window.electronAPI?.checkHotkeyConflict?.(combo, 'temp_macro_loop');
+                      setTempLoopConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
+                      setCapturedTempLoopKey({ combo, label });
+                    }}
+                  >
+                    {capturedTempLoopKey ? (
+                      <span className="settings-qs-captured">{capturedTempLoopKey.label}</span>
+                    ) : (
+                      <span className="settings-qs-waiting">Press combo…</span>
+                    )}
+                    {capturedTempLoopKey && !tempLoopConflict && (
+                      <button
+                        className="settings-qs-save-btn"
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={async () => {
+                          await window.electronAPI?.setTempMacroLoopHotkey?.(capturedTempLoopKey.combo);
+                          const s = await window.electronAPI?.getTempMacroStatus?.();
+                          if (s) setTempMacroStatus(s);
+                          setCapturingTempLoopKey(false);
+                          setCapturedTempLoopKey(null);
+                          setTempLoopConflict(null);
+                        }}
+                      >Save</button>
+                    )}
+                    <button
+                      className="settings-qs-cancel-btn"
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { setCapturingTempLoopKey(false); setCapturedTempLoopKey(null); setTempLoopConflict(null); }}
+                    >✕</button>
+                  </div>
+                ) : tempMacroStatus.loopHotkey ? (
+                  <>
+                    <span className="settings-qs-hotkey-badge">
+                      {tempMacroStatus.loopHotkey.split('+').map((p, i, arr) => (
+                        <React.Fragment key={i}>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                        </React.Fragment>
+                      ))}
+                    </span>
+                    <button
+                      className="settings-action-btn"
+                      type="button"
+                      onClick={() => setCapturingTempLoopKey(true)}
+                    >Change</button>
+                    <button
+                      className="settings-action-btn settings-danger-btn"
+                      type="button"
+                      onClick={async () => {
+                        await window.electronAPI?.clearTempMacroLoopHotkey?.();
+                        const s = await window.electronAPI?.getTempMacroStatus?.();
+                        if (s) setTempMacroStatus(s);
+                      }}
+                      title="Remove loop hotkey (disables continuous replay)"
+                    >Remove</button>
+                  </>
+                ) : (
+                  <button
+                    className="settings-action-btn"
+                    type="button"
+                    onClick={() => setCapturingTempLoopKey(true)}
+                  >Set hotkey</button>
+                )}
+              </div>
+            </div>
+            {tempLoopConflict && (
+              <div className="settings-conflict-warn">{tempLoopConflict}</div>
             )}
 
             {/* ── Saved recording status ── */}

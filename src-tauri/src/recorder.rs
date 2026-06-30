@@ -301,6 +301,16 @@ pub static TEMP_MACRO_RECORD_BITS: AtomicU8 = AtomicU8::new(0);
 pub static TEMP_MACRO_RECORD_VK:   AtomicU32 = AtomicU32::new(0);
 pub static TEMP_MACRO_PLAY_BITS:   AtomicU8 = AtomicU8::new(0);
 pub static TEMP_MACRO_PLAY_VK:     AtomicU32 = AtomicU32::new(0);
+pub static TEMP_MACRO_LOOP_BITS:   AtomicU8 = AtomicU8::new(0);
+pub static TEMP_MACRO_LOOP_VK:     AtomicU32 = AtomicU32::new(0);
+
+/// True while a continuous-replay loop is running for the temp macro.
+/// Flipped by the processor on Loop-hotkey press (true → start thread, false
+/// → in-flight thread observes and exits at the next checkpoint). Polled by
+/// `actions::replay_recorded_events_loop` per iteration + per 100ms sleep
+/// chunk so a Loop-hotkey press while the macro is mid-flight is honoured at
+/// the next event gap.
+pub static TEMP_MACRO_LOOP_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// True iff (mod_bits, vk) matches the configured record-toggle hotkey AND
 /// it's actually configured (vk != 0). Caller holds modifier-state atomics.
@@ -312,4 +322,9 @@ pub fn matches_record_hotkey(vk: u32, mod_bits: u8) -> bool {
 pub fn matches_play_hotkey(vk: u32, mod_bits: u8) -> bool {
     let target_vk = TEMP_MACRO_PLAY_VK.load(Ordering::SeqCst);
     target_vk != 0 && vk == target_vk && mod_bits == TEMP_MACRO_PLAY_BITS.load(Ordering::SeqCst)
+}
+
+pub fn matches_loop_hotkey(vk: u32, mod_bits: u8) -> bool {
+    let target_vk = TEMP_MACRO_LOOP_VK.load(Ordering::SeqCst);
+    target_vk != 0 && vk == target_vk && mod_bits == TEMP_MACRO_LOOP_BITS.load(Ordering::SeqCst)
 }
