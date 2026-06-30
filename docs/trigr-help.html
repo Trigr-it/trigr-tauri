@@ -688,6 +688,7 @@
   <a class="nav-item" onclick="show(event,'send-hotkey')" href="#">Send Hotkey</a>
   <a class="nav-item" onclick="show(event,'open-things')" href="#">Open App / URL / Folder</a>
   <a class="nav-item" onclick="show(event,'macros')" href="#">Macros</a>
+  <a class="nav-item" onclick="show(event,'macro-recorder')" href="#">Macro Recorder<span class="nav-new">NEW</span></a>
   <a class="nav-item" onclick="show(event,'ahk')" href="#">AHK Script Runner</a>
 
   <div class="sidebar-section-label">Text Expansion</div>
@@ -698,7 +699,8 @@
 
   <div class="sidebar-section-label">Quick Access</div>
   <a class="nav-item" onclick="show(event,'quick-search')" href="#">Quick Search</a>
-  <a class="nav-item" onclick="show(event,'radial')" href="#">Radial Menus<span class="nav-new">NEW</span></a>
+  <a class="nav-item" onclick="show(event,'radial')" href="#">Radial Menus</a>
+  <a class="nav-item" onclick="show(event,'quick-record')" href="#">Quick Record<span class="nav-new">NEW</span></a>
   <a class="nav-item" onclick="show(event,'clipboard')" href="#">Clipboard Manager</a>
   <a class="nav-item" onclick="show(event,'list-view')" href="#">List View</a>
 
@@ -1025,6 +1027,9 @@
     <p>You can combine all three modes on one key. For example: F8 single = type a string, F8 double = open an app, F8 hold = fire a macro. Cycle through the Single / Double / Hold pills to configure each.</p>
   </div>
 
+  <h2>Hold-only key indicator</h2>
+  <p>Keys assigned only to a hold action (no single or double press) show a small stopwatch glyph on the keyboard canvas. This makes them easy to spot at a glance versus keys with a regular single-press action.</p>
+
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
 </div>
 
@@ -1189,6 +1194,9 @@
     <p>Three ways to stop a loop: press <kbd>Esc</kbd>, re-press the trigger that started it, or pause Keyfire from the tray. Forever loops also stop automatically if you quit the app.</p>
   </div>
 
+  <h2>Cancelling any macro</h2>
+  <p>Press <kbd>Esc</kbd> at any point during a running macro to abort it. This applies universally: looped macros, one-shot macros, recorded sequences, long Wait steps, anything mid-flight. The macro stops at the next event boundary, which is usually within milliseconds. Useful as a kill switch when a macro is running away or you just changed your mind. Long Wait steps inside a macro are chunked so they honour the cancel request promptly rather than blocking for their full duration.</p>
+
   <h2>Focus Window: Pick Window</h2>
   <p>The Focus Window step brings an app to the foreground. Instead of typing a .exe name manually, click <strong>Pick Window</strong>. A dropdown appears showing all currently running processes. Selecting one fills in both the process name and window title automatically.</p>
 
@@ -1202,6 +1210,70 @@
 
   <h2>Fire Trigger and Fire Text Expansion</h2>
   <p>These two step types call other Keyfire actions from inside a macro. Useful for composing complex flows from smaller reusable units. Keyfire enforces a maximum of 5 nesting levels to prevent infinite recursion.</p>
+
+  <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MACRO RECORDER
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-macro-recorder">
+  <div class="section-meta"><span class="section-num">11a</span><span class="section-label">Actions</span></div>
+  <div class="section-title">Macro recorder</div>
+  <div class="section-subtitle">Capture a sequence of real keystrokes and mouse actions, then replay them exactly as you performed them.</div>
+
+  <p>The Record Macro step inside any macro lets Keyfire capture a literal sequence of your input. Every keystroke, mouse click, drag, scroll, and movement is recorded with its original timing, then replayed later as part of the macro. Useful for any flow you can perform faster by hand than by chaining individual steps in the editor.</p>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Recording pill</strong>
+    The bottom-centre Recording pill showing event count and elapsed time, with Stop and Discard buttons.
+  </div>
+
+  <h2>Recording a macro</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">In the macro editor, click <strong>+ Add Step</strong> and choose <strong>Record Macro</strong> at the top of the menu.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>Record</strong>. The bottom-centre recording pill appears.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Perform whatever you want to capture. Switch apps, type, click, drag, scroll. All input is recorded with the original timing gaps.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text">Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> or click <strong>Stop</strong> on the pill. The captured event count appears in the step.</div></div>
+  <div class="step-row"><div class="step-num">5</div><div class="step-text">Save the macro. The recorded sequence now fires whenever the macro runs.</div></div>
+
+  <h2>What gets captured</h2>
+  <ul>
+    <li>All key presses and releases, including modifiers.</li>
+    <li>Mouse clicks, drags, releases, and scroll wheel events.</li>
+    <li>Mouse cursor moves (downsampled to 60Hz for storage efficiency).</li>
+    <li>The original timing between each event, replayed at the same cadence.</li>
+  </ul>
+
+  <h2>What does NOT get captured</h2>
+  <ul>
+    <li>Synthetic events from other automation tools. The recorder ignores anything Keyfire itself generates, so a recording cannot loop into itself.</li>
+    <li>Window focus changes. The recording replays into whatever window happens to be focused at the time, at the same absolute screen coordinates.</li>
+  </ul>
+
+  <h2>Stopping a recording</h2>
+  <p>Three ways to stop a recording in progress:</p>
+  <ul>
+    <li>Click <strong>Stop</strong> on the recording pill.</li>
+    <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> from anywhere.</li>
+    <li>Click <strong>Discard</strong> to throw away the recording entirely without saving.</li>
+  </ul>
+
+  <h2>Cancelling a replay</h2>
+  <p>Press <kbd>Esc</kbd> at any point during replay to abort. Replay stops at the current event without firing any of the remaining ones.</p>
+
+  <div class="callout tip">
+    <div class="ct">Drag operations replay correctly</div>
+    <p>Recordings capture real drag motion, so dragging an image in Excel, dragging files between folders in Explorer, drawing freehand strokes in Paint and similar click-and-drag flows all replay as drags rather than as clicks.</p>
+  </div>
+
+  <h2>Limitations</h2>
+  <p>The macro recorder is currently a literal-replay tool, which means:</p>
+  <ul>
+    <li>Mouse clicks replay at the exact screen coordinates you recorded. If you move or resize the target window between recording and replay, the clicks land at the original screen position rather than following the window.</li>
+    <li>The radial menu does not fire during replay. It requires a real physical key hold, not a synthetic one.</li>
+    <li>Text input inside Keyfire's own Quick Search overlay does not replay. The overlay routes input differently from regular apps.</li>
+  </ul>
+  <p>A future release will add an option to translate recorded coordinates into window-relative positions so macros survive window moves and resizes.</p>
 
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
 </div>
@@ -1647,6 +1719,61 @@
 </div>
 
 <!-- ════════════════════════════════════════════════════════════
+     QUICK RECORD
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-quick-record">
+  <div class="section-meta"><span class="section-num">18a</span><span class="section-label">Quick Access</span></div>
+  <div class="section-title">Quick Record</div>
+  <div class="section-subtitle">Capture and replay a temporary macro from anywhere using global hotkeys. No editor required.</div>
+
+  <p>Quick Record lets you record a one-off macro and replay it on demand using global hotkeys, without ever opening the macro editor. The recording persists across app restarts in a single slot you can overwrite at any time. Useful for repetitive tasks you only need for an hour, a day, or a single project.</p>
+
+  <p><strong>Quick Record is opt-in.</strong> Because it captures keystrokes globally, you enable it explicitly in <strong>Settings → Quick Record</strong> by setting at least one hotkey. Until then, the hotkeys are unset and Keyfire captures nothing.</p>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Quick Record settings</strong>
+    Settings → Quick Record showing the Record, Play and Loop hotkey rows, each with a Set hotkey button or current combo, plus the Saved recording status row below.
+  </div>
+
+  <h2>Setting up the hotkeys</h2>
+  <p>Go to <strong>Settings → Quick Record</strong>. Three independent hotkeys to configure:</p>
+  <table>
+    <tr><th>Hotkey</th><th>What it does</th></tr>
+    <tr><td><strong>Record</strong></td><td>Press once to start recording. Press again to stop. The recording is saved into the Quick Record slot, overwriting any previous one.</td></tr>
+    <tr><td><strong>Play</strong></td><td>Replay the saved recording once. No-op if the slot is empty.</td></tr>
+    <tr><td><strong>Loop</strong></td><td>Replay the saved recording continuously. Press the same hotkey again to stop, or press <kbd>Esc</kbd>.</td></tr>
+  </table>
+
+  <p>Click <strong>Set hotkey</strong> next to each row, press your chosen combo, then click <strong>Save</strong>. Each combo must use at least one modifier (Ctrl, Shift, Alt or Win). Keyfire warns you if the combo is already in use by another feature.</p>
+
+  <div class="callout tip">
+    <div class="ct">Suggested combos</div>
+    <p>Ctrl+Alt+R for Record, Ctrl+Alt+P for Play, Ctrl+Alt+L for Loop. Avoid Ctrl+Shift+R and Ctrl+Shift+T because they collide with hard refresh and reopen-closed-tab in every Chromium-based app.</p>
+  </div>
+
+  <h2>Recording</h2>
+  <p>Press the Record hotkey from anywhere. The bottom-centre recording pill appears showing elapsed time and event count. Perform whatever you want to capture, then press the Record hotkey again (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>) to save.</p>
+
+  <p>The recording is now in your Quick Record slot, persisted to disk. It survives app restarts, version updates and machine reboots. There is only one slot, so recording again replaces it.</p>
+
+  <h2>Playing</h2>
+  <p>Press the Play hotkey to replay the saved recording exactly as you performed it. Press <kbd>Esc</kbd> mid-replay to abort.</p>
+
+  <h2>Looping</h2>
+  <p>Press the Loop hotkey to replay the recording continuously until you press the same hotkey again, press <kbd>Esc</kbd>, or pause Keyfire from the tray. Roughly half a second of breathing room sits between each iteration. The Play and Record hotkeys are ignored while the loop is running so the input streams cannot collide.</p>
+
+  <h2>Clearing the slot</h2>
+  <p>In <strong>Settings → Quick Record → Saved recording</strong>, click <strong>Clear</strong> to delete the recording. The hotkeys stay configured, so the next time you press Record you simply start fresh.</p>
+
+  <div class="callout info">
+    <div class="ct">Quick Record vs the Macro Recorder step</div>
+    <p>Quick Record stores ONE recording globally, triggered by hotkeys, no editor required. The <a onclick="show(event,'macro-recorder')" href="#">Macro Recorder step</a> stores a recording inside a specific macro you build in the editor, fires as part of that macro's flow, and can be combined with other step types in the same macro.</p>
+  </div>
+
+  <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
      CLIPBOARD MANAGER
      ════════════════════════════════════════════════════════════ -->
 <div class="section-page" id="page-clipboard">
@@ -1669,19 +1796,31 @@
     <tr><th>Feature</th><th>Description</th></tr>
     <tr><td><strong>Auto-tagging</strong></td><td>Each item is tagged as Text, Link, Email, Colour, Number, or Image based on its content.</td></tr>
     <tr><td><strong>Source app</strong></td><td>Shows which app you copied from (Chrome, VS Code, Outlook, etc.).</td></tr>
-    <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age.</td></tr>
+    <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age and appear in the quick paste popup. See Pinned and Starred tiers below.</td></tr>
+    <tr><td><strong>Star</strong></td><td>Mark items with a star to keep them in a separate tier above Pinned in the main panel. Stars are main-panel only and do not appear in the quick paste popup.</td></tr>
     <tr><td><strong>Search</strong></td><td>Filter items by text content. Combine with tag filter pills and source app dropdown.</td></tr>
     <tr><td><strong>Inline editing</strong></td><td>Edit any text-based clipboard item directly. Click Edit in the detail pane.</td></tr>
     <tr><td><strong>Image support</strong></td><td>Screenshots and copied images are captured as PNG with full preview and zoom.</td></tr>
     <tr><td><strong>OCR</strong></td><td>Captured images run through OCR. Extracted text becomes searchable and copyable.</td></tr>
-    <tr><td><strong>Timeline grouping</strong></td><td>Items grouped by Pinned, Today, Yesterday, This Week, This Month, Older.</td></tr>
+    <tr><td><strong>Timeline grouping</strong></td><td>Items grouped by Starred, Pinned, Today, Yesterday, This Week, This Month, Older.</td></tr>
     <tr><td><strong>Storage indicator</strong></td><td>Shows the total size of your clipboard database in the panel toolbar.</td></tr>
     <tr><td><strong>Column toggle</strong></td><td>Switch between 1, 2, or auto-column grid. Useful when comparing long snippets.</td></tr>
   </table>
 
+  <h2>Pinned and Starred tiers</h2>
+  <p>The clipboard has two independent tiers above your normal history:</p>
+  <ul>
+    <li><strong>Pinned</strong>: items you want to keep handy across both surfaces. Click the pin icon on any item to pin it. Pinned items appear at the top of the main clipboard panel <em>and</em> at the top of the quick paste popup (Ctrl+Shift+V). They never expire under the retention policy.</li>
+    <li><strong>Starred</strong>: a higher tier above Pinned, available in the main clipboard panel only. Click the star icon on any item to star it. Starred items appear at the top of the main panel above Pinned but do <em>not</em> show in the quick paste popup. Think of Starred as a curated personal shortlist and Pinned as fast paste targets.</li>
+  </ul>
+  <p>An item can be both pinned and starred. The two flags are independent toggles. Both the Starred and Pinned tiers appear as their own sidebar buckets in the main panel for quick filtering, and items within each tier can be drag-reordered into your preferred order.</p>
+
+  <h2>Clear All preserves your tiers</h2>
+  <p>The <strong>Clear All</strong> button in the panel toolbar and the <strong>Clear Clipboard History</strong> button in Settings both remove regular history only. Pinned and starred items survive. The confirm dialog in Settings makes this explicit.</p>
+
   <h2>Quick paste overlay</h2>
   <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay, a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
-  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit).</p>
+  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit). Only Pinned items get promoted here; Starred items live in the main panel only.</p>
 
   <h2>Scratchpad</h2>
   <p>The clipboard overlay includes a slide-out scratchpad on the right side. Toggle it with the arrow button on the panel edge. Use it to jot notes, stage text, or keep references handy. Content auto-saves and persists across app restarts.</p>
@@ -2127,6 +2266,9 @@
 
   <h2>SmartScreen warning on install</h2>
   <p>Expected for new apps that have not built up a Windows reputation. Click <strong>More info</strong> → <strong>Run anyway</strong>. You should see <strong>Publisher: Node Group Ltd</strong> in the dialog, confirming the installer is genuine. The warning fades once Microsoft has seen enough installs from our signed builds.</p>
+
+  <h2>A macro or recording is running away</h2>
+  <p>Press <kbd>Esc</kbd>. This cancels any macro currently in flight, including looped macros, one-shot macros, recorded sequences, and macros inside long Wait steps. The cancel is honoured at the next event boundary, usually within milliseconds. If <kbd>Esc</kbd> alone is not enough (e.g. another app captured the keystroke), right-click the tray icon and choose <strong>Pause</strong>, which stops everything immediately.</p>
 
   <h2>Something crashed or behaved unexpectedly</h2>
   <p>Go to <strong>Settings → Open Logs Folder</strong> and find <code>trigr.log</code>. The log records what Keyfire was doing at the time. Attach it to a feedback form submission or email it to <a href="mailto:admin@keyfire.app">admin@keyfire.app</a>.</p>
