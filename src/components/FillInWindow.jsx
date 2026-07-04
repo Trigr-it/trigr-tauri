@@ -63,6 +63,58 @@ export default function FillInWindow() {
   const inputRefs = useRef([]);
   const panelRef = useRef(null);
 
+  // Ctrl+Shift+V intercept: the LL keyboard hook does not fire for keys while
+  // a Trigr WebView2 window has focus (confirmed empirically 2026-07-03 via
+  // [CLIPBOARD-FILLIN] diagnostics), so the standard clipboard-paste hotkey
+  // path is unreachable from inside the fill-in. Catch it at the DOM layer and
+  // call the fill-in-mode show command directly. `capture: true` ensures we
+  // beat any element-level paste handler that might swallow the combo.
+  useEffect(() => {
+    function onKeyDownGlobal(e) {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'V' || e.key === 'v')) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.electronAPI?.showClipboardOverlayForFillIn?.();
+      }
+    }
+    document.addEventListener('keydown', onKeyDownGlobal, true);
+    return () => document.removeEventListener('keydown', onKeyDownGlobal, true);
+  }, []);
+
+  // Receive the picked clipboard text back from the popup. Inserts at the
+  // caret of whichever fill-in input has focus; if focus was lost (e.g. user
+  // clicked around the popup) fall back to the first field. Also updates
+  // React state so the resolved expansion picks up the inserted value.
+  useEffect(() => {
+    if (!window.electronAPI?.onFillInInsertText) return;
+    window.electronAPI.onFillInInsertText((payload) => {
+      const text = payload?.text ?? '';
+      if (!text) return;
+      let target = document.activeElement;
+      if (!target || !(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        target = inputRefs.current[0] || null;
+      }
+      if (!target) return;
+      target.focus();
+      const label = target.dataset?.fillinLabel;
+      const isTextish = target.tagName === 'TEXTAREA'
+        || (target.tagName === 'INPUT' && ['text', 'number', 'search', 'email', 'tel', 'url', ''].includes(target.type || ''));
+      if (isTextish && typeof target.selectionStart === 'number') {
+        const start = target.selectionStart;
+        const end   = target.selectionEnd;
+        const before = (target.value || '').slice(0, start);
+        const after  = (target.value || '').slice(end);
+        const next   = before + text + after;
+        target.value = next;
+        const caret  = start + text.length;
+        try { target.setSelectionRange(caret, caret); } catch {}
+        if (label) updateValue(label, next);
+      } else if (label) {
+        updateValue(label, text);
+      }
+    });
+  }, []);
+
   useEffect(() => {
     window.electronAPI?.fillInReady?.();
 
@@ -205,6 +257,10 @@ export default function FillInWindow() {
       ref: refCb,
       onKeyDown: e => onFieldKeyDown(e, idx, field.kind),
       spellCheck: false,
+      // Reflected on the DOM element so the Ctrl+Shift+V clipboard-insert
+      // handler can map document.activeElement back to its field label
+      // without walking React refs.
+      'data-fillin-label': field.label,
     };
 
     if (field.kind === 'multiline') {

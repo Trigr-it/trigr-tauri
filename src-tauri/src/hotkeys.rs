@@ -86,6 +86,22 @@ pub static FILL_IN_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// never steals focus from the active app).
 pub static CLIPBOARD_OVERLAY_VISIBLE: AtomicBool = AtomicBool::new(false);
 
+/// True when the clipboard overlay was opened from the fill-in webview
+/// (show_clipboard_overlay_for_fillin) rather than the standard LL-hook
+/// Ctrl+Shift+V path. Empirically established 2026-07-03: LL hooks do NOT
+/// fire for keys while a Trigr WebView2 window has focus, so the normal
+/// hotkey path is unreachable from inside a fill-in — the popup has to be
+/// invoked from the fill-in's own DOM keydown listener.
+///
+/// Two runtime differences when this flag is true:
+///   1. Show path activates the popup (no WS_EX_NOACTIVATE) so its DOM
+///      handles keys directly. The clipboard-overlay-key LL-hook routing
+///      block below skips.
+///   2. Paste path emits `fillin-insert-text` back to the fill-in webview
+///      instead of running Ctrl+V injection (WebView2 → WebView2 injection
+///      is unreliable per [[feedback_webview2_input_injection]]).
+pub static CLIPBOARD_OVERLAY_FOR_FILLIN: AtomicBool = AtomicBool::new(false);
+
 /// HWNDs of the search/voice overlay and clipboard overlay while visible. Set by lib.rs
 /// in show_overlay / show_clipboard_overlay, cleared by the corresponding hide_*.
 /// Used by handle_mouse_down to detect click-outside-bounds dismissal — the blur-based
@@ -2131,7 +2147,18 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                 crate::actions::release_held_modifiers();
                 SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-                let _ = app.emit("toggle-clipboard-overlay", Value::Null);
+                // Fill-in mode: when a fill-in is open, route to the fill-in
+                // popup path regardless of which window has actual DOM focus.
+                // We can't rely on the FillInWindow's DOM keydown handler to
+                // catch this — the LL hook has already eaten the combo via
+                // suppress_keys before it reaches any window's DOM, so the
+                // fill-in never sees it. Emit a dedicated event that lib.rs
+                // handles by calling show_clipboard_overlay_for_fillin.
+                if FILLIN_HWND.load(Ordering::SeqCst) != 0 {
+                    let _ = app.emit("toggle-clipboard-overlay-for-fillin", Value::Null);
+                } else {
+                    let _ = app.emit("toggle-clipboard-overlay", Value::Null);
+                }
                 return;
             }
         }
@@ -2226,7 +2253,12 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // their text cursor when the overlay opens. All keyboard input is routed
     // here instead of via DOM events.
     // Note: Ctrl+Shift+V (toggle) is handled above and has already returned.
-    if CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst) {
+    // Fill-in mode is the exception: the popup is activated with real OS focus
+    // so its own DOM handlers own the search + arrow-nav + Enter keys. Routing
+    // via this LL path would double-fire and desync the selected index.
+    if CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
+        && !CLIPBOARD_OVERLAY_FOR_FILLIN.load(Ordering::SeqCst)
+    {
         if !is_modifier_vk(vk) {
             // Route bare or shift-modified keys (search input + navigation).
             // Ctrl/Alt combos are suppressed silently — avoids firing hotkeys

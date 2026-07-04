@@ -1975,7 +1975,11 @@ fn write_clipboard(text: &str) -> bool {
 }
 
 /// Cached CF_HTML clipboard format ID (registered once with the OS).
-fn cf_html_format_id() -> u32 {
+/// pub(crate) so the clipboard listener can read HTML captures using the same
+/// format ID this module writes with — otherwise we'd have two separate
+/// RegisterClipboardFormatW calls for the same "HTML Format" string, which
+/// still returns the same u32 but wastes a syscall on every clipboard event.
+pub(crate) fn cf_html_format_id() -> u32 {
     static FORMAT_ID: OnceLock<u32> = OnceLock::new();
     *FORMAT_ID.get_or_init(|| {
         let name: Vec<u16> = "HTML Format".encode_utf16().chain(std::iter::once(0)).collect();
@@ -2027,7 +2031,12 @@ fn build_cf_html(fragment: &str) -> Vec<u8> {
 /// also write CF_HTML so rich-text-aware target apps (Word, Outlook, Gmail,
 /// Slack, Teams) receive formatted content. Target apps that don't accept
 /// CF_HTML fall back to CF_UNICODETEXT automatically — no extra wiring needed.
-fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
+///
+/// pub(crate) so lib.rs's `paste_clipboard_item` can reuse this for clipboard
+/// history rows that were captured with a CF_HTML fragment (rich-text copies
+/// from Word / Outlook / browsers). Prior to that wiring, clipboard paste was
+/// plain-only even when the source had put rich text on the clipboard.
+pub(crate) fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
     log::info!(
         "[Keyfire] Clipboard write (expansions{}): \"{}\"",
         if html.is_some() { ", +html" } else { "" },

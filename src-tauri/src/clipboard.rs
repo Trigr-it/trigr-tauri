@@ -626,6 +626,11 @@ fn run_phase3b_migration(conn: &Connection, db_path: &Path) -> Result<usize, Str
 struct ClipEntry {
     content_type: String,
     text_content: Option<String>,
+    /// Unwrapped CF_HTML fragment when the source app put HTML on the clipboard
+    /// alongside CF_UNICODETEXT. `None` = plain-text-only capture. Store the
+    /// fragment only, NOT the CF_HTML wrapper — the wrapper is rebuilt at paste
+    /// time via expansions::build_cf_html.
+    html_content: Option<String>,
     image_blob: Option<Vec<u8>>,
     image_width: u32,
     image_height: u32,
@@ -724,6 +729,11 @@ enum ClipboardMsg {
 pub struct FullClipItem {
     pub content_type: String,
     pub text_content: Option<String>,
+    /// CF_HTML fragment (unwrapped). Populated when the source app copied rich
+    /// content. paste_clipboard_item routes through write_clipboard_dual when
+    /// this is Some so rich-text-aware target apps receive formatting; plain-
+    /// text-only apps automatically fall back to text_content.
+    pub html_content: Option<String>,
     pub image_blob: Option<Vec<u8>>,
     pub ocr_text: Option<String>,
 }
@@ -945,6 +955,15 @@ fn open_clipboard_db(db_path: &Path) -> Result<Connection, String> {
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN starred INTEGER NOT NULL DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN pinned_order INTEGER", []);
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN starred_order INTEGER", []);
+
+    // html_content: CF_HTML fragment (unwrapped) captured alongside CF_UNICODETEXT
+    // when the source app put both on the clipboard. NULL for plain-text-only
+    // copies and for all pre-v0.6.4 rows — those paste as plain text, matching
+    // pre-existing behaviour. Encrypted per row with iv_html following the
+    // Phase 3a AES-256-GCM pattern (fresh IV per write, NULL iv_html means the
+    // ciphertext column is a legacy plaintext fallback).
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN html_content BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_html BLOB", []);
 
     Ok(conn)
 }
@@ -1575,6 +1594,13 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
         },
         None => (None, None),
     };
+    let (html_ct, iv_html): (Option<Vec<u8>>, Option<Vec<u8>>) = match entry.html_content.as_deref() {
+        Some(plain) => match encrypt_blob(plain.as_bytes()) {
+            Some((ct, iv)) => (Some(ct), Some(iv)),
+            None => (Some(plain.as_bytes().to_vec()), None),
+        },
+        None => (None, None),
+    };
     let (image_ct, iv_image): (Option<Vec<u8>>, Option<Vec<u8>>) = match entry.image_blob.as_deref() {
         Some(plain) => match encrypt_blob(plain) {
             Some((ct, iv)) => (Some(ct), Some(iv)),
@@ -1588,12 +1614,13 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
     };
 
     let result = conn.execute(
-        "INSERT INTO clipboard_history (timestamp, content_type, text_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag, iv_text, iv_image, iv_preview)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO clipboard_history (timestamp, content_type, text_content, html_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag, iv_text, iv_html, iv_image, iv_preview)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             now,
             entry.content_type,
             text_ct,
+            html_ct,
             image_ct,
             entry.image_width,
             entry.image_height,
@@ -1601,6 +1628,7 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
             entry.source_app,
             entry.content_tag,
             iv_text,
+            iv_html,
             iv_image,
             iv_preview,
         ],
@@ -1632,6 +1660,10 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 "starred_order": serde_json::Value::Null,
                 "source_app": entry.source_app,
                 "content_tag": entry.content_tag,
+                // has_html only — the full fragment can be large (Word/Excel
+                // paste blobs are ~KBs each) and the UI just needs the boolean
+                // to decide whether to surface "Paste as plain".
+                "has_html": entry.html_content.is_some(),
             }),
         );
     }
@@ -1731,9 +1763,17 @@ fn handle_get_history(
 
 /// Column list for both history-list SELECTs (normal + search page fetch).
 /// history_row_to_json reads by position — keep order in sync. New columns
-/// (starred, pinned_order, starred_order) are APPENDED to preserve existing
-/// positions for the iv_* / ocr_* indices.
-const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr, starred, pinned_order, starred_order";
+/// are APPENDED to preserve existing positions for the iv_* / ocr_* indices.
+///
+/// The list query intentionally SELECTs iv_html but NOT html_content itself.
+/// html_content can be large (KB per row) and the list view only needs the
+/// has_html boolean to render the "Paste as plain" affordance; the full
+/// fragment is fetched later via handle_get_item_full when the user actually
+/// pastes. `iv_html IS NOT NULL OR html_content IS NOT NULL` would need
+/// html_content read too, but every write path either sets both non-NULL
+/// (cipher available) or both NULL (no html captured), so iv_html alone is
+/// a faithful presence signal.
+const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr, starred, pinned_order, starred_order, iv_html, html_content";
 
 /// Shared row → JSON mapping for the history list (normal + search paths).
 /// Reads HISTORY_LIST_COLUMNS by position.
@@ -1744,6 +1784,14 @@ fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     let iv_preview = row.get::<_, Option<Vec<u8>>>(13).unwrap_or(None);
     let ocr_ct = get_optional_bytes(row, 11).unwrap_or(None);
     let iv_ocr = row.get::<_, Option<Vec<u8>>>(14).unwrap_or(None);
+    // iv_html non-NULL OR (legacy fallback) html_content non-empty means the
+    // row has a rich-text fragment. Legacy plaintext rows written before the
+    // encryption path was wired would have iv_html NULL and html_content set;
+    // in practice no released version wrote such rows (html_content shipped
+    // after Phase 3a), but the check costs nothing and future-proofs.
+    let iv_html = row.get::<_, Option<Vec<u8>>>(18).unwrap_or(None);
+    let html_bytes = get_optional_bytes(row, 19).unwrap_or(None);
+    let has_html = iv_html.is_some() || html_bytes.as_ref().map_or(false, |b| !b.is_empty());
     Ok(serde_json::json!({
         "id": row.get::<_, i64>(0).unwrap_or(0),
         "timestamp": row.get::<_, String>(1).unwrap_or_default(),
@@ -1760,6 +1808,7 @@ fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "starred": row.get::<_, i32>(15).unwrap_or(0) != 0,
         "pinned_order": row.get::<_, Option<i64>>(16).unwrap_or(None),
         "starred_order": row.get::<_, Option<i64>>(17).unwrap_or(None),
+        "has_html": has_html,
     }))
 }
 
@@ -1866,7 +1915,7 @@ fn search_history(
 
 fn handle_get_item_full(conn: &Connection, id: i64) -> Option<FullClipItem> {
     conn.query_row(
-        "SELECT content_type, text_content, image_blob, ocr_text, iv_text, iv_image, iv_ocr FROM clipboard_history WHERE id = ?1",
+        "SELECT content_type, text_content, image_blob, ocr_text, iv_text, iv_image, iv_ocr, html_content, iv_html FROM clipboard_history WHERE id = ?1",
         rusqlite::params![id],
         |row| {
             let text_ct = get_optional_bytes(row, 1).unwrap_or(None);
@@ -1875,9 +1924,12 @@ fn handle_get_item_full(conn: &Connection, id: i64) -> Option<FullClipItem> {
             let iv_image = row.get::<_, Option<Vec<u8>>>(5).unwrap_or(None);
             let ocr_ct = get_optional_bytes(row, 3).unwrap_or(None);
             let iv_ocr = row.get::<_, Option<Vec<u8>>>(6).unwrap_or(None);
+            let html_ct = get_optional_bytes(row, 7).unwrap_or(None);
+            let iv_html = row.get::<_, Option<Vec<u8>>>(8).unwrap_or(None);
             Ok(FullClipItem {
                 content_type: row.get::<_, String>(0).unwrap_or_default(),
                 text_content: resolve_optional_text(text_ct, iv_text),
+                html_content: resolve_optional_text(html_ct, iv_html),
                 image_blob: resolve_optional_bytes(image_ct, iv_image),
                 ocr_text: resolve_optional_text(ocr_ct, iv_ocr),
             })
@@ -2117,8 +2169,10 @@ fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<Stri
         Some((ct, iv)) => (ct, Some(iv)),
         None => (preview.as_bytes().to_vec(), None),
     };
+    // A user text edit produces plain text, so the accompanying HTML fragment
+    // (if any) is now stale — clear it so the row pastes as plain going forward.
     match conn.execute(
-        "UPDATE clipboard_history SET text_content = ?1, preview = ?2, content_tag = ?3, iv_text = ?4, iv_preview = ?5 WHERE id = ?6 AND content_type = 'text'",
+        "UPDATE clipboard_history SET text_content = ?1, preview = ?2, content_tag = ?3, iv_text = ?4, iv_preview = ?5, html_content = NULL, iv_html = NULL WHERE id = ?6 AND content_type = 'text'",
         rusqlite::params![text_ct, preview_ct, new_tag, iv_text, iv_preview, id],
     ) {
         Ok(rows) if rows > 0 => Some(new_tag),
@@ -2153,6 +2207,81 @@ fn handle_prune(conn: &Connection) {
         Ok(_) => {} // nothing pruned — no space to reclaim
         Err(e) => error!("[Keyfire] Prune query failed: {}", e),
     }
+}
+
+// ── Clipboard HTML helper ────────────────────────────────────────────────────
+//
+// The CF_HTML clipboard format is a UTF-8 ASCII header + UTF-8 HTML body in
+// one blob. Header keys StartFragment / EndFragment give byte offsets from the
+// start of the blob to the meaningful fragment (the bit between the
+// `<!--StartFragment-->` and `<!--EndFragment-->` markers that Windows expects
+// paste targets to consume). Anything outside the fragment is boilerplate
+// wrapper we deliberately strip — expansions::build_cf_html rebuilds a valid
+// wrapper at paste time from the raw fragment, so re-storing the wrapper here
+// would just double-nest it on paste.
+//
+// Caller MUST hold the clipboard open (OpenClipboard succeeded, not yet
+// CloseClipboard'd). Returns None when CF_HTML isn't available, when GlobalLock
+// fails, or when the header is malformed / fragment offsets are nonsense.
+
+/// Parse the "Key:number" header pattern out of a CF_HTML blob. Returns the
+/// number after the given key, or None if missing / unparseable. Offsets are
+/// zero-padded 10-digit decimals in practice but the parser is lenient:
+/// scans forward past the ':' and reads consecutive ASCII digits.
+fn parse_cf_html_header_offset(header: &[u8], key: &str) -> Option<usize> {
+    let needle = format!("{}:", key);
+    let pos = header
+        .windows(needle.len())
+        .position(|w| w == needle.as_bytes())?;
+    let mut i = pos + needle.len();
+    while i < header.len() && (header[i] == b' ' || header[i] == b'\t') {
+        i += 1;
+    }
+    let start = i;
+    while i < header.len() && header[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == start {
+        return None;
+    }
+    std::str::from_utf8(&header[start..i]).ok()?.parse().ok()
+}
+
+unsafe fn read_clipboard_html() -> Option<String> {
+    let format_id = crate::expansions::cf_html_format_id();
+    if IsClipboardFormatAvailable(format_id) == 0 {
+        return None;
+    }
+    let handle = GetClipboardData(format_id);
+    if handle.is_null() {
+        return None;
+    }
+    let size = GlobalSize(handle);
+    // A well-formed CF_HTML wrapper is at least 100 bytes just for the header —
+    // if the blob is smaller than that, StartFragment/EndFragment can't fit.
+    if size < 100 {
+        return None;
+    }
+    let ptr = GlobalLock(handle) as *const u8;
+    if ptr.is_null() {
+        return None;
+    }
+    let bytes = std::slice::from_raw_parts(ptr, size).to_vec();
+    GlobalUnlock(handle);
+
+    // Only the first ~500 bytes are header. Restrict the offset search to that
+    // window so a StartFragment-like substring appearing in the HTML body
+    // itself can't hijack the parse.
+    let header_scan_len = std::cmp::min(bytes.len(), 512);
+    let start_fragment = parse_cf_html_header_offset(&bytes[..header_scan_len], "StartFragment")?;
+    let end_fragment = parse_cf_html_header_offset(&bytes[..header_scan_len], "EndFragment")?;
+    if end_fragment <= start_fragment || end_fragment > bytes.len() {
+        return None;
+    }
+    let fragment_bytes = &bytes[start_fragment..end_fragment];
+    // CF_HTML is defined as UTF-8. Non-UTF-8 input is treated as corrupt and
+    // falls back to plain-text-only capture.
+    std::str::from_utf8(fragment_bytes).ok().map(|s| s.to_string())
 }
 
 // ── Clipboard image helper ───────────────────────────────────────────────────
@@ -2352,6 +2481,7 @@ fn handle_clipboard_update() {
                 send_entry(ClipEntry {
                     content_type: "image".to_string(),
                     text_content: None,
+                    html_content: None,
                     image_blob: Some(png_bytes),
                     image_width: width,
                     image_height: height,
@@ -2384,6 +2514,15 @@ fn handle_clipboard_update() {
                     let slice = std::slice::from_raw_parts(ptr, len);
                     let text = String::from_utf16_lossy(slice);
                     GlobalUnlock(handle);
+
+                    // Read CF_HTML *before* CloseClipboard — one clipboard-open
+                    // covers both format reads. Rich-text sources (Word, Outlook,
+                    // Chrome, Slack composer, Notion) put CF_UNICODETEXT +
+                    // CF_HTML on the clipboard together; capturing the HTML now
+                    // lets paste_clipboard_item reproduce bullets, links, bold
+                    // and colour instead of stripping to plain text. None on
+                    // any failure — plain text is still authoritative.
+                    let html_fragment = read_clipboard_html();
                     CloseClipboard();
 
                     if text.trim().is_empty() { return; }
@@ -2408,6 +2547,7 @@ fn handle_clipboard_update() {
                     send_entry(ClipEntry {
                         content_type: "text".to_string(),
                         text_content: Some(text),
+                        html_content: html_fragment,
                         image_blob: None,
                         image_width: 0,
                         image_height: 0,

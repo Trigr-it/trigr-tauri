@@ -178,6 +178,49 @@ export default function ClipboardOverlay() {
     return () => { unlistenPromise.then(fn => fn()); };
   }, []);
 
+  // DOM keyboard fallback for fill-in mode. When the popup is opened from
+  // the fill-in webview it's activated (real OS focus, not NOACTIVATE) so
+  // its own DOM handles keystrokes — the LL-hook routing above is skipped
+  // in Rust for that mode. In normal mode this listener also fires when
+  // the SearchBar input is focused, but that's fine: arrow/Enter/Escape
+  // handling matches the LL-hook path and search-input typing is owned by
+  // the SearchBar's onChange, so both paths agree without conflicting.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (editingRef.current) {
+        if (e.key === 'Escape') { setEditing(false); setEditText(''); e.preventDefault(); }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        window.electronAPI?.closeClipboardOverlay();
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const sel = selectedRef.current;
+        if (sel) {
+          window.electronAPI?.pasteClipboardItem(sel.id);
+        } else {
+          window.electronAPI?.closeClipboardOverlay();
+        }
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(i => Math.min(i + 1, filteredRef.current.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(i => Math.max(i - 1, 0));
+        return;
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   useLayoutEffect(() => {
     const el = rowRefs.current[selectedIndex];
     if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -407,6 +450,18 @@ export default function ClipboardOverlay() {
                   <button className="co-btn co-btn-del" type="button"
                     onClick={e => { e.stopPropagation(); window.electronAPI?.deleteClipboardItem(selected.id); setItems(prev => prev.filter(it => it.id !== selected.id)); }}
                   >Delete</button>
+                  {selected.has_html && (
+                    <button
+                      className="co-btn"
+                      type="button"
+                      title="Paste without formatting"
+                      onClick={e => {
+                        e.stopPropagation();
+                        window.electronAPI?.closeClipboardOverlay();
+                        window.electronAPI?.pasteText(selected.text_content || selected.preview || '', selected.id);
+                      }}
+                    >Paste plain</button>
+                  )}
                   <button className="co-btn co-btn-paste" type="button"
                     onClick={e => { e.stopPropagation(); window.electronAPI?.closeClipboardOverlay(); window.electronAPI?.pasteClipboardItem(selected.id); }}
                   >Paste</button>

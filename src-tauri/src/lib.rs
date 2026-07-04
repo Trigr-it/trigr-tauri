@@ -1445,6 +1445,7 @@ fn cleanup_stale_trigr_shortcuts() {
     }
 }
 
+
 /// Persist the cached temp macro hotkey strings to config. Called after each
 /// setter so the user's choice survives restart. Hotkeys + macro-event slot
 /// live under a single `tempMacro` object in config to keep the schema tidy.
@@ -1999,6 +2000,8 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
             use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST};
             const SWP_NOACTIVATE: u32 = 0x0010;
             const SWP_SHOWWINDOW: u32 = 0x0040;
+            const SWP_NOMOVE: u32 = 0x0002;
+            const SWP_NOSIZE: u32 = 0x0001;
             SetWindowPos(
                 hwnd.0 as _,
                 HWND_TOPMOST,
@@ -2007,6 +2010,20 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
                 phys_w,
                 phys_h,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
+            // Force topmost re-ordering AFTER the initial show. HWND_TOPMOST +
+            // SWP_NOACTIVATE on a first-show call places the window in the
+            // topmost tier but doesn't reliably reorder *within* that tier
+            // when another topmost window (Trigr's fill-in) is already on
+            // screen. Result: popup was rendered but visually behind the
+            // fill-in, matching the "nothing happens" bug. Second call with
+            // NOMOVE|NOSIZE|NOACTIVATE is position-preserving and does the
+            // reorder cleanly. No-op when no other topmost is present.
+            SetWindowPos(
+                hwnd.0 as _,
+                HWND_TOPMOST,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
         }
         crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
@@ -2026,6 +2043,11 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
 fn hide_clipboard_overlay(app: &tauri::AppHandle) {
     crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(false, std::sync::atomic::Ordering::SeqCst);
     crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
+    // Reset fill-in mode so the next Ctrl+Shift+V from a normal target app
+    // takes the standard NOACTIVATE + LL-hook-routed path. Fill-in mode is
+    // per-show, never sticky across invocations.
+    let was_fillin_mode = crate::hotkeys::CLIPBOARD_OVERLAY_FOR_FILLIN
+        .swap(false, std::sync::atomic::Ordering::SeqCst);
     // Raw Win32 hide — symmetric with the raw SetWindowPos show. Tauri's
     // win.hide() was no-opping because we bypassed Tauri's internal visible
     // state when we showed via SetWindowPos; the runtime saw the window as
@@ -2043,11 +2065,16 @@ fn hide_clipboard_overlay(app: &tauri::AppHandle) {
         }
     }
     log::info!("[CLIP-FOCUS] hide_overlay: hidden");
-    // NO focus restore — the overlay uses WS_EX_NOACTIVATE so the target app
-    // never lost foreground. Calling set_foreground_robust here was the bug
-    // that broke emClient calendar dialog inputs etc: SetForegroundWindow only
-    // restores the top-level HWND, NOT the focused child control, so on apps
-    // with modal dialogs the caret would land in the wrong place.
+    // Fill-in mode restore: hand focus back to the fill-in window so the user
+    // can keep typing after the popup closes. Normal mode uses NOACTIVATE, so
+    // there's nothing to restore — the target never lost foreground.
+    if was_fillin_mode {
+        let fillin_hwnd = crate::hotkeys::FILLIN_HWND
+            .load(std::sync::atomic::Ordering::SeqCst);
+        if fillin_hwnd != 0 {
+            actions::set_foreground_robust(fillin_hwnd);
+        }
+    }
 }
 
 fn restore_overlay_target() {
@@ -2692,11 +2719,34 @@ fn get_clipboard_history(
 }
 
 #[tauri::command]
-fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
+fn paste_clipboard_item(id: i64, app: tauri::AppHandle) {
     let item = match clipboard::get_item_full(id) {
         Some(i) => i,
         None => return,
     };
+
+    // Fill-in mode: emit the picked text back to FillInWindow.jsx and hide the
+    // popup instead of running the Ctrl+V injection path. Ctrl+V into another
+    // Trigr WebView2 is unreliable per [[feedback_webview2_input_injection]],
+    // and the fill-in already knows which of its input fields has focus — an
+    // event-driven insert via document.activeElement is both simpler and more
+    // reliable. Images are dropped in this mode (fill-in inputs are text-only).
+    if crate::hotkeys::CLIPBOARD_OVERLAY_FOR_FILLIN
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        if item.content_type == "text" {
+            if let Some(text) = item.text_content {
+                use tauri::Emitter;
+                let _ = app.emit(
+                    "fillin-insert-text",
+                    serde_json::json!({ "text": text, "id": id }),
+                );
+                clipboard::increment_paste_count(id);
+            }
+        }
+        hide_clipboard_overlay(&app);
+        return;
+    }
 
     // Read stored target HWND — captured when the overlay was shown, before focus was stolen
     let target_hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
@@ -2753,9 +2803,22 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
             "text" => {
                 if let Some(text) = &item.text_content {
                     let prev = actions::read_clipboard_pub().unwrap_or_default();
+                    // Route through the dual-format writer when the row has a
+                    // CF_HTML fragment (rich-text copy captured from Word,
+                    // Outlook, Chrome, Slack, etc.). Rich-text-aware target
+                    // apps read CF_HTML and reproduce bullets, links, bold
+                    // and colour; plain-text-only apps automatically fall back
+                    // to CF_UNICODETEXT — no per-target branching needed.
+                    // Plain-text rows keep the original single-format path.
+                    let wrote = match item.html_content.as_deref() {
+                        Some(html) if !html.is_empty() => {
+                            crate::expansions::write_clipboard_dual(text, Some(html))
+                        }
+                        _ => actions::write_clipboard_pub(text),
+                    };
                     // If write fails (e.g. Excel holds clipboard lock), skip paste —
                     // pasting now would send whatever was already on the clipboard.
-                    if !actions::write_clipboard_pub(text) {
+                    if !wrote {
                         return;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(10));
@@ -2834,8 +2897,25 @@ fn paste_clipboard_item(id: i64, _app: tauri::AppHandle) {
 /// does NOT modify the source clip's stored text. If `source_id` is provided, the
 /// source entry's paste_count is incremented.
 #[tauri::command]
-fn paste_text(text: String, source_id: Option<i64>, _app: tauri::AppHandle) {
+fn paste_text(text: String, source_id: Option<i64>, app: tauri::AppHandle) {
     if text.is_empty() {
+        return;
+    }
+    // Fill-in mode: same event-emit path as paste_clipboard_item. Reached when
+    // the user clicks "Paste plain" on a rich clipboard item — inside a fill-in
+    // it's still just text going into a text input, no formatting to preserve.
+    if crate::hotkeys::CLIPBOARD_OVERLAY_FOR_FILLIN
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        use tauri::Emitter;
+        let _ = app.emit(
+            "fillin-insert-text",
+            serde_json::json!({ "text": text, "id": source_id }),
+        );
+        if let Some(id) = source_id {
+            clipboard::increment_paste_count(id);
+        }
+        hide_clipboard_overlay(&app);
         return;
     }
     let target_hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
@@ -2930,7 +3010,18 @@ fn copy_clipboard_item(id: i64) {
         match item.content_type.as_str() {
             "text" => {
                 if let Some(text) = &item.text_content {
-                    actions::write_clipboard_pub(text);
+                    // Preserve CF_HTML when the row has a captured fragment so
+                    // a subsequent Ctrl+V into Word / Outlook / Gmail keeps the
+                    // formatting. Plain-text-only apps still receive
+                    // CF_UNICODETEXT as before.
+                    match item.html_content.as_deref() {
+                        Some(html) if !html.is_empty() => {
+                            crate::expansions::write_clipboard_dual(text, Some(html));
+                        }
+                        _ => {
+                            actions::write_clipboard_pub(text);
+                        }
+                    }
                 }
             }
             "image" => {
@@ -3138,6 +3229,112 @@ fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_byt
 #[tauri::command]
 fn close_clipboard_overlay(app: tauri::AppHandle) {
     hide_clipboard_overlay(&app);
+}
+
+/// Show the clipboard popup in fill-in mode. Reached via two routes:
+///  1. FillInWindow.jsx catches Ctrl+Shift+V at DOM level and invokes the
+///     `show_clipboard_overlay_for_fillin` Tauri command (works when the
+///     fill-in webview has real DOM keyboard focus).
+///  2. The LL hook clipboard-hotkey handler detects the combo while
+///     `FILLIN_HWND` is non-zero and emits `toggle-clipboard-overlay-for-fillin`
+///     which routes here (works even when the LL hook has already eaten the
+///     combo via `suppress_keys` before the fill-in's DOM ever sees it).
+///
+/// Sets `CLIPBOARD_OVERLAY_FOR_FILLIN` so downstream:
+///  - The overlay is shown via an activating `SetWindowPos` (no `SWP_NOACTIVATE`)
+///    so its own DOM handles keyboard input.
+///  - `paste_clipboard_item` / `paste_text` route the picked text back via a
+///    `fillin-insert-text` event, sidestepping Ctrl+V injection into the wrong
+///    window (WebView2 → WebView2 is unreliable per
+///    [[feedback_webview2_input_injection]]).
+fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
+    crate::hotkeys::CLIPBOARD_OVERLAY_FOR_FILLIN.store(true, std::sync::atomic::Ordering::SeqCst);
+    webview_mem::resume_for_show(app, "clipboardoverlay");
+
+    // Send history + theme BEFORE showing so the payload is ready when the
+    // window becomes visible. Same pattern as show_clipboard_overlay.
+    let history = clipboard::get_history(1, 500, None, None, None, None, false);
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+    let mut payload = history;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
+    }
+
+    if let Some(win) = app.get_webview_window("clipboardoverlay") {
+        use tauri::Emitter;
+        let _ = win.emit("clipboard-overlay-data", payload);
+
+        // Position like show_clipboard_overlay: center of active monitor,
+        // 1/3 from top, clamped to work area. Physical units to dodge the
+        // hidden-window scale-factor race per monitor_scale_factor.
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+        let (wa_left, wa_top, wa_right, wa_bottom, scale) = unsafe {
+            let mut pt = POINT { x: 0, y: 0 };
+            GetCursorPos(&mut pt);
+            let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+            let mut mi: MONITORINFO = std::mem::zeroed();
+            mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            let s = monitor_scale_factor(hmon);
+            if GetMonitorInfoW(hmon, &mut mi) != 0 {
+                (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, s)
+            } else {
+                (0, 0, 1920, 1080, s)
+            }
+        };
+        let win_w_logical = 754.0_f64;
+        let win_h_logical = 500.0_f64;
+        let phys_w_unclamped = (win_w_logical * scale).round() as i32;
+        let phys_h_unclamped = (win_h_logical * scale).round() as i32;
+        let wa_w = wa_right - wa_left;
+        let wa_h = wa_bottom - wa_top;
+        let max_w = (wa_w - 32).max(400);
+        let max_h = (wa_h - 32).max(200);
+        let phys_w = phys_w_unclamped.min(max_w);
+        let phys_h = phys_h_unclamped.min(max_h);
+        let ideal_y = wa_top + wa_h / 3;
+        let max_y = wa_bottom - phys_h - 16;
+        let phys_y = ideal_y.min(max_y).max(wa_top + 16);
+        let phys_x = wa_left + (wa_w - phys_w) / 2;
+
+        if let Ok(hwnd) = win.hwnd() {
+            unsafe {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST};
+                const SWP_SHOWWINDOW: u32 = 0x0040;
+                // Activating show — the fill-in gives up focus to the popup so
+                // popup's DOM handles keys (search input + arrow nav + Enter).
+                // No SWP_NOACTIVATE here — deliberate departure from the LL-hook
+                // path used by show_clipboard_overlay.
+                SetWindowPos(
+                    hwnd.0 as _,
+                    HWND_TOPMOST,
+                    phys_x,
+                    phys_y,
+                    phys_w,
+                    phys_h,
+                    SWP_SHOWWINDOW,
+                );
+            }
+            crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+        }
+        // Force keyboard focus onto the popup's webview so the search input
+        // receives the user's search-as-they-type keystrokes.
+        let _ = win.set_focus();
+    }
+    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Tauri command wrapper — invoked from FillInWindow.jsx's DOM keydown listener.
+/// The LL-hook-driven path uses the `toggle-clipboard-overlay-for-fillin` event
+/// listener instead, which also calls `show_clipboard_overlay_for_fillin_impl`.
+#[tauri::command]
+fn show_clipboard_overlay_for_fillin(app: tauri::AppHandle) {
+    show_clipboard_overlay_for_fillin_impl(&app);
 }
 
 #[tauri::command]
@@ -3881,6 +4078,24 @@ pub fn run() {
                 }
             });
 
+            // Fill-in variant of the toggle — LL hook emits this when the
+            // clipboard-paste combo fires while a fill-in window is up. Routes
+            // to show_clipboard_overlay_for_fillin so the fill-in-mode flag is
+            // set and paste goes via `fillin-insert-text` event instead of
+            // Ctrl+V injection into the wrong window.
+            let app_handle_clip_fill = app.handle().clone();
+            app.listen("toggle-clipboard-overlay-for-fillin", move |_| {
+                let visible = app_handle_clip_fill
+                    .get_webview_window("clipboardoverlay")
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                if visible {
+                    hide_clipboard_overlay(&app_handle_clip_fill);
+                } else {
+                    show_clipboard_overlay_for_fillin_impl(&app_handle_clip_fill);
+                }
+            });
+
             // Outside-click dismissal: the mouse hook detects a click outside the
             // overlay's window rect and emits these events. Needed because the
             // blur-based path doesn't fire on the first outside click when the
@@ -4147,6 +4362,7 @@ pub fn run() {
             get_telemetry_enabled,
             set_telemetry_enabled,
             close_clipboard_overlay,
+            show_clipboard_overlay_for_fillin,
             clipboard_overlay_resize,
             // Updater
             check_for_updates,

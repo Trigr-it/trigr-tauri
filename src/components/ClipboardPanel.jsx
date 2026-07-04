@@ -1325,6 +1325,14 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
               {!editing && (
                 <div className="cbg-detail-actions-r">
                   <button className="cbg-dbtn cbg-dbtn-del" onClick={() => handleDelete(selected.id)} type="button">Delete</button>
+                  {selected.has_html && selected.content_type === 'text' && (
+                    <button
+                      className="cbg-dbtn"
+                      type="button"
+                      title="Copy without formatting"
+                      onClick={() => window.electronAPI?.copyText(selected.text_content || selected.preview || '')}
+                    >Copy plain</button>
+                  )}
                   <button className="cbg-dbtn cbg-dbtn-copy" onClick={() => handleCopy(selected.id)} type="button">Copy</button>
                 </div>
               )}

@@ -272,6 +272,13 @@ window.electronAPI = {
   }),
   pasteClipboardItem:     (id)            => invoke('paste_clipboard_item', { id }),
   pasteText:              (text, sourceId = null) => invoke('paste_text', { text, sourceId }),
+  // Fill-in webview only: opens the clipboard popup in fill-in mode. Rust
+  // sets a flag so paste_clipboard_item / paste_text emit `fillin-insert-text`
+  // instead of running Ctrl+V injection (unreliable WebView2 → WebView2).
+  showClipboardOverlayForFillIn: () => invoke('show_clipboard_overlay_for_fillin'),
+  onFillInInsertText: (callback) => {
+    listen('fillin-insert-text', (event) => callback(event.payload)).then(u => { listeners['fillin-insert-text'] = u; });
+  },
   copyClipboardItem:      (id)            => invoke('copy_clipboard_item', { id }),
   copyText:               (text)          => invoke('copy_text', { text }),
   ocrClipboardImage:      (id)            => invoke('ocr_clipboard_image', { id }),
