@@ -2450,6 +2450,8 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "color-thief",
+ "core-foundation",
+ "core-graphics",
  "ed25519-dalek",
  "image",
  "log",

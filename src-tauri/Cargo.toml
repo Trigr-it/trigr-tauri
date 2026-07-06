@@ -84,6 +84,14 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security_Cryptography",
 ] }
 
+# Mac port Phase 2: native input engine. CGEventTap (hotkeys) + CGEventPost /
+# NSPasteboard (actions/clipboard) live behind the stubs/*.rs seam and only
+# compile on macOS. core-graphics gives the event tap + synthetic events;
+# core-foundation gives the CFRunLoop the tap thread pumps.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.25"
+core-foundation = "0.10"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
