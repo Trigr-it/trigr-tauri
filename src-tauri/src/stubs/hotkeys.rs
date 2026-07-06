@@ -203,8 +203,15 @@ pub(crate) struct EngineState {
     pub(crate) hold_threshold_ms: u64,
     pub(crate) capture_sole_modifier: Option<String>,
     pub(crate) pending_macro: Option<Value>,
+    /// Set → keyup routes through dispatch_with_double_tap (double-tap
+    /// resolution at keyup); None → fire directly (double already resolved
+    /// at keydown, or no double variant).
+    pub(crate) pending_storage_key: Option<String>,
     pub(crate) pending_trigger_key: Option<String>,
     pub(crate) pending_is_bare: bool,
+    /// Double-tap tracking (twin of the Windows fields).
+    pub(crate) last_hotkey_time: HashMap<String, std::time::Instant>,
+    pub(crate) pending_single_cancel: HashMap<String, std::sync::Arc<AtomicBool>>,
 }
 
 impl Default for EngineState {
@@ -239,11 +246,18 @@ impl Default for EngineState {
             hold_threshold_ms: 350,
             capture_sole_modifier: None,
             pending_macro: None,
+            pending_storage_key: None,
             pending_trigger_key: None,
             pending_is_bare: false,
+            last_hotkey_time: HashMap::new(),
+            pending_single_cancel: HashMap::new(),
         }
     }
 }
+
+/// Pauses hold-threshold detection (armed timers stop firing; new holds
+/// don't arm). Internal to the matcher — same name as the Windows static.
+pub static HOLD_DETECTION_PAUSED: AtomicBool = AtomicBool::new(false);
 
 static ENGINE_STATE: OnceLock<Mutex<EngineState>> = OnceLock::new();
 
@@ -505,6 +519,9 @@ mod macos {
         // (start_hooks is called from tauri's setup) — TIS asserts the main
         // queue, and the processor thread needs the bytes for char resolve.
         cache_keyboard_layout();
+
+        // Hold-trigger watcher (16ms tick; fires ::hold macros at threshold).
+        spawn_hold_watcher(app.clone());
 
         let (sender, receiver) = mpsc::channel::<TapEvent>();
 
@@ -978,6 +995,164 @@ mod macos {
             .or_else(|| display_to_key_id(key_name).and_then(key_id_to_keycode))
     }
 
+    // ── Bare-key gating ──────────────────────────────────────────────────────
+
+    /// Keys allowed for bare mapping in static (non-app-linked) profiles.
+    /// Matches STATIC_BARE_ALLOWED in keyboardLayout.jsx (Windows-only keys
+    /// like PrintScreen are harmless here — the mac keycode table never
+    /// produces them).
+    fn is_static_bare_allowed(key_id: &str) -> bool {
+        matches!(key_id,
+            "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12"
+            | "Insert" | "Home" | "End" | "Delete" | "PageUp" | "PageDown"
+            | "PrintScreen" | "ScrollLock" | "Pause"
+            | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight"
+            | "NumLock" | "NumpadDivide" | "NumpadMultiply" | "NumpadSubtract" | "NumpadAdd"
+            | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4"
+            | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9"
+            | "NumpadEnter" | "NumpadDecimal"
+            | "Escape" | "ContextMenu"
+        )
+    }
+
+    fn profile_is_linked(state: &EngineState) -> bool {
+        state
+            .profile_settings
+            .get(&state.active_profile)
+            .and_then(|s| s.get("linkedApp"))
+            .and_then(|v| v.as_str())
+            .is_some()
+    }
+
+    // ── Hold-trigger machinery (twin of the Windows HOLD_TIMERS watcher) ────
+    // Map keyed by mac keycode (one physical key = one hold cycle). ONE
+    // watcher thread total — never a thread per keypress.
+
+    pub(super) struct HoldEntry {
+        /// Base storage key, no suffix (e.g. "Default::Ctrl+Shift::F12").
+        storage_key: String,
+        fire_at: std::time::Instant,
+        inserted_at: std::time::Instant,
+        fired: bool,
+        hold_macro: Value,
+        /// The base (single-press) assignment, if one exists — re-injected
+        /// at early release.
+        single_macro: Option<Value>,
+        has_double: bool,
+        is_bare: bool,
+    }
+
+    pub(super) fn hold_timers() -> &'static std::sync::Mutex<HashMap<u16, HoldEntry>> {
+        static TIMERS: OnceLock<std::sync::Mutex<HashMap<u16, HoldEntry>>> = OnceLock::new();
+        TIMERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+    }
+
+    /// Arm a hold timer for a fresh keydown. Silently returns when the
+    /// keycode already has a live entry (belt-and-braces — mac repeats are
+    /// filtered upstream by the event's autorepeat field); a stale entry
+    /// (>10s, keyup lost) is replaced.
+    #[allow(clippy::too_many_arguments)]
+    fn arm_hold_timer(
+        keycode: u16,
+        storage_key: String,
+        hold_macro: Value,
+        single_macro: Option<Value>,
+        has_double: bool,
+        is_bare: bool,
+        threshold_ms: u64,
+    ) {
+        let mut timers = hold_timers().lock().unwrap();
+        if let Some(existing) = timers.get(&keycode) {
+            if existing.inserted_at.elapsed() < Duration::from_secs(10) {
+                return;
+            }
+        }
+        let now = std::time::Instant::now();
+        timers.insert(
+            keycode,
+            HoldEntry {
+                storage_key,
+                fire_at: now + Duration::from_millis(threshold_ms),
+                inserted_at: now,
+                fired: false,
+                hold_macro,
+                single_macro,
+                has_double,
+                is_bare,
+            },
+        );
+    }
+
+    /// Drop all armed hold timers (entries hold clones of old macros).
+    /// Called on assignment updates.
+    pub(super) fn clear_hold_timers() {
+        if let Ok(mut timers) = hold_timers().lock() {
+            timers.clear();
+        }
+    }
+
+    static HOLD_WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
+
+    /// The single hold-watcher thread: 16ms tick, fires entries whose
+    /// threshold has passed. Firing happens here (never in the tap callback)
+    /// so the tap latency budget is untouched.
+    pub(super) fn spawn_hold_watcher(app: AppHandle) {
+        if HOLD_WATCHER_RUNNING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        thread::Builder::new()
+            .name("keyfire-hold-watcher".to_string())
+            .spawn(move || {
+                loop {
+                    thread::sleep(Duration::from_millis(16));
+                    if super::HOLD_DETECTION_PAUSED.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    // Collect expired entries under the lock, fire after releasing it.
+                    let mut to_fire: Vec<(String, Value, bool)> = Vec::new();
+                    {
+                        let mut timers = hold_timers().lock().unwrap();
+                        if timers.is_empty() {
+                            continue;
+                        }
+                        let now = std::time::Instant::now();
+                        for entry in timers.values_mut() {
+                            if !entry.fired && now >= entry.fire_at {
+                                entry.fired = true;
+                                to_fire.push((
+                                    entry.storage_key.clone(),
+                                    entry.hold_macro.clone(),
+                                    entry.is_bare,
+                                ));
+                            }
+                        }
+                    }
+                    for (sk, hold_macro, is_bare) in to_fire {
+                        // Threshold reached → hold wins this press cycle:
+                        // cancel the double window, any pending single timer,
+                        // and any deferred pending macro for this key.
+                        {
+                            let mut state = engine_state().lock().unwrap();
+                            if let Some(cancel) = state.pending_single_cancel.remove(&sk) {
+                                cancel.store(true, Ordering::SeqCst);
+                            }
+                            state.last_hotkey_time.remove(&sk);
+                            if state.pending_trigger_key.as_deref() == Some(sk.as_str()) {
+                                state.pending_macro = None;
+                                state.pending_storage_key = None;
+                                state.pending_trigger_key = None;
+                                state.pending_is_bare = false;
+                            }
+                        }
+                        let hold_trigger = format!("{}::hold", sk);
+                        info!("[Keyfire] [HOLD] fired: {}", hold_trigger);
+                        fire_macro(hold_macro, is_bare, Some(hold_trigger), &app);
+                    }
+                }
+            })
+            .expect("Failed to spawn hold watcher thread");
+    }
+
     // ── Suppress-set rebuild ─────────────────────────────────────────────────
 
     /// Recompute the (bits, keycode) suppress set from the active profile's
@@ -987,10 +1162,11 @@ mod macos {
     ///
     /// Deliberately excluded until their milestones land (an unsuppressed key
     /// still reaches the target app; a suppressed-but-unfired key is dead):
-    /// BARE keys, ::double, ::hold, voice, radial menu, Quick Record combos.
+    /// mouse triggers, voice, radial menu, Quick Record combos.
     pub(super) fn rebuild_suppress_keys(state: &EngineState) {
         let mut set: HashSet<(u8, u16)> = HashSet::new();
         let prefix = format!("{}::", state.active_profile);
+        let is_linked = profile_is_linked(state);
         for key in state.assignments.keys() {
             if !key.starts_with(&prefix) {
                 continue;
@@ -1000,20 +1176,39 @@ mod macos {
                 continue;
             }
             let combo_str = parts[1];
-            if combo_str == "GLOBAL" || combo_str == "BARE" {
+            if combo_str == "GLOBAL" {
                 continue;
             }
-            // ::double / ::hold variants don't suppress on mac yet — the
-            // matcher can't fire them, and the plain entry (if any) already
-            // adds the key.
-            if matches!(parts.last(), Some(&"double") | Some(&"hold")) {
+            // ::double entries never suppress on their own — a double-only
+            // key lets the single press pass through to the app; when both
+            // single+double exist, the single entry already adds the key.
+            if parts.last() == Some(&"double") {
+                continue;
+            }
+            // ::hold entries DO suppress (a hold-armed key must not leak its
+            // keystroke while the watcher waits) — but only for Pro; free
+            // users' hold mappings are inert and suppressing would leave a
+            // dead key.
+            if parts.last() == Some(&"hold") && !crate::licence::is_pro() {
+                continue;
+            }
+            let key_id = parts[2];
+            if combo_str == "BARE" {
+                // App-linked profiles: all bare keys. Static profiles: only
+                // non-character keys (same gate as the Windows original —
+                // suppressing letters globally would eat normal typing).
+                if is_linked || is_static_bare_allowed(key_id) {
+                    if let Some(kc) = key_id_to_keycode(key_id) {
+                        set.insert((0u8, kc));
+                    }
+                }
                 continue;
             }
             let bits = super::hotkeys_combo_bits(combo_str);
             if bits == 0 {
                 continue;
             }
-            if let Some(kc) = key_id_to_keycode(parts[2]) {
+            if let Some(kc) = key_id_to_keycode(key_id) {
                 set.insert((bits, kc));
             }
         }
@@ -1127,7 +1322,7 @@ mod macos {
                             });
                         }
                     }
-                    maybe_fire_pending(&app);
+                    handle_keyup(keycode as u16, &app);
                 }
                 TapEvent::FlagsChanged { keycode, flags } => {
                     handle_flags_changed(keycode as u16, flags, &app);
@@ -1372,8 +1567,151 @@ mod macos {
             return;
         }
         if bits == 0 {
-            // Bare-key matching is a later milestone — bare printables drive
-            // the text-expansion buffer instead.
+            // ── Bare-key matching ────────────────────────────────────────
+            // App-linked profiles: all bare keys fire when the linked app is
+            // focused. Static profiles: only non-character keys fire
+            // globally (letters would eat normal typing).
+            let mut state = match engine_state().lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            let bare_allowed = profile_is_linked(&state) || is_static_bare_allowed(key_id);
+
+            if bare_allowed {
+                let bare_key = format!("{}::BARE::{}", state.active_profile, key_id);
+
+                // Repeat-mode stop on the repeat's own bare trigger.
+                if crate::actions::is_repeating() {
+                    if let Some(trigger) = crate::actions::get_repeating_trigger() {
+                        if trigger == bare_key {
+                            drop(state);
+                            crate::actions::stop_repeating_key();
+                            crate::tray::update_tray_icon_normal(app);
+                            return;
+                        }
+                    }
+                }
+
+                // ── Hold trigger (Pro) on bare keys ──────────────────────
+                let bare_hold_key = format!("{}::hold", bare_key);
+                if crate::licence::is_pro()
+                    && state.assignments.contains_key(&bare_hold_key)
+                    && !super::HOLD_DETECTION_PAUSED.load(Ordering::SeqCst)
+                {
+                    crate::expansions::buffer_clear();
+                    let hold_macro = state
+                        .assignments
+                        .get(&bare_hold_key)
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    let single_macro = state.assignments.get(&bare_key).cloned();
+                    let double_key = format!("{}::double", bare_key);
+                    let has_double = state.assignments.contains_key(&double_key);
+                    let threshold = state.hold_threshold_ms;
+
+                    // Keydown-time double-tap detection — deferring it to
+                    // keyup breaks the tap-to-tap timing (same rule as the
+                    // Windows hold branch).
+                    if has_double {
+                        let now = std::time::Instant::now();
+                        let dtw = state.double_tap_window_ms;
+                        if let Some(last) = state.last_hotkey_time.get(&bare_key) {
+                            if now.duration_since(*last).as_millis() < dtw as u128 {
+                                if let Some(cancel) =
+                                    state.pending_single_cancel.remove(&bare_key)
+                                {
+                                    cancel.store(true, Ordering::SeqCst);
+                                }
+                                state.last_hotkey_time.remove(&bare_key);
+                                info!(
+                                    "[Keyfire] x2 Keydown double-tap (hold-armed bare key): {}",
+                                    bare_key
+                                );
+                                // fired=true sentinel keeps the watcher and
+                                // the keyup re-injection inert for this press.
+                                hold_timers().lock().unwrap().insert(keycode, HoldEntry {
+                                    storage_key: bare_key.clone(),
+                                    fire_at: now,
+                                    inserted_at: now,
+                                    fired: true,
+                                    hold_macro: Value::Null,
+                                    single_macro: None,
+                                    has_double: true,
+                                    is_bare: true,
+                                });
+                                state.pending_macro = state.assignments.get(&double_key).cloned();
+                                state.pending_storage_key = None;
+                                state.pending_trigger_key = Some(bare_key);
+                                state.pending_is_bare = true;
+                                return;
+                            }
+                        }
+                        state.last_hotkey_time.insert(bare_key.clone(), now);
+                    }
+
+                    drop(state);
+                    arm_hold_timer(keycode, bare_key, hold_macro, single_macro, has_double, true, threshold);
+                    return;
+                }
+
+                if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
+                    crate::expansions::buffer_clear();
+                    let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let double_key_str = format!("{}::double", bare_key);
+                    // Pro gate: Free users ignore double mappings so single fires normally.
+                    let has_double = crate::licence::is_pro()
+                        && state.assignments.contains_key(&double_key_str);
+
+                    // Hotkey actions on bare keys: AHK-style direct
+                    // passthrough — keydown posts the target chord's downs,
+                    // keyup (handle_keyup → remap_key_release) the ups, so
+                    // hold and tap feel identical to the target key.
+                    if action_type == "hotkey" && !has_double {
+                        if let Some(data) = macro_val.get("data") {
+                            if crate::actions::remap_key_press(keycode, data) {
+                                drop(state);
+                                return;
+                            }
+                        }
+                        let trigger = bare_key.clone();
+                        drop(state);
+                        fire_macro(macro_val, false, Some(trigger), app);
+                        return;
+                    }
+
+                    state.pending_macro = Some(macro_val);
+                    state.pending_storage_key = Some(bare_key.clone());
+                    state.pending_trigger_key = Some(bare_key);
+                    state.pending_is_bare = true;
+                    return;
+                }
+
+                // No single-press — double-only bare key (Pro).
+                let double_key = format!("{}::double", bare_key);
+                if crate::licence::is_pro() && state.assignments.contains_key(&double_key) {
+                    crate::expansions::buffer_clear();
+                    let now = std::time::Instant::now();
+                    let dtw = state.double_tap_window_ms;
+                    if let Some(last) = state.last_hotkey_time.get(&bare_key) {
+                        if now.duration_since(*last).as_millis() < dtw as u128 {
+                            state.last_hotkey_time.remove(&bare_key);
+                            info!("[Keyfire] x2 Double-only bare: {}", bare_key);
+                            state.pending_macro = state.assignments.get(&double_key).cloned();
+                            state.pending_storage_key = None;
+                            state.pending_trigger_key = Some(bare_key);
+                            state.pending_is_bare = true;
+                            return;
+                        }
+                    }
+                    // First tap — passes through to the app (double-only
+                    // keys are not in the suppress set); no buffer feed.
+                    state.last_hotkey_time.insert(bare_key, now);
+                    return;
+                }
+            }
+
+            drop(state);
+            // No bare match — bare printables drive the expansion buffer.
             process_expansion_keystroke(key_id, keycode, flags);
             return;
         }
@@ -1397,26 +1735,152 @@ mod macos {
             }
         }
 
+        // ── Hold trigger (Pro) on modified combos ────────────────────────────
+        let hold_key = format!("{}::hold", storage_key);
+        if crate::licence::is_pro()
+            && state.assignments.contains_key(&hold_key)
+            && !super::HOLD_DETECTION_PAUSED.load(Ordering::SeqCst)
+        {
+            crate::expansions::buffer_clear();
+            let hold_macro = state.assignments.get(&hold_key).cloned().unwrap_or(Value::Null);
+            let single_macro = state.assignments.get(&storage_key).cloned();
+            let double_key = format!("{}::double", storage_key);
+            let has_double = state.assignments.contains_key(&double_key);
+            let threshold = state.hold_threshold_ms;
+
+            if has_double {
+                let now = std::time::Instant::now();
+                let dtw = state.double_tap_window_ms;
+                if let Some(last) = state.last_hotkey_time.get(&storage_key) {
+                    if now.duration_since(*last).as_millis() < dtw as u128 {
+                        if let Some(cancel) = state.pending_single_cancel.remove(&storage_key) {
+                            cancel.store(true, Ordering::SeqCst);
+                        }
+                        state.last_hotkey_time.remove(&storage_key);
+                        info!("[Keyfire] x2 Keydown double-tap (hold-armed key): {}", storage_key);
+                        hold_timers().lock().unwrap().insert(keycode, HoldEntry {
+                            storage_key: storage_key.clone(),
+                            fire_at: now,
+                            inserted_at: now,
+                            fired: true,
+                            hold_macro: Value::Null,
+                            single_macro: None,
+                            has_double: true,
+                            is_bare: false,
+                        });
+                        state.pending_macro = state.assignments.get(&double_key).cloned();
+                        state.pending_storage_key = None;
+                        state.pending_trigger_key = Some(storage_key);
+                        state.pending_is_bare = false;
+                        return;
+                    }
+                }
+                state.last_hotkey_time.insert(storage_key.clone(), now);
+            }
+
+            drop(state);
+            arm_hold_timer(keycode, storage_key, hold_macro, single_macro, has_double, false, threshold);
+            return;
+        }
+
         let mut hotkey_matched = false;
         if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
             hotkey_matched = true;
             crate::expansions::buffer_clear();
+            // Pro gate: Free users ignore double-tap mappings.
             let double_key = format!("{}::double", storage_key);
-            let hold_key = format!("{}::hold", storage_key);
-            if state.assignments.contains_key(&double_key)
-                || state.assignments.contains_key(&hold_key)
-            {
-                info!(
-                    "[Keyfire] {} has double/hold variants — not supported on macOS yet; \
-                     firing the single mapping",
-                    storage_key
-                );
+            let has_double =
+                crate::licence::is_pro() && state.assignments.contains_key(&double_key);
+
+            if has_double {
+                let double_macro = state.assignments.get(&double_key).cloned();
+                let now = std::time::Instant::now();
+                let dtw = state.double_tap_window_ms;
+
+                if let Some(last) = state.last_hotkey_time.get(&storage_key) {
+                    if now.duration_since(*last).as_millis() < dtw as u128 {
+                        // Second tap within window — fire double at keyup.
+                        if let Some(cancel) = state.pending_single_cancel.remove(&storage_key) {
+                            cancel.store(true, Ordering::SeqCst);
+                        }
+                        state.last_hotkey_time.remove(&storage_key);
+                        info!("[Keyfire] x2 Keydown double-tap: {}", storage_key);
+                        state.pending_macro = double_macro;
+                        state.pending_storage_key = None; // fire directly at keyup
+                        state.pending_trigger_key = Some(storage_key);
+                        state.pending_is_bare = false;
+                        return;
+                    }
+                }
+                // First tap — record time and start the single-press timer.
+                state.last_hotkey_time.insert(storage_key.clone(), now);
+                if let Some(old_cancel) = state.pending_single_cancel.remove(&storage_key) {
+                    old_cancel.store(true, Ordering::SeqCst);
+                }
+                let cancel_flag = std::sync::Arc::new(AtomicBool::new(false));
+                state
+                    .pending_single_cancel
+                    .insert(storage_key.clone(), cancel_flag.clone());
+                info!("[Keyfire] x1 First tap: {} — waiting {}ms", storage_key, dtw);
+
+                let sk = storage_key.clone();
+                let app_clone = app.clone();
+                let macro_clone = macro_val.clone();
+                drop(state);
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(dtw));
+                    if cancel_flag.load(Ordering::SeqCst) {
+                        return; // second tap came in — cancelled
+                    }
+                    {
+                        let mut state = engine_state().lock().unwrap();
+                        state.pending_single_cancel.remove(&sk);
+                        state.last_hotkey_time.remove(&sk);
+                    }
+                    info!("[Keyfire] x1 Single confirmed: {}", sk);
+                    fire_macro(macro_clone, false, Some(sk), &app_clone);
+                });
+                return;
+            } else {
+                // No double variant. Hotkey actions fire inline at keydown
+                // (no deferred wait); everything else fires at keyup via the
+                // pending slot (injection wants clean modifier state).
+                let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                if action_type == "hotkey" {
+                    if let Some(data) = macro_val.get("data") {
+                        if crate::actions::execute_hotkey_inline(data, app) {
+                            drop(state);
+                            return;
+                        }
+                    }
+                }
+                state.pending_macro = Some(macro_val);
+                state.pending_storage_key = None;
+                state.pending_trigger_key = Some(storage_key);
+                state.pending_is_bare = false;
             }
-            // Fire at keyup via the pending slot (injection wants clean
-            // modifier state) — the Windows plain-single path.
-            state.pending_macro = Some(macro_val);
-            state.pending_trigger_key = Some(storage_key);
-            state.pending_is_bare = false;
+        } else {
+            // No single-press — double-only (Pro).
+            let double_key = format!("{}::double", storage_key);
+            if crate::licence::is_pro() && state.assignments.contains_key(&double_key) {
+                hotkey_matched = true;
+                crate::expansions::buffer_clear();
+                let now = std::time::Instant::now();
+                let dtw = state.double_tap_window_ms;
+                if let Some(last) = state.last_hotkey_time.get(&storage_key) {
+                    if now.duration_since(*last).as_millis() < dtw as u128 {
+                        state.last_hotkey_time.remove(&storage_key);
+                        info!("[Keyfire] x2 Double-only: {}", storage_key);
+                        state.pending_macro = state.assignments.get(&double_key).cloned();
+                        state.pending_storage_key = None;
+                        state.pending_trigger_key = Some(storage_key);
+                        state.pending_is_bare = false;
+                        drop(state);
+                        return;
+                    }
+                }
+                state.last_hotkey_time.insert(storage_key, now);
+            }
         }
         drop(state);
 
@@ -1427,6 +1891,127 @@ mod macos {
         if !hotkey_matched && bits == 2 {
             process_expansion_keystroke(key_id, keycode, flags);
         }
+    }
+
+    /// Post a synthetic tap of `keycode` carrying the CURRENT modifier state
+    /// so hold-passthrough taps compose with modifiers the user still holds.
+    /// Tagged — it reaches the app but never re-enters the matcher.
+    fn synthetic_tap_with_mods(keycode: u16) {
+        let f = CGEventFlags::from_bits_truncate({
+            let mut bits: u64 = 0;
+            if MOD_CTRL.load(Ordering::SeqCst) {
+                bits |= CGEventFlags::CGEventFlagControl.bits();
+            }
+            if MOD_SHIFT.load(Ordering::SeqCst) {
+                bits |= CGEventFlags::CGEventFlagShift.bits();
+            }
+            if MOD_ALT.load(Ordering::SeqCst) {
+                bits |= CGEventFlags::CGEventFlagAlternate.bits();
+            }
+            if MOD_META.load(Ordering::SeqCst) {
+                bits |= CGEventFlags::CGEventFlagCommand.bits();
+            }
+            bits
+        });
+        crate::actions::post_tap_keycode(keycode, f.bits());
+    }
+
+    /// Keyup bookkeeping: bare-remap release, hold-cycle resolution, then the
+    /// pending fire. Twin of the Windows handle_keyup (minus voice/radial,
+    /// which are later milestones).
+    fn handle_keyup(keycode: u16, app: &AppHandle) {
+        // Release phase of an AHK-style bare-key remap.
+        if crate::actions::remap_key_release(keycode) {
+            return;
+        }
+
+        // ── Hold trigger: trigger-key release ends the hold cycle ──────────
+        // fired == true → the watcher already fired the hold; suppress all.
+        // fired == false → released before threshold; re-inject the dispatch
+        // that keydown deferred.
+        let removed = {
+            let mut timers = hold_timers().lock().unwrap();
+            timers.remove(&keycode)
+        };
+        if let Some(entry) = removed {
+            if !entry.fired {
+                if let Some(single) = entry.single_macro {
+                    if entry.has_double {
+                        // Single + double + hold, released early: the single
+                        // waits out the double window on a cancelable timer —
+                        // a second tap cancels it via pending_single_cancel.
+                        let sk = entry.storage_key.clone();
+                        let is_bare = entry.is_bare;
+                        let mut state = engine_state().lock().unwrap();
+                        let dtw = state.double_tap_window_ms;
+                        if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
+                            old_cancel.store(true, Ordering::SeqCst);
+                        }
+                        let cancel_flag = std::sync::Arc::new(AtomicBool::new(false));
+                        state.pending_single_cancel.insert(sk.clone(), cancel_flag.clone());
+                        drop(state);
+                        let app_clone = app.clone();
+                        thread::spawn(move || {
+                            thread::sleep(Duration::from_millis(dtw));
+                            if cancel_flag.load(Ordering::SeqCst) {
+                                return; // second tap arrived — double fired instead
+                            }
+                            {
+                                let mut state = engine_state().lock().unwrap();
+                                state.pending_single_cancel.remove(&sk);
+                                state.last_hotkey_time.remove(&sk);
+                            }
+                            info!("[Keyfire] x1 Single confirmed (hold-deferred): {}", sk);
+                            fire_macro(single, is_bare, Some(sk), &app_clone);
+                        });
+                    } else {
+                        // Single + hold only: fire through the pending route
+                        // so injection waits for clean modifier state.
+                        if let Ok(mut state) = engine_state().lock() {
+                            state.pending_macro = Some(single);
+                            state.pending_storage_key = None;
+                            state.pending_trigger_key = Some(entry.storage_key.clone());
+                            state.pending_is_bare = entry.is_bare;
+                        }
+                    }
+                } else if entry.has_double {
+                    // Hold + double, NO single — defer the passthrough tap
+                    // through the dtw window; a second tap fires the double
+                    // and cancels this.
+                    let sk = entry.storage_key.clone();
+                    let kc = keycode;
+                    let mut state = engine_state().lock().unwrap();
+                    let dtw = state.double_tap_window_ms;
+                    if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
+                        old_cancel.store(true, Ordering::SeqCst);
+                    }
+                    let cancel_flag = std::sync::Arc::new(AtomicBool::new(false));
+                    state.pending_single_cancel.insert(sk.clone(), cancel_flag.clone());
+                    drop(state);
+                    thread::spawn(move || {
+                        thread::sleep(Duration::from_millis(dtw));
+                        if cancel_flag.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        {
+                            let mut state = engine_state().lock().unwrap();
+                            state.pending_single_cancel.remove(&sk);
+                            state.last_hotkey_time.remove(&sk);
+                        }
+                        info!("[Keyfire] [HOLD] tap passthrough (hold+double, no single): {}", sk);
+                        synthetic_tap_with_mods(kc);
+                    });
+                } else {
+                    // Hold-only — immediate passthrough tap so the app's
+                    // native key behaviour fires (the tap suppressed the
+                    // user's physical keydown).
+                    info!("[Keyfire] [HOLD] tap passthrough (hold-only): {}", entry.storage_key);
+                    synthetic_tap_with_mods(keycode);
+                }
+            }
+        }
+
+        maybe_fire_pending(app);
     }
 
     /// Fire the pending macro once all modifiers are released. Called from
@@ -1440,14 +2025,92 @@ mod macos {
             state.pending_macro.take().map(|m| {
                 (
                     m,
+                    state.pending_storage_key.take(),
                     state.pending_trigger_key.take(),
                     std::mem::take(&mut state.pending_is_bare),
                 )
             })
         });
-        if let Some((macro_val, trigger_key, is_bare)) = taken {
-            fire_macro(macro_val, is_bare, trigger_key, app);
+        if let Some((macro_val, storage_key, trigger_key, is_bare)) = taken {
+            if let Some(sk) = storage_key {
+                // Has a storage key → resolve double-tap at keyup.
+                dispatch_with_double_tap(&sk, macro_val, trigger_key, app);
+            } else {
+                // Double already resolved at keydown, or no double variant.
+                fire_macro(macro_val, is_bare, trigger_key, app);
+            }
         }
+    }
+
+    /// Keyup-time double-tap resolution for pendings that carry a storage
+    /// key (bare keys). Twin of the Windows dispatch_with_double_tap.
+    fn dispatch_with_double_tap(
+        storage_key: &str,
+        macro_val: Value,
+        trigger_key: Option<String>,
+        app: &AppHandle,
+    ) {
+        let mut state = engine_state().lock().unwrap();
+        let double_key = format!("{}::double", storage_key);
+        // Pro gate: Free users get single-press only.
+        let double_macro = if crate::licence::is_pro() {
+            state.assignments.get(&double_key).cloned()
+        } else {
+            None
+        };
+
+        if double_macro.is_none() {
+            drop(state);
+            fire_macro(macro_val, false, trigger_key, app);
+            return;
+        }
+
+        let dtw = state.double_tap_window_ms;
+        let now = std::time::Instant::now();
+
+        if let Some(last) = state.last_hotkey_time.get(storage_key) {
+            if now.duration_since(*last).as_millis() < dtw as u128 {
+                // Second tap within window → fire double.
+                if let Some(cancel) = state.pending_single_cancel.remove(storage_key) {
+                    cancel.store(true, Ordering::SeqCst);
+                }
+                state.last_hotkey_time.remove(storage_key);
+                info!("[Keyfire] x2 Double-tap: {}", storage_key);
+                let dm = double_macro.unwrap();
+                drop(state);
+                fire_macro(dm, false, trigger_key, app);
+                return;
+            }
+        }
+
+        // First tap — schedule the single after the double-tap window.
+        state.last_hotkey_time.insert(storage_key.to_string(), now);
+        if let Some(old_cancel) = state.pending_single_cancel.remove(storage_key) {
+            old_cancel.store(true, Ordering::SeqCst);
+        }
+        let cancel_flag = std::sync::Arc::new(AtomicBool::new(false));
+        state
+            .pending_single_cancel
+            .insert(storage_key.to_string(), cancel_flag.clone());
+        info!("[Keyfire] x1 First tap: {} — waiting {}ms", storage_key, dtw);
+
+        let sk = storage_key.to_string();
+        let app_clone = app.clone();
+        drop(state);
+
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(dtw));
+            if cancel_flag.load(Ordering::SeqCst) {
+                return; // second tap came in — cancelled
+            }
+            {
+                let mut state = engine_state().lock().unwrap();
+                state.pending_single_cancel.remove(&sk);
+                state.last_hotkey_time.remove(&sk);
+            }
+            info!("[Keyfire] x1 Single confirmed: {}", sk);
+            fire_macro(macro_val, false, Some(sk), &app_clone);
+        });
     }
 
     /// Twin of the Windows fire_macro: spawn a worker so the processor never
@@ -1658,6 +2321,9 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
         s.active_profile = profile;
         rebuild_suppress(&s);
     }
+    // Armed hold timers hold clones of the OLD macros — drop them.
+    #[cfg(target_os = "macos")]
+    macos::clear_hold_timers();
 }
 
 pub fn update_profile_settings(settings: HashMap<String, Value>) {

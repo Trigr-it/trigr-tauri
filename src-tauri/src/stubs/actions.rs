@@ -329,6 +329,61 @@ pub(crate) fn type_text_direct_pub(text: &str) {
     }
 }
 
+/// Post a tagged down+15ms+up tap of a NATIVE mac keycode with an explicit
+/// CGEventFlags bit mask. Used by the matcher's hold-passthrough taps so the
+/// app receives the suppressed key with the user's live modifier state.
+pub(crate) fn post_tap_keycode(keycode: u16, flags_bits: u64) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::post_tap_with_flags(keycode, flags_bits);
+    }
+}
+
+/// AHK-style bare-key remap: keydown posts the target chord's downs (no up);
+/// `remap_key_release` posts the ups on the trigger's keyup. `trigger_key`
+/// carries a NATIVE mac keycode on macOS (a VK on Windows) — opaque to the
+/// caller, which round-trips the same value into the release. Returns false
+/// for mouse/hold/repeat/unknown targets so the caller falls back to
+/// fire_macro.
+pub fn remap_key_press(trigger_key: u16, data: &Value) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::remap_key_press(trigger_key, data)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// Release phase of a bare-key remap (called on keyup). Returns true if a
+/// remap was active for this trigger (caller should early-return).
+pub fn remap_key_release(trigger_key: u16) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::remap_key_release(trigger_key)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// Execute a Send Hotkey combo inline on the calling thread — no thread
+/// spawn, no pending deferral, fires on keydown. Returns false → fall
+/// through to pending/fire_macro for mouse buttons, hold mode, repeat mode,
+/// or unknown key names.
+pub fn execute_hotkey_inline(data: &Value, _app: &tauri::AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::execute_hotkey_inline(data)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 pub fn set_foreground_robust(hwnd: isize) -> bool {
     // HWNDs don't exist on macOS; focus follows the frontmost app, which the
     // overlay windows don't steal (they are non-activating panels). The
@@ -1969,6 +2024,14 @@ mod macos {
         }
     }
 
+    /// Tap a keycode with explicit flags (see post_tap_keycode).
+    pub(super) fn post_tap_with_flags(keycode: u16, flags_bits: u64) {
+        let flags = CGEventFlags::from_bits_truncate(flags_bits);
+        post_key(keycode, false, flags);
+        thread::sleep(Duration::from_millis(15));
+        post_key(keycode, true, flags);
+    }
+
     /// Press a modifier chord, tap the main key (15ms down→up so per-frame
     /// key-state pollers observe the press — the Windows KEY_HOLD_MS
     /// invariant), release the chord in reverse. All keycodes are native mac.
@@ -2089,6 +2152,128 @@ mod macos {
             ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
             ev.post(CGEventTapLocation::HID);
         }
+    }
+
+    // ── Bare-key remap (AHK-style passthrough) ──────────────────────────────
+
+    /// trigger keycode → (target keycode, modifier keycodes) for remaps whose
+    /// down phase has fired and whose up phase waits on the trigger's keyup.
+    static ACTIVE_BARE_REMAPS: LazyLock<Mutex<std::collections::HashMap<u16, (u16, Vec<u16>)>>> =
+        LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+    pub(super) fn remap_key_press(trigger_kc: u16, data: &Value) -> bool {
+        let key_name = match data.get("key").and_then(|v| v.as_str()) {
+            Some(k) if !k.is_empty() => k,
+            _ => return false,
+        };
+        if is_mouse_button(key_name) {
+            return false;
+        }
+        if data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return false;
+        }
+        if data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return false;
+        }
+        let Some(target_kc) = crate::hotkeys::display_name_to_keycode(key_name) else {
+            return false;
+        };
+        let mod_kcs: Vec<u16> = data
+            .get("modifiers")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| match v.as_str()?.to_lowercase().as_str() {
+                        "ctrl" | "win" => Some(KC_LCMD),
+                        "alt" => Some(KC_LOPTION),
+                        "shift" => Some(KC_LSHIFT),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Record the active remap so keyup knows what to release.
+        // Overwriting on a repeat keydown is intentional and idempotent.
+        ACTIVE_BARE_REMAPS
+            .lock()
+            .unwrap()
+            .insert(trigger_kc, (target_kc, mod_kcs.clone()));
+
+        // Mods down + target down — keyup comes from remap_key_release.
+        let mut flags = CGEventFlags::CGEventFlagNull;
+        for &kc in &mod_kcs {
+            if let Some(f) = modifier_flag(kc) {
+                flags.insert(f);
+            }
+            post_key(kc, false, flags);
+        }
+        post_key(target_kc, false, flags);
+        true
+    }
+
+    pub(super) fn remap_key_release(trigger_kc: u16) -> bool {
+        let entry = ACTIVE_BARE_REMAPS.lock().unwrap().remove(&trigger_kc);
+        if let Some((target_kc, mod_kcs)) = entry {
+            let mut flags = mod_kcs
+                .iter()
+                .filter_map(|&kc| modifier_flag(kc))
+                .fold(CGEventFlags::CGEventFlagNull, |acc, f| acc | f);
+            post_key(target_kc, true, flags);
+            for &kc in mod_kcs.iter().rev() {
+                if let Some(f) = modifier_flag(kc) {
+                    flags.remove(f);
+                }
+                post_key(kc, true, flags);
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Inline Send Hotkey fire (keydown path). Normal mode only — mouse,
+    /// hold, repeat and unknown keys return false for the deferred route.
+    pub(super) fn execute_hotkey_inline(data: &Value) -> bool {
+        let key_name = data.get("key").and_then(|v| v.as_str()).unwrap_or("");
+        if is_mouse_button(key_name) {
+            return false;
+        }
+        if data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return false;
+        }
+        if data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return false;
+        }
+        let mod_kcs: Vec<u16> = data
+            .get("modifiers")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| match v.as_str()?.to_lowercase().as_str() {
+                        "ctrl" | "win" => Some(KC_LCMD),
+                        "alt" => Some(KC_LOPTION),
+                        "shift" => Some(KC_LSHIFT),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let target = if key_name.is_empty() {
+            if mod_kcs.is_empty() {
+                return false;
+            }
+            None
+        } else {
+            match crate::hotkeys::display_name_to_keycode(key_name) {
+                Some(kc) => Some(kc),
+                None => return false,
+            }
+        };
+        let held = release_held_modifiers();
+        post_chord(&mod_kcs, target);
+        restore_modifiers(&held);
+        true
     }
 
     // ── Send Hotkey hold / repeat state (twin of the Windows managers) ──────
