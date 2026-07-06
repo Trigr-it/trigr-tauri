@@ -110,6 +110,25 @@ pub fn is_pro() -> bool {
     IS_PRO.load(Ordering::SeqCst)
 }
 
+/// True only when the user has a signature-valid, non-expired Pro key.
+/// Unlike [`is_pro`], this does NOT return true for the trial fallback —
+/// used by telemetry to keep beta-key holders on `pro` even while their
+/// 14-day trial is still ticking.
+pub fn has_valid_pro_key() -> bool {
+    let state = match LICENCE_STATE.get() {
+        Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        None => return false,
+    };
+    state.valid
+        && state.tier.as_deref() == Some("pro")
+        && state
+            .expires_at
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|d| d.to_utc() > chrono::Utc::now())
+            .unwrap_or(false)
+}
+
 pub fn get_licence_status() -> LicenceStatus {
     let state = match LICENCE_STATE.get() {
         Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),

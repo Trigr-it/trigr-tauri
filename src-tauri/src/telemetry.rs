@@ -213,10 +213,13 @@ pub fn aggregate_for_date(date: &str) -> DayCounts {
 /// the dashboard can't see from fire counts alone.
 fn build_extra(c: &DayCounts) -> String {
     let status = crate::licence::get_licence_status();
-    let tier = if status.trial_active {
-        "trial"
-    } else if status.is_pro {
+    // Real Pro key beats trial: a beta-key holder who happened to start the
+    // 14-day trial before activating their key should report as `pro`, not
+    // `trial`, for the entire life of the key.
+    let tier = if crate::licence::has_valid_pro_key() {
         "pro"
+    } else if status.trial_active {
+        "trial"
     } else {
         "free"
     };
