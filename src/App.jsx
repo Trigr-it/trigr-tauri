@@ -2368,16 +2368,25 @@ function App() {
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, syncEngine, showNotification]);
 
   // ── Copy / Move assignment to another profile ─────────────
+  // A key can hold up to three independent trigger variants, each under its
+  // own storage key: base (single press), base::double, base::hold.
+  // Copy/Move must carry every variant that exists, in any combination.
+  const ASSIGNMENT_VARIANT_SUFFIXES = ['', '::double', '::hold'];
+
   const handleCopyToProfile = useCallback((targetProfile, combo, keyId) => {
     const srcCombo = combo || currentCombo;
     const srcKey   = keyId || selectedKey;
     const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
     const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
-    const oldDouble = oldKey + '::double';
-    const newDouble = newKey + '::double';
     const newAssignments = { ...assignments };
-    if (assignments[oldKey]) newAssignments[newKey] = assignments[oldKey];
-    if (assignments[oldDouble]) newAssignments[newDouble] = assignments[oldDouble];
+    let carried = 0;
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      if (assignments[oldKey + suffix]) {
+        newAssignments[newKey + suffix] = assignments[oldKey + suffix];
+        carried++;
+      }
+    }
+    if (carried === 0) return;
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Copied to "${targetProfile}" profile`);
@@ -2388,19 +2397,16 @@ function App() {
     const srcKey   = keyId || selectedKey;
     const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
     const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
-    const oldDouble = oldKey + '::double';
-    const newDouble = newKey + '::double';
     const newAssignments = { ...assignments };
-    // Move single-press (if exists)
-    if (newAssignments[oldKey]) {
-      newAssignments[newKey] = newAssignments[oldKey];
-      delete newAssignments[oldKey];
+    let carried = 0;
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      if (newAssignments[oldKey + suffix]) {
+        newAssignments[newKey + suffix] = newAssignments[oldKey + suffix];
+        delete newAssignments[oldKey + suffix];
+        carried++;
+      }
     }
-    // Move double-press (if exists)
-    if (newAssignments[oldDouble]) {
-      newAssignments[newDouble] = newAssignments[oldDouble];
-      delete newAssignments[oldDouble];
-    }
+    if (carried === 0) return;
     setAssignments(newAssignments);
     setSelectedKey(null);
     saveConfig(newAssignments, profiles, activeProfile);
