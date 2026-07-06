@@ -8,7 +8,7 @@
 
 set -e
 
-REPO_DIR="$HOME/Development/trigr-tauri"
+REPO_DIR="$HOME/Desktop/Keyfire"
 
 step() { printf '\n\033[1;33m== %s ==\033[0m\n' "$1"; }
 
@@ -82,9 +82,9 @@ Setup complete. Three interactive steps remain:
 
   1. gh auth login          (pick GitHub.com > HTTPS > browser login;
                              gives this Mac push access to the repo)
-  2. claude                 (run inside ~/Development/trigr-tauri;
+  2. claude                 (run inside ~/Desktop/Keyfire;
                              sign in on first launch)
-  3. First dev run:         cd ~/Development/trigr-tauri && cargo tauri dev
+  3. First dev run:         cd ~/Desktop/Keyfire && cargo tauri dev
 
 When the engine work starts, macOS will prompt for Accessibility and
 Input Monitoring permissions (System Settings > Privacy & Security).
