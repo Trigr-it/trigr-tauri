@@ -1,21 +1,65 @@
 use serde_json::Value;
 use tauri::{Emitter, Listener, Manager};
 
+// Platform seam: the 10 engine modules below are Win32-bound. On Windows the
+// real modules compile; everywhere else the compiler swaps in no-op twins from
+// stubs/ so the app builds and boots UI-only. Shared modules (analytics,
+// config, expression, licence, recorder, telemetry) compile on all platforms.
+#[cfg(windows)]
+mod actions;
+#[cfg(not(windows))]
+#[path = "stubs/actions.rs"]
 mod actions;
 mod analytics;
+#[cfg(windows)]
+mod clipboard;
+#[cfg(not(windows))]
+#[path = "stubs/clipboard.rs"]
 mod clipboard;
 mod config;
+#[cfg(windows)]
+mod expansions;
+#[cfg(not(windows))]
+#[path = "stubs/expansions.rs"]
 mod expansions;
 mod expression;
+#[cfg(windows)]
 mod foreground;
+#[cfg(not(windows))]
+#[path = "stubs/foreground.rs"]
+mod foreground;
+#[cfg(windows)]
+mod hotkeys;
+#[cfg(not(windows))]
+#[path = "stubs/hotkeys.rs"]
 mod hotkeys;
 mod licence;
+#[cfg(windows)]
+mod ocr;
+#[cfg(not(windows))]
+#[path = "stubs/ocr.rs"]
 mod ocr;
 mod recorder;
 mod telemetry;
+#[cfg(windows)]
 mod tray;
+#[cfg(not(windows))]
+#[path = "stubs/tray.rs"]
+mod tray;
+#[cfg(windows)]
 mod voice;
+#[cfg(not(windows))]
+#[path = "stubs/voice.rs"]
+mod voice;
+#[cfg(windows)]
 mod webview_mem;
+#[cfg(not(windows))]
+#[path = "stubs/webview_mem.rs"]
+mod webview_mem;
+#[cfg(windows)]
+mod window_target;
+#[cfg(not(windows))]
+#[path = "stubs/window_target.rs"]
 mod window_target;
 
 // ── Config (Phase 2) ────────────────────────────────────────────────────────
@@ -485,6 +529,13 @@ async fn browse_for_image(app: tauri::AppHandle) -> Value {
 // of { name, appId } where appId is the AUMID (for Store/UWP apps) or the
 // folder-GUID-prefixed path (for Win32 apps with Start Menu shortcuts). Both
 // forms can be launched portably across devices via `shell:AppsFolder\<appId>`.
+#[cfg(not(windows))]
+#[tauri::command]
+fn list_installed_apps() -> Value {
+    Value::Array(Vec::new())
+}
+
+#[cfg(windows)]
 #[tauri::command]
 fn list_installed_apps() -> Value {
     use std::process::Command;
@@ -557,6 +608,14 @@ fn list_installed_apps() -> Value {
     Value::Array(apps)
 }
 
+#[cfg(not(windows))]
+#[tauri::command]
+fn get_app_icon(path: String) -> Value {
+    let _ = path;
+    Value::Null
+}
+
+#[cfg(windows)]
 #[tauri::command]
 fn get_app_icon(path: String) -> Value {
     use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
@@ -726,6 +785,13 @@ fn base64_encode(data: &[u8]) -> String {
 
 // ── Window enumeration ─────────────────────────────────────────────────────
 
+#[cfg(not(windows))]
+#[tauri::command]
+fn get_cursor_position() -> Value {
+    serde_json::json!({ "x": 0, "y": 0 })
+}
+
+#[cfg(windows)]
 #[tauri::command]
 fn get_cursor_position() -> Value {
     let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
@@ -740,6 +806,13 @@ fn enum_monitors() -> Vec<window_target::MonitorInfo> {
     window_target::enum_monitors()
 }
 
+#[cfg(not(windows))]
+#[tauri::command]
+fn list_open_windows() -> Vec<Value> {
+    Vec::new()
+}
+
+#[cfg(windows)]
 #[tauri::command]
 fn list_open_windows() -> Vec<Value> {
     use std::collections::HashSet;
@@ -925,6 +998,13 @@ fn show_recorder_countdown(app: tauri::AppHandle) {
 /// Quick Record processor handler in hotkeys.rs. Separate from the Tauri
 /// command because #[tauri::command] generates a sibling __cmd__ macro that
 /// conflicts with cross-module pub(crate) visibility.
+#[cfg(not(windows))]
+pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
+    let _ = app;
+    log::warn!("[stub] macro recorder UI is not available on this platform yet");
+}
+
+#[cfg(windows)]
 pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{
@@ -1035,6 +1115,12 @@ pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
 /// Resize + reposition the countdown window into the small top-right pill
 /// shown while a recording is in progress. Called by
 /// `recorder_countdown_complete` at the moment 3-2-1 finishes.
+#[cfg(not(windows))]
+fn morph_countdown_to_pill(app: &tauri::AppHandle) {
+    let _ = app;
+}
+
+#[cfg(windows)]
 fn morph_countdown_to_pill(app: &tauri::AppHandle) {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{
@@ -1401,6 +1487,10 @@ fn clear_temp_macro() -> bool {
 /// broken shortcut pointing at a now-missing binary. We delete it from every
 /// known location on startup. Idempotent: silent no-op when nothing's there.
 /// Covers per-user Start Menu (currentUser install mode) and Desktop.
+#[cfg(not(windows))]
+fn cleanup_stale_trigr_shortcuts() {}
+
+#[cfg(windows)]
 fn cleanup_stale_trigr_shortcuts() {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(appdata) = std::env::var("APPDATA") {
@@ -1467,6 +1557,10 @@ fn cleanup_stale_trigr_shortcuts() {
 /// and auto-updated users still at `AppData\Local\Trigr\` (Tauri preserved
 /// the install dir name across the rebrand because the updater never moves
 /// directories — only swaps the .exe binary in place).
+#[cfg(not(windows))]
+fn ensure_keyfire_shortcut() {}
+
+#[cfg(windows)]
 fn ensure_keyfire_shortcut() {
     let Ok(appdata) = std::env::var("APPDATA") else {
         log::warn!("[Keyfire] ensure_keyfire_shortcut: APPDATA env var missing");
@@ -1810,6 +1904,7 @@ fn voice_overlay_open_time() -> &'static StdMutex<Option<StdInstant>> {
 /// physical coordinates after Tauri's logical-to-physical conversion at
 /// set_position/set_size. Going through PhysicalPosition + PhysicalSize
 /// computed from this helper bypasses all of that.
+#[cfg(windows)]
 fn monitor_scale_factor(hmon: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> f64 {
     use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     let mut dx: u32 = 96;
@@ -1820,6 +1915,13 @@ fn monitor_scale_factor(hmon: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> f6
     dx as f64 / 96.0
 }
 
+#[cfg(not(windows))]
+fn show_overlay(app: &tauri::AppHandle) {
+    let _ = app;
+    log::warn!("[stub] quick search overlay is not available on this platform yet");
+}
+
+#[cfg(windows)]
 fn show_overlay(app: &tauri::AppHandle) {
     // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
     webview_mem::resume_for_show(app, "overlay");
@@ -1916,6 +2018,12 @@ fn show_overlay(app: &tauri::AppHandle) {
     let _ = app.emit("search-overlay-shown", serde_json::Value::Null);
 }
 
+#[cfg(not(windows))]
+fn show_voice_overlay(app: &tauri::AppHandle) {
+    let _ = app;
+}
+
+#[cfg(windows)]
 fn show_voice_overlay(app: &tauri::AppHandle) {
     // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
     webview_mem::resume_for_show(app, "overlay");
@@ -2008,6 +2116,13 @@ fn hide_overlay(app: &tauri::AppHandle) {
 static CLIPBOARD_OVERLAY_TARGET: std::sync::atomic::AtomicIsize =
     std::sync::atomic::AtomicIsize::new(0);
 
+#[cfg(not(windows))]
+fn show_clipboard_overlay(app: &tauri::AppHandle) {
+    let _ = app;
+    log::warn!("[stub] clipboard popup is not available on this platform yet");
+}
+
+#[cfg(windows)]
 fn show_clipboard_overlay(app: &tauri::AppHandle) {
     // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
     webview_mem::resume_for_show(app, "clipboardoverlay");
@@ -2135,6 +2250,17 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     );
 }
 
+#[cfg(not(windows))]
+fn hide_clipboard_overlay(app: &tauri::AppHandle) {
+    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(false, std::sync::atomic::Ordering::SeqCst);
+    crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
+    crate::hotkeys::CLIPBOARD_OVERLAY_FOR_FILLIN.store(false, std::sync::atomic::Ordering::SeqCst);
+    if let Some(w) = app.get_webview_window("clipboardoverlay") {
+        let _ = w.hide();
+    }
+}
+
+#[cfg(windows)]
 fn hide_clipboard_overlay(app: &tauri::AppHandle) {
     crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(false, std::sync::atomic::Ordering::SeqCst);
     crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(0, std::sync::atomic::Ordering::SeqCst);
@@ -2196,6 +2322,13 @@ fn radial_menu_show_time() -> &'static StdMutex<Option<StdInstant>> {
     RADIAL_MENU_SHOW_TIME.get_or_init(|| StdMutex::new(None))
 }
 
+#[cfg(not(windows))]
+fn show_radial_menu(app: &tauri::AppHandle) {
+    let _ = app;
+    log::warn!("[stub] radial menu is not available on this platform yet");
+}
+
+#[cfg(windows)]
 fn show_radial_menu(app: &tauri::AppHandle) {
     // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
     webview_mem::resume_for_show(app, "radialmenu");
@@ -2864,6 +2997,7 @@ fn paste_clipboard_item(id: i64, app: tauri::AppHandle) {
         // the captured target_hwnd, focus drifted during the popup's lifetime
         // (likely Chromium SetFocus on the overlay webview racing our
         // SWP_NOACTIVATE show, or the target app reacted to some other event).
+        #[cfg(windows)]
         unsafe {
             use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
             let fg_now = GetForegroundWindow() as isize;
@@ -3249,6 +3383,13 @@ fn save_clipboard_image_as(id: i64, format: String, app: tauri::AppHandle) -> bo
 ///   2. mark_clipboard_excluded (Windows Clipboard History opt-out)
 ///   3. record_self_clipboard_write (seqnum record for async H3 race)
 /// Callers also set SUPPRESS_NEXT externally — that's redundant but harmless.
+#[cfg(not(windows))]
+fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_bytes: &[u8]) {
+    let _ = (bgra_pixels, width, height, png_bytes);
+    log::warn!("[stub] image clipboard write is not available on this platform yet");
+}
+
+#[cfg(windows)]
 fn write_image_to_clipboard(bgra_pixels: &[u8], width: u32, height: u32, png_bytes: &[u8]) {
     use windows_sys::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
@@ -3342,6 +3483,12 @@ fn close_clipboard_overlay(app: tauri::AppHandle) {
 ///    `fillin-insert-text` event, sidestepping Ctrl+V injection into the wrong
 ///    window (WebView2 → WebView2 is unreliable per
 ///    [[feedback_webview2_input_injection]]).
+#[cfg(not(windows))]
+fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
+    let _ = app;
+}
+
+#[cfg(windows)]
 fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
     crate::hotkeys::CLIPBOARD_OVERLAY_FOR_FILLIN.store(true, std::sync::atomic::Ordering::SeqCst);
     webview_mem::resume_for_show(app, "clipboardoverlay");
@@ -3615,6 +3762,14 @@ fn fill_in_ready() {
     }
 }
 
+#[cfg(not(windows))]
+#[tauri::command]
+fn fillin_resize(height: f64, app: tauri::AppHandle) {
+    let Some(win) = app.get_webview_window("fillin") else { return };
+    let _ = win.set_size(tauri::LogicalSize::new(448.0, height.max(120.0)));
+}
+
+#[cfg(windows)]
 #[tauri::command]
 fn fillin_resize(height: f64, app: tauri::AppHandle) {
     use windows_sys::Win32::Foundation::HWND;

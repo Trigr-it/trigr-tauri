@@ -1,0 +1,56 @@
+name: Port Check
+# Compile gate for the cross-platform seam (Mac port Phase 0).
+# Runs cargo check on macOS + Windows for every push to a port/** branch:
+# macOS proves the stub seam compiles for the new target, Windows proves the
+# seam did not regress the shipping build. No bundling, no signing.
+on:
+  push:
+    branches:
+      - 'port/**'
+
+jobs:
+  check-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: port-check-macos
+      # generate_context! embeds the frontend dist at compile time, so the
+      # frontend must be built before cargo check can succeed.
+      - name: Build frontend
+        run: |
+          npm install
+          npm run build
+      - name: cargo check (macOS)
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+  check-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: port-check-windows
+      - name: Build frontend
+        run: |
+          npm install
+          npm run build
+      - name: cargo check (Windows)
+        run: cargo check --manifest-path src-tauri/Cargo.toml
