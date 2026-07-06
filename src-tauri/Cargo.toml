@@ -18,7 +18,10 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
+# macos-private-api: required for .transparent(true) overlay windows on macOS
+# (Mac port Phase 0). No effect on the Windows build; rules out Mac App Store
+# distribution only, which is not the plan (direct .dmg).
+tauri = { version = "2", features = ["tray-icon", "protocol-asset", "macos-private-api"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
