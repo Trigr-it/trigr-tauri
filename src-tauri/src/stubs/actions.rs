@@ -696,6 +696,12 @@ mod macos {
                 }
             }
 
+            "hotkey" => {
+                if let Some(d) = data {
+                    execute_send_hotkey(d);
+                }
+            }
+
             other => {
                 warn!(
                     "[Keyfire] action type [{}] is not implemented on macOS yet — skipping \"{}\"",
@@ -787,6 +793,85 @@ mod macos {
             }
         }
         SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
+    }
+
+    /// Send Hotkey action — the plain path: press the modifier chord, tap the
+    /// main key (15ms down→up so per-frame pollers see it), release in
+    /// reverse. Bare-modifier chords (key="", modifiers only) press and
+    /// release just the chord. holdMode / repeatMode / mouse buttons are
+    /// later milestones. Modifier tokens use accelerator semantics, matching
+    /// send_vk_key_pub: "ctrl" and "win" both mean ⌘ on macOS ("Ctrl+C"
+    /// authored on Windows should copy on a Mac), "alt" is ⌥, "shift" ⇧.
+    fn execute_send_hotkey(data: &Value) {
+        let key_name = data.get("key").and_then(|v| v.as_str()).unwrap_or("");
+        let hold_mode = data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false);
+        let repeat_mode = data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false);
+        if hold_mode || repeat_mode {
+            warn!("[Keyfire] Send Hotkey hold/repeat modes are not implemented on macOS yet");
+            return;
+        }
+        if key_name.starts_with("MOUSE_") {
+            warn!("[Keyfire] Send Hotkey mouse buttons are not implemented on macOS yet");
+            return;
+        }
+
+        let mod_keycodes: Vec<u16> = data
+            .get("modifiers")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| match v.as_str()?.to_lowercase().as_str() {
+                        "ctrl" | "win" => Some(KC_LCMD),
+                        "alt" => Some(KC_LOPTION),
+                        "shift" => Some(KC_LSHIFT),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let target = if key_name.is_empty() {
+            if mod_keycodes.is_empty() {
+                warn!("[Keyfire] Send Hotkey has no key or modifiers — nothing to send");
+                return;
+            }
+            None
+        } else {
+            match crate::hotkeys::display_name_to_keycode(key_name) {
+                Some(kc) => Some(kc),
+                None => {
+                    warn!("[Keyfire] Unknown Send Hotkey key: {}", key_name);
+                    return;
+                }
+            }
+        };
+
+        // Release the physically held trigger modifiers (e.g. ⌘ from a ⌘K
+        // trigger) so the target app sees ONLY the chord we send.
+        let held = release_held_modifiers();
+
+        let mut flags = CGEventFlags::CGEventFlagNull;
+        for &kc in &mod_keycodes {
+            if let Some(f) = modifier_flag(kc) {
+                flags.insert(f);
+            }
+            post_key(kc, false, flags);
+        }
+        if let Some(kc) = target {
+            post_key(kc, false, flags);
+            // Hold between down and up so per-frame key-state pollers (games)
+            // observe the press — mirrors the Windows KEY_HOLD_MS invariant.
+            thread::sleep(Duration::from_millis(15));
+            post_key(kc, true, flags);
+        }
+        for &kc in mod_keycodes.iter().rev() {
+            if let Some(f) = modifier_flag(kc) {
+                flags.remove(f);
+            }
+            post_key(kc, true, flags);
+        }
+
+        restore_modifiers(&held);
     }
 
     /// Post the ⌘V chord (all four events tagged; ⌘ carried on the V events'

@@ -727,14 +727,18 @@ mod macos {
                 _ => {}
             }
         }
-        let keycode = if key_name.eq_ignore_ascii_case("space") {
-            key_id_to_keycode("Space")
-        } else {
-            key_id_to_keycode(&format!("Key{}", key_name.to_uppercase()))
-                .or_else(|| key_id_to_keycode(key_name))
-                .or_else(|| display_to_key_id(key_name).and_then(key_id_to_keycode))
-        };
-        keycode.map(|kc| (bits, kc as u32))
+        display_name_to_keycode(key_name).map(|kc| (bits, kc as u32))
+    }
+
+    /// Resolve a display-format key name ("K", "F5", "Up", ";", "Space") to a
+    /// mac keycode. Shared by combo parsing and the Send Hotkey action.
+    pub(crate) fn display_name_to_keycode(key_name: &str) -> Option<u16> {
+        if key_name.eq_ignore_ascii_case("space") {
+            return key_id_to_keycode("Space");
+        }
+        key_id_to_keycode(&format!("Key{}", key_name.to_uppercase()))
+            .or_else(|| key_id_to_keycode(key_name))
+            .or_else(|| display_to_key_id(key_name).and_then(key_id_to_keycode))
     }
 
     // ── Suppress-set rebuild ─────────────────────────────────────────────────
@@ -1222,6 +1226,13 @@ mod macos {
             assert_eq!(set.len(), 4);
         }
     }
+}
+
+/// Display-name → mac keycode bridge for other stub modules (actions.rs
+/// Send Hotkey uses the same key-name universe as combo strings).
+#[cfg(target_os = "macos")]
+pub(crate) fn display_name_to_keycode(name: &str) -> Option<u16> {
+    macos::display_name_to_keycode(name)
 }
 
 /// Combo string → modifier bits (shared with the macos module; token names
