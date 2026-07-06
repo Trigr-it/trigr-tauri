@@ -63,6 +63,36 @@ pub static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
 /// run; they sit above this gate, exactly like Windows).
 static APP_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
 
+/// True while the expansions engine is injecting (backspaces + paste). Set by
+/// expansions::InjectionGuard; fire paths serialise on it. Mirror of the
+/// Windows static of the same name — but note there is no injection replay
+/// buffer on macOS (tagged events replace SUPPRESS_SIMULATED, see
+/// stubs/expansions.rs module docs).
+pub static INJECTION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// True while the fill-in / variant-picker window flow is active. Gates
+/// re-entrant fill-in invocations (mirror of the Windows FILL_IN_ACTIVE).
+pub static FILL_IN_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Millisecond timestamp of the current injection's start (0 = none). The
+/// Windows build runs a watchdog thread against this; on mac the bounded
+/// wait in expansions::wait_for_injection_clear plays that role — these
+/// fns keep the guard's call shape identical.
+static INJECTION_STARTED_AT_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+pub fn mark_injection_start() {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    INJECTION_STARTED_AT_MS.store(now, Ordering::SeqCst);
+}
+
+pub fn clear_injection_start() {
+    INJECTION_STARTED_AT_MS.store(0, Ordering::SeqCst);
+}
+
 /// Key capture mode (settings "press a key" fields). One-shot: cleared by the
 /// processor when a combo is captured and emitted as `key-captured`.
 static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
@@ -245,11 +275,42 @@ mod macos {
     /// is disabled so half-working hotkeys can't eat keystrokes.
     static TAP_CAN_SUPPRESS: AtomicBool = AtomicBool::new(false);
 
-    // `CGEventTapEnable` is not re-exported by core-graphics. Bind it directly;
-    // the CoreGraphics framework is already linked by the crate.
+    // `CGEventTapEnable` / `CGEventKeyboardGetUnicodeString` are not
+    // re-exported by core-graphics. Bind them directly; the CoreGraphics
+    // framework is already linked by the crate.
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
         fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+        fn CGEventKeyboardGetUnicodeString(
+            event: core_graphics::sys::CGEventRef,
+            max_string_length: usize,
+            actual_string_length: *mut usize,
+            unicode_string: *mut u16,
+        );
+    }
+
+    /// Layout-aware character for a keyboard event — what this keyDown would
+    /// type, shift/option state included. Pure data extraction from the
+    /// event (no I/O), so it is safe in the tap callback. Multi-unit output
+    /// (surrogate pairs from exotic layouts) is dropped: expansion triggers
+    /// are BMP text. This beats the Windows ToUnicode approach — no dead-key
+    /// state to corrupt.
+    fn event_typed_char(event: &core_graphics::event::CGEvent) -> Option<char> {
+        use foreign_types::ForeignType;
+        let mut buf = [0u16; 4];
+        let mut len: usize = 0;
+        unsafe {
+            CGEventKeyboardGetUnicodeString(event.as_ptr(), buf.len(), &mut len, buf.as_mut_ptr());
+        }
+        if len == 0 {
+            return None;
+        }
+        let mut iter = char::decode_utf16(buf[..len].iter().copied());
+        let first = iter.next()?.ok()?;
+        if iter.next().is_some() {
+            return None; // multi-char output — not buffer material
+        }
+        Some(first)
     }
 
     /// Suppress set consulted by the tap callback: (modifier_bits, mac
@@ -270,6 +331,9 @@ mod macos {
             keycode: i64,
             flags: u64,
             is_repeat: bool,
+            /// Layout-resolved character this press would type (feeds the
+            /// expansion buffer). None for non-printing keys.
+            chr: Option<char>,
         },
         KeyUp {
             keycode: i64,
@@ -466,10 +530,35 @@ mod macos {
                 let flags = event.get_flags().bits();
                 let is_repeat =
                     event.get_integer_value_field(EventField::KEYBOARD_EVENT_AUTOREPEAT) != 0;
+                let bits = bits_from_flags(flags);
+
+                // ── Space pre-swallow for text expansions ────────────────
+                // CRITICAL ordering (same as the Windows hook): evaluate the
+                // swallow decision and latch SPACE_PRE_SWALLOWED *before*
+                // sending the KeyDown to the processor — otherwise the
+                // processor can run check_space_trigger before the atomic is
+                // stored and take the legacy +1-backspace path. All loads
+                // here are atomics — allowed in the callback.
+                let space_swallow = keycode == 49 /* Space */
+                    && bits == 0
+                    && crate::expansions::EXPANSION_PENDING_SPACE.load(Ordering::SeqCst)
+                    && MACROS_ENABLED.load(Ordering::SeqCst)
+                    && TAP_CAN_SUPPRESS.load(Ordering::SeqCst)
+                    && !super::APP_INPUT_FOCUSED.load(Ordering::SeqCst)
+                    && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst)
+                    && !IS_CAPTURING_KEY.load(Ordering::SeqCst)
+                    && !super::CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
+                    && super::FILLIN_HWND.load(Ordering::SeqCst) == 0;
+                if space_swallow {
+                    crate::expansions::SPACE_PRE_SWALLOWED.store(true, Ordering::SeqCst);
+                }
+
+                let chr = event_typed_char(event);
                 let _ = sender.send(TapEvent::KeyDown {
                     keycode,
                     flags,
                     is_repeat,
+                    chr,
                 });
                 // Suppression decision — synchronous, from the precomputed
                 // set (a suppressed event can't be un-suppressed later).
@@ -477,12 +566,14 @@ mod macos {
                 if MACROS_ENABLED.load(Ordering::SeqCst)
                     && TAP_CAN_SUPPRESS.load(Ordering::SeqCst)
                 {
-                    let bits = bits_from_flags(flags);
                     if let Ok(set) = suppress_keys().try_read() {
                         if set.contains(&(bits, keycode as u16)) {
                             return CallbackResult::Drop;
                         }
                     }
+                }
+                if space_swallow {
+                    return CallbackResult::Drop;
                 }
                 CallbackResult::Keep
             }
@@ -862,9 +953,10 @@ mod macos {
                     keycode,
                     flags,
                     is_repeat,
+                    chr,
                 } => {
                     update_modifiers(flags);
-                    handle_keydown(keycode as u16, flags, is_repeat, &app);
+                    handle_keydown(keycode as u16, flags, is_repeat, chr, &app);
                 }
                 TapEvent::KeyUp { keycode, flags } => {
                     update_modifiers(flags);
@@ -934,6 +1026,13 @@ mod macos {
             }
         }
 
+        // Any NEW modifier press clears the expansion buffer (mirror of the
+        // Windows hook's "clear on any modifier press" — a chord is starting,
+        // the typed word is no longer a live trigger candidate).
+        if after_bits & !before_bits != 0 {
+            crate::expansions::buffer_clear();
+        }
+
         // Final modifier release completes a pending combo fire (the trigger
         // key's own keyup may have arrived while modifiers were still held).
         if after_bits == 0 {
@@ -941,7 +1040,31 @@ mod macos {
         }
     }
 
-    fn handle_keydown(keycode: u16, flags: u64, is_repeat: bool, app: &AppHandle) {
+    /// Drive the text-expansion buffer for a bare or Shift-only printable
+    /// keystroke. Called once any hotkey-matching is known to have NOT
+    /// matched (twin of the Windows process_expansion_keystroke). Skips work
+    /// while the fill-in window is up — those keystrokes belong to it.
+    fn process_expansion_keystroke(key_id: &str, chr: Option<char>) {
+        if super::FILLIN_HWND.load(Ordering::SeqCst) != 0 {
+            return;
+        }
+        match key_id {
+            "Backspace" => crate::expansions::buffer_pop(),
+            "Space" => {
+                crate::expansions::check_space_trigger();
+                crate::expansions::buffer_clear();
+            }
+            "Enter" | "NumpadEnter" | "Escape" | "Tab" => crate::expansions::buffer_clear(),
+            _ => {
+                if let Some(ch) = chr.filter(|c| !c.is_control()) {
+                    crate::expansions::buffer_push(ch);
+                    crate::expansions::check_immediate_triggers();
+                }
+            }
+        }
+    }
+
+    fn handle_keydown(keycode: u16, flags: u64, is_repeat: bool, chr: Option<char>, app: &AppHandle) {
         if is_modifier_keycode(keycode) {
             return; // arrives via flagsChanged; belt-and-braces
         }
@@ -1026,9 +1149,18 @@ mod macos {
         if !MACROS_ENABLED.load(Ordering::SeqCst) {
             return;
         }
+        let shift_only = bits & !2 == 0; // no modifiers, or Shift alone
         if is_repeat {
             // Auto-repeats never dispatch (the original press already
             // decided); the tap already suppressed repeats of matched combos.
+            // They DO feed the expansion buffer — held character keys drive
+            // triggers like ":kr" (same fall-through as Windows).
+            if shift_only
+                && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
+                && !super::CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
+            {
+                process_expansion_keystroke(key_id, chr);
+            }
             return;
         }
 
@@ -1061,8 +1193,16 @@ mod macos {
         if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
             return;
         }
+        // While the clipboard popup is up its DOM handlers own the keys
+        // (mirror of the Windows early-return; the mac popup has real focus).
+        if super::CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst) {
+            return;
+        }
         if bits == 0 {
-            return; // bare keys + expansion buffer are later milestones
+            // Bare-key matching is a later milestone — bare printables drive
+            // the text-expansion buffer instead.
+            process_expansion_keystroke(key_id, chr);
+            return;
         }
 
         let combo = build_modifier_combo();
@@ -1072,7 +1212,10 @@ mod macos {
         };
         let storage_key = format!("{}::{}::{}", state.active_profile, combo, key_id);
 
+        let mut hotkey_matched = false;
         if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
+            hotkey_matched = true;
+            crate::expansions::buffer_clear();
             let double_key = format!("{}::double", storage_key);
             let hold_key = format!("{}::hold", storage_key);
             if state.assignments.contains_key(&double_key)
@@ -1089,6 +1232,15 @@ mod macos {
             state.pending_macro = Some(macro_val);
             state.pending_trigger_key = Some(storage_key);
             state.pending_is_bare = false;
+        }
+        drop(state);
+
+        // Shift-only fallthrough: if no modified hotkey matched and Shift is
+        // the only modifier held, route the keystroke through the expansion
+        // buffer so triggers requiring Shift (":kr", "?help", uppercase
+        // letters) work. Ctrl/Alt/Win combos do NOT fall through.
+        if !hotkey_matched && bits == 2 {
+            process_expansion_keystroke(key_id, chr);
         }
     }
 

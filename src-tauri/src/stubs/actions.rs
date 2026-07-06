@@ -178,6 +178,26 @@ pub fn send_vk_key_pub(vk: u16, key_up: bool) {
     }
 }
 
+/// Post a modifier chord + main key (NATIVE mac keycodes). Modifiers press in
+/// order, the main key taps with the accumulated flags (15ms down→up so
+/// per-frame pollers see it), modifiers release in reverse. Used by the
+/// expansions engine's `{key:...}` tokens; `None` main = bare-modifier chord.
+pub(crate) fn post_chord_keycodes(mod_keycodes: &[u16], main: Option<u16>) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::post_chord(mod_keycodes, main);
+    }
+}
+
+/// Character-by-character direct typing (unicode key events). Exposed for the
+/// expansions engine; the "text" action's direct path uses the same impl.
+pub(crate) fn type_text_direct_pub(text: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::type_text_direct(text);
+    }
+}
+
 pub fn set_foreground_robust(hwnd: isize) -> bool {
     // HWNDs don't exist on macOS; focus follows the frontmost app, which the
     // overlay windows don't steal (they are non-activating panels). The
@@ -745,7 +765,7 @@ mod macos {
     /// Character-by-character typing via unicode-string key events (mac
     /// analogue of the Windows KEYEVENTF_UNICODE path). Newlines are posted
     /// as real Return taps — apps ignore a bare U+000A payload.
-    fn type_text_direct(text: &str) {
+    pub(super) fn type_text_direct(text: &str) {
         let _guard = super::SuppressionGuard::new();
         let held = release_held_modifiers();
         let mut buf = [0u16; 2];
@@ -767,13 +787,11 @@ mod macos {
 
     /// Clipboard paste injection: snapshot → write → ⌘V → restore.
     ///
-    /// Milestone-2 scope: the snapshot is text-only. The Windows original
-    /// snapshots every clipboard format so images/RTF survive an expansion;
-    /// the multi-format NSPasteboard snapshot lands with the clipboard-history
-    /// milestone. A non-text clipboard (e.g. a copied image) is therefore not
-    /// restored yet — the expansion text is left on the pasteboard instead.
+    /// The snapshot round-trips EVERY pasteboard flavor (expansions module's
+    /// multi-flavor snapshot), so a copied image or rich-text clipboard
+    /// survives a text action fire — same guarantee as the Windows original.
     fn inject_via_clipboard(text: &str) {
-        let prev = read_clipboard();
+        let snapshot = crate::expansions::snapshot_clipboard();
         let (_, _, paste_settle_ms, clip_restore_ms) = speed_delays();
 
         if !write_clipboard_impl(text, true) {
@@ -796,14 +814,7 @@ mod macos {
 
         thread::sleep(Duration::from_millis(clip_restore_ms));
         if change_count() == post_write_count {
-            match &prev {
-                Some(p) => {
-                    write_clipboard_impl(p, true);
-                }
-                // Nothing textual to restore (empty or non-text clipboard) —
-                // leave our text in place until the multi-format snapshot lands.
-                None => {}
-            }
+            crate::expansions::restore_clipboard_snapshot(&snapshot);
         }
         SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
     }
@@ -862,18 +873,23 @@ mod macos {
         // Release the physically held trigger modifiers (e.g. ⌘ from a ⌘K
         // trigger) so the target app sees ONLY the chord we send.
         let held = release_held_modifiers();
+        post_chord(&mod_keycodes, target);
+        restore_modifiers(&held);
+    }
 
+    /// Press a modifier chord, tap the main key (15ms down→up so per-frame
+    /// key-state pollers observe the press — the Windows KEY_HOLD_MS
+    /// invariant), release the chord in reverse. All keycodes are native mac.
+    pub(super) fn post_chord(mod_keycodes: &[u16], main: Option<u16>) {
         let mut flags = CGEventFlags::CGEventFlagNull;
-        for &kc in &mod_keycodes {
+        for &kc in mod_keycodes {
             if let Some(f) = modifier_flag(kc) {
                 flags.insert(f);
             }
             post_key(kc, false, flags);
         }
-        if let Some(kc) = target {
+        if let Some(kc) = main {
             post_key(kc, false, flags);
-            // Hold between down and up so per-frame key-state pollers (games)
-            // observe the press — mirrors the Windows KEY_HOLD_MS invariant.
             thread::sleep(Duration::from_millis(15));
             post_key(kc, true, flags);
         }
@@ -883,8 +899,6 @@ mod macos {
             }
             post_key(kc, true, flags);
         }
-
-        restore_modifiers(&held);
     }
 
     /// Post the ⌘V chord (all four events tagged; ⌘ carried on the V events'

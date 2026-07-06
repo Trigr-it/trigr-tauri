@@ -2477,6 +2477,7 @@ dependencies = [
  "core-foundation",
  "core-graphics",
  "ed25519-dalek",
+ "foreign-types",
  "image",
  "log",
  "notify",

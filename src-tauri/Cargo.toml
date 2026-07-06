@@ -97,7 +97,11 @@ core-foundation = "0.10"
 # keep the class surface minimal (feature unification merges wry's set).
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSWorkspace", "NSRunningApplication"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSUserDefaults"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSUserDefaults", "NSData", "NSArray", "NSEnumerator"] }
+# Raw-pointer access to CGEvent (event.as_ptr()) for the direct
+# CGEventKeyboardGetUnicodeString binding in stubs/hotkeys.rs — same version
+# core-graphics itself uses, so no new transitive dep.
+foreign-types = "0.5"
 
 [features]
 default = ["custom-protocol"]
