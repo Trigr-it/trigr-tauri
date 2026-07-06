@@ -2227,8 +2227,8 @@ mod macos {
                 "Work::Ctrl+Shift::KeyK".into(),
                 serde_json::json!({"type": "text"}),
             );
-            // Other profile, double variant, bare and GLOBAL entries must all
-            // be excluded.
+            // Other profile, double variant and GLOBAL entries must all be
+            // excluded.
             state.assignments.insert(
                 "Home::Ctrl::KeyJ".into(),
                 serde_json::json!({"type": "text"}),
@@ -2237,25 +2237,59 @@ mod macos {
                 "Work::Ctrl+Shift::KeyK::double".into(),
                 serde_json::json!({"type": "text"}),
             );
-            state
-                .assignments
-                .insert("Work::BARE::F5".into(), serde_json::json!({"type": "text"}));
             state.assignments.insert(
                 "GLOBAL::EXPANSION::foo".into(),
                 serde_json::json!({"type": "text"}),
             );
+            // Bare keys: static profile (no linkedApp) suppresses F5 (in the
+            // static-allowed set) but NOT KeyZ (character key — suppressing
+            // it would eat normal typing).
+            state
+                .assignments
+                .insert("Work::BARE::F5".into(), serde_json::json!({"type": "text"}));
+            state
+                .assignments
+                .insert("Work::BARE::KeyZ".into(), serde_json::json!({"type": "text"}));
             state.overlay_hotkey = Some((1, 49));
             state.pause_hotkey = Some((5, 35));
             state.clipboard_paste_hotkey = Some((3, 9));
 
             rebuild_suppress_keys(&state);
             let set = suppress_keys().read().unwrap();
-            // KeyK keycode is 40; Ctrl+Shift = bits 3.
+            // KeyK keycode is 40; Ctrl+Shift = bits 3. F5 keycode is 96.
             assert!(set.contains(&(3, 40)));
+            assert!(set.contains(&(0, 96)));
+            assert!(!set.contains(&(0, 6))); // KeyZ not suppressed (static profile)
             assert!(set.contains(&(1, 49)));
             assert!(set.contains(&(5, 35)));
             assert!(set.contains(&(3, 9)));
-            assert_eq!(set.len(), 4);
+            assert_eq!(set.len(), 5);
+        }
+
+        #[test]
+        fn suppress_rebuild_linked_profile_allows_character_bare_keys() {
+            let mut state = EngineState::default();
+            state.active_profile = "Game".into();
+            state.profile_settings.insert(
+                "Game".into(),
+                serde_json::json!({"linkedApp": "some-game"}),
+            );
+            state
+                .assignments
+                .insert("Game::BARE::KeyZ".into(), serde_json::json!({"type": "text"}));
+            // Double-only bare keys let the first press through.
+            state.assignments.insert(
+                "Game::BARE::KeyX::double".into(),
+                serde_json::json!({"type": "text"}),
+            );
+            state.overlay_hotkey = None;
+            state.pause_hotkey = None;
+            state.clipboard_paste_hotkey = None;
+
+            rebuild_suppress_keys(&state);
+            let set = suppress_keys().read().unwrap();
+            assert!(set.contains(&(0, 6))); // KeyZ suppressed (linked profile)
+            assert!(!set.contains(&(0, 7))); // KeyX double-only — not suppressed
         }
     }
 }
