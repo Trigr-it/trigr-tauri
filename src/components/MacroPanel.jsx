@@ -13,7 +13,13 @@ import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 
-const ACTION_TYPES = [
+// AHK is Windows-only forever (closed decision) — hide it from the type
+// chooser and step menu on macOS. Existing type:'ahk' assignments from a
+// Windows-authored config still render their editor if opened; the mac
+// engine skips them with a warning at fire time.
+const IS_MAC = navigator.platform.toUpperCase().includes('MAC');
+
+const ACTION_TYPES_ALL = [
   {
     id: 'text',
     Icon: Type,
@@ -71,6 +77,9 @@ const ACTION_TYPES = [
     color: '#4ecdc4',
   },
 ];
+const ACTION_TYPES = IS_MAC
+  ? ACTION_TYPES_ALL.filter((t) => t.id !== 'ahk')
+  : ACTION_TYPES_ALL;
 
 // The three Open types (app/url/folder) collapse into a single "Open" button
 // in the type selector; the active sub-type is picked via the segmented bar
@@ -113,8 +122,11 @@ const MACRO_STEP_CATEGORIES = [
   // strings to avoid collisions with how "trigger" and "text expansion" are
   // used elsewhere in the codebase. See actions.rs execute_macro_step arms.
   { kind: 'group', label: 'Existing Trigger', items: ['Fire Trigger', 'Fire Text Expansion'] },
-  { kind: 'divider' },
-  { kind: 'leaf',  label: 'Run AHK Script' },
+  // AHK leaf (and its divider) is Windows-only — see IS_MAC note above.
+  ...(IS_MAC ? [] : [
+    { kind: 'divider' },
+    { kind: 'leaf',  label: 'Run AHK Script' },
+  ]),
 ];
 
 // Override for menu/submenu display. Step.type stays canonical ("Fire Trigger")

@@ -630,7 +630,10 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <div className="onboarding-feature-item"><strong>Send Hotkey</strong> — simulate key combos (with hold and repeat modes)</div>
             <div className="onboarding-feature-item"><strong>Open App / URL / Folder</strong> — launch anything instantly</div>
             <div className="onboarding-feature-item"><strong>Macro Sequence</strong> — chain multiple steps (Press Key, Click Mouse, Wait, and more)</div>
-            <div className="onboarding-feature-item"><strong>Run AHK Script</strong> — execute AutoHotkey scripts</div>
+            {/* AHK is Windows-only — hidden from the mac tour */}
+            {!navigator.platform.toUpperCase().includes('MAC') && (
+              <div className="onboarding-feature-item"><strong>Run AHK Script</strong> — execute AutoHotkey scripts</div>
+            )}
             <div className="onboarding-feature-item">
               <strong>Double-tap a key</strong> <span className="onboarding-pro-badge onboarding-pro-badge--inline">Pro</span> — tap once for one action, twice quickly for a second
             </div>
