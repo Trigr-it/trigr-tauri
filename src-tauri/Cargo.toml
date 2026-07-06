@@ -97,7 +97,7 @@ core-foundation = "0.10"
 # keep the class surface minimal (feature unification merges wry's set).
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSWorkspace", "NSRunningApplication"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSUserDefaults"] }
 
 [features]
 default = ["custom-protocol"]

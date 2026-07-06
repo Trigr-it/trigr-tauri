@@ -1915,6 +1915,25 @@ fn monitor_scale_factor(hmon: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> f6
     dx as f64 / 96.0
 }
 
+/// Resolve the stored theme mode for overlay payloads: "auto" becomes the
+/// current OS appearance (the overlay components apply the value verbatim to
+/// data-theme, so they must never receive "auto"). Explicit modes pass
+/// through.
+#[cfg(not(windows))]
+fn resolve_theme(stored: &str) -> String {
+    if stored != "auto" {
+        return stored.to_string();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if foreground::os_theme_is_dark() { "dark" } else { "light" }.to_string()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "dark".to_string()
+    }
+}
+
 /// Work area of the monitor containing the cursor, as
 /// (left, top, right, bottom, scale) in physical units — the cross-platform
 /// twin of the Win32 GetCursorPos + MonitorFromPoint + GetMonitorInfoW dance.
@@ -1965,8 +1984,12 @@ fn show_overlay(app: &tauri::AppHandle) {
         let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
     }
 
-    // Send search data to the overlay — same payload as the Windows twin.
+    // Send search data to the overlay — same payload as the Windows twin,
+    // except theme: "auto" is resolved to light/dark here because the overlay
+    // component applies the value verbatim to data-theme (an unresolved
+    // "auto" falls through to the dark default).
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let resolved_theme = resolve_theme(cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"));
     let search_templates = {
         let templates = cfg.get("searchTemplates").cloned().unwrap_or_else(|| serde_json::json!([]));
         if licence::is_pro() {
@@ -1983,7 +2006,7 @@ fn show_overlay(app: &tauri::AppHandle) {
             "assignments": state.assignments,
             "activeProfile": state.active_profile,
             "globalInputMethod": cfg.get("globalInputMethod").and_then(|v| v.as_str()).unwrap_or("direct"),
-            "theme": cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"),
+            "theme": resolved_theme,
             "searchTemplates": search_templates,
             "settings": {
                 "showAll": cfg.get("overlayShowAll").and_then(|v| v.as_bool()).unwrap_or(true),
@@ -2236,7 +2259,7 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     // milestone lands — the popup UI itself still works.)
     let history = clipboard::get_history(1, 500, None, None, None, None, false);
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
-    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+    let theme = resolve_theme(cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"));
     let mut payload = history;
     if let Some(obj) = payload.as_object_mut() {
         obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));

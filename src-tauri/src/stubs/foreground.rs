@@ -125,6 +125,15 @@ pub(crate) fn activate_pid(pid: i32) {
     macos::activate_pid(pid);
 }
 
+/// True when macOS is in Dark appearance. Read from the global user default
+/// ("AppleInterfaceStyle" exists only in dark mode) — WKWebView's own
+/// prefers-color-scheme misreports under Keyfire (observed dark on a light
+/// OS in dev), so theme resolution must not trust the webview.
+#[cfg(target_os = "macos")]
+pub(crate) fn os_theme_is_dark() -> bool {
+    macos::os_theme_is_dark()
+}
+
 // ── macOS NSWorkspace watcher ────────────────────────────────────────────────
 #[cfg(target_os = "macos")]
 mod macos {
@@ -154,7 +163,29 @@ mod macos {
                     "[Keyfire] Foreground watcher started (NSWorkspace, {}ms poll)",
                     POLL_INTERVAL_MS
                 );
+                // Keep the app's native theme pinned to the real OS
+                // appearance: WKWebView's prefers-color-scheme misreports
+                // under Keyfire (dark on a light OS), so the frontend's
+                // 'auto' theme resolution via matchMedia goes wrong without
+                // this. set_theme flips the window appearance, which fires
+                // the webviews' matchMedia change listeners — App.jsx then
+                // re-themes itself. Checked every poll so flipping macOS
+                // dark/light re-themes Keyfire within ~1.5s.
+                let mut last_dark: Option<bool> = None;
                 while WATCHER_RUNNING.load(Ordering::SeqCst) {
+                    let dark = os_theme_is_dark();
+                    if last_dark != Some(dark) {
+                        last_dark = Some(dark);
+                        app.set_theme(Some(if dark {
+                            tauri::Theme::Dark
+                        } else {
+                            tauri::Theme::Light
+                        }));
+                        info!(
+                            "[Keyfire] OS appearance: {} — window theme synced",
+                            if dark { "dark" } else { "light" }
+                        );
+                    }
                     poll_once(&app, false);
                     thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
                 }
@@ -215,6 +246,18 @@ mod macos {
             } else {
                 Some(names)
             }
+        })
+    }
+
+    /// True when macOS is in Dark appearance (global default
+    /// "AppleInterfaceStyle" is only set in dark mode).
+    pub(super) fn os_theme_is_dark() -> bool {
+        autoreleasepool(|_| {
+            use objc2_foundation::{ns_string, NSUserDefaults};
+            NSUserDefaults::standardUserDefaults()
+                .stringForKey(ns_string!("AppleInterfaceStyle"))
+                .map(|s| s.to_string() == "Dark")
+                .unwrap_or(false)
         })
     }
 
