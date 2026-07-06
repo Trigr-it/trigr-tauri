@@ -780,13 +780,17 @@ mod macos {
                 set.insert((bits, kc));
             }
         }
-        for special in [
-            state.overlay_hotkey,
-            state.pause_hotkey,
-            state.clipboard_paste_hotkey,
-        ]
-        .into_iter()
-        .flatten()
+        // Clipboard-paste combo only suppresses while capture is enabled
+        // (mirror of the Windows add/remove_clipboard_paste_from_suppress
+        // pair) — a suppressed combo whose popup won't open is a dead key.
+        let clipboard_special = if crate::clipboard::is_capture_enabled() {
+            state.clipboard_paste_hotkey
+        } else {
+            None
+        };
+        for special in [state.overlay_hotkey, state.pause_hotkey, clipboard_special]
+            .into_iter()
+            .flatten()
         {
             set.insert((special.0, special.1 as u16));
         }
@@ -1423,6 +1427,15 @@ pub fn set_temp_macro_record_hotkey(combo: &str) {
 pub fn set_voice_hotkey(combo: &str) {
     if let Ok(mut state) = engine_state().lock() {
         state.voice_hotkey = parse_hotkey_combo(combo);
+    }
+}
+
+/// Re-derive the suppress set after the clipboard capture toggle flips —
+/// the clipboard-paste combo must stop being suppressed while capture is
+/// off (twin of the Windows refresh_clipboard_paste_suppress).
+pub fn refresh_clipboard_paste_suppress() {
+    if let Ok(state) = engine_state().lock() {
+        rebuild_suppress(&state);
     }
 }
 

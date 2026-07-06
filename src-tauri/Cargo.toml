@@ -36,7 +36,7 @@ chrono = "0.4"
 regex-lite = "0.1"
 opener = "0.7"
 png = "0.17"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 aes-gcm = "0.10"
 zeroize = { version = "1", features = ["derive"] }

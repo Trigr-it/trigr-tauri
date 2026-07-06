@@ -125,6 +125,13 @@ pub(crate) fn is_self_clipboard_change(count: i64) -> bool {
     macos::is_self_change_count(count)
 }
 
+/// Current NSPasteboard changeCount — the mac analogue of the Windows
+/// clipboard sequence number (expansions::clipboard_sequence_number).
+#[cfg(target_os = "macos")]
+pub(crate) fn clipboard_change_count() -> i64 {
+    macos::change_count()
+}
+
 pub fn release_held_key() -> Option<String> {
     // Hold/repeat key state machine arrives with the hotkey matcher milestone.
     None
