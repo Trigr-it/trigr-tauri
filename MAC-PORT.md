@@ -4,7 +4,7 @@
 > single source of truth for the port. The Windows dev machine holds richer
 > project context; this file carries everything the Mac engine work needs.
 
-## State (updated 2026-07-06, evening)
+## State (updated 2026-07-07, overnight autonomous session)
 
 - **Phase 0 (platform seam) + Phase 1 (CI .dmg) are DONE and merged to main.**
 - **Phase 2 in progress on `port/mac-hooks`** (all compile-checked green on
@@ -40,12 +40,46 @@
     Still untested by a human: overlay/clipboard-overlay UI appearing on
     hotkey, profile auto-switch UX, and everything on the clean-machine
     .dmg (TCC grants attach differently to a bundled app).
-  - **Deferred (deliberately unsuppressed so keys stay alive)**: bare keys,
-    ::double/::hold variants, expansion keystroke buffer (module 3-4), voice,
-    radial, Quick Record, mouse hooks, "macro" action type + Send Hotkey
-    hold/repeat modes ("hotkey" plain chords work, 1aa3989).
-- **Next module**: expansions engine (modules 3-4) — the biggest remaining
-  piece; plan a full session.
+  - **M3-4 EXPANSIONS ENGINE (2c2b119 + 1ecbf46)**: stubs/expansions.rs is
+    the real engine — keystroke buffer fed from the tap processor
+    (layout-aware chars via UCKeyTranslate over 'uchr' bytes cached on the
+    MAIN thread at start_hooks; TIS calls dispatch-assert the main queue,
+    verified SIGTRAP otherwise), Space pre-swallow in the tap callback,
+    space/immediate triggers, smart case, full token resolver ({date},
+    {clipboard}, {selection} via synthetic ⌘C capture, {set}/{if}/{=},
+    {cursor}, {key:} chords, {{globals}} Pro gate), fill-in + variant picker
+    on the fillin window with PID focus hand-back, image expansions
+    (PNG+TIFF). NSPasteboard dual writes (plain + public.html — raw
+    fragment, no CF_HTML container) + multi-flavor snapshot/restore +
+    org.nspasteboard.ConcealedType marker. NO SUPPRESS_SIMULATED replay
+    buffer on mac — tagged events replace it; mid-injection keystrokes pass
+    through live. RUNTIME-VERIFIED in TextEdit via untagged synthetic
+    events: space + immediate + date-token + smart-case (UPPER/Capitalized)
+    fires all landed clean; clipboard restored after every fire.
+  - **MACRO ACTION + SEND HOTKEY HOLD/REPEAT (12702d2)**: full step runner
+    (loops with re-press/Esc/pause cancel, clipboard batching, all step
+    types except AHK; Wait for Window / Focus Window match app NAME only —
+    titles need Screen Recording; Wait for Input keyboard-only; Click at
+    Position absolute-only), Send Hotkey hold + repeat modes, mouse
+    click/move/scroll synthesis (core-graphics "highsierra"), "app"/"folder"
+    actions via opener (monitor targeting still deferred). RUNTIME-VERIFIED:
+    4-step macro, repeat toggle at 100ms, forever-loop + Esc cancel.
+  - **BARE KEYS + ::double/::hold MATCHER (28ec212)**: full Windows dispatch
+    semantics — linked-profile vs static-bare gating, AHK-style bare remap
+    passthrough, keydown double-tap + cancelable single timers, HOLD_TIMERS
+    + 16ms watcher, early-release re-injection, hold passthrough taps with
+    live modifier state, suppress-set now includes bare + ::hold (Pro).
+    RUNTIME-VERIFIED: bare F5, Ctrl+Shift+D single/double, F6 tap vs 600ms
+    hold.
+  - **Known parity quirk (upstream, both OSes)**: {cursor} lands one char
+    right of ideal because the bundled trailing space isn't counted in
+    cursor_back — Windows math is identical; fix upstream first if at all.
+  - **Deferred (deliberately unsuppressed so keys stay alive)**: voice,
+    radial, Quick Record capture (replay of Windows-recorded streams works),
+    mouse hooks/triggers, monitor-targeted launches, AHK (forever).
+- **Next**: UI-level human passes (fill-in/variant picker appearing,
+  overlay UX, clean-machine .dmg on the test MacBook); then mouse hooks or
+  Quick Record capture as the next engine milestone.
 - Dev machine: Apple Silicon (M4) iMac, repo at `~/Desktop/Keyfire`.
   A separate MacBook is the clean-machine artifact tester.
 
@@ -118,15 +152,18 @@ inside the stub file. Do NOT touch the `#[cfg(windows)]` originals.
 
 ## Current milestone (see State above for what's done)
 
-Hooks M1–M3 + injection + Send Hotkey + foreground watcher are implemented,
-CI-green, and END-TO-END VERIFIED on this machine (Accessibility granted
-2026-07-06; see State). Remaining human checks are UI-level only: overlay /
-clipboard-overlay appearing on their hotkeys, profile auto-switch UX, and a
-clean-machine .dmg pass on the test MacBook.
+The engine is at near-parity with Windows: hooks, injection, matcher (bare /
+double / hold / remap), expansions (buffer, triggers, tokens, fill-ins,
+images), macros (all step types, loops, cancel), Send Hotkey (all modes),
+clipboard history, tray, overlays, foreground watcher — all CI-green and
+runtime-verified on this machine via synthetic untagged events.
 
-Next engine work in rough order: expansions engine (modules 3-4 —
-keystroke buffer + trigger matching, reusing the tap's KeyDown stream; the
-biggest remaining piece, plan a full session); "macro" action type + Send
-Hotkey hold/repeat modes in stubs/actions.rs; bare keys and ::double/::hold
-variants in the matcher; window_target (NSScreen) for monitor-targeted
-launches; dual-format (HTML) clipboard writes.
+Remaining human checks are UI-level: fill-in / variant picker appearing and
+usable on a live expansion, overlay UX, profile auto-switch feel, and a
+clean-machine .dmg pass on the test MacBook (TCC grants attach differently
+to a bundled app).
+
+Next engine work in rough order: mouse hooks (mouse triggers, Wait for
+Input mouse types, hold release-on-mouse-up); Quick Record capture (replay
+already works); monitor-targeted launches (window_target); voice / radial
+(post-beta).
