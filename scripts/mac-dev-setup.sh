@@ -62,6 +62,11 @@ if command -v claude >/dev/null 2>&1; then
 else
   curl -fsSL https://claude.ai/install.sh | bash
 fi
+# The installer drops the binary in ~/.local/bin; make sure zsh sessions see it.
+if ! grep -q '.local/bin' "$HOME/.zshrc" 2>/dev/null; then
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+fi
+export PATH="$HOME/.local/bin:$PATH"
 
 step "7/8 Clone repo + npm install"
 if [ -d "$REPO_DIR/.git" ]; then
