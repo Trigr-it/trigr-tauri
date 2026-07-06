@@ -275,42 +275,142 @@ mod macos {
     /// is disabled so half-working hotkeys can't eat keystrokes.
     static TAP_CAN_SUPPRESS: AtomicBool = AtomicBool::new(false);
 
-    // `CGEventTapEnable` / `CGEventKeyboardGetUnicodeString` are not
-    // re-exported by core-graphics. Bind them directly; the CoreGraphics
-    // framework is already linked by the crate.
+    // `CGEventTapEnable` is not re-exported by core-graphics. Bind it directly;
+    // the CoreGraphics framework is already linked by the crate.
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
         fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
-        fn CGEventKeyboardGetUnicodeString(
-            event: core_graphics::sys::CGEventRef,
-            max_string_length: usize,
-            actual_string_length: *mut usize,
-            unicode_string: *mut u16,
-        );
     }
 
-    /// Layout-aware character for a keyboard event — what this keyDown would
-    /// type, shift/option state included. Pure data extraction from the
-    /// event (no I/O), so it is safe in the tap callback. Multi-unit output
-    /// (surrogate pairs from exotic layouts) is dropped: expansion triggers
-    /// are BMP text. This beats the Windows ToUnicode approach — no dead-key
-    /// state to corrupt.
-    fn event_typed_char(event: &core_graphics::event::CGEvent) -> Option<char> {
-        use foreign_types::ForeignType;
+    // Layout-aware key→character translation for the expansion buffer.
+    // CGEventKeyboardGetUnicodeString looked like the natural source but
+    // IGNORES the event's modifier flags (verified empirically: keycode 40
+    // with maskShift still returns "k") — smart case and shift-triggers
+    // (":KR", "?help") would silently break. UCKeyTranslate with an explicit
+    // modifier state is deterministic for both real and synthetic events —
+    // the mac twin of the Windows resolve_char_with_shift/ToUnicode path.
+    //
+    // THREADING: the TIS* calls dispatch-assert the MAIN queue on modern
+    // macOS (verified: SIGTRAP in dispatch_assert_queue from the processor
+    // thread, 2026-07-06). The 'uchr' layout bytes are therefore cached ONCE
+    // on the main thread at start_hooks time; UCKeyTranslate itself is a
+    // pure function over those bytes and safe anywhere. Caveat: switching
+    // keyboard layouts needs an app restart to pick up — same fidelity
+    // class as the US-ANSI keycode↔key_id table above, fixed together by a
+    // future layout-aware pass.
+    #[link(name = "Carbon", kind = "framework")]
+    extern "C" {
+        fn TISCopyCurrentKeyboardLayoutInputSource() -> *mut std::ffi::c_void;
+        fn TISGetInputSourceProperty(
+            source: *mut std::ffi::c_void,
+            key: *const std::ffi::c_void,
+        ) -> *mut std::ffi::c_void;
+        static kTISPropertyUnicodeKeyLayoutData: *const std::ffi::c_void;
+        fn UCKeyTranslate(
+            layout: *const u8,
+            keycode: u16,
+            action: u16,
+            modifier_key_state: u32,
+            keyboard_type: u32,
+            options: u32,
+            dead_key_state: *mut u32,
+            max_len: usize,
+            actual_len: *mut usize,
+            output: *mut u16,
+        ) -> i32;
+        fn LMGetKbdType() -> u8;
+        // CoreFoundation symbols resolve from the already-linked framework.
+        fn CFDataGetBytePtr(data: *const std::ffi::c_void) -> *const u8;
+        fn CFDataGetLength(data: *const std::ffi::c_void) -> isize;
+        fn CFRelease(cf: *const std::ffi::c_void);
+    }
+
+    struct KeyboardLayout {
+        uchr: Vec<u8>,
+        kbd_type: u32,
+    }
+
+    fn keyboard_layout_cache() -> &'static RwLock<Option<KeyboardLayout>> {
+        static CACHE: OnceLock<RwLock<Option<KeyboardLayout>>> = OnceLock::new();
+        CACHE.get_or_init(|| RwLock::new(None))
+    }
+
+    /// Copy the current keyboard layout's 'uchr' data into the cache.
+    /// MUST run on the main thread — see the threading note above.
+    fn cache_keyboard_layout() {
+        unsafe {
+            let src = TISCopyCurrentKeyboardLayoutInputSource();
+            if src.is_null() {
+                warn!("[HOOK] TIS keyboard layout unavailable — expansion buffer disabled");
+                return;
+            }
+            let data = TISGetInputSourceProperty(src, kTISPropertyUnicodeKeyLayoutData);
+            if data.is_null() {
+                // Non-'uchr' input source (rare) — no translation available.
+                warn!("[HOOK] keyboard layout has no uchr data — expansion buffer disabled");
+            } else {
+                let len = CFDataGetLength(data) as usize;
+                let bytes = std::slice::from_raw_parts(CFDataGetBytePtr(data), len).to_vec();
+                let kbd_type = LMGetKbdType() as u32;
+                if let Ok(mut w) = keyboard_layout_cache().write() {
+                    *w = Some(KeyboardLayout { uchr: bytes, kbd_type });
+                }
+                info!("[HOOK] keyboard layout cached ({} bytes, kbdType {})", len, kbd_type);
+            }
+            CFRelease(src);
+        }
+    }
+
+    /// Character this keycode would type under the cached keyboard layout
+    /// with the given event flags (Shift/Option/CapsLock participate; Ctrl
+    /// and Cmd chords never reach the buffer path). None for non-printing
+    /// keys or multi-unit output (dead keys are bypassed via
+    /// kUCKeyTranslateNoDeadKeysMask, same caveat class as Windows).
+    fn resolve_typed_char(keycode: u16, flags: u64) -> Option<char> {
+        const K_UC_KEY_ACTION_DISPLAY: u16 = 3;
+        const K_UC_KEY_TRANSLATE_NO_DEAD_KEYS_MASK: u32 = 1;
+        // Carbon event modifiers: shiftKey=0x0200, alphaLock=0x0400,
+        // optionKey=0x0800. UCKeyTranslate wants (carbonMods >> 8) & 0xFF.
+        let f = CGEventFlags::from_bits_truncate(flags);
+        let mut carbon: u32 = 0;
+        if f.contains(CGEventFlags::CGEventFlagShift) {
+            carbon |= 0x0200;
+        }
+        if f.contains(CGEventFlags::CGEventFlagAlphaShift) {
+            carbon |= 0x0400;
+        }
+        if f.contains(CGEventFlags::CGEventFlagAlternate) {
+            carbon |= 0x0800;
+        }
+        let mod_state = (carbon >> 8) & 0xFF;
+
+        let cache = keyboard_layout_cache().read().ok()?;
+        let layout = cache.as_ref()?;
+        let mut dead: u32 = 0;
         let mut buf = [0u16; 4];
         let mut len: usize = 0;
-        unsafe {
-            CGEventKeyboardGetUnicodeString(event.as_ptr(), buf.len(), &mut len, buf.as_mut_ptr());
-        }
-        if len == 0 {
+        let status = unsafe {
+            UCKeyTranslate(
+                layout.uchr.as_ptr(),
+                keycode,
+                K_UC_KEY_ACTION_DISPLAY,
+                mod_state,
+                layout.kbd_type,
+                K_UC_KEY_TRANSLATE_NO_DEAD_KEYS_MASK,
+                &mut dead,
+                buf.len(),
+                &mut len,
+                buf.as_mut_ptr(),
+            )
+        };
+        if status != 0 || len == 0 {
             return None;
         }
         let mut iter = char::decode_utf16(buf[..len].iter().copied());
-        let first = iter.next()?.ok()?;
-        if iter.next().is_some() {
-            return None; // multi-char output — not buffer material
+        match (iter.next(), iter.next()) {
+            (Some(Ok(c)), None) => Some(c),
+            _ => None, // multi-char output — not buffer material
         }
-        Some(first)
     }
 
     /// Suppress set consulted by the tap callback: (modifier_bits, mac
@@ -331,9 +431,6 @@ mod macos {
             keycode: i64,
             flags: u64,
             is_repeat: bool,
-            /// Layout-resolved character this press would type (feeds the
-            /// expansion buffer). None for non-printing keys.
-            chr: Option<char>,
         },
         KeyUp {
             keycode: i64,
@@ -358,6 +455,11 @@ mod macos {
         if HOOKS_RUNNING.load(Ordering::SeqCst) {
             return;
         }
+
+        // Cache the keyboard layout while we're still on the main thread
+        // (start_hooks is called from tauri's setup) — TIS asserts the main
+        // queue, and the processor thread needs the bytes for char resolve.
+        cache_keyboard_layout();
 
         let (sender, receiver) = mpsc::channel::<TapEvent>();
 
@@ -553,12 +655,10 @@ mod macos {
                     crate::expansions::SPACE_PRE_SWALLOWED.store(true, Ordering::SeqCst);
                 }
 
-                let chr = event_typed_char(event);
                 let _ = sender.send(TapEvent::KeyDown {
                     keycode,
                     flags,
                     is_repeat,
-                    chr,
                 });
                 // Suppression decision — synchronous, from the precomputed
                 // set (a suppressed event can't be un-suppressed later).
@@ -953,10 +1053,9 @@ mod macos {
                     keycode,
                     flags,
                     is_repeat,
-                    chr,
                 } => {
                     update_modifiers(flags);
-                    handle_keydown(keycode as u16, flags, is_repeat, chr, &app);
+                    handle_keydown(keycode as u16, flags, is_repeat, &app);
                 }
                 TapEvent::KeyUp { keycode, flags } => {
                     update_modifiers(flags);
@@ -1044,7 +1143,7 @@ mod macos {
     /// keystroke. Called once any hotkey-matching is known to have NOT
     /// matched (twin of the Windows process_expansion_keystroke). Skips work
     /// while the fill-in window is up — those keystrokes belong to it.
-    fn process_expansion_keystroke(key_id: &str, chr: Option<char>) {
+    fn process_expansion_keystroke(key_id: &str, keycode: u16, flags: u64) {
         if super::FILLIN_HWND.load(Ordering::SeqCst) != 0 {
             return;
         }
@@ -1056,7 +1155,7 @@ mod macos {
             }
             "Enter" | "NumpadEnter" | "Escape" | "Tab" => crate::expansions::buffer_clear(),
             _ => {
-                if let Some(ch) = chr.filter(|c| !c.is_control()) {
+                if let Some(ch) = resolve_typed_char(keycode, flags).filter(|c| !c.is_control()) {
                     crate::expansions::buffer_push(ch);
                     crate::expansions::check_immediate_triggers();
                 }
@@ -1064,7 +1163,7 @@ mod macos {
         }
     }
 
-    fn handle_keydown(keycode: u16, flags: u64, is_repeat: bool, chr: Option<char>, app: &AppHandle) {
+    fn handle_keydown(keycode: u16, flags: u64, is_repeat: bool, app: &AppHandle) {
         if is_modifier_keycode(keycode) {
             return; // arrives via flagsChanged; belt-and-braces
         }
@@ -1159,7 +1258,7 @@ mod macos {
                 && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
                 && !super::CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
             {
-                process_expansion_keystroke(key_id, chr);
+                process_expansion_keystroke(key_id, keycode, flags);
             }
             return;
         }
@@ -1201,7 +1300,7 @@ mod macos {
         if bits == 0 {
             // Bare-key matching is a later milestone — bare printables drive
             // the text-expansion buffer instead.
-            process_expansion_keystroke(key_id, chr);
+            process_expansion_keystroke(key_id, keycode, flags);
             return;
         }
 
@@ -1240,7 +1339,7 @@ mod macos {
         // buffer so triggers requiring Shift (":kr", "?help", uppercase
         // letters) work. Ctrl/Alt/Win combos do NOT fall through.
         if !hotkey_matched && bits == 2 {
-            process_expansion_keystroke(key_id, chr);
+            process_expansion_keystroke(key_id, keycode, flags);
         }
     }
 
