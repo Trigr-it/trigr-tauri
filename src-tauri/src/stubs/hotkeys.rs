@@ -296,6 +296,19 @@ mod macos {
         event: &core_graphics::event::CGEvent,
     ) {
         match etype {
+            // Drop Keyfire's own injected events before anything else — the
+            // mac analogue of the Windows LLKHF_INJECTED / SUPPRESS_SIMULATED
+            // discipline. Every CGEvent actions.rs posts is stamped with the
+            // magic source-user-data tag (single fast field read; allowed in
+            // the callback). Matched only for key/flag events: the
+            // TapDisabled pseudo-events below are OS-generated and must
+            // always be handled.
+            CGEventType::KeyDown | CGEventType::KeyUp | CGEventType::FlagsChanged
+                if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA)
+                    == crate::actions::INJECTED_EVENT_MAGIC =>
+            {
+                return;
+            }
             CGEventType::KeyDown => {
                 let keycode = event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE);
                 let flags = event.get_flags().bits();

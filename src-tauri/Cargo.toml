@@ -91,6 +91,12 @@ windows-sys = { version = "0.59", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.25"
 core-foundation = "0.10"
+# NSPasteboard for the clipboard side of the injection engine (actions.rs
+# stub). Both crates are already in the tree via tauri/wry at these exact
+# versions, so this adds no new transitive deps; default features are off to
+# keep the class surface minimal (feature unification merges wry's set).
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
 
 [features]
 default = ["custom-protocol"]

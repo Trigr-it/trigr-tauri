@@ -2456,6 +2456,8 @@ dependencies = [
  "image",
  "log",
  "notify",
+ "objc2-app-kit",
+ "objc2-foundation",
  "opener",
  "png 0.17.16",
  "rand 0.8.5",
