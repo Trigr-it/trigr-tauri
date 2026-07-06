@@ -18,6 +18,7 @@ window.electronAPI = {
   // ── Window controls ─────────────────────────────────────────────────────────
   minimize: () => invoke('window_minimize'),
   maximize: () => invoke('window_maximize'),
+  startDragging: () => invoke('window_start_dragging'),
   close:    () => invoke('window_close'),
 
   // ── Config persistence ──────────────────────────────────────────────────────

@@ -1771,6 +1771,15 @@ fn window_maximize(window: tauri::Window) {
     }
 }
 
+/// Begin an OS-native window move. The custom titlebar drags via CSS
+/// `-webkit-app-region: drag` on Windows (WebView2), but WKWebView has no
+/// app-region support — the mac titlebar calls this from its mousedown
+/// handler instead.
+#[tauri::command]
+fn window_start_dragging(window: tauri::Window) {
+    let _ = window.start_dragging();
+}
+
 #[tauri::command]
 fn window_close(app: tauri::AppHandle) {
     tray::hide_window_to_tray(&app);
@@ -4699,6 +4708,7 @@ pub fn run() {
             check_hotkey_conflict,
             // Window
             window_minimize,
+            window_start_dragging,
             window_maximize,
             window_close,
             show_window,

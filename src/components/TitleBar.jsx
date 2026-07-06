@@ -38,6 +38,18 @@ export default function TitleBar({
   const handleMaximize = () => window.electronAPI?.maximize();
   const handleClose    = () => window.electronAPI?.close();
 
+  // macOS only: WKWebView has no -webkit-app-region support (the CSS that
+  // makes the titlebar draggable on Windows/WebView2), so drive the OS
+  // window-move natively from mousedown. Interactive islands are already
+  // marked data-drag="false"; double-click keeps the maximize toggle.
+  const isMac = navigator.platform.toUpperCase().includes('MAC');
+  const handleDragMouseDown = (e) => {
+    if (!isMac || e.button !== 0) return;
+    if (e.target.closest('[data-drag="false"], button, input, select')) return;
+    if (e.detail === 2) { window.electronAPI?.maximize(); return; }
+    window.electronAPI?.startDragging?.();
+  };
+
   // Theme picker popover state
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const themePickerRef = useRef(null);
@@ -170,7 +182,7 @@ export default function TitleBar({
   const activeLabel = AREA_TABS.find(t => t.key === activeArea)?.label || 'Triggers';
 
   return (
-    <div className="titlebar" data-drag="true">
+    <div className="titlebar" data-drag="true" onMouseDown={handleDragMouseDown}>
       <div className="titlebar-left">
         <div className="app-logo">
           <span className="trigr-mark">
