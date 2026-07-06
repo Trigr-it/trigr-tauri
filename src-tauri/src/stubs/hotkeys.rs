@@ -53,9 +53,10 @@ pub static SEARCH_OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
 /// `HOOKS_RUNNING`). Cross-thread, so `Ordering::SeqCst` per the hard rules.
 static HOOKS_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Engine pause state (mirror of the Windows MACROS_ENABLED). Toggled by the
-/// pause hotkey and `set_macros_enabled`; gates suppression AND dispatch.
-static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
+/// Engine pause state (mirror of the Windows MACROS_ENABLED — pub because
+/// tray.rs reads and toggles it, same as on Windows). Toggled by the pause
+/// hotkey and `set_macros_enabled`; gates suppression AND dispatch.
+pub static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
 
 /// True while a Keyfire UI input field has focus — normal hotkey dispatch is
 /// suppressed so typing in the app doesn't fire macros (capture flows still
