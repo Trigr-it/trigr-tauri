@@ -46,6 +46,12 @@ pub static SUPPRESS_NEXT_CLIPBOARD_WRITE: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "macos")]
 pub(crate) const INJECTED_EVENT_MAGIC: i64 = 0x4B46_5952;
 
+/// Serialises tests that mutate the real NSPasteboard (it is not safe for
+/// concurrent mutation from two threads — parallel test runners SIGTRAP on
+/// an ObjC exception). Lock it in every test that writes the pasteboard.
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) static PASTEBOARD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn cleanup_stale_ahk_scripts(app_data_dir: PathBuf) {}
 
 pub fn execute_action(
@@ -936,6 +942,7 @@ mod macos {
         /// user's clipboard text; text-only, same limitation as the M2 engine.
         #[test]
         fn clipboard_write_read_roundtrip() {
+            let _pb = super::super::PASTEBOARD_TEST_LOCK.lock().unwrap();
             let prev = read_clipboard();
             let probe = "keyfire-m2-clipboard-probe";
 

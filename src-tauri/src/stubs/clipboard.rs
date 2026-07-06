@@ -2335,6 +2335,7 @@ mod tests {
     /// injection engine's clipboard fn, observe changeCount move, read back.
     #[test]
     fn pasteboard_reader_roundtrip() {
+        let _pb = crate::actions::PASTEBOARD_TEST_LOCK.lock().unwrap();
         let prev = crate::actions::read_clipboard_pub();
         let before = pasteboard::change_count();
 
