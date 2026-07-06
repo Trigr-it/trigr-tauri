@@ -111,6 +111,20 @@ pub fn update_profile_settings(settings: HashMap<String, Value>) {
     }
 }
 
+/// PID of the frontmost app, for overlay focus hand-back (lib.rs captures it
+/// before showing a focus-stealing overlay and re-activates it on hide —
+/// the mac analogue of the Windows OVERLAY_TARGET_HWND round-trip). 0 = none.
+#[cfg(target_os = "macos")]
+pub(crate) fn capture_frontmost_pid() -> i32 {
+    macos::frontmost_pid()
+}
+
+/// Re-activate the app with the given PID (no-op for 0 / vanished apps).
+#[cfg(target_os = "macos")]
+pub(crate) fn activate_pid(pid: i32) {
+    macos::activate_pid(pid);
+}
+
 // ── macOS NSWorkspace watcher ────────────────────────────────────────────────
 #[cfg(target_os = "macos")]
 mod macos {
@@ -202,6 +216,31 @@ mod macos {
                 Some(names)
             }
         })
+    }
+
+    /// PID of the frontmost app (0 if none). See capture_frontmost_pid.
+    pub(super) fn frontmost_pid() -> i32 {
+        autoreleasepool(|_| {
+            NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .map(|a| a.processIdentifier())
+                .unwrap_or(0)
+        })
+    }
+
+    /// Bring the app with `pid` back to front. Used after hiding a
+    /// focus-stealing overlay so the user's target app regains key focus
+    /// before any synthetic paste lands.
+    pub(super) fn activate_pid(pid: i32) {
+        if pid == 0 {
+            return;
+        }
+        autoreleasepool(|_| {
+            use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+            if let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
+                app.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps);
+            }
+        });
     }
 
     /// Twin of the Windows handle_foreground_change decision chain.

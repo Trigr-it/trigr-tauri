@@ -1915,10 +1915,93 @@ fn monitor_scale_factor(hmon: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> f6
     dx as f64 / 96.0
 }
 
+/// Work area of the monitor containing the cursor, as
+/// (left, top, right, bottom, scale) in physical units — the cross-platform
+/// twin of the Win32 GetCursorPos + MonitorFromPoint + GetMonitorInfoW dance.
+#[cfg(not(windows))]
+fn cursor_monitor_work_area(app: &tauri::AppHandle) -> Option<(i32, i32, i32, i32, f64)> {
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten())?;
+    let wa = monitor.work_area();
+    Some((
+        wa.position.x,
+        wa.position.y,
+        wa.position.x + wa.size.width as i32,
+        wa.position.y + wa.size.height as i32,
+        monitor.scale_factor(),
+    ))
+}
+
 #[cfg(not(windows))]
 fn show_overlay(app: &tauri::AppHandle) {
-    let _ = app;
-    log::warn!("[stub] quick search overlay is not available on this platform yet");
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "overlay");
+
+    // Capture the frontmost app so closing the overlay can hand focus back.
+    // On macOS the shared OVERLAY_TARGET_HWND atomic carries a PID (there are
+    // no HWNDs); restore_overlay_target re-activates it.
+    #[cfg(target_os = "macos")]
+    OVERLAY_TARGET_HWND.store(
+        foreground::capture_frontmost_pid() as isize,
+        AtomicOrdering::Relaxed,
+    );
+
+    let overlay = match app.get_webview_window("overlay") {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Centre on the monitor containing the cursor, one-third from top.
+    // Physical units, same layout maths as the Windows twin.
+    if let Some((wa_left, wa_top, wa_right, wa_bottom, scale)) = cursor_monitor_work_area(app) {
+        let phys_w = (620.0 * scale).round() as i32;
+        let phys_h = (103.0 * scale).round() as i32;
+        let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+        let phys_y = wa_top + (wa_bottom - wa_top) / 3;
+        let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+        let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
+    }
+
+    // Send search data to the overlay — same payload as the Windows twin.
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let search_templates = {
+        let templates = cfg.get("searchTemplates").cloned().unwrap_or_else(|| serde_json::json!([]));
+        if licence::is_pro() {
+            templates
+        } else if let Some(arr) = templates.as_array() {
+            serde_json::Value::Array(arr.iter().take(5).cloned().collect())
+        } else {
+            templates
+        }
+    };
+    let search_data = {
+        let state = hotkeys::engine_state().lock().unwrap();
+        serde_json::json!({
+            "assignments": state.assignments,
+            "activeProfile": state.active_profile,
+            "globalInputMethod": cfg.get("globalInputMethod").and_then(|v| v.as_str()).unwrap_or("direct"),
+            "theme": cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"),
+            "searchTemplates": search_templates,
+            "settings": {
+                "showAll": cfg.get("overlayShowAll").and_then(|v| v.as_bool()).unwrap_or(true),
+                "closeAfterFiring": cfg.get("overlayCloseAfterFiring").and_then(|v| v.as_bool()).unwrap_or(true),
+                "includeAutocorrect": cfg.get("overlayIncludeAutocorrect").and_then(|v| v.as_bool()).unwrap_or(false),
+            },
+            "voiceEnabled": cfg.get("voiceCommandsEnabled").and_then(|v| v.as_bool()).unwrap_or(true)
+        })
+    };
+    let _ = overlay.emit("overlay-search-data", search_data);
+
+    // Show and focus. Unlike Windows (WS_EX_NOACTIVATE + LL-hook key routing),
+    // the mac overlay takes real key focus — its DOM handlers drive the UI.
+    *overlay_show_time().lock().unwrap() = Some(StdInstant::now());
+    let _ = overlay.show();
+    let _ = overlay.set_focus();
+    log::info!("[OVERLAY] quick search shown (focused)");
+    let _ = app.emit("search-overlay-shown", serde_json::Value::Null);
 }
 
 #[cfg(windows)]
@@ -2118,8 +2201,56 @@ static CLIPBOARD_OVERLAY_TARGET: std::sync::atomic::AtomicIsize =
 
 #[cfg(not(windows))]
 fn show_clipboard_overlay(app: &tauri::AppHandle) {
-    let _ = app;
-    log::warn!("[stub] clipboard popup is not available on this platform yet");
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "clipboardoverlay");
+
+    // Capture the frontmost app PID so hide_clipboard_overlay can hand focus
+    // back before any paste lands (mac twin of the target-HWND capture).
+    #[cfg(target_os = "macos")]
+    CLIPBOARD_OVERLAY_TARGET.store(
+        foreground::capture_frontmost_pid() as isize,
+        std::sync::atomic::Ordering::SeqCst,
+    );
+
+    let win = match app.get_webview_window("clipboardoverlay") {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Same layout maths as the Windows twin: 754×500 logical, clamped to the
+    // work area with 32px margins, centred, one-third from top.
+    if let Some((wa_left, wa_top, wa_right, wa_bottom, scale)) = cursor_monitor_work_area(app) {
+        let wa_w = wa_right - wa_left;
+        let wa_h = wa_bottom - wa_top;
+        let phys_w = ((754.0 * scale).round() as i32).min((wa_w - 32).max(400));
+        let phys_h = ((500.0 * scale).round() as i32).min((wa_h - 32).max(200));
+        let ideal_y = wa_top + wa_h / 3;
+        let phys_y = ideal_y.min(wa_bottom - phys_h - 16).max(wa_top + 16);
+        let phys_x = wa_left + (wa_w - phys_w) / 2;
+        let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+        let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
+    }
+
+    // Send history + theme BEFORE the show so the webview has data when it
+    // becomes visible. (History is empty until the mac clipboard-history
+    // milestone lands — the popup UI itself still works.)
+    let history = clipboard::get_history(1, 500, None, None, None, None, false);
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+    let mut payload = history;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
+    }
+    let _ = win.emit("clipboard-overlay-data", payload);
+
+    // Show WITH focus — unlike Windows (WS_EX_NOACTIVATE + LL-hook key
+    // routing), the mac popup takes real key focus and its DOM keydown
+    // handlers drive search/navigation. hide_clipboard_overlay re-activates
+    // the captured target app so pastes land in the right place.
+    let _ = win.show();
+    let _ = win.set_focus();
+    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
+    log::info!("[OVERLAY] clipboard popup shown (focused)");
 }
 
 #[cfg(windows)]
@@ -2258,6 +2389,13 @@ fn hide_clipboard_overlay(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("clipboardoverlay") {
         let _ = w.hide();
     }
+    // The mac popup held real key focus (see show_clipboard_overlay) — hand
+    // focus back to the captured target app so a following paste lands there.
+    #[cfg(target_os = "macos")]
+    {
+        let pid = CLIPBOARD_OVERLAY_TARGET.swap(0, std::sync::atomic::Ordering::SeqCst) as i32;
+        foreground::activate_pid(pid);
+    }
 }
 
 #[cfg(windows)]
@@ -2299,9 +2437,19 @@ fn hide_clipboard_overlay(app: &tauri::AppHandle) {
 }
 
 fn restore_overlay_target() {
-    let hwnd = OVERLAY_TARGET_HWND.load(AtomicOrdering::Relaxed);
-    if hwnd != 0 {
-        actions::set_foreground_robust(hwnd);
+    #[cfg(windows)]
+    {
+        let hwnd = OVERLAY_TARGET_HWND.load(AtomicOrdering::Relaxed);
+        if hwnd != 0 {
+            actions::set_foreground_robust(hwnd);
+        }
+    }
+    // On macOS the atomic carries the frontmost app's PID captured at
+    // show_overlay time (HWNDs don't exist); re-activate that app.
+    #[cfg(target_os = "macos")]
+    {
+        let pid = OVERLAY_TARGET_HWND.swap(0, AtomicOrdering::Relaxed) as i32;
+        foreground::activate_pid(pid);
     }
 }
 
@@ -3012,6 +3160,11 @@ fn paste_clipboard_item(id: i64, app: tauri::AppHandle) {
         // Brief settle delay before paste — lets the overlay's win.hide()
         // commit fully so any in-flight Tauri events finish before Ctrl+V.
         std::thread::sleep(std::time::Duration::from_millis(30));
+        // macOS: the popup held real key focus (no NOACTIVATE equivalent is
+        // wired), so hide_clipboard_overlay re-activates the target app —
+        // give the OS time to finish that app switch before ⌘V lands.
+        #[cfg(target_os = "macos")]
+        std::thread::sleep(std::time::Duration::from_millis(150));
 
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(true, std::sync::atomic::Ordering::SeqCst);

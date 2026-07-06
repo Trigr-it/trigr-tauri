@@ -96,7 +96,7 @@ core-foundation = "0.10"
 # versions, so this adds no new transitive deps; default features are off to
 # keep the class surface minimal (feature unification merges wry's set).
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSWorkspace", "NSRunningApplication"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSWorkspace", "NSRunningApplication"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL"] }
 
 [features]
