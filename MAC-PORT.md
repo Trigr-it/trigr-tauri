@@ -4,13 +4,34 @@
 > single source of truth for the port. The Windows dev machine holds richer
 > project context; this file carries everything the Mac engine work needs.
 
-## State (updated 2026-07-06)
+## State (updated 2026-07-06, evening)
 
 - **Phase 0 (platform seam) + Phase 1 (CI .dmg) are DONE and merged to main.**
-  The app compiles and runs on macOS as a UI shell: full React frontend,
-  config persistence, all 155 Tauri commands present. The entire input engine
-  is stubbed.
-- **Phase 2 (this machine's job): the native macOS engine.**
+- **Phase 2 in progress on `port/mac-hooks`** (all compile-checked green on
+  macOS + Windows CI, unit-tested locally):
+  - **M1 hooks** — CGEventTap + processor thread split (commit 24bb8df).
+  - **M2 injection** — stubs/actions.rs is the real engine: CGEventPost with
+    the INJECTED_EVENT_MAGIC tag (filtered in the tap), NSPasteboard
+    clipboard, release/restore held modifiers via CGEventSourceKeyState,
+    VK→mac-keycode translation (Ctrl→⌘ accelerator mapping for shared lib.rs
+    paste sequences), execute_action for "text"/"url"/"expansion" (d19cc00).
+  - **M3 matcher** — tap is ACTIVE (suppressing; listen-only fallback until
+    Accessibility granted), suppress-set consulted in the callback, processor
+    matches profile::Combo::KeyId and fires at keyup; overlay/pause/clipboard
+    specials; hotkey capture + recording flows (414ced7).
+  - **Foreground watcher** — NSWorkspace.frontmostApplication poll with the
+    full auto-switch decision chain (b9b886d).
+  - **NEEDS HUMAN TEST**: grant Accessibility + Input Monitoring to the dev
+    terminal (or the built app), then verify a real hotkey end-to-end
+    (assign Ctrl+Shift+K → Send Text, press in TextEdit), overlay toggle,
+    pause toggle, clipboard-history paste, profile auto-switch.
+  - **Deferred (deliberately unsuppressed so keys stay alive)**: bare keys,
+    ::double/::hold variants, expansion keystroke buffer (module 3-4), voice,
+    radial, Quick Record, mouse hooks, "hotkey"/"macro" action types.
+- **Next modules**: expansions engine (keystroke buffer + trigger match) or
+  clipboard history (NSPasteboard changeCount poll + SQLite); actions.rs
+  self-change-count queue (`is_self_clipboard_change`) is already in place
+  for the clipboard listener.
 - Dev machine: Apple Silicon (M4) iMac, repo at `~/Desktop/Keyfire`.
   A separate MacBook is the clean-machine artifact tester.
 
@@ -81,19 +102,22 @@ inside the stub file. Do NOT touch the `#[cfg(windows)]` originals.
   `#[cfg(windows)]` items; if a shared file must change, keep changes additive
   and platform-neutral.
 
-## First milestone (start here)
+## Current milestone (see State above for what's done)
 
-CGEventTap listen-only spike inside `stubs/hotkeys.rs::start_hooks`:
-1. Create a session event tap for keyDown/keyUp/flagsChanged on a dedicated
-   thread with its own CFRunLoop.
-2. On first run macOS will prompt for Accessibility / Input Monitoring — the
-   human grants them (in dev, the grant attaches to the terminal app running
-   `cargo tauri dev`).
-3. Feed events into modifier-state tracking mirroring the Windows processor
-   thread design (hook thread ingests, processor thread decides).
-4. Success = log lines showing keys + modifiers globally, and
-   `get_engine_status` reporting hooks running so the UI status dot goes live.
-5. Handle tap-disabled callbacks (kCGEventTapDisabledByTimeout) by re-enabling.
+Hooks M1–M3 + injection + foreground watcher are implemented and CI-green.
+The immediate gate is a HUMAN TEST on this machine:
+1. Grant the dev terminal (or the .dmg app on the test MacBook)
+   Accessibility + Input Monitoring under Privacy & Security. The tap logs
+   "ACTIVE — suppression enabled" when rights are right; "LISTEN-ONLY" means
+   Accessibility is missing and matching stays disabled by design.
+2. Verify end-to-end: assign Ctrl+Shift+K → Send Text, press it in TextEdit
+   (NOT the terminal — Secure Keyboard Entry withholds key events); check
+   overlay toggle, pause toggle, clipboard-overlay paste, profile
+   auto-switch on app change.
 
-Then: injection (CGEventPost with the simulated-event tag), then wire
-`execute_action` for the simplest action type, then a first end-to-end hotkey.
+After that, next engine work in rough order: expansions keystroke buffer +
+trigger matching (reuse the tap's KeyDown stream); "hotkey" + "macro" action
+types in stubs/actions.rs (VK map + modifier mask already exist); clipboard
+history listener (NSPasteboard changeCount poll — actions.rs already queues
+self-write changeCounts via `is_self_clipboard_change`); then bare keys and
+::double/::hold variants in the matcher.
