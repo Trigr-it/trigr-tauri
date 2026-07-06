@@ -1445,6 +1445,101 @@ fn cleanup_stale_trigr_shortcuts() {
     }
 }
 
+/// Ensure a working Keyfire Start Menu shortcut exists for the current user.
+///
+/// Tauri's auto-updater does in-place binary replacement and does NOT re-run
+/// the NSIS installer, so users who auto-updated from a pre-rebrand build
+/// (≤ v0.5.6) had their Trigr.lnk cleaned up by `cleanup_stale_trigr_shortcuts`
+/// but never got a Keyfire.lnk in its place — leaving them with no way to
+/// launch Keyfire from the Start Menu after the rebrand (only the
+/// Start-with-Windows registry autorun would start it). This fixes that gap
+/// by creating the shortcut ourselves on every startup if it's missing.
+/// Idempotent: silent no-op when the shortcut already exists.
+///
+/// Implementation: PowerShell shell-out via WScript.Shell COM. ~100ms one-time
+/// cost on the first startup that finds the file missing, then silent on
+/// subsequent runs. Pure-Rust IShellLink would be ~50 LOC of unsafe COM glue
+/// plus CoInitialize lifecycle management — not worth the complexity for a
+/// once-per-machine fix that touches no hot path.
+///
+/// Target comes from `std::env::current_exe()` so the same code works for
+/// both install-dir cases: fresh v0.6.0+ install at `AppData\Local\Keyfire\`
+/// and auto-updated users still at `AppData\Local\Trigr\` (Tauri preserved
+/// the install dir name across the rebrand because the updater never moves
+/// directories — only swaps the .exe binary in place).
+fn ensure_keyfire_shortcut() {
+    let Ok(appdata) = std::env::var("APPDATA") else {
+        log::warn!("[Keyfire] ensure_keyfire_shortcut: APPDATA env var missing");
+        return;
+    };
+    let shortcut = std::path::PathBuf::from(&appdata)
+        .join("Microsoft")
+        .join("Windows")
+        .join("Start Menu")
+        .join("Programs")
+        .join("Keyfire.lnk");
+    if shortcut.exists() {
+        return; // Already there — silent idempotent no-op on every later startup.
+    }
+
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("[Keyfire] ensure_keyfire_shortcut: current_exe failed: {}", e);
+            return;
+        }
+    };
+    let exe_str = exe.to_string_lossy().to_string();
+    let work_dir = exe
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let shortcut_str = shortcut.to_string_lossy().to_string();
+
+    // PowerShell single-quoted strings: literal single quote inside is doubled.
+    // Real install paths shouldn't contain quotes, but escape defensively.
+    let esc = |s: &str| s.replace('\'', "''");
+
+    let ps = format!(
+        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{}'); \
+         $s.TargetPath = '{}'; \
+         $s.WorkingDirectory = '{}'; \
+         $s.IconLocation = '{},0'; \
+         $s.Description = 'Keyfire: Windows hotkey and macro manager'; \
+         $s.Save()",
+        esc(&shortcut_str),
+        esc(&exe_str),
+        esc(&work_dir),
+        esc(&exe_str),
+    );
+
+    // -NoProfile + -NonInteractive + Hidden window keep startup fast and silent.
+    // -ExecutionPolicy Bypass guards against tight per-user policies; -Command
+    // inline does not need scripts-from-disk policy anyway, this is belt-and-braces.
+    match std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &ps,
+        ])
+        .spawn()
+    {
+        Ok(_) => log::info!(
+            "[Keyfire] Creating missing Start Menu shortcut at {} -> {}",
+            shortcut.display(),
+            exe.display()
+        ),
+        Err(e) => log::warn!(
+            "[Keyfire] ensure_keyfire_shortcut: PowerShell spawn failed: {}",
+            e
+        ),
+    }
+}
 
 /// Persist the cached temp macro hotkey strings to config. Called after each
 /// setter so the user's choice survives restart. Hotkeys + macro-event slot
@@ -3787,6 +3882,7 @@ pub fn run() {
             clipboard::init(app_data.clone(), app.handle().clone());
             actions::cleanup_stale_ahk_scripts(app_data);
             cleanup_stale_trigr_shortcuts();
+            ensure_keyfire_shortcut();
 
             // Telemetry timer thread — 30s after startup, then every 6h. Owns
             // its own read-only SQLite connection (no contention with the
