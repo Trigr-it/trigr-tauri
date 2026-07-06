@@ -93,6 +93,51 @@ pub fn clear_injection_start() {
     INJECTION_STARTED_AT_MS.store(0, Ordering::SeqCst);
 }
 
+// ── Wait for Input infrastructure (twin of the Windows one) ────────────────
+
+/// Events forwarded to a Wait for Input waiter. Mouse variants exist for
+/// signature parity — the mac engine has no mouse tap yet, so only key
+/// events are ever forwarded.
+#[derive(Debug, Clone)]
+pub enum WaitEvent {
+    KeyDown { key_id: String },
+    KeyUp { key_id: String },
+    MouseDown { button_name: String },
+    MouseUp { button_name: String },
+}
+
+/// One-shot channel for the Wait for Input step. Set by actions.rs, read by
+/// the event processor.
+static WAIT_FOR_INPUT_TX: OnceLock<Mutex<Option<std::sync::mpsc::Sender<WaitEvent>>>> =
+    OnceLock::new();
+
+fn wait_tx() -> &'static Mutex<Option<std::sync::mpsc::Sender<WaitEvent>>> {
+    WAIT_FOR_INPUT_TX.get_or_init(|| Mutex::new(None))
+}
+
+/// Register a waiter channel. Returns the receiver. Called from actions.rs.
+pub fn register_wait_for_input() -> std::sync::mpsc::Receiver<WaitEvent> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    *wait_tx().lock().unwrap() = Some(tx);
+    rx
+}
+
+/// Clear the waiter channel. Must be called on completion, timeout, or cancellation.
+pub fn clear_wait_for_input() {
+    *wait_tx().lock().unwrap() = None;
+}
+
+/// Forward an event to the waiter if one is registered. Returns true if forwarded.
+fn forward_to_waiter(event: &WaitEvent) -> bool {
+    if let Ok(guard) = wait_tx().try_lock() {
+        if let Some(ref tx) = *guard {
+            let _ = tx.send(event.clone());
+            return true;
+        }
+    }
+    false
+}
+
 /// Key capture mode (settings "press a key" fields). One-shot: cleared by the
 /// processor when a combo is captured and emitted as `key-captured`.
 static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
@@ -1055,10 +1100,33 @@ mod macos {
                     is_repeat,
                 } => {
                     update_modifiers(flags);
+                    // Esc sets the global macro-cancel flag on every real
+                    // keydown (injected events never reach the processor, so
+                    // "real" is guaranteed by the tag filter). Not
+                    // suppressed — the target app should still see Esc.
+                    if keycode == 53 && !is_repeat {
+                        crate::actions::ESC_LOOP_BREAK.store(true, Ordering::SeqCst);
+                    }
+                    // Forward to a Wait for Input waiter before normal
+                    // handling (the waiter sees events regardless of mode).
+                    if !is_modifier_keycode(keycode as u16) {
+                        if let Some(id) = keycode_to_key_id(keycode as u16) {
+                            super::forward_to_waiter(&super::WaitEvent::KeyDown {
+                                key_id: key_id_to_display(id).to_string(),
+                            });
+                        }
+                    }
                     handle_keydown(keycode as u16, flags, is_repeat, &app);
                 }
                 TapEvent::KeyUp { keycode, flags } => {
                     update_modifiers(flags);
+                    if !is_modifier_keycode(keycode as u16) {
+                        if let Some(id) = keycode_to_key_id(keycode as u16) {
+                            super::forward_to_waiter(&super::WaitEvent::KeyUp {
+                                key_id: key_id_to_display(id).to_string(),
+                            });
+                        }
+                    }
                     maybe_fire_pending(&app);
                 }
                 TapEvent::FlagsChanged { keycode, flags } => {
@@ -1181,6 +1249,12 @@ mod macos {
             modifier_string(flags),
             is_repeat
         );
+
+        // ── Release any held key (Send Hotkey hold mode) on physical press ──
+        if crate::actions::is_key_held() {
+            crate::actions::release_held_key();
+            crate::tray::update_tray_icon_normal(app);
+        }
 
         // ── Recording mode: capture combo and send to frontend ──────────────
         // Must run BEFORE the APP_INPUT_FOCUSED check — recording works while
@@ -1311,6 +1385,18 @@ mod macos {
         };
         let storage_key = format!("{}::{}::{}", state.active_profile, combo, key_id);
 
+        // ── Repeat-mode stop: pressing the repeat's own trigger stops it ────
+        if crate::actions::is_repeating() {
+            if let Some(trigger) = crate::actions::get_repeating_trigger() {
+                if trigger == storage_key {
+                    drop(state);
+                    crate::actions::stop_repeating_key();
+                    crate::tray::update_tray_icon_normal(app);
+                    return;
+                }
+            }
+        }
+
         let mut hotkey_matched = false;
         if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
             hotkey_matched = true;
@@ -1365,12 +1451,39 @@ mod macos {
     }
 
     /// Twin of the Windows fire_macro: spawn a worker so the processor never
-    /// blocks, execute, log analytics, notify the frontend. The Windows loop-
-    /// cancel and per-trigger re-entrancy guards live in actions.rs statics
-    /// that don't exist on mac yet — they arrive with the macro milestone.
+    /// blocks, execute, log analytics, notify the frontend.
     fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app: &AppHandle) {
+        // Re-press cancel — if a loop is already running for this trigger,
+        // pressing it again is the canonical stop gesture. Set the cancel
+        // flag and bail before any thread spawn happens.
+        if let Some(ref key) = trigger_key {
+            if crate::actions::cancel_loop_if_running(key) {
+                info!("[Keyfire] Loop cancel signal: {}", key);
+                return;
+            }
+        }
+
+        // H1 re-entrancy guard — if the same trigger is mid-flight, drop the
+        // new fire (per-storage-key; different macros still run concurrently).
+        // The guard travels into the spawned thread; Drop releases it.
+        let macro_guard = if let Some(ref key) = trigger_key {
+            match crate::actions::MacroRunningGuard::try_acquire(key) {
+                Some(g) => Some(g),
+                None => {
+                    warn!(
+                        "[Keyfire] Dropped re-fire: {} already running (H1 re-entrancy guard)",
+                        key
+                    );
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+
         let app_clone = app.clone();
         thread::spawn(move || {
+            let _macro_guard = macro_guard;
             crate::actions::execute_action(
                 &macro_val,
                 is_bare,

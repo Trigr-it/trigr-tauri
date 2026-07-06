@@ -138,9 +138,140 @@ pub(crate) fn clipboard_change_count() -> i64 {
     macos::change_count()
 }
 
+// ── Macro re-entrancy + loop-cancel machinery (twin of the Windows statics) ─
+
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, LazyLock, Mutex};
+
+static ACTIVE_MACRO_KEYS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+static LOOPING_MACROS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub static LOOPING_COUNT: AtomicUsize = AtomicUsize::new(0);
+pub static ESC_LOOP_BREAK: AtomicBool = AtomicBool::new(false);
+
+/// H1 re-entrancy guard — one in-flight fire per storage key. Dropped (incl.
+/// on panic) releases the key.
+pub(crate) struct MacroRunningGuard {
+    key: String,
+}
+
+impl MacroRunningGuard {
+    pub(crate) fn try_acquire(key: &str) -> Option<Self> {
+        let mut set = ACTIVE_MACRO_KEYS.lock().ok()?;
+        if set.contains(key) {
+            return None;
+        }
+        set.insert(key.to_string());
+        Some(Self { key: key.to_string() })
+    }
+}
+
+impl Drop for MacroRunningGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = ACTIVE_MACRO_KEYS.lock() {
+            set.remove(&self.key);
+        }
+    }
+}
+
+pub(crate) struct LoopHandle {
+    key: String,
+    cancel_flag: Arc<AtomicBool>,
+}
+
+impl LoopHandle {
+    pub(crate) fn register(key: &str) -> Self {
+        let flag = Arc::new(AtomicBool::new(false));
+        if let Ok(mut map) = LOOPING_MACROS.lock() {
+            map.insert(key.to_string(), flag.clone());
+        }
+        LOOPING_COUNT.fetch_add(1, Ordering::SeqCst);
+        Self {
+            key: key.to_string(),
+            cancel_flag: flag,
+        }
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.cancel_flag.load(Ordering::SeqCst) || ESC_LOOP_BREAK.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for LoopHandle {
+    fn drop(&mut self) {
+        if let Ok(mut map) = LOOPING_MACROS.lock() {
+            map.remove(&self.key);
+        }
+        let prev = LOOPING_COUNT.fetch_sub(1, Ordering::SeqCst);
+        if prev <= 1 {
+            ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Hook-side re-press handler. If `trigger_key` has a loop in flight, set its
+/// cancel flag and return true so the caller can drop the new fire. The
+/// running iteration will observe the flag at its next per-iter check or
+/// between-step poll and exit cleanly.
+pub fn cancel_loop_if_running(trigger_key: &str) -> bool {
+    if let Ok(map) = LOOPING_MACROS.lock() {
+        if let Some(flag) = map.get(trigger_key) {
+            flag.store(true, Ordering::SeqCst);
+            return true;
+        }
+    }
+    false
+}
+
+/// Release the currently held key (if any). Safe to call from any thread.
+/// Returns the label of the released key (for logging) or None.
 pub fn release_held_key() -> Option<String> {
-    // Hold/repeat key state machine arrives with the hotkey matcher milestone.
-    None
+    #[cfg(target_os = "macos")]
+    {
+        macos::release_held_key()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+/// Check if a key is currently being held (Send Hotkey hold mode).
+pub fn is_key_held() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_key_held()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+pub fn is_repeating() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_repeating()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+pub fn get_repeating_trigger() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::get_repeating_trigger()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
 }
 
 /// Read which modifiers are physically held, post tagged key-ups for them,
@@ -207,7 +338,14 @@ pub fn set_foreground_robust(hwnd: isize) -> bool {
 }
 
 pub fn stop_repeating_key() -> Option<String> {
-    None
+    #[cfg(target_os = "macos")]
+    {
+        macos::stop_repeating_key()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
 }
 
 /// On Windows this guard sets hotkeys::SUPPRESS_SIMULATED so the LL hook
@@ -731,8 +869,42 @@ mod macos {
 
             "hotkey" => {
                 if let Some(d) = data {
-                    execute_send_hotkey(d);
+                    execute_send_hotkey(d, trigger_key, app);
                 }
+            }
+
+            // App / folder launches. macOS `open` handles .app bundles,
+            // plain binaries, files and directories uniformly via the opener
+            // crate. Monitor targeting (the Windows SetWinEventHook
+            // machinery) is a later milestone — the target monitor field is
+            // ignored here.
+            "app" => {
+                let path = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()).unwrap_or("");
+                if path.is_empty() {
+                    warn!("[Keyfire] app action: empty path, skipping");
+                } else {
+                    let _ = opener::open(path);
+                }
+            }
+
+            "folder" => {
+                if let Some(path) = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()) {
+                    if !path.is_empty() {
+                        let _ = opener::open(path);
+                    }
+                }
+            }
+
+            "macro" => {
+                if let Some(steps) = data.and_then(|d| d.get("steps")).and_then(|v| v.as_array()) {
+                    execute_macro_sequence(data, steps, label, trigger_key, app);
+                }
+            }
+
+            // AHK is Windows-only forever (closed decision) — hidden in the
+            // mac UI; a config authored on Windows just skips these.
+            "ahk" => {
+                warn!("[Keyfire] AHK actions are Windows-only — skipping \"{}\"", label);
             }
 
             other => {
@@ -742,9 +914,762 @@ mod macos {
                 );
             }
         }
+    }
 
-        // `app` is unused until actions emit UI events (toasts, loop badges).
-        let _ = app;
+    // ── Macro sequence runner (twin of the Windows "macro" branch) ──────────
+
+    fn execute_macro_sequence(
+        data: Option<&Value>,
+        steps: &[Value],
+        label: &str,
+        trigger_key: Option<&str>,
+        app: &tauri::AppHandle,
+    ) {
+        use tauri::Emitter;
+        let method = resolve_input_method(data);
+        let uses_clipboard = method != "send-input" && method != "direct";
+        let (_, settle_ms, _, clip_restore_ms) = speed_delays();
+
+        // Clear any stale Esc-cancel flag so a pre-press doesn't immediately
+        // abort the macro we're about to fire. The flag is set globally on
+        // every real Esc keydown — once we're running, any subsequent Esc
+        // press will set it again and the per-step check below catches it.
+        super::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+
+        // Loop config — backward compatible: missing `loop` = single fire.
+        let loop_cfg = data.and_then(|d| d.get("loop"));
+        let loop_enabled = loop_cfg
+            .and_then(|l| l.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let loop_mode = loop_cfg
+            .and_then(|l| l.get("mode"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("count");
+        let loop_count = loop_cfg
+            .and_then(|l| l.get("count"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1)
+            .max(1);
+        let loop_delay_ms = loop_cfg
+            .and_then(|l| l.get("delayMs"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let max_iters: u64 = if loop_enabled {
+            if loop_mode == "forever" { u64::MAX } else { loop_count }
+        } else {
+            1
+        };
+
+        // Register loop handle only when looping AND we have a trigger key to
+        // cancel against (re-press cancel can't reach an anonymous chain).
+        let loop_handle = if loop_enabled && max_iters > 1 {
+            trigger_key.map(super::LoopHandle::register)
+        } else {
+            None
+        };
+
+        if loop_enabled && max_iters > 1 {
+            let _ = app.emit(
+                "loop-fire-started",
+                serde_json::json!({
+                    "label": label,
+                    "trigger": trigger_key.unwrap_or(""),
+                    "mode": loop_mode,
+                    "count": if loop_mode == "forever" { 0 } else { max_iters },
+                }),
+            );
+            info!(
+                "[Keyfire] Macro loop: {} step(s) × {}, method={}",
+                steps.len(),
+                if loop_mode == "forever" { "forever".to_string() } else { max_iters.to_string() },
+                method
+            );
+        } else {
+            info!("[Keyfire] Macro sequence: {} step(s), method={}", steps.len(), method);
+        }
+
+        // Clipboard batching: snapshot every pasteboard flavor once, batch
+        // pastes, restore once — images/RTF survive the whole macro (and the
+        // whole loop), same guarantee as Windows.
+        let saved_snapshot = if uses_clipboard {
+            crate::expansions::snapshot_clipboard()
+        } else {
+            Vec::new()
+        };
+        let mut clipboard_dirty = false;
+        let mut cancelled = false;
+        let mut iter_index: u64 = 0;
+
+        'outer: while iter_index < max_iters {
+            // Per-iteration cancel checks: re-press flag (loops only) +
+            // global Esc break (loops AND one-shots).
+            if let Some(ref lh) = loop_handle {
+                if lh.is_cancelled() {
+                    info!("[Keyfire] Macro loop cancelled at iter {}", iter_index);
+                    cancelled = true;
+                    break;
+                }
+            }
+            if super::ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                info!("[Keyfire] Macro cancelled (Esc) at iter {}", iter_index);
+                cancelled = true;
+                break;
+            }
+
+            if iter_index > 0 && loop_delay_ms > 0 {
+                // Polled sleep — 100ms chunks so Esc/re-press/pause are
+                // honoured promptly even on very long inter-iteration waits.
+                let sleep_chunk = Duration::from_millis(100);
+                let total = Duration::from_millis(loop_delay_ms);
+                let start = std::time::Instant::now();
+                while start.elapsed() < total {
+                    if let Some(ref lh) = loop_handle {
+                        if lh.is_cancelled() {
+                            info!("[Keyfire] Macro loop cancelled during inter-iter delay");
+                            cancelled = true;
+                            break 'outer;
+                        }
+                    }
+                    if super::ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                        info!("[Keyfire] Macro cancelled (Esc) during inter-iter delay");
+                        cancelled = true;
+                        break 'outer;
+                    }
+                    if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                        info!("[Keyfire] Macro aborted (paused) during inter-iter delay");
+                        cancelled = true;
+                        break 'outer;
+                    }
+                    let remaining = total.saturating_sub(start.elapsed());
+                    thread::sleep(sleep_chunk.min(remaining));
+                }
+            }
+
+            for (i, step) in steps.iter().enumerate() {
+                // Inter-step cancel poll — bounds Esc/re-press response time
+                // by step duration even inside long macros.
+                if let Some(ref lh) = loop_handle {
+                    if lh.is_cancelled() {
+                        info!("[Keyfire] Macro loop cancelled mid-iter at step {}/{}", i + 1, steps.len());
+                        cancelled = true;
+                        break 'outer;
+                    }
+                }
+                if super::ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Macro cancelled (Esc) at step {}/{}", i + 1, steps.len());
+                    cancelled = true;
+                    break 'outer;
+                }
+                let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                info!("[Keyfire]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
+
+                if matches!(step_type, "Type Text" | "Dynamic Text") && uses_clipboard && !step_value.is_empty() {
+                    if settle_ms > 0 {
+                        thread::sleep(Duration::from_millis(settle_ms));
+                    }
+                    let resolved = resolve_type_text_tokens(step_value);
+                    clipboard_paste_core(&resolved);
+                    clipboard_dirty = true;
+                } else {
+                    // Restore clipboard before non-Type-Text steps if we
+                    // dirtied it. No changeCount guard mid-macro — this is a
+                    // controlled sequential flow.
+                    if clipboard_dirty {
+                        thread::sleep(Duration::from_millis(clip_restore_ms));
+                        crate::expansions::restore_clipboard_snapshot(&saved_snapshot);
+                        SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
+                        clipboard_dirty = false;
+                    }
+                    let cont = execute_macro_step(step, &method, app);
+                    if !cont {
+                        info!("[Keyfire] Macro aborted at step {}/{} ({})", i + 1, steps.len(), step_type);
+                        cancelled = true;
+                        break 'outer;
+                    }
+                }
+                // No foreground-HWND recapture on macOS — focus follows the
+                // frontmost app naturally; injection targets whatever is
+                // frontmost when the events land.
+            }
+
+            iter_index += 1;
+        }
+
+        // Final restore after all iterations. changeCount guard: if the user
+        // copied something during the final paste window, leave their content.
+        if clipboard_dirty {
+            let post = change_count();
+            thread::sleep(Duration::from_millis(clip_restore_ms));
+            if change_count() == post {
+                crate::expansions::restore_clipboard_snapshot(&saved_snapshot);
+            }
+            SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
+        }
+
+        if loop_handle.is_some() {
+            let _ = app.emit(
+                "loop-fire-ended",
+                serde_json::json!({
+                    "trigger": trigger_key.unwrap_or(""),
+                    "iterations": iter_index,
+                    "cancelled": cancelled,
+                }),
+            );
+            info!("[Keyfire] Macro loop ended: {} iter(s), cancelled={}", iter_index, cancelled);
+        }
+        // loop_handle drop removes the LOOPING_MACROS entry, decrements
+        // LOOPING_COUNT and resets ESC_LOOP_BREAK if this was the last loop.
+    }
+
+    /// Token resolution for macro Type Text — same resolver the expansion
+    /// fire path uses, so tokens behave identically across both.
+    fn resolve_type_text_tokens(text: &str) -> String {
+        let global_vars = crate::expansions::get_global_variables();
+        let empty_fillin: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let (resolved, _cursor_back) =
+            crate::expansions::resolve_tokens(text, &global_vars, &empty_fillin);
+        resolved
+    }
+
+    /// Core clipboard paste: write text + ⌘V. Does NOT save/restore the
+    /// pasteboard — the macro runner batches that around the whole sequence.
+    fn clipboard_paste_core(text: &str) {
+        if !write_clipboard_impl(text, true) {
+            warn!("[Keyfire] Skipping paste — clipboard write failed, would paste wrong content");
+            return;
+        }
+        info!("[Keyfire] Clipboard write (macro): \"{}\"", log_preview(text));
+        let (_, _, paste_settle_ms, _) = speed_delays();
+        let held = release_held_modifiers();
+        if paste_settle_ms > 0 {
+            thread::sleep(Duration::from_millis(paste_settle_ms));
+        }
+        paste_cmd_v();
+        restore_modifiers(&held);
+    }
+
+    /// One macro step. Returns false to abort the whole macro.
+    fn execute_macro_step(step: &Value, method: &str, app: &tauri::AppHandle) -> bool {
+        let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
+        let repeat_count = step
+            .get("repeat")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1)
+            .clamp(1, 99) as u32;
+        let (_, settle_ms, _, _) = speed_delays();
+
+        match step_type {
+            "Type Text" | "Dynamic Text" => {
+                if !step_value.is_empty() {
+                    if settle_ms > 0 {
+                        thread::sleep(Duration::from_millis(settle_ms));
+                    }
+                    let resolved = resolve_type_text_tokens(step_value);
+                    output_text(&resolved, method);
+                }
+            }
+
+            "Click Mouse" => {
+                let btn = if step_value.is_empty() { "LButton" } else { step_value };
+                if is_mouse_button(btn) {
+                    for i in 0..repeat_count {
+                        send_mouse_click(btn);
+                        if i + 1 < repeat_count && settle_ms > 0 {
+                            thread::sleep(Duration::from_millis(settle_ms));
+                        }
+                    }
+                }
+            }
+
+            "Press Key" => {
+                if !step_value.is_empty() {
+                    // Legacy: mouse buttons stored under Press Key — still supported
+                    if is_mouse_button(step_value) {
+                        for i in 0..repeat_count {
+                            send_mouse_click(step_value);
+                            if i + 1 < repeat_count && settle_ms > 0 {
+                                thread::sleep(Duration::from_millis(settle_ms));
+                            }
+                        }
+                        return true;
+                    }
+                    // Parse "Ctrl+Shift+N" style strings — accelerator
+                    // semantics (Ctrl/Win → ⌘), same as Send Hotkey.
+                    let parts: Vec<&str> = step_value.split('+').map(|s| s.trim()).collect();
+                    if let Some((&key_name, mod_parts)) = parts.split_last() {
+                        let Some(target_kc) = crate::hotkeys::display_name_to_keycode(key_name) else {
+                            warn!("[Keyfire] Unknown macro step key: {}", key_name);
+                            return true;
+                        };
+                        let mod_kcs: Vec<u16> = mod_parts
+                            .iter()
+                            .filter_map(|m| match m.to_lowercase().as_str() {
+                                "ctrl" | "win" => Some(KC_LCMD),
+                                "alt" => Some(KC_LOPTION),
+                                "shift" => Some(KC_LSHIFT),
+                                _ => None,
+                            })
+                            .collect();
+                        for i in 0..repeat_count {
+                            post_chord(&mod_kcs, Some(target_kc));
+                            if i + 1 < repeat_count && settle_ms > 0 {
+                                thread::sleep(Duration::from_millis(settle_ms));
+                            }
+                        }
+                    }
+                }
+            }
+
+            "Wait (ms)" => {
+                let ms: u64 = step_value.parse().unwrap_or(500).min(30000);
+                // Polled sleep — 100ms chunks so Esc / pause reach the user
+                // promptly even on long waits.
+                let total = Duration::from_millis(ms);
+                let start = std::time::Instant::now();
+                while start.elapsed() < total {
+                    if super::ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                        info!("[Keyfire] Wait (ms) cancelled (Esc)");
+                        return false;
+                    }
+                    if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                        info!("[Keyfire] Wait (ms) aborted (macros disabled)");
+                        return false;
+                    }
+                    let remaining = total.saturating_sub(start.elapsed());
+                    thread::sleep(Duration::from_millis(100).min(remaining));
+                }
+            }
+
+            // ⌘C / ⌘V / ⌘A as first-class macro steps (the Windows Ctrl
+            // accelerator maps to ⌘). The OS handles copy/paste semantics —
+            // this doesn't touch Keyfire's own clipboard write path.
+            "Copy to Clipboard" | "Paste Clipboard" | "Select All" => {
+                let target_kc: u16 = match step_type {
+                    "Copy to Clipboard" => 8, // C
+                    "Paste Clipboard" => KC_V,
+                    _ => 0, // A
+                };
+                for i in 0..repeat_count {
+                    post_chord(&[KC_LCMD], Some(target_kc));
+                    if i + 1 < repeat_count && settle_ms > 0 {
+                        thread::sleep(Duration::from_millis(settle_ms));
+                    }
+                }
+                if matches!(step_type, "Copy to Clipboard" | "Paste Clipboard") {
+                    thread::sleep(Duration::from_millis(50));
+                }
+            }
+
+            // Passive wait until an app whose process name matches is
+            // frontmost. Window-title matching needs the Screen Recording
+            // permission on macOS, so title-only criteria are skipped with a
+            // warning instead of hanging the macro for the full timeout —
+            // same policy as the foreground watcher's linkedWindowTitle.
+            "Wait for Window" => {
+                if step_value.is_empty() {
+                    warn!("[Keyfire] Wait for Window step: empty value");
+                    return true;
+                }
+                let parsed: Value = match serde_json::from_str(step_value) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[Keyfire] Wait for Window step: invalid JSON: {}", e);
+                        return true;
+                    }
+                };
+                let target_proc = parsed
+                    .get("process")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .trim_end_matches(".exe")
+                    .to_lowercase();
+                let target_title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("").trim();
+                if target_proc.is_empty() {
+                    warn!(
+                        "[Keyfire] Wait for Window: title-only criteria not supported on macOS (needs Screen Recording) — skipping"
+                    );
+                    return true;
+                }
+                if !target_title.is_empty() {
+                    warn!("[Keyfire] Wait for Window: title filter ignored on macOS — matching app name only");
+                }
+                const WAIT_FOR_WINDOW_TIMEOUT_MS: u64 = 30_000;
+                let start = std::time::Instant::now();
+                loop {
+                    if super::ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                        || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+                    {
+                        return false;
+                    }
+                    let fg = crate::foreground::get_current_fg_proc().to_lowercase();
+                    if !fg.is_empty() && (fg == target_proc || fg.trim_end_matches(".app") == target_proc) {
+                        info!(
+                            "[Keyfire] Wait for Window: matched (app='{}') after {:?}",
+                            target_proc,
+                            start.elapsed()
+                        );
+                        break;
+                    }
+                    if start.elapsed() >= Duration::from_millis(WAIT_FOR_WINDOW_TIMEOUT_MS) {
+                        warn!(
+                            "[Keyfire] Wait for Window: timeout waiting for app='{}' — aborting macro",
+                            target_proc
+                        );
+                        return false;
+                    }
+                    thread::sleep(Duration::from_millis(150));
+                }
+            }
+
+            "Open URL" => {
+                let normalised = normalise_url(step_value);
+                if !normalised.is_empty() {
+                    let _ = opener::open(&normalised);
+                }
+            }
+
+            "Open Folder" => {
+                if step_value.is_empty() {
+                    return true;
+                }
+                // Legacy macros stored a plain path; new writes emit JSON
+                // {path, monitor}. Monitor targeting is ignored on macOS.
+                let trimmed = step_value.trim_start();
+                let path_owned = if trimmed.starts_with('{') {
+                    serde_json::from_str::<Value>(step_value)
+                        .ok()
+                        .and_then(|p| p.get("path").and_then(|v| v.as_str()).map(String::from))
+                        .unwrap_or_else(|| step_value.to_string())
+                } else {
+                    step_value.to_string()
+                };
+                if !path_owned.is_empty() {
+                    let _ = opener::open(&path_owned);
+                }
+            }
+
+            "Open App" => {
+                if step_value.is_empty() {
+                    warn!("[Keyfire] Open App step: empty value");
+                    return true;
+                }
+                let parsed: Value = match serde_json::from_str(step_value) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[Keyfire] Open App step: invalid JSON: {}", e);
+                        return true;
+                    }
+                };
+                let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                if path.is_empty() {
+                    warn!("[Keyfire] Open App step: empty path (AppsFolder IDs are Windows-only)");
+                } else {
+                    let _ = opener::open(path);
+                }
+            }
+
+            "Focus Window" => {
+                if step_value.is_empty() {
+                    warn!("[Keyfire] Focus Window step: empty value");
+                    return true;
+                }
+                let parsed: Value = match serde_json::from_str(step_value) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[Keyfire] Focus Window step: invalid JSON: {}", e);
+                        return true;
+                    }
+                };
+                let process = parsed.get("process").and_then(|v| v.as_str()).unwrap_or("");
+                let title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                if process.is_empty() {
+                    warn!("[Keyfire] Focus Window: title-only criteria not supported on macOS — skipping");
+                    return true;
+                }
+                if !title.is_empty() {
+                    warn!("[Keyfire] Focus Window: title filter ignored on macOS — activating by app name");
+                }
+                if crate::foreground::activate_app_by_name(process) {
+                    let (_, _, fg_settle_ms, _) = speed_delays();
+                    thread::sleep(Duration::from_millis(fg_settle_ms.max(10) * 2));
+                    info!("[Keyfire] Focus Window: activated app '{}'", process);
+                } else {
+                    warn!("[Keyfire] Focus Window: no running app matches '{}'", process);
+                }
+            }
+
+            "Wait for Input" => {
+                wait_for_input(step_value);
+            }
+
+            "Run AHK Script" => {
+                warn!("[Keyfire] Run AHK Script step is Windows-only — skipping");
+            }
+
+            "Click at Position" => {
+                if !step_value.is_empty() {
+                    if let Ok(parsed) = serde_json::from_str::<Value>(step_value) {
+                        let x = parsed.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as f64;
+                        let y = parsed.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as f64;
+                        let button = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+                        let mode = parsed.get("mode").and_then(|v| v.as_str()).unwrap_or("absolute");
+                        if mode == "relative" {
+                            // Window-relative coordinates need the target
+                            // window's frame — Screen Recording territory.
+                            warn!("[Keyfire] Click at Position: relative mode not supported on macOS yet — skipping");
+                            return true;
+                        }
+                        let click_button = match button {
+                            "right" => "RButton",
+                            "middle" => "MButton",
+                            _ => "LButton",
+                        };
+                        info!("[Keyfire] Click at Position: ({}, {}) button={}", x, y, click_button);
+                        let original = cursor_position();
+                        send_mouse_move(x, y);
+                        thread::sleep(Duration::from_millis(20));
+                        let point = core_graphics::geometry::CGPoint::new(x, y);
+                        send_mouse_event_at(click_button, false, Some(point));
+                        thread::sleep(Duration::from_millis(15));
+                        send_mouse_event_at(click_button, true, Some(point));
+                        thread::sleep(Duration::from_millis(20));
+                        if let Some(orig) = original {
+                            send_mouse_move(orig.x, orig.y);
+                        }
+                    } else {
+                        warn!("[Keyfire] Click at Position: invalid JSON");
+                    }
+                }
+            }
+
+            // Fire an existing hotkey assignment by its storage key. The
+            // FIRE_DEPTH guard in execute_action bounds recursion.
+            "Fire Trigger" => {
+                if step_value.is_empty() {
+                    warn!("[Keyfire] Fire Trigger: empty step value, skipping");
+                    return true;
+                }
+                let lookup = {
+                    let state = crate::hotkeys::engine_state().lock().unwrap();
+                    state.assignments.get(step_value).cloned()
+                };
+                match lookup {
+                    Some(target_macro) => {
+                        info!("[Keyfire] Fire Trigger: invoking \"{}\"", step_value);
+                        if settle_ms > 0 {
+                            thread::sleep(Duration::from_millis(settle_ms));
+                        }
+                        execute_action(&target_macro, false, 0, false, None, app);
+                    }
+                    None => {
+                        warn!("[Keyfire] Fire Trigger: assignment \"{}\" not found, skipping", step_value);
+                    }
+                }
+            }
+
+            "Fire Text Expansion" => {
+                if step_value.is_empty() {
+                    warn!("[Keyfire] Fire Text Expansion: empty step value, skipping");
+                    return true;
+                }
+                if settle_ms > 0 {
+                    thread::sleep(Duration::from_millis(settle_ms));
+                }
+                crate::expansions::fire_expansion_by_trigger(step_value);
+            }
+
+            // Literal replay of a captured event stream. Capture (Quick
+            // Record) is a later milestone on mac, but streams recorded on
+            // Windows replay through the VK→keycode translation.
+            "Record Macro" => {
+                if step_value.is_empty() {
+                    warn!("[Keyfire] Record Macro: empty step value, skipping");
+                    return true;
+                }
+                let events: Vec<crate::recorder::RecordedEvent> =
+                    match serde_json::from_str(step_value) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            warn!("[Keyfire] Record Macro: invalid JSON ({})", e);
+                            return true;
+                        }
+                    };
+                replay_recorded_events(&events, "Record Macro");
+            }
+
+            _ => {
+                warn!("[Keyfire] Unknown macro step type: {}", step_type);
+            }
+        }
+        true
+    }
+
+    // ── Recorded-event replay ────────────────────────────────────────────────
+
+    /// Replay a captured RecordedEvent stream, preserving inter-event gaps
+    /// (capped so absurd waits can't freeze the macro). Events are tagged, so
+    /// unlike Windows (which deliberately lets replayed events re-enter the
+    /// hook) replayed events do NOT re-trigger Keyfire's own assignments —
+    /// acceptable divergence until the recorder milestone revisits it. Always
+    /// finishes with a defensive modifier release.
+    fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: &str) {
+        use crate::recorder::RecordedEvent;
+        info!("[Keyfire] {}: replaying {} events", label, events.len());
+
+        let mut prev_t: u64 = 0;
+        const MAX_GAP_MS: u64 = 5000;
+
+        for evt in events.iter() {
+            if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                info!("[Keyfire] {}: aborted (macros disabled)", label);
+                break;
+            }
+            if super::ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                info!("[Keyfire] {}: aborted (Esc)", label);
+                break;
+            }
+            let evt_t = match evt {
+                RecordedEvent::KeyDown { t, .. }
+                | RecordedEvent::KeyUp { t, .. }
+                | RecordedEvent::MouseDown { t, .. }
+                | RecordedEvent::MouseUp { t, .. }
+                | RecordedEvent::MouseMove { t, .. }
+                | RecordedEvent::Wheel { t, .. } => *t,
+            };
+            let gap = evt_t.saturating_sub(prev_t).min(MAX_GAP_MS);
+            if gap > 0 {
+                thread::sleep(Duration::from_millis(gap));
+            }
+            prev_t = evt_t;
+
+            match evt {
+                RecordedEvent::KeyDown { vk, .. } => send_vk_key(*vk as u16, false),
+                RecordedEvent::KeyUp { vk, .. } => send_vk_key(*vk as u16, true),
+                RecordedEvent::MouseDown { button, x, y, .. } => {
+                    send_mouse_move(*x as f64, *y as f64);
+                    replay_mouse_button(button, false);
+                }
+                RecordedEvent::MouseUp { button, x, y, .. } => {
+                    send_mouse_move(*x as f64, *y as f64);
+                    replay_mouse_button(button, true);
+                }
+                RecordedEvent::MouseMove { x, y, .. } => {
+                    send_mouse_move(*x as f64, *y as f64);
+                }
+                RecordedEvent::Wheel { delta, x, y, .. } => {
+                    send_mouse_move(*x as f64, *y as f64);
+                    send_scroll(*delta);
+                }
+            }
+        }
+        // Defensive cleanup: a stream that ended mid-modifier-press must not
+        // leave the OS with stuck modifiers.
+        for &kc in MAC_MODIFIER_KEYCODES {
+            post_key(kc, true, CGEventFlags::CGEventFlagNull);
+        }
+        info!("[Keyfire] {}: complete", label);
+    }
+
+    /// Recorded button names ("Left"/"Right"/"Middle") → mouse event.
+    fn replay_mouse_button(button: &str, is_up: bool) {
+        let name = match button {
+            "Right" => "RButton",
+            "Middle" => "MButton",
+            _ => "LButton",
+        };
+        send_mouse_event(name, is_up);
+    }
+
+    // ── Wait for Input step (keyboard; mouse needs the mouse-tap milestone) ─
+
+    fn wait_for_input(config_json: &str) {
+        use crate::hotkeys::{self, WaitEvent};
+        use std::sync::mpsc::RecvTimeoutError;
+
+        let config: serde_json::Value = serde_json::from_str(config_json).unwrap_or_default();
+        let input_type = config.get("inputType").and_then(|v| v.as_str()).unwrap_or("LButton");
+        let trigger = config.get("trigger").and_then(|v| v.as_str()).unwrap_or("press");
+        let specific_key = config.get("specificKey").and_then(|v| v.as_str()).unwrap_or("");
+        let wanted_key = specific_key.split('+').last().unwrap_or("").to_string();
+
+        let is_mouse = matches!(input_type, "LButton" | "RButton" | "MButton");
+        if is_mouse {
+            // The mac engine has no mouse tap yet — waiting would just burn
+            // the full 30s timeout. Skip loudly instead.
+            warn!("[WAIT] Wait for Input: mouse input types are not supported on macOS yet — skipping");
+            return;
+        }
+
+        info!("[WAIT] Wait for Input: type={} trigger={} key={}", input_type, trigger, wanted_key);
+
+        const TIMEOUT: Duration = Duration::from_secs(30);
+        const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+        let rx = hotkeys::register_wait_for_input();
+        let mut phase = "down";
+        let deadline = std::time::Instant::now() + TIMEOUT;
+
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                warn!("[WAIT] Timed out after 30s");
+                break;
+            }
+            if !hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                info!("[WAIT] Cancelled — macros disabled");
+                break;
+            }
+            if super::ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                info!("[WAIT] Cancelled — Esc");
+                break;
+            }
+
+            let timeout = remaining.min(POLL_INTERVAL);
+            match rx.recv_timeout(timeout) {
+                Ok(event) => {
+                    let matched = match &event {
+                        WaitEvent::KeyDown { key_id } => {
+                            let key_matches = input_type == "AnyKey"
+                                || (input_type == "SpecificKey" && *key_id == wanted_key);
+                            key_matches && matches!(trigger, "press" | "pressRelease")
+                        }
+                        WaitEvent::KeyUp { key_id } => {
+                            let key_matches = input_type == "AnyKey"
+                                || (input_type == "SpecificKey" && *key_id == wanted_key);
+                            key_matches && matches!(trigger, "release" | "pressRelease")
+                        }
+                        _ => false,
+                    };
+                    if !matched {
+                        continue;
+                    }
+                    if trigger == "pressRelease" {
+                        let is_down = matches!(event, WaitEvent::KeyDown { .. });
+                        if phase == "down" && is_down {
+                            phase = "up";
+                            continue;
+                        } else if phase == "up" && !is_down {
+                            break;
+                        }
+                        continue;
+                    }
+                    break;
+                }
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => {
+                    warn!("[WAIT] Channel disconnected");
+                    break;
+                }
+            }
+        }
+
+        hotkeys::clear_wait_for_input();
+        info!("[WAIT] Wait for Input complete");
     }
 
     // ── Text output ──────────────────────────────────────────────────────────
@@ -819,42 +1744,55 @@ mod macos {
         SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
     }
 
-    /// Send Hotkey action — the plain path: press the modifier chord, tap the
-    /// main key (15ms down→up so per-frame pollers see it), release in
-    /// reverse. Bare-modifier chords (key="", modifiers only) press and
-    /// release just the chord. holdMode / repeatMode / mouse buttons are
-    /// later milestones. Modifier tokens use accelerator semantics, matching
-    /// send_vk_key_pub: "ctrl" and "win" both mean ⌘ on macOS ("Ctrl+C"
-    /// authored on Windows should copy on a Mac), "alt" is ⌥, "shift" ⇧.
-    fn execute_send_hotkey(data: &Value) {
+    /// Send Hotkey action. Modifier tokens use accelerator semantics,
+    /// matching send_vk_key_pub: "ctrl" and "win" both mean ⌘ on macOS
+    /// ("Ctrl+C" authored on Windows should copy on a Mac), "alt" is ⌥,
+    /// "shift" ⇧.
+    ///
+    /// Modes (twin of the Windows execute_send_hotkey):
+    ///   * normal — press the chord, tap the main key (15ms down→up so
+    ///     per-frame pollers see it), release in reverse. Bare-modifier
+    ///     chords (key="", modifiers only) press and release just the chord.
+    ///   * hold — press and LEAVE held; re-fire of the same chord releases
+    ///     (toggle), a different chord switches. Any physical keypress also
+    ///     releases (the matcher calls release_held_key first, same as the
+    ///     Windows hook). Mouse-trigger release-on-up is a later milestone
+    ///     (no mouse tap yet) — mouse holds release by toggle only.
+    ///   * repeat — tap the chord every `repeatInterval` ms until the same
+    ///     trigger re-fires, Esc, or pause. Runs on its own thread.
+    fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::AppHandle) {
         let key_name = data.get("key").and_then(|v| v.as_str()).unwrap_or("");
+        let is_mouse = is_mouse_button(key_name);
         let hold_mode = data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false);
         let repeat_mode = data.get("repeatMode").and_then(|v| v.as_bool()).unwrap_or(false);
-        if hold_mode || repeat_mode {
-            warn!("[Keyfire] Send Hotkey hold/repeat modes are not implemented on macOS yet");
-            return;
-        }
-        if key_name.starts_with("MOUSE_") {
-            warn!("[Keyfire] Send Hotkey mouse buttons are not implemented on macOS yet");
-            return;
-        }
+        let repeat_interval = data
+            .get("repeatInterval")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100)
+            .max(50);
 
-        let mod_keycodes: Vec<u16> = data
-            .get("modifiers")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| match v.as_str()?.to_lowercase().as_str() {
-                        "ctrl" | "win" => Some(KC_LCMD),
-                        "alt" => Some(KC_LOPTION),
-                        "shift" => Some(KC_LSHIFT),
-                        _ => None,
-                    })
-                    .collect()
+        let modifiers: Vec<String> = if is_mouse {
+            vec![]
+        } else {
+            data.get("modifiers")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default()
+        };
+        let mod_keycodes: Vec<u16> = modifiers
+            .iter()
+            .filter_map(|m| match m.to_lowercase().as_str() {
+                "ctrl" | "win" => Some(KC_LCMD),
+                "alt" => Some(KC_LOPTION),
+                "shift" => Some(KC_LSHIFT),
+                _ => None,
             })
-            .unwrap_or_default();
+            .collect();
 
-        let target = if key_name.is_empty() {
+        // Bare-modifier mode: key="" with non-empty modifiers → chord only.
+        let target: Option<u16> = if is_mouse {
+            None
+        } else if key_name.is_empty() {
             if mod_keycodes.is_empty() {
                 warn!("[Keyfire] Send Hotkey has no key or modifiers — nothing to send");
                 return;
@@ -870,11 +1808,165 @@ mod macos {
             }
         };
 
-        // Release the physically held trigger modifiers (e.g. ⌘ from a ⌘K
-        // trigger) so the target app sees ONLY the chord we send.
-        let held = release_held_modifiers();
-        post_chord(&mod_keycodes, target);
-        restore_modifiers(&held);
+        let combo_label = if key_name.is_empty() {
+            modifiers.join("+")
+        } else if modifiers.is_empty() {
+            key_name.to_string()
+        } else {
+            format!("{}+{}", modifiers.join("+"), key_name)
+        };
+
+        // ── Repeat mode ──
+        if repeat_mode {
+            let trigger_storage_key = trigger_key.unwrap_or("").to_string();
+
+            {
+                let mut rep = REPEATING_KEY.lock().unwrap();
+                if let Some(ref state) = *rep {
+                    if state.trigger_storage_key == trigger_storage_key {
+                        // Same trigger — stop (toggle off)
+                        state.stop.store(true, Ordering::SeqCst);
+                        info!("[Keyfire] Repeat stopped (toggle): {}", combo_label);
+                        *rep = None;
+                        drop(rep);
+                        crate::tray::update_tray_icon_normal(app);
+                        return;
+                    } else {
+                        // Different trigger — stop old, start new
+                        state.stop.store(true, Ordering::SeqCst);
+                        info!("[Keyfire] Repeat stopped (switching): {}", state.label);
+                        *rep = None;
+                    }
+                }
+            }
+
+            let stop = std::sync::Arc::new(super::AtomicBool::new(false));
+            let stop_clone = stop.clone();
+            let app_clone = app.clone();
+            let key_name_owned = key_name.to_string();
+            let mods_clone = mod_keycodes.clone();
+            let target_copy = target;
+            let is_mouse_copy = is_mouse;
+
+            {
+                let mut rep = REPEATING_KEY.lock().unwrap();
+                *rep = Some(RepeatingKeyState {
+                    trigger_storage_key,
+                    label: combo_label.clone(),
+                    stop: stop.clone(),
+                });
+            }
+
+            crate::tray::update_tray_icon_repeating(app, &combo_label, repeat_interval);
+            info!("[Keyfire] Repeat started: {} ({}ms)", combo_label, repeat_interval);
+
+            thread::spawn(move || {
+                // post_chord's 15ms hold window counts toward the interval so
+                // the configured rate holds (interval floor is 50ms).
+                const KEY_HOLD_MS: u64 = 15;
+                loop {
+                    if stop_clone.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    if is_mouse_copy {
+                        send_mouse_click(&key_name_owned);
+                    } else {
+                        post_chord(&mods_clone, target_copy);
+                    }
+                    thread::sleep(Duration::from_millis(
+                        repeat_interval.saturating_sub(KEY_HOLD_MS),
+                    ));
+                }
+                // Cleanup: clear state if this thread's stop flag is still the active one
+                {
+                    let mut rep = REPEATING_KEY.lock().unwrap();
+                    if let Some(ref state) = *rep {
+                        if std::sync::Arc::ptr_eq(&state.stop, &stop_clone) {
+                            *rep = None;
+                        }
+                    }
+                }
+                crate::tray::update_tray_icon_normal(&app_clone);
+            });
+            return;
+        }
+
+        // ── Hold mode ──
+        if hold_mode {
+            let mut mgr = HELD_KEY.lock().unwrap();
+
+            // Same chord already held — toggle release
+            let same_held = if let Some(ref state) = *mgr {
+                if is_mouse {
+                    state.mouse_button.as_deref() == Some(key_name)
+                } else {
+                    state.target_kc == target.unwrap_or(0)
+                        && state.mod_kcs == mod_keycodes
+                        && state.mouse_button.is_none()
+                }
+            } else {
+                false
+            };
+
+            if same_held {
+                let state = mgr.take().unwrap();
+                post_hold_release(&state);
+                info!("[Keyfire] Hold released: {}", combo_label);
+                drop(mgr);
+                crate::tray::update_tray_icon_normal(app);
+                return;
+            }
+
+            // Different key held — release previous first
+            if let Some(ref state) = *mgr {
+                post_hold_release(state);
+                info!("[Keyfire] Hold released (switching): {}", state.label);
+            }
+
+            info!("[ACTION] Send Hotkey HOLD: {}", combo_label);
+            if is_mouse {
+                send_mouse_event(key_name, false); // mousedown only
+            } else {
+                let physically_held = release_held_modifiers();
+                let mut flags = CGEventFlags::CGEventFlagNull;
+                for &kc in &mod_keycodes {
+                    if let Some(f) = modifier_flag(kc) {
+                        flags.insert(f);
+                    }
+                    post_key(kc, false, flags);
+                }
+                if let Some(kc) = target {
+                    post_key(kc, false, flags);
+                }
+                // No keyup — key/modifiers stay held
+                restore_modifiers(&physically_held);
+            }
+
+            *mgr = Some(HeldKeyState {
+                target_kc: target.unwrap_or(0),
+                mod_kcs: mod_keycodes.clone(),
+                mouse_button: if is_mouse { Some(key_name.to_string()) } else { None },
+                label: combo_label.clone(),
+            });
+            drop(mgr);
+            crate::tray::update_tray_icon_held(app, &combo_label);
+            return;
+        }
+
+        // ── Normal mode ──
+        if is_mouse {
+            info!("[Keyfire] Send Hotkey → mouse click: {}", key_name);
+            send_mouse_click(key_name);
+        } else {
+            // Release the physically held trigger modifiers (e.g. ⌘ from a
+            // ⌘K trigger) so the target app sees ONLY the chord we send.
+            let held = release_held_modifiers();
+            post_chord(&mod_keycodes, target);
+            restore_modifiers(&held);
+        }
     }
 
     /// Press a modifier chord, tap the main key (15ms down→up so per-frame
@@ -908,6 +2000,175 @@ mod macos {
         post_key(KC_V, false, CGEventFlags::CGEventFlagCommand);
         post_key(KC_V, true, CGEventFlags::CGEventFlagCommand);
         post_key(KC_LCMD, true, CGEventFlags::CGEventFlagNull);
+    }
+
+    // ── Mouse synthesis ──────────────────────────────────────────────────────
+
+    /// Current cursor position (a fresh null CGEvent carries the pointer
+    /// location — the standard CGEventGetLocation trick).
+    fn cursor_position() -> Option<core_graphics::geometry::CGPoint> {
+        let src = new_source()?;
+        CGEvent::new(src).ok().map(|e| e.location())
+    }
+
+    /// (down event type, up event type, CGMouseButton) for a Windows-style
+    /// button name (LButton/RButton/MButton).
+    fn mouse_button_types(
+        button: &str,
+    ) -> Option<(CGEventType, CGEventType, core_graphics::event::CGMouseButton)> {
+        use core_graphics::event::CGMouseButton;
+        Some(match button {
+            "LButton" => (CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left),
+            "RButton" => (CGEventType::RightMouseDown, CGEventType::RightMouseUp, CGMouseButton::Right),
+            "MButton" => (CGEventType::OtherMouseDown, CGEventType::OtherMouseUp, CGMouseButton::Center),
+            _ => return None,
+        })
+    }
+
+    /// Returns true if the value is a mouse button name (LButton, RButton, MButton).
+    fn is_mouse_button(name: &str) -> bool {
+        matches!(name, "LButton" | "RButton" | "MButton")
+    }
+
+    /// Post a single tagged mouse event (down or up) at `point` (or the
+    /// current cursor position when None).
+    fn send_mouse_event_at(
+        button: &str,
+        is_up: bool,
+        point: Option<core_graphics::geometry::CGPoint>,
+    ) {
+        let Some((down_t, up_t, cg_button)) = mouse_button_types(button) else {
+            warn!("[INJECT] unknown mouse button: {}", button);
+            return;
+        };
+        let Some(pos) = point.or_else(cursor_position) else { return };
+        let Some(src) = new_source() else { return };
+        let etype = if is_up { up_t } else { down_t };
+        let Ok(ev) = CGEvent::new_mouse_event(src, etype, pos, cg_button) else {
+            warn!("[INJECT] mouse event creation failed ({})", button);
+            return;
+        };
+        ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
+        ev.post(CGEventTapLocation::HID);
+    }
+
+    fn send_mouse_event(button: &str, is_up: bool) {
+        send_mouse_event_at(button, is_up, None);
+    }
+
+    /// Full click (down + 15ms hold + up) at the current cursor position —
+    /// same hold window as key taps so per-frame pollers see the press.
+    fn send_mouse_click(button: &str) {
+        let pos = cursor_position();
+        send_mouse_event_at(button, false, pos);
+        thread::sleep(Duration::from_millis(15));
+        send_mouse_event_at(button, true, pos);
+    }
+
+    /// Move the pointer with a real (tagged) mouse-moved event so apps under
+    /// the cursor receive the move, not just a silent warp.
+    fn send_mouse_move(x: f64, y: f64) {
+        use core_graphics::event::CGMouseButton;
+        let Some(src) = new_source() else { return };
+        let point = core_graphics::geometry::CGPoint::new(x, y);
+        if let Ok(ev) =
+            CGEvent::new_mouse_event(src, CGEventType::MouseMoved, point, CGMouseButton::Left)
+        {
+            ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
+            ev.post(CGEventTapLocation::HID);
+        }
+    }
+
+    /// Vertical scroll — Windows wheel deltas are ±120 per notch; mac line
+    /// units are small integers, so translate notches → ±3 lines.
+    fn send_scroll(delta: i32) {
+        use core_graphics::event::ScrollEventUnit;
+        let Some(src) = new_source() else { return };
+        let lines = (delta / 120).clamp(-10, 10) * 3;
+        if let Ok(ev) = CGEvent::new_scroll_event(src, ScrollEventUnit::LINE, 1, lines, 0, 0) {
+            ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
+            ev.post(CGEventTapLocation::HID);
+        }
+    }
+
+    // ── Send Hotkey hold / repeat state (twin of the Windows managers) ──────
+
+    struct HeldKeyState {
+        target_kc: u16,
+        mod_kcs: Vec<u16>,
+        mouse_button: Option<String>,
+        label: String,
+    }
+
+    static HELD_KEY: Mutex<Option<HeldKeyState>> = Mutex::new(None);
+
+    struct RepeatingKeyState {
+        trigger_storage_key: String,
+        label: String,
+        stop: std::sync::Arc<super::AtomicBool>,
+    }
+
+    static REPEATING_KEY: Mutex<Option<RepeatingKeyState>> = Mutex::new(None);
+
+    /// Release a held chord: main key up, then modifiers in reverse. The
+    /// events carry the chord's flags so the release reads coherently.
+    fn post_hold_release(state: &HeldKeyState) {
+        if let Some(ref button) = state.mouse_button {
+            send_mouse_event(button, true);
+            return;
+        }
+        let mut flags = state
+            .mod_kcs
+            .iter()
+            .filter_map(|&kc| modifier_flag(kc))
+            .fold(CGEventFlags::CGEventFlagNull, |acc, f| acc | f);
+        if state.target_kc != 0 {
+            post_key(state.target_kc, true, flags);
+        }
+        for &kc in state.mod_kcs.iter().rev() {
+            if let Some(f) = modifier_flag(kc) {
+                flags.remove(f);
+            }
+            post_key(kc, true, flags);
+        }
+    }
+
+    pub(super) fn release_held_key() -> Option<String> {
+        let mut held = HELD_KEY.lock().unwrap();
+        if let Some(state) = held.take() {
+            post_hold_release(&state);
+            info!("[Keyfire] Released held key: {}", state.label);
+            Some(state.label)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn is_key_held() -> bool {
+        HELD_KEY.lock().unwrap().is_some()
+    }
+
+    pub(super) fn stop_repeating_key() -> Option<String> {
+        let mut rep = REPEATING_KEY.lock().unwrap();
+        if let Some(state) = rep.take() {
+            state.stop.store(true, Ordering::SeqCst);
+            info!("[Keyfire] Repeat stopped: {}", state.label);
+            Some(state.label)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn is_repeating() -> bool {
+        REPEATING_KEY.lock().unwrap().is_some()
+    }
+
+    pub(super) fn get_repeating_trigger() -> Option<String> {
+        REPEATING_KEY
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.trigger_storage_key.clone())
     }
 
     // Silence unused warnings for items reserved for later milestones.

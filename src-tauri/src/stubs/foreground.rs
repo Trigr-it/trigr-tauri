@@ -125,6 +125,15 @@ pub(crate) fn activate_pid(pid: i32) {
     macos::activate_pid(pid);
 }
 
+/// Activate a running app whose name matches (case-insensitive; a ".exe"
+/// suffix from Windows-authored configs is ignored). Returns true if a
+/// matching app was found and activated. Used by the macro engine's Focus
+/// Window step — the mac stand-in for find-window-by-process + SetForeground.
+#[cfg(target_os = "macos")]
+pub(crate) fn activate_app_by_name(name: &str) -> bool {
+    macos::activate_app_by_name(name)
+}
+
 /// True when macOS is in Dark appearance. Read from the global user default
 /// ("AppleInterfaceStyle" exists only in dark mode) — WKWebView's own
 /// prefers-color-scheme misreports under Keyfire (observed dark on a light
@@ -284,6 +293,41 @@ mod macos {
                 app.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps);
             }
         });
+    }
+
+    /// Find a running app by name (localizedName or bundle stem, both
+    /// case-insensitive) and activate it. See the pub(crate) wrapper.
+    pub(super) fn activate_app_by_name(name: &str) -> bool {
+        let wanted = name.trim().trim_end_matches(".exe").to_lowercase();
+        if wanted.is_empty() {
+            return false;
+        }
+        autoreleasepool(|_| {
+            use objc2_app_kit::NSApplicationActivationOptions;
+            let ws = NSWorkspace::sharedWorkspace();
+            for app in ws.runningApplications().iter() {
+                let mut matches = app
+                    .localizedName()
+                    .map(|n| n.to_string().to_lowercase() == wanted)
+                    .unwrap_or(false);
+                if !matches {
+                    if let Some(url) = app.bundleURL() {
+                        if let Some(path) = url.path() {
+                            if let Some(stem) = Path::new(&path.to_string()).file_stem() {
+                                matches = stem.to_string_lossy().to_lowercase() == wanted;
+                            }
+                        }
+                    }
+                }
+                if matches {
+                    app.activateWithOptions(
+                        NSApplicationActivationOptions::ActivateIgnoringOtherApps,
+                    );
+                    return true;
+                }
+            }
+            false
+        })
     }
 
     /// Twin of the Windows handle_foreground_change decision chain.
