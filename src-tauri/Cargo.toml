@@ -95,8 +95,9 @@ core-foundation = "0.10"
 # stub). Both crates are already in the tree via tauri/wry at these exact
 # versions, so this adds no new transitive deps; default features are off to
 # keep the class surface minimal (feature unification merges wry's set).
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSWorkspace", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL"] }
 
 [features]
 default = ["custom-protocol"]
