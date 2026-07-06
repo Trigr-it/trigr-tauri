@@ -21,10 +21,14 @@
     specials; hotkey capture + recording flows (414ced7).
   - **Foreground watcher** — NSWorkspace.frontmostApplication poll with the
     full auto-switch decision chain (b9b886d).
-  - **NEEDS HUMAN TEST**: grant Accessibility + Input Monitoring to the dev
-    terminal (or the built app), then verify a real hotkey end-to-end
-    (assign Ctrl+Shift+K → Send Text, press in TextEdit), overlay toggle,
-    pause toggle, clipboard-history paste, profile auto-switch.
+  - **END-TO-END VERIFIED 2026-07-06 (after Accessibility grant)**: tap
+    ACTIVE; synthesized untagged chords (CGEvent swift helper) fired real
+    assignments — text-via-clipboard AND text-via-direct-typing both landed
+    in TextEdit with NO leaked trigger characters (suppression works); pause
+    hotkey toggled on/off twice; clipboard restored after the paste.
+    Still untested by a human: overlay/clipboard-overlay UI appearing on
+    hotkey, profile auto-switch UX, and everything on the clean-machine
+    .dmg (TCC grants attach differently to a bundled app).
   - **Deferred (deliberately unsuppressed so keys stay alive)**: bare keys,
     ::double/::hold variants, expansion keystroke buffer (module 3-4), voice,
     radial, Quick Record, mouse hooks, "hotkey"/"macro" action types.
@@ -104,18 +108,13 @@ inside the stub file. Do NOT touch the `#[cfg(windows)]` originals.
 
 ## Current milestone (see State above for what's done)
 
-Hooks M1–M3 + injection + foreground watcher are implemented and CI-green.
-The immediate gate is a HUMAN TEST on this machine:
-1. Grant the dev terminal (or the .dmg app on the test MacBook)
-   Accessibility + Input Monitoring under Privacy & Security. The tap logs
-   "ACTIVE — suppression enabled" when rights are right; "LISTEN-ONLY" means
-   Accessibility is missing and matching stays disabled by design.
-2. Verify end-to-end: assign Ctrl+Shift+K → Send Text, press it in TextEdit
-   (NOT the terminal — Secure Keyboard Entry withholds key events); check
-   overlay toggle, pause toggle, clipboard-overlay paste, profile
-   auto-switch on app change.
+Hooks M1–M3 + injection + Send Hotkey + foreground watcher are implemented,
+CI-green, and END-TO-END VERIFIED on this machine (Accessibility granted
+2026-07-06; see State). Remaining human checks are UI-level only: overlay /
+clipboard-overlay appearing on their hotkeys, profile auto-switch UX, and a
+clean-machine .dmg pass on the test MacBook.
 
-After that, next engine work in rough order: expansions keystroke buffer +
+Next engine work in rough order: expansions keystroke buffer +
 trigger matching (reuse the tap's KeyDown stream); "hotkey" + "macro" action
 types in stubs/actions.rs (VK map + modifier mask already exist); clipboard
 history listener (NSPasteboard changeCount poll — actions.rs already queues
