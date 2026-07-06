@@ -68,6 +68,23 @@ inside the stub file. Do NOT touch the `#[cfg(windows)]` originals.
 8. Frontend: all colours via CSS variables; @font-face only in
    public/fonts.css; match existing component conventions.
 
+## Two-machine model
+
+Development is split across two machines with git as the only sync channel:
+
+- **This Mac** owns `port/*` branches and the `src-tauri/src/stubs/*` files.
+  It never commits to main and never tags.
+- **The Windows dev machine** owns main: releases, website, help guide, and
+  merging finished port branches after the owner has tested.
+- **Start every session here with:** `git fetch origin && git merge origin/main`
+  into the current port branch. Shared UI/UX changes are made on main by the
+  Windows side — pull them in, never re-implement them here. If a change made
+  here is needed on Windows urgently, say so in the final summary so the owner
+  can cherry-pick it; otherwise it arrives when the branch merges.
+- Conflicts are avoided by file ownership, not luck: stay inside stubs/*,
+  mac-specific code, and this file. Treat everything inside `#[cfg(windows)]`
+  as read-only.
+
 ## Workflow
 
 - Branch from main as `port/<topic>` and push — `.github/workflows/port-check.yml`
