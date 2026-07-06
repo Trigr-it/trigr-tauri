@@ -20,7 +20,18 @@
     matches profile::Combo::KeyId and fires at keyup; overlay/pause/clipboard
     specials; hotkey capture + recording flows (414ced7).
   - **Foreground watcher** — NSWorkspace.frontmostApplication poll with the
-    full auto-switch decision chain (b9b886d).
+    full auto-switch decision chain (b9b886d); also pins the app theme to
+    the OS appearance every poll (WKWebView prefers-color-scheme misreports).
+  - **Overlays working** (086675c/6a25c3f/7faa4f3): quick search + clipboard
+    popup show/position/focus with PID-based focus hand-back; theme "auto"
+    resolved Rust-side; titlebar drags via window_start_dragging (WKWebView
+    has no -webkit-app-region).
+  - **M5 clipboard history** (9b9e765): changeCount poll listener (200ms),
+    NSPasteboard string/HTML/PNG/TIFF reads, SQLite + AES-256-GCM identical
+    to Windows (raw 0600 key file instead of DPAPI). Verified live: text +
+    image rows captured encrypted, popup shows history.
+  - **M7 tray** (258fa52): menu bar item with pause/login-item/quit,
+    close-to-tray; login item = LaunchAgent plist.
   - **END-TO-END VERIFIED 2026-07-06 (after Accessibility grant)**: tap
     ACTIVE; synthesized untagged chords (CGEvent swift helper) fired real
     assignments — text-via-clipboard AND text-via-direct-typing both landed
@@ -31,11 +42,10 @@
     .dmg (TCC grants attach differently to a bundled app).
   - **Deferred (deliberately unsuppressed so keys stay alive)**: bare keys,
     ::double/::hold variants, expansion keystroke buffer (module 3-4), voice,
-    radial, Quick Record, mouse hooks, "hotkey"/"macro" action types.
-- **Next modules**: expansions engine (keystroke buffer + trigger match) or
-  clipboard history (NSPasteboard changeCount poll + SQLite); actions.rs
-  self-change-count queue (`is_self_clipboard_change`) is already in place
-  for the clipboard listener.
+    radial, Quick Record, mouse hooks, "macro" action type + Send Hotkey
+    hold/repeat modes ("hotkey" plain chords work, 1aa3989).
+- **Next module**: expansions engine (modules 3-4) — the biggest remaining
+  piece; plan a full session.
 - Dev machine: Apple Silicon (M4) iMac, repo at `~/Desktop/Keyfire`.
   A separate MacBook is the clean-machine artifact tester.
 
@@ -114,9 +124,9 @@ CI-green, and END-TO-END VERIFIED on this machine (Accessibility granted
 clipboard-overlay appearing on their hotkeys, profile auto-switch UX, and a
 clean-machine .dmg pass on the test MacBook.
 
-Next engine work in rough order: expansions keystroke buffer +
-trigger matching (reuse the tap's KeyDown stream); "hotkey" + "macro" action
-types in stubs/actions.rs (VK map + modifier mask already exist); clipboard
-history listener (NSPasteboard changeCount poll — actions.rs already queues
-self-write changeCounts via `is_self_clipboard_change`); then bare keys and
-::double/::hold variants in the matcher.
+Next engine work in rough order: expansions engine (modules 3-4 —
+keystroke buffer + trigger matching, reusing the tap's KeyDown stream; the
+biggest remaining piece, plan a full session); "macro" action type + Send
+Hotkey hold/repeat modes in stubs/actions.rs; bare keys and ::double/::hold
+variants in the matcher; window_target (NSScreen) for monitor-targeted
+launches; dual-format (HTML) clipboard writes.
