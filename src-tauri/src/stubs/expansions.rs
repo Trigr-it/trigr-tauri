@@ -1700,6 +1700,40 @@ fn html_escape(s: &str) -> String {
     out
 }
 
+/// True when a resolved HTML fragment carries real formatting worth pasting.
+///
+/// The rich-text editor stores an `html` body for EVERY expansion, including
+/// ones the user never formatted. Pasting that unstyled HTML makes rich-text
+/// targets fall back to the HTML default font (Times in TextEdit's WebKit
+/// conversion) instead of the caret's font — so semantically plain fragments
+/// paste better as text-only. Structural tags (<p>, <div>, <br>, bare
+/// <span>) don't count as formatting; inline styles and any styling/content
+/// tag do. Conservative on unknown tags: keep the HTML.
+fn html_has_formatting(html: &str) -> bool {
+    let lower = html.to_lowercase();
+    if lower.contains("style=") {
+        return true;
+    }
+    let mut rest = lower.as_str();
+    while let Some(start) = rest.find('<') {
+        let after = &rest[start + 1..];
+        // Tag name: letters up to whitespace / '>' / '/'; skip closers.
+        let name_src = after.strip_prefix('/').unwrap_or(after);
+        let name: String = name_src
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect();
+        if !matches!(name.as_str(), "" | "p" | "div" | "br" | "span") {
+            return true;
+        }
+        match after.find('>') {
+            Some(end) => rest = &after[end + 1..],
+            None => break,
+        }
+    }
+    false
+}
+
 /// Resolve token chips inside an HTML expansion. Each
 /// `<span class="rte-token" data-token="{...}">display</span>` is replaced
 /// with the resolved value of its token.
@@ -2100,7 +2134,10 @@ mod mac {
             if h.is_empty() || h.contains("{key:") {
                 None
             } else {
-                Some(resolve_tokens_html(h, global_vars, &empty_fillin))
+                let r = resolve_tokens_html(h, global_vars, &empty_fillin);
+                // Plain fragments paste text-only so the target keeps its
+                // caret font — see html_has_formatting.
+                html_has_formatting(&r).then_some(r)
             }
         });
 
@@ -2238,7 +2275,8 @@ mod mac {
                 None
             } else {
                 let html_after_fillin = resolve_fill_in_tokens(h, &fillin_values);
-                Some(resolve_tokens_html(&html_after_fillin, global_vars, &fillin_values))
+                let r = resolve_tokens_html(&html_after_fillin, global_vars, &fillin_values);
+                html_has_formatting(&r).then_some(r)
             }
         });
 
@@ -2448,7 +2486,8 @@ mod mac {
             if h.is_empty() || h.contains("{key:") {
                 None
             } else {
-                Some(resolve_tokens_html(&h, global_vars, &fillin_values))
+                let r = resolve_tokens_html(&h, global_vars, &fillin_values);
+                html_has_formatting(&r).then_some(r)
             }
         });
 
@@ -2821,6 +2860,23 @@ mod tests {
         assert_eq!(combo_str_to_keycodes("PgUp"), Some((vec![], 116)));
         // Ctrl+Win dedups to a single ⌘
         assert_eq!(combo_str_to_keycodes("Ctrl+Win+A"), Some((vec![55], 0)));
+    }
+
+    #[test]
+    fn plain_html_is_detected_and_formatted_html_kept() {
+        // Semantically plain — structural tags only → paste text-only so the
+        // target keeps its caret font (the TextEdit Times-New-Roman fix).
+        assert!(!html_has_formatting("<p>be right back</p>"));
+        assert!(!html_has_formatting("<p>line one</p><p>line two<br></p>"));
+        assert!(!html_has_formatting("<div><span>plain chip output</span></div>"));
+        // Real formatting → keep the HTML flavor.
+        assert!(html_has_formatting("<p><strong>bold</strong></p>"));
+        assert!(html_has_formatting("<p><em>italic</em> text</p>"));
+        assert!(html_has_formatting(r#"<p><span style="color:red">red</span></p>"#));
+        assert!(html_has_formatting("<ul><li>item</li></ul>"));
+        assert!(html_has_formatting(r#"<p><a href="https://x.y">link</a></p>"#));
+        // Unknown tags are conservatively kept.
+        assert!(html_has_formatting("<p><custom-thing>x</custom-thing></p>"));
     }
 
     #[test]
