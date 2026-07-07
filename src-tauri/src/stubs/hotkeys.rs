@@ -259,6 +259,13 @@ impl Default for EngineState {
 /// don't arm). Internal to the matcher — same name as the Windows static.
 pub static HOLD_DETECTION_PAUSED: AtomicBool = AtomicBool::new(false);
 
+/// True while a linked profile's app is frontmost (written by the foreground
+/// watcher, read by the tap callback to gate bare-mouse suppression — the
+/// mac stand-in for the Windows is_cursor_over_linked_app hook check; on
+/// macOS a click activates the app underneath, so frontmost ≈ under-cursor
+/// within the watcher's poll window).
+pub static LINKED_APP_FRONTMOST: AtomicBool = AtomicBool::new(false);
+
 static ENGINE_STATE: OnceLock<Mutex<EngineState>> = OnceLock::new();
 
 pub(crate) fn engine_state() -> &'static Mutex<EngineState> {
@@ -482,6 +489,67 @@ mod macos {
         SET.get_or_init(|| RwLock::new(HashSet::new()))
     }
 
+    // ── Mouse buttons ────────────────────────────────────────────────────────
+
+    /// Buttons the engine handles. Side1/Side2 arrive as OtherMouse events
+    /// with button numbers 3/4 (Middle is 2).
+    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+    pub(super) enum MacMouseButton {
+        Left,
+        Right,
+        Middle,
+        Side1,
+        Side2,
+    }
+
+    pub(super) fn mouse_button_to_key_id(button: MacMouseButton) -> &'static str {
+        match button {
+            MacMouseButton::Left => "MOUSE_LEFT",
+            MacMouseButton::Right => "MOUSE_RIGHT",
+            MacMouseButton::Middle => "MOUSE_MIDDLE",
+            MacMouseButton::Side1 => "MOUSE_SIDE1",
+            MacMouseButton::Side2 => "MOUSE_SIDE2",
+        }
+    }
+
+    fn mouse_key_id_to_button(key_id: &str) -> Option<MacMouseButton> {
+        Some(match key_id {
+            "MOUSE_LEFT" => MacMouseButton::Left,
+            "MOUSE_RIGHT" => MacMouseButton::Right,
+            "MOUSE_MIDDLE" => MacMouseButton::Middle,
+            "MOUSE_SIDE1" => MacMouseButton::Side1,
+            "MOUSE_SIDE2" => MacMouseButton::Side2,
+            // Scroll triggers are deferred on macOS — trackpad momentum
+            // generates continuous scroll streams a suppress set can't
+            // sanely gate. Buttons only.
+            _ => return None,
+        })
+    }
+
+    /// Bit for the down/up pairing mask below.
+    fn mouse_button_bit(button: MacMouseButton) -> u8 {
+        match button {
+            MacMouseButton::Left => 1,
+            MacMouseButton::Right => 2,
+            MacMouseButton::Middle => 4,
+            MacMouseButton::Side1 => 8,
+            MacMouseButton::Side2 => 16,
+        }
+    }
+
+    /// Bare mouse buttons the active (linked) profile has assignments for.
+    /// Consulted in the tap callback alongside LINKED_APP_FRONTMOST.
+    fn suppress_bare_mouse() -> &'static RwLock<HashSet<MacMouseButton>> {
+        static SET: OnceLock<RwLock<HashSet<MacMouseButton>>> = OnceLock::new();
+        SET.get_or_init(|| RwLock::new(HashSet::new()))
+    }
+
+    /// Which buttons had their DOWN suppressed — only the matching UP is
+    /// then suppressed, so a suppress-set change mid-click can't leave the
+    /// OS with a mismatched down/up pair (same pairing rule as Windows).
+    static MOUSE_DOWN_SUPPRESSED: std::sync::atomic::AtomicU8 =
+        std::sync::atomic::AtomicU8::new(0);
+
     /// Lightweight message from the tap callback (hook thread) to the processor
     /// thread. `Copy`, no allocation — cheap to send from the callback.
     #[derive(Clone, Copy)]
@@ -498,6 +566,13 @@ mod macos {
         FlagsChanged {
             keycode: i64,
             flags: u64,
+        },
+        MouseDown {
+            button: MacMouseButton,
+            flags: u64,
+        },
+        MouseUp {
+            button: MacMouseButton,
         },
         /// OS disabled the tap. The callback already re-enabled it; this is
         /// just so the processor logs. `by_user_input` distinguishes the two
@@ -570,6 +645,16 @@ mod macos {
                         CGEventType::KeyDown,
                         CGEventType::KeyUp,
                         CGEventType::FlagsChanged,
+                        // Mouse buttons for mouse triggers / hold release /
+                        // Wait-for-Input. Moves and scrolls are NOT tapped —
+                        // moves are per-pixel noise and trackpad momentum
+                        // makes scroll triggers ungateable (deferred).
+                        CGEventType::LeftMouseDown,
+                        CGEventType::LeftMouseUp,
+                        CGEventType::RightMouseDown,
+                        CGEventType::RightMouseUp,
+                        CGEventType::OtherMouseDown,
+                        CGEventType::OtherMouseUp,
                     ],
                     move |_proxy, etype, event| tap_callback(&cb_sender, etype, event),
                 ) {
@@ -667,6 +752,28 @@ mod macos {
         bits
     }
 
+    /// Resolve which button a mouse event is for. Left/Right are implied by
+    /// the event type; OtherMouse carries the button number in the event
+    /// (2 = middle, 3/4 = side buttons). Cheap field read — callback-safe.
+    fn event_mouse_button(
+        etype: CGEventType,
+        event: &core_graphics::event::CGEvent,
+    ) -> Option<MacMouseButton> {
+        Some(match etype {
+            CGEventType::LeftMouseDown | CGEventType::LeftMouseUp => MacMouseButton::Left,
+            CGEventType::RightMouseDown | CGEventType::RightMouseUp => MacMouseButton::Right,
+            CGEventType::OtherMouseDown | CGEventType::OtherMouseUp => {
+                match event.get_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER) {
+                    2 => MacMouseButton::Middle,
+                    3 => MacMouseButton::Side1,
+                    4 => MacMouseButton::Side2,
+                    _ => return None, // exotic buttons — pass through
+                }
+            }
+            _ => return None,
+        })
+    }
+
     /// Runs on the hook thread (tap callback). MUST NOT block, log, or do I/O —
     /// macOS disables taps whose callback stalls. Extract the minimum, decide
     /// suppression from the precomputed set, and hand off to the processor.
@@ -678,12 +785,20 @@ mod macos {
         match etype {
             // Drop Keyfire's own injected events before anything else — the
             // mac analogue of the Windows LLKHF_INJECTED / SUPPRESS_SIMULATED
-            // discipline. Every CGEvent actions.rs posts is stamped with the
-            // magic source-user-data tag (single fast field read; allowed in
-            // the callback). Matched only for key/flag events: the
-            // TapDisabled pseudo-events below are OS-generated and must
-            // always be handled.
-            CGEventType::KeyDown | CGEventType::KeyUp | CGEventType::FlagsChanged
+            // discipline. Every CGEvent actions.rs posts (keys AND mouse) is
+            // stamped with the magic source-user-data tag (single fast field
+            // read; allowed in the callback). Matched only for key/flag/mouse
+            // events: the TapDisabled pseudo-events below are OS-generated
+            // and must always be handled.
+            CGEventType::KeyDown
+            | CGEventType::KeyUp
+            | CGEventType::FlagsChanged
+            | CGEventType::LeftMouseDown
+            | CGEventType::LeftMouseUp
+            | CGEventType::RightMouseDown
+            | CGEventType::RightMouseUp
+            | CGEventType::OtherMouseDown
+            | CGEventType::OtherMouseUp
                 if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA)
                     == crate::actions::INJECTED_EVENT_MAGIC =>
             {
@@ -751,6 +866,47 @@ mod macos {
                 let keycode = event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE);
                 let flags = event.get_flags().bits();
                 let _ = sender.send(TapEvent::FlagsChanged { keycode, flags });
+                CallbackResult::Keep
+            }
+            CGEventType::LeftMouseDown
+            | CGEventType::RightMouseDown
+            | CGEventType::OtherMouseDown => {
+                let Some(button) = event_mouse_button(etype, event) else {
+                    return CallbackResult::Keep;
+                };
+                let flags = event.get_flags().bits();
+                let _ = sender.send(TapEvent::MouseDown { button, flags });
+                // Bare-mouse suppression: only when a linked profile's app is
+                // frontmost AND the active profile has a bare assignment for
+                // this button. DOWN/UP pairing via MOUSE_DOWN_SUPPRESSED so a
+                // set change mid-click never orphans a down or up.
+                let bit = mouse_button_bit(button);
+                if MACROS_ENABLED.load(Ordering::SeqCst)
+                    && TAP_CAN_SUPPRESS.load(Ordering::SeqCst)
+                    && bits_from_flags(flags) == 0
+                    && super::LINKED_APP_FRONTMOST.load(Ordering::SeqCst)
+                {
+                    if let Ok(set) = suppress_bare_mouse().try_read() {
+                        if set.contains(&button) {
+                            MOUSE_DOWN_SUPPRESSED.fetch_or(bit, Ordering::SeqCst);
+                            return CallbackResult::Drop;
+                        }
+                    }
+                }
+                MOUSE_DOWN_SUPPRESSED.fetch_and(!bit, Ordering::SeqCst);
+                CallbackResult::Keep
+            }
+            CGEventType::LeftMouseUp | CGEventType::RightMouseUp | CGEventType::OtherMouseUp => {
+                let Some(button) = event_mouse_button(etype, event) else {
+                    return CallbackResult::Keep;
+                };
+                let _ = sender.send(TapEvent::MouseUp { button });
+                // Only suppress the UP whose DOWN we suppressed.
+                let bit = mouse_button_bit(button);
+                if MOUSE_DOWN_SUPPRESSED.load(Ordering::SeqCst) & bit != 0 {
+                    MOUSE_DOWN_SUPPRESSED.fetch_and(!bit, Ordering::SeqCst);
+                    return CallbackResult::Drop;
+                }
                 CallbackResult::Keep
             }
             CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput => {
@@ -1165,6 +1321,7 @@ mod macos {
     /// mouse triggers, voice, radial menu, Quick Record combos.
     pub(super) fn rebuild_suppress_keys(state: &EngineState) {
         let mut set: HashSet<(u8, u16)> = HashSet::new();
+        let mut mouse_set: HashSet<MacMouseButton> = HashSet::new();
         let prefix = format!("{}::", state.active_profile);
         let is_linked = profile_is_linked(state);
         for key in state.assignments.keys() {
@@ -1194,6 +1351,14 @@ mod macos {
             }
             let key_id = parts[2];
             if combo_str == "BARE" {
+                // Bare mouse buttons: only in app-linked profiles (a global
+                // left-click remap would make the machine unusable).
+                if let Some(btn) = mouse_key_id_to_button(key_id) {
+                    if is_linked {
+                        mouse_set.insert(btn);
+                    }
+                    continue;
+                }
                 // App-linked profiles: all bare keys. Static profiles: only
                 // non-character keys (same gate as the Windows original —
                 // suppressing letters globally would eat normal typing).
@@ -1226,9 +1391,16 @@ mod macos {
         {
             set.insert((special.0, special.1 as u16));
         }
-        info!("[HOOK] Rebuilt suppress set: {} combos", set.len());
+        info!(
+            "[HOOK] Rebuilt suppress set: {} combos, {} bare mouse",
+            set.len(),
+            mouse_set.len()
+        );
         if let Ok(mut w) = suppress_keys().write() {
             *w = set;
+        }
+        if let Ok(mut w) = suppress_bare_mouse().write() {
+            *w = mouse_set;
         }
     }
 
@@ -1326,6 +1498,19 @@ mod macos {
                 }
                 TapEvent::FlagsChanged { keycode, flags } => {
                     handle_flags_changed(keycode as u16, flags, &app);
+                }
+                TapEvent::MouseDown { button, flags } => {
+                    update_modifiers(flags);
+                    super::forward_to_waiter(&super::WaitEvent::MouseDown {
+                        button_name: mouse_button_to_key_id(button).to_string(),
+                    });
+                    handle_mouse_down(button, flags, &app);
+                }
+                TapEvent::MouseUp { button } => {
+                    super::forward_to_waiter(&super::WaitEvent::MouseUp {
+                        button_name: mouse_button_to_key_id(button).to_string(),
+                    });
+                    handle_mouse_up(button, &app);
                 }
                 TapEvent::Disabled { by_user_input } => {
                     if by_user_input {
@@ -1891,6 +2076,154 @@ mod macos {
         if !hotkey_matched && bits == 2 {
             process_expansion_keystroke(key_id, keycode, flags);
         }
+    }
+
+    /// Mouse-button dispatch (twin of the Windows handle_mouse_down, minus
+    /// the cursor-over / click-to-refocus refinements — on macOS a click
+    /// activates the app underneath, and the synchronous frontmost check
+    /// below closes most of the watcher's 1.5s poll window).
+    fn handle_mouse_down(button: MacMouseButton, flags: u64, app: &AppHandle) {
+        if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
+            return;
+        }
+        if !MACROS_ENABLED.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let mouse_id = mouse_button_to_key_id(button);
+
+        // Clear any stale pending-release from a previous click cycle so it
+        // can't be falsely consumed by a new hold action for this button.
+        crate::actions::clear_pending_mouse_release(mouse_id);
+
+        let bits = bits_from_flags(flags);
+        let state = engine_state().lock().unwrap();
+        let profile = state.active_profile.clone();
+        let linked_app = state
+            .profile_settings
+            .get(&profile)
+            .and_then(|s| s.get("linkedApp"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        // Fresh frontmost check — bare mouse remaps must not fire when the
+        // user clicked into a different app before the watcher's next poll.
+        let over_linked = linked_app
+            .as_deref()
+            .map(crate::foreground::frontmost_app_matches)
+            .unwrap_or(false);
+
+        if bits == 0 {
+            // Bare mouse — all buttons allowed in app-linked profiles.
+            if over_linked {
+                let bare_key = format!("{}::BARE::{}", profile, mouse_id);
+                if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
+                    drop(state);
+                    dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
+                } else {
+                    // No single — check for double-only bare mouse.
+                    let double_key = format!("{}::double", bare_key);
+                    if state.assignments.contains_key(&double_key) {
+                        let dm = state.assignments.get(&double_key).cloned();
+                        drop(state);
+                        dispatch_double_only(&bare_key, dm, app);
+                    }
+                }
+            }
+            return;
+        }
+
+        // Modified mouse button — explicit modifier assignment first.
+        let combo = build_modifier_combo();
+        let storage_key = format!("{}::{}::{}", profile, combo, mouse_id);
+
+        if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
+            drop(state);
+            // Mouse buttons fire immediately (no deferred-to-keyup).
+            dispatch_with_double_tap(&storage_key, macro_val, Some(storage_key.clone()), app);
+            return;
+        }
+        let double_key = format!("{}::double", storage_key);
+        if state.assignments.contains_key(&double_key) {
+            let dm = state.assignments.get(&double_key).cloned();
+            drop(state);
+            dispatch_double_only(&storage_key, dm, app);
+            return;
+        }
+
+        // Fall through to the bare assignment in app-linked profiles: bare
+        // mouse remaps act as full button replacements, modifiers pass
+        // through naturally since they're physically held.
+        if over_linked {
+            let bare_key = format!("{}::BARE::{}", profile, mouse_id);
+            if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
+                drop(state);
+                dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
+                return;
+            }
+            let double_key = format!("{}::double", bare_key);
+            if state.assignments.contains_key(&double_key) {
+                let dm = state.assignments.get(&double_key).cloned();
+                drop(state);
+                dispatch_double_only(&bare_key, dm, app);
+            }
+        }
+    }
+
+    fn handle_mouse_up(button: MacMouseButton, app: &AppHandle) {
+        // Release a held chord if this button was the hold's trigger
+        // (press-hold mirroring). The pending-release fallback is only
+        // allowed for buttons that actually carry a hold assignment —
+        // otherwise every ordinary click would clobber the slot.
+        let mouse_id = mouse_button_to_key_id(button);
+        let allow_pending = button_has_hold_assignment(mouse_id);
+        if let Some(label) =
+            crate::actions::release_held_if_mouse_trigger(mouse_id, allow_pending)
+        {
+            crate::tray::update_tray_icon_normal(app);
+            info!("[Keyfire] Mouse-up released hold: {}", label);
+        }
+    }
+
+    /// True if any assignment (any profile, any combo, incl. ::double) is
+    /// triggered by this mouse button with holdMode enabled. Cheap map scan
+    /// on the processor thread — never in the tap callback.
+    fn button_has_hold_assignment(mouse_id: &str) -> bool {
+        let single_suffix = format!("::{}", mouse_id);
+        let double_suffix = format!("::{}::double", mouse_id);
+        let state = engine_state().lock().unwrap();
+        state.assignments.iter().any(|(k, v)| {
+            (k.ends_with(&single_suffix) || k.ends_with(&double_suffix))
+                && v.get("data")
+                    .and_then(|d| d.get("holdMode"))
+                    .and_then(|h| h.as_bool())
+                    .unwrap_or(false)
+        })
+    }
+
+    /// Double-only dispatch for mouse: no single-press action exists. First
+    /// click records time, second click within the window fires.
+    fn dispatch_double_only(storage_key: &str, double_macro: Option<Value>, app: &AppHandle) {
+        // Pro gate: Free users never fire double-only assignments.
+        if !crate::licence::is_pro() {
+            return;
+        }
+        let mut state = engine_state().lock().unwrap();
+        let now = std::time::Instant::now();
+        let dtw = state.double_tap_window_ms;
+
+        if let Some(last) = state.last_hotkey_time.get(storage_key) {
+            if now.duration_since(*last).as_millis() < dtw as u128 {
+                state.last_hotkey_time.remove(storage_key);
+                info!("[Keyfire] x2 Double-only: {}", storage_key);
+                if let Some(dm) = double_macro {
+                    drop(state);
+                    fire_macro(dm, false, Some(storage_key.to_string()), app);
+                }
+                return;
+            }
+        }
+        state.last_hotkey_time.insert(storage_key.to_string(), now);
     }
 
     /// Post a synthetic tap of `keycode` carrying the CURRENT modifier state

@@ -252,6 +252,32 @@ pub fn is_key_held() -> bool {
     }
 }
 
+/// Release the held key only if it was triggered by the given mouse button.
+/// `allow_pending` records the up for the fast-click race — see the manager.
+pub fn release_held_if_mouse_trigger(mouse_id: &str, allow_pending: bool) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::release_held_if_mouse_trigger(mouse_id, allow_pending)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (mouse_id, allow_pending);
+        None
+    }
+}
+
+/// Clear a stale pending-release from a previous click cycle.
+pub fn clear_pending_mouse_release(mouse_id: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::clear_pending_mouse_release(mouse_id);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = mouse_id;
+    }
+}
+
 pub fn is_repeating() -> bool {
     #[cfg(target_os = "macos")]
     {
@@ -1653,12 +1679,12 @@ mod macos {
         let wanted_key = specific_key.split('+').last().unwrap_or("").to_string();
 
         let is_mouse = matches!(input_type, "LButton" | "RButton" | "MButton");
-        if is_mouse {
-            // The mac engine has no mouse tap yet — waiting would just burn
-            // the full 30s timeout. Skip loudly instead.
-            warn!("[WAIT] Wait for Input: mouse input types are not supported on macOS yet — skipping");
-            return;
-        }
+        let mouse_name = match input_type {
+            "LButton" => "MOUSE_LEFT",
+            "RButton" => "MOUSE_RIGHT",
+            "MButton" => "MOUSE_MIDDLE",
+            _ => "",
+        };
 
         info!("[WAIT] Wait for Input: type={} trigger={} key={}", input_type, trigger, wanted_key);
 
@@ -1687,13 +1713,20 @@ mod macos {
             let timeout = remaining.min(POLL_INTERVAL);
             match rx.recv_timeout(timeout) {
                 Ok(event) => {
-                    let matched = match &event {
-                        WaitEvent::KeyDown { key_id } => {
+                    let matched = match (&event, is_mouse) {
+                        (WaitEvent::MouseDown { button_name }, true) => {
+                            button_name == mouse_name && matches!(trigger, "press" | "pressRelease")
+                        }
+                        (WaitEvent::MouseUp { button_name }, true) => {
+                            button_name == mouse_name
+                                && matches!(trigger, "release" | "pressRelease")
+                        }
+                        (WaitEvent::KeyDown { key_id }, false) => {
                             let key_matches = input_type == "AnyKey"
                                 || (input_type == "SpecificKey" && *key_id == wanted_key);
                             key_matches && matches!(trigger, "press" | "pressRelease")
                         }
-                        WaitEvent::KeyUp { key_id } => {
+                        (WaitEvent::KeyUp { key_id }, false) => {
                             let key_matches = input_type == "AnyKey"
                                 || (input_type == "SpecificKey" && *key_id == wanted_key);
                             key_matches && matches!(trigger, "release" | "pressRelease")
@@ -1704,7 +1737,8 @@ mod macos {
                         continue;
                     }
                     if trigger == "pressRelease" {
-                        let is_down = matches!(event, WaitEvent::KeyDown { .. });
+                        let is_down =
+                            matches!(event, WaitEvent::KeyDown { .. } | WaitEvent::MouseDown { .. });
                         if phase == "down" && is_down {
                             phase = "up";
                             continue;
@@ -1954,7 +1988,7 @@ mod macos {
             let mut mgr = HELD_KEY.lock().unwrap();
 
             // Same chord already held — toggle release
-            let same_held = if let Some(ref state) = *mgr {
+            let same_held = if let Some(ref state) = mgr.key {
                 if is_mouse {
                     state.mouse_button.as_deref() == Some(key_name)
                 } else {
@@ -1967,7 +2001,8 @@ mod macos {
             };
 
             if same_held {
-                let state = mgr.take().unwrap();
+                let state = mgr.key.take().unwrap();
+                mgr.pending_mouse_release = None;
                 post_hold_release(&state);
                 info!("[Keyfire] Hold released: {}", combo_label);
                 drop(mgr);
@@ -1976,7 +2011,7 @@ mod macos {
             }
 
             // Different key held — release previous first
-            if let Some(ref state) = *mgr {
+            if let Some(ref state) = mgr.key {
                 post_hold_release(state);
                 info!("[Keyfire] Hold released (switching): {}", state.label);
             }
@@ -2000,12 +2035,38 @@ mod macos {
                 restore_modifiers(&physically_held);
             }
 
-            *mgr = Some(HeldKeyState {
+            // Detect a mouse-button trigger from the storage key so mouse-up
+            // releases the hold (press-hold mirroring).
+            let trigger_mouse = trigger_key
+                .and_then(|tk| tk.split("::").last())
+                .filter(|last| last.starts_with("MOUSE_"))
+                .map(|s| s.to_string());
+
+            mgr.key = Some(HeldKeyState {
                 target_kc: target.unwrap_or(0),
                 mod_kcs: mod_keycodes.clone(),
                 mouse_button: if is_mouse { Some(key_name.to_string()) } else { None },
                 label: combo_label.clone(),
+                trigger_mouse_id: trigger_mouse.clone(),
             });
+
+            // Fast-click race: the trigger button's UP may have arrived
+            // before this thread stored the hold. If so, release immediately
+            // so the simulated key/button never stays stuck down.
+            let already_released = trigger_mouse
+                .as_deref()
+                .and_then(|tm| mgr.pending_mouse_release.as_deref().filter(|&p| p == tm))
+                .is_some();
+            if already_released {
+                let state = mgr.key.take().unwrap();
+                mgr.pending_mouse_release = None;
+                post_hold_release(&state);
+                info!("[Keyfire] Hold immediately released — mouse was already up: {}", combo_label);
+                drop(mgr);
+                crate::tray::update_tray_icon_normal(app);
+                return;
+            }
+
             drop(mgr);
             crate::tray::update_tray_icon_held(app, &combo_label);
             return;
@@ -2283,9 +2344,24 @@ mod macos {
         mod_kcs: Vec<u16>,
         mouse_button: Option<String>,
         label: String,
+        /// e.g. "MOUSE_RIGHT" — when set, the hold releases on that button's
+        /// mouse-up (press-hold mirroring) instead of by re-fire toggle.
+        trigger_mouse_id: Option<String>,
     }
 
-    static HELD_KEY: Mutex<Option<HeldKeyState>> = Mutex::new(None);
+    /// `pending_mouse_release` handles the race where handle_mouse_up fires
+    /// before the hold thread has stored the held state: the mouse-up records
+    /// the button here; the hold setup checks it under the same lock and
+    /// immediately releases — no timing assumptions (same design as Windows).
+    struct HeldKeyManager {
+        key: Option<HeldKeyState>,
+        pending_mouse_release: Option<String>,
+    }
+
+    static HELD_KEY: Mutex<HeldKeyManager> = Mutex::new(HeldKeyManager {
+        key: None,
+        pending_mouse_release: None,
+    });
 
     struct RepeatingKeyState {
         trigger_storage_key: String,
@@ -2319,8 +2395,9 @@ mod macos {
     }
 
     pub(super) fn release_held_key() -> Option<String> {
-        let mut held = HELD_KEY.lock().unwrap();
-        if let Some(state) = held.take() {
+        let mut mgr = HELD_KEY.lock().unwrap();
+        if let Some(state) = mgr.key.take() {
+            mgr.pending_mouse_release = None; // no longer relevant
             post_hold_release(&state);
             info!("[Keyfire] Released held key: {}", state.label);
             Some(state.label)
@@ -2330,7 +2407,42 @@ mod macos {
     }
 
     pub(super) fn is_key_held() -> bool {
-        HELD_KEY.lock().unwrap().is_some()
+        HELD_KEY.lock().unwrap().key.is_some()
+    }
+
+    /// Release the held key only if it was triggered by the given mouse
+    /// button (press-hold mirroring: hold while the button is down, release
+    /// on its up). `allow_pending` records the up for the fast-click race —
+    /// only for buttons that actually carry a hold assignment, so ordinary
+    /// clicks don't clobber the slot.
+    pub(super) fn release_held_if_mouse_trigger(
+        mouse_id: &str,
+        allow_pending: bool,
+    ) -> Option<String> {
+        let mut mgr = HELD_KEY.lock().unwrap();
+        let matches = mgr
+            .key
+            .as_ref()
+            .and_then(|s| s.trigger_mouse_id.as_deref())
+            .is_some_and(|t| t == mouse_id);
+        if matches {
+            let state = mgr.key.take().unwrap();
+            mgr.pending_mouse_release = None;
+            post_hold_release(&state);
+            Some(state.label)
+        } else {
+            if allow_pending {
+                mgr.pending_mouse_release = Some(mouse_id.to_string());
+            }
+            None
+        }
+    }
+
+    pub(super) fn clear_pending_mouse_release(mouse_id: &str) {
+        let mut mgr = HELD_KEY.lock().unwrap();
+        if mgr.pending_mouse_release.as_deref() == Some(mouse_id) {
+            mgr.pending_mouse_release = None;
+        }
     }
 
     pub(super) fn stop_repeating_key() -> Option<String> {

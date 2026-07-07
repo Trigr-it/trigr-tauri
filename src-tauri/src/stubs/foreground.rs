@@ -134,6 +134,26 @@ pub(crate) fn activate_app_by_name(name: &str) -> bool {
     macos::activate_app_by_name(name)
 }
 
+/// Synchronous "is this linked app frontmost right now?" check (fresh
+/// NSWorkspace read, not the watcher's cached value). `linked_path` is the
+/// stored linkedApp value — a path or name; matched by stem, same rule as
+/// the watcher. The mac stand-in for the Windows cursor-over-linked-app
+/// check on mouse dispatch: macOS activates an app on click, so frontmost ≈
+/// under-cursor for click handling.
+#[cfg(target_os = "macos")]
+pub(crate) fn frontmost_app_matches(linked_path: &str) -> bool {
+    let stem = std::path::Path::new(linked_path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if stem.is_empty() {
+        return false;
+    }
+    macos::frontmost_app_names()
+        .map(|names| names.iter().any(|n| *n == stem))
+        .unwrap_or(false)
+}
+
 /// True when macOS is in Dark appearance. Read from the global user default
 /// ("AppleInterfaceStyle" exists only in dark mode) — WKWebView's own
 /// prefers-color-scheme misreports under Keyfire (observed dark on a light
@@ -403,10 +423,19 @@ mod macos {
         // profile. Free users: always the global profile (preserves Pro
         // gating; snap-back still works).
         let target = if crate::licence::is_pro() {
-            matched.unwrap_or_else(|| state.active_global_profile.clone())
+            matched.clone().unwrap_or_else(|| state.active_global_profile.clone())
         } else {
             state.active_global_profile.clone()
         };
+
+        // Flag the tap callback reads to gate bare-mouse suppression: true
+        // while a linked profile's app is frontmost (Pro — Free never
+        // switches to linked profiles, so their bare mouse remaps are inert
+        // same as Windows).
+        crate::hotkeys::LINKED_APP_FRONTMOST.store(
+            crate::licence::is_pro() && matched.is_some(),
+            Ordering::SeqCst,
+        );
 
         let current_profile = crate::hotkeys::engine_state()
             .lock()
