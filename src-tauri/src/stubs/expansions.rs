@@ -1898,9 +1898,20 @@ mod mac {
     }
 
     pub(super) fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
+        // Final chokepoint for EVERY html flavor Keyfire writes (expansion
+        // fires AND clipboard-history rich pastes): strip unresolvable
+        // var() font-family chrome, and skip the flavor entirely when the
+        // result carries no real formatting — otherwise rich-text targets
+        // render the fragment with the HTML default font (Times) instead of
+        // the caret font. The plain-string flavor already carries the
+        // content, newlines included.
+        let html_clean: Option<String> = html.and_then(|h| {
+            let clean = super::strip_editor_font_styles(h);
+            super::html_has_formatting(&clean).then_some(clean)
+        });
         info!(
             "[Keyfire] Clipboard write (expansions{}): \"{}\"",
-            if html.is_some() { ", +html" } else { "" },
+            if html_clean.is_some() { ", +html" } else { "" },
             log_preview(text)
         );
         crate::actions::SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::SeqCst);
@@ -1912,7 +1923,7 @@ mod mac {
             log::warn!("[CLIP] NSPasteboard setString failed (dual write)");
             return false;
         }
-        if let Some(h) = html {
+        if let Some(ref h) = html_clean {
             // Raw HTML fragment — macOS rich-text targets read public.html
             // directly; no CF_HTML byte-offset container exists here.
             if !pb.setString_forType(&NSString::from_str(h), unsafe { NSPasteboardTypeHTML }) {
