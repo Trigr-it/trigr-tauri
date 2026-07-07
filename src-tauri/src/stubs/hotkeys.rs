@@ -655,16 +655,21 @@ mod macos {
 
         loop {
             attempt += 1;
-            let mut created: Option<(CGEventTap, bool)> = None;
-            for (options, can_suppress) in [
-                (CGEventTapOptions::Default, true),
-                (CGEventTapOptions::ListenOnly, false),
+            let mut created: Option<(CGEventTap, bool, CGEventTapLocation)> = None;
+            for (location, options, can_suppress) in [
+                // HID first: a Session-level Drop stops the event reaching
+                // APPS but not macOS's own function-key/media handling
+                // (observed: a suppressed bare F1 trigger still launched
+                // Apple Music). The HID insertion point is upstream of the
+                // system handler, so suppression is total — the closest
+                // analogue to the Windows WH_KEYBOARD_LL global hook.
+                (CGEventTapLocation::HID, CGEventTapOptions::Default, true),
+                (CGEventTapLocation::Session, CGEventTapOptions::Default, true),
+                (CGEventTapLocation::Session, CGEventTapOptions::ListenOnly, false),
             ] {
                 let cb_sender = sender.clone();
                 match CGEventTap::new(
-                    // Session tap sees events for the whole login session — the
-                    // closest analogue to the Windows WH_KEYBOARD_LL global hook.
-                    CGEventTapLocation::Session,
+                    location,
                     CGEventTapPlacement::HeadInsertEventTap,
                     options,
                     vec![
@@ -694,14 +699,14 @@ mod macos {
                     move |_proxy, etype, event| tap_callback(&cb_sender, etype, event),
                 ) {
                     Ok(tap) => {
-                        created = Some((tap, can_suppress));
+                        created = Some((tap, can_suppress, location));
                         break;
                     }
                     Err(()) => continue,
                 }
             }
 
-            let (tap, can_suppress) = match created {
+            let (tap, can_suppress, location) = match created {
                 Some(t) => t,
                 None => {
                     if attempt == 1 {
@@ -742,8 +747,9 @@ mod macos {
             HOOKS_RUNNING.store(true, Ordering::SeqCst);
             if can_suppress {
                 info!(
-                    "[HOOK] CGEventTap installed (session, ACTIVE — suppression enabled) \
+                    "[HOOK] CGEventTap installed ({:?}, ACTIVE — suppression enabled) \
                      after {} attempt(s) — pumping run loop",
+                    location,
                     attempt
                 );
             } else {
