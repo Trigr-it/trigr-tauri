@@ -266,6 +266,14 @@ pub static HOLD_DETECTION_PAUSED: AtomicBool = AtomicBool::new(false);
 /// within the watcher's poll window).
 pub static LINKED_APP_FRONTMOST: AtomicBool = AtomicBool::new(false);
 
+/// Radial wheel state (twins of the Windows statics). OPEN gates the blur
+/// auto-hide in lib.rs while the hotkey is physically held (hold-to-select);
+/// HELD is the key-repeat guard; ACTION_KC remembers the hotkey's action
+/// keycode so its keyup ends the hold cycle.
+static RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
+static RADIAL_KEY_HELD: AtomicBool = AtomicBool::new(false);
+static RADIAL_ACTION_KC: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 static ENGINE_STATE: OnceLock<Mutex<EngineState>> = OnceLock::new();
 
 pub(crate) fn engine_state() -> &'static Mutex<EngineState> {
@@ -1496,9 +1504,14 @@ mod macos {
         } else {
             None
         };
-        for special in [state.overlay_hotkey, state.pause_hotkey, clipboard_special]
-            .into_iter()
-            .flatten()
+        for special in [
+            state.overlay_hotkey,
+            state.pause_hotkey,
+            clipboard_special,
+            state.radial_menu_hotkey,
+        ]
+        .into_iter()
+        .flatten()
         {
             set.insert((special.0, special.1 as u16));
         }
@@ -2098,6 +2111,24 @@ mod macos {
             }
         }
 
+        // ── Radial wheel hotkey ──────────────────────────────────────────────
+        if bits != 0 {
+            let radial = engine_state().lock().ok().and_then(|s| s.radial_menu_hotkey);
+            if let Some((mod_bits, kc)) = radial {
+                if bits == mod_bits && keycode as u32 == kc {
+                    // Key-repeat guard: while the action key stays physically
+                    // held (hold-to-select), repeats must not re-toggle.
+                    if super::RADIAL_KEY_HELD.swap(true, Ordering::SeqCst) {
+                        return;
+                    }
+                    super::RADIAL_ACTION_KC.store(kc, Ordering::SeqCst);
+                    super::RADIAL_MENU_OPEN.store(true, Ordering::SeqCst);
+                    let _ = app.emit("toggle-radial-menu", Value::Null);
+                    return;
+                }
+            }
+        }
+
         // ── Normal hotkey matching (modified combos only in this milestone) ──
         if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
             return;
@@ -2609,6 +2640,17 @@ mod macos {
     /// pending fire. Twin of the Windows handle_keyup (minus voice/radial,
     /// which are later milestones).
     fn handle_keyup(keycode: u16, app: &AppHandle) {
+        // Radial hold-to-select: releasing the action key ends the hold.
+        // The wheel window has real key focus on mac, so its own DOM keyup
+        // drives the select-on-release; these flags just re-enable the
+        // blur auto-hide in lib.rs (mirror of the Windows clearing).
+        if super::RADIAL_KEY_HELD.load(Ordering::SeqCst)
+            && super::RADIAL_ACTION_KC.load(Ordering::SeqCst) == keycode as u32
+        {
+            super::RADIAL_KEY_HELD.store(false, Ordering::SeqCst);
+            super::RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
+        }
+
         // Release phase of an AHK-style bare-key remap.
         if crate::actions::remap_key_release(keycode) {
             return;
@@ -3009,7 +3051,7 @@ fn hotkeys_combo_bits(combo: &str) -> u8 {
 pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta: bool, app: &AppHandle) {}
 
 pub fn is_radial_menu_held() -> bool {
-    false
+    RADIAL_MENU_OPEN.load(Ordering::SeqCst)
 }
 
 pub fn is_voice_active() -> bool {
@@ -3145,12 +3187,11 @@ pub fn set_pause_hotkey(combo: &str) {
     }
 }
 
-// Voice / radial combos are parsed and stored so config round-trips, but
-// their processor paths are later milestones — they are NOT added to the
-// suppress set (a suppressed-but-unfired key would be dead).
 pub fn set_radial_menu_hotkey(combo: &str) {
     if let Ok(mut state) = engine_state().lock() {
         state.radial_menu_hotkey = parse_hotkey_combo(combo);
+        rebuild_suppress(&state);
+        log::info!("[HOOK] Radial menu hotkey set: {}", combo);
     }
 }
 
@@ -3226,10 +3267,15 @@ pub fn clear_pause_hotkey() {
 pub fn clear_radial_menu_hotkey() {
     if let Ok(mut state) = engine_state().lock() {
         state.radial_menu_hotkey = None;
+        rebuild_suppress(&state);
     }
 }
 
-pub fn clear_radial_menu_open() {}
+/// Clear the radial open/held state (called when the overlay hides).
+pub fn clear_radial_menu_open() {
+    RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
+    RADIAL_KEY_HELD.store(false, Ordering::SeqCst);
+}
 
 pub fn clear_voice_active() {}
 

@@ -2558,59 +2558,10 @@ fn radial_menu_show_time() -> &'static StdMutex<Option<StdInstant>> {
     RADIAL_MENU_SHOW_TIME.get_or_init(|| StdMutex::new(None))
 }
 
-#[cfg(not(windows))]
-fn show_radial_menu(app: &tauri::AppHandle) {
-    let _ = app;
-    log::warn!("[stub] radial menu is not available on this platform yet");
-}
-
-#[cfg(windows)]
-fn show_radial_menu(app: &tauri::AppHandle) {
-    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
-    webview_mem::resume_for_show(app, "radialmenu");
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetCursorPos};
-    use windows_sys::Win32::Foundation::POINT;
-    use windows_sys::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
-
-    // Force an immediate foreground/profile check so the radial menu
-    // uses the correct profile even if the 1500ms poll hasn't fired yet.
-    foreground::force_check(app);
-
-    let target = unsafe { GetForegroundWindow() as isize };
-    RADIAL_MENU_TARGET_HWND.store(target, std::sync::atomic::Ordering::SeqCst);
-
-    let win = match app.get_webview_window("radialmenu") {
-        Some(w) => w,
-        None => return,
-    };
-
-    // Position: centre 525x525 window on cursor. Physical units throughout
-    // to dodge the hidden-window scale_factor race (see monitor_scale_factor).
-    let (cx, cy) = unsafe {
-        let mut pt = POINT { x: 0, y: 0 };
-        GetCursorPos(&mut pt);
-        (pt.x, pt.y)
-    };
-
-    let scale = unsafe {
-        let pt = POINT { x: cx, y: cy };
-        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
-        monitor_scale_factor(hmon)
-    };
-
-    let win_size_logical = 525.0_f64;
-    let phys_size = (win_size_logical * scale).round() as i32;
-    // Always centre on cursor — no clamping to work area.
-    // Items near screen edges may be clipped, but the cursor stays
-    // at the wheel centre which preserves muscle memory.
-    let phys_x = cx - phys_size / 2;
-    let phys_y = cy - phys_size / 2;
-    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
-    let _ = win.set_size(tauri::PhysicalSize::new(phys_size as u32, phys_size as u32));
-
-    // Build payload: resolve radial menu items for the CURRENT active profile.
-    // Use radialMenuItemsByProfile[activeProfile] rather than the flat radialMenuItems
-    // array, which may be stale if a profile switch hasn't flushed to disk yet.
+/// Resolve the radial wheel payload — the ACTIVE profile's items (folders +
+/// children resolved against live assignments) plus the theme. Platform-
+/// neutral; shared by both show_radial_menu twins.
+fn build_radial_menu_payload() -> Value {
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
     let state = hotkeys::engine_state().lock().unwrap();
@@ -2691,8 +2642,8 @@ fn show_radial_menu(app: &tauri::AppHandle) {
                 "type": "folder",
                 "label": label,
                 "icon": item.get("icon"),
-            "iconColor": item.get("iconColor"),
-            "appIcon": item.get("appIcon"),
+                "iconColor": item.get("iconColor"),
+                "appIcon": item.get("appIcon"),
                 "exists": true,
                 "children": resolved_children,
             }));
@@ -2749,10 +2700,108 @@ fn show_radial_menu(app: &tauri::AppHandle) {
         .collect();
     drop(state);
 
-    let payload = serde_json::json!({
+    serde_json::json!({
         "items": resolved_items,
         "theme": theme,
-    });
+    })
+}
+
+#[cfg(not(windows))]
+fn show_radial_menu(app: &tauri::AppHandle) {
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "radialmenu");
+
+    // Force an immediate foreground/profile check so the radial menu uses
+    // the correct profile even if the 1500ms poll hasn't fired yet.
+    foreground::force_check(app);
+
+    // Capture the frontmost app for focus hand-back + item fires. On macOS
+    // the shared atomic carries a PID (no HWNDs) — restore_radial_menu_target
+    // re-activates it.
+    #[cfg(target_os = "macos")]
+    RADIAL_MENU_TARGET_HWND.store(
+        foreground::capture_frontmost_pid() as isize,
+        std::sync::atomic::Ordering::SeqCst,
+    );
+
+    let win = match app.get_webview_window("radialmenu") {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Centre the 525-logical wheel on the cursor. Physical units, same
+    // layout maths as the Windows twin — no clamping to the work area so
+    // the cursor stays at the wheel centre (muscle memory).
+    if let Ok(pos) = app.cursor_position() {
+        let scale = app
+            .monitor_from_point(pos.x, pos.y)
+            .ok()
+            .flatten()
+            .or_else(|| app.primary_monitor().ok().flatten())
+            .map(|m| m.scale_factor())
+            .unwrap_or(1.0);
+        let phys_size = (525.0 * scale).round() as i32;
+        let phys_x = pos.x as i32 - phys_size / 2;
+        let phys_y = pos.y as i32 - phys_size / 2;
+        let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+        let _ = win.set_size(tauri::PhysicalSize::new(phys_size as u32, phys_size as u32));
+    }
+
+    let payload = build_radial_menu_payload();
+    use tauri::Emitter;
+    let _ = win.emit("radial-menu-data", payload);
+
+    *radial_menu_show_time().lock().unwrap() = Some(StdInstant::now());
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+#[cfg(windows)]
+fn show_radial_menu(app: &tauri::AppHandle) {
+    // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
+    webview_mem::resume_for_show(app, "radialmenu");
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetCursorPos};
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
+
+    // Force an immediate foreground/profile check so the radial menu
+    // uses the correct profile even if the 1500ms poll hasn't fired yet.
+    foreground::force_check(app);
+
+    let target = unsafe { GetForegroundWindow() as isize };
+    RADIAL_MENU_TARGET_HWND.store(target, std::sync::atomic::Ordering::SeqCst);
+
+    let win = match app.get_webview_window("radialmenu") {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Position: centre 525x525 window on cursor. Physical units throughout
+    // to dodge the hidden-window scale_factor race (see monitor_scale_factor).
+    let (cx, cy) = unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut pt);
+        (pt.x, pt.y)
+    };
+
+    let scale = unsafe {
+        let pt = POINT { x: cx, y: cy };
+        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        monitor_scale_factor(hmon)
+    };
+
+    let win_size_logical = 525.0_f64;
+    let phys_size = (win_size_logical * scale).round() as i32;
+    // Always centre on cursor — no clamping to work area.
+    // Items near screen edges may be clipped, but the cursor stays
+    // at the wheel centre which preserves muscle memory.
+    let phys_x = cx - phys_size / 2;
+    let phys_y = cy - phys_size / 2;
+    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+    let _ = win.set_size(tauri::PhysicalSize::new(phys_size as u32, phys_size as u32));
+
+    // Payload resolution is platform-neutral — shared with the mac twin.
+    let payload = build_radial_menu_payload();
     use tauri::Emitter;
     let _ = win.emit("radial-menu-data", payload);
 
@@ -2769,9 +2818,17 @@ fn hide_radial_menu(app: &tauri::AppHandle) {
 }
 
 fn restore_radial_menu_target() {
-    let hwnd = RADIAL_MENU_TARGET_HWND.load(std::sync::atomic::Ordering::SeqCst);
-    if hwnd != 0 {
-        actions::set_foreground_robust(hwnd);
+    let target = RADIAL_MENU_TARGET_HWND.load(std::sync::atomic::Ordering::SeqCst);
+    if target == 0 {
+        return;
+    }
+    // On macOS the atomic carries the frontmost app's PID captured at
+    // show time (HWNDs don't exist); re-activate that app.
+    #[cfg(target_os = "macos")]
+    foreground::activate_pid(target as i32);
+    #[cfg(not(target_os = "macos"))]
+    {
+        actions::set_foreground_robust(target);
     }
 }
 
