@@ -44,18 +44,24 @@ function stripEditorFontChrome(html) {
 
 function htmlToPlainText(html) {
   const tmp = document.createElement('div');
-  tmp.innerHTML = html
-    .replace(/<br\s*\/?>/gi, '\n')           // 1. <br> → newline
-    .replace(/<\/p>/gi, '\n')                 // 2. closing </p> → newline
-    .replace(/<\/div>/gi, '\n')               //    closing </div> → newline
-    .replace(/<\/li>/gi, '\n')                //    closing </li> → newline
-    .replace(/<div[^>]*>/gi, '')              // 3. opening <div> → nothing
-    .replace(/<p[^>]*>/gi, '');               //    opening <p> → nothing
-  // Replace token chips with their raw token strings before stripping markup
+  tmp.innerHTML = html;
+  // Replace token chips with their raw token strings before reading text
   tmp.querySelectorAll('[data-token]').forEach(el => {
     el.replaceWith(document.createTextNode(el.dataset.token));
   });
-  return (tmp.textContent || tmp.innerText || '')
+  // Read line breaks via layout-aware innerText rather than regexing the
+  // div/br serialization. WKWebView (macOS) serializes every line as
+  // `content<br></div>` — a caret-placeholder <br> Chromium doesn't emit —
+  // and the old regex counted BOTH the br and the /div as newlines, so
+  // each visual line doubled into a blank line on mac. innerText emits
+  // exactly the breaks the editor RENDERS on both engines; it needs the
+  // node attached and laid out (offscreen — NOT display:none or
+  // visibility:hidden, which make innerText structure-blind).
+  tmp.style.cssText = 'position:fixed;left:-99999px;top:0;white-space:pre-wrap;';
+  document.body.appendChild(tmp);
+  const text = tmp.innerText || '';
+  tmp.remove();
+  return text
     .replace(/\u200B/g, '')  // ZWSP cursor anchors after token chips — editor-internal, never inject
     .replace(/\u00A0/g, ' ')     // &nbsp; contenteditable inserts next to chips → plain space
     .replace(/\n{3,}/g, '\n\n')
