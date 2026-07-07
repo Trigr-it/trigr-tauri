@@ -71,15 +71,37 @@
     live modifier state, suppress-set now includes bare + ::hold (Pro).
     RUNTIME-VERIFIED: bare F5, Ctrl+Shift+D single/double, F6 tap vs 600ms
     hold.
+  - **MOUSE HOOKS (2c0c100)**: the tap listens to all six button event
+    types; mouse triggers (bare in linked profiles with a fresh frontmost
+    check + LINKED_APP_FRONTMOST atomic for callback suppression, modified
+    combos, double/double-only), hold release-on-mouse-up with the
+    fast-click pending-release race handling, Wait-for-Input mouse types.
+    DOWN/UP pairing bits stop half-suppressed clicks. RUNTIME-VERIFIED:
+    linked-profile right-click remap suppressed + fired; Wait-for-Input
+    LButton completed a macro on a real click.
+  - **QUICK RECORD (fe63ed1)**: capture feeds the shared recorder — keys
+    stored as Windows VKs (keycode→VK table) so streams replay on both
+    OSes; modifier flagsChanged transitions synthesized as key events;
+    moves/drags/scrolls tapped but fast-pathed (one atomic) unless
+    recording; stop/record/play/loop hotkeys matched + suppressed in the
+    callback. Recording bar + pill positioning implemented in the lib.rs
+    non-Windows twins. RUNTIME-VERIFIED: record → type → stop → replay
+    round-trip landed identically in TextEdit.
+  - **UI platform pass (57ddd89 + ac4db00 + cfd96c4)**: AHK hidden from mac
+    UI; Win/Alt display as ⌘/⌥ everywhere (displayModifier/displayCombo in
+    keyboardLayout.jsx — display-only, storage tokens unchanged); macOS
+    reserved-shortcuts warning list (⌘Q, ⌘Tab, Spotlight, screenshots, …).
   - **Known parity quirk (upstream, both OSes)**: {cursor} lands one char
     right of ideal because the bundled trailing space isn't counted in
     cursor_back — Windows math is identical; fix upstream first if at all.
-  - **Deferred (deliberately unsuppressed so keys stay alive)**: voice,
-    radial, Quick Record capture (replay of Windows-recorded streams works),
-    mouse hooks/triggers, monitor-targeted launches, AHK (forever).
-- **Next**: UI-level human passes (fill-in/variant picker appearing,
-  overlay UX, clean-machine .dmg on the test MacBook); then mouse hooks or
-  Quick Record capture as the next engine milestone.
+  - **Deferred**: voice, radial (post-beta), scroll-wheel triggers
+    (trackpad momentum makes suppression ungateable), click-to-refocus on
+    unfocused linked apps (needs window-under-cursor enumeration),
+    monitor-targeted launches, window-title matching (Screen Recording),
+    educational copy still says Ctrl+C in places, AHK (forever).
+- **Next**: UI-level human passes (fill-in/variant picker on a live
+  expansion, overlay UX, recording bar look, ⌘/⌥ labels, clean-machine
+  .dmg on the test MacBook); then monitor-targeted launches or voice.
 - Dev machine: Apple Silicon (M4) iMac, repo at `~/Desktop/Keyfire`.
   A separate MacBook is the clean-machine artifact tester.
 
@@ -152,18 +174,19 @@ inside the stub file. Do NOT touch the `#[cfg(windows)]` originals.
 
 ## Current milestone (see State above for what's done)
 
-The engine is at near-parity with Windows: hooks, injection, matcher (bare /
-double / hold / remap), expansions (buffer, triggers, tokens, fill-ins,
-images), macros (all step types, loops, cancel), Send Hotkey (all modes),
-clipboard history, tray, overlays, foreground watcher — all CI-green and
-runtime-verified on this machine via synthetic untagged events.
+The engine is at functional parity with Windows for the beta scope: hooks,
+injection, matcher (bare / double / hold / remap, keyboard AND mouse),
+expansions (buffer, triggers, tokens, fill-ins, images), macros (all step
+types, loops, cancel), Send Hotkey (all modes), Quick Record
+(capture + replay + loop), clipboard history, tray, overlays, foreground
+watcher, ⌘/⌥ display labels — all CI-green and runtime-verified on this
+machine via synthetic untagged events.
 
-Remaining human checks are UI-level: fill-in / variant picker appearing and
-usable on a live expansion, overlay UX, profile auto-switch feel, and a
+Remaining human checks are UI-level: fill-in / variant picker on a live
+expansion, overlay UX, recording bar/pill look, the new ⌘/⌥ labels, and a
 clean-machine .dmg pass on the test MacBook (TCC grants attach differently
 to a bundled app).
 
-Next engine work in rough order: mouse hooks (mouse triggers, Wait for
-Input mouse types, hold release-on-mouse-up); Quick Record capture (replay
-already works); monitor-targeted launches (window_target); voice / radial
-(post-beta).
+Remaining engine work (all deliberately deferred): monitor-targeted
+launches (window_target), scroll-wheel triggers, click-to-refocus,
+window-title matching (Screen Recording), voice / radial (post-beta).
