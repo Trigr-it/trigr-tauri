@@ -1870,6 +1870,51 @@ fn window_maximize(window: tauri::Window) {
     }
 }
 
+/// Clip the borderless main window to rounded corners (macOS). The window
+/// is `decorations:false` → a square, opaque NSWindow; we make its
+/// background clear and round the content view's backing layer so the
+/// webview corners are clipped, while the native drop shadow is preserved.
+/// The app's own CSS paints the opaque background inside the rounded rect.
+/// Best-effort: any null handle is a silent no-op (window stays square).
+#[cfg(target_os = "macos")]
+fn round_main_window_corners_mac(window: &tauri::WebviewWindow) {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+
+    const RADIUS: f64 = 10.0;
+    let ns_window = match window.ns_window() {
+        Ok(ptr) if !ptr.is_null() => ptr as *mut AnyObject,
+        _ => {
+            log::warn!("[UI] round corners: no NSWindow handle — leaving square");
+            return;
+        }
+    };
+    unsafe {
+        // Clear window background so the area outside the rounded rect is
+        // transparent (the desktop shows through the corners), and keep the
+        // shadow so the window still reads as a real macOS window.
+        let _: () = msg_send![ns_window, setOpaque: false];
+        let clear: *mut AnyObject = msg_send![class!(NSColor), clearColor];
+        let _: () = msg_send![ns_window, setBackgroundColor: clear];
+        let _: () = msg_send![ns_window, setHasShadow: true];
+
+        // Round + clip the content view's backing layer. masksToBounds
+        // clips the WKWebView subview to the rounded bounds.
+        let content: *mut AnyObject = msg_send![ns_window, contentView];
+        if content.is_null() {
+            return;
+        }
+        let _: () = msg_send![content, setWantsLayer: true];
+        let layer: *mut AnyObject = msg_send![content, layer];
+        if layer.is_null() {
+            return;
+        }
+        let _: () = msg_send![layer, setCornerRadius: RADIUS];
+        let _: () = msg_send![layer, setMasksToBounds: true];
+    }
+    log::info!("[UI] main window corners rounded ({}px)", RADIUS);
+}
+
 /// Begin an OS-native window move. The custom titlebar drags via CSS
 /// `-webkit-app-region: drag` on Windows (WebView2), but WKWebView has no
 /// app-region support — the mac titlebar calls this from its mousedown
@@ -4736,6 +4781,17 @@ pub fn run() {
             // Reclaim renderer memory from long-hidden windows (suspend
             // overlays / cache-trim main after 5 min hidden)
             webview_mem::start(app.handle().clone());
+
+            // macOS: round the borderless main window's corners to match
+            // native windows. Done here (after creation) via the NSWindow —
+            // the window is decorations:false, which is square + opaque by
+            // default; clipping the content layer to a rounded rect over a
+            // clear window background gives real rounded corners + keeps the
+            // native drop shadow.
+            #[cfg(target_os = "macos")]
+            if let Some(window) = app.get_webview_window("main") {
+                round_main_window_corners_mac(&window);
+            }
 
             // Autolaunch: if --autolaunch flag, keep window hidden (tray only)
             // Normal launch: show window

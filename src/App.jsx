@@ -28,6 +28,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/iconUtils';
 import { friendlyKeyName, displayCombo } from './components/keyboardLayout';
+import { Keyboard as KeyboardLineIcon, Mouse as MouseLineIcon, CircleDot as RadialLineIcon } from 'lucide-react';
 
 // Bump whenever the onboarding tour changes meaningfully. Existing users whose
 // `onboarding_version_seen` is below this value will see the tour again on
@@ -4079,7 +4080,7 @@ function App() {
                 title="Keyboard"
                 aria-label="Keyboard"
               >
-                <span className="view-tab-icon" aria-hidden="true">⌨</span>
+                <span className="view-tab-icon" aria-hidden="true"><KeyboardLineIcon size={16} strokeWidth={1.75} /></span>
                 <span className="view-tab-label">Keyboard</span>
               </button>
               <button
@@ -4089,7 +4090,7 @@ function App() {
                 title="Mouse"
                 aria-label="Mouse"
               >
-                <span className="view-tab-icon" aria-hidden="true">🖱</span>
+                <span className="view-tab-icon" aria-hidden="true"><MouseLineIcon size={16} strokeWidth={1.75} /></span>
                 <span className="view-tab-label">Mouse</span>
               </button>
               <button
@@ -4099,7 +4100,7 @@ function App() {
                 title="Radial"
                 aria-label="Radial"
               >
-                <span className="view-tab-icon" aria-hidden="true">&#x25ce;</span>
+                <span className="view-tab-icon" aria-hidden="true"><RadialLineIcon size={16} strokeWidth={1.75} /></span>
                 <span className="view-tab-label">Radial</span>
               </button>
             </div>

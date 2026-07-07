@@ -259,7 +259,16 @@
 
 .view-tab-icon {
   font-size: 13px;
-  line-height: 1;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Line icons inherit the tab's colour (muted → on-accent when active). */
+.view-tab-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .view-tab:hover {

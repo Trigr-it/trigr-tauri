@@ -483,6 +483,53 @@
   gap: 4px;
 }
 
+/* ── macOS traffic lights ─────────────────────────────────────────
+   Left-positioned red/amber/green circles matching the native window
+   buttons. Glyphs (×, −, zoom arrows) fade in when the cursor is over
+   the cluster, exactly like Finder / Safari. The 8px inset + the row's
+   ~68px width reserve the space the native buttons would occupy. */
+.mac-traffic {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  height: 100%;
+}
+.mac-traffic .tl {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  /* subtle inner ring for definition on light backgrounds */
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.18);
+}
+.mac-traffic .tl-close { background: #ff5f57; }
+.mac-traffic .tl-min   { background: #febc2e; }
+.mac-traffic .tl-zoom  { background: #28c840; }
+.mac-traffic .tl svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  /* glyph colour: a dark tint of each button, matching macOS */
+  color: rgba(0, 0, 0, 0.55);
+}
+.mac-traffic:hover .tl svg { opacity: 1; }
+/* Dim to the greyed-out state when the window is not focused — matches
+   macOS. The root gets data-window-blurred from the focus listener. */
+:root[data-window-blurred="true"] .mac-traffic .tl {
+  background: var(--tl-blurred, #b8b8b8);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-window-blurred="true"] .mac-traffic .tl { --tl-blurred: #565658; }
+}
+
 .wc-btn {
   width: 28px;
   height: 28px;

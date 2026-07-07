@@ -182,7 +182,23 @@ export default function TitleBar({
   const activeLabel = AREA_TABS.find(t => t.key === activeArea)?.label || 'Triggers';
 
   return (
-    <div className="titlebar" data-drag="true" onMouseDown={handleDragMouseDown}>
+    <div className={`titlebar${isMac ? ' titlebar-mac' : ''}`} data-drag="true" onMouseDown={handleDragMouseDown}>
+      {/* macOS traffic lights — left-positioned red/amber/green per native
+          convention. Glyphs reveal on hover-over-the-cluster, exactly like
+          Finder. Windows keeps its own controls on the right (below). */}
+      {isMac && (
+        <div className="mac-traffic" data-drag="false" aria-label="Window controls">
+          <button className="tl tl-close" onClick={handleClose} aria-label="Close" title="Close">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+          </button>
+          <button className="tl tl-min" onClick={handleMinimize} aria-label="Minimize" title="Minimize">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 6h6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+          </button>
+          <button className="tl tl-zoom" onClick={handleMaximize} aria-label="Zoom" title="Zoom">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 7.2V4h3.2M8 4.8V8H4.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        </div>
+      )}
       <div className="titlebar-left">
         <div className="app-logo">
           <span className="trigr-mark">
@@ -380,20 +396,24 @@ export default function TitleBar({
           </svg>
         </button>
 
-        <div className="window-controls">
-          <button className="wc-btn minimize" onClick={handleMinimize} aria-label="Minimize">
-            <svg width="10" height="2" viewBox="0 0 10 2"><rect width="10" height="2" rx="1" fill="currentColor"/></svg>
-          </button>
-          <button className="wc-btn maximize" onClick={handleMaximize} aria-label="Maximize">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
-          </button>
-          <button className="wc-btn close" onClick={handleClose} aria-label="Close">
-            <svg width="10" height="10" viewBox="0 0 10 10">
-              <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
+        {/* Windows / Linux window controls. macOS uses the native-style
+            traffic lights at the far left of the titlebar instead. */}
+        {!isMac && (
+          <div className="window-controls">
+            <button className="wc-btn minimize" onClick={handleMinimize} aria-label="Minimize">
+              <svg width="10" height="2" viewBox="0 0 10 2"><rect width="10" height="2" rx="1" fill="currentColor"/></svg>
+            </button>
+            <button className="wc-btn maximize" onClick={handleMaximize} aria-label="Maximize">
+              <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+            </button>
+            <button className="wc-btn close" onClick={handleClose} aria-label="Close">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
