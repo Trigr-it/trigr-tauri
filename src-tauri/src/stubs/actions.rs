@@ -1001,15 +1001,20 @@ mod macos {
 
             // App / folder launches. macOS `open` handles .app bundles,
             // plain binaries, files and directories uniformly via the opener
-            // crate. Monitor targeting (the Windows SetWinEventHook
-            // machinery) is a later milestone — the target monitor field is
-            // ignored here.
+            // crate. The app picker stores the bundle PATH in appId; browsed
+            // files store `path`. Windows AUMIDs (no leading '/') are
+            // meaningless here and skip with a warning. Monitor targeting is
+            // a later milestone — the target monitor field is ignored.
             "app" => {
                 let path = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()).unwrap_or("");
-                if path.is_empty() {
+                let app_id = data.and_then(|d| d.get("appId")).and_then(|v| v.as_str()).unwrap_or("");
+                let target = if !path.is_empty() { path } else { app_id };
+                if target.is_empty() {
                     warn!("[Keyfire] app action: empty path, skipping");
+                } else if !target.starts_with('/') {
+                    warn!("[Keyfire] app action: \"{}\" is a Windows app id — re-pick the app on this Mac", target);
                 } else {
-                    let _ = opener::open(path);
+                    let _ = opener::open(target);
                 }
             }
 
@@ -1492,10 +1497,14 @@ mod macos {
                     }
                 };
                 let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                if path.is_empty() {
-                    warn!("[Keyfire] Open App step: empty path (AppsFolder IDs are Windows-only)");
+                let app_id = parsed.get("appId").and_then(|v| v.as_str()).unwrap_or("");
+                let target = if !path.is_empty() { path } else { app_id };
+                if target.is_empty() {
+                    warn!("[Keyfire] Open App step: empty path");
+                } else if !target.starts_with('/') {
+                    warn!("[Keyfire] Open App step: \"{}\" is a Windows app id — re-pick the app on this Mac", target);
                 } else {
-                    let _ = opener::open(path);
+                    let _ = opener::open(target);
                 }
             }
 

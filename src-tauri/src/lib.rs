@@ -529,7 +529,50 @@ async fn browse_for_image(app: tauri::AppHandle) -> Value {
 // of { name, appId } where appId is the AUMID (for Store/UWP apps) or the
 // folder-GUID-prefixed path (for Win32 apps with Start Menu shortcuts). Both
 // forms can be launched portably across devices via `shell:AppsFolder\<appId>`.
-#[cfg(not(windows))]
+// macOS: scan the standard application folders for .app bundles (top level
+// plus Utilities). The bundle PATH doubles as the stored appId — the mac
+// "app" action launches it directly. Windows AUMIDs and mac .app paths are
+// both meaningless on the other OS, so cross-platform configs degrade the
+// same way in both directions (a warn + skip).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn list_installed_apps() -> Value {
+    let mut dirs: Vec<std::path::PathBuf> = vec![
+        "/Applications".into(),
+        "/Applications/Utilities".into(),
+        "/System/Applications".into(),
+        "/System/Applications/Utilities".into(),
+    ];
+    if let Ok(home) = std::env::var("HOME") {
+        dirs.push(std::path::PathBuf::from(home).join("Applications"));
+    }
+
+    let mut apps: Vec<(String, String)> = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("app") {
+                continue;
+            }
+            let Some(name) = path.file_stem().map(|s| s.to_string_lossy().to_string()) else {
+                continue;
+            };
+            apps.push((name, path.to_string_lossy().to_string()));
+        }
+    }
+    apps.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    apps.dedup_by(|a, b| a.0 == b.0);
+
+    log::info!("[Keyfire] list_installed_apps: returned {} apps (mac)", apps.len());
+    Value::Array(
+        apps.into_iter()
+            .map(|(name, path)| serde_json::json!({ "name": name, "appId": path }))
+            .collect(),
+    )
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 #[tauri::command]
 fn list_installed_apps() -> Value {
     Value::Array(Vec::new())
