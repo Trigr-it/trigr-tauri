@@ -3416,7 +3416,15 @@ fn paste_clipboard_item(id: i64, app: tauri::AppHandle) {
             }
             "image" => {
                 if let Some(png_bytes) = &item.image_blob {
-                    if let Ok(img) = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png) {
+                    // macOS writes PNG+TIFF straight to the pasteboard — no
+                    // DIB conversion (that's the CF_DIB path Windows needs).
+                    // Windows keeps the BGRA-flip + CF_DIB write below.
+                    #[cfg(target_os = "macos")]
+                    let wrote = actions::write_image_clipboard_pub(png_bytes);
+                    #[cfg(not(target_os = "macos"))]
+                    let wrote = if let Ok(img) =
+                        image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+                    {
                         use image::GenericImageView;
                         let (width, height) = img.dimensions();
                         let rgba = img.to_rgba8();
@@ -3434,10 +3442,15 @@ fn paste_clipboard_item(id: i64, app: tauri::AppHandle) {
                                 dst_row[si + 3] = src_row[si + 3]; // A
                             }
                         }
-
                         write_image_to_clipboard(&bgra, width, height, png_bytes);
+                        true
+                    } else {
+                        false
+                    };
 
-                        // Ctrl+V
+                    if wrote {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        // Ctrl+V (⌘V on mac via the VK translation layer)
                         actions::send_vk_key_pub(0xA2, false);
                         actions::send_vk_key_pub(0x56, false);
                         actions::send_vk_key_pub(0x56, true);

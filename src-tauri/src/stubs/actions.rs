@@ -227,6 +227,23 @@ pub fn cancel_loop_if_running(trigger_key: &str) -> bool {
     false
 }
 
+/// Write a PNG image to the general pasteboard (PNG + TIFF flavors) so the
+/// clipboard-history image paste puts the CLICKED image on the pasteboard
+/// before ⌘V. Without this the mac paste path pasted whatever image was
+/// already on the pasteboard. Marked concealed so the listener skips it.
+/// Returns false off macOS / on encode failure.
+pub fn write_image_clipboard_pub(png_bytes: &[u8]) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::write_image_clipboard(png_bytes)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = png_bytes;
+        false
+    }
+}
+
 /// Release the currently held key (if any). Safe to call from any thread.
 /// Returns the label of the released key (for logging) or None.
 pub fn release_held_key() -> Option<String> {
@@ -520,8 +537,10 @@ mod macos {
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use log::{info, warn};
-    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
-    use objc2_foundation::NSString;
+    use objc2_app_kit::{
+        NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeString, NSPasteboardTypeTIFF,
+    };
+    use objc2_foundation::{NSData, NSString};
     use serde_json::Value;
     use std::cell::Cell;
     use std::collections::VecDeque;
@@ -797,6 +816,50 @@ mod macos {
     pub(super) fn change_count() -> i64 {
         let pb = NSPasteboard::generalPasteboard();
         pb.changeCount() as i64
+    }
+
+    /// Write a PNG image to the general pasteboard as PNG + TIFF flavors.
+    /// Mirrors the expansion image-write path: modern targets read
+    /// public.png, AppKit-native ones (older apps, TextEdit RTFD) read
+    /// public.tiff. Suppressed from the clipboard listener + concealed from
+    /// third-party managers, same as text writes.
+    pub(super) fn write_image_clipboard(png_bytes: &[u8]) -> bool {
+        // Re-encode to TIFF for the AppKit-native flavor. PNG bytes are used
+        // as-is for public.png.
+        let tiff_bytes = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+            .ok()
+            .and_then(|img| {
+                let mut buf = std::io::Cursor::new(Vec::new());
+                img.write_to(&mut buf, image::ImageFormat::Tiff).ok().map(|_| buf.into_inner())
+            });
+
+        SUPPRESS_NEXT_CLIPBOARD_WRITE.store(true, Ordering::SeqCst);
+        let pb = NSPasteboard::generalPasteboard();
+        pb.clearContents();
+        let mut wrote = false;
+        if !png_bytes.is_empty() {
+            wrote |= pb.setData_forType(
+                Some(&NSData::with_bytes(png_bytes)),
+                unsafe { NSPasteboardTypePNG },
+            );
+        }
+        if let Some(ref tiff) = tiff_bytes {
+            wrote |= pb.setData_forType(
+                Some(&NSData::with_bytes(tiff)),
+                unsafe { NSPasteboardTypeTIFF },
+            );
+        }
+        if wrote {
+            // org.nspasteboard.ConcealedType — keep out of third-party managers.
+            let _ = pb.setString_forType(
+                &NSString::from_str(""),
+                &NSString::from_str("org.nspasteboard.ConcealedType"),
+            );
+            super::record_self_clipboard_write();
+        } else {
+            warn!("[CLIP] image pasteboard write failed (no flavor written)");
+        }
+        wrote
     }
 
     pub(super) fn read_clipboard() -> Option<String> {
