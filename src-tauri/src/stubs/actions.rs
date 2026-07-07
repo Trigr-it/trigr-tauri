@@ -365,6 +365,51 @@ pub(crate) fn post_tap_keycode(keycode: u16, flags_bits: u64) {
     }
 }
 
+/// Replay a captured RecordedEvent stream (keys in Windows-VK terms, mouse
+/// with absolute coordinates). Shared by the "Record Macro" macro step and
+/// the Quick Replay global hotkey — same pub surface as the Windows original.
+pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::replay_recorded_events(events, label);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (events, label);
+        log::warn!("[stub] recorded-event replay is not available on this platform yet");
+    }
+}
+
+/// Continuous-replay wrapper for the Quick Loop hotkey: repeats until the
+/// Loop hotkey fires again, Esc, or macros are paused. Inter-iteration pause
+/// polled in 100ms chunks so a stop signal is honoured promptly.
+pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], label: &str) {
+    use crate::recorder::TEMP_MACRO_LOOP_ACTIVE;
+    TEMP_MACRO_LOOP_ACTIVE.store(true, Ordering::SeqCst);
+    log::info!("[Keyfire] {}: loop started", label);
+    let mut iter: u64 = 0;
+    while TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst)
+        && !ESC_LOOP_BREAK.load(Ordering::SeqCst)
+        && crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+    {
+        iter += 1;
+        let iter_label = format!("{} (loop iter {})", label, iter);
+        replay_recorded_events(events, &iter_label);
+        // 500ms breathing room between iterations, polled cancellable.
+        for _ in 0..5 {
+            if !TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst)
+                || ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    TEMP_MACRO_LOOP_ACTIVE.store(false, Ordering::SeqCst);
+    log::info!("[Keyfire] {}: loop stopped after {} iter(s)", label, iter);
+}
+
 /// AHK-style bare-key remap: keydown posts the target chord's downs (no up);
 /// `remap_key_release` posts the ups on the trigger's keyup. `trigger_key`
 /// carries a NATIVE mac keycode on macOS (a VK on Windows) — opaque to the
@@ -1596,9 +1641,9 @@ mod macos {
     /// (capped so absurd waits can't freeze the macro). Events are tagged, so
     /// unlike Windows (which deliberately lets replayed events re-enter the
     /// hook) replayed events do NOT re-trigger Keyfire's own assignments —
-    /// acceptable divergence until the recorder milestone revisits it. Always
-    /// finishes with a defensive modifier release.
-    fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: &str) {
+    /// acceptable divergence; revisit if a real nesting use case appears.
+    /// Always finishes with a defensive modifier release.
+    pub(super) fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: &str) {
         use crate::recorder::RecordedEvent;
         info!("[Keyfire] {}: replaying {} events", label, events.len());
 

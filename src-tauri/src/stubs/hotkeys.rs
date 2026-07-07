@@ -570,10 +570,36 @@ mod macos {
         MouseDown {
             button: MacMouseButton,
             flags: u64,
+            x: f64,
+            y: f64,
         },
         MouseUp {
             button: MacMouseButton,
+            x: f64,
+            y: f64,
         },
+        /// Pointer motion / drag — sent ONLY while a macro recording is
+        /// active (the callback fast-paths moves otherwise).
+        MouseMoved {
+            x: f64,
+            y: f64,
+        },
+        /// Scroll — sent ONLY while a macro recording is active. `delta` is
+        /// in Windows wheel units (±120/notch) so recorded streams stay
+        /// cross-platform.
+        Wheel {
+            delta: i32,
+            x: f64,
+            y: f64,
+        },
+        /// The record hotkey fired while a recording was live — the callback
+        /// already suppressed it and flipped IS_RECORDING_MACRO false.
+        RecorderStop,
+        /// Quick Record / Replay / Loop global hotkeys (suppressed in the
+        /// callback so they never leak to the target app).
+        TempRecord,
+        TempPlay,
+        TempLoop,
         /// OS disabled the tap. The callback already re-enabled it; this is
         /// just so the processor logs. `by_user_input` distinguishes the two
         /// causes: `true` = kCGEventTapDisabledByUserInput (Secure Input mode,
@@ -655,6 +681,15 @@ mod macos {
                         CGEventType::RightMouseUp,
                         CGEventType::OtherMouseDown,
                         CGEventType::OtherMouseUp,
+                        // Moves/drags/scrolls are tapped ONLY for macro
+                        // recording — the callback fast-paths them with a
+                        // single atomic load when no recording is live.
+                        // Scroll TRIGGERS stay deferred (trackpad momentum).
+                        CGEventType::MouseMoved,
+                        CGEventType::LeftMouseDragged,
+                        CGEventType::RightMouseDragged,
+                        CGEventType::OtherMouseDragged,
+                        CGEventType::ScrollWheel,
                     ],
                     move |_proxy, etype, event| tap_callback(&cb_sender, etype, event),
                 ) {
@@ -799,6 +834,11 @@ mod macos {
             | CGEventType::RightMouseUp
             | CGEventType::OtherMouseDown
             | CGEventType::OtherMouseUp
+            | CGEventType::MouseMoved
+            | CGEventType::LeftMouseDragged
+            | CGEventType::RightMouseDragged
+            | CGEventType::OtherMouseDragged
+            | CGEventType::ScrollWheel
                 if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA)
                     == crate::actions::INJECTED_EVENT_MAGIC =>
             {
@@ -830,6 +870,34 @@ mod macos {
                     && super::FILLIN_HWND.load(Ordering::SeqCst) == 0;
                 if space_swallow {
                     crate::expansions::SPACE_PRE_SWALLOWED.store(true, Ordering::SeqCst);
+                }
+
+                // ── Macro recorder hotkeys (atomic compares — callback-safe) ─
+                // Stop combo while recording: suppress it entirely (must not
+                // leak to the target app) and flip the flag IMMEDIATELY so
+                // trailing modifier releases don't land in the buffer — the
+                // same ordering rule as the Windows hook.
+                if !is_modifier_keycode(keycode as u16) && bits != 0 && !is_repeat {
+                    if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+                        if crate::recorder::matches_record_hotkey(keycode as u32, bits) {
+                            crate::recorder::IS_RECORDING_MACRO.store(false, Ordering::SeqCst);
+                            let _ = sender.send(TapEvent::RecorderStop);
+                            return CallbackResult::Drop;
+                        }
+                    } else if MACROS_ENABLED.load(Ordering::SeqCst) {
+                        if crate::recorder::matches_record_hotkey(keycode as u32, bits) {
+                            let _ = sender.send(TapEvent::TempRecord);
+                            return CallbackResult::Drop;
+                        }
+                        if crate::recorder::matches_play_hotkey(keycode as u32, bits) {
+                            let _ = sender.send(TapEvent::TempPlay);
+                            return CallbackResult::Drop;
+                        }
+                        if crate::recorder::matches_loop_hotkey(keycode as u32, bits) {
+                            let _ = sender.send(TapEvent::TempLoop);
+                            return CallbackResult::Drop;
+                        }
+                    }
                 }
 
                 let _ = sender.send(TapEvent::KeyDown {
@@ -868,6 +936,32 @@ mod macos {
                 let _ = sender.send(TapEvent::FlagsChanged { keycode, flags });
                 CallbackResult::Keep
             }
+            CGEventType::MouseMoved
+            | CGEventType::LeftMouseDragged
+            | CGEventType::RightMouseDragged
+            | CGEventType::OtherMouseDragged => {
+                // Fast path: only a recording cares about motion.
+                if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+                    let p = event.location();
+                    let _ = sender.send(TapEvent::MouseMoved { x: p.x, y: p.y });
+                }
+                CallbackResult::Keep
+            }
+            CGEventType::ScrollWheel => {
+                if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+                    let lines = event
+                        .get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_DELTA_AXIS_1);
+                    if lines != 0 {
+                        let p = event.location();
+                        let _ = sender.send(TapEvent::Wheel {
+                            delta: (lines as i32) * 120, // Windows wheel units
+                            x: p.x,
+                            y: p.y,
+                        });
+                    }
+                }
+                CallbackResult::Keep
+            }
             CGEventType::LeftMouseDown
             | CGEventType::RightMouseDown
             | CGEventType::OtherMouseDown => {
@@ -875,7 +969,13 @@ mod macos {
                     return CallbackResult::Keep;
                 };
                 let flags = event.get_flags().bits();
-                let _ = sender.send(TapEvent::MouseDown { button, flags });
+                let p = event.location();
+                let _ = sender.send(TapEvent::MouseDown {
+                    button,
+                    flags,
+                    x: p.x,
+                    y: p.y,
+                });
                 // Bare-mouse suppression: only when a linked profile's app is
                 // frontmost AND the active profile has a bare assignment for
                 // this button. DOWN/UP pairing via MOUSE_DOWN_SUPPRESSED so a
@@ -900,7 +1000,12 @@ mod macos {
                 let Some(button) = event_mouse_button(etype, event) else {
                     return CallbackResult::Keep;
                 };
-                let _ = sender.send(TapEvent::MouseUp { button });
+                let p = event.location();
+                let _ = sender.send(TapEvent::MouseUp {
+                    button,
+                    x: p.x,
+                    y: p.y,
+                });
                 // Only suppress the UP whose DOWN we suppressed.
                 let bit = mouse_button_bit(button);
                 if MOUSE_DOWN_SUPPRESSED.load(Ordering::SeqCst) & bit != 0 {
@@ -1455,10 +1560,94 @@ mod macos {
         parts.join("+")
     }
 
+    /// Recorded button names for crate::recorder (must be &'static).
+    fn mouse_button_record_name(button: MacMouseButton) -> &'static str {
+        match button {
+            MacMouseButton::Left => "Left",
+            MacMouseButton::Right => "Right",
+            MacMouseButton::Middle => "Middle",
+            MacMouseButton::Side1 => "Side1",
+            MacMouseButton::Side2 => "Side2",
+        }
+    }
+
+    /// mac keycode → Windows VK for the macro recorder. Recorded streams are
+    /// stored in VK terms so they replay on BOTH platforms (replay routes
+    /// through the VK→keycode translation in actions.rs). Derived from the
+    /// keycode↔key_id table; keys with no VK equivalent record nothing.
+    fn keycode_to_record_vk(keycode: u16) -> Option<u32> {
+        // Modifiers first — they arrive via flagsChanged, not keyDown.
+        let direct = match keycode {
+            56 => Some(0xA0), // LShift
+            60 => Some(0xA1), // RShift
+            59 => Some(0xA2), // LCtrl
+            62 => Some(0xA3), // RCtrl
+            58 => Some(0xA4), // LAlt (⌥)
+            61 => Some(0xA5), // RAlt
+            55 => Some(0x5B), // LCmd → LWin (Meta stored as 'Win', hard rule 6)
+            54 => Some(0x5C), // RCmd → RWin
+            _ => None,
+        };
+        if direct.is_some() {
+            return direct;
+        }
+        let key_id = keycode_to_key_id(keycode)?;
+        Some(match key_id {
+            id if id.len() == 4 && id.starts_with("Key") => id.as_bytes()[3] as u32, // KeyA..KeyZ → 0x41..
+            id if id.len() == 6 && id.starts_with("Digit") => id.as_bytes()[5] as u32, // Digit0.. → 0x30..
+            "Enter" => 0x0D,
+            "Tab" => 0x09,
+            "Space" => 0x20,
+            "Backspace" => 0x08,
+            "Escape" => 0x1B,
+            "CapsLock" => 0x14,
+            "Delete" => 0x2E,
+            "Insert" => 0x2D,
+            "Home" => 0x24,
+            "End" => 0x23,
+            "PageUp" => 0x21,
+            "PageDown" => 0x22,
+            "ArrowLeft" => 0x25,
+            "ArrowUp" => 0x26,
+            "ArrowRight" => 0x27,
+            "ArrowDown" => 0x28,
+            "F1" => 0x70, "F2" => 0x71, "F3" => 0x72, "F4" => 0x73,
+            "F5" => 0x74, "F6" => 0x75, "F7" => 0x76, "F8" => 0x77,
+            "F9" => 0x78, "F10" => 0x79, "F11" => 0x7A, "F12" => 0x7B,
+            "Semicolon" => 0xBA, "Equal" => 0xBB, "Comma" => 0xBC,
+            "Minus" => 0xBD, "Period" => 0xBE, "Slash" => 0xBF,
+            "Backquote" => 0xC0, "BracketLeft" => 0xDB, "Backslash" => 0xDC,
+            "BracketRight" => 0xDD, "Quote" => 0xDE,
+            "Numpad0" => 0x60, "Numpad1" => 0x61, "Numpad2" => 0x62,
+            "Numpad3" => 0x63, "Numpad4" => 0x64, "Numpad5" => 0x65,
+            "Numpad6" => 0x66, "Numpad7" => 0x67, "Numpad8" => 0x68,
+            "Numpad9" => 0x69, "NumpadMultiply" => 0x6A, "NumpadAdd" => 0x6B,
+            "NumpadSubtract" => 0x6D, "NumpadDecimal" => 0x6E, "NumpadDivide" => 0x6F,
+            "NumpadEnter" => 0x0D,
+            "NumLock" => 0x90,
+            _ => return None,
+        })
+    }
+
+    /// Feed modifier transitions from a flagsChanged into the recorder as
+    /// synthetic modifier key events (Windows captures these as plain
+    /// keydowns; mac modifiers never arrive as keyDown/keyUp).
+    fn record_modifier_transition(keycode: u16, before_bits: u8, after_bits: u8) {
+        if before_bits == after_bits {
+            return;
+        }
+        if let Some(vk) = keycode_to_record_vk(keycode) {
+            let is_down = after_bits & !before_bits != 0;
+            crate::recorder::push_key(vk, 0, is_down);
+        }
+    }
+
     /// Runs on the processor thread. Owns modifier-state tracking, matching,
     /// dispatch and logging.
     fn process_events(receiver: mpsc::Receiver<TapEvent>, app: AppHandle) {
         info!("[HOOK] Event processor started");
+        // Mouse-move capture throttle (16ms) — same rate as the Windows hook.
+        let mut last_move_push = std::time::Instant::now();
         while let Ok(ev) = receiver.recv() {
             match ev {
                 TapEvent::KeyDown {
@@ -1467,6 +1656,12 @@ mod macos {
                     is_repeat,
                 } => {
                     update_modifiers(flags);
+                    // Recorder capture — side observation; the keystroke
+                    // still flows through normal handling below (Windows
+                    // parity). push_key self-guards on IS_RECORDING_MACRO.
+                    if let Some(vk) = keycode_to_record_vk(keycode as u16) {
+                        crate::recorder::push_key(vk, 0, true);
+                    }
                     // Esc sets the global macro-cancel flag on every real
                     // keydown (injected events never reach the processor, so
                     // "real" is guaranteed by the tag filter). Not
@@ -1487,6 +1682,9 @@ mod macos {
                 }
                 TapEvent::KeyUp { keycode, flags } => {
                     update_modifiers(flags);
+                    if let Some(vk) = keycode_to_record_vk(keycode as u16) {
+                        crate::recorder::push_key(vk, 0, false);
+                    }
                     if !is_modifier_keycode(keycode as u16) {
                         if let Some(id) = keycode_to_key_id(keycode as u16) {
                             super::forward_to_waiter(&super::WaitEvent::KeyUp {
@@ -1497,20 +1695,60 @@ mod macos {
                     handle_keyup(keycode as u16, &app);
                 }
                 TapEvent::FlagsChanged { keycode, flags } => {
+                    // Capture modifier transitions before the atomics update.
+                    if crate::recorder::IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+                        let before = modifier_bits();
+                        let after = bits_from_flags(flags);
+                        record_modifier_transition(keycode as u16, before, after);
+                    }
                     handle_flags_changed(keycode as u16, flags, &app);
                 }
-                TapEvent::MouseDown { button, flags } => {
+                TapEvent::MouseDown { button, flags, x, y } => {
                     update_modifiers(flags);
+                    crate::recorder::push_mouse_button(
+                        mouse_button_record_name(button),
+                        x as i32,
+                        y as i32,
+                        true,
+                    );
                     super::forward_to_waiter(&super::WaitEvent::MouseDown {
                         button_name: mouse_button_to_key_id(button).to_string(),
                     });
                     handle_mouse_down(button, flags, &app);
                 }
-                TapEvent::MouseUp { button } => {
+                TapEvent::MouseUp { button, x, y } => {
+                    crate::recorder::push_mouse_button(
+                        mouse_button_record_name(button),
+                        x as i32,
+                        y as i32,
+                        false,
+                    );
                     super::forward_to_waiter(&super::WaitEvent::MouseUp {
                         button_name: mouse_button_to_key_id(button).to_string(),
                     });
                     handle_mouse_up(button, &app);
+                }
+                TapEvent::MouseMoved { x, y } => {
+                    // Throttled capture — only sent while recording.
+                    if last_move_push.elapsed() >= Duration::from_millis(16) {
+                        last_move_push = std::time::Instant::now();
+                        crate::recorder::push_mouse_move(x as i32, y as i32);
+                    }
+                }
+                TapEvent::Wheel { delta, x, y } => {
+                    crate::recorder::push_wheel(delta, x as i32, y as i32);
+                }
+                TapEvent::RecorderStop => {
+                    handle_recorder_stop(&app);
+                }
+                TapEvent::TempRecord => {
+                    handle_temp_record(&app);
+                }
+                TapEvent::TempPlay => {
+                    handle_temp_play(&app);
+                }
+                TapEvent::TempLoop => {
+                    handle_temp_loop(&app);
                 }
                 TapEvent::Disabled { by_user_input } => {
                     if by_user_input {
@@ -1530,6 +1768,118 @@ mod macos {
         }
         // Sender dropped (hook thread gone) — nothing left to process.
         warn!("[HOOK] tap processor thread exiting (channel closed)");
+    }
+
+    // ── Quick Record / macro recorder handlers (twins of the Windows
+    // processor blocks; the callback already suppressed the hotkeys) ────────
+
+    /// Stop-hotkey fired mid-recording. IS_RECORDING_MACRO is already false
+    /// (flipped in the callback). Branch on TEMP_RECORDING_ACTIVE: the
+    /// editor flow lets the frontend retrieve events via
+    /// stop_macro_recording; the global flow finalises here.
+    fn handle_recorder_stop(app: &AppHandle) {
+        let (count, dur) = crate::recorder::status_snapshot();
+        if crate::recorder::TEMP_RECORDING_ACTIVE.load(Ordering::SeqCst) {
+            crate::recorder::TEMP_RECORDING_ACTIVE.store(false, Ordering::SeqCst);
+            let events = crate::recorder::stop();
+            let captured_at = chrono::Local::now().to_rfc3339();
+            if let Ok(mut state) = engine_state().lock() {
+                state.temp_macro_events = Some(events.clone());
+                state.temp_macro_captured_at = Some(captured_at.clone());
+            }
+            crate::persist_temp_macro(&events, &captured_at);
+            crate::hide_recorder_bar(app.clone());
+            let _ = app.emit(
+                "temp-macro-saved",
+                serde_json::json!({
+                    "count": events.len(),
+                    "durationMs": dur,
+                    "capturedAt": captured_at,
+                }),
+            );
+            info!("[RECORDER] Temp macro saved ({} events, {}ms)", events.len(), dur);
+        } else {
+            let _ = app.emit(
+                "recorder-stop-requested",
+                serde_json::json!({ "count": count, "durationMs": dur }),
+            );
+            info!("[RECORDER] Stop hotkey relayed to frontend");
+        }
+    }
+
+    fn handle_temp_record(app: &AppHandle) {
+        // Ignore while the Loop is running — mixing user input into a
+        // replaying stream would corrupt the new recording.
+        if crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst) {
+            info!("[RECORDER] Quick Record press ignored — Quick Loop is running");
+            return;
+        }
+        crate::recorder::TEMP_RECORDING_ACTIVE.store(true, Ordering::SeqCst);
+        // show_recorder_bar shows the bottom-centre recording bar AND calls
+        // recorder::start internally — same pill as the editor flow.
+        crate::show_recorder_bar(app.clone());
+        let _ = app.emit("temp-macro-recording-started", serde_json::json!({}));
+        info!("[RECORDER] Quick Record: recording started via global hotkey");
+    }
+
+    fn temp_macro_snapshot() -> Option<(Vec<crate::recorder::RecordedEvent>, String)> {
+        engine_state().lock().ok().and_then(|s| {
+            match (&s.temp_macro_events, &s.temp_macro_captured_at) {
+                (Some(ev), Some(ts)) if !ev.is_empty() => Some((ev.clone(), ts.clone())),
+                _ => None,
+            }
+        })
+    }
+
+    fn handle_temp_play(app: &AppHandle) {
+        if crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst) {
+            info!("[RECORDER] Quick Replay press ignored — Quick Loop is running");
+            return;
+        }
+        match temp_macro_snapshot() {
+            Some((events, captured_at)) => {
+                // Clear any stale Esc from before this fire — Quick Replay
+                // bypasses the MacroRunningGuard reset infrastructure.
+                crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+                let _ = app.emit(
+                    "temp-macro-replay-started",
+                    serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
+                );
+                thread::spawn(move || {
+                    crate::actions::replay_recorded_events(&events, "Quick Replay");
+                });
+            }
+            None => {
+                let _ = app.emit("temp-macro-replay-empty", serde_json::json!({}));
+                info!("[RECORDER] Quick Replay: no temp macro saved");
+            }
+        }
+    }
+
+    fn handle_temp_loop(app: &AppHandle) {
+        // Toggle: if the loop is already running, this press is a stop.
+        if crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst) {
+            crate::recorder::TEMP_MACRO_LOOP_ACTIVE.store(false, Ordering::SeqCst);
+            let _ = app.emit("temp-macro-loop-stopped", serde_json::json!({}));
+            info!("[RECORDER] Quick Loop: stop requested via hotkey");
+            return;
+        }
+        match temp_macro_snapshot() {
+            Some((events, captured_at)) => {
+                crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+                let _ = app.emit(
+                    "temp-macro-loop-started",
+                    serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
+                );
+                thread::spawn(move || {
+                    crate::actions::replay_recorded_events_loop(&events, "Quick Loop");
+                });
+            }
+            None => {
+                let _ = app.emit("temp-macro-replay-empty", serde_json::json!({}));
+                info!("[RECORDER] Quick Loop: no temp macro saved");
+            }
+        }
     }
 
     /// Modifier press/release bookkeeping (modifiers arrive as flagsChanged
@@ -2789,36 +3139,49 @@ pub fn set_pause_hotkey(combo: &str) {
     }
 }
 
-// Voice / radial / Quick Record combos are parsed and stored so config
-// round-trips, but their processor paths are later milestones — they are NOT
-// added to the suppress set (a suppressed-but-unfired key would be dead).
+// Voice / radial combos are parsed and stored so config round-trips, but
+// their processor paths are later milestones — they are NOT added to the
+// suppress set (a suppressed-but-unfired key would be dead).
 pub fn set_radial_menu_hotkey(combo: &str) {
     if let Ok(mut state) = engine_state().lock() {
         state.radial_menu_hotkey = parse_hotkey_combo(combo);
     }
 }
 
+// Quick Record hotkeys: the tuple's key slot carries a mac keycode; the
+// recorder statics get the same value (the tap callback matches keycodes
+// against them — consistent currency within the platform, and recorded
+// STREAMS are stored in VK terms regardless).
 pub fn set_temp_macro_loop_hotkey(combo: &str) {
     if let Ok(mut state) = engine_state().lock() {
-        state.temp_macro_loop_hotkey = parse_hotkey_combo(combo);
-        state.temp_macro_loop_hotkey_str =
-            (!combo.is_empty()).then(|| combo.to_string());
+        let parsed = parse_hotkey_combo(combo);
+        state.temp_macro_loop_hotkey = parsed;
+        state.temp_macro_loop_hotkey_str = (!combo.is_empty()).then(|| combo.to_string());
+        let (bits, key) = parsed.unwrap_or((0, 0));
+        crate::recorder::TEMP_MACRO_LOOP_BITS.store(bits, Ordering::SeqCst);
+        crate::recorder::TEMP_MACRO_LOOP_VK.store(key, Ordering::SeqCst);
     }
 }
 
 pub fn set_temp_macro_play_hotkey(combo: &str) {
     if let Ok(mut state) = engine_state().lock() {
-        state.temp_macro_play_hotkey = parse_hotkey_combo(combo);
-        state.temp_macro_play_hotkey_str =
-            (!combo.is_empty()).then(|| combo.to_string());
+        let parsed = parse_hotkey_combo(combo);
+        state.temp_macro_play_hotkey = parsed;
+        state.temp_macro_play_hotkey_str = (!combo.is_empty()).then(|| combo.to_string());
+        let (bits, key) = parsed.unwrap_or((0, 0));
+        crate::recorder::TEMP_MACRO_PLAY_BITS.store(bits, Ordering::SeqCst);
+        crate::recorder::TEMP_MACRO_PLAY_VK.store(key, Ordering::SeqCst);
     }
 }
 
 pub fn set_temp_macro_record_hotkey(combo: &str) {
     if let Ok(mut state) = engine_state().lock() {
-        state.temp_macro_record_hotkey = parse_hotkey_combo(combo);
-        state.temp_macro_record_hotkey_str =
-            (!combo.is_empty()).then(|| combo.to_string());
+        let parsed = parse_hotkey_combo(combo);
+        state.temp_macro_record_hotkey = parsed;
+        state.temp_macro_record_hotkey_str = (!combo.is_empty()).then(|| combo.to_string());
+        let (bits, key) = parsed.unwrap_or((0, 0));
+        crate::recorder::TEMP_MACRO_RECORD_BITS.store(bits, Ordering::SeqCst);
+        crate::recorder::TEMP_MACRO_RECORD_VK.store(key, Ordering::SeqCst);
     }
 }
 

@@ -1000,8 +1000,47 @@ fn show_recorder_countdown(app: tauri::AppHandle) {
 /// conflicts with cross-module pub(crate) visibility.
 #[cfg(not(windows))]
 pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
-    let _ = app;
-    log::warn!("[stub] macro recorder UI is not available on this platform yet");
+    // The countdown window is pre-built hidden in setup on all platforms.
+    let Some(win) = app.get_webview_window("countdown") else {
+        log::error!("[RECORDER] countdown window missing");
+        return;
+    };
+    let _ = webview_mem::resume_for_show(&app, "countdown");
+
+    // Pick the monitor the MAIN window is on (that's where the user just
+    // clicked Record); fall back to the cursor's monitor. Same layout maths
+    // as the Windows twin: fixed bottom-centre recording bar.
+    let monitor = app
+        .get_webview_window("main")
+        .and_then(|w| w.current_monitor().ok().flatten())
+        .or_else(|| {
+            app.cursor_position()
+                .ok()
+                .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
+        })
+        .or_else(|| app.primary_monitor().ok().flatten());
+    if let Some(monitor) = monitor {
+        let wa = monitor.work_area();
+        let scale = monitor.scale_factor();
+        let phys_w = (320.0 * scale).round() as i32;
+        let phys_h = (50.0 * scale).round() as i32;
+        let margin = (30.0 * scale).round() as i32;
+        let phys_x = wa.position.x + ((wa.size.width as i32) - phys_w) / 2;
+        let phys_y = wa.position.y + (wa.size.height as i32) - phys_h - margin;
+        let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
+        let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+    }
+    let _ = win.show();
+    // No set_focus — the user's target app must keep keyboard focus during
+    // the recording.
+    log::info!("[RECORDER] Recording bar shown");
+
+    // Start the recorder the instant the bar appears. The 200ms grace window
+    // inside recorder::start() filters the mouse-up from the user's click on
+    // the Record button.
+    recorder::COUNTDOWN_CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
+    recorder::start();
+    log::info!("[RECORDER] Recording started (immediate, no countdown)");
 }
 
 #[cfg(windows)]
@@ -1117,7 +1156,24 @@ pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
 /// `recorder_countdown_complete` at the moment 3-2-1 finishes.
 #[cfg(not(windows))]
 fn morph_countdown_to_pill(app: &tauri::AppHandle) {
-    let _ = app;
+    // 420x60 logical, top-right corner with 20px margin — same shape as the
+    // Windows twin; the component's CSS aligns the pill inside the window.
+    let Some(win) = app.get_webview_window("countdown") else { return };
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else { return };
+    let wa = monitor.work_area();
+    let scale = monitor.scale_factor();
+    let phys_w = (420.0 * scale).round() as i32;
+    let phys_h = (60.0 * scale).round() as i32;
+    let margin = (20.0 * scale).round() as i32;
+    let phys_x = wa.position.x + (wa.size.width as i32) - phys_w - margin;
+    let phys_y = wa.position.y + margin;
+    let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
+    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
 }
 
 #[cfg(windows)]
