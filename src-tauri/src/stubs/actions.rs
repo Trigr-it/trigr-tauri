@@ -1659,8 +1659,11 @@ mod macos {
         let mut prev_t: u64 = 0;
         const MAX_GAP_MS: u64 = 5000;
         // Which button (LButton/RButton/MButton) is synthetically held, so
-        // motion replays as a drag rather than a move.
+        // motion replays as a drag rather than a move — and the previous
+        // pointer position, so drags carry real motion deltas (the system's
+        // edge-snap detection reads deltas, not positions).
         let mut held_button: Option<&'static str> = None;
+        let mut last_pos: Option<(i32, i32)> = None;
 
         for evt in events.iter() {
             if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
@@ -1692,31 +1695,41 @@ mod macos {
                     send_mouse_move(*x as f64, *y as f64);
                     replay_mouse_button(button, false);
                     held_button = Some(recorded_button_name(button));
+                    last_pos = Some((*x, *y));
                 }
                 RecordedEvent::MouseUp { button, x, y, .. } => {
                     // Position the release point as a DRAG while the button
                     // is down — a MouseMoved here would break the drag.
                     if let Some(hb) = held_button {
-                        send_mouse_drag(hb, *x as f64, *y as f64);
+                        let (dx, dy) = last_pos
+                            .map(|(lx, ly)| ((*x - lx) as i64, (*y - ly) as i64))
+                            .unwrap_or((0, 0));
+                        send_mouse_drag(hb, *x as f64, *y as f64, dx, dy);
                     } else {
                         send_mouse_move(*x as f64, *y as f64);
                     }
                     replay_mouse_button(button, true);
                     held_button = None;
+                    last_pos = Some((*x, *y));
                 }
                 RecordedEvent::MouseMove { x, y, .. } => {
                     // Motion while a button is held must replay as the
                     // matching *MouseDragged type — macOS apps only
                     // recognise drags by event type (see send_mouse_drag).
                     if let Some(hb) = held_button {
-                        send_mouse_drag(hb, *x as f64, *y as f64);
+                        let (dx, dy) = last_pos
+                            .map(|(lx, ly)| ((*x - lx) as i64, (*y - ly) as i64))
+                            .unwrap_or((0, 0));
+                        send_mouse_drag(hb, *x as f64, *y as f64, dx, dy);
                     } else {
                         send_mouse_move(*x as f64, *y as f64);
                     }
+                    last_pos = Some((*x, *y));
                 }
                 RecordedEvent::Wheel { delta, x, y, .. } => {
                     send_mouse_move(*x as f64, *y as f64);
                     send_scroll(*delta);
+                    last_pos = Some((*x, *y));
                 }
             }
         }
@@ -2289,7 +2302,13 @@ mod macos {
     /// (unlike Windows, where WM_MOUSEMOVE + button state is enough). Plain
     /// MouseMoved between a down and an up reads as "click, hover away,
     /// release elsewhere" and breaks drag/selection replay.
-    fn send_mouse_drag(button: &str, x: f64, y: f64) {
+    ///
+    /// `dx`/`dy` are the motion deltas since the previous event. Real
+    /// hardware drags carry them in kCGMouseEventDeltaX/Y and parts of the
+    /// SYSTEM read deltas rather than positions — window edge-snap/tiling
+    /// detection in particular never arms on a zero-delta drag even though
+    /// the window follows the positions.
+    fn send_mouse_drag(button: &str, x: f64, y: f64, dx: i64, dy: i64) {
         use core_graphics::event::CGMouseButton;
         let (drag_t, cg_button) = match button {
             "LButton" => (CGEventType::LeftMouseDragged, CGMouseButton::Left),
@@ -2300,6 +2319,8 @@ mod macos {
         let Some(src) = new_source() else { return };
         let point = core_graphics::geometry::CGPoint::new(x, y);
         if let Ok(ev) = CGEvent::new_mouse_event(src, drag_t, point, cg_button) {
+            ev.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, dx);
+            ev.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, dy);
             ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
             ev.post(CGEventTapLocation::HID);
         }
