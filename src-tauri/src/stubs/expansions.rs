@@ -1700,6 +1700,20 @@ fn html_escape(s: &str) -> String {
     out
 }
 
+/// Strip rich-text-editor chrome from expansion HTML before it reaches the
+/// pasteboard. The contenteditable serializes the app's OWN UI font as
+/// inline `font-family: var(--font-body)` declarations — CSS variables mean
+/// nothing outside the app, so paste targets fall back to their HTML
+/// default font (Times) instead of the caret font. Remove every
+/// font-family declaration whose value is a var() reference, then drop
+/// style attributes left empty so a chrome-only span reads as plain.
+fn strip_editor_font_styles(html: &str) -> String {
+    let re_font = regex_lite::Regex::new(r"font-family:\s*var\([^)]*\)\s*;?\s*").unwrap();
+    let stripped = re_font.replace_all(html, "");
+    let re_empty_style = regex_lite::Regex::new(r#"\s*style="\s*""#).unwrap();
+    re_empty_style.replace_all(&stripped, "").to_string()
+}
+
 /// True when a resolved HTML fragment carries real formatting worth pasting.
 ///
 /// The rich-text editor stores an `html` body for EVERY expansion, including
@@ -1777,8 +1791,10 @@ fn resolve_tokens_html(
     // safe; document if a user trips this.
     let (resolved, _) = resolve_tokens(&html_inline, global_vars, fillin_values);
 
-    // Strip residual ZWSPs (editor cursor anchors serialized by innerHTML).
-    resolved.replace('\u{200B}', "")
+    // Strip residual ZWSPs (editor cursor anchors serialized by innerHTML)
+    // and the editor's own var()-based font-family chrome — the single
+    // chokepoint all three fire paths resolve through.
+    strip_editor_font_styles(&resolved.replace('\u{200B}', ""))
 }
 
 // ── Public API for Tauri commands ───────────────────────────────────────────
@@ -2860,6 +2876,24 @@ mod tests {
         assert_eq!(combo_str_to_keycodes("PgUp"), Some((vec![], 116)));
         // Ctrl+Win dedups to a single ⌘
         assert_eq!(combo_str_to_keycodes("Ctrl+Win+A"), Some((vec![55], 0)));
+    }
+
+    #[test]
+    fn editor_font_chrome_is_stripped_and_reads_plain() {
+        // Real shape from a saved expansion: the editor's UI font leaks in
+        // as an inline var() font-family — meaningless outside the app.
+        let html = r#"<span style="font-family: var(--font-body);">Typed text.</span><div><br></div>"#;
+        let stripped = strip_editor_font_styles(html);
+        assert!(!stripped.contains("style="), "chrome style must be removed: {stripped}");
+        assert!(!html_has_formatting(&stripped), "chrome-only span reads as plain");
+        // Other declarations in the same style attribute survive.
+        let mixed = r#"<span style="font-family: var(--font-body); color: red;">x</span>"#;
+        let stripped = strip_editor_font_styles(mixed);
+        assert!(stripped.contains("color: red"), "real styling kept: {stripped}");
+        assert!(html_has_formatting(&stripped));
+        // Non-var font-family (user-chosen) is kept.
+        let user_font = r#"<span style="font-family: Georgia;">x</span>"#;
+        assert!(strip_editor_font_styles(user_font).contains("Georgia"));
     }
 
     #[test]

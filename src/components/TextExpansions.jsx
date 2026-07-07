@@ -28,6 +28,20 @@ function plainTextToHtml(text) {
   return escaped.replace(/\n/g, '<br>');
 }
 
+// contenteditable serializes the editor's OWN UI font into inline
+// `font-family: var(--font-body)` spans (WebKit does this when typing next
+// to styled chips). CSS variables mean nothing outside the app, so paste
+// targets fall back to their HTML default font (Times New Roman) instead of
+// the caret font. Strip the declaration — and any style attribute left
+// empty — before the html is persisted. User-chosen fonts (real family
+// names) are untouched.
+function stripEditorFontChrome(html) {
+  if (!html) return html;
+  return html
+    .replace(/font-family:\s*var\([^)]*\)\s*;?\s*/gi, '')
+    .replace(/\s*style="\s*"/gi, '');
+}
+
 function htmlToPlainText(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html
@@ -484,7 +498,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   }, [fillInRename]);
 
   const notify = useCallback(() => {
-    const html = editorRef.current.innerHTML;
+    const html = stripEditorFontChrome(editorRef.current.innerHTML);
     onChange({ html, text: htmlToPlainText(html) });
   }, [onChange]);
 
