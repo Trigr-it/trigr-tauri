@@ -4,7 +4,7 @@ import { Pin, PinOff, Star, Link2, Maximize2, Clipboard, Square, Columns2, Layou
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, displayModifier } from './keyboardLayout';
 import './ClipboardPanel.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -811,7 +811,7 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
               Press{' '}
               {clipboardPasteHotkey.split('+').map((p, i, arr) => (
                 <React.Fragment key={i}>
-                  <kbd className="cbg-tip-kbd">{friendlyKeyName(p)}</kbd>
+                  <kbd className="cbg-tip-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                   {i < arr.length - 1 && <span className="cbg-tip-plus">+</span>}
                 </React.Fragment>
               ))}

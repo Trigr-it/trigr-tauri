@@ -3,15 +3,17 @@ import { Disc, Keyboard as KeyboardIcon, Plus } from 'lucide-react';
 import './KeyboardCanvas.css';
 import {
   KEYBOARD_ROWS, SYSTEM_KEYS, STATIC_BARE_ALLOWED, KEY_UNIT, KEY_GAP, KEY_HEIGHT,
-  KEYBOARD_NATURAL_WIDTH, KEYBOARD_NATURAL_HEIGHT, friendlyKeyName,
+  KEYBOARD_NATURAL_WIDTH, KEYBOARD_NATURAL_HEIGHT, friendlyKeyName, IS_MAC, displayCombo, displayModifier,
 } from './keyboardLayout';
 import NumpadCanvas from './NumpadCanvas';
 
+// Chip labels are display-only — the ids stay the cross-platform storage
+// tokens ('Win' = Meta = ⌘ on macOS, hard rule 6).
 const MODIFIERS = [
-  { id: 'Ctrl',  label: 'Ctrl',   color: '#64b4ff' },
-  { id: 'Alt',   label: 'Alt',    color: '#c864ff' },
-  { id: 'Shift', label: 'Shift',  color: '#50c878' },
-  { id: 'Win',   label: '⊞ Win', color: '#ffc832' },
+  { id: 'Ctrl',  label: 'Ctrl',  color: '#64b4ff' },
+  { id: 'Alt',   label: IS_MAC ? '⌥ Option' : 'Alt', color: '#c864ff' },
+  { id: 'Shift', label: 'Shift', color: '#50c878' },
+  { id: 'Win',   label: IS_MAC ? '⌘ Cmd' : '⊞ Win', color: '#ffc832' },
 ];
 
 // Build the display string for the current modifier combo e.g. "Ctrl+Alt"
@@ -115,7 +117,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
         {isRecording ? (
           <span className="combo-hint record-hint">Press any key combination — click Recording to cancel</span>
         ) : recordCapture ? (
-          <span className="combo-hint record-captured">Captured: {recordCapture}</span>
+          <span className="combo-hint record-captured">Captured: {displayCombo(recordCapture)}</span>
         ) : newTriggerHint ? (
           <span className="combo-hint combo-hint-new-trigger">Press <strong>Record</strong> or click a key on the keyboard to start</span>
         ) : activeModifiers.length === 0 ? (
@@ -137,7 +139,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             <span className="combo-active-label">Layer:</span>
             {combo.split('+').map((m, i, arr) => (
               <React.Fragment key={m}>
-                <kbd className="combo-key">{m}</kbd>
+                <kbd className="combo-key">{displayModifier(m)}</kbd>
                 {i < arr.length - 1 && <span className="combo-plus">+</span>}
               </React.Fragment>
             ))}
@@ -348,7 +350,7 @@ export default function KeyboardCanvas({
           </span>
         ) : (
           <span className="label-muted">
-            Click any key to assign a macro to <strong className="label-combo">{combo} + key</strong>
+            Click any key to assign a macro to <strong className="label-combo">{displayCombo(combo)} + key</strong>
           </span>
         )}
       </div>

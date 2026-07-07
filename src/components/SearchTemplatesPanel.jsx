@@ -10,7 +10,7 @@ import { SearchBar } from './SearchBar';
 import { Zap } from 'lucide-react';
 import { findPresetIconForUrl } from '../utils/presetIcons';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, displayModifier } from './keyboardLayout';
 
 // ── Colour palette (matches TextExpansions) ────────────────────────────────
 
@@ -1257,7 +1257,7 @@ export default function SearchTemplatesPanel({
               Press{' '}
               {(searchOverlayHotkey || 'Ctrl+Space').split('+').map((p, i, arr) => (
                 <React.Fragment key={i}>
-                  <kbd className="stp-tip-kbd">{friendlyKeyName(p)}</kbd>
+                  <kbd className="stp-tip-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                   {i < arr.length - 1 && <span className="stp-tip-plus">+</span>}
                 </React.Fragment>
               ))}

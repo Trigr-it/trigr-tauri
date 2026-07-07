@@ -27,7 +27,7 @@ import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/iconUtils';
-import { friendlyKeyName } from './components/keyboardLayout';
+import { friendlyKeyName, displayCombo } from './components/keyboardLayout';
 
 // Bump whenever the onboarding tour changes meaningfully. Existing users whose
 // `onboarding_version_seen` is below this value will see the tour again on
@@ -2486,7 +2486,7 @@ function App() {
     if (!newKeyId.startsWith('MOUSE_')) setActiveView('keyboard');
     saveConfig(newAssignments, profiles, activeProfile);
     const keyLabel = friendlyKeyName(newKeyId);
-    const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
+    const comboLabel = newCombo === 'BARE' ? keyLabel : `${displayCombo(newCombo)}+${keyLabel}`;
     showNotification(`Duplicated to ${comboLabel}`);
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
 

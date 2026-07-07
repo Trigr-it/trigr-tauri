@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { Search, SearchX, ShieldCheck } from 'lucide-react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, displayModifier } from './keyboardLayout';
 import { openFeedback } from '../utils/feedback';
 
 const GLOBAL_INPUT_METHODS = [
@@ -1153,7 +1153,7 @@ export default function SettingsPanel({
                     mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
                     const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                     const combo = [...mods, e.code].join('+');
-                    const label = [...mods, keyDisplay].join('+');
+                    const label = [...mods.map(displayModifier), keyDisplay].join('+');
                     const result = await window.electronAPI?.checkHotkeyConflict(combo, 'pause');
                     setPauseConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                     setCapturedPauseKey({ combo, label });
@@ -1193,7 +1193,7 @@ export default function SettingsPanel({
                   <span className="settings-qs-hotkey-badge">
                     {globalPauseToggleKey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
                     ))}
@@ -1268,7 +1268,7 @@ export default function SettingsPanel({
                     mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
                     const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                     const combo = [...mods, e.code].join('+');
-                    const label = [...mods, keyDisplay].join('+');
+                    const label = [...mods.map(displayModifier), keyDisplay].join('+');
                     setCapturedHotkey({ combo, label });
                   }}
                 >
@@ -1305,7 +1305,7 @@ export default function SettingsPanel({
                   <span className="settings-qs-hotkey-badge">
                     {searchOverlayHotkey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
                     ))}
@@ -1422,7 +1422,7 @@ export default function SettingsPanel({
                         mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
                         const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                         const combo = [...mods, e.code].join('+');
-                        const label = [...mods, keyDisplay].join('+');
+                        const label = [...mods.map(displayModifier), keyDisplay].join('+');
                         const result = await window.electronAPI?.checkHotkeyConflict(combo, 'clipboard_paste');
                         setClipPasteConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                         setCapturedClipPasteKey({ combo, label });
@@ -1462,7 +1462,7 @@ export default function SettingsPanel({
                       <span className="settings-qs-hotkey-badge">
                         {clipboardPasteHotkey.split('+').map((p, i, arr) => (
                           <React.Fragment key={i}>
-                            <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                            <kbd className="settings-qs-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                             {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                           </React.Fragment>
                         ))}
@@ -1618,7 +1618,7 @@ export default function SettingsPanel({
                     mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
                     const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                     const combo = [...mods, e.code].join('+');
-                    const label = [...mods, keyDisplay].join('+');
+                    const label = [...mods.map(displayModifier), keyDisplay].join('+');
                     const result = await window.electronAPI?.checkHotkeyConflict(combo, 'voice');
                     setVoiceConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                     setCapturedVoiceKey({ combo, label });
@@ -1658,7 +1658,7 @@ export default function SettingsPanel({
                   <span className="settings-qs-hotkey-badge">
                     {voiceHotkey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
                     ))}
@@ -1759,7 +1759,7 @@ export default function SettingsPanel({
                       mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
                       const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                       const combo = [...mods, e.code].join('+');
-                      const label = [...mods, keyDisplay].join('+');
+                      const label = [...mods.map(displayModifier), keyDisplay].join('+');
                       const result = await window.electronAPI?.checkHotkeyConflict?.(combo, 'temp_macro_record');
                       setTempRecordConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                       setCapturedTempRecordKey({ combo, label });
@@ -1797,7 +1797,7 @@ export default function SettingsPanel({
                     <span className="settings-qs-hotkey-badge">
                       {tempMacroStatus.recordHotkey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
                       ))}
@@ -1858,7 +1858,7 @@ export default function SettingsPanel({
                       mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
                       const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                       const combo = [...mods, e.code].join('+');
-                      const label = [...mods, keyDisplay].join('+');
+                      const label = [...mods.map(displayModifier), keyDisplay].join('+');
                       const result = await window.electronAPI?.checkHotkeyConflict?.(combo, 'temp_macro_play');
                       setTempPlayConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                       setCapturedTempPlayKey({ combo, label });
@@ -1896,7 +1896,7 @@ export default function SettingsPanel({
                     <span className="settings-qs-hotkey-badge">
                       {tempMacroStatus.playHotkey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
                       ))}
@@ -1957,7 +1957,7 @@ export default function SettingsPanel({
                       mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
                       const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
                       const combo = [...mods, e.code].join('+');
-                      const label = [...mods, keyDisplay].join('+');
+                      const label = [...mods.map(displayModifier), keyDisplay].join('+');
                       const result = await window.electronAPI?.checkHotkeyConflict?.(combo, 'temp_macro_loop');
                       setTempLoopConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
                       setCapturedTempLoopKey({ combo, label });
@@ -1995,7 +1995,7 @@ export default function SettingsPanel({
                     <span className="settings-qs-hotkey-badge">
                       {tempMacroStatus.loopHotkey.split('+').map((p, i, arr) => (
                         <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                           {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
                         </React.Fragment>
                       ))}

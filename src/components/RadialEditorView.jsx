@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { Info } from 'lucide-react';
 import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, displayModifier } from './keyboardLayout';
 import './RadialEditorView.css';
 import { SearchBar } from './SearchBar';
 
@@ -423,7 +423,7 @@ export default function RadialEditorView({
               <span className="rmp-hotkey-badge">
                 {radialMenuHotkey.split('+').map((p, i, arr) => (
                   <React.Fragment key={i}>
-                    <kbd className="rmp-kbd">{friendlyKeyName(p)}</kbd>
+                    <kbd className="rmp-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                     {i < arr.length - 1 && <span className="rmp-plus">+</span>}
                   </React.Fragment>
                 ))}
@@ -696,7 +696,7 @@ export default function RadialEditorView({
                 Press{' '}
                 {radialMenuHotkey.split('+').map((p, i, arr) => (
                   <React.Fragment key={i}>
-                    <kbd className="rmp-kbd">{friendlyKeyName(p)}</kbd>
+                    <kbd className="rmp-kbd">{friendlyKeyName(displayModifier(p))}</kbd>
                     {i < arr.length - 1 && <span className="rmp-plus">+</span>}
                   </React.Fragment>
                 ))}

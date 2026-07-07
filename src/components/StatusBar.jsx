@@ -1,13 +1,13 @@
 import React from 'react';
 import './StatusBar.css';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, displayModifier } from './keyboardLayout';
 
 export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, assignmentCount, engineStatus, lastFired, appVersion, globalPauseToggleKey }) {
   const { uiohookAvailable, nutjsAvailable, isDemoMode } = engineStatus || {};
 
   function pauseHotkeyLabel(combo) {
     if (!combo) return null;
-    return combo.split('+').map(p => friendlyKeyName(p)).join('+');
+    return combo.split('+').map(p => friendlyKeyName(displayModifier(p))).join('+');
   }
 
   return (

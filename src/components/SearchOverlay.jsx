@@ -4,7 +4,7 @@ import {
   Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, Edit2,
 } from 'lucide-react';
 import './SearchOverlay.css';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, displayCombo } from './keyboardLayout';
 import { readVoicePhrases } from '../voicePhrases';
 
 // ── Type metadata ──────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ function buildComboLabel(combo, keyId) {
   if (combo === 'BARE' || combo === '') {
     return `${keyPart} (bare)`;
   }
-  return `${combo}+${keyPart}`;
+  return `${displayCombo(combo)}+${keyPart}`;
 }
 
 // ── preview builder ────────────────────────────────────────────────────────────

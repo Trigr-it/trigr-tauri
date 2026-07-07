@@ -2,6 +2,29 @@
 // Each row is an array of key objects
 // width is in units (1 = standard key width ~42px)
 
+// macOS shows the cross-platform storage tokens with native symbols:
+// 'Win' (Meta) is ⌘ Command, 'Alt' is ⌥ Option. DISPLAY-ONLY — storage keys
+// keep the tokens so configs stay cross-platform (MAC-PORT.md hard rule 6).
+// 'Ctrl' genuinely means macOS Control, so it displays unchanged.
+// Declared before KEYBOARD_ROWS so the layout labels below can use it.
+export const IS_MAC = navigator.platform.toUpperCase().includes('MAC');
+
+export function displayModifier(token) {
+  if (!IS_MAC) return token;
+  switch (token) {
+    case 'Win': return '⌘';
+    case 'Alt': return '⌥';
+    default: return token;
+  }
+}
+
+// Map every modifier token in a stored combo string for display.
+// 'BARE'/'GLOBAL'/empty pass through untouched.
+export function displayCombo(combo) {
+  if (!combo || combo === 'BARE' || combo === 'GLOBAL') return combo;
+  return combo.split('+').map(displayModifier).join('+');
+}
+
 export const KEYBOARD_ROWS = [
   // Row 0: Function keys
   [
@@ -92,14 +115,14 @@ export const KEYBOARD_ROWS = [
     { id: 'ShiftRight', label: 'Shift', width: 2.75 },
   ],
 
-  // Row 5: Bottom row
+  // Row 5: Bottom row (Meta/Alt caps show their native mac glyphs)
   [
     { id: 'ControlLeft', label: 'Ctrl', width: 1.25 },
-    { id: 'MetaLeft', label: '⊞', width: 1.25 },
-    { id: 'AltLeft', label: 'Alt', width: 1.25 },
+    { id: 'MetaLeft', label: IS_MAC ? '⌘' : '⊞', width: 1.25 },
+    { id: 'AltLeft', label: IS_MAC ? '⌥' : 'Alt', width: 1.25 },
     { id: 'Space', label: '', width: 6.25 },
-    { id: 'AltRight', label: 'Alt', width: 1.25 },
-    { id: 'MetaRight', label: '⊞', width: 1.25 },
+    { id: 'AltRight', label: IS_MAC ? '⌥' : 'Alt', width: 1.25 },
+    { id: 'MetaRight', label: IS_MAC ? '⌘' : '⊞', width: 1.25 },
     { id: 'ContextMenu', label: '☰', width: 1.25 },
     { id: 'ControlRight', label: 'Ctrl', width: 1.25 },
   ],

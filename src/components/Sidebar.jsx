@@ -6,7 +6,7 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { GripVertical, Link, Keyboard, Zap, Disc, Plus, Download } from 'lucide-react';
 import './Sidebar.css';
 import { SearchBar } from './SearchBar';
-import { friendlyKeyName } from './keyboardLayout';
+import { friendlyKeyName, displayCombo } from './keyboardLayout';
 import { useModalKeyboard } from '../hooks/useModalKeyboard';
 
 const TYPE_META = {
@@ -1012,7 +1012,7 @@ export default function Sidebar({
         className={`sidebar-item type-${macro.type}${isSelected ? ' sidebar-item-active' : ''}${isBareItem ? ' bare-item' : ''}`}
         onClick={() => onSelectAssignment(keyId, combo)}
         onContextMenu={e => handleAssignContextMenu(e, combo, keyId, macro)}
-        title={`Edit ${isBareItem ? 'Bare' : combo}+${displayKey}`}
+        title={`Edit ${isBareItem ? 'Bare' : displayCombo(combo)}+${displayKey}`}
       >
         <div className="sidebar-key-stack">
           <span className="sidebar-key-badge" style={{ borderColor: meta.color + '55', color: meta.color }}>
@@ -1081,7 +1081,7 @@ export default function Sidebar({
     const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
     const displayKey = MOUSE_KEY_LABELS[keyId] || friendlyKeyName(keyId);
     const isSelected = selectedKey === keyId && combo === currentCombo;
-    const comboLabel = combo === 'BARE' ? displayKey : combo + '+' + displayKey;
+    const comboLabel = combo === 'BARE' ? displayKey : displayCombo(combo) + '+' + displayKey;
     const typeName = TYPE_NAMES[macro.type] || macro.type;
     const displayLabel = macro.label || macro.data?.text || macro.data?.url || macro.data?.path || typeName;
 

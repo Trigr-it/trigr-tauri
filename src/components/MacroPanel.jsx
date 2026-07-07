@@ -10,7 +10,7 @@ import {
 import './MacroPanel.css';
 import MonitorPicker from './MonitorPicker';
 import { SearchBar } from './SearchBar';
-import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
+import { friendlyKeyName, STATIC_BARE_ALLOWED, displayModifier } from './keyboardLayout';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 
 // AHK is Windows-only forever (closed decision) — hide it from the type
@@ -427,15 +427,19 @@ function HotkeyCaptureInput({ value, onChange }) {
         <div className="step-advisory-row step-advisory-row--inline">
           <span className="step-advisory-icon" aria-hidden="true">ⓘ</span>
           <span className="step-advisory-text">
-            Windows key can't be captured directly (it opens the Start menu). Toggle to add it as a modifier.
+            {IS_MAC
+              ? 'Toggle ⌘ Command as a modifier for this hotkey.'
+              : "Windows key can't be captured directly (it opens the Start menu). Toggle to add it as a modifier."}
           </span>
           <button
             type="button"
             className={`win-toggle-pill${hasWin ? ' win-toggle-pill-on' : ''}`}
             onClick={e => { e.stopPropagation(); toggleWin(); }}
-            title={hasWin ? 'Remove Windows key' : 'Add Windows key'}
+            title={hasWin
+              ? (IS_MAC ? 'Remove ⌘ Command' : 'Remove Windows key')
+              : (IS_MAC ? 'Add ⌘ Command' : 'Add Windows key')}
           >
-            {hasWin ? '✓ Win' : '+ Win'}
+            {hasWin ? (IS_MAC ? '✓ ⌘' : '✓ Win') : (IS_MAC ? '+ ⌘' : '+ Win')}
           </button>
           {winPrompted && !hasWin && (
             <button
@@ -960,7 +964,7 @@ function KeyChips({ combo }) {
     <>
       {keys.map((k, i) => (
         <Fragment key={i}>
-          <kbd>{friendlyKeyName(k)}</kbd>
+          <kbd>{friendlyKeyName(displayModifier(k))}</kbd>
           {i < keys.length - 1 && <span className="key-capture-plus">+</span>}
         </Fragment>
       ))}
@@ -1461,7 +1465,7 @@ function parseAssignmentKey(key) {
 function formatCombo(combo, keyId) {
   const keyLabel = friendlyKeyName(keyId);
   if (combo === 'BARE') return keyLabel;
-  return [...combo.split('+'), keyLabel].join('+');
+  return [...combo.split('+').map(displayModifier), keyLabel].join('+');
 }
 
 function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose, profilesOrder }) {
@@ -2857,7 +2861,7 @@ export default function MacroPanel({
             <div className="combo-badge">
               {[...activeModifiers].sort().map((m, i) => (
                 <React.Fragment key={m}>
-                  <kbd className="selected-key-badge mod-badge">{m}</kbd>
+                  <kbd className="selected-key-badge mod-badge">{displayModifier(m)}</kbd>
                   {i < activeModifiers.length - 1 && <span className="badge-plus">+</span>}
                 </React.Fragment>
               ))}
