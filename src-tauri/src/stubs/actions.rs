@@ -1658,6 +1658,9 @@ mod macos {
 
         let mut prev_t: u64 = 0;
         const MAX_GAP_MS: u64 = 5000;
+        // Which button (LButton/RButton/MButton) is synthetically held, so
+        // motion replays as a drag rather than a move.
+        let mut held_button: Option<&'static str> = None;
 
         for evt in events.iter() {
             if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
@@ -1688,13 +1691,28 @@ mod macos {
                 RecordedEvent::MouseDown { button, x, y, .. } => {
                     send_mouse_move(*x as f64, *y as f64);
                     replay_mouse_button(button, false);
+                    held_button = Some(recorded_button_name(button));
                 }
                 RecordedEvent::MouseUp { button, x, y, .. } => {
-                    send_mouse_move(*x as f64, *y as f64);
+                    // Position the release point as a DRAG while the button
+                    // is down — a MouseMoved here would break the drag.
+                    if let Some(hb) = held_button {
+                        send_mouse_drag(hb, *x as f64, *y as f64);
+                    } else {
+                        send_mouse_move(*x as f64, *y as f64);
+                    }
                     replay_mouse_button(button, true);
+                    held_button = None;
                 }
                 RecordedEvent::MouseMove { x, y, .. } => {
-                    send_mouse_move(*x as f64, *y as f64);
+                    // Motion while a button is held must replay as the
+                    // matching *MouseDragged type — macOS apps only
+                    // recognise drags by event type (see send_mouse_drag).
+                    if let Some(hb) = held_button {
+                        send_mouse_drag(hb, *x as f64, *y as f64);
+                    } else {
+                        send_mouse_move(*x as f64, *y as f64);
+                    }
                 }
                 RecordedEvent::Wheel { delta, x, y, .. } => {
                     send_mouse_move(*x as f64, *y as f64);
@@ -1710,14 +1728,18 @@ mod macos {
         info!("[Keyfire] {}: complete", label);
     }
 
-    /// Recorded button names ("Left"/"Right"/"Middle") → mouse event.
-    fn replay_mouse_button(button: &str, is_up: bool) {
-        let name = match button {
+    /// Recorded button names ("Left"/"Right"/"Middle") → engine names.
+    fn recorded_button_name(button: &str) -> &'static str {
+        match button {
             "Right" => "RButton",
             "Middle" => "MButton",
             _ => "LButton",
-        };
-        send_mouse_event(name, is_up);
+        }
+    }
+
+    /// Recorded button names ("Left"/"Right"/"Middle") → mouse event.
+    fn replay_mouse_button(button: &str, is_up: bool) {
+        send_mouse_event(recorded_button_name(button), is_up);
     }
 
     // ── Wait for Input step (keyboard; mouse needs the mouse-tap milestone) ─
@@ -2226,6 +2248,10 @@ mod macos {
             warn!("[INJECT] mouse event creation failed ({})", button);
             return;
         };
+        // clickState=1 marks this as a deliberate single click — synthetic
+        // mouse events default it to 0, which some apps treat as not-a-click
+        // (click counting / selection logic keys off this field).
+        ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
         ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
         ev.post(CGEventTapLocation::HID);
     }
@@ -2252,6 +2278,28 @@ mod macos {
         if let Ok(ev) =
             CGEvent::new_mouse_event(src, CGEventType::MouseMoved, point, CGMouseButton::Left)
         {
+            ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
+            ev.post(CGEventTapLocation::HID);
+        }
+    }
+
+    /// Move the pointer WHILE a button is held. macOS distinguishes drags
+    /// from moves by event TYPE — apps only recognise a drag when the
+    /// intermediate events are *MouseDragged carrying the held button
+    /// (unlike Windows, where WM_MOUSEMOVE + button state is enough). Plain
+    /// MouseMoved between a down and an up reads as "click, hover away,
+    /// release elsewhere" and breaks drag/selection replay.
+    fn send_mouse_drag(button: &str, x: f64, y: f64) {
+        use core_graphics::event::CGMouseButton;
+        let (drag_t, cg_button) = match button {
+            "LButton" => (CGEventType::LeftMouseDragged, CGMouseButton::Left),
+            "RButton" => (CGEventType::RightMouseDragged, CGMouseButton::Right),
+            "MButton" => (CGEventType::OtherMouseDragged, CGMouseButton::Center),
+            _ => return,
+        };
+        let Some(src) = new_source() else { return };
+        let point = core_graphics::geometry::CGPoint::new(x, y);
+        if let Ok(ev) = CGEvent::new_mouse_event(src, drag_t, point, cg_button) {
             ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECTED_EVENT_MAGIC);
             ev.post(CGEventTapLocation::HID);
         }
