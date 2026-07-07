@@ -1,10 +1,22 @@
 name: Release
+# Tag-driven, platform-split so Windows and macOS ship on independent
+# cadences with independent version numbers (Windows version lives in
+# tauri.conf.json; macOS in tauri.macos.conf.json, auto-merged on mac
+# builds). A macOS beta release NEVER touches Windows users:
+#   * `v*` / `win-v*`  → Windows x64 + ARM  (Mac jobs skipped)
+#   * `mac-v*`         → macOS universal .dmg (Windows jobs skipped)
+# Mac releases are marked prerelease so GitHub's `releases/latest`
+# pointer — which the shared updater manifest resolves through — always
+# stays on the newest Windows (non-prerelease) release.
 on:
   push:
     tags:
       - 'v*'
+      - 'win-v*'
+      - 'mac-v*'
 jobs:
   release-x64:
+    if: ${{ !startsWith(github.ref_name, 'mac-v') }}
     runs-on: windows-latest
     permissions:
       contents: write
@@ -122,6 +134,7 @@ jobs:
           gh release upload "${{ github.ref_name }}" $dst --clobber
 
   release-arm64:
+    if: ${{ !startsWith(github.ref_name, 'mac-v') }}
     needs: release-x64
     runs-on: windows-latest
     permissions:
@@ -185,3 +198,82 @@ jobs:
           Copy-Item $installer.FullName $dst
           Write-Output "Uploading $($installer.Name) as $dst"
           gh release upload "${{ github.ref_name }}" $dst --clobber
+
+  # ── macOS beta (universal .dmg) ──────────────────────────────────────────
+  # Runs ONLY on `mac-v*` tags, so Windows releases never trigger a mac
+  # build and vice versa. UNSIGNED for the beta phase — testers run
+  # `xattr -cr Keyfire.app` (or the .dmg) once, same as the port-check
+  # artifact. tauri.macos.conf.json auto-merges: it supplies the mac beta
+  # version, app+dmg targets, and createUpdaterArtifacts:false (no update
+  # manifest is produced, so nothing can collide with the Windows
+  # updater). Published as a PRERELEASE so GitHub's `releases/latest`
+  # pointer stays on the newest Windows release.
+  #
+  # TO ENABLE SIGNING + NOTARIZATION later (before a public mac launch):
+  #   - Add APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD /
+  #     APPLE_SIGNING_IDENTITY (Developer ID Application) and, for
+  #     notarization, APPLE_ID / APPLE_PASSWORD (app-specific) /
+  #     APPLE_TEAM_ID as repo secrets, and pass them in `env:` below —
+  #     tauri-action picks them up automatically.
+  #   - To turn on mac auto-update: flip createUpdaterArtifacts to true in
+  #     tauri.macos.conf.json, publish latest-mac.json to a floating
+  #     `mac-latest` release (the endpoint tauri.macos.conf.json already
+  #     points at), and pass TAURI_SIGNING_PRIVATE_KEY here.
+  release-macos:
+    if: ${{ startsWith(github.ref_name, 'mac-v') }}
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Both arches so tauri can lipo a universal binary (Intel + Apple Silicon).
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: release-universal-apple-darwin
+      # Repo ships png/ico only; the macOS bundler needs an .icns
+      # (mirrors the port-check .dmg job).
+      - name: Generate icon.icns from icon.png
+        run: |
+          cd src-tauri/icons
+          mkdir icon.iconset
+          for s in 16 32 64 128 256 512; do
+            sips -z $s $s icon.png --out icon.iconset/icon_${s}x${s}.png
+          done
+          cp icon.iconset/icon_32x32.png icon.iconset/icon_16x16@2x.png
+          cp icon.iconset/icon_64x64.png icon.iconset/icon_32x32@2x.png
+          cp icon.iconset/icon_256x256.png icon.iconset/icon_128x128@2x.png
+          cp icon.iconset/icon_512x512.png icon.iconset/icon_256x256@2x.png
+          iconutil -c icns icon.iconset -o icon.icns
+      - name: Install dependencies
+        run: npm install
+      - name: Build and release (universal, unsigned)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Keyfire macOS ${{ github.ref_name }}'
+          releaseBody: |
+            ## macOS beta (unsigned)
+            **Download:** Keyfire_universal.dmg — runs on Apple Silicon and Intel.
+
+            First launch is Gatekeeper-blocked because the build is unsigned.
+            Clear the quarantine flag once after installing:
+            ```
+            xattr -cr /Applications/Keyfire.app
+            ```
+            ---
+          releaseDraft: false
+          generateReleaseNotes: true
+          prerelease: true
+          args: --target universal-apple-darwin

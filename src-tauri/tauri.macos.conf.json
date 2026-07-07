@@ -1,7 +1,15 @@
 {
+  "version": "1.0.0-beta.1",
   "bundle": {
     "targets": ["app", "dmg"],
     "icon": ["icons/icon.icns"],
     "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Trigr-it/trigr-tauri/releases/download/mac-latest/latest-mac.json"
+      ]
+    }
   }
 }
