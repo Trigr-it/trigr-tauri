@@ -4,6 +4,57 @@
 > single source of truth for the port. The Windows dev machine holds richer
 > project context; this file carries everything the Mac engine work needs.
 
+## State (updated 2026-07-07, day session — bug-fix + polish + release model)
+
+### Release model (DECIDED 2026-07-07): single branch, separate versions
+- **One branch, per-platform version + per-platform release tag.** Windows
+  and macOS ship on INDEPENDENT cadences from the same source tree — a mac
+  beta release never re-releases Windows. Shared fixes are just normal
+  commits (platform code is already cfg-split); no cherry-picking.
+- **Version separation is automatic:** `tauri.macos.conf.json` auto-merges
+  on macOS builds (Tauri platform-config convention), so mac carries ITS
+  version (`1.0.0-beta.1` — PLACEHOLDER, owner to set real beta number) and
+  Windows keeps `tauri.conf.json`'s. Windows → 1.0.0 at launch.
+- **release.yml (STAGED on branch, live once merged to main):** `v*`/`win-v*`
+  → Windows x64+ARM; `mac-v*` → macOS universal unsigned .dmg (prerelease).
+  Mac = prerelease so GitHub `releases/latest` (updater resolves through it)
+  stays on newest Windows release; mac emits no updater manifest
+  (createUpdaterArtifacts:false) + separate updater endpoint. Signing/
+  notarization + mac auto-update deferred — inline TODO in release.yml.
+- **NEVER tag from a Mac session** (hard rule) — a tag fires the release
+  pipeline. Tags are cut from main after owner sign-off.
+
+### Engine now at functional parity + today's fixes (all on port/mac-hooks, CI-green)
+Since the overnight session (mouse hooks, Quick Record, ⌘/⌥ labels), today:
+- **HID-level tap (2788f10):** tap installs at HID not Session — suppressed
+  F-keys no longer also fire the system media action (F1→Apple Music bug).
+  Ladder HID→Session→listen-only.
+- **Radial wheel (cd45ddd):** fully live — hotkey, cursor-centred window,
+  hold-to-select, PID focus hand-back. Payload builder shared with Windows.
+- **App picker (10eff10):** lists installed mac `.app` bundles; app/Open App
+  actions launch by bundle path; Windows AUMIDs skip with a warning.
+- **Drag replay (2e1d5a1 + de74942):** recorded drags replay as real
+  *MouseDragged events carrying motion deltas + clickState=1 — fixes
+  inconsistent click+drag AND window edge-snap/tiling on playback.
+- **Times New Roman killed (f16bdaa/8776c1e/7ef3ff9 + earlier):** editor
+  var()-font chrome stripped at save AND at the write_clipboard_dual
+  chokepoint; plain fragments paste text-only (caret font). Also fixed
+  doubled line breaks in expansion text (WKWebView `<br></div>` double-
+  counting → now layout-aware innerText). Existing snippets need a re-save.
+- **Clipboard image paste (740a30a):** write_image_to_clipboard was a mac
+  no-op → clicking an image pasted the *previous* one; now writes PNG+TIFF
+  to the pasteboard (actions::write_image_clipboard_pub).
+- **UI polish (114ed39):** native macOS traffic lights (left, hover glyphs),
+  rounded main-window corners (NSWindow clear bg + content-layer
+  cornerRadius via objc2), view-switcher emoji → lucide line icons.
+
+### Runtime gotcha hit today (in [[mac-port-dev-loop]]):
+Unsigned dev builds can silently lose the Input-Monitoring/Accessibility
+grant after a run of rebuilds — tap goes dead (no disable callback for a
+permission revocation), config/IPC still works, status dot not green. Fix:
+restart `cargo tauri dev` from the granted Terminal.app. A self-healing
+watchdog (AXIsProcessTrusted poll → recreate tap) is an offered TODO.
+
 ## State (updated 2026-07-07, overnight autonomous session)
 
 - **Phase 0 (platform seam) + Phase 1 (CI .dmg) are DONE and merged to main.**
