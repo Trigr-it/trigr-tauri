@@ -1025,6 +1025,30 @@ button.te-col-header:hover {
   overflow: hidden;
 }
 
+/* Drag handle between .te-list and .te-edit-panel. Visual bar is 4px wide
+   but a ::before pseudo widens the hit area to ~10px. Overrides the panel's
+   inline width via a mouse drag. */
+.te-edit-splitter {
+  flex-shrink: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: var(--border);
+  position: relative;
+  transition: background 120ms;
+}
+.te-edit-splitter:hover,
+.te-edit-splitter:active {
+  background: var(--accent);
+}
+.te-edit-splitter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
 /* Narrow window — stack list and editor vertically */
 @media (max-width: 700px) {
   .te-cat-sidebar {
@@ -1038,6 +1062,9 @@ button.te-col-header:hover {
     min-width: 0;
     border-left: none;
     border-top: 1px solid var(--border);
+  }
+  .te-edit-splitter {
+    display: none;
   }
   .te-list {
     min-width: 0;
@@ -1427,6 +1454,46 @@ button.te-col-header:hover {
   box-shadow: var(--shadow-overlay);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
+}
+
+/* Drag handle for the formula / if-else sub-editor popups. Sits at the top
+   of the popup and grabs pointer input. Only rendered inside formulaEntry
+   and ifEntry blocks, so simple category dropdowns are unaffected. */
+.rte-popup-drag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 6px;
+  margin: -4px -4px 4px -4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  cursor: grab;
+  user-select: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.rte-popup-drag:active {
+  cursor: grabbing;
+}
+.rte-popup-drag-grip {
+  display: inline-block;
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-accent);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.rte-popup-drag:hover .rte-popup-drag-grip {
+  opacity: 1;
+}
+.rte-popup-drag-label {
+  flex: 1;
 }
 
 .rte-menu-item {

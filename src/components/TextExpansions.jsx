@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import './TextExpansions.css';
 import { SearchBar } from './SearchBar';
+import NumberField from './NumberField';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -326,6 +327,37 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   const [ifHasElse, setIfHasElse] = useState(true);
   const [ifName, setIfName] = useState('');
   const [ifEditChip, setIfEditChip] = useState(null);
+
+  // When the user drags the formula / if-else popup by its title bar, we
+  // stash the free-form position here. While non-null AND the popup category
+  // is 'formula' (only formula/if-else render the drag handle), this
+  // overrides the toolbar-button anchoring and the auto-flip-upward logic.
+  //
+  // Persisted to localStorage so subsequent formula sessions open in the
+  // same place — Rory's testers work through formulas in batches. Double-
+  // clicking the drag handle resets. On load, any saved position that would
+  // fall off the current viewport (window resized smaller since save) is
+  // discarded.
+  const [userDraggedPos, setUserDraggedPos] = useState(() => {
+    try {
+      const stored = localStorage.getItem('trigr.te.formulaPopupPos');
+      if (!stored) return null;
+      const parsed = JSON.parse(stored);
+      if (!parsed || typeof parsed.top !== 'number' || typeof parsed.left !== 'number') return null;
+      if (parsed.top < 0 || parsed.top > window.innerHeight - 40) return null;
+      if (parsed.left < -400 || parsed.left > window.innerWidth - 40) return null;
+      return parsed;
+    } catch { return null; }
+  });
+  useEffect(() => {
+    try {
+      if (userDraggedPos) {
+        localStorage.setItem('trigr.te.formulaPopupPos', JSON.stringify(userDraggedPos));
+      } else {
+        localStorage.removeItem('trigr.te.formulaPopupPos');
+      }
+    } catch {}
+  }, [userDraggedPos]);
   const ifConditionRef = useRef(null);
   const ifThenRef = useRef(null);
   const ifElseRef = useRef(null);
@@ -1053,6 +1085,19 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   useLayoutEffect(() => {
     if (!(showInsert && menuPos && menuRef.current)) return;
     const popup = menuRef.current;
+    const margin = 8;
+
+    // User has dragged the popup by its title bar. Skip anchor-based flip
+    // logic entirely; React's inline style prop supplies top/left. We only
+    // cap maxHeight so the popup can't run past the viewport bottom.
+    // Only applies while a sub-editor (formulaEntry / ifEntry) is active —
+    // the drag handle only appears there. The category LIST view (clicking
+    // the formula toolbar icon) still anchors to the toolbar button.
+    if (userDraggedPos && (formulaEntry || ifEntry)) {
+      const maxH = Math.max(120, window.innerHeight - userDraggedPos.top - margin);
+      popup.style.maxHeight = `${maxH}px`;
+      return;
+    }
 
     // Clear previous inline placement so we measure the popup's intrinsic
     // height (the height it WANTS to be) before deciding which way to open.
@@ -1060,7 +1105,6 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     popup.style.top = '';
 
     const rect = popup.getBoundingClientRect();
-    const margin = 8;
     const availableBelow = window.innerHeight - menuPos.top - margin;
     const availableAbove = Math.max(0, menuPos.btnTop - margin - 4);
     let top;
@@ -1088,7 +1132,45 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     fillInEntry, fillInKind, formulaEntry, ifEntry, ifHasElse,
     // Reference-panel chip count drives the "Named references" section height.
     reusableFillInLabels.length, setVarNames.length,
+    // User-drag overrides anchor + auto-flip.
+    userDraggedPos,
   ]);
+
+  // Grab the popup by its title bar and reposition to follow the cursor.
+  // Clamps so at least ~40px of the popup stays on-screen on every side.
+  function handlePopupDragStart(e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const popup = menuRef.current;
+    if (!popup) return;
+    const rect = popup.getBoundingClientRect();
+    const grabX = e.clientX - rect.left;
+    const grabY = e.clientY - rect.top;
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    function onMove(ev) {
+      const rawTop = ev.clientY - grabY;
+      const rawLeft = ev.clientX - grabX;
+      // Keep at least 40px on-screen so the popup is always grabbable.
+      const minLeft = 40 - rect.width;
+      const minTop = 8;
+      const maxLeft = window.innerWidth - 40;
+      const maxTop = window.innerHeight - 40;
+      const top = Math.max(minTop, Math.min(maxTop, rawTop));
+      const left = Math.max(minLeft, Math.min(maxLeft, rawLeft));
+      setUserDraggedPos({ top: Math.round(top), left: Math.round(left) });
+    }
+    function onUp() {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
 
   useLayoutEffect(() => {
     if (!(showKeyPicker && keyPickerPos && keyMenuRef.current)) return;
@@ -1361,9 +1443,11 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         <div
           ref={menuRef}
           className="rte-insert-menu"
-          style={menuPos.anchorRight
-            ? { top: menuPos.top, right: Math.max(8, menuPos.rightOffset) }
-            : { top: menuPos.top, left: menuPos.left }
+          style={userDraggedPos && (formulaEntry || ifEntry)
+            ? { top: userDraggedPos.top, left: userDraggedPos.left, right: 'auto' }
+            : (menuPos.anchorRight
+                ? { top: menuPos.top, right: Math.max(8, menuPos.rightOffset) }
+                : { top: menuPos.top, left: menuPos.left })
           }
         >
           {/* Fill-in label input — always mounted so ref is always valid,
@@ -1410,6 +1494,16 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             const nameValid = !nameTrimmed || /^[A-Za-z_][A-Za-z0-9_]*$/.test(nameTrimmed);
             return (
             <>
+              <div
+                className="rte-popup-drag"
+                onMouseDown={handlePopupDragStart}
+                title="Drag to move. Double-click to reset."
+                onDoubleClick={() => setUserDraggedPos(null)}
+                role="presentation"
+              >
+                <span className="rte-popup-drag-grip" />
+                <span className="rte-popup-drag-label">{formulaEditChip ? 'Edit formula' : 'New formula'}</span>
+              </div>
               <div className="rte-fillin-row rte-formula-row">
                 <span className="rte-fillin-prompt-label">Name <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></span>
                 <input
@@ -1578,6 +1672,16 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             const ifNameValid = !ifNameTrimmed || /^[A-Za-z_][A-Za-z0-9_]*$/.test(ifNameTrimmed);
             return (
             <>
+              <div
+                className="rte-popup-drag"
+                onMouseDown={handlePopupDragStart}
+                title="Drag to move. Double-click to reset."
+                onDoubleClick={() => setUserDraggedPos(null)}
+                role="presentation"
+              >
+                <span className="rte-popup-drag-grip" />
+                <span className="rte-popup-drag-label">{ifEditChip ? 'Edit if/else' : 'New if/else'}</span>
+              </div>
               <div className="rte-fillin-row rte-formula-row">
                 <span className="rte-fillin-prompt-label">Name <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></span>
                 <input
@@ -1936,22 +2040,13 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
               <div className="rte-key-popup-footer">
                 <div className="rte-key-repeat-row">
                   <span className="rte-key-repeat-x">×</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="99"
+                  <NumberField
                     className="rte-key-repeat-input"
+                    min={1}
+                    max={99}
+                    defaultOnEmpty={1}
                     value={keyPickerRepeat}
-                    onChange={e => {
-                      const v = parseInt(e.target.value, 10);
-                      if (!isNaN(v) && v >= 1) setKeyPickerRepeat(Math.min(v, 99));
-                    }}
-                    onBlur={e => {
-                      const v = parseInt(e.target.value, 10);
-                      setKeyPickerRepeat(isNaN(v) || v < 1 ? 1 : Math.min(v, 99));
-                    }}
-                    onMouseDown={e => e.stopPropagation()}
-                    onClick={e => e.stopPropagation()}
+                    onCommit={v => setKeyPickerRepeat(v)}
                   />
                 </div>
                 <button
@@ -2125,6 +2220,26 @@ export default function TextExpansions({
   // editor dropdown, swap to an inline input that creates and selects in one go.
   const [creatingCatInEditor, setCreatingCatInEditor] = useState(false);
   const [editorNewCatName, setEditorNewCatName]       = useState('');
+
+  // Edit-panel width: user-resizable via the splitter between list and editor.
+  // `null` means "use the CSS default (clamp 320..480)". Persisted to
+  // localStorage so the choice survives restart. Min clamp = 320px; max clamp
+  // computed at drag time as (container width - 240px) so the list stays usable.
+  const [editPanelWidth, setEditPanelWidth] = useState(() => {
+    try {
+      const stored = localStorage.getItem('trigr.te.editPanelWidth');
+      const n = stored ? parseInt(stored, 10) : NaN;
+      return Number.isFinite(n) && n >= 320 ? n : null;
+    } catch { return null; }
+  });
+  const teBodyRef = useRef(null);
+  useEffect(() => {
+    if (editPanelWidth != null) {
+      try { localStorage.setItem('trigr.te.editPanelWidth', String(editPanelWidth)); } catch {}
+    } else {
+      try { localStorage.removeItem('trigr.te.editPanelWidth'); } catch {}
+    }
+  }, [editPanelWidth]);
 
   // Push editing state to parent so foreground auto-switch is suppressed while
   // the user is mid-build. Non-null `editing` covers both Add and Edit flows.
@@ -2974,7 +3089,7 @@ export default function TextExpansions({
           </div>
 
           {/* ── Body: list + edit panel side-by-side ── */}
-          <div className="te-body">
+          <div className="te-body" ref={teBodyRef}>
 
             {/* Scrollable list */}
             <div className="te-list">
@@ -3125,8 +3240,48 @@ export default function TextExpansions({
               )}
             </div>
 
+            {/* Splitter — drag horizontally to resize the edit panel.
+                Double-click resets to the CSS default. Hidden in the stacked
+                narrow-viewport layout via @media rule in the CSS. */}
+            <div
+              className="te-edit-splitter"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const container = teBodyRef.current;
+                const panel = container?.querySelector('.te-edit-panel');
+                if (!container || !panel) return;
+                const containerRect = container.getBoundingClientRect();
+                const startX = e.clientX;
+                const startWidth = editPanelWidth ?? panel.getBoundingClientRect().width;
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                function onMove(ev) {
+                  const dx = ev.clientX - startX;
+                  const proposed = startWidth - dx;
+                  const maxWidth = Math.max(320, containerRect.width - 240);
+                  const clamped = Math.max(320, Math.min(maxWidth, proposed));
+                  setEditPanelWidth(Math.round(clamped));
+                }
+                function onUp() {
+                  document.body.style.cursor = '';
+                  document.body.style.userSelect = '';
+                  window.removeEventListener('mousemove', onMove);
+                  window.removeEventListener('mouseup', onUp);
+                }
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+              }}
+              onDoubleClick={() => setEditPanelWidth(null)}
+              title="Drag to resize. Double-click to reset."
+              aria-label="Resize edit panel"
+              role="separator"
+            />
+
             {/* Right edit panel — always visible */}
-            <div className="te-edit-panel">
+            <div
+              className="te-edit-panel"
+              style={editPanelWidth != null ? { width: editPanelWidth } : undefined}
+            >
               {editing ? (
                 <>
                   <div className="te-panel-header">
@@ -3523,22 +3678,13 @@ export default function TextExpansions({
                       <div className="te-image-scale">
                         <label className="form-label">SCALE</label>
                         <div className="te-image-scale-row">
-                          <input
-                            type="number"
+                          <NumberField
                             className="form-input te-image-scale-input"
                             min={10}
                             max={100}
+                            defaultOnEmpty={10}
                             value={imageScale}
-                            onChange={e => {
-                              const raw = e.target.value;
-                              if (raw === '') { setImageScale(''); return; }
-                              const v = parseInt(raw, 10);
-                              if (!isNaN(v)) setImageScale(Math.min(100, v));
-                            }}
-                            onBlur={() => {
-                              const v = parseInt(imageScale, 10);
-                              setImageScale(isNaN(v) || v < 10 ? 10 : Math.min(100, v));
-                            }}
+                            onCommit={v => setImageScale(v)}
                           />
                           <span className="te-image-scale-pct">%</span>
                         </div>
