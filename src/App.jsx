@@ -854,7 +854,7 @@ function App() {
       // (TitleBar.jsx) and in Settings (SettingsPanel.jsx) instead, so the
       // auto-tab is suppressed by omission.
       window.Featurebase('initialize_feedback_widget', {
-        organization: 'trigr',
+        organization: 'keyfire',
         theme: theme,
         defaultBoard: 'feature-requests',
         locale: 'en',
@@ -894,7 +894,7 @@ function App() {
     featurebaseChangelogInitedRef.current = true;
     try {
       window.Featurebase('init_changelog_widget', {
-        organization: 'trigr',
+        organization: 'keyfire',
         theme: resolvedTheme,
         popup: { enabled: true, autoOpenForNewUpdates: false },
         changelogCard: { enabled: true },
