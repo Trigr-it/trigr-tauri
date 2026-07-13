@@ -1158,20 +1158,18 @@
   </div>
 
   <h2>Available step types</h2>
+  <p>The <strong>+ Add Step</strong> menu groups steps into categories. <strong>Record Macro</strong> sits pinned at the top of the menu and <strong>Run AHK Script</strong> at the bottom.</p>
   <table>
-    <tr><th>Step type</th><th>What it does</th></tr>
-    <tr><td><strong>Type Text</strong></td><td>Types a string at the cursor position. Full Unicode support.</td></tr>
-    <tr><td><strong>Dynamic Text</strong></td><td>Like Type Text, but with token replacement at fire time. Supports date, time, clipboard, selection, and formula tokens.</td></tr>
-    <tr><td><strong>Press Key</strong></td><td>Sends a single keypress or combo. For example Enter, Escape, Ctrl+V, Delete.</td></tr>
-    <tr><td><strong>Click Mouse</strong></td><td>Sends a single mouse button click.</td></tr>
-    <tr><td><strong>Click at Position</strong></td><td>Moves the cursor to specific screen coordinates and clicks.</td></tr>
-    <tr><td><strong>Wait (ms)</strong></td><td>Pauses for a specified number of milliseconds before the next step.</td></tr>
-    <tr><td><strong>Wait for Input</strong></td><td>Pauses until a specified mouse button or key event occurs.</td></tr>
-    <tr><td><strong>Open App / URL / Folder</strong></td><td>Same as the standalone actions, callable as a step inside a macro.</td></tr>
-    <tr><td><strong>Focus Window</strong></td><td>Brings a specific open application window to the foreground.</td></tr>
+    <tr><th>Category</th><th>Step types</th></tr>
+    <tr><td><strong>Record Macro</strong></td><td>Records your keyboard and mouse, then replays the sequence as a single step. See the Macro recorder page.</td></tr>
+    <tr><td><strong>Existing Action</strong></td><td><strong>Trigger</strong> calls another macro or action (up to 5 nesting levels). <strong>Text Expansion</strong> fires an expansion by its trigger string.</td></tr>
+    <tr><td><strong>Type &amp; Keys</strong></td><td><strong>Type Text</strong> types a string at the cursor, full Unicode support. <strong>Dynamic Text</strong> adds token replacement at fire time (date, time, clipboard, selection and formula tokens). <strong>Press Key</strong> sends a keypress or combo. <strong>Copy to Clipboard</strong>, <strong>Paste Clipboard</strong> and <strong>Select All</strong> send Ctrl+C, Ctrl+V and Ctrl+A.</td></tr>
+    <tr><td><strong>Mouse</strong></td><td><strong>Click Mouse</strong> sends a mouse click, with separate Down and Up variants so you can script drags. <strong>Click at Position</strong> moves the cursor to screen coordinates and clicks. <strong>Mouse Scroll</strong> scrolls up, down, left or right by a set number of notches.</td></tr>
+    <tr><td><strong>Open &amp; Play</strong></td><td><strong>Open App</strong>, <strong>Open Folder</strong> and <strong>Open URL</strong> launch things mid-macro, with a monitor picker for where the window lands. <strong>Play Audio File</strong> and <strong>Play Video File</strong> open a media file in your default player, also with a monitor picker.</td></tr>
+    <tr><td><strong>Timing</strong></td><td><strong>Wait (ms)</strong> pauses for a set time. <strong>Wait for Input</strong> pauses until a chosen mouse or key event. <strong>Wait for Window</strong> pauses until a matching window is in the foreground.</td></tr>
+    <tr><td><strong>Window</strong></td><td><strong>Focus Window</strong> brings an app to the foreground. <strong>Minimise Window</strong>, <strong>Maximise Window</strong> and <strong>Resize Window</strong> control a specific window. <strong>Minimise All</strong> and <strong>Restore All</strong> act on every open window.</td></tr>
+    <tr><td><strong>System</strong></td><td><strong>Change Volume</strong> sets, nudges or mutes the system volume. <strong>Control Panel</strong> opens the Windows Control Panel. <strong>Sleep Computer</strong>, <strong>Lock Computer</strong>, <strong>Log Off</strong> and <strong>Shut Down Computer</strong> perform the matching Windows action.</td></tr>
     <tr><td><strong>Run AHK Script</strong></td><td>Executes an AutoHotkey v1 or v2 script. Waits for completion before the next step.</td></tr>
-    <tr><td><strong>Fire Trigger</strong></td><td>Calls another macro or action by its storage key. Up to 5 nesting levels.</td></tr>
-    <tr><td><strong>Fire Text Expansion</strong></td><td>Fires an expansion by its trigger string. The expansion's resolution rules apply.</td></tr>
   </table>
 
   <h2>Building a macro</h2>
@@ -1203,9 +1201,20 @@
   <h2>Wait for Input</h2>
   <p>Pauses the macro until a specified mouse or keyboard event. Supported input types include left click press / release, right click, and specific keys. Useful when a macro needs to wait for you to click somewhere before continuing.</p>
 
+  <h2>System steps</h2>
+  <p><strong>Change Volume</strong> can set an exact level from 0 to 100, increase or decrease by an amount, or mute. The native Windows volume display appears so you can see the change land.</p>
+
+  <div class="callout info">
+    <div class="ct">Destructive steps ask first</div>
+    <p><strong>Sleep Computer</strong>, <strong>Log Off</strong> and <strong>Shut Down Computer</strong> show a confirmation dialog before they run, so a mis-fired macro cannot shut your machine down unprompted.</p>
+  </div>
+
+  <h2>Window steps</h2>
+  <p><strong>Minimise Window</strong>, <strong>Maximise Window</strong> and <strong>Resize Window</strong> each take a target window via the <strong>Pick Window</strong> dropdown. Leave the target empty to act on whichever window is in the foreground when the step runs. Resize accepts a width and height, plus an optional new X and Y position.</p>
+
   <div class="callout tip">
     <div class="ct">Add delays after opening apps</div>
-    <p>If a macro types text before an app has finished loading, the characters get dropped. Add a <strong>Wait (ms)</strong> step of 500 to 1000ms after an Open App step to give it time to settle.</p>
+    <p>Open App, Open Folder and the media steps already wait for their window to be placed before the next step runs. But if a macro types text before an app has finished loading, the characters can still get dropped. Add a <strong>Wait (ms)</strong> step of 500 to 1000ms after an Open App step to give it time to settle.</p>
   </div>
 
   <h2>Fire Trigger and Fire Text Expansion</h2>
@@ -1799,6 +1808,7 @@
     <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age and appear in the quick paste popup. See Pinned and Starred tiers below.</td></tr>
     <tr><td><strong>Star</strong></td><td>Mark items with a star to keep them in a separate tier above Pinned in the main panel. Stars are main-panel only and do not appear in the quick paste popup.</td></tr>
     <tr><td><strong>Search</strong></td><td>Filter items by text content. Combine with tag filter pills and source app dropdown.</td></tr>
+    <tr><td><strong>Rich text</strong></td><td>Formatted content keeps its bullets, bold, links and colour when pasted into rich editors. See Rich text stays formatted below.</td></tr>
     <tr><td><strong>Inline editing</strong></td><td>Edit any text-based clipboard item directly. Click Edit in the detail pane.</td></tr>
     <tr><td><strong>Image support</strong></td><td>Screenshots and copied images are captured as PNG with full preview and zoom.</td></tr>
     <tr><td><strong>OCR</strong></td><td>Captured images run through OCR. Extracted text becomes searchable and copyable.</td></tr>
@@ -1818,9 +1828,16 @@
   <h2>Clear All preserves your tiers</h2>
   <p>The <strong>Clear All</strong> button in the panel toolbar and the <strong>Clear Clipboard History</strong> button in Settings both remove regular history only. Pinned and starred items survive. The confirm dialog in Settings makes this explicit.</p>
 
+  <h2>Rich text stays formatted</h2>
+  <p>When you copy formatted content from Word, Outlook or a browser, Keyfire stores the formatting alongside the plain text. Pasting into a rich editor such as Gmail, Word or Slack reproduces the original bullets, bold, links and colour. Pasting into a plain-text app such as Notepad falls back to plain text automatically.</p>
+  <p>To paste without formatting on purpose, use the <strong>Paste plain</strong> button on the quick paste overlay, or <strong>Copy plain</strong> in the main panel. Both are one-off overrides. The stored formatting is kept for next time.</p>
+
   <h2>Quick paste overlay</h2>
   <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay, a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
   <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit). Only Pinned items get promoted here; Starred items live in the main panel only.</p>
+
+  <h2>Quick paste inside fill-in prompts</h2>
+  <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> also works while a Keyfire fill-in prompt is open. The overlay appears as usual, and the item you pick is inserted into the fill-in field you were typing in, not the app behind it. Focus returns to the field when the overlay closes.</p>
 
   <h2>Scratchpad</h2>
   <p>The clipboard overlay includes a slide-out scratchpad on the right side. Toggle it with the arrow button on the panel edge. Use it to jot notes, stage text, or keep references handy. Content auto-saves and persists across app restarts.</p>
