@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { Search, SearchX, ShieldCheck } from 'lucide-react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
+import NumberField from './NumberField';
 import { friendlyKeyName } from './keyboardLayout';
 import { openFeedback } from '../utils/feedback';
 
@@ -1511,24 +1512,24 @@ export default function SettingsPanel({
                   </span>
                 </div>
                 <div className="settings-retention-input">
-                  <input
-                    type="number"
+                  <NumberField
                     className="form-input settings-retention-num"
                     min={1}
                     max={30}
+                    defaultOnEmpty={7}
                     value={clipboardRetention}
-                    onChange={e => {
-                      let v = parseInt(e.target.value, 10);
-                      if (isNaN(v)) v = 7;
-                      v = Math.max(1, Math.min(30, v));
-                      // Pro gate: Free users can request up to 30 but it clamps to 7
-                      // and the upgrade modal explains why.
-                      if (!isPro && v > 7) {
+                    onCommit={v => {
+                      // Pro gate: Free users can request up to 30 but it clamps
+                      // to 7 and the upgrade modal explains why. Runs on commit
+                      // (blur / Enter), not per keystroke — user can type past
+                      // 7 while editing without triggering the modal early.
+                      let final = v;
+                      if (!isPro && final > 7) {
                         onShowUpgrade?.('Extended clipboard history (up to 30 days)');
-                        v = 7;
+                        final = 7;
                       }
-                      setClipboardRetention(v);
-                      window.electronAPI?.setClipboardSettings(v);
+                      setClipboardRetention(final);
+                      window.electronAPI?.setClipboardSettings(final);
                     }}
                   />
                   <span className="settings-retention-unit">days</span>

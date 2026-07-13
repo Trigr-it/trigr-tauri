@@ -36,6 +36,8 @@ window.electronAPI = {
 
   browseForFile:   () => invoke('browse_for_file'),
   browseForImage:  () => invoke('browse_for_image'),
+  browseForAudio:  () => invoke('browse_for_audio'),
+  browseForVideo:  () => invoke('browse_for_video'),
   browseForFolder: () => invoke('browse_for_folder'),
   readImageBase64: (path) => invoke('read_image_base64', { path }),
   listInstalledApps: () => invoke('list_installed_apps'),

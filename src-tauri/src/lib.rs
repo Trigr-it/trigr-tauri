@@ -61,6 +61,16 @@ mod window_target;
 #[cfg(not(windows))]
 #[path = "stubs/window_target.rs"]
 mod window_target;
+#[cfg(windows)]
+mod monitor_identify;
+#[cfg(not(windows))]
+#[path = "stubs/monitor_identify.rs"]
+mod monitor_identify;
+#[cfg(windows)]
+mod volume;
+#[cfg(not(windows))]
+#[path = "stubs/volume.rs"]
+mod volume;
 
 // ── Config (Phase 2) ────────────────────────────────────────────────────────
 
@@ -525,6 +535,38 @@ async fn browse_for_image(app: tauri::AppHandle) -> Value {
     }
 }
 
+#[tauri::command]
+async fn browse_for_audio(app: tauri::AppHandle) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+    let file = app
+        .dialog()
+        .file()
+        .set_title("Select Audio File")
+        .add_filter("Audio", &["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus"])
+        .add_filter("All Files", &["*"])
+        .blocking_pick_file();
+    match file {
+        Some(p) => Value::String(p.into_path().unwrap().to_string_lossy().to_string()),
+        None => Value::Null,
+    }
+}
+
+#[tauri::command]
+async fn browse_for_video(app: tauri::AppHandle) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+    let file = app
+        .dialog()
+        .file()
+        .set_title("Select Video File")
+        .add_filter("Video", &["mp4", "mov", "avi", "mkv", "webm", "wmv", "flv", "m4v"])
+        .add_filter("All Files", &["*"])
+        .blocking_pick_file();
+    match file {
+        Some(p) => Value::String(p.into_path().unwrap().to_string_lossy().to_string()),
+        None => Value::Null,
+    }
+}
+
 // Enumerate installed apps via PowerShell's Get-StartApps. Returns an array
 // of { name, appId } where appId is the AUMID (for Store/UWP apps) or the
 // folder-GUID-prefixed path (for Win32 apps with Start Menu shortcuts). Both
@@ -804,6 +846,23 @@ fn get_cursor_position() -> Value {
 #[tauri::command]
 fn enum_monitors() -> Vec<window_target::MonitorInfo> {
     window_target::enum_monitors()
+}
+
+#[tauri::command]
+fn show_monitor_identify(app: tauri::AppHandle, dark: bool) {
+    // Must run on the main thread — the overlays are raw Win32 windows whose
+    // WM_PAINT messages will only be dispatched by tao's main event loop.
+    // Creating them on a Tauri IPC worker thread leaves them blank.
+    let _ = app.run_on_main_thread(move || {
+        monitor_identify::show_identify_overlays(dark);
+    });
+}
+
+#[tauri::command]
+fn hide_monitor_identify(app: tauri::AppHandle) {
+    let _ = app.run_on_main_thread(|| {
+        monitor_identify::hide_identify_overlays();
+    });
 }
 
 #[cfg(not(windows))]
@@ -4532,6 +4591,8 @@ pub fn run() {
             // File dialogs
             browse_for_file,
             browse_for_image,
+            browse_for_audio,
+            browse_for_video,
             get_app_icon,
             list_installed_apps,
             browse_for_folder,
@@ -4543,6 +4604,8 @@ pub fn run() {
             list_open_windows,
             get_cursor_position,
             enum_monitors,
+            show_monitor_identify,
+            hide_monitor_identify,
             // Startup
             get_startup_enabled,
             set_startup_enabled,

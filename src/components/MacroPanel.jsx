@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import './MacroPanel.css';
 import MonitorPicker from './MonitorPicker';
+import NumberField from './NumberField';
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
@@ -92,27 +93,29 @@ const TRIGGER_KEYS = [
   'Up','Down','Left','Right',
 ];
 
-// Macro step types grouped for the flyout menu. The list grew past the point
-// where a flat <select> was scannable, so categories collapse it into 4 groups
-// plus a single AHK leaf under a divider. Add new step types into the matching
-// group; the dropdown reads from this structure directly.
+// Macro step types grouped for the flyout menu. Record Macro leads with a
+// divider so it reads as its own affordance, seven categories in the middle,
+// then Run AHK Script under a trailing divider. Add new step types into the
+// matching group; the dropdown reads from this structure directly.
 const MACRO_STEP_CATEGORIES = [
   // "Record Macro" is the literal-replay recorder (Phase 1). Pinned at the
-  // top with a divider below so it reads as a distinct affordance, not as
-  // one option among many. Backend step.type is "Record Macro" — actions.rs
-  // match arm + execute_macro_step focus-recapture list both use that string.
+  // top with a divider below. Backend step.type is "Record Macro" —
+  // actions.rs match arm + execute_macro_step focus-recapture list both use
+  // that string.
   { kind: 'leaf',  label: 'Record Macro' },
   { kind: 'divider' },
-  { kind: 'group', label: 'Type & Keys',     items: ['Type Text', 'Dynamic Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
-  { kind: 'group', label: 'Mouse',           items: ['Click Mouse', 'Click at Position'] },
-  { kind: 'group', label: 'Open',            items: ['Open App', 'Open URL', 'Open Folder'] },
-  { kind: 'group', label: 'Wait & Window',   items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Focus Window'] },
-  // "Existing Trigger" — fires an existing assignment or text expansion from
+  // "Existing Action" — fires an existing assignment or text expansion from
   // inside a macro. Sub-items display as "Trigger" / "Text Expansion" via the
   // displayLabel map below, but their step.type values are explicit "Fire …"
   // strings to avoid collisions with how "trigger" and "text expansion" are
   // used elsewhere in the codebase. See actions.rs execute_macro_step arms.
-  { kind: 'group', label: 'Existing Trigger', items: ['Fire Trigger', 'Fire Text Expansion'] },
+  { kind: 'group', label: 'Existing Action',  items: ['Fire Trigger', 'Fire Text Expansion'] },
+  { kind: 'group', label: 'Type & Keys',      items: ['Type Text', 'Dynamic Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
+  { kind: 'group', label: 'Mouse',            items: ['Click Mouse', 'Click at Position', 'Mouse Scroll'] },
+  { kind: 'group', label: 'Open & Play',      items: ['Open App', 'Open Folder', 'Open URL', 'Play Audio File', 'Play Video File'] },
+  { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window'] },
+  { kind: 'group', label: 'Window',           items: ['Focus Window', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Minimise All', 'Restore All'] },
+  { kind: 'group', label: 'System',           items: ['Change Volume', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
   { kind: 'divider' },
   { kind: 'leaf',  label: 'Run AHK Script' },
 ];
@@ -141,10 +144,44 @@ const WFI_TRIGGER_OPTIONS = [
   { value: 'pressRelease', label: 'Press and Release'     },
 ];
 
+// MOUSE_CLICK_OPTIONS drives the hotkey-capture picker (binds a mouse button
+// as the trigger for an assignment). Full clicks only — users can't hold
+// "LButton Down" as a distinct trigger key.
 const MOUSE_CLICK_OPTIONS = [
   { value: 'LButton', label: 'Left Click' },
   { value: 'RButton', label: 'Right Click' },
   { value: 'MButton', label: 'Middle Click' },
+];
+
+// MOUSE_CLICK_MACRO_OPTIONS drives the Click Mouse macro-step dropdown. Adds
+// Down / Up single-phase variants alongside the full clicks so users can
+// chain e.g. LButtonDown → mouse-move steps → LButtonUp to script a drag.
+// The Rust arm strips the "Down" / "Up" suffix to isolate the button name
+// and dispatches to send_mouse_click (full) or send_mouse_event (single phase).
+const MOUSE_CLICK_MACRO_OPTIONS = [
+  { value: 'LButton',     label: 'Left Click' },
+  { value: 'LButtonDown', label: 'Left Click Down' },
+  { value: 'LButtonUp',   label: 'Left Click Up' },
+  { value: 'RButton',     label: 'Right Click' },
+  { value: 'RButtonDown', label: 'Right Click Down' },
+  { value: 'RButtonUp',   label: 'Right Click Up' },
+  { value: 'MButton',     label: 'Middle Click' },
+  { value: 'MButtonDown', label: 'Middle Click Down' },
+  { value: 'MButtonUp',   label: 'Middle Click Up' },
+];
+
+const VOLUME_MODE_OPTIONS = [
+  { value: 'set',      label: 'Set'      },
+  { value: 'increase', label: 'Increase' },
+  { value: 'decrease', label: 'Decrease' },
+  { value: 'mute',     label: 'Mute'     },
+];
+
+const SCROLL_DIRECTION_OPTIONS = [
+  { value: 'down',  label: 'Down'  },
+  { value: 'up',    label: 'Up'    },
+  { value: 'right', label: 'Right' },
+  { value: 'left',  label: 'Left'  },
 ];
 
 const INPUT_METHOD_OPTS = [
@@ -921,13 +958,23 @@ function ClickPositionFields({ step, updateStep }) {
         {picking ? `${countdown}...` : 'Pick Position'}
       </button>
       <label className="click-pos-axis-label">x</label>
-      <input className="form-input click-pos-coord-input" type="number" value={cp.x}
-        onChange={e => update({ x: parseInt(e.target.value) || 0 })}
-        onKeyDown={e => e.stopPropagation()} />
+      <NumberField
+        value={cp.x}
+        min={-32768}
+        max={32767}
+        defaultOnEmpty={0}
+        onCommit={n => update({ x: n })}
+        className="form-input click-pos-coord-input"
+      />
       <label className="click-pos-axis-label">y</label>
-      <input className="form-input click-pos-coord-input" type="number" value={cp.y}
-        onChange={e => update({ y: parseInt(e.target.value) || 0 })}
-        onKeyDown={e => e.stopPropagation()} />
+      <NumberField
+        value={cp.y}
+        min={-32768}
+        max={32767}
+        defaultOnEmpty={0}
+        onCommit={n => update({ y: n })}
+        className="form-input click-pos-coord-input"
+      />
     </div>
   );
 }
@@ -1182,6 +1229,76 @@ function WindowPicker({ value, onChange }) {
 }
 
 // Open-App sub-row used inside SortableMacroStep — picker + optional args.
+// Main-row inline picker + monitor picker for Open App. Renders as a fragment
+// so the parent's `.macro-step-value-slot` (main row) holds both alongside
+// the step-type dropdown. Modal state (pickerOpen) is local; the modal is
+// portaled to document.body so it doesn't get clipped by the 415 row.
+function MacroOpenAppInlinePicker({ appData, updateValue }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const isAumid = appData.kind === 'aumid' && !!appData.appId;
+  const displayLabel = isAumid
+    ? (appData.appName || 'Installed app')
+    : (appData.path || '');
+
+  function handlePick(picked) {
+    setPickerOpen(false);
+    if (picked.kind === 'aumid') {
+      updateValue({ ...appData, kind: 'aumid', appId: picked.appId, appName: picked.name || appData.appName || '', path: '' });
+    } else {
+      updateValue({ ...appData, kind: 'path', appId: '', appName: appData.appName || picked.name || '', path: picked.path });
+    }
+  }
+
+  // Just the picker button now — MonitorPicker moved to a dedicated sub-row.
+  return (
+    <>
+      <button
+        type="button"
+        className="picker-field"
+        style={{ flex: '1 1 60px', minWidth: 60 }}
+        onClick={() => setPickerOpen(true)}
+        title={displayLabel || 'Pick an installed app'}
+      >
+        <span className={`picker-field-value${displayLabel ? '' : ' picker-field-placeholder'}`}>
+          {displayLabel || 'Pick an app…'}
+        </span>
+        <span className="picker-field-caret" aria-hidden="true">▾</span>
+      </button>
+      {pickerOpen && <AppPickerModal onSelect={handlePick} onClose={() => setPickerOpen(false)} />}
+    </>
+  );
+}
+
+// Sub-rows for Open App: monitor picker on its own row, then args / advanced.
+// Picker button lives inline on the main row.
+function MacroOpenAppArgsRow({ appData, updateValue, advancedOpen, toggleAdvanced }) {
+  return (
+    <>
+      <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <MonitorPicker
+          value={appData.monitor || 'default'}
+          onChange={(m) => updateValue({ ...appData, monitor: m })}
+        />
+      </div>
+      {(advancedOpen || appData.args) ? (
+        <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <input
+            className="form-input"
+            style={{ flex: 1 }}
+            placeholder="Arguments (optional)"
+            value={appData.args}
+            onChange={e => updateValue({ ...appData, args: e.target.value })}
+          />
+        </div>
+      ) : (
+        <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <button className="macro-advanced-toggle" type="button" onClick={toggleAdvanced}>+ Advanced</button>
+        </div>
+      )}
+    </>
+  );
+}
+
 function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const isAumid = appData.kind === 'aumid' && !!appData.appId;
@@ -1199,37 +1316,49 @@ function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced })
   }
 
   return (
-    <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-      {/* Single clickable field — shows the picked app's display name (or a
-          placeholder when empty). Click anywhere on the field to reopen the
-          picker. Replaces the separate input + Pick app button. */}
-      <button
-        type="button"
-        className="picker-field"
-        onClick={() => setPickerOpen(true)}
-        title={displayLabel || 'Pick an installed app'}
-      >
-        <span className={`picker-field-value${displayLabel ? '' : ' picker-field-placeholder'}`}>
-          {displayLabel || 'Pick an installed app...'}
-        </span>
-        <span className="picker-field-caret" aria-hidden="true">▾</span>
-      </button>
-      {(advancedOpen || appData.args) ? (
-        <input
-          className="form-input"
-          placeholder="Arguments (optional)"
-          value={appData.args}
-          onChange={e => updateValue({ ...appData, args: e.target.value })}
+    <>
+      {/* Primary horizontal row — app picker, monitor picker sit on the same
+          line so they read as a single control group, not stacked. Args /
+          Advanced is on a second sub-row because the args input is wider than
+          what fits horizontally alongside the picker + monitor. */}
+      <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {/* Single clickable field — shows the picked app's display name (or a
+            placeholder when empty). Click anywhere on the field to reopen the
+            picker. Replaces the separate input + Pick app button. */}
+        <button
+          type="button"
+          className="picker-field"
+          style={{ flex: '1 1 60px', minWidth: 60 }}
+          onClick={() => setPickerOpen(true)}
+          title={displayLabel || 'Pick an installed app'}
+        >
+          <span className={`picker-field-value${displayLabel ? '' : ' picker-field-placeholder'}`}>
+            {displayLabel || 'Pick an installed app...'}
+          </span>
+          <span className="picker-field-caret" aria-hidden="true">▾</span>
+        </button>
+        <MonitorPicker
+          value={appData.monitor || 'default'}
+          onChange={(m) => updateValue({ ...appData, monitor: m })}
         />
+      </div>
+      {(advancedOpen || appData.args) ? (
+        <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <input
+            className="form-input"
+            style={{ flex: 1 }}
+            placeholder="Arguments (optional)"
+            value={appData.args}
+            onChange={e => updateValue({ ...appData, args: e.target.value })}
+          />
+        </div>
       ) : (
-        <button className="macro-advanced-toggle" type="button" onClick={toggleAdvanced}>+ Advanced</button>
+        <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <button className="macro-advanced-toggle" type="button" onClick={toggleAdvanced}>+ Advanced</button>
+        </div>
       )}
-      <MonitorPicker
-        value={appData.monitor || 'default'}
-        onChange={(m) => updateValue({ ...appData, monitor: m })}
-      />
       {pickerOpen && <AppPickerModal onSelect={handlePick} onClose={() => setPickerOpen(false)} />}
-    </div>
+    </>
   );
 }
 
@@ -1665,13 +1794,34 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     }
   }
 
-  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position'].includes(step.type) || showWinAdvisory;
+  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
   let appData = { kind: 'path', appId: '', appName: '', path: '', args: '', monitor: 'default' };
   if (step.type === 'Open App') { try { appData = { ...appData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
   let focusData = { process: '', title: '' };
   if (step.type === 'Focus Window') { try { focusData = { ...focusData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
+  // Minimise / Maximise Window — same shape as Focus (process + title). Empty
+  // process AND empty title means "the currently-focused window" (Rust arm
+  // falls back to GetForegroundWindow / *target_hwnd).
+  let minmaxData = { process: '', title: '' };
+  if (step.type === 'Minimise Window' || step.type === 'Maximise Window') {
+    try { minmaxData = { ...minmaxData, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  }
+  // Resize Window — Focus fields + width/height. usePosition + x/y are
+  // optional (default: keep current position, only change size).
+  let resizeData = { process: '', title: '', width: 1200, height: 800, usePosition: false, x: 100, y: 100 };
+  if (step.type === 'Resize Window') {
+    try { resizeData = { ...resizeData, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  }
+  // Play Audio File / Play Video File — shell-open a media path via the
+  // OS default handler (WMP, Groove, VLC, whatever the user has associated).
+  // Monitor picker targets the player window when a fresh player instance
+  // launches; a no-op for players that reuse an existing window.
+  let mediaData = { path: '', monitor: 'default' };
+  if (step.type === 'Play Audio File' || step.type === 'Play Video File') {
+    try { mediaData = { ...mediaData, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  }
   // Wait for Window: stored as { process, title, timeoutMs }. Matches the same
   // shape as Focus Window plus a timeout. Backend matches on process basename
   // (if set) AND title substring (if set) — see actions.rs Wait for Window arm.
@@ -1703,7 +1853,21 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         <div className="macro-step-num">{index + 1}</div>
         <MacroStepTypeMenu
           value={step.type}
-          onChange={(t) => updateStep({ ...step, type: t, value: t === 'Click Mouse' ? 'LButton' : '' })}
+          onChange={(t) => {
+            // Seed step.value with a sensible default per type so the step
+            // fires on its first click without requiring the user to touch
+            // the config widget. Otherwise types with JSON-shaped values
+            // (Change Volume, Mouse Scroll) fire with "" and the Rust arm
+            // logs an "unknown mode" warning + no-ops.
+            let seed = '';
+            if (t === 'Click Mouse')   seed = 'LButton';
+            else if (t === 'Change Volume') seed = JSON.stringify({ mode: 'increase', amount: 5 });
+            else if (t === 'Mouse Scroll')  seed = JSON.stringify({ direction: 'down', amount: 3 });
+            else if (t === 'Minimise Window' || t === 'Maximise Window') seed = JSON.stringify({ process: '', title: '' });
+            else if (t === 'Resize Window') seed = JSON.stringify({ process: '', title: '', width: 1200, height: 800, usePosition: false, x: 100, y: 100 });
+            else if (t === 'Play Audio File' || t === 'Play Video File') seed = JSON.stringify({ path: '', monitor: 'default' });
+            updateStep({ ...step, type: t, value: seed });
+          }}
         />
 
         {/* Inline value fields */}
@@ -1717,12 +1881,100 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         {step.type === 'Click Mouse' && (
           <select
             className="form-select macro-step-value"
+            // Prefer 145px so "Middle Click Down" reads cleanly, but allow the
+            // select to shrink under pressure — Click Mouse rows also carry
+            // the ×repeat wrapper on the right, and the row's 415 cap doesn't
+            // otherwise leave enough space for the duplicate + remove icons.
+            // Shrinks proportionally down to 115px so the buttons stay inside.
+            style={{ flex: '0 1 145px', minWidth: 115 }}
             value={step.value || 'LButton'}
             onChange={e => updateStep({ ...step, value: e.target.value })}
           >
-            {MOUSE_CLICK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {MOUSE_CLICK_MACRO_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         )}
+        {step.type === 'Change Volume' && (() => {
+          // Value shape: `{ mode: "set"|"increase"|"decrease"|"mute", amount: 0-100 }`.
+          // Amount is 0-100 for Set / Increase / Decrease (Rust clamps).
+          // Mute has no amount. Backward-compat: legacy string values map
+          // via Rust side; UI writes JSON.
+          let cv = { mode: 'increase', amount: 5 };
+          try {
+            if (step.value && step.value.trim().startsWith('{')) {
+              cv = { ...cv, ...JSON.parse(step.value) };
+            } else if (step.value === 'up')   cv = { mode: 'increase', amount: 5 };
+            else if (step.value === 'down')   cv = { mode: 'decrease', amount: 5 };
+            else if (step.value === 'mute')   cv = { mode: 'mute', amount: 0 };
+          } catch (_) {}
+          const showAmount = cv.mode !== 'mute';
+          const write = (next) => updateStep({ ...step, value: JSON.stringify(next) });
+          return (
+            <>
+              <select
+                className="form-select macro-step-value"
+                // Shrinkable — prefers 105px so "Decrease" reads fully, but
+                // yields down to 65px under row pressure so the duplicate /
+                // close buttons stay inside the 415 column.
+                style={{ flex: '0 1 105px', minWidth: 65 }}
+                value={cv.mode}
+                onChange={e => {
+                  const nextMode = e.target.value;
+                  // Reset amount to a sensible default when switching modes.
+                  const nextAmount = nextMode === 'mute' ? 0 : (nextMode === 'set' ? 50 : 5);
+                  write({ mode: nextMode, amount: nextAmount });
+                }}
+              >
+                {VOLUME_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              {showAmount && (
+                <>
+                  <NumberField
+                    value={cv.amount}
+                    min={0}
+                    max={100}
+                    defaultOnEmpty={0}
+                    onCommit={n => write({ ...cv, amount: n })}
+                    title="Volume 0-100"
+                    // Wider than the default step-repeat-input (36px) so
+                    // 3-digit values like "100" render without truncation.
+                    style={{ width: 72 }}
+                  />
+                  <span className="macro-step-hint" style={{ marginLeft: 4 }}>%</span>
+                </>
+              )}
+            </>
+          );
+        })()}
+        {step.type === 'Mouse Scroll' && (() => {
+          let ms = { direction: 'down', amount: 3 };
+          try { ms = { ...ms, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+          return (
+            <>
+              <select
+                className="form-select macro-step-value"
+                // Compact + shrinkable — prefers 80px so "Right" reads
+                // fully, floors at 55 so the buttons never get pushed out.
+                style={{ flex: '0 1 80px', minWidth: 55 }}
+                value={ms.direction}
+                onChange={e => updateStep({ ...step, value: JSON.stringify({ ...ms, direction: e.target.value }) })}
+              >
+                {SCROLL_DIRECTION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <NumberField
+                value={ms.amount}
+                min={1}
+                max={999}
+                defaultOnEmpty={1}
+                onCommit={n => updateStep({ ...step, value: JSON.stringify({ ...ms, amount: n }) })}
+                // Wider (60px) so 3-digit totals like "120" fit clearly —
+                // the ×repeat multiplier was removed so this field alone
+                // controls the total notches sent per fire.
+                style={{ width: 60 }}
+                title="Total notches per fire"
+              />
+            </>
+          );
+        })()}
         {step.type === 'Type Text' && (
           <input
             className="form-input macro-step-value"
@@ -1799,20 +2051,41 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
           />
         )}
         {step.type === 'Wait for Input' && (() => {
-          let wfi = { inputType: 'LButton', trigger: 'press', specificKey: '' };
+          // New default: trigger = 'pressRelease' (was 'press'). Labelled
+          // trigger select now sits inline next to the inputType select
+          // rather than in the sub-row; the sub-row keeps only the
+          // Specific Key capture (which still needs its own row when active).
+          let wfi = { inputType: 'LButton', trigger: 'pressRelease', specificKey: '' };
           try { wfi = { ...wfi, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+          const updateWfi = (patch) => {
+            const next = { ...wfi, ...patch };
+            if (patch.inputType && patch.inputType !== 'SpecificKey') next.specificKey = '';
+            updateStep({ ...step, value: JSON.stringify(next) });
+          };
           return (
-            <select
-              className="form-select macro-step-value"
-              value={wfi.inputType}
-              onChange={e => {
-                const next = { ...wfi, inputType: e.target.value };
-                if (e.target.value !== 'SpecificKey') next.specificKey = '';
-                updateStep({ ...step, value: JSON.stringify(next) });
-              }}
-            >
-              {WFI_INPUT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <>
+              <select
+                className="form-select"
+                // Shrinkable so the row's total width can never exceed 415 —
+                // the flex algorithm compresses this + the trigger select
+                // proportionally rather than pushing the duplicate / close
+                // buttons out of the visible column. Prefers 90px, floors at 55.
+                style={{ flex: '0 1 90px', minWidth: 55 }}
+                value={wfi.inputType}
+                onChange={e => updateWfi({ inputType: e.target.value })}
+              >
+                {WFI_INPUT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <select
+                className="form-select"
+                // Same rationale — prefers 120px, floors at 70.
+                style={{ flex: '0 1 120px', minWidth: 70 }}
+                value={wfi.trigger}
+                onChange={e => updateWfi({ trigger: e.target.value })}
+              >
+                {WFI_TRIGGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </>
           );
         })()}
         {step.type === 'Click at Position' && (
@@ -1830,28 +2103,86 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             onChange={next => updateStep({ ...step, value: JSON.stringify(next) })}
           />
         )}
-        {['Copy to Clipboard', 'Paste Clipboard', 'Select All'].includes(step.type) && (
-          <span className="macro-step-hint">No additional settings</span>
+        {(step.type === 'Minimise Window' || step.type === 'Maximise Window') && (
+          <WindowPicker
+            value={minmaxData}
+            onChange={next => updateStep({ ...step, value: JSON.stringify(next) })}
+          />
         )}
-        {(step.type === 'Press Key' || step.type === 'Click Mouse') && (
+        {step.type === 'Resize Window' && (
+          <WindowPicker
+            value={{ process: resizeData.process, title: resizeData.title }}
+            onChange={next => updateStep({ ...step, value: JSON.stringify({ ...resizeData, ...next }) })}
+          />
+        )}
+        {/* Open App / Open Folder / Play Audio / Play Video — picker button
+            + monitor picker inline. Each opens a different browse dialog on
+            click; the button label shows the picked target (or a placeholder).
+            The old separate readonly path input + Browse button + monitor
+            picker sub-row was collapsed here so all three read as one control. */}
+        {step.type === 'Open App' && (
+          <MacroOpenAppInlinePicker
+            appData={appData}
+            updateValue={(next) => updateStep({ ...step, value: JSON.stringify(next) })}
+          />
+        )}
+        {step.type === 'Open Folder' && (
+          <button
+            type="button"
+            className="picker-field"
+            style={{ flex: '1 1 60px', minWidth: 60 }}
+            onClick={async () => {
+              const path = await window.electronAPI?.browseForFolder();
+              if (path) updateStep({ ...step, value: JSON.stringify({ ...folderData, path }) });
+            }}
+            title={folderData.path || 'Pick a folder…'}
+          >
+            <span className={`picker-field-value${folderData.path ? '' : ' picker-field-placeholder'}`}>
+              {folderData.path || 'Pick a folder…'}
+            </span>
+            <span className="picker-field-caret" aria-hidden="true">▾</span>
+          </button>
+        )}
+        {(step.type === 'Play Audio File' || step.type === 'Play Video File') && (
+          <button
+            type="button"
+            className="picker-field"
+            style={{ flex: '1 1 60px', minWidth: 60 }}
+            onClick={async () => {
+              const path = step.type === 'Play Audio File'
+                ? await window.electronAPI?.browseForAudio()
+                : await window.electronAPI?.browseForVideo();
+              if (path) updateStep({ ...step, value: JSON.stringify({ ...mediaData, path }) });
+            }}
+            title={mediaData.path || (step.type === 'Play Audio File' ? 'Pick an audio file…' : 'Pick a video file…')}
+          >
+            <span className={`picker-field-value${mediaData.path ? '' : ' picker-field-placeholder'}`}>
+              {mediaData.path || (step.type === 'Play Audio File' ? 'Pick an audio file…' : 'Pick a video file…')}
+            </span>
+            <span className="picker-field-caret" aria-hidden="true">▾</span>
+          </button>
+        )}
+        {[
+          'Copy to Clipboard', 'Paste Clipboard', 'Select All',
+          // System / no-config steps.
+          'Minimise All', 'Restore All', 'Lock Computer',
+          'Sleep Computer', 'Log Off', 'Shut Down Computer', 'Control Panel',
+        ].includes(step.type) && (
+          <span className="macro-step-hint">
+            {['Sleep Computer', 'Log Off', 'Shut Down Computer'].includes(step.type)
+              ? 'Prompts before firing'
+              : 'No additional settings'}
+          </span>
+        )}
+        {['Press Key', 'Click Mouse'].includes(step.type) && (
           <div className="step-repeat">
             <span className="step-repeat-label">×</span>
-            <input
-              className="form-input step-repeat-input"
-              type="number"
-              min="1"
-              max="99"
+            <NumberField
               value={step.repeat ?? 1}
-              onChange={e => {
-                const raw = e.target.value;
-                if (raw === '') { updateStep({ ...step, repeat: '' }); return; }
-                const v = Math.min(99, parseInt(raw) || 1);
-                updateStep({ ...step, repeat: v });
-              }}
-              onBlur={() => {
-                const v = Math.max(1, Math.min(99, parseInt(step.repeat) || 1));
-                updateStep({ ...step, repeat: v });
-              }}
+              min={1}
+              max={99}
+              defaultOnEmpty={1}
+              onCommit={n => updateStep({ ...step, repeat: n })}
             />
           </div>
         )}
@@ -1889,9 +2220,10 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         </div>
       )}
 
-      {/* Sub-row: Open App — picker + optional args */}
+      {/* Open App sub-rows — monitor picker on its own row, then args /
+          advanced. Picker button + step type dropdown stay in the main row. */}
       {step.type === 'Open App' && (
-        <MacroOpenAppRow
+        <MacroOpenAppArgsRow
           appData={appData}
           updateValue={(next) => updateStep({ ...step, value: JSON.stringify(next) })}
           advancedOpen={advancedOpen}
@@ -1899,27 +2231,22 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         />
       )}
 
-      {/* Sub-row: Open Folder — path + browse + monitor picker. step.value is
-          JSON {path, monitor}; backward-compat reader above unwraps legacy
-          plain-string path values. */}
+      {/* Open Folder sub-row — monitor picker only. Path button is inline. */}
       {step.type === 'Open Folder' && (
-        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-          <div className="file-input-row" style={{ flex: 1 }}>
-            <input
-              className="form-input"
-              style={{ flex: 1 }}
-              placeholder="C:\Users\Me\Documents"
-              value={folderData.path || ''}
-              readOnly
-            />
-            <button className="browse-btn" type="button" onClick={async () => {
-              const path = await window.electronAPI?.browseForFolder();
-              if (path) updateStep({ ...step, value: JSON.stringify({ ...folderData, path }) });
-            }}>Browse</button>
-          </div>
+        <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <MonitorPicker
             value={folderData.monitor || 'default'}
             onChange={(m) => updateStep({ ...step, value: JSON.stringify({ ...folderData, monitor: m }) })}
+          />
+        </div>
+      )}
+
+      {/* Play Audio / Play Video sub-row — monitor picker only. */}
+      {(step.type === 'Play Audio File' || step.type === 'Play Video File') && (
+        <div className="wfi-config-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <MonitorPicker
+            value={mediaData.monitor || 'default'}
+            onChange={(m) => updateStep({ ...step, value: JSON.stringify({ ...mediaData, monitor: m }) })}
           />
         </div>
       )}
@@ -1935,6 +2262,89 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             value={focusData.title || ''}
             onChange={e => updateStep({ ...step, value: JSON.stringify({ ...focusData, title: e.target.value }) })}
           />
+        </div>
+      )}
+
+      {/* Sub-row: Minimise / Maximise Window — title input; empty targets
+          the currently-focused window. */}
+      {(step.type === 'Minimise Window' || step.type === 'Maximise Window') && (
+        <div className="wfi-config-row wfi-config-row-aligned" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <input
+            className="form-input"
+            placeholder="Window title (leave blank for currently-focused window)"
+            value={minmaxData.title || ''}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...minmaxData, title: e.target.value }) })}
+          />
+        </div>
+      )}
+
+      {/* Sub-row: Resize Window — title, width, height, optional position. */}
+      {step.type === 'Resize Window' && (
+        <div className="wfi-config-row wfi-config-row-aligned" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <input
+            className="form-input"
+            placeholder="Window title (leave blank for currently-focused window)"
+            value={resizeData.title || ''}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...resizeData, title: e.target.value }) })}
+          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span className="macro-step-hint">Width</span>
+              <NumberField
+                value={resizeData.width}
+                min={100}
+                max={10000}
+                defaultOnEmpty={100}
+                onCommit={n => updateStep({ ...step, value: JSON.stringify({ ...resizeData, width: n }) })}
+                style={{ width: 80 }}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span className="macro-step-hint">Height</span>
+              <NumberField
+                value={resizeData.height}
+                min={100}
+                max={10000}
+                defaultOnEmpty={100}
+                onCommit={n => updateStep({ ...step, value: JSON.stringify({ ...resizeData, height: n }) })}
+                style={{ width: 80 }}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={!!resizeData.usePosition}
+                onChange={e => updateStep({ ...step, value: JSON.stringify({ ...resizeData, usePosition: e.target.checked }) })}
+              />
+              <span className="macro-step-hint">Also set position</span>
+            </label>
+            {resizeData.usePosition && (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span className="macro-step-hint">X</span>
+                  <NumberField
+                    value={resizeData.x}
+                    min={-32768}
+                    max={32767}
+                    defaultOnEmpty={0}
+                    onCommit={n => updateStep({ ...step, value: JSON.stringify({ ...resizeData, x: n }) })}
+                    style={{ width: 80 }}
+                  />
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span className="macro-step-hint">Y</span>
+                  <NumberField
+                    value={resizeData.y}
+                    min={-32768}
+                    max={32767}
+                    defaultOnEmpty={0}
+                    onCommit={n => updateStep({ ...step, value: JSON.stringify({ ...resizeData, y: n }) })}
+                    style={{ width: 80 }}
+                  />
+                </label>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -1957,27 +2367,21 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
 
       {/* Sub-row: Wait for Input — trigger + optional specific key */}
       {step.type === 'Wait for Input' && (() => {
-        let wfi = { inputType: 'LButton', trigger: 'press', specificKey: '' };
+        // Trigger dropdown moved to the main row inline (above). Sub-row now
+        // renders only when inputType == "Specific Key" — the key capture
+        // field is too wide to fit inline alongside the two selects.
+        let wfi = { inputType: 'LButton', trigger: 'pressRelease', specificKey: '' };
         try { wfi = { ...wfi, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+        if (wfi.inputType !== 'SpecificKey') return null;
         const updateWfi = (patch) => {
-          const next = { ...wfi, ...patch };
-          if (patch.inputType && patch.inputType !== 'SpecificKey') next.specificKey = '';
-          updateStep({ ...step, value: JSON.stringify(next) });
+          updateStep({ ...step, value: JSON.stringify({ ...wfi, ...patch }) });
         };
         return (
           <div className="wfi-config-row wfi-config-row-nowrap">
             <div className="wfi-field">
-              <span className="wfi-label">Trigger:</span>
-              <select className="form-select wfi-select" value={wfi.trigger} onChange={e => updateWfi({ trigger: e.target.value })}>
-                {WFI_TRIGGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <span className="wfi-label">Key:</span>
+              <KeyCaptureInput value={wfi.specificKey || ''} onChange={v => updateWfi({ specificKey: v })} />
             </div>
-            {wfi.inputType === 'SpecificKey' && (
-              <div className="wfi-field">
-                <span className="wfi-label">Key:</span>
-                <KeyCaptureInput value={wfi.specificKey || ''} onChange={v => updateWfi({ specificKey: v })} />
-              </div>
-            )}
           </div>
         );
       })()}
@@ -2146,17 +2550,14 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
                 onChange={() => updateLoop({ mode: 'count' })}
               />
               <span>Repeat</span>
-              <input
-                type="number"
+              <NumberField
                 className="seq-loop-count"
                 min={2}
                 max={9999}
+                defaultOnEmpty={5}
                 value={loopCfg.count ?? 5}
                 disabled={loopCfg.mode === 'forever'}
-                onChange={e => {
-                  const n = parseInt(e.target.value, 10);
-                  updateLoop({ count: Number.isFinite(n) ? Math.max(2, Math.min(9999, n)) : 5 });
-                }}
+                onCommit={n => updateLoop({ count: n })}
               />
               <span>times</span>
             </label>
@@ -2174,16 +2575,14 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
 
           <label className="seq-loop-row seq-loop-delay">
             <span>Delay between iterations</span>
-            <input
-              type="number"
+            <NumberField
               className="seq-loop-delay-input"
               min={0}
+              max={3600000}
               step={50}
+              defaultOnEmpty={0}
               value={loopCfg.delayMs ?? 0}
-              onChange={e => {
-                const n = parseInt(e.target.value, 10);
-                updateLoop({ delayMs: Number.isFinite(n) ? Math.max(0, n) : 0 });
-              }}
+              onCommit={n => updateLoop({ delayMs: n })}
             />
             <span>ms</span>
           </label>
@@ -3119,22 +3518,13 @@ export default function MacroPanel({
                   <p className="hold-mode-hint">Fires repeatedly until hotkey is pressed again</p>
                   <div className="repeat-interval-row">
                     <label className="repeat-interval-label">Interval</label>
-                    <input
+                    <NumberField
                       className="form-input repeat-interval-input"
-                      type="number"
                       min={50}
+                      max={60000}
+                      defaultOnEmpty={50}
                       value={formValue.repeatInterval ?? 100}
-                      onChange={e => {
-                        const raw = e.target.value;
-                        setFormValue(prev => ({ ...prev, repeatInterval: raw === '' ? '' : (parseInt(raw) || '') }));
-                      }}
-                      onBlur={() => {
-                        setFormValue(prev => {
-                          const val = parseInt(prev.repeatInterval);
-                          return { ...prev, repeatInterval: (!val || val < 50) ? 50 : val };
-                        });
-                      }}
-                      onKeyDown={e => e.stopPropagation()}
+                      onCommit={n => setFormValue(prev => ({ ...prev, repeatInterval: n }))}
                     />
                     <span className="repeat-interval-suffix">ms</span>
                   </div>

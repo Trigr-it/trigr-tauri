@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './AnalyticsPanel.css';
+import NumberField from './NumberField';
 
 function formatTimeLong(seconds) {
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -391,14 +392,16 @@ export default function AnalyticsPanel({ isPro = false }) {
                     <label className="analytics-roi-label">Hourly rate</label>
                     <div className="analytics-roi-input-wrap">
                       <span className="analytics-roi-currency">£</span>
-                      <input
-                        type="number"
+                      <NumberField
                         className="analytics-roi-input"
-                        value={hourlyRate || ''}
+                        value={hourlyRate || 0}
                         placeholder="0"
-                        min="0"
-                        onChange={e => {
-                          const val = parseFloat(e.target.value) || 0;
+                        min={0}
+                        max={100000}
+                        defaultOnEmpty={0}
+                        step="0.01"
+                        float
+                        onCommit={val => {
                           setHourlyRate(val);
                           localStorage.setItem('trigr.hourlyRate', String(val));
                         }}

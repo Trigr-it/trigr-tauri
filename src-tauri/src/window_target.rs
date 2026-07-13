@@ -12,10 +12,11 @@
 //! yield a usable PID, so they fall back to snapshot-diff polling of
 //! `EnumWindows` at 50ms cadence (3s budget).
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::mem;
 use std::ptr;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -25,9 +26,10 @@ use serde_json::Value;
 
 use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, POINT, RECT, TRUE};
 use windows_sys::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow,
+    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, RedrawWindow,
     HDC, HMONITOR, MONITORINFO, MONITORINFOEXW,
     MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY,
+    RDW_ALLCHILDREN, RDW_INVALIDATE, RDW_UPDATENOW,
 };
 
 // windows-sys 0.59 omits this constant from Win32::Graphics::Gdi; it's a stable
@@ -40,11 +42,12 @@ use windows_sys::Win32::UI::Shell::{
     SHELLEXECUTEINFOW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, EnumWindows, GetCursorPos, GetParent, GetWindowLongW, GetWindowRect,
-    GetWindowThreadProcessId, IsWindowVisible, PeekMessageW, SetCursorPos, SetWindowPos,
-    TranslateMessage, EVENT_OBJECT_SHOW, GWL_EXSTYLE, MSG, OBJID_WINDOW, PM_REMOVE,
-    SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SW_SHOW, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS, WS_EX_TOOLWINDOW,
+    DispatchMessageW, EnumWindows, GetClassNameW, GetCursorPos, GetParent, GetWindowLongW,
+    GetWindowRect, GetWindowThreadProcessId, IsWindowVisible, PeekMessageW, SendMessageW,
+    SetCursorPos, SetWindowPos, TranslateMessage, EVENT_OBJECT_SHOW, GWL_EXSTYLE, MSG,
+    OBJID_WINDOW, PM_REMOVE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SW_SHOW,
+    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE,
+    WS_EX_TOOLWINDOW,
 };
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -105,13 +108,19 @@ pub fn enum_monitors() -> Vec<MonitorInfo> {
     state.monitors
 }
 
-pub fn launch_with_monitor_target(kind: LaunchKind, target: MonitorTarget) {
+/// Fire the launch and set up the watcher. Returns a receiver that gets a
+/// single `()` the first time a window is actually moved to the target
+/// monitor — macro steps use `recv_timeout` on it to sequence "Open App" then
+/// "Minimise All" correctly. Single-action callers ignore the return (their
+/// caller is a key press, nothing to sequence with). `None` is returned when
+/// no monitor target is set (default launch — nothing to wait on).
+pub fn launch_with_monitor_target(kind: LaunchKind, target: MonitorTarget) -> Option<Receiver<()>> {
     let rc = resolve_target_rect(&target);
 
     // Fast path: no targeting — preserve historical behaviour exactly.
     if rc.is_none() {
         do_simple_launch(&kind);
-        return;
+        return None;
     }
     let rc = rc.unwrap();
 
@@ -129,18 +138,35 @@ pub fn launch_with_monitor_target(kind: LaunchKind, target: MonitorTarget) {
         .collect();
     let own_pid = unsafe { GetCurrentProcessId() };
 
+    // Folder launches don't hit the restore-race the delay was built to defeat
+    // (Explorer folder windows don't persist per-path window rects the way
+    // apps like Chrome / Word do). Move immediately so subsequent macro steps
+    // like Win+Arrow quadrant snaps land after our move, not before.
+    let is_folder = matches!(kind, LaunchKind::Folder { .. });
+    let delay_ms = if is_folder { 0 } else { MOVE_DELAY_MS };
+
     // Launch synchronously on the calling thread (so the LaunchKind borrow stays
     // alive). PID returned for path launches; None for AUMID / folder / failures.
     let pid_opt = launch_and_get_pid(&kind);
 
+    // Completion channel — signalled the first time a delayed-move fires
+    // (spawn_delayed_move sends `()` after its SetWindowPos). Each spawned
+    // move gets a clone; extra sends after the first are received by whoever
+    // still holds the receiver or dropped silently. If the watcher exits its
+    // 3s budget without moving anything, all senders drop and recv_timeout
+    // returns Disconnected before its timeout — caller then falls through.
+    let (tx, rx) = channel::<()>();
+
     // Watcher thread: finds the new window and moves it. Lives at most 3s.
     thread::spawn(move || {
         if let Some(pid) = pid_opt {
-            watch_via_winevent(pid, rc, existing);
+            watch_via_winevent(pid, rc, existing, tx);
         } else {
-            watch_via_poll(existing, own_pid, rc);
+            watch_via_poll(existing, own_pid, rc, delay_ms, tx);
         }
     });
+
+    Some(rx)
 }
 
 // ── Monitor enumeration ─────────────────────────────────────────────────────
@@ -313,7 +339,36 @@ fn find_new_top_level_excluding_pid(existing: &HashSet<isize>, exclude_pid: u32)
     None
 }
 
+// Classic UWP apps (Calculator, Clock, Calendar, Photos, Store, Settings,
+// etc.) are hosted in ApplicationFrameHost.exe with a top-level class name of
+// "ApplicationFrameWindow". They render via DirectComposition, and any
+// programmatic SetWindowPos leaves their compositor surface bound to the
+// source monitor's DXGI output — the window moves visually but the content
+// area shows nothing. Neither RedrawWindow nor bracketing with
+// WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE was enough to prod it back. Skipping
+// these windows is the honest fix: monitor targeting doesn't work for UWP
+// system apps. Third-party UWP apps that use their own top-level window
+// (WinUI 3, some newer Store apps) don't have this class name and continue
+// to be moved normally.
+fn is_uwp_frame_window(hwnd: HWND) -> bool {
+    let mut buf: [u16; 64] = [0; 64];
+    let len = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+    if len == 0 { return false; }
+    let name = String::from_utf16_lossy(&buf[..len as usize]);
+    name == "ApplicationFrameWindow"
+}
+
 fn move_window_centered(hwnd: HWND, rc: RECT) {
+    if is_uwp_frame_window(hwnd) {
+        warn!(
+            "[WINDOW-TARGET] skipping UWP app (ApplicationFrameWindow HWND {:x}) — \
+             DirectComposition doesn't survive programmatic monitor moves; \
+             app will open wherever Windows placed it",
+            hwnd as usize
+        );
+        return;
+    }
+
     let mut wrect: RECT = unsafe { mem::zeroed() };
     if unsafe { GetWindowRect(hwnd, &mut wrect) } == 0 { return; }
     let w = wrect.right - wrect.left;
@@ -323,6 +378,14 @@ fn move_window_centered(hwnd: HWND, rc: RECT) {
     let new_x = rc.left + (work_w - w) / 2;
     let new_y = rc.top + (work_h - h) / 2;
     unsafe {
+        // Bracket the move with WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE so UWP
+        // frameworks (Calculator, Photos, Store apps, etc.) treat this as an
+        // interactive positioning session — same as a manual title-bar drag.
+        // Without the bracket, DirectComposition sees a lone
+        // WM_WINDOWPOSCHANGED and leaves its swap chain bound to the source
+        // monitor's DXGI output, painting nothing. With the bracket, it
+        // properly re-binds at exit and re-presents.
+        SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
         SetWindowPos(
             hwnd,
             ptr::null_mut(),
@@ -332,7 +395,49 @@ fn move_window_centered(hwnd: HWND, rc: RECT) {
             0,
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
         );
+        SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+        // Post-move redraw nudge — invalidates the whole window including all
+        // child windows and forces an immediate paint pass. Belt-and-braces
+        // for anything the bracket didn't already handle.
+        RedrawWindow(
+            hwnd,
+            ptr::null(),
+            ptr::null_mut(),
+            RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+        );
     }
+}
+
+// Schedule a `move_window_centered` `delay_ms` in the future. Lets the app
+// finish restoring its own last-known window rect before we override. HWND
+// crosses the thread boundary as isize (raw pointer is !Send). If the app
+// closes the window before the delay fires, `move_window_centered`'s
+// GetWindowRect returns 0 and the call is a no-op — no crash. delay_ms=0 is
+// supported (folder launches use it to avoid racing macro-driven snaps that
+// follow the Open Folder step). `on_move_complete` is `Some` for the macro
+// path so subsequent steps can sequence after the actual move; `None` for
+// the last-ditch snapshot-diff fallback which signals its own completion.
+fn spawn_delayed_move(
+    hwnd: HWND,
+    rc: RECT,
+    log_msg: String,
+    delay_ms: u64,
+    on_move_complete: Option<Sender<()>>,
+) {
+    let hwnd_isize = hwnd as isize;
+    thread::spawn(move || {
+        if delay_ms > 0 {
+            thread::sleep(Duration::from_millis(delay_ms));
+        }
+        let hwnd = hwnd_isize as HWND;
+        move_window_centered(hwnd, rc);
+        info!("{}", log_msg);
+        // Send is best-effort — if receiver already dropped (macro moved on or
+        // timed out), Err is expected and swallowed.
+        if let Some(tx) = on_move_complete {
+            let _ = tx.send(());
+        }
+    });
 }
 
 // ── Launchers ───────────────────────────────────────────────────────────────
@@ -449,17 +554,27 @@ fn do_simple_launch(kind: &LaunchKind) {
 
 // ── Watchers ────────────────────────────────────────────────────────────────
 
-// Watchers keep moving every NEW visible top-level window that matches the
-// launched PID (or, for brokered launches, every window not owned by us) for
-// the full 3s budget. Some apps (Google Earth, Adobe products, Office) show a
-// small bootstrap/loader window first, then surface the real main window 1-2
-// seconds later — moving only the first match leaves the real window on its
-// OS-remembered monitor. Keeping the hook alive catches both.
+// Watchers detect every new visible top-level window that matches the launched
+// PID (or, for brokered launches, every window not owned by us) throughout the
+// 3s budget. Each detection SCHEDULES A DELAYED MOVE — MOVE_DELAY_MS after
+// detection — so the app has time to run its own position-restore logic
+// before we override. Otherwise apps like Word, Excel, Chrome, VS Code (which
+// write their last window rect to disk on close and restore on launch) win
+// the race: they re-set the window's position after our initial move, leaving
+// it on its OS-remembered monitor.
+//
+// Some apps (Google Earth, Adobe products, Office) show a small bootstrap /
+// loader window first, then surface the real main window 1-2 seconds later.
+// Each SHOW event gets its own scheduled delayed move, so both are handled.
+const MOVE_DELAY_MS: u64 = 400;
 
 thread_local! {
     static TARGET_PID: Cell<u32> = Cell::new(0);
     static TARGET_RECT: Cell<Option<RECT>> = Cell::new(None);
     static MOVE_COUNT: Cell<u32> = Cell::new(0);
+    // Sender clone slot — win_event_proc reads it (via clone) to hand a Sender
+    // to each spawn_delayed_move. RefCell because Sender is not Copy.
+    static TX_ON_MOVE: RefCell<Option<Sender<()>>> = RefCell::new(None);
 }
 
 unsafe extern "system" fn win_event_proc(
@@ -482,19 +597,24 @@ unsafe extern "system" fn win_event_proc(
     if pid != target_pid { return; }
 
     if let Some(rc) = TARGET_RECT.with(|r| r.get()) {
-        move_window_centered(hwnd, rc);
         MOVE_COUNT.with(|c| c.set(c.get() + 1));
-        info!(
+        let log_msg = format!(
             "[WINDOW-TARGET] moved HWND {:x} (pid {}) to centre of target monitor",
             hwnd as usize, pid
         );
+        let tx = TX_ON_MOVE.with(|t| t.borrow().clone());
+        spawn_delayed_move(hwnd, rc, log_msg, MOVE_DELAY_MS, tx);
     }
 }
 
-fn watch_via_winevent(pid: u32, rc: RECT, existing: HashSet<isize>) {
+fn watch_via_winevent(pid: u32, rc: RECT, existing: HashSet<isize>, tx: Sender<()>) {
     TARGET_PID.with(|p| p.set(pid));
     TARGET_RECT.with(|r| r.set(Some(rc)));
     MOVE_COUNT.with(|c| c.set(0));
+    // Retain the Sender in thread-local storage so win_event_proc can clone it
+    // into each spawn_delayed_move. Cleared at function exit — the outer send
+    // in the post-hook diff branch uses a fresh clone taken before Unhook.
+    TX_ON_MOVE.with(|t| *t.borrow_mut() = Some(tx.clone()));
 
     let hook = unsafe {
         SetWinEventHook(
@@ -509,7 +629,9 @@ fn watch_via_winevent(pid: u32, rc: RECT, existing: HashSet<isize>) {
     };
     if hook.is_null() {
         warn!("[WINDOW-TARGET] SetWinEventHook returned null for pid {}, falling back to poll", pid);
-        watch_via_poll_for_pid(existing, pid, rc);
+        // Clear the thread-local — the poll fallback owns the Sender now.
+        TX_ON_MOVE.with(|t| *t.borrow_mut() = None);
+        watch_via_poll_for_pid(existing, pid, rc, tx);
         return;
     }
 
@@ -536,15 +658,22 @@ fn watch_via_winevent(pid: u32, rc: RECT, existing: HashSet<isize>) {
         if let Some(hwnd) = find_new_top_level_for_pid(&existing, pid) {
             move_window_centered(hwnd, rc);
             info!("[WINDOW-TARGET] post-hook diff moved HWND {:x} (pid {})", hwnd as usize, pid);
+            // Signal completion since we did move the window even though the
+            // hook never fired — the macro-side receiver would otherwise wait
+            // its full timeout for an already-completed move.
+            let _ = tx.send(());
         } else {
             warn!("[WINDOW-TARGET] pid {} didn't surface a window within 3s — no move", pid);
         }
     } else {
         info!("[WINDOW-TARGET] pid {} moved {} window(s) during launch window", pid, moved);
     }
+
+    // Clear thread-local so nothing outlives this watcher invocation.
+    TX_ON_MOVE.with(|t| *t.borrow_mut() = None);
 }
 
-fn watch_via_poll_for_pid(existing: HashSet<isize>, pid: u32, rc: RECT) {
+fn watch_via_poll_for_pid(existing: HashSet<isize>, pid: u32, rc: RECT, tx: Sender<()>) {
     let mut moved: HashSet<isize> = HashSet::new();
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
@@ -554,9 +683,9 @@ fn watch_via_poll_for_pid(existing: HashSet<isize>, pid: u32, rc: RECT) {
             let mut wpid: u32 = 0;
             unsafe { GetWindowThreadProcessId(hwnd, &mut wpid); }
             if wpid != pid { continue; }
-            move_window_centered(hwnd, rc);
+            let log_msg = format!("[WINDOW-TARGET] poll moved HWND {:x} (pid {})", hwnd as usize, pid);
+            spawn_delayed_move(hwnd, rc, log_msg, MOVE_DELAY_MS, Some(tx.clone()));
             moved.insert(key);
-            info!("[WINDOW-TARGET] poll moved HWND {:x} (pid {})", hwnd as usize, pid);
         }
         thread::sleep(Duration::from_millis(50));
     }
@@ -565,7 +694,7 @@ fn watch_via_poll_for_pid(existing: HashSet<isize>, pid: u32, rc: RECT) {
     }
 }
 
-fn watch_via_poll(existing: HashSet<isize>, exclude_pid: u32, rc: RECT) {
+fn watch_via_poll(existing: HashSet<isize>, exclude_pid: u32, rc: RECT, delay_ms: u64, tx: Sender<()>) {
     let mut moved: HashSet<isize> = HashSet::new();
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
@@ -575,9 +704,9 @@ fn watch_via_poll(existing: HashSet<isize>, exclude_pid: u32, rc: RECT) {
             let mut pid: u32 = 0;
             unsafe { GetWindowThreadProcessId(hwnd, &mut pid); }
             if pid == 0 || pid == exclude_pid { continue; }
-            move_window_centered(hwnd, rc);
+            let log_msg = format!("[WINDOW-TARGET] poll (brokered) moved HWND {:x}", hwnd as usize);
+            spawn_delayed_move(hwnd, rc, log_msg, delay_ms, Some(tx.clone()));
             moved.insert(key);
-            info!("[WINDOW-TARGET] poll (brokered) moved HWND {:x}", hwnd as usize);
         }
         thread::sleep(Duration::from_millis(50));
     }

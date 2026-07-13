@@ -28,6 +28,28 @@ async function loadMonitors() {
   }
 }
 
+async function showIdentifyOverlays() {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    // Read the effective theme from <html data-theme="…">. App.jsx resolves
+    // 'auto' to 'light' or 'dark' and writes that attribute on init and on
+    // OS theme changes, so this is always the currently-rendered theme.
+    const dark = document.documentElement.getAttribute('data-theme') !== 'light';
+    await invoke('show_monitor_identify', { dark });
+  } catch (e) {
+    console.error('[Keyfire] show_monitor_identify failed:', e);
+  }
+}
+
+async function hideIdentifyOverlays() {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('hide_monitor_identify');
+  } catch (e) {
+    console.error('[Keyfire] hide_monitor_identify failed:', e);
+  }
+}
+
 export default function MonitorPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [monitors, setMonitors] = useState(cachedMonitors);
@@ -42,6 +64,16 @@ export default function MonitorPicker({ value, onChange }) {
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // Identify overlays follow the dropdown's open state. Any close path — item
+  // click, outside click, unmount, prop-driven — fires the hide, so nothing
+  // gets stranded on-screen.
+  useEffect(() => {
+    if (open) {
+      showIdentifyOverlays();
+      return () => { hideIdentifyOverlays(); };
+    }
   }, [open]);
 
   useLayoutEffect(() => {

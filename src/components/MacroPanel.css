@@ -916,6 +916,11 @@
 .macro-step {
   display: flex;
   flex-direction: column;
+  /* Master column cap — matches the top pill row (Text / Hotkey / Open / …
+     at 415px). Every macro step, whichever type, renders inside this width.
+     Individual widgets (dropdowns, inputs, WindowPickers) can be tuned but
+     the sum can never push past 415. */
+  max-width: 415px;
 }
 
 .macro-step-overlay {
@@ -927,12 +932,26 @@
   opacity: 0.9;
 }
 
-/* Inner flex row used by every step type */
+/* Inner flex row used by every step type. Same 415 cap as .macro-step —
+   duplicated here so the row itself can't exceed the column width, and any
+   value widget that would push the row past 415 is clipped by overflow: hidden
+   instead of pushing the duplicate / remove buttons outside the visible area. */
 .macro-step-row {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  max-width: 415px;
+  overflow: hidden;
+}
+
+/* Right-side action buttons (repeat count wrapper, duplicate, remove) must
+   never shrink or get pushed out — they belong inside the 415 column, so if
+   space is tight the value widgets yield first. */
+.macro-step-row .step-repeat,
+.macro-step-row .step-duplicate,
+.macro-step-row .step-remove {
+  flex-shrink: 0;
 }
 
 /* Single-row steps need their own bottom padding so the visual gap to the

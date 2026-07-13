@@ -14,7 +14,7 @@ use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, 
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
     KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE,
-    MOUSEINPUT, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+    MOUSEINPUT, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
     MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN,
     MOUSEEVENTF_XUP, VIRTUAL_KEY,
@@ -25,9 +25,15 @@ use windows_sys::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GetSystemMetrics, GetWindowTextW, GetWindowThreadProcessId,
-    IsWindowVisible, SetForegroundWindow, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    BringWindowToTop, EnumWindows, GetForegroundWindow, GetSystemMetrics, GetWindowTextW,
+    GetWindowThreadProcessId, IsWindowVisible, MessageBoxW, SetForegroundWindow, SetWindowPos,
+    ShowWindow, IDOK, MB_ICONWARNING, MB_OKCANCEL, MB_SETFOREGROUND, MB_TOPMOST,
+    SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOZORDER, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE,
+};
+use windows_sys::Win32::System::Shutdown::{
+    ExitWindowsEx, LockWorkStation, EWX_FORCEIFHUNG, EWX_LOGOFF, EWX_SHUTDOWN,
+    SHTDN_REASON_FLAG_USER_DEFINED, SHTDN_REASON_MAJOR_OTHER, SHTDN_REASON_MINOR_OTHER,
 };
 
 /// Future clipboard manager checks this flag and skips logging if set.
@@ -586,7 +592,9 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
             let app_id = data.and_then(|d| d.get("appId")).and_then(|v| v.as_str()).unwrap_or("");
             let path = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()).unwrap_or("");
             let monitor = crate::window_target::parse_monitor_target(data, target_hwnd);
-            crate::window_target::launch_with_monitor_target(
+            // Single-action path — user pressed a hotkey. No follow-up step to
+            // sequence with, so the completion receiver is discarded.
+            let _ = crate::window_target::launch_with_monitor_target(
                 crate::window_target::LaunchKind::App { kind, path, app_id, args: "" },
                 monitor,
             );
@@ -595,7 +603,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
         "folder" => {
             if let Some(path) = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()) {
                 let monitor = crate::window_target::parse_monitor_target(data, target_hwnd);
-                crate::window_target::launch_with_monitor_target(
+                let _ = crate::window_target::launch_with_monitor_target(
                     crate::window_target::LaunchKind::Folder { path },
                     monitor,
                 );
@@ -1798,6 +1806,23 @@ fn find_window_by_criteria(process_name: &str, title: &str) -> Option<isize> {
     }
 }
 
+/// Resolve a Minimise / Maximise / Resize Window step's target. If the value
+/// contains a non-empty process or title, matches an existing window via
+/// EnumWindows. Otherwise falls back to the macro's current *target_hwnd
+/// (updated by any prior Focus Window step) or the current foreground window.
+/// Returns 0 if no window can be resolved.
+fn resolve_window_target(parsed: &Value, current_target: isize) -> isize {
+    let process = parsed.get("process").and_then(|v| v.as_str()).unwrap_or("");
+    let title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("");
+    if !process.is_empty() || !title.is_empty() {
+        return find_window_by_criteria(process, title).unwrap_or(0);
+    }
+    if current_target != 0 {
+        return current_target;
+    }
+    unsafe { GetForegroundWindow() as isize }
+}
+
 // ── Mouse click simulation ─────────────────────────────────────────────────
 
 /// Returns true if the value is a mouse button name (LButton, RButton, MButton).
@@ -1996,6 +2021,73 @@ fn replay_wheel(delta: i32) {
 
 // ── Macro sequence step executor ────────────────────────────────────────────
 
+/// Blocking OK/Cancel confirmation dialog for destructive System macro steps
+/// (Sleep, Log Off, Shut Down). Runs on the macro thread — MessageBoxW is
+/// synchronous and blocks that thread until the user answers, which is what we
+/// want. Returns true if the user confirmed. TopMost + SetForeground so the
+/// dialog surfaces even if the target app has focus.
+fn confirm_destructive_step(title: &str, message: &str) -> bool {
+    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    let result = unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OKCANCEL | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND,
+        )
+    };
+    result == IDOK as i32
+}
+
+// Send a media key (VK_VOLUME_UP/DOWN/MUTE) via SendInput as VK-only with the
+// extended-key flag. Bypasses the scancode-mode path send_vk_key uses because
+// media keys don't have reliable hardware scancodes — MapVirtualKeyW can
+// return non-zero garbage that Windows won't recognise as a media event. The
+// KEYEVENTF_EXTENDEDKEY flag is what routes it through the shell's WM_APPCOMMAND
+// handler, which is also what triggers the Windows volume OSD overlay.
+//
+// Used by the Change Volume arm — the OSD wouldn't appear from COM-only
+// SetMasterVolumeLevelScalar calls (the OSD is bound to the media-key /
+// APPCOMMAND path in Explorer's tray process). Firing one of these before/
+// after the COM adjustment gives the same visual feedback as pressing the
+// physical FN volume keys.
+fn send_media_key(vk: u16) {
+    let ki_down = KEYBDINPUT {
+        wVk: vk as VIRTUAL_KEY,
+        wScan: 0,
+        dwFlags: KEYEVENTF_EXTENDEDKEY,
+        time: 0,
+        dwExtraInfo: 0,
+    };
+    let ki_up = KEYBDINPUT {
+        wVk: vk as VIRTUAL_KEY,
+        wScan: 0,
+        dwFlags: KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
+        time: 0,
+        dwExtraInfo: 0,
+    };
+    let down = INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: ki_down } };
+    let up = INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: ki_up } };
+    unsafe {
+        SendInput(1, &down, std::mem::size_of::<INPUT>() as i32);
+        SendInput(1, &up, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+// Emit a Win+Key or Win+Shift+Key chord via SendInput. Used by the
+// "Minimise All" / "Restore All" system steps which map to Win+M / Win+Shift+M.
+fn send_win_chord(vk: u16, with_shift: bool) {
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+    send_vk_key(VK_LWIN, false);
+    if with_shift { send_vk_key(VK_LSHIFT, false); }
+    send_vk_key(vk, false);
+    send_vk_key(vk, true);
+    if with_shift { send_vk_key(VK_LSHIFT, true); }
+    send_vk_key(VK_LWIN, true);
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+}
+
 /// Returns true to continue the macro, false to abort it (caller breaks out of
 /// the steps loop). Most arms continue unconditionally; only Wait for Window
 /// can request abort, when its target window doesn't appear before the 30s
@@ -2017,10 +2109,27 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         }
 
         "Click Mouse" => {
-            let btn = if step_value.is_empty() { "LButton" } else { step_value };
-            if is_mouse_button(btn) {
+            let value = if step_value.is_empty() { "LButton" } else { step_value };
+            // Strip Down / Up suffix to isolate the button base name. Bare
+            // "LButton" / "RButton" / "MButton" means a full click (down + up)
+            // — that's the pre-v0.6.5 shape and still the default when a new
+            // Click Mouse step is created. The suffixed variants fire just
+            // one phase so users can chain e.g. LButtonDown → mouse move
+            // steps → LButtonUp to script a drag.
+            let (button, phase) = if let Some(base) = value.strip_suffix("Down") {
+                (base, "down")
+            } else if let Some(base) = value.strip_suffix("Up") {
+                (base, "up")
+            } else {
+                (value, "full")
+            };
+            if is_mouse_button(button) {
                 for i in 0..repeat_count {
-                    send_mouse_click(btn);
+                    match phase {
+                        "down" => send_mouse_event(button, false),
+                        "up"   => send_mouse_event(button, true),
+                        _      => send_mouse_click(button),
+                    }
                     if i + 1 < repeat_count && settle_ms > 0 {
                         thread::sleep(Duration::from_millis(settle_ms));
                     }
@@ -2245,11 +2354,56 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 (step_value.to_string(), crate::window_target::MonitorTarget::None)
             };
             if !path_owned.is_empty() {
-                crate::window_target::launch_with_monitor_target(
+                let rx = crate::window_target::launch_with_monitor_target(
                     crate::window_target::LaunchKind::Folder { path: &path_owned },
                     monitor,
                 );
+                // Block macro progression until the folder window has been
+                // moved to the target monitor. Otherwise the next macro step
+                // (Minimise All, Focus Window, snap keystroke, etc.) races
+                // the async window-placement and fires before the folder is
+                // even visible. `rx` is `None` when no monitor target is set —
+                // nothing to wait on. 5s ceiling in case the launch failed.
+                if let Some(rx) = rx {
+                    let _ = rx.recv_timeout(Duration::from_secs(5));
+                }
             }
+        }
+
+        // Play Audio File / Play Video File — shell-open the file via the OS
+        // default handler (Windows Media Player, Groove, VLC, whatever's
+        // associated). Uses LaunchKind::App with kind="path" so the launcher
+        // captures the player's PID and applies the standard 400ms
+        // restore-race delay before moving to the target monitor. Existing
+        // player instances that reuse their window (Groove typically does
+        // this for playlist adds) may not surface a new window, in which
+        // case the monitor target is a no-op.
+        "Play Audio File" | "Play Video File" => {
+            if step_value.is_empty() {
+                warn!("[Keyfire] {} step: empty value", step_type);
+                return true;
+            }
+            let parsed: Value = match serde_json::from_str(step_value) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[Keyfire] {} step: invalid JSON: {}", step_type, e);
+                    return true;
+                }
+            };
+            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if path.is_empty() {
+                warn!("[Keyfire] {}: empty path", step_type);
+                return true;
+            }
+            let monitor = crate::window_target::parse_monitor_target(Some(&parsed), *target_hwnd);
+            let rx = crate::window_target::launch_with_monitor_target(
+                crate::window_target::LaunchKind::App { kind: "path", path, app_id: "", args: "" },
+                monitor,
+            );
+            if let Some(rx) = rx {
+                let _ = rx.recv_timeout(Duration::from_secs(5));
+            }
+            info!("[Keyfire] {}: {}", step_type, path);
         }
 
         "Open App" => {
@@ -2269,10 +2423,14 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
             let args = parsed.get("args").and_then(|v| v.as_str()).unwrap_or("");
             let monitor = crate::window_target::parse_monitor_target(Some(&parsed), *target_hwnd);
-            crate::window_target::launch_with_monitor_target(
+            let rx = crate::window_target::launch_with_monitor_target(
                 crate::window_target::LaunchKind::App { kind, path, app_id, args },
                 monitor,
             );
+            // See Open Folder comment above — same rationale, same 5s ceiling.
+            if let Some(rx) = rx {
+                let _ = rx.recv_timeout(Duration::from_secs(5));
+            }
         }
 
         "Focus Window" => {
@@ -2306,6 +2464,73 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     warn!("[Keyfire] Focus Window: no matching window found for process='{}' title='{}'", process, title);
                 }
             }
+        }
+
+        // Minimise / Maximise Window — resolve target via
+        // resolve_window_target (process/title → EnumWindows match, else
+        // fall through to *target_hwnd or GetForegroundWindow). Empty
+        // process AND empty title = "the currently focused window", which
+        // is the natural default for a bare-minimise hotkey binding.
+        "Minimise Window" | "Maximise Window" => {
+            let parsed: Value = if step_value.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                match serde_json::from_str(step_value) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[Keyfire] {} step: invalid JSON: {}", step_type, e);
+                        return true;
+                    }
+                }
+            };
+            let hwnd = resolve_window_target(&parsed, *target_hwnd);
+            if hwnd == 0 {
+                warn!("[Keyfire] {}: no matching window found", step_type);
+                return true;
+            }
+            let cmd = if step_type == "Minimise Window" { SW_MINIMIZE } else { SW_MAXIMIZE };
+            unsafe { ShowWindow(hwnd as _, cmd); }
+            info!("[Keyfire] {}: HWND {:x}", step_type, hwnd as usize);
+        }
+
+        // Resize Window — same target-resolution + width/height (+ optional
+        // x/y). SW_RESTORE first so minimised/maximised windows show the new
+        // size immediately (SetWindowPos on a minimised window updates the
+        // "restored" placement metadata but the window stays minimised
+        // visually).
+        "Resize Window" => {
+            let parsed: Value = if step_value.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                match serde_json::from_str(step_value) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[Keyfire] Resize Window step: invalid JSON: {}", e);
+                        return true;
+                    }
+                }
+            };
+            let hwnd = resolve_window_target(&parsed, *target_hwnd);
+            if hwnd == 0 {
+                warn!("[Keyfire] Resize Window: no matching window found");
+                return true;
+            }
+            let width = parsed.get("width").and_then(|v| v.as_i64()).unwrap_or(1200).clamp(100, 10000) as i32;
+            let height = parsed.get("height").and_then(|v| v.as_i64()).unwrap_or(800).clamp(100, 10000) as i32;
+            let use_position = parsed.get("usePosition").and_then(|v| v.as_bool()).unwrap_or(false);
+            let x = parsed.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let y = parsed.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            unsafe {
+                ShowWindow(hwnd as _, SW_RESTORE);
+                let mut flags = SWP_NOZORDER | SWP_NOACTIVATE;
+                if !use_position { flags |= SWP_NOMOVE; }
+                SetWindowPos(hwnd as _, std::ptr::null_mut(), x, y, width, height, flags);
+            }
+            info!(
+                "[Keyfire] Resize Window: HWND {:x} → {}x{}{}",
+                hwnd as usize, width, height,
+                if use_position { format!(" at ({}, {})", x, y) } else { String::new() }
+            );
         }
 
         "Wait for Input" => {
@@ -2449,6 +2674,188 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     }
                 };
             replay_recorded_events(&events, "Record Macro");
+        }
+
+        // System group: no-config leaves + destructive-with-prompt.
+        // VKs inlined: 0x4D = M. Win+M / Win+Shift+M are the classic
+        // Windows chords for "minimise everything" and "undo minimise all".
+
+        "Minimise All" => {
+            send_win_chord(0x4D, false); // Win+M
+        }
+
+        "Restore All" => {
+            send_win_chord(0x4D, true); // Win+Shift+M
+        }
+
+        "Lock Computer" => {
+            unsafe { LockWorkStation(); }
+        }
+
+        "Sleep Computer" => {
+            if !confirm_destructive_step(
+                "Keyfire — Sleep Computer",
+                "Put this computer to sleep now?",
+            ) {
+                info!("[Keyfire] Sleep Computer cancelled by user");
+                return true;
+            }
+            // powrprof.dll's SetSuspendState is the standard entry point.
+            // Args: hibernate=0, force=1, wakeup-events-disabled=0.
+            let _ = std::process::Command::new("rundll32.exe")
+                .args(["powrprof.dll,SetSuspendState", "0,1,0"])
+                .spawn();
+        }
+
+        "Log Off" => {
+            if !confirm_destructive_step(
+                "Keyfire — Log Off",
+                "Log off this session now?\n\nAny unsaved work will be lost.",
+            ) {
+                info!("[Keyfire] Log Off cancelled by user");
+                return true;
+            }
+            unsafe {
+                ExitWindowsEx(
+                    EWX_LOGOFF | EWX_FORCEIFHUNG,
+                    SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER
+                        | SHTDN_REASON_FLAG_USER_DEFINED,
+                );
+            }
+        }
+
+        "Shut Down Computer" => {
+            if !confirm_destructive_step(
+                "Keyfire — Shut Down",
+                "Shut down this computer now?\n\nAny unsaved work will be lost.",
+            ) {
+                info!("[Keyfire] Shut Down cancelled by user");
+                return true;
+            }
+            unsafe {
+                ExitWindowsEx(
+                    EWX_SHUTDOWN | EWX_FORCEIFHUNG,
+                    SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER
+                        | SHTDN_REASON_FLAG_USER_DEFINED,
+                );
+            }
+        }
+
+        "Control Panel" => {
+            let _ = std::process::Command::new("control.exe").spawn();
+        }
+
+        // Change Volume — exact system volume control via IAudioEndpointVolume
+        // COM (see crate::volume). Value is JSON `{ mode, amount }`:
+        //   mode="set", amount=0-100  → SetMasterVolumeLevelScalar(amount/100)
+        //   mode="increase", amount=0-10 → read + add amount + set (clamped 0-100)
+        //   mode="decrease", amount=0-10 → read + subtract amount + set
+        //   mode="mute"               → toggle mute (read + invert + set)
+        // Backward-compat: legacy plain-string values ("up"/"down"/"mute") map
+        // to increase-by-2 / decrease-by-2 / mute so pre-rewrite macros keep
+        // working. repeat_count multiplies the delta — repeat=5 with amount=5
+        // increases by 25 (still clamped 0-100).
+        "Change Volume" => {
+            let (mode, amount) = if step_value.trim_start().starts_with('{') {
+                match serde_json::from_str::<Value>(step_value) {
+                    Ok(parsed) => {
+                        let m = parsed.get("mode").and_then(|v| v.as_str()).unwrap_or("increase").to_string();
+                        let a = parsed.get("amount").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        (m, a)
+                    }
+                    Err(_) => ("increase".to_string(), 2),
+                }
+            } else {
+                match step_value {
+                    "up"   => ("increase".to_string(), 2),
+                    "down" => ("decrease".to_string(), 2),
+                    "mute" => ("mute".to_string(), 0),
+                    other  => (other.to_string(), 2),
+                }
+            };
+            let clamped = amount.clamp(0, 100);
+            let scalar = (clamped as f32) / 100.0;
+            // VK constants for media keys — 0xAD=MUTE, 0xAE=DOWN, 0xAF=UP.
+            // We send a media keystroke to trigger the Windows volume OSD
+            // overlay (same one you get with the FN keys), then COM-set to
+            // the exact target so the OSD ends showing the correct value.
+            // For Increase/Decrease we compute the target BEFORE the
+            // keystroke so we don't cascade the keystroke's ~2-unit nudge
+            // into the delta.
+            match mode.as_str() {
+                "set" => {
+                    let cur = crate::volume::get_master_volume_scalar().unwrap_or(0.5);
+                    let vk = if scalar >= cur { 0xAF } else { 0xAE };
+                    send_media_key(vk);
+                    crate::volume::set_master_volume_scalar(scalar);
+                }
+                "increase" => {
+                    let cur = crate::volume::get_master_volume_scalar().unwrap_or(0.5);
+                    let target = (cur + (clamped as f32) / 100.0).clamp(0.0, 1.0);
+                    send_media_key(0xAF);
+                    crate::volume::set_master_volume_scalar(target);
+                }
+                "decrease" => {
+                    let cur = crate::volume::get_master_volume_scalar().unwrap_or(0.5);
+                    let target = (cur - (clamped as f32) / 100.0).clamp(0.0, 1.0);
+                    send_media_key(0xAE);
+                    crate::volume::set_master_volume_scalar(target);
+                }
+                "mute" => {
+                    // Native VK toggles OS mute + shows OSD; no COM needed.
+                    send_media_key(0xAD);
+                }
+                other => {
+                    warn!("[Keyfire] Change Volume: unknown mode '{}'", other);
+                }
+            }
+        }
+
+        // Mouse Scroll — SendInput with MOUSEEVENTF_WHEEL / _HWHEEL. Value is
+        // JSON `{ direction: "up|down|left|right", amount: <notches> }`. Each
+        // notch = WHEEL_DELTA (120). Amount defaults to 3 if omitted. repeat
+        // fires the scroll gesture multiple times (with settle between);
+        // amount is notches PER gesture — the two multiply.
+        "Mouse Scroll" => {
+            const WHEEL_DELTA: i32 = 120;
+            let parsed: Value = match serde_json::from_str(step_value) {
+                Ok(v) => v,
+                Err(_) => {
+                    // Backward-compat / empty value: default to 3 notches down.
+                    serde_json::json!({ "direction": "down", "amount": 3 })
+                }
+            };
+            let direction = parsed.get("direction").and_then(|v| v.as_str()).unwrap_or("down");
+            let amount = parsed.get("amount").and_then(|v| v.as_i64()).unwrap_or(3).max(1).min(999) as i32;
+            let (flag, delta) = match direction {
+                "up"    => (MOUSEEVENTF_WHEEL,   WHEEL_DELTA * amount),
+                "down"  => (MOUSEEVENTF_WHEEL,  -WHEEL_DELTA * amount),
+                "right" => (MOUSEEVENTF_HWHEEL,  WHEEL_DELTA * amount),
+                "left"  => (MOUSEEVENTF_HWHEEL, -WHEEL_DELTA * amount),
+                other => {
+                    warn!("[Keyfire] Mouse Scroll: unknown direction '{}'", other);
+                    return true;
+                }
+            };
+            let input = INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT {
+                        dx: 0,
+                        dy: 0,
+                        mouseData: delta as u32,
+                        dwFlags: flag,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            };
+            for i in 0..repeat_count {
+                unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
+                if i + 1 < repeat_count && settle_ms > 0 {
+                    thread::sleep(Duration::from_millis(settle_ms));
+                }
+            }
         }
 
         _ => {
