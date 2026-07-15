@@ -1793,7 +1793,7 @@
   <p>Keyfire captures everything you copy to the clipboard: text, links, code, and images. All data is stored locally in a SQLite database on your machine, encrypted at rest. Nothing is transmitted.</p>
 
   <h2>The clipboard panel</h2>
-  <p>Open the <strong>Clipboard</strong> tab in the title bar to see your full clipboard history. Items are displayed as a masonry grid sorted by most recent, with pinned items always at the top.</p>
+  <p>Open the <strong>Clipboard</strong> tab in the title bar to see your full clipboard history. Items are displayed as a masonry grid sorted by most recently used, with your Saved and Pinned tiers always at the top. A preview pane sits on the right at all times. Select any item to inspect it, and drag the pane's left edge to resize it.</p>
 
   <div class="screenshot-slot">
     <strong>Screenshot slot · Clipboard panel</strong>
@@ -1805,28 +1805,51 @@
     <tr><th>Feature</th><th>Description</th></tr>
     <tr><td><strong>Auto-tagging</strong></td><td>Each item is tagged as Text, Link, Email, Colour, Number, or Image based on its content.</td></tr>
     <tr><td><strong>Source app</strong></td><td>Shows which app you copied from (Chrome, VS Code, Outlook, etc.).</td></tr>
-    <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age and appear in the quick paste popup. See Pinned and Starred tiers below.</td></tr>
-    <tr><td><strong>Star</strong></td><td>Mark items with a star to keep them in a separate tier above Pinned in the main panel. Stars are main-panel only and do not appear in the quick paste popup.</td></tr>
+    <tr><td><strong>Pin</strong></td><td>Pin important items so they stay at the top regardless of age and appear in the quick paste popup. See Pinned and Saved tiers below.</td></tr>
+    <tr><td><strong>Save</strong></td><td>Save items (bookmark icon) to keep them forever in a tier above Pinned in the main panel. Saved items are main-panel only and can be organised into folders on Pro.</td></tr>
+    <tr><td><strong>Saved folders</strong> <span style="opacity:.7">(Pro)</span></td><td>Create folders inside the Saved section to organise saved clips. See Saved folders below.</td></tr>
+    <tr><td><strong>Keyboard control</strong></td><td>Arrow keys move between items, Enter or Ctrl+C copies, Delete removes. See Keyboard control and multi-select below.</td></tr>
     <tr><td><strong>Search</strong></td><td>Filter items by text content. Combine with tag filter pills and source app dropdown.</td></tr>
     <tr><td><strong>Rich text</strong></td><td>Formatted content keeps its bullets, bold, links and colour when pasted into rich editors. See Rich text stays formatted below.</td></tr>
     <tr><td><strong>Inline editing</strong></td><td>Edit any text-based clipboard item directly. Click Edit in the detail pane.</td></tr>
     <tr><td><strong>Image support</strong></td><td>Screenshots and copied images are captured as PNG with full preview and zoom.</td></tr>
     <tr><td><strong>OCR</strong></td><td>Captured images run through OCR. Extracted text becomes searchable and copyable.</td></tr>
-    <tr><td><strong>Timeline grouping</strong></td><td>Items grouped by Starred, Pinned, Today, Yesterday, This Week, This Month, Older.</td></tr>
+    <tr><td><strong>Timeline grouping</strong></td><td>Items grouped by Saved, Pinned, Today, Yesterday, This Week, This Month, Older. Click any group header to collapse or expand it. Your layout is remembered.</td></tr>
     <tr><td><strong>Storage indicator</strong></td><td>Shows the total size of your clipboard database in the panel toolbar.</td></tr>
     <tr><td><strong>Column toggle</strong></td><td>Switch between 1, 2, or auto-column grid. Useful when comparing long snippets.</td></tr>
   </table>
 
-  <h2>Pinned and Starred tiers</h2>
+  <h2>Pinned and Saved tiers</h2>
   <p>The clipboard has two independent tiers above your normal history:</p>
   <ul>
     <li><strong>Pinned</strong>: items you want to keep handy across both surfaces. Click the pin icon on any item to pin it. Pinned items appear at the top of the main clipboard panel <em>and</em> at the top of the quick paste popup (Ctrl+Shift+V). They never expire under the retention policy.</li>
-    <li><strong>Starred</strong>: a higher tier above Pinned, available in the main clipboard panel only. Click the star icon on any item to star it. Starred items appear at the top of the main panel above Pinned but do <em>not</em> show in the quick paste popup. Think of Starred as a curated personal shortlist and Pinned as fast paste targets.</li>
+    <li><strong>Saved</strong>: a higher tier above Pinned, available in the main clipboard panel only. Right-click any item and choose <strong>Save</strong>, or use the bookmark button in the preview pane. Saved items appear at the top of the main panel above Pinned but do <em>not</em> show in the quick paste popup. Think of Saved as your permanent library and Pinned as fast paste targets. Saved items never expire.</li>
   </ul>
-  <p>An item can be both pinned and starred. The two flags are independent toggles. Both the Starred and Pinned tiers appear as their own sidebar buckets in the main panel for quick filtering, and items within each tier can be drag-reordered into your preferred order.</p>
+  <p>An item can be both pinned and saved. The two flags are independent toggles. Both tiers appear as their own sidebar buckets in the main panel for quick filtering, and items within each tier can be drag-reordered into your preferred order. If you used an earlier version, Saved is the tier previously called Starred. Everything you starred is still there.</p>
+
+  <h2>Saved folders <span style="font-size:.7em;opacity:.7">(Pro)</span></h2>
+  <p>Pro users can organise the Saved tier into folders. Click <strong>+ Add Folder</strong> in the panel sidebar, type a name and press Enter. Folders appear as their own rows in the sidebar and as sub-sections inside the Saved area.</p>
+  <p>To file an item into a folder, drag its card onto the folder's header, or right-click the item and choose <strong>Move to Folder</strong>. Dragging onto the main Saved header moves an item back out of its folder. Hold a drag over a collapsed folder for a moment and it springs open. Double-click a folder's name to rename it, and right-click its header to rename or delete it. Deleting a folder never deletes the items inside; they return to the main Saved area.</p>
+  <p>Folder names are encrypted at rest with the same AES-256-GCM protection as your clipboard content. If your Pro licence lapses, existing folders keep working; only creating new ones requires Pro.</p>
+
+  <h2>Recently used floats to the top</h2>
+  <p>Copying an item from the panel or pasting it from the quick paste popup moves it to the top of your history, the same way the Windows clipboard works. The item is not duplicated; its position simply updates, so the things you use most are always nearest the top and first in the popup. Saved and pinned items stay in their own sections when reused. The preview pane's <strong>Last copied</strong> field shows when an item was last put on your clipboard.</p>
+
+  <h2>Keyboard control and multi-select</h2>
+  <p>The panel is fully keyboard-navigable. With the panel open:</p>
+  <table>
+    <tr><th>Keys</th><th>Action</th></tr>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></td><td>Move the selection between items. The preview pane follows.</td></tr>
+    <tr><td><kbd>Enter</kbd> or <kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Copy the selected item to your clipboard.</td></tr>
+    <tr><td><kbd>Delete</kbd></td><td>Delete the selected item, or the whole multi-selection.</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+click</td><td>Build a multi-selection. Right-click inside it for bulk Save, Move to Folder and Delete.</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Select every visible item.</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Clear the multi-selection, then the item selection.</td></tr>
+  </table>
+  <p>You can also right-click any item and choose <strong>Copy</strong>. Every copy action shows a small confirmation toast.</p>
 
   <h2>Clear All preserves your tiers</h2>
-  <p>The <strong>Clear All</strong> button in the panel toolbar and the <strong>Clear Clipboard History</strong> button in Settings both remove regular history only. Pinned and starred items survive. The confirm dialog in Settings makes this explicit.</p>
+  <p>The <strong>Clear All</strong> button in the panel toolbar and the <strong>Clear Clipboard History</strong> button in Settings both remove regular history only. Pinned and saved items survive, including everything inside folders. The confirm dialog in Settings makes this explicit.</p>
 
   <h2>Rich text stays formatted</h2>
   <p>When you copy formatted content from Word, Outlook or a browser, Keyfire stores the formatting alongside the plain text. Pasting into a rich editor such as Gmail, Word or Slack reproduces the original bullets, bold, links and colour. Pasting into a plain-text app such as Notepad falls back to plain text automatically.</p>
@@ -1834,7 +1857,7 @@
 
   <h2>Quick paste overlay</h2>
   <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay, a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
-  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit). Only Pinned items get promoted here; Starred items live in the main panel only.</p>
+  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit). Only Pinned items get promoted here; Saved items live in the main panel only.</p>
 
   <h2>Quick paste inside fill-in prompts</h2>
   <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> also works while a Keyfire fill-in prompt is open. The overlay appears as usual, and the item you pick is inserted into the fill-in field you were typing in, not the app behind it. Focus returns to the field when the overlay closes.</p>
@@ -1843,10 +1866,10 @@
   <p>The clipboard overlay includes a slide-out scratchpad on the right side. Toggle it with the arrow button on the panel edge. Use it to jot notes, stage text, or keep references handy. Content auto-saves and persists across app restarts.</p>
 
   <h2>Retention</h2>
-  <p>Clipboard history is retained for <strong>7 days</strong> on the Free plan and up to <strong>30 days</strong> on Pro. Pinned items are never automatically deleted. Adjust the retention period in <strong>Settings → Clipboard</strong>. Clear all history manually from the panel toolbar.</p>
+  <p>Clipboard history is retained for <strong>7 days</strong> on the Free plan and up to <strong>30 days</strong> on Pro. Pinned and saved items are never automatically deleted. Adjust the retention period in <strong>Settings → Clipboard</strong>. Clear all history manually from the panel toolbar.</p>
 
   <h2>Encryption at rest</h2>
-  <p>All clipboard content (text, OCR, image bytes, previews) is encrypted with AES-256-GCM. The encryption key is wrapped via Windows DPAPI and tied to your user account. Metadata (timestamps, app names, tags) stays plain so search filters work without decryption.</p>
+  <p>All clipboard content (text, OCR, image bytes, previews) is encrypted with AES-256-GCM, and so are your Saved folder names. The encryption key is wrapped via Windows DPAPI and tied to your user account. Metadata (timestamps, app names, tags) stays plain so search filters work without decryption.</p>
 
   <div class="callout info">
     <div class="ct">Excluded apps</div>
@@ -2286,6 +2309,9 @@
 
   <h2>A macro or recording is running away</h2>
   <p>Press <kbd>Esc</kbd>. This cancels any macro currently in flight, including looped macros, one-shot macros, recorded sequences, and macros inside long Wait steps. The cancel is honoured at the next event boundary, usually within milliseconds. If <kbd>Esc</kbd> alone is not enough (e.g. another app captured the keystroke), right-click the tray icon and choose <strong>Pause</strong>, which stops everything immediately.</p>
+
+  <h2>An old Trigr version keeps opening at startup</h2>
+  <p>If your PC updated from an older Trigr version, Windows may still be launching the old app at boot and showing an update prompt every time. Update to the latest version once more and the fix is applied automatically: Keyfire repairs the startup entry on launch so the correct app starts with Windows from then on. If you still see <strong>Trigr</strong> listed in Windows Installed apps afterwards, it is safe to uninstall it. Keyfire is unaffected.</p>
 
   <h2>Something crashed or behaved unexpectedly</h2>
   <p>Go to <strong>Settings → Open Logs Folder</strong> and find <code>trigr.log</code>. The log records what Keyfire was doing at the time. Attach it to a feedback form submission or email it to <a href="mailto:admin@keyfire.app">admin@keyfire.app</a>.</p>
