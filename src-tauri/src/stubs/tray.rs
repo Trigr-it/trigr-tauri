@@ -40,6 +40,8 @@ pub fn get_startup_enabled() -> bool {
 
 pub fn set_startup_enabled(enable: bool) {}
 
+pub fn heal_startup_registration() {}
+
 pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     // Without a tray, letting the main window "close to tray" would strand a
     // headless process. Exit cleanly instead.

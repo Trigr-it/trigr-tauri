@@ -467,6 +467,53 @@ pub fn set_startup_enabled(enable: bool) {
     set_startup_enabled_impl(enable);
 }
 
+/// Re-point a stale "Start with Windows" Run value at the current exe.
+///
+/// The Run value data is the absolute exe path captured when the user last
+/// toggled the setting. Installs that enabled startup before the v0.6.0
+/// rebrand still point at the old trigr.exe, which the Keyfire NSIS installer
+/// never removes (different product name = different install), so every boot
+/// launches stale Trigr v0.5.x and re-prompts the update forever. If the value
+/// exists but its data doesn't match the current exe, rewrite it. Idempotent,
+/// runs once per startup, no-ops when startup was never enabled.
+pub fn heal_startup_registration() {
+    // Same guard as set_startup_enabled_impl — a debug build must never pin
+    // the target\debug exe path into HKCU Run.
+    if cfg!(debug_assertions) {
+        return;
+    }
+    let output = match Command::new("reg")
+        .args(["query", REG_RUN, "/v", REG_NAME])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return, // value absent — startup not enabled, nothing to heal
+    };
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let expected = format!("\"{}\" --autolaunch", exe.to_string_lossy());
+    // reg query output line: `    Trigr    REG_SZ    "C:\...\keyfire.exe" --autolaunch`
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let current = stdout
+        .lines()
+        .find(|l| l.contains("REG_SZ"))
+        .and_then(|l| l.splitn(2, "REG_SZ").nth(1))
+        .map(|v| v.trim());
+    if let Some(v) = current {
+        // Windows paths are case-insensitive; don't churn the value over case.
+        if v.eq_ignore_ascii_case(&expected) {
+            return;
+        }
+        let _ = Command::new("reg")
+            .args(["add", REG_RUN, "/v", REG_NAME, "/d", &expected, "/f"])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output();
+        info!("[Keyfire] Startup Run entry re-pointed from stale path: {} -> {}", v, expected);
+    }
+}
+
 // ── Close-to-tray event handler ─────────────────────────────────────────────
 
 /// Call this in the Tauri builder's `on_window_event` to intercept close.
