@@ -694,6 +694,27 @@ enum ClipboardMsg {
         ids: Vec<i64>,
         reply: mpsc::Sender<bool>,
     },
+    CreateFolder {
+        name: String,
+        reply: mpsc::Sender<Option<i64>>,
+    },
+    RenameFolder {
+        id: i64,
+        name: String,
+        reply: mpsc::Sender<bool>,
+    },
+    DeleteFolder {
+        id: i64,
+        reply: mpsc::Sender<bool>,
+    },
+    MoveToFolder {
+        id: i64,
+        folder_id: Option<i64>,
+        reply: mpsc::Sender<bool>,
+    },
+    GetFolders {
+        reply: mpsc::Sender<Value>,
+    },
     GetImageBlob {
         id: i64,
         reply: mpsc::Sender<Option<Vec<u8>>>,
@@ -716,6 +737,11 @@ enum ClipboardMsg {
         text: String,
     },
     IncrementPasteCount {
+        id: i64,
+    },
+    /// Promote-on-use: copying a row from the panel floats it to the top of
+    /// the timeline without creating a duplicate entry.
+    TouchItem {
         id: i64,
     },
     Prune,
@@ -965,6 +991,25 @@ fn open_clipboard_db(db_path: &Path) -> Result<Connection, String> {
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN html_content BLOB", []);
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_html BLOB", []);
 
+    // Saved folders: flat (no nesting) user-created folders that organise the
+    // Saved tier (internally still `starred` — the rename is UI-only).
+    // folder_id NULL = root of Saved. Folder names are user-typed and can be
+    // sensitive ("Passwords", "Client X"), so they follow the Phase 3a
+    // AES-256-GCM pattern: name holds ciphertext when iv_name is non-NULL,
+    // legacy/cipher-unavailable plaintext when NULL. Un-saving an item clears
+    // its folder_id; deleting a folder moves its items back to the Saved
+    // root, never deletes them.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clipboard_folders (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL,
+            sort_order INTEGER
+        );",
+    )
+    .map_err(|e| format!("create folders table: {}", e))?;
+    let _ = conn.execute("ALTER TABLE clipboard_folders ADD COLUMN iv_name BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN folder_id INTEGER", []);
+
     Ok(conn)
 }
 
@@ -1163,6 +1208,26 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         let ok = handle_reorder_tier(&mut conn, &ids, "starred_order");
                         let _ = reply.send(ok);
                     }
+                    ClipboardMsg::CreateFolder { name, reply } => {
+                        let id = handle_create_folder(&conn, &name);
+                        let _ = reply.send(id);
+                    }
+                    ClipboardMsg::RenameFolder { id, name, reply } => {
+                        let ok = handle_rename_folder(&conn, id, &name);
+                        let _ = reply.send(ok);
+                    }
+                    ClipboardMsg::DeleteFolder { id, reply } => {
+                        let ok = handle_delete_folder(&mut conn, id);
+                        let _ = reply.send(ok);
+                    }
+                    ClipboardMsg::MoveToFolder { id, folder_id, reply } => {
+                        let ok = handle_move_to_folder(&conn, id, folder_id);
+                        let _ = reply.send(ok);
+                    }
+                    ClipboardMsg::GetFolders { reply } => {
+                        let folders = handle_get_folders(&conn);
+                        let _ = reply.send(folders);
+                    }
                     ClipboardMsg::GetImageBlob { id, reply } => {
                         let blob = handle_get_image_blob(&conn, id);
                         let _ = reply.send(blob);
@@ -1191,10 +1256,24 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         );
                     }
                     ClipboardMsg::IncrementPasteCount { id } => {
+                        // Paste = use: bump the counter AND promote the row to
+                        // the top of the timeline (history sorts by recency of
+                        // use, matching Win+V / Paste / Ditto). The panel
+                        // mirrors the reorder via clipboard-item-touched.
+                        let now = chrono::Utc::now().to_rfc3339();
                         let _ = conn.execute(
-                            "UPDATE clipboard_history SET paste_count = paste_count + 1 WHERE id = ?1",
-                            rusqlite::params![id],
+                            "UPDATE clipboard_history SET paste_count = paste_count + 1, timestamp = ?1 WHERE id = ?2",
+                            rusqlite::params![now, id],
                         );
+                        emit_item_touched(id, &now);
+                    }
+                    ClipboardMsg::TouchItem { id } => {
+                        let now = chrono::Utc::now().to_rfc3339();
+                        let _ = conn.execute(
+                            "UPDATE clipboard_history SET timestamp = ?1 WHERE id = ?2",
+                            rusqlite::params![now, id],
+                        );
+                        emit_item_touched(id, &now);
                     }
                     ClipboardMsg::Prune => handle_prune(&conn),
                     ClipboardMsg::ResetStorage { reply } => {
@@ -1413,6 +1492,76 @@ pub fn reorder_starred(ids: Vec<i64>) -> bool {
     false
 }
 
+pub fn create_folder(name: String) -> Option<i64> {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::CreateFolder { name, reply: reply_tx }).is_ok() {
+                if let Ok(id) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return id;
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn rename_folder(id: i64, name: String) -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::RenameFolder { id, name, reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn delete_folder(id: i64) -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::DeleteFolder { id, reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn move_to_folder(id: i64, folder_id: Option<i64>) -> bool {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::MoveToFolder { id, folder_id, reply: reply_tx }).is_ok() {
+                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return ok;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn get_folders() -> Value {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            if tx.send(ClipboardMsg::GetFolders { reply: reply_tx }).is_ok() {
+                if let Ok(folders) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    return folders;
+                }
+            }
+        }
+    }
+    serde_json::json!([])
+}
+
 pub fn get_image_blob(id: i64) -> Option<Vec<u8>> {
     if let Some(tx) = CLIPBOARD_TX.get() {
         if let Ok(tx) = tx.lock() {
@@ -1556,6 +1705,30 @@ pub fn increment_paste_count(id: i64) {
     }
 }
 
+/// Promote-on-use without a paste-count bump — the panel Copy paths. Fire and
+/// forget, matching increment_paste_count.
+pub fn touch_item(id: i64) {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(ClipboardMsg::TouchItem { id });
+        }
+    }
+}
+
+/// Broadcast that a row's timestamp changed so the main panel can float it to
+/// the top of the timeline without a full reload. Also fired for popup pastes
+/// while the main window sits in the tray — the main webview is never
+/// suspended, so the panel state stays current for the next open.
+fn emit_item_touched(id: i64, timestamp: &str) {
+    if let Some(app) = APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit(
+            "clipboard-item-touched",
+            serde_json::json!({ "id": id, "timestamp": timestamp }),
+        );
+    }
+}
+
 /// Returns the directory containing trigr-clipboard.db (and its WAL/SHM files).
 /// Used by the "Open clipboard folder" settings button so it always opens the
 /// real folder regardless of which AppData root the app picked at init.
@@ -1658,6 +1831,7 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 "starred": false,
                 "pinned_order": serde_json::Value::Null,
                 "starred_order": serde_json::Value::Null,
+                "folder_id": serde_json::Value::Null,
                 "source_app": entry.source_app,
                 "content_tag": entry.content_tag,
                 // has_html only — the full fragment can be large (Word/Excel
@@ -1773,7 +1947,7 @@ fn handle_get_history(
 /// html_content read too, but every write path either sets both non-NULL
 /// (cipher available) or both NULL (no html captured), so iv_html alone is
 /// a faithful presence signal.
-const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr, starred, pinned_order, starred_order, iv_html, html_content";
+const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr, starred, pinned_order, starred_order, iv_html, html_content, folder_id";
 
 /// Shared row → JSON mapping for the history list (normal + search paths).
 /// Reads HISTORY_LIST_COLUMNS by position.
@@ -1809,19 +1983,23 @@ fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "pinned_order": row.get::<_, Option<i64>>(16).unwrap_or(None),
         "starred_order": row.get::<_, Option<i64>>(17).unwrap_or(None),
         "has_html": has_html,
+        "folder_id": row.get::<_, Option<i64>>(20).unwrap_or(None),
     }))
 }
 
 /// ORDER BY for the history list. Two variants share the same NULL-handling
 /// pattern via COALESCE so unranked items fall to the bottom of their tier.
-///   Main UI: starred items above pinned, then by tier-rank, then id DESC.
-///   Popup: only pinned promote, by pinned_order, then id DESC (starred items
-///   stay in the timeline at their natural id position).
+///   Main UI: saved items above pinned, then by tier-rank, then recency.
+///   Popup: only pinned promote, by pinned_order, then recency.
+/// Recency = datetime(timestamp) DESC (promote-on-use rewrites timestamp, so
+/// last-used floats to the top like Win+V / Paste / Ditto), id DESC tiebreak.
+/// datetime() normalises the stored string — RFC3339 and any legacy
+/// "YYYY-MM-DD HH:MM:SS" rows compare correctly instead of lexically.
 fn order_by_clause(promote_starred: bool) -> &'static str {
     if promote_starred {
-        "starred DESC, pinned DESC, COALESCE(starred_order, 999999) ASC, COALESCE(pinned_order, 999999) ASC, id DESC"
+        "starred DESC, pinned DESC, COALESCE(starred_order, 999999) ASC, COALESCE(pinned_order, 999999) ASC, datetime(timestamp) DESC, id DESC"
     } else {
-        "pinned DESC, COALESCE(pinned_order, 999999) ASC, id DESC"
+        "pinned DESC, COALESCE(pinned_order, 999999) ASC, datetime(timestamp) DESC, id DESC"
     }
 }
 
@@ -1986,12 +2164,155 @@ fn handle_pin_item(conn: &Connection, id: i64, pinned: bool) -> bool {
 
 fn handle_star_item(conn: &Connection, id: i64, starred: bool) -> bool {
     let val: i32 = if starred { 1 } else { 0 };
+    // Un-saving clears the rank AND the folder assignment — a re-saved item
+    // starts unranked at the Saved root, matching the unpin behaviour.
     let sql = if starred {
         "UPDATE clipboard_history SET starred = ?1 WHERE id = ?2"
     } else {
-        "UPDATE clipboard_history SET starred = ?1, starred_order = NULL WHERE id = ?2"
+        "UPDATE clipboard_history SET starred = ?1, starred_order = NULL, folder_id = NULL WHERE id = ?2"
     };
     conn.execute(sql, rusqlite::params![val, id]).is_ok()
+}
+
+// ── Saved folders ────────────────────────────────────────────────────────────
+
+fn handle_create_folder(conn: &Connection, name: &str) -> Option<i64> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Phase 3a treatment: encrypt the user-typed name with a fresh IV;
+    // cipher-unavailable fallback writes plaintext + NULL iv, matching the
+    // content columns' legacy on-disk shape.
+    let (name_ct, iv_name): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(trimmed.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (trimmed.as_bytes().to_vec(), None),
+    };
+    // Append below existing folders: next sort_order = max + 1.
+    let next_order: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM clipboard_folders",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    match conn.execute(
+        "INSERT INTO clipboard_folders (name, iv_name, sort_order) VALUES (?1, ?2, ?3)",
+        rusqlite::params![name_ct, iv_name, next_order],
+    ) {
+        Ok(_) => Some(conn.last_insert_rowid()),
+        Err(e) => {
+            error!("[Keyfire] Clipboard: create folder failed: {}", e);
+            None
+        }
+    }
+}
+
+fn handle_rename_folder(conn: &Connection, id: i64, name: &str) -> bool {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Fresh IV on every rename — never reuse an IV with the same key.
+    let (name_ct, iv_name): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(trimmed.as_bytes()) {
+        Some((ct, iv)) => (ct, Some(iv)),
+        None => (trimmed.as_bytes().to_vec(), None),
+    };
+    matches!(
+        conn.execute(
+            "UPDATE clipboard_folders SET name = ?1, iv_name = ?2 WHERE id = ?3",
+            rusqlite::params![name_ct, iv_name, id],
+        ),
+        Ok(rows) if rows > 0
+    )
+}
+
+/// Deleting a folder moves its items back to the Saved root — folder deletion
+/// must never delete clipboard content. Transactional so the folder row and
+/// its item reassignments can't diverge.
+fn handle_delete_folder(conn: &mut Connection, id: i64) -> bool {
+    let tx = match conn.transaction() {
+        Ok(t) => t,
+        Err(e) => {
+            error!("[Keyfire] Clipboard: delete folder begin transaction failed: {}", e);
+            return false;
+        }
+    };
+    if let Err(e) = tx.execute(
+        "UPDATE clipboard_history SET folder_id = NULL WHERE folder_id = ?1",
+        rusqlite::params![id],
+    ) {
+        error!("[Keyfire] Clipboard: delete folder unassign failed: {}", e);
+        return false;
+    }
+    if let Err(e) = tx.execute(
+        "DELETE FROM clipboard_folders WHERE id = ?1",
+        rusqlite::params![id],
+    ) {
+        error!("[Keyfire] Clipboard: delete folder failed: {}", e);
+        return false;
+    }
+    tx.commit().is_ok()
+}
+
+/// Assign an item to a folder (or back to the Saved root with None). Moving
+/// into a folder also saves the item if it wasn't already — dragging a
+/// timeline item straight into a folder is a save + file in one gesture.
+fn handle_move_to_folder(conn: &Connection, id: i64, folder_id: Option<i64>) -> bool {
+    // Reject moves into a folder that doesn't exist (stale UI state) so the
+    // item can't end up invisibly filed under a dangling folder_id.
+    if let Some(fid) = folder_id {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM clipboard_folders WHERE id = ?1",
+                rusqlite::params![fid],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if exists == 0 {
+            return false;
+        }
+    }
+    let sql = if folder_id.is_some() {
+        "UPDATE clipboard_history SET folder_id = ?1, starred = 1 WHERE id = ?2"
+    } else {
+        "UPDATE clipboard_history SET folder_id = ?1 WHERE id = ?2"
+    };
+    conn.execute(sql, rusqlite::params![folder_id, id]).is_ok()
+}
+
+/// Folder list for the sidebar + Saved section sub-headers:
+///   [{ "id": N, "name": "...", "count": M }, ...]
+/// count = saved items currently in the folder. Ordered by sort_order (append
+/// order), id as tiebreaker.
+fn handle_get_folders(conn: &Connection) -> Value {
+    let sql = "SELECT f.id, f.name, f.iv_name,
+                      (SELECT COUNT(*) FROM clipboard_history h
+                        WHERE h.folder_id = f.id AND h.starred = 1) AS cnt
+               FROM clipboard_folders f
+               ORDER BY COALESCE(f.sort_order, 999999) ASC, f.id ASC";
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("[Keyfire] Clipboard: get folders prepare failed: {}", e);
+            return serde_json::json!([]);
+        }
+    };
+    let folders: Vec<Value> = stmt
+        .query_map([], |row| {
+            // Same iv-NULL plaintext fallback as the content columns; a
+            // decrypt failure yields an empty name rather than ciphertext.
+            let name_ct = get_optional_bytes(row, 1)?.unwrap_or_default();
+            let iv_name = row.get::<_, Option<Vec<u8>>>(2)?;
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "name": resolve_required_text(name_ct, iv_name),
+                "count": row.get::<_, i64>(3).unwrap_or(0),
+            }))
+        })
+        .map(|iter| iter.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default();
+    serde_json::json!(folders)
 }
 
 /// Rewrites the ranks for one tier (`pinned_order` or `starred_order`) so the

@@ -4182,6 +4182,8 @@ function App() {
                 window.electronAPI?.saveConfig({ clipboardColumnMode: next });
               }}
               onCreateExpansion={handleCreateExpansionFromClip}
+              isPro={isPro}
+              onShowUpgrade={showUpgrade}
             />
           )}
           {activeArea === 'mapping' && activeView === 'radial' && (

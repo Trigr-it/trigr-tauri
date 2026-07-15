@@ -78,6 +78,26 @@ pub fn reorder_starred(ids: Vec<i64>) -> bool {
     false
 }
 
+pub fn create_folder(name: String) -> Option<i64> {
+    None
+}
+
+pub fn rename_folder(id: i64, name: String) -> bool {
+    false
+}
+
+pub fn delete_folder(id: i64) -> bool {
+    false
+}
+
+pub fn move_to_folder(id: i64, folder_id: Option<i64>) -> bool {
+    false
+}
+
+pub fn get_folders() -> Value {
+    serde_json::json!([])
+}
+
 pub fn get_image_blob(id: i64) -> Option<Vec<u8>> {
     None
 }
@@ -111,6 +131,8 @@ pub fn dominant_colors(png_bytes: &[u8], n: usize) -> Vec<[u8; 3]> {
 }
 
 pub fn increment_paste_count(id: i64) {}
+
+pub fn touch_item(id: i64) {}
 
 pub fn data_dir() -> Option<std::path::PathBuf> {
     None

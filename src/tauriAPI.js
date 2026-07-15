@@ -302,6 +302,12 @@ window.electronAPI = {
   starClipboardItem:      (id, starred)   => invoke('star_clipboard_item', { id, starred }),
   reorderClipboardPinned: (ids)           => invoke('reorder_clipboard_pinned', { ids }),
   reorderClipboardStarred:(ids)           => invoke('reorder_clipboard_starred', { ids }),
+  // Saved folders (internal naming stays folder/starred; UI says "Saved")
+  createClipboardFolder:  (name)          => invoke('create_clipboard_folder', { name }),
+  renameClipboardFolder:  (id, name)      => invoke('rename_clipboard_folder', { id, name }),
+  deleteClipboardFolder:  (id)            => invoke('delete_clipboard_folder', { id }),
+  moveClipboardItemToFolder: (id, folderId) => invoke('move_clipboard_item_to_folder', { id, folderId: folderId ?? null }),
+  getClipboardFolders:    ()              => invoke('get_clipboard_folders'),
   getClipboardImage:      (id)            => invoke('get_clipboard_image', { id }),
   getDistinctSourceApps:  ()              => invoke('get_distinct_source_apps'),
   getClipboardDateBuckets: (filters = {}) => invoke('get_clipboard_date_buckets', {
@@ -328,6 +334,12 @@ window.electronAPI = {
     // can await it on cleanup — closes the race where the .then() hadn't fired
     // yet when an unmount happened and the unlisten handle was lost.
     listeners['clipboard-new-item'] = listen('clipboard-new-item', (event) => callback(event.payload));
+  },
+  // Promote-on-use: a row's timestamp was rewritten (panel copy or popup
+  // paste) — the panel floats it to the top of the timeline. Same Promise
+  // storage pattern as onClipboardNewItem.
+  onClipboardItemTouched: (callback) => {
+    listeners['clipboard-item-touched'] = listen('clipboard-item-touched', (event) => callback(event.payload));
   },
   onClipboardOverlayData: (callback) => {
     listen('clipboard-overlay-data', (event) => callback(event.payload)).then(u => { listeners['clipboard-overlay-data'] = u; });

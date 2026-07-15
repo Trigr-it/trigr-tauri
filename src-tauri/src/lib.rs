@@ -3341,6 +3341,11 @@ fn copy_clipboard_item(id: i64) {
 
         actions::SUPPRESS_NEXT_CLIPBOARD_WRITE
             .store(false, std::sync::atomic::Ordering::SeqCst);
+
+        // Promote-on-use: the copied row is now the live clipboard content,
+        // so float it to the top of the timeline (no duplicate row — the
+        // internal write above is suppressed from the listener).
+        clipboard::touch_item(id);
     });
 }
 
@@ -3690,6 +3695,39 @@ fn reorder_clipboard_pinned(ids: Vec<i64>) -> bool {
 #[tauri::command]
 fn reorder_clipboard_starred(ids: Vec<i64>) -> bool {
     clipboard::reorder_starred(ids)
+}
+
+// Saved folders — flat folders organising the Saved tier. Internal naming
+// stays folder/starred; only UI strings say "Saved".
+#[tauri::command]
+fn create_clipboard_folder(name: String) -> Option<i64> {
+    // Backend mirror of the UI Pro gate (same defence-in-depth as the
+    // retention clamp). Creation only — existing folders stay fully usable
+    // after a licence lapses, matching the never-hold-data-hostage rule.
+    if !licence::is_pro() {
+        return None;
+    }
+    clipboard::create_folder(name)
+}
+
+#[tauri::command]
+fn rename_clipboard_folder(id: i64, name: String) -> bool {
+    clipboard::rename_folder(id, name)
+}
+
+#[tauri::command]
+fn delete_clipboard_folder(id: i64) -> bool {
+    clipboard::delete_folder(id)
+}
+
+#[tauri::command]
+fn move_clipboard_item_to_folder(id: i64, folder_id: Option<i64>) -> bool {
+    clipboard::move_to_folder(id, folder_id)
+}
+
+#[tauri::command]
+fn get_clipboard_folders() -> serde_json::Value {
+    clipboard::get_folders()
 }
 
 #[tauri::command]
@@ -4097,6 +4135,7 @@ pub fn run() {
             actions::cleanup_stale_ahk_scripts(app_data);
             cleanup_stale_trigr_shortcuts();
             ensure_keyfire_shortcut();
+            tray::heal_startup_registration();
 
             // Telemetry timer thread — 30s after startup, then every 6h. Owns
             // its own read-only SQLite connection (no contention with the
@@ -4660,6 +4699,11 @@ pub fn run() {
             star_clipboard_item,
             reorder_clipboard_pinned,
             reorder_clipboard_starred,
+            create_clipboard_folder,
+            rename_clipboard_folder,
+            delete_clipboard_folder,
+            move_clipboard_item_to_folder,
+            get_clipboard_folders,
             get_clipboard_image,
             get_distinct_source_apps,
             get_clipboard_date_buckets,
