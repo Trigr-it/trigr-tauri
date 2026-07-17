@@ -47,6 +47,6 @@ pub struct PlannedMove {
     pub new_name: Option<String>,
 }
 
-pub fn perform_moves(_moves: &[PlannedMove]) -> Result<usize, String> {
+pub fn perform_moves(_moves: &[PlannedMove], _silent_overwrite: bool) -> Result<usize, String> {
     Err("not supported on this platform".to_string())
 }

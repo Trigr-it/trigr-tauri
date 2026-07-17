@@ -27,8 +27,8 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetForegroundWindow, GetSystemMetrics, GetWindowTextW,
     GetWindowThreadProcessId, IsWindowVisible, MessageBoxW, SetForegroundWindow, SetWindowPos,
-    ShowWindow, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL, MB_SETFOREGROUND,
-    MB_TOPMOST,
+    ShowWindow, IDNO, IDOK, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL,
+    MB_SETFOREGROUND, MB_TOPMOST, MB_YESNOCANCEL,
     SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOZORDER, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE,
 };
@@ -2074,6 +2074,36 @@ fn info_dialog(title: &str, message: &str) {
     }
 }
 
+// Three-way clash dialog for the Sort Files step: Yes = overwrite the
+// existing files, No = keep both (date + time suffix), Cancel = stop.
+// MessageBoxW buttons can't be relabelled without hooks, so the message
+// body spells out the mapping.
+enum ClashChoice {
+    Overwrite,
+    AppendDate,
+    Cancel,
+}
+
+fn clash_choice_dialog(title: &str, message: &str) -> ClashChoice {
+    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    let result = unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_YESNOCANCEL | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
+        )
+    };
+    if result == IDYES as i32 {
+        ClashChoice::Overwrite
+    } else if result == IDNO as i32 {
+        ClashChoice::AppendDate
+    } else {
+        ClashChoice::Cancel
+    }
+}
+
 // Resolve the source file list for the file-management steps ("selected in
 // Explorer" vs "folder + wildcard pattern"), plus the base folder relative
 // destinations resolve against (the Explorer folder for selected mode, the
@@ -2737,7 +2767,21 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 })
                 .unwrap_or_default();
             let confirm = parsed.get("confirm").and_then(|v| v.as_bool()).unwrap_or(true);
-            let collision = parsed.get("collision").and_then(|v| v.as_str()).unwrap_or("timestamp");
+            // "prompt" (default): one Yes/No/Cancel dialog covering every
+            // clash in the run — overwrite / keep-both-with-date-suffix /
+            // stop. Legacy "ask" (pre-release native-dialog mode) maps here.
+            let collision = match parsed.get("collision").and_then(|v| v.as_str()).unwrap_or("prompt") {
+                "ask" => "prompt",
+                c => c,
+            };
+            // "file.pdf" → "file (20260717-104500).pdf"
+            let stamp_name = |name: &str| -> String {
+                let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+                match name.rsplit_once('.') {
+                    Some((stem, ext)) => format!("{} ({}).{}", stem, stamp, ext),
+                    None => format!("{} ({})", name, stamp),
+                }
+            };
 
             let (sources, _base) = match resolve_file_step_sources(&parsed, *target_hwnd, step_type) {
                 Ok(v) => v,
@@ -2751,6 +2795,9 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             // ── Plan ────────────────────────────────────────────────────
             let mut moves: Vec<crate::shell_files::PlannedMove> = Vec::new();
             let mut skips: Vec<(String, String)> = Vec::new();
+            // Indices into `moves` whose destination already has the file —
+            // resolved after planning via the single clash dialog.
+            let mut clash_idx: Vec<usize> = Vec::new();
             // key (lowercased) → matched folder. One tree search per
             // distinct key per run, like the AHK projectCache.
             let mut folder_cache: std::collections::HashMap<String, Option<String>> =
@@ -2834,15 +2881,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                             skips.push((name, "already exists in destination".to_string()));
                             continue;
                         }
-                        // "ask": queue as-is, the shell conflict dialog decides.
-                        "ask" => None,
+                        "timestamp" => Some(stamp_name(&name)),
+                        // "prompt": queue as-is, marked for the clash dialog.
                         _ => {
-                            // Timestamp suffix: "file (20260716-153000).pdf".
-                            let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-                            Some(match name.rsplit_once('.') {
-                                Some((stem, ext)) => format!("{} ({}).{}", stem, stamp, ext),
-                                None => format!("{} ({})", name, stamp),
-                            })
+                            clash_idx.push(moves.len());
+                            None
                         }
                     }
                 } else {
@@ -2882,6 +2925,39 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 }
                 return true;
             }
+            // Clash resolution — one dialog covering every clash in the run.
+            let mut silent_overwrite = false;
+            if !clash_idx.is_empty() {
+                let mut msg = format!(
+                    "{} file(s) already exist in their destination:\n\n",
+                    clash_idx.len()
+                );
+                for &i in clash_idx.iter().take(10) {
+                    msg.push_str(&format!("{}\n", display_name(&moves[i].src)));
+                }
+                if clash_idx.len() > 10 {
+                    msg.push_str(&format!("…and {} more\n", clash_idx.len() - 10));
+                }
+                msg.push_str(
+                    "\nYes — overwrite the existing files\n\
+                     No — keep both (a date + time suffix is added to the new file)\n\
+                     Cancel — stop without moving anything",
+                );
+                match clash_choice_dialog("Keyfire — Sort Files", &msg) {
+                    ClashChoice::Overwrite => silent_overwrite = true,
+                    ClashChoice::AppendDate => {
+                        for &i in &clash_idx {
+                            let n = display_name(&moves[i].src);
+                            moves[i].new_name = Some(stamp_name(&n));
+                        }
+                    }
+                    ClashChoice::Cancel => {
+                        info!("[Keyfire] Sort Files: cancelled at the clash dialog");
+                        return true;
+                    }
+                }
+            }
+
             if confirm {
                 let mut msg = format!("Move {} file(s):\n\n", moves.len());
                 for m in moves.iter().take(12) {
@@ -2910,7 +2986,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             for (name, reason) in &skips {
                 info!("[Keyfire] Sort Files skip: {} — {}", name, reason);
             }
-            match crate::shell_files::perform_moves(&moves) {
+            match crate::shell_files::perform_moves(&moves, silent_overwrite) {
                 Ok(n) => {
                     info!(
                         "[Keyfire] Sort Files: {} file(s) sorted, {} skipped",

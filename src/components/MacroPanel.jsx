@@ -139,7 +139,7 @@ const SORT_FILES_DEFAULTS = {
   rootPath: '', searchDepth: 3,
   keyMode: 'prefix', keyLength: 6, keySegment: 1, keySeparator: '-',
   routeEnabled: false, codeSegment: 3, codeSeparator: '-', mappings: [],
-  confirm: true, collision: 'timestamp',
+  confirm: true, collision: 'prompt',
 };
 
 const WFI_INPUT_OPTIONS = [
@@ -1781,7 +1781,13 @@ function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose, 
 // document.body like the app picker. Draft state is local — nothing writes
 // to the step until Save.
 function SortFilesConfigModal({ initial, onSave, onClose }) {
-  const [draft, setDraft] = useState(() => ({ ...SORT_FILES_DEFAULTS, ...initial }));
+  const [draft, setDraft] = useState(() => {
+    const d = { ...SORT_FILES_DEFAULTS, ...initial };
+    // Legacy pre-release value: 'ask' (native conflict dialog) folded into
+    // the Keyfire clash prompt. Backend maps it too.
+    if (d.collision === 'ask') d.collision = 'prompt';
+    return d;
+  });
   const patch = (p) => setDraft(d => ({ ...d, ...p }));
 
   useEffect(() => {
@@ -2027,10 +2033,11 @@ function SortFilesConfigModal({ initial, onSave, onClose }) {
                 className="form-select"
                 style={{ maxWidth: 220 }}
                 value={draft.collision}
+                title="One dialog covers all clashes in a run: overwrite, keep both with a date suffix, or stop"
                 onChange={e => patch({ collision: e.target.value })}
               >
-                <option value="timestamp">Add a timestamp suffix</option>
-                <option value="ask">Ask me (native dialog)</option>
+                <option value="prompt">Ask: overwrite or add date</option>
+                <option value="timestamp">Add a date suffix silently</option>
                 <option value="skip">Skip the file</option>
               </select>
               <span className="sortfiles-label">Dialogs</span>

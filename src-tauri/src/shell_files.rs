@@ -421,13 +421,20 @@ pub struct PlannedMove {
 
 /// Execute a batch of per-item-destination moves as ONE IFileOperation —
 /// one progress dialog, one undo unit. Same flag/cancel semantics as
-/// transfer_files. Returns the number of items queued.
-pub fn perform_moves(moves: &[PlannedMove]) -> Result<usize, String> {
+/// transfer_files. `silent_overwrite` adds FOF_NOCONFIRMATION (0x10) so
+/// existing files are replaced without the shell conflict dialog — the
+/// Sort Files "overwrite" clash choice; ALLOWUNDO keeps replaced files
+/// recoverable from the Recycle Bin. Returns the number of items queued.
+pub fn perform_moves(moves: &[PlannedMove], silent_overwrite: bool) -> Result<usize, String> {
     co_init();
     unsafe {
         let op: IFileOperation = CoCreateInstance(&FileOperation, None, CLSCTX_ALL)
             .map_err(|e| format!("FileOperation CoCreateInstance failed: {}", e))?;
-        let _ = op.SetOperationFlags(FILEOPERATION_FLAGS(0x40 | 0x200));
+        let mut flags = 0x40 | 0x200;
+        if silent_overwrite {
+            flags |= 0x10;
+        }
+        let _ = op.SetOperationFlags(FILEOPERATION_FLAGS(flags));
 
         // Destination folders repeat across items (many files → one project
         // folder) — cache the IShellItems. Clone is an AddRef, cheap.
