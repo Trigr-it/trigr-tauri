@@ -1863,7 +1863,7 @@ export default function SearchTemplatesPanel({
                 )}
                 {qaType === 'macro' && (
                   <div style={{ marginTop: 4 }}>
-                    <MacroSequenceForm value={qaFormValue} onChange={setQaFormValue} globalInputMethod={globalInputMethod} />
+                    <MacroSequenceForm value={qaFormValue} onChange={setQaFormValue} globalInputMethod={globalInputMethod} isPro={isPro} />
                   </div>
                 )}
 

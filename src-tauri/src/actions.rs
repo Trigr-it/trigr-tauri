@@ -27,7 +27,8 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetForegroundWindow, GetSystemMetrics, GetWindowTextW,
     GetWindowThreadProcessId, IsWindowVisible, MessageBoxW, SetForegroundWindow, SetWindowPos,
-    ShowWindow, IDOK, MB_ICONWARNING, MB_OKCANCEL, MB_SETFOREGROUND, MB_TOPMOST,
+    ShowWindow, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL, MB_SETFOREGROUND,
+    MB_TOPMOST,
     SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOZORDER, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE,
 };
@@ -2040,6 +2041,96 @@ fn confirm_destructive_step(title: &str, message: &str) -> bool {
     result == IDOK as i32
 }
 
+// OK/Cancel plan-preview dialog for the Sort Files step — informational icon
+// rather than the warning triangle, otherwise the same topmost/foreground
+// treatment as confirm_destructive_step.
+fn confirm_plan_dialog(title: &str, message: &str) -> bool {
+    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    let result = unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OKCANCEL | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
+        )
+    };
+    result == IDOK as i32
+}
+
+// Fire-and-forget information dialog (Sort Files completion report / Pro
+// gate notice). Blocks the macro thread until dismissed, which is fine —
+// it's the last thing the step does.
+fn info_dialog(title: &str, message: &str) {
+    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
+        );
+    }
+}
+
+// Resolve the source file list for the file-management steps ("selected in
+// Explorer" vs "folder + wildcard pattern"), plus the base folder relative
+// destinations resolve against (the Explorer folder for selected mode, the
+// source folder otherwise). Err(true) = skip the step and continue the
+// macro (config incomplete); Err(false) = abort the macro (Explorer context
+// required but unavailable) — callers `return` the Err value directly.
+fn resolve_file_step_sources(
+    parsed: &Value,
+    target_hwnd: isize,
+    step_type: &str,
+) -> Result<(Vec<String>, Option<String>), bool> {
+    let source_mode = parsed.get("sourceMode").and_then(|v| v.as_str()).unwrap_or("selected");
+    if source_mode == "folder" {
+        let dir = parsed
+            .get("sourcePath")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if dir.is_empty() {
+            warn!("[Keyfire] {}: no source folder set — skipping step", step_type);
+            return Err(true);
+        }
+        let pattern = parsed.get("pattern").and_then(|v| v.as_str()).unwrap_or("*");
+        let files = crate::shell_files::list_matching_files(&dir, pattern);
+        Ok((files, Some(dir)))
+    } else {
+        match crate::shell_files::explorer_context(target_hwnd) {
+            Some(ctx) if !ctx.selected.is_empty() => {
+                // Virtual locations (search results, libraries) have no
+                // folder path — fall back to the first selected item's
+                // parent, which is where the files really are.
+                let base = ctx.folder.clone().or_else(|| {
+                    std::path::Path::new(&ctx.selected[0])
+                        .parent()
+                        .map(|p| p.to_string_lossy().into_owned())
+                });
+                Ok((ctx.selected, base))
+            }
+            Some(_) => {
+                warn!(
+                    "[Keyfire] {}: nothing selected in File Explorer — aborting macro",
+                    step_type
+                );
+                Err(false)
+            }
+            None => {
+                warn!(
+                    "[Keyfire] {}: foreground window isn't File Explorer — aborting macro",
+                    step_type
+                );
+                Err(false)
+            }
+        }
+    }
+}
+
 // Send a media key (VK_VOLUME_UP/DOWN/MUTE) via SendInput as VK-only with the
 // extended-key flag. Bypasses the scancode-mode path send_vk_key uses because
 // media keys don't have reliable hardware scancodes — MapVirtualKeyW can
@@ -2366,6 +2457,477 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 // nothing to wait on. 5s ceiling in case the launch failed.
                 if let Some(rx) = rx {
                     let _ = rx.recv_timeout(Duration::from_secs(5));
+                }
+            }
+        }
+
+        // ── Files steps ─────────────────────────────────────────────────────
+        // Create Folder / Copy Files / Move Files — Explorer-integrated file
+        // management via crate::shell_files. "Current folder" and "selected
+        // files" read the foreground Explorer window (or desktop) through
+        // IShellWindows; transfers run through IFileOperation so the user
+        // gets the native progress + conflict dialogs and Recycle-Bin undo.
+        // Hard failures (no Explorer window when the step depends on one,
+        // transfer error) abort the macro — later steps may assume the file
+        // work happened. Soft empties (no files matched a pattern) continue.
+
+        // Value: JSON { name, promptForName, locationMode: "current"|"custom",
+        // path, templateEnabled, templatePath }.
+        // Tokens in the name resolve at run time ({date}, {clipboard}, ...)
+        // so "Invoices {date:YYYY-MM-DD}" stamps itself, same behaviour as
+        // Type Text. {inc}/{inc:N} then numbers the name against what
+        // already exists in the target directory. promptForName opens the
+        // fill-in window at run time with the configured name as the
+        // editable default — cancel aborts the macro (matching fill-in Esc
+        // semantics). templateEnabled seeds the new folder by copying
+        // templatePath's contents into it via IFileOperation.
+        "Create Folder" => {
+            let parsed: Value = serde_json::from_str(step_value).unwrap_or(Value::Null);
+            let name_raw = parsed.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let prompt_for_name = parsed
+                .get("promptForName")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if name_raw.trim().is_empty() && !prompt_for_name {
+                warn!("[Keyfire] Create Folder: no folder name set — skipping step");
+                return true;
+            }
+            // Parent first: {inc} needs it, and the Explorer context should
+            // be read via the trigger-time hint before any prompt shows.
+            let mode = parsed.get("locationMode").and_then(|v| v.as_str()).unwrap_or("current");
+            let parent = if mode == "custom" {
+                parsed.get("path").and_then(|v| v.as_str()).unwrap_or("").trim().to_string()
+            } else {
+                crate::shell_files::explorer_context(*target_hwnd)
+                    .and_then(|ctx| ctx.folder)
+                    .unwrap_or_default()
+            };
+            if parent.is_empty() {
+                warn!(
+                    "[Keyfire] Create Folder: no target directory (mode={} — is a File Explorer window focused?) — aborting macro",
+                    mode
+                );
+                return false;
+            }
+            let name_seed = resolve_type_text_tokens(name_raw);
+            let name = if prompt_for_name {
+                match crate::expansions::prompt_single_text("New folder name", &name_seed) {
+                    Some(v) if !v.trim().is_empty() => resolve_type_text_tokens(&v),
+                    _ => {
+                        info!("[Keyfire] Create Folder: name prompt cancelled — aborting macro");
+                        return false;
+                    }
+                }
+            } else {
+                name_seed
+            };
+            let name = crate::shell_files::resolve_increment(&parent, &name);
+            let created = match crate::shell_files::create_folder(&parent, &name) {
+                Ok(full) => {
+                    info!("[Keyfire] Create Folder: {}", full);
+                    full
+                }
+                Err(e) => {
+                    warn!("[Keyfire] Create Folder: {} — aborting macro", e);
+                    return false;
+                }
+            };
+            // Template seed — copy the template folder's contents (not the
+            // folder itself) into the new folder.
+            let template_enabled = parsed
+                .get("templateEnabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let template_path = parsed
+                .get("templatePath")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if template_enabled && !template_path.is_empty() {
+                let entries = crate::shell_files::list_dir_entries(&template_path);
+                if entries.is_empty() {
+                    info!(
+                        "[Keyfire] Create Folder: template {} is empty or unreadable — nothing to copy",
+                        template_path
+                    );
+                } else {
+                    match crate::shell_files::transfer_files(&entries, &created, false) {
+                        Ok(n) => info!(
+                            "[Keyfire] Create Folder: {} template item(s) copied into {}",
+                            n, created
+                        ),
+                        Err(e) => {
+                            warn!("[Keyfire] Create Folder: template copy failed: {} — aborting macro", e);
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Value: JSON { sourceMode: "selected"|"folder", sourcePath, pattern,
+        // destMode: "path"|"subfolder", destPath, destSubfolder,
+        // createSubfolder }. "selected" = whatever is highlighted in the
+        // foreground Explorer window (files and folders); "folder" = files in
+        // sourcePath matching the `;`-separated wildcard pattern (subfolders
+        // excluded). destMode "subfolder" resolves destSubfolder against the
+        // folder the sources live in (the Explorer folder for selected mode,
+        // sourcePath for folder mode) — the "file into .\Superceded\ wherever
+        // I am" workflow. A missing subfolder ABORTS the macro unless
+        // createSubfolder is set, so chains only run where the folder
+        // convention exists.
+        "Copy Files" | "Move Files" => {
+            let is_move = step_type == "Move Files";
+            let parsed: Value = serde_json::from_str(step_value).unwrap_or(Value::Null);
+            let (sources, base_folder) = match resolve_file_step_sources(&parsed, *target_hwnd, step_type) {
+                Ok(v) => v,
+                Err(cont) => return cont,
+            };
+            if sources.is_empty() {
+                info!("[Keyfire] {}: no files matched — nothing to do", step_type);
+                return true;
+            }
+
+            let dest_mode = parsed.get("destMode").and_then(|v| v.as_str()).unwrap_or("path");
+            let dest = if dest_mode == "subfolder" {
+                let sub = parsed
+                    .get("destSubfolder")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if sub.is_empty() {
+                    warn!("[Keyfire] {}: no subfolder name set — skipping step", step_type);
+                    return true;
+                }
+                let create = parsed
+                    .get("createSubfolder")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let Some(base) = base_folder else {
+                    warn!(
+                        "[Keyfire] {}: current folder has no filesystem path — aborting macro",
+                        step_type
+                    );
+                    return false;
+                };
+                match crate::shell_files::resolve_subfolder(&base, sub, create) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        warn!("[Keyfire] {}: {} — aborting macro", step_type, e);
+                        return false;
+                    }
+                }
+            } else {
+                let d = parsed
+                    .get("destPath")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if d.is_empty() {
+                    warn!("[Keyfire] {}: no destination folder set — skipping step", step_type);
+                    return true;
+                }
+                if let Err(e) = std::fs::create_dir_all(&d) {
+                    warn!(
+                        "[Keyfire] {}: destination {} unavailable: {} — aborting macro",
+                        step_type, d, e
+                    );
+                    return false;
+                }
+                d
+            };
+            match crate::shell_files::transfer_files(&sources, &dest, is_move) {
+                Ok(n) => info!(
+                    "[Keyfire] {}: {} item(s) → {}",
+                    step_type, n, dest
+                ),
+                Err(e) => {
+                    warn!("[Keyfire] {}: {} — aborting macro", step_type, e);
+                    return false;
+                }
+            }
+        }
+
+        // Sort Files (Pro) — route each file to the folder its NAME points
+        // at. Value: JSON { sourceMode, sourcePath, pattern, rootPath,
+        // searchDepth, keyMode: "prefix"|"segment", keyLength, keySegment,
+        // keySeparator, routeEnabled, codeSegment, codeSeparator,
+        // mappings: [{code, folder}], confirm, collision:
+        // "timestamp"|"ask"|"skip" }.
+        //
+        // Flow: extract a folder key from each filename (first N chars or
+        // the Nth separator-delimited segment), find the first folder under
+        // rootPath whose name contains that key (BFS, depth-limited, cached
+        // per run), optionally descend into a mapped subfolder by a second
+        // code segment (DR → "- Drawings"), then execute every move as ONE
+        // IFileOperation. Per-file problems SKIP that file with a reason —
+        // a sorter should sort what it can and report the rest — so unlike
+        // Copy/Move this arm only aborts on hard failures (root missing,
+        // transfer error).
+        "Sort Files" => {
+            if !crate::licence::is_pro() {
+                warn!("[Keyfire] Sort Files: Pro feature, no valid licence — skipping step");
+                info_dialog(
+                    "Keyfire — Sort Files",
+                    "Sort Files is a Pro feature.\n\nAdd a licence key in Settings to enable it.",
+                );
+                return true;
+            }
+            let parsed: Value = serde_json::from_str(step_value).unwrap_or(Value::Null);
+            let root = parsed
+                .get("rootPath")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if root.is_empty() {
+                warn!("[Keyfire] Sort Files: no search folder set — skipping step");
+                return true;
+            }
+            if !std::path::Path::new(&root).is_dir() {
+                warn!("[Keyfire] Sort Files: search folder {} not found — aborting macro", root);
+                return false;
+            }
+            let depth = parsed
+                .get("searchDepth")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(3)
+                .clamp(1, 8) as u32;
+            let key_mode = parsed.get("keyMode").and_then(|v| v.as_str()).unwrap_or("prefix");
+            let key_length = parsed
+                .get("keyLength")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(6)
+                .clamp(1, 64) as usize;
+            let key_segment = parsed
+                .get("keySegment")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1)
+                .clamp(1, 32) as usize;
+            let key_sep_raw = parsed.get("keySeparator").and_then(|v| v.as_str()).unwrap_or("-");
+            let key_separator = if key_sep_raw.is_empty() { "-" } else { key_sep_raw };
+            let route_enabled = parsed
+                .get("routeEnabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let code_segment = parsed
+                .get("codeSegment")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(3)
+                .clamp(1, 32) as usize;
+            let code_sep_raw = parsed.get("codeSeparator").and_then(|v| v.as_str()).unwrap_or("-");
+            let code_separator = if code_sep_raw.is_empty() { "-" } else { code_sep_raw };
+            let mappings: Vec<(String, String)> = parsed
+                .get("mappings")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| {
+                            let code = m.get("code")?.as_str()?.trim().to_string();
+                            let folder = m.get("folder")?.as_str()?.trim().to_string();
+                            if code.is_empty() || folder.is_empty() {
+                                None
+                            } else {
+                                Some((code, folder))
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let confirm = parsed.get("confirm").and_then(|v| v.as_bool()).unwrap_or(true);
+            let collision = parsed.get("collision").and_then(|v| v.as_str()).unwrap_or("timestamp");
+
+            let (sources, _base) = match resolve_file_step_sources(&parsed, *target_hwnd, step_type) {
+                Ok(v) => v,
+                Err(cont) => return cont,
+            };
+            if sources.is_empty() {
+                info!("[Keyfire] Sort Files: no files matched — nothing to do");
+                return true;
+            }
+
+            // ── Plan ────────────────────────────────────────────────────
+            let mut moves: Vec<crate::shell_files::PlannedMove> = Vec::new();
+            let mut skips: Vec<(String, String)> = Vec::new();
+            // key (lowercased) → matched folder. One tree search per
+            // distinct key per run, like the AHK projectCache.
+            let mut folder_cache: std::collections::HashMap<String, Option<String>> =
+                std::collections::HashMap::new();
+
+            for src in &sources {
+                let p = std::path::Path::new(src);
+                let name = p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                if name.is_empty() {
+                    skips.push((src.clone(), "no file name".to_string()));
+                    continue;
+                }
+                if p.is_dir() {
+                    skips.push((name, "is a folder, not a file".to_string()));
+                    continue;
+                }
+                let key = if key_mode == "segment" {
+                    name.split(key_separator)
+                        .nth(key_segment - 1)
+                        .unwrap_or("")
+                        .trim()
+                        .to_string()
+                } else {
+                    name.chars().take(key_length).collect::<String>().trim().to_string()
+                };
+                if key.is_empty() {
+                    skips.push((name, "couldn't extract a folder key from the name".to_string()));
+                    continue;
+                }
+                let folder = folder_cache
+                    .entry(key.to_lowercase())
+                    .or_insert_with(|| crate::shell_files::find_folder_by_key(&root, &key, depth))
+                    .clone();
+                let Some(mut dest_dir) = folder else {
+                    skips.push((name, format!("no folder matching '{}' found", key)));
+                    continue;
+                };
+                if route_enabled {
+                    // Extension guard: if the code segment is the last one it
+                    // carries ".ext" — folder codes never contain dots, so
+                    // cut at the first one.
+                    let code = name
+                        .split(code_separator)
+                        .nth(code_segment - 1)
+                        .unwrap_or("")
+                        .split('.')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if code.is_empty() {
+                        skips.push((name, "couldn't extract a code segment from the name".to_string()));
+                        continue;
+                    }
+                    let Some((_, sub)) =
+                        mappings.iter().find(|(c, _)| c.eq_ignore_ascii_case(&code))
+                    else {
+                        skips.push((name, format!("code '{}' not mapped", code)));
+                        continue;
+                    };
+                    let sub_path = std::path::Path::new(&dest_dir).join(sub);
+                    if !sub_path.is_dir() {
+                        skips.push((name, format!("subfolder '{}' missing in {}", sub, dest_dir)));
+                        continue;
+                    }
+                    dest_dir = sub_path.to_string_lossy().into_owned();
+                }
+                if p.parent()
+                    .map(|pp| pp.to_string_lossy().eq_ignore_ascii_case(&dest_dir))
+                    .unwrap_or(false)
+                {
+                    skips.push((name, "already in its destination folder".to_string()));
+                    continue;
+                }
+                let new_name = if std::path::Path::new(&dest_dir).join(&name).exists() {
+                    match collision {
+                        "skip" => {
+                            skips.push((name, "already exists in destination".to_string()));
+                            continue;
+                        }
+                        // "ask": queue as-is, the shell conflict dialog decides.
+                        "ask" => None,
+                        _ => {
+                            // Timestamp suffix: "file (20260716-153000).pdf".
+                            let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+                            Some(match name.rsplit_once('.') {
+                                Some((stem, ext)) => format!("{} ({}).{}", stem, stamp, ext),
+                                None => format!("{} ({})", name, stamp),
+                            })
+                        }
+                    }
+                } else {
+                    None
+                };
+                moves.push(crate::shell_files::PlannedMove {
+                    src: src.clone(),
+                    dest_dir,
+                    new_name,
+                });
+            }
+
+            // ── Confirm ─────────────────────────────────────────────────
+            let display_name = |src: &str| {
+                std::path::Path::new(src)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| src.to_string())
+            };
+            if moves.is_empty() {
+                let mut msg = format!(
+                    "Nothing to move — all {} file(s) were skipped:\n\n",
+                    skips.len()
+                );
+                for (name, reason) in skips.iter().take(12) {
+                    msg.push_str(&format!("{}\n    {}\n", name, reason));
+                }
+                if skips.len() > 12 {
+                    msg.push_str(&format!("…and {} more (see log)\n", skips.len() - 12));
+                }
+                info!("[Keyfire] Sort Files: nothing to move, {} skipped", skips.len());
+                for (name, reason) in &skips {
+                    info!("[Keyfire] Sort Files skip: {} — {}", name, reason);
+                }
+                if confirm {
+                    info_dialog("Keyfire — Sort Files", &msg);
+                }
+                return true;
+            }
+            if confirm {
+                let mut msg = format!("Move {} file(s):\n\n", moves.len());
+                for m in moves.iter().take(12) {
+                    msg.push_str(&format!("{}\n    → {}\n", display_name(&m.src), m.dest_dir));
+                }
+                if moves.len() > 12 {
+                    msg.push_str(&format!("…and {} more\n", moves.len() - 12));
+                }
+                if !skips.is_empty() {
+                    msg.push_str(&format!("\nSkipping {} file(s):\n\n", skips.len()));
+                    for (name, reason) in skips.iter().take(8) {
+                        msg.push_str(&format!("{}\n    {}\n", name, reason));
+                    }
+                    if skips.len() > 8 {
+                        msg.push_str(&format!("…and {} more (see log)\n", skips.len() - 8));
+                    }
+                }
+                msg.push_str("\nProceed?");
+                if !confirm_plan_dialog("Keyfire — Sort Files", &msg) {
+                    info!("[Keyfire] Sort Files: cancelled at the plan dialog");
+                    return true;
+                }
+            }
+
+            // ── Execute + report ────────────────────────────────────────
+            for (name, reason) in &skips {
+                info!("[Keyfire] Sort Files skip: {} — {}", name, reason);
+            }
+            match crate::shell_files::perform_moves(&moves) {
+                Ok(n) => {
+                    info!(
+                        "[Keyfire] Sort Files: {} file(s) sorted, {} skipped",
+                        n,
+                        skips.len()
+                    );
+                    if confirm {
+                        let mut msg = format!("Moved {} file(s).", n);
+                        if !skips.is_empty() {
+                            msg.push_str(&format!(" Skipped {} (see log).", skips.len()));
+                        }
+                        info_dialog("Keyfire — Sort Files", &msg);
+                    }
+                }
+                Err(e) => {
+                    warn!("[Keyfire] Sort Files: {} — aborting macro", e);
+                    return false;
                 }
             }
         }

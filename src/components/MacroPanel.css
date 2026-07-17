@@ -919,8 +919,17 @@
   /* Master column cap — matches the top pill row (Text / Hotkey / Open / …
      at 415px). Every macro step, whichever type, renders inside this width.
      Individual widgets (dropdowns, inputs, WindowPickers) can be tuned but
-     the sum can never push past 415. */
+     the sum can never push past 415. overflow:hidden is the enforcement
+     backstop (same tradeoff as .macro-step-row): a widget that can't fit
+     gets clipped instead of leaking a horizontal scrollbar onto the panel.
+     LAYOUT RULE for new steps: multi-control sub-rows use the base
+     .wfi-config-row (48px left pad); the -aligned variant (184px left pad,
+     ~171px content width) is ONLY for a single input tucked under the
+     picker column. Labels must be allowed to wrap (no nowrap), and every
+     flex child needs an explicit flex-basis or min-width so it can shrink. */
   max-width: 415px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .macro-step-overlay {
@@ -1122,6 +1131,18 @@
 .macro-step-hint {
   flex: 1 1 0;
   min-width: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Sub-row label — same look as .macro-step-hint but does NOT grow.
+   .macro-step-hint's flex: 1 1 0 is a fill-the-row spacer for main-row use;
+   inside sub-rows a growing label shoves its control off the 415 column
+   (the 2026-07-17 Create Folder clipping bug). Use THIS class for labels
+   that sit next to controls in sub-rows. */
+.macro-substep-label {
+  flex: 0 0 auto;
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
@@ -2717,4 +2738,201 @@
 @keyframes replay-rec-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%      { opacity: 0.6; transform: scale(0.8); }
+}
+
+/* ── SORT FILES CONFIG MODAL ────────────────────────────────────────────────
+   Modal-config pattern for macro steps that outgrow the inline row (mapping
+   table, discovery settings, dialog options). Reuses .app-picker-overlay for
+   the backdrop + .app-picker-close for the ✕.
+
+   Layout system: each section is a full-bleed band separated by 1px rules;
+   inside, a two-column grid (fixed right-aligned label column + control
+   column) puts every control on one shared vertical rule. */
+.sortfiles-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 580px;
+  max-width: calc(100vw - 32px);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.sortfiles-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sortfiles-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sortfiles-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sortfiles-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+.sortfiles-section + .sortfiles-section {
+  border-top: 1px solid var(--border);
+}
+.sortfiles-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sortfiles-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+/* Label column + control column. Labels right-align against the controls so
+   the whole modal reads down a single vertical rule. */
+.sortfiles-grid {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+}
+.sortfiles-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+.sortfiles-grid .picker-field {
+  width: 100%;
+  min-width: 0;
+}
+.sortfiles-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.sortfiles-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.sortfiles-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+.sortfiles-example {
+  display: block;
+  margin-top: 5px;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+.sortfiles-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.sortfiles-check input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+/* Mapping table — bordered inset with a labelled header row; head and rows
+   share one grid template so the columns stay locked in line. */
+.sortfiles-map-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px 10px;
+}
+.sortfiles-map-head,
+.sortfiles-map-row {
+  display: grid;
+  grid-template-columns: 96px 22px minmax(0, 1fr) 26px;
+  column-gap: 6px;
+  align-items: center;
+}
+.sortfiles-map-head span {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+.sortfiles-map-arrow {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.sortfiles-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 0;
+  border-radius: 4px;
+  text-align: center;
+}
+.sortfiles-remove:hover {
+  color: var(--danger);
+  background: var(--bg-hover);
+}
+.sortfiles-add {
+  align-self: flex-start;
+  margin-top: 2px;
+  background: none;
+  border: 1px dashed var(--border-bright);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sortfiles-add:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+.sortfiles-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.sortfiles-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.sortfiles-btn:hover {
+  border-color: var(--accent);
+}
+.sortfiles-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--btn-primary-text);
+  font-weight: 600;
 }

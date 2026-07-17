@@ -1039,25 +1039,32 @@ fn fire_expansion(
     });
 }
 
-/// Fill-in flow: runs entirely on a dedicated thread so the processor thread is never blocked.
-/// Sequence: show window → wait for response → resolve tokens → inject.
-fn fire_expansion_with_fillin(
-    fill_in_fields: Vec<FillInField>,
-    text: &str,
-    html: Option<&str>,
-    trigger_len: usize,
-    delete_extra: bool,
-    global_vars: &HashMap<String, String>,
-    trigger_str: &str,
-    case_pattern: CasePattern,
-) {
+/// Show the fill-in window with `fields` and block until the user submits,
+/// cancels, or the 60s timeout elapses. This is the shared prompt surface —
+/// the expansion fill-in flow AND macro-step prompts (Create Folder's
+/// ask-for-name mode; Macro Inputs when it lands) all route through here.
+///
+/// Extracted verbatim from fire_expansion_with_fillin — the order of
+/// operations is LOAD-BEARING per the fill-in invariants in CLAUDE.md:
+/// FILL_IN_ACTIVE before anything, FILLIN_HWND before show,
+/// resume_for_show before the first emit, renderer-ready handshake before
+/// the fields emit, hide (never destroy) + focus restore after.
+///
+/// Returns (response, target_hwnd) where response is Ok(Some(values)) on
+/// submit, Ok(None) on cancel, Err on timeout — and target_hwnd is the
+/// window that had focus before the prompt (callers that inject text need
+/// it; focus is already restored to it by the time this returns).
+pub(crate) fn run_fill_in_window(
+    fill_in_fields: &[FillInField],
+) -> (Result<Option<HashMap<String, String>>, mpsc::RecvTimeoutError>, isize) {
     crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
     let app = match APP_HANDLE.get() {
         Some(a) => a,
         None => {
             log::error!("[EXP] No app handle — cannot show fill-in window");
-            return;
+            crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+            return (Ok(None), 0);
         }
     };
 
@@ -1158,6 +1165,43 @@ fn fire_expansion_with_fillin(
 
     // Fill-in UI is fully closed — allow new fill-in invocations
     crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    (response, target_hwnd)
+}
+
+/// Prompt the user for a single text value via the fill-in window. Used by
+/// macro steps (Create Folder's ask-for-name mode). Returns None on cancel,
+/// timeout, or when another fill-in is already active.
+pub fn prompt_single_text(label: &str, default: &str) -> Option<String> {
+    if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+        log::warn!("[EXP] prompt_single_text: another fill-in is active — declining");
+        return None;
+    }
+    let field = FillInField {
+        label: label.to_string(),
+        kind: "text".to_string(),
+        options: Vec::new(),
+        default: if default.is_empty() { None } else { Some(default.to_string()) },
+    };
+    match run_fill_in_window(std::slice::from_ref(&field)).0 {
+        Ok(Some(values)) => values.get(label).cloned(),
+        _ => None,
+    }
+}
+
+/// Fill-in flow: runs entirely on a dedicated thread so the processor thread is never blocked.
+/// Sequence: show window → wait for response → resolve tokens → inject.
+fn fire_expansion_with_fillin(
+    fill_in_fields: Vec<FillInField>,
+    text: &str,
+    html: Option<&str>,
+    trigger_len: usize,
+    delete_extra: bool,
+    global_vars: &HashMap<String, String>,
+    trigger_str: &str,
+    case_pattern: CasePattern,
+) {
+    let (response, target_hwnd) = run_fill_in_window(&fill_in_fields);
 
     let (text_after_fillin, fillin_values) = match response {
         Ok(Some(values)) => {

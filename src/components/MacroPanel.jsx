@@ -113,6 +113,7 @@ const MACRO_STEP_CATEGORIES = [
   { kind: 'group', label: 'Type & Keys',      items: ['Type Text', 'Dynamic Text', 'Press Key', 'Copy to Clipboard', 'Paste Clipboard', 'Select All'] },
   { kind: 'group', label: 'Mouse',            items: ['Click Mouse', 'Click at Position', 'Mouse Scroll'] },
   { kind: 'group', label: 'Open & Play',      items: ['Open App', 'Open Folder', 'Open URL', 'Play Audio File', 'Play Video File'] },
+  { kind: 'group', label: 'Files',            items: ['Create Folder', 'Copy Files', 'Move Files', 'Sort Files'] },
   { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window'] },
   { kind: 'group', label: 'Window',           items: ['Focus Window', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Minimise All', 'Restore All'] },
   { kind: 'group', label: 'System',           items: ['Change Volume', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
@@ -129,6 +130,17 @@ const MACRO_STEP_DISPLAY_LABEL = {
 function macroStepLabel(stepType) {
   return MACRO_STEP_DISPLAY_LABEL[stepType] || stepType;
 }
+
+// Sort Files (Pro) — full default config, shared by the type-change seed and
+// the parse block so a fresh step and a legacy/partial value agree. Shape
+// documented in actions.rs "Sort Files" arm.
+const SORT_FILES_DEFAULTS = {
+  sourceMode: 'selected', sourcePath: '', pattern: '*',
+  rootPath: '', searchDepth: 3,
+  keyMode: 'prefix', keyLength: 6, keySegment: 1, keySeparator: '-',
+  routeEnabled: false, codeSegment: 3, codeSeparator: '-', mappings: [],
+  confirm: true, collision: 'timestamp',
+};
 
 const WFI_INPUT_OPTIONS = [
   { value: 'LButton',     label: 'Left Click'   },
@@ -1762,12 +1774,299 @@ function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose, 
   );
 }
 
+// ── Sort Files config modal ─────────────────────────────────────────────────
+// Sort Files outgrew the inline step row (mapping table, discovery settings,
+// dialog options) — first step to use the modal-config pattern: the row shows
+// a summary + Configure button, the full form lives here, portaled to
+// document.body like the app picker. Draft state is local — nothing writes
+// to the step until Save.
+function SortFilesConfigModal({ initial, onSave, onClose }) {
+  const [draft, setDraft] = useState(() => ({ ...SORT_FILES_DEFAULTS, ...initial }));
+  const patch = (p) => setDraft(d => ({ ...d, ...p }));
+
+  useEffect(() => {
+    // Capture phase so document-level Esc handling never sees it.
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+
+  const setMapping = (i, p) => setDraft(d => ({ ...d, mappings: d.mappings.map((m, idx) => (idx === i ? { ...m, ...p } : m)) }));
+  const removeMapping = (i) => setDraft(d => ({ ...d, mappings: d.mappings.filter((_, idx) => idx !== i) }));
+  const addMapping = () => setDraft(d => ({ ...d, mappings: [...d.mappings, { code: '', folder: '' }] }));
+
+  const pickFolder = async (field) => {
+    const path = await window.electronAPI?.browseForFolder();
+    if (path) patch({ [field]: path });
+  };
+
+  return createPortal(
+    <div className="app-picker-overlay" onClick={onClose}>
+      <div className="sortfiles-modal" onClick={e => e.stopPropagation()}>
+        <div className="sortfiles-header">
+          <span className="sortfiles-title">Sort Files rules</span>
+          <button className="app-picker-close" type="button" onClick={onClose} title="Close">✕</button>
+        </div>
+        <div className="sortfiles-body">
+
+          {/* 1 — what goes in */}
+          <div className="sortfiles-section">
+            <div className="sortfiles-section-label">Files to sort</div>
+            <div className="sortfiles-grid">
+              <span className="sortfiles-label">Source</span>
+              <select
+                className="form-select"
+                style={{ maxWidth: 220 }}
+                value={draft.sourceMode}
+                onChange={e => patch({ sourceMode: e.target.value })}
+              >
+                <option value="selected">Selected files in Explorer</option>
+                <option value="folder">Files from a folder</option>
+              </select>
+              {draft.sourceMode === 'folder' && (
+                <>
+                  <span className="sortfiles-label">Folder</span>
+                  <button
+                    type="button"
+                    className="picker-field"
+                    onClick={() => pickFolder('sourcePath')}
+                    title={draft.sourcePath || 'Pick the source folder…'}
+                  >
+                    <span className={`picker-field-value${draft.sourcePath ? '' : ' picker-field-placeholder'}`}>
+                      {draft.sourcePath || 'Pick the source folder…'}
+                    </span>
+                    <span className="picker-field-caret" aria-hidden="true">▾</span>
+                  </button>
+                  <span className="sortfiles-label">Pattern</span>
+                  <div className="sortfiles-inline">
+                    <input
+                      className="form-input"
+                      style={{ maxWidth: 160 }}
+                      placeholder="*.pdf; *.docx"
+                      value={draft.pattern ?? '*'}
+                      onChange={e => patch({ pattern: e.target.value })}
+                    />
+                    <span className="sortfiles-hint">* and ? wildcards, ; separates</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* 2 — where each file goes */}
+          <div className="sortfiles-section">
+            <div className="sortfiles-section-label">Destination folder</div>
+            <div className="sortfiles-grid">
+              <span className="sortfiles-label">Search inside</span>
+              <button
+                type="button"
+                className="picker-field"
+                onClick={() => pickFolder('rootPath')}
+                title={draft.rootPath || 'Pick the folder to search…'}
+              >
+                <span className={`picker-field-value${draft.rootPath ? '' : ' picker-field-placeholder'}`}>
+                  {draft.rootPath || 'Pick the folder to search…'}
+                </span>
+                <span className="picker-field-caret" aria-hidden="true">▾</span>
+              </button>
+              <span className="sortfiles-label">Search depth</span>
+              <div className="sortfiles-inline">
+                <NumberField
+                  value={draft.searchDepth}
+                  min={1}
+                  max={8}
+                  defaultOnEmpty={3}
+                  onCommit={n => patch({ searchDepth: n })}
+                  style={{ width: 56 }}
+                />
+                <span className="sortfiles-hint">folder levels below the search folder</span>
+              </div>
+              <span className="sortfiles-label">Match by</span>
+              <div className="sortfiles-inline">
+                <select
+                  className="form-select"
+                  style={{ width: 190 }}
+                  value={draft.keyMode}
+                  onChange={e => patch({ keyMode: e.target.value })}
+                >
+                  <option value="prefix">First characters of name</option>
+                  <option value="segment">A segment of the name</option>
+                </select>
+                {draft.keyMode === 'prefix' ? (
+                  <>
+                    <span className="sortfiles-hint">first</span>
+                    <NumberField
+                      value={draft.keyLength}
+                      min={1}
+                      max={64}
+                      defaultOnEmpty={6}
+                      onCommit={n => patch({ keyLength: n })}
+                      style={{ width: 56 }}
+                    />
+                    <span className="sortfiles-hint">characters</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="sortfiles-hint">segment</span>
+                    <NumberField
+                      value={draft.keySegment}
+                      min={1}
+                      max={32}
+                      defaultOnEmpty={1}
+                      onCommit={n => patch({ keySegment: n })}
+                      style={{ width: 56 }}
+                    />
+                    <span className="sortfiles-hint">split by</span>
+                    <input
+                      className="form-input"
+                      style={{ width: 44, textAlign: 'center' }}
+                      maxLength={3}
+                      value={draft.keySeparator ?? '-'}
+                      onChange={e => patch({ keySeparator: e.target.value })}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+            <p className="sortfiles-note">
+              The first folder whose name contains the matched text becomes the file's destination.
+              <span className="sortfiles-example">PRJ042-A-INV-001.pdf&ensp;→&ensp;PRJ042&ensp;→&ensp;[PRJ042] Acme Office Fit-Out</span>
+            </p>
+          </div>
+
+          {/* 3 — optional second hop into a subfolder */}
+          <div className="sortfiles-section">
+            <div className="sortfiles-section-head">
+              <span className="sortfiles-section-label">Subfolder routing</span>
+              <label className="sortfiles-check">
+                <input
+                  type="checkbox"
+                  checked={!!draft.routeEnabled}
+                  onChange={e => patch({ routeEnabled: e.target.checked })}
+                />
+                Enable
+              </label>
+            </div>
+            {draft.routeEnabled ? (
+              <>
+                <div className="sortfiles-grid">
+                  <span className="sortfiles-label">Code is</span>
+                  <div className="sortfiles-inline">
+                    <span className="sortfiles-hint">segment</span>
+                    <NumberField
+                      value={draft.codeSegment}
+                      min={1}
+                      max={32}
+                      defaultOnEmpty={3}
+                      onCommit={n => patch({ codeSegment: n })}
+                      style={{ width: 56 }}
+                    />
+                    <span className="sortfiles-hint">of the name, split by</span>
+                    <input
+                      className="form-input"
+                      style={{ width: 44, textAlign: 'center' }}
+                      maxLength={3}
+                      value={draft.codeSeparator ?? '-'}
+                      onChange={e => patch({ codeSeparator: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="sortfiles-map-table">
+                  <div className="sortfiles-map-head">
+                    <span>Code</span>
+                    <span />
+                    <span>Subfolder name</span>
+                    <span />
+                  </div>
+                  {draft.mappings.map((m, i) => (
+                    <div className="sortfiles-map-row" key={i}>
+                      <input
+                        className="form-input"
+                        placeholder="INV"
+                        value={m.code}
+                        onChange={e => setMapping(i, { code: e.target.value })}
+                      />
+                      <span className="sortfiles-map-arrow" aria-hidden="true">→</span>
+                      <input
+                        className="form-input"
+                        placeholder="Invoices"
+                        value={m.folder}
+                        onChange={e => setMapping(i, { folder: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="sortfiles-remove"
+                        onClick={() => removeMapping(i)}
+                        title="Remove mapping"
+                        aria-label="Remove mapping"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" className="sortfiles-add" onClick={addMapping}>
+                    + Add mapping
+                  </button>
+                </div>
+                <p className="sortfiles-note">
+                  Files with an unmapped code, or whose subfolder doesn't exist inside the matched
+                  folder, are skipped and reported — never guessed.
+                </p>
+              </>
+            ) : (
+              <p className="sortfiles-note">Files land directly in the matched folder.</p>
+            )}
+          </div>
+
+          {/* 4 — behaviour */}
+          <div className="sortfiles-section">
+            <div className="sortfiles-section-label">Options</div>
+            <div className="sortfiles-grid">
+              <span className="sortfiles-label">If file exists</span>
+              <select
+                className="form-select"
+                style={{ maxWidth: 220 }}
+                value={draft.collision}
+                onChange={e => patch({ collision: e.target.value })}
+              >
+                <option value="timestamp">Add a timestamp suffix</option>
+                <option value="ask">Ask me (native dialog)</option>
+                <option value="skip">Skip the file</option>
+              </select>
+              <span className="sortfiles-label">Dialogs</span>
+              <label className="sortfiles-check">
+                <input
+                  type="checkbox"
+                  checked={draft.confirm !== false}
+                  onChange={e => patch({ confirm: e.target.checked })}
+                />
+                Show the plan before moving, and a report after
+              </label>
+            </div>
+          </div>
+
+        </div>
+        <div className="sortfiles-footer">
+          <button type="button" className="sortfiles-btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="sortfiles-btn sortfiles-btn-primary" onClick={() => onSave(draft)}>
+            Save rules
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Sortable step row (extracted for @dnd-kit) ─────────────────────────────
 
 let _nextStepId = 1;
 
-function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep, advancedOpen, toggleAdvanced, assignments, profiles }) {
+function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep, advancedOpen, toggleAdvanced, assignments, profiles, isPro = false, onShowUpgrade }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step._id });
+  // Sort Files config modal visibility — the step's form lives in a modal
+  // (first step to outgrow the inline row), see SortFilesConfigModal.
+  const [sortConfigOpen, setSortConfigOpen] = useState(false);
   const style = {
     transform: DndCSS.Transform.toString(transform),
     transition,
@@ -1794,7 +2093,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     }
   }
 
-  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File'].includes(step.type) || showWinAdvisory;
+  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File', 'Create Folder', 'Copy Files', 'Move Files'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
   let appData = { kind: 'path', appId: '', appName: '', path: '', args: '', monitor: 'default' };
@@ -1827,6 +2126,34 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   // (if set) AND title substring (if set) — see actions.rs Wait for Window arm.
   let waitWindowData = { process: '', title: '', timeoutMs: 30000 };
   if (step.type === 'Wait for Window') { try { waitWindowData = { ...waitWindowData, ...JSON.parse(step.value || '{}') }; } catch (_) {} }
+  // Create Folder: {name, promptForName, locationMode: 'current'|'custom',
+  // path, templateEnabled, templatePath}. 'current' resolves to the
+  // foreground File Explorer folder at run time; 'custom' uses the picked
+  // path. Tokens ({date}, {clipboard}, {inc}) work in name. promptForName
+  // opens the fill-in window at run time with the name as editable default;
+  // templateEnabled copies templatePath's contents into the new folder.
+  let createFolderData = { name: '', promptForName: false, locationMode: 'current', path: '', templateEnabled: false, templatePath: '' };
+  if (step.type === 'Create Folder') {
+    try { createFolderData = { ...createFolderData, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  }
+  // Copy Files / Move Files: {sourceMode: 'selected'|'folder', sourcePath,
+  // pattern, destMode: 'path'|'subfolder', destPath, destSubfolder,
+  // createSubfolder}. 'selected' = the Explorer selection when the macro
+  // fires; 'folder' = files in sourcePath matching the wildcard pattern.
+  // destMode 'subfolder' resolves destSubfolder against the folder the files
+  // come from at run time; missing subfolder aborts the macro unless
+  // createSubfolder is ticked.
+  let fileOpData = { sourceMode: 'selected', sourcePath: '', pattern: '*', destMode: 'path', destPath: '', destSubfolder: '', createSubfolder: false };
+  if (step.type === 'Copy Files' || step.type === 'Move Files') {
+    try { fileOpData = { ...fileOpData, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  }
+  // Sort Files: full rules object edited in SortFilesConfigModal — the row
+  // only shows a summary + Configure button. Defaults merged so partial
+  // values never leave fields undefined.
+  let sortData = SORT_FILES_DEFAULTS;
+  if (step.type === 'Sort Files') {
+    try { sortData = { ...SORT_FILES_DEFAULTS, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  }
   // Open Folder: legacy stored step.value as a plain path string. New writes
   // emit JSON {path, monitor}. Detect by leading '{' and parse-or-fallback.
   let folderData = { path: '', monitor: 'default' };
@@ -1854,6 +2181,13 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         <MacroStepTypeMenu
           value={step.type}
           onChange={(t) => {
+            // Sort Files is Pro-gated — show the upgrade prompt instead of
+            // switching the step type. Backend has a belt-and-braces
+            // licence::is_pro() check in the execution arm.
+            if (t === 'Sort Files' && !isPro) {
+              onShowUpgrade?.('Sort Files macro step');
+              return;
+            }
             // Seed step.value with a sensible default per type so the step
             // fires on its first click without requiring the user to touch
             // the config widget. Otherwise types with JSON-shaped values
@@ -1866,6 +2200,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             else if (t === 'Minimise Window' || t === 'Maximise Window') seed = JSON.stringify({ process: '', title: '' });
             else if (t === 'Resize Window') seed = JSON.stringify({ process: '', title: '', width: 1200, height: 800, usePosition: false, x: 100, y: 100 });
             else if (t === 'Play Audio File' || t === 'Play Video File') seed = JSON.stringify({ path: '', monitor: 'default' });
+            else if (t === 'Create Folder') seed = JSON.stringify({ name: '', promptForName: false, locationMode: 'current', path: '', templateEnabled: false, templatePath: '' });
+            else if (t === 'Copy Files' || t === 'Move Files') seed = JSON.stringify({ sourceMode: 'selected', sourcePath: '', pattern: '*', destMode: 'path', destPath: '', destSubfolder: '', createSubfolder: false });
+            else if (t === 'Sort Files') seed = JSON.stringify(SORT_FILES_DEFAULTS);
             updateStep({ ...step, type: t, value: seed });
           }}
         />
@@ -2162,6 +2499,67 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             <span className="picker-field-caret" aria-hidden="true">▾</span>
           </button>
         )}
+        {/* Create Folder — name inline; location (current Explorer folder vs
+            picked path) lives in the sub-row. Tokens resolve at run time. */}
+        {step.type === 'Create Folder' && (
+          <input
+            className="form-input macro-step-value"
+            style={{ flex: '1 1 60px', minWidth: 60 }}
+            placeholder={createFolderData.promptForName
+              ? 'Default name offered in the popup (optional)'
+              : 'Folder name — {date} and {inc} tokens work'}
+            title="{inc} numbers against existing contents: Report {inc:3} becomes Report 007"
+            value={createFolderData.name || ''}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...createFolderData, name: e.target.value }) })}
+          />
+        )}
+        {/* Sort Files — summary + Configure button; the full rules form
+            lives in a portaled modal. */}
+        {step.type === 'Sort Files' && (
+          <>
+            <button
+              type="button"
+              className="picker-field"
+              style={{ flex: '1 1 60px', minWidth: 60 }}
+              onClick={() => setSortConfigOpen(true)}
+              title="Configure sorting rules"
+            >
+              <span className={`picker-field-value${sortData.rootPath ? '' : ' picker-field-placeholder'}`}>
+                {sortData.rootPath
+                  ? `${sortData.rootPath.split(/[\\/]/).pop()} · ${sortData.routeEnabled
+                      ? `${sortData.mappings.filter(m => m.code && m.folder).length} rule(s)`
+                      : 'no subfolder routing'}`
+                  : 'Configure sorting rules…'}
+              </span>
+              <span className="picker-field-caret" aria-hidden="true">▾</span>
+            </button>
+            {sortConfigOpen && (
+              <SortFilesConfigModal
+                initial={sortData}
+                onClose={() => setSortConfigOpen(false)}
+                onSave={(next) => {
+                  updateStep({ ...step, value: JSON.stringify(next) });
+                  setSortConfigOpen(false);
+                }}
+              />
+            )}
+          </>
+        )}
+        {/* Copy / Move Files — source mode inline; paths + pattern in the
+            sub-row. */}
+        {(step.type === 'Copy Files' || step.type === 'Move Files') && (
+          <select
+            className="form-select macro-step-value"
+            // Prefers 150px so "Selected files in Explorer" reads, yields to
+            // 110px under row pressure so duplicate/remove stay inside 415.
+            style={{ flex: '0 1 150px', minWidth: 110 }}
+            value={fileOpData.sourceMode || 'selected'}
+            onChange={e => updateStep({ ...step, value: JSON.stringify({ ...fileOpData, sourceMode: e.target.value }) })}
+          >
+            <option value="selected">Selected files in Explorer</option>
+            <option value="folder">Files from a folder</option>
+          </select>
+        )}
         {[
           'Copy to Clipboard', 'Paste Clipboard', 'Select All',
           // System / no-config steps.
@@ -2238,6 +2636,177 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             value={folderData.monitor || 'default'}
             onChange={(m) => updateStep({ ...step, value: JSON.stringify({ ...folderData, monitor: m }) })}
           />
+        </div>
+      )}
+
+      {/* Create Folder sub-rows — location, run-time name prompt toggle,
+          template seed toggle + picker. Base wfi-config-row (NOT -aligned):
+          the aligned variant's 184px left padding leaves ~171px of content
+          width, too narrow for multi-control rows — they overflow the 415
+          column. */}
+      {step.type === 'Create Folder' && (
+        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          {/* Location line: compact dropdown only. The Specific-folder picker
+              goes on its OWN full-width line below — pickers never share a
+              line with other controls (they get pushed past the 415 cap). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="macro-substep-label">In</span>
+            <select
+              className="form-select"
+              style={{ flex: '0 1 150px', minWidth: 110 }}
+              value={createFolderData.locationMode || 'current'}
+              onChange={e => updateStep({ ...step, value: JSON.stringify({ ...createFolderData, locationMode: e.target.value }) })}
+            >
+              <option value="current">Current folder</option>
+              <option value="custom">Specific folder</option>
+            </select>
+          </div>
+          {createFolderData.locationMode === 'custom' && (
+            <button
+              type="button"
+              className="picker-field"
+              onClick={async () => {
+                const path = await window.electronAPI?.browseForFolder();
+                if (path) updateStep({ ...step, value: JSON.stringify({ ...createFolderData, path }) });
+              }}
+              title={createFolderData.path || 'Pick a folder…'}
+            >
+              <span className={`picker-field-value${createFolderData.path ? '' : ' picker-field-placeholder'}`}>
+                {createFolderData.path || 'Pick a folder…'}
+              </span>
+              <span className="picker-field-caret" aria-hidden="true">▾</span>
+            </button>
+          )}
+          <label
+            className="macro-substep-label"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+            title="Opens a Keyfire popup when the macro runs so you can type the folder name. The name above becomes the editable default. Cancelling stops the macro."
+          >
+            <input
+              type="checkbox"
+              checked={!!createFolderData.promptForName}
+              onChange={e => updateStep({ ...step, value: JSON.stringify({ ...createFolderData, promptForName: e.target.checked }) })}
+            />
+            Ask for the name when it runs
+          </label>
+          <label
+            className="macro-substep-label"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+            title="Copies everything inside the picked folder (files and subfolders) into the new folder after it's created."
+          >
+            <input
+              type="checkbox"
+              checked={!!createFolderData.templateEnabled}
+              onChange={e => updateStep({ ...step, value: JSON.stringify({ ...createFolderData, templateEnabled: e.target.checked }) })}
+            />
+            Copy template files into it
+          </label>
+          {createFolderData.templateEnabled && (
+            <button
+              type="button"
+              className="picker-field"
+              onClick={async () => {
+                const path = await window.electronAPI?.browseForFolder();
+                if (path) updateStep({ ...step, value: JSON.stringify({ ...createFolderData, templatePath: path }) });
+              }}
+              title={createFolderData.templatePath || 'Pick the template folder…'}
+            >
+              <span className={`picker-field-value${createFolderData.templatePath ? '' : ' picker-field-placeholder'}`}>
+                {createFolderData.templatePath || 'Pick the template folder…'}
+              </span>
+              <span className="picker-field-caret" aria-hidden="true">▾</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Copy / Move Files sub-row — source folder + wildcard pattern (folder
+          mode only), then the destination picker. Selected-files mode reads
+          the Explorer selection at run time so it only needs a destination.
+          Base wfi-config-row, not -aligned — see Create Folder comment. */}
+      {(step.type === 'Copy Files' || step.type === 'Move Files') && (
+        <div className="wfi-config-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          {/* Pickers always get their OWN full-width line — sharing a line
+              with other controls pushes them past the 415 cap. */}
+          {fileOpData.sourceMode === 'folder' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="macro-substep-label">From — matching</span>
+                <input
+                  className="form-input"
+                  style={{ flex: '1 1 90px', minWidth: 80 }}
+                  placeholder="*.pdf; *.docx"
+                  title="Wildcard pattern — * and ? match file names, separate several with ;"
+                  value={fileOpData.pattern ?? '*'}
+                  onChange={e => updateStep({ ...step, value: JSON.stringify({ ...fileOpData, pattern: e.target.value }) })}
+                />
+              </div>
+              <button
+                type="button"
+                className="picker-field"
+                onClick={async () => {
+                  const path = await window.electronAPI?.browseForFolder();
+                  if (path) updateStep({ ...step, value: JSON.stringify({ ...fileOpData, sourcePath: path }) });
+                }}
+                title={fileOpData.sourcePath || 'Pick the source folder…'}
+              >
+                <span className={`picker-field-value${fileOpData.sourcePath ? '' : ' picker-field-placeholder'}`}>
+                  {fileOpData.sourcePath || 'Pick the source folder…'}
+                </span>
+                <span className="picker-field-caret" aria-hidden="true">▾</span>
+              </button>
+            </>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="macro-substep-label">To</span>
+            <select
+              className="form-select"
+              style={{ flex: '0 1 190px', minWidth: 130 }}
+              value={fileOpData.destMode || 'path'}
+              title="Subfolder mode resolves the name against the folder the files come from at run time — the Explorer folder for selected files, the source folder otherwise"
+              onChange={e => updateStep({ ...step, value: JSON.stringify({ ...fileOpData, destMode: e.target.value }) })}
+            >
+              <option value="path">Specific folder</option>
+              <option value="subfolder">Subfolder of current folder</option>
+            </select>
+          </div>
+          {(fileOpData.destMode || 'path') === 'path' ? (
+            <button
+              type="button"
+              className="picker-field"
+              onClick={async () => {
+                const path = await window.electronAPI?.browseForFolder();
+                if (path) updateStep({ ...step, value: JSON.stringify({ ...fileOpData, destPath: path }) });
+              }}
+              title={fileOpData.destPath || 'Pick the destination folder…'}
+            >
+              <span className={`picker-field-value${fileOpData.destPath ? '' : ' picker-field-placeholder'}`}>
+                {fileOpData.destPath || 'Pick the destination folder…'}
+              </span>
+              <span className="picker-field-caret" aria-hidden="true">▾</span>
+            </button>
+          ) : (
+            <>
+              <input
+                className="form-input"
+                placeholder="Subfolder name, e.g. Archive"
+                value={fileOpData.destSubfolder || ''}
+                onChange={e => updateStep({ ...step, value: JSON.stringify({ ...fileOpData, destSubfolder: e.target.value }) })}
+              />
+              <label
+                className="macro-substep-label"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                title="Unticked: the macro stops if the subfolder doesn't exist in the current folder. Ticked: it gets created."
+              >
+                <input
+                  type="checkbox"
+                  checked={!!fileOpData.createSubfolder}
+                  onChange={e => updateStep({ ...step, value: JSON.stringify({ ...fileOpData, createSubfolder: e.target.checked }) })}
+                />
+                Create if missing
+              </label>
+            </>
+          )}
         </div>
       )}
 
@@ -2438,7 +3007,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   );
 }
 
-export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles }) {
+export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles, isPro = false, onShowUpgrade }) {
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
   const loopCfg = value.loop || { enabled: false, mode: 'count', count: 5, delayMs: 0 };
@@ -2607,6 +3176,8 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
                 updateStep={updateStep}
                 removeStep={removeStep}
                 duplicateStep={duplicateStep}
+                isPro={isPro}
+                onShowUpgrade={onShowUpgrade}
                 advancedOpen={!!advancedOpen[step._id]}
                 toggleAdvanced={() => setAdvancedOpen(prev => ({ ...prev, [step._id]: !prev[step._id] }))}
                 assignments={assignments}
@@ -3535,7 +4106,7 @@ export default function MacroPanel({
           {activeType === 'app'    && <AppForm value={formValue} onChange={setFormValue} />}
           {activeType === 'folder' && <FolderForm value={formValue} onChange={setFormValue} />}
           {activeType === 'url'    && <UrlForm value={formValue} onChange={setFormValue} />}
-          {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} assignments={assignments} profiles={profiles} />}
+          {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} assignments={assignments} profiles={profiles} isPro={isPro} onShowUpgrade={onShowUpgrade} />}
           {activeType === 'ahk'   && <AhkForm value={formValue} onChange={setFormValue} />}
         </div>
 

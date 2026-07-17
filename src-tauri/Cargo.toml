@@ -73,6 +73,15 @@ windows = { version = "0.61", features = [
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",
     "Win32_System_Com",
+    # Shell COM for the Files macro steps (Create Folder / Copy Files /
+    # Move Files) — src/shell_files.rs. IShellWindows (foreground Explorer
+    # folder + selection) + IFileOperation (native copy/move with progress
+    # and conflict dialogs). Ole is needed for IOleWindow (IShellBrowser's
+    # base), Variant for IShellWindows::Item/FindWindowSW VARIANT params.
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
 ] }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",

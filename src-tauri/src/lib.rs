@@ -71,6 +71,11 @@ mod volume;
 #[cfg(not(windows))]
 #[path = "stubs/volume.rs"]
 mod volume;
+#[cfg(windows)]
+mod shell_files;
+#[cfg(not(windows))]
+#[path = "stubs/shell_files.rs"]
+mod shell_files;
 
 // ── Config (Phase 2) ────────────────────────────────────────────────────────
 
