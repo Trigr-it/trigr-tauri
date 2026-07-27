@@ -1166,6 +1166,7 @@
     <tr><td><strong>Type &amp; Keys</strong></td><td><strong>Type Text</strong> types a string at the cursor, full Unicode support. <strong>Dynamic Text</strong> adds token replacement at fire time (date, time, clipboard, selection and formula tokens). <strong>Press Key</strong> sends a keypress or combo. <strong>Copy to Clipboard</strong>, <strong>Paste Clipboard</strong> and <strong>Select All</strong> send Ctrl+C, Ctrl+V and Ctrl+A.</td></tr>
     <tr><td><strong>Mouse</strong></td><td><strong>Click Mouse</strong> sends a mouse click, with separate Down and Up variants so you can script drags. <strong>Click at Position</strong> moves the cursor to screen coordinates and clicks. <strong>Mouse Scroll</strong> scrolls up, down, left or right by a set number of notches.</td></tr>
     <tr><td><strong>Open &amp; Play</strong></td><td><strong>Open App</strong>, <strong>Open Folder</strong> and <strong>Open URL</strong> launch things mid-macro, with a monitor picker for where the window lands. <strong>Play Audio File</strong> and <strong>Play Video File</strong> open a media file in your default player, also with a monitor picker.</td></tr>
+    <tr><td><strong>Files</strong></td><td><strong>Create Folder</strong> makes a new folder, with naming prompts, template contents and automatic numbering. <strong>Copy Files</strong> and <strong>Move Files</strong> send your Explorer selection or a wildcard match to a destination folder. <strong>Sort Files</strong> (Pro) routes files into folders based on a code in the filename. See the Files steps section below.</td></tr>
     <tr><td><strong>Timing</strong></td><td><strong>Wait (ms)</strong> pauses for a set time. <strong>Wait for Input</strong> pauses until a chosen mouse or key event. <strong>Wait for Window</strong> pauses until a matching window is in the foreground.</td></tr>
     <tr><td><strong>Window</strong></td><td><strong>Focus Window</strong> brings an app to the foreground. <strong>Minimise Window</strong>, <strong>Maximise Window</strong> and <strong>Resize Window</strong> control a specific window. <strong>Minimise All</strong> and <strong>Restore All</strong> act on every open window.</td></tr>
     <tr><td><strong>System</strong></td><td><strong>Change Volume</strong> sets, nudges or mutes the system volume. <strong>Control Panel</strong> opens the Windows Control Panel. <strong>Sleep Computer</strong>, <strong>Lock Computer</strong>, <strong>Log Off</strong> and <strong>Shut Down Computer</strong> perform the matching Windows action.</td></tr>
@@ -1215,6 +1216,26 @@
   <div class="callout tip">
     <div class="ct">Add delays after opening apps</div>
     <p>Open App, Open Folder and the media steps already wait for their window to be placed before the next step runs. But if a macro types text before an app has finished loading, the characters can still get dropped. Add a <strong>Wait (ms)</strong> step of 500 to 1000ms after an Open App step to give it time to settle.</p>
+  </div>
+
+  <h2>Files steps</h2>
+  <p>The <strong>Files</strong> category automates the folder work you would otherwise do by hand in Explorer. All three steps understand your current Explorer window: they can read which folder you have open and which files you have selected, including individual tabs on Windows 11. Transfers use the native Windows file operation, so you get the standard progress dialog and everything is recoverable from the Recycle Bin.</p>
+
+  <p><strong>Create Folder</strong> makes a new folder. Point it at a picked location, or leave it on the current Explorer folder to create wherever you are working. Extras:</p>
+  <ul>
+    <li><strong>Ask for the name when it runs</strong>: the macro pauses and prompts you for the folder name. Cancelling the prompt aborts the macro.</li>
+    <li><strong>Template folder</strong>: the contents of a chosen template folder are copied into the new folder, so a "New Project" folder can arrive pre-filled with your standard subfolders and starter files.</li>
+    <li><strong>Automatic numbering</strong>: put <code>{inc}</code> in the name and Keyfire replaces it with the next free number in that location. <code>{inc:3}</code> zero-pads to three digits, so "Job {inc:3}" becomes "Job 007" when "Job 006" already exists.</li>
+    <li>Nested names like <code>Invoices/2026/July</code> create the whole path in one step.</li>
+  </ul>
+
+  <p><strong>Copy Files</strong> and <strong>Move Files</strong> transfer files to a destination. The source is either the files you currently have selected in Explorer, or a folder plus a wildcard pattern like <code>*.pdf</code>. The destination is a picked folder, or a <strong>named subfolder of the current folder</strong>: type "Processed" and the files land in a Processed subfolder next to where you are working. If the subfolder does not exist the macro stops, unless you tick <strong>create it if missing</strong>. Copy keeps your Explorer selection so you can chain another step after it; Move clears it.</p>
+
+  <p><strong>Sort Files</strong> <span class="pro-pill">PRO</span> files documents into the right folders based on a code in the filename. Tell it how to read the key (the first N characters, or a segment between separators), where to search for matching folders, and optionally a mapping table that routes specific codes to specific subfolders. Before anything moves, Keyfire shows you the full plan and asks for confirmation, then reports what it did. Files that have no matching folder are skipped and listed, never moved blind.</p>
+
+  <div class="callout info">
+    <div class="ct">When two files clash</div>
+    <p>If Sort Files would place a file where one with the same name already exists, one prompt covers the whole run: <strong>Yes</strong> overwrites (the replaced files go to the Recycle Bin), <strong>No</strong> keeps both by adding a date and time suffix to the incoming file, and <strong>Cancel</strong> stops the sort. You can also preset the behaviour to always suffix or always skip in the step's settings.</p>
   </div>
 
   <h2>Fire Trigger and Fire Text Expansion</h2>
@@ -1858,6 +1879,7 @@
   <h2>Quick paste overlay</h2>
   <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay, a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
   <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit). Only Pinned items get promoted here; Saved items live in the main panel only.</p>
+  <p>While the overlay is open, your typing goes to its search box, the same way the Windows clipboard viewer (<kbd>Win</kbd>+<kbd>V</kbd>) behaves. You can start typing to search the instant you press the hotkey. The app behind the overlay does not receive those keystrokes, though shortcuts using Ctrl, Alt or Win still pass through to it. Close the overlay with <kbd>Esc</kbd> or a click outside to resume typing in your app.</p>
 
   <h2>Quick paste inside fill-in prompts</h2>
   <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> also works while a Keyfire fill-in prompt is open. The overlay appears as usual, and the item you pick is inserted into the fill-in field you were typing in, not the app behind it. Focus returns to the field when the overlay closes.</p>
