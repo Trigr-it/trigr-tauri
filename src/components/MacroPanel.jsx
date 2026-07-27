@@ -131,6 +131,12 @@ function macroStepLabel(stepType) {
   return MACRO_STEP_DISPLAY_LABEL[stepType] || stepType;
 }
 
+// Steps that are Pro-gated in the backend (licence::is_pro() in their
+// actions.rs arm). Shown with a PRO badge in the step menu; selecting one
+// without a licence opens the upgrade prompt (SortableMacroStep type-change
+// handler). Keep in sync with the backend gates.
+const PRO_MACRO_STEPS = new Set(['Sort Files']);
+
 // Sort Files (Pro) — full default config, shared by the type-change seed and
 // the parse block so a fresh step and a legacy/partial value agree. Shape
 // documented in actions.rs "Sort Files" arm.
@@ -1551,7 +1557,8 @@ function MacroStepTypeMenu({ value, onChange }) {
                         onClick={() => pick(item)}
                         role="menuitem"
                       >
-                        {macroStepLabel(item)}
+                        <span>{macroStepLabel(item)}</span>
+                        {PRO_MACRO_STEPS.has(item) && <span className="pro-badge">PRO</span>}
                       </button>
                     ))}
                   </div>
