@@ -1313,15 +1313,22 @@ pub fn get_history(
     promote_starred: bool,
 ) -> Value {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetHistory {
-                page, per_page, date_filter, app_filter, tag_filter, search, promote_starred,
-                reply: reply_tx,
-            }).is_ok() {
-                if let Ok(result) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return result;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send — see get_image_blob for why the guard
+        // must not be held across the reply wait.
+        let sent = tx
+            .lock()
+            .map(|tx| {
+                tx.send(ClipboardMsg::GetHistory {
+                    page, per_page, date_filter, app_filter, tag_filter, search, promote_starred,
+                    reply: reply_tx,
+                })
+                .is_ok()
+            })
+            .unwrap_or(false);
+        if sent {
+            if let Ok(result) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return result;
             }
         }
     }
@@ -1564,12 +1571,19 @@ pub fn get_folders() -> Value {
 
 pub fn get_image_blob(id: i64) -> Option<Vec<u8>> {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetImageBlob { id, reply: reply_tx }).is_ok() {
-                if let Ok(blob) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return blob;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Send under the lock, wait for the reply AFTER releasing it.
+        // Holding the guard across recv_timeout made every concurrent
+        // requester serialise on the mutex for the full round-trip
+        // (seconds per image in debug) — under a thumbnail burst that
+        // stalled every other clipboard caller, main thread included.
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::GetImageBlob { id, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(blob) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return blob;
             }
         }
     }

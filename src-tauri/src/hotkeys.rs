@@ -1429,6 +1429,27 @@ unsafe extern "system" fn keyboard_hook_proc(
                     vk_code: kb.vkCode,
                     scan_code: kb.scanCode,
                 });
+                // Clipboard popup open (WS_EX_NOACTIVATE — the target app still
+                // owns keyboard focus): the processor routes this keydown to the
+                // popup's search via 'clipboard-overlay-key', so it must be
+                // blocked here or it ALSO types into the target app. Mirror of
+                // the routing condition in handle_keydown: modifier keys and
+                // Ctrl/Alt/Win combos pass through, injected events (our own
+                // paste Ctrl+V) pass through. Keyups are deliberately not
+                // suppressed — same orphan-keyup convention as the suppress-set
+                // path, and it avoids stuck keys when a key was already held
+                // down before the popup opened. Fill-in mode is excluded: that
+                // popup takes real focus and its DOM owns the keys.
+                if CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
+                    && !CLIPBOARD_OVERLAY_FOR_FILLIN.load(Ordering::SeqCst)
+                    && (kb.flags & LLKHF_INJECTED) == 0
+                    && !is_modifier_vk(kb.vkCode)
+                    && !MOD_CTRL.load(Ordering::SeqCst)
+                    && !MOD_ALT.load(Ordering::SeqCst)
+                    && !MOD_META.load(Ordering::SeqCst)
+                {
+                    return 1;
+                }
                 // Suppress matched hotkey combos — prevent keystroke reaching target app
                 if !is_modifier_vk(kb.vkCode) && MACROS_ENABLED.load(Ordering::SeqCst) {
                     let bits = modifier_bits();
@@ -2261,9 +2282,15 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     {
         if !is_modifier_vk(vk) {
             // Route bare or shift-modified keys (search input + navigation).
-            // Ctrl/Alt combos are suppressed silently — avoids firing hotkeys
-            // while the overlay is open.
-            if !MOD_CTRL.load(Ordering::SeqCst) && !MOD_ALT.load(Ordering::SeqCst) {
+            // Ctrl/Alt/Win combos are not routed — avoids firing hotkeys or
+            // typing shortcut letters into search while the overlay is open.
+            // MUST stay mirrored with the hook-level suppression branch in
+            // keyboard_hook_proc: a routed key is always suppressed from the
+            // target app, a non-routed key always passes through to it.
+            if !MOD_CTRL.load(Ordering::SeqCst)
+                && !MOD_ALT.load(Ordering::SeqCst)
+                && !MOD_META.load(Ordering::SeqCst)
+            {
                 let shift = MOD_SHIFT.load(Ordering::SeqCst);
                 let _ = app.emit("clipboard-overlay-key", serde_json::json!({ "vk": vk, "shift": shift }));
             }

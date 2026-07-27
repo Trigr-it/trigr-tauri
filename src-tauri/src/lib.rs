@@ -2201,6 +2201,21 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
         None => return,
     };
 
+    // Arm keystroke routing IMMEDIATELY — before the (potentially slow)
+    // history fetch below. From the VISIBLE store onward the LL hook
+    // suppresses typed keys from the still-focused target app and the
+    // processor routes them to the popup's search, so characters typed in
+    // the first moments after the hotkey can never leak into the user's
+    // document. The reset emit goes first so those routed keys land in a
+    // cleared search box; ordering is guaranteed because this function and
+    // the key routing both run on the processor thread.
+    use tauri::Emitter;
+    let _ = win.emit("clipboard-overlay-reset", serde_json::Value::Null);
+    if let Ok(hwnd) = win.hwnd() {
+        crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+    }
+    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
+
     // Position: center of active monitor, 1/3 from top (same pattern as search overlay)
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{
@@ -2248,17 +2263,42 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
 
     let phys_x = wa_left + (wa_w - phys_w) / 2;
 
-    // Send recent clipboard history + theme to the overlay BEFORE the show
-    // so the webview has the data when it becomes visible.
-    let history = clipboard::get_history(1, 500, None, None, None, None, false);
-    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
-    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
-    let mut payload = history;
-    if let Some(obj) = payload.as_object_mut() {
-        obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
-    }
-    use tauri::Emitter;
-    let _ = win.emit("clipboard-overlay-data", payload);
+    // Fetch history + theme OFF the processor thread. get_history blocks on
+    // the clipboard writer thread (up to 500 rows AES-decrypted, possibly
+    // queued behind a large capture write) and load_config reads from disk;
+    // doing both synchronously before the show was the "popup takes a second
+    // or two to appear" delay — and it stalled ALL hotkey/expansion
+    // processing for the duration. The popup now shows immediately with its
+    // previous list and refreshes when the payload lands. Search state is
+    // safe: the frontend resets on 'clipboard-overlay-reset' (already sent
+    // above), NOT on the data event, so keys typed while the fetch runs are
+    // kept.
+    let win_data = win.clone();
+    std::thread::spawn(move || {
+        // TEMP [CLIP-SNAPPY] diagnostics — strip after the async-show change
+        // wild-verifies.
+        let t0 = std::time::Instant::now();
+        let history = clipboard::get_history(1, 500, None, None, None, None, false);
+        let fetch_ms = t0.elapsed().as_millis();
+        let n_items = history
+            .get("items")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+        let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+        let mut payload = history;
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
+        }
+        let emit_result = win_data.emit("clipboard-overlay-data", payload);
+        log::info!(
+            "[CLIP-SNAPPY] overlay data: fetch={}ms items={} emit_ok={}",
+            fetch_ms,
+            n_items,
+            emit_result.is_ok()
+        );
+    });
 
     // Raw Win32 show — bypass Tauri's win.show() which calls ShowWindow(SW_SHOW)
     // and *tries* to activate. WS_EX_NOACTIVATE *should* prevent activation but
@@ -2300,9 +2340,7 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
         }
-        crate::hotkeys::CLIPBOARD_OVERLAY_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
     }
-    crate::hotkeys::CLIPBOARD_OVERLAY_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
 
     // Diagnostic: did focus actually stay on the target? If foreground_after !=
     // target_hwnd we've lost focus despite WS_EX_NOACTIVATE + SWP_NOACTIVATE
@@ -3390,13 +3428,19 @@ async fn ocr_clipboard_image(id: i64) -> Result<String, String> {
 }
 
 /// Returns up to 5 dominant RGB colours (as [r,g,b] arrays) for a clipboard image.
+/// Async + spawn_blocking for the same reason as get_clipboard_image: full
+/// image decrypt + decode must never run on the main thread.
 #[tauri::command]
-fn get_clipboard_image_colors(id: i64) -> Vec<[u8; 3]> {
-    let blob = match clipboard::get_image_blob(id) {
-        Some(b) => b,
-        None => return Vec::new(),
-    };
-    clipboard::dominant_colors(&blob, 5)
+async fn get_clipboard_image_colors(id: i64) -> Vec<[u8; 3]> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let blob = match clipboard::get_image_blob(id) {
+            Some(b) => b,
+            None => return Vec::new(),
+        };
+        clipboard::dominant_colors(&blob, 5)
+    })
+    .await;
+    result.unwrap_or_default()
 }
 
 /// Save a clipboard image to a user-selected file path. format: "png" or "jpg".
@@ -3574,6 +3618,9 @@ fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
 
     if let Some(win) = app.get_webview_window("clipboardoverlay") {
         use tauri::Emitter;
+        // Clear search/selection on every show — the data event no longer
+        // resets them (see ClipboardOverlay.jsx 'clipboard-overlay-reset').
+        let _ = win.emit("clipboard-overlay-reset", serde_json::Value::Null);
         let _ = win.emit("clipboard-overlay-data", payload);
 
         // Position like show_clipboard_overlay: center of active monitor,
@@ -3736,7 +3783,22 @@ fn get_clipboard_folders() -> serde_json::Value {
 }
 
 #[tauri::command]
-fn get_clipboard_image(id: i64) -> Option<String> {
+async fn get_clipboard_image(id: i64) -> Option<String> {
+    // Async + spawn_blocking: sync Tauri commands run ON THE MAIN THREAD.
+    // This command decrypts a full-resolution PNG and base64-encodes it —
+    // seconds per call in debug builds. The clipboard popup fires one per
+    // image row on open, so running them on the main thread serialised a
+    // minutes-long freeze of the entire event loop (webview evals, event
+    // emits, window ops). Off-thread they trickle in without blocking
+    // anything.
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        get_clipboard_image_blocking(id)
+    })
+    .await;
+    result.ok().flatten()
+}
+
+fn get_clipboard_image_blocking(id: i64) -> Option<String> {
     clipboard::get_image_blob(id).map(|bytes| {
         // Base64 encode without external crate
         const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -4418,14 +4480,14 @@ pub fn run() {
                 restore_overlay_target();
             });
 
-            // Listen for clipboard overlay toggle from hotkey system
+            // Listen for clipboard overlay toggle from hotkey system.
+            // The CLIPBOARD_OVERLAY_VISIBLE atomic (not win.is_visible())
+            // decides the toggle: it flips true at the TOP of the show path,
+            // so a rapid second press during the show latency hides instead
+            // of double-showing, and there's no main-thread round-trip.
             let app_handle_clip = app.handle().clone();
             app.listen("toggle-clipboard-overlay", move |_| {
-                let visible = app_handle_clip
-                    .get_webview_window("clipboardoverlay")
-                    .and_then(|w| w.is_visible().ok())
-                    .unwrap_or(false);
-                if visible {
+                if hotkeys::CLIPBOARD_OVERLAY_VISIBLE.load(AtomicOrdering::SeqCst) {
                     hide_clipboard_overlay(&app_handle_clip);
                 } else {
                     show_clipboard_overlay(&app_handle_clip);
@@ -4439,11 +4501,7 @@ pub fn run() {
             // Ctrl+V injection into the wrong window.
             let app_handle_clip_fill = app.handle().clone();
             app.listen("toggle-clipboard-overlay-for-fillin", move |_| {
-                let visible = app_handle_clip_fill
-                    .get_webview_window("clipboardoverlay")
-                    .and_then(|w| w.is_visible().ok())
-                    .unwrap_or(false);
-                if visible {
+                if hotkeys::CLIPBOARD_OVERLAY_VISIBLE.load(AtomicOrdering::SeqCst) {
                     hide_clipboard_overlay(&app_handle_clip_fill);
                 } else {
                     show_clipboard_overlay_for_fillin_impl(&app_handle_clip_fill);

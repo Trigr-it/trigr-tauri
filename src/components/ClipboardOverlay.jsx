@@ -10,16 +10,34 @@ import { SearchBar } from './SearchBar';
 
 function ImageThumb({ id, className, fallbackClass, zoomable }) {
   const [src, setSrc] = useState(null);
+  const holderRef = useRef(null);
+  // Viewport-lazy: only fetch the image once the placeholder is actually
+  // scrolled into view. With 500 rows the eager version fired every image
+  // fetch at once on open; each fetch decrypts a full-res PNG on the
+  // clipboard writer thread, so the flood starved every other clipboard
+  // request (and, before the commands went async, froze the main thread).
+  // Visible rows are ~8 at a time — that's all we ever request up front.
   useEffect(() => {
     let cancelled = false;
-    window.electronAPI?.getClipboardImage(id).then(b64 => {
-      if (!cancelled && b64) setSrc(`data:image/png;base64,${b64}`);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    let requested = false;
+    const load = () => {
+      if (requested || cancelled) return;
+      requested = true;
+      window.electronAPI?.getClipboardImage(id).then(b64 => {
+        if (!cancelled && b64) setSrc(`data:image/png;base64,${b64}`);
+      }).catch(() => {});
+    };
+    const el = holderRef.current;
+    if (!el) { load(); return () => { cancelled = true; }; }
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) { load(); obs.disconnect(); }
+    });
+    obs.observe(el);
+    return () => { cancelled = true; obs.disconnect(); };
   }, [id]);
   if (!src) {
     return (
-      <div className={fallbackClass || 'co-thumb-ph'}>
+      <div ref={holderRef} className={fallbackClass || 'co-thumb-ph'}>
         <svg width="20" height="20" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.2">
           <rect x="2" y="4" width="28" height="24" rx="3"/>
           <circle cx="10" cy="12" r="3"/>
@@ -80,17 +98,34 @@ export default function ClipboardOverlay() {
 
   // ── Data from Rust ────────────────────────────────────────────────────────
 
+  // Data arrives asynchronously AFTER the window is already visible (Rust
+  // fetches history off the processor thread for snappiness). It must NOT
+  // reset search/selection: with the NOACTIVATE hook-routing path the user
+  // may already be typing into search while the fetch runs, and wiping the
+  // box when the payload lands would eat their input.
   useEffect(() => {
     window.electronAPI?.onClipboardOverlayData((data) => {
       const list = data?.items || [];
       setItems(list);
+      if (data?.theme) setTheme(data.theme);
+    });
+    return () => window.electronAPI?.removeAllListeners('clipboard-overlay-data');
+  }, []);
+
+  // Show-time reset — emitted by Rust at the top of BOTH show paths (normal
+  // + fill-in mode), before any routed keystrokes, so every open starts with
+  // a clean search box and selection regardless of when the data payload
+  // arrives.
+  useEffect(() => {
+    const unlistenPromise = listen('clipboard-overlay-reset', () => {
       setSelectedIndex(0);
       setSearch('');
       setFilterTag('All');
-      if (data?.theme) setTheme(data.theme);
+      setEditing(false);
+      setEditText('');
       setTimeout(() => inputRef.current?.focus(), 50);
     });
-    return () => window.electronAPI?.removeAllListeners('clipboard-overlay-data');
+    return () => { unlistenPromise.then(fn => fn()); };
   }, []);
 
   useEffect(() => {
