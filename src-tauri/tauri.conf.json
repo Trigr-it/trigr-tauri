@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/refs/heads/dev/crates/tauri-cli/schema.json",
   "productName": "Keyfire",
   "version": "0.6.8",
