@@ -124,7 +124,7 @@ function App() {
   // Quick action pack import collision prompt. Shape:
   // { actions: [{id, type, label, data}], categories: [{name, colour}], collisions: [{id, label},...], totalCount }
   const [quickActionImportPrompt, setQuickActionImportPrompt] = useState(null);
-  const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
+  const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, email: null, key_id: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
   // Shared-config grace period state, populated from Rust via getGracePeriodState.
   // Shape: { pro_expired_at, shared_active, days_remaining, migration_deferred }.
   // When pro_expired_at is non-null AND shared_active is true, the banner shows.

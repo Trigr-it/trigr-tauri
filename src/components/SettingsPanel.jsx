@@ -533,6 +533,7 @@ export default function SettingsPanel({
               <div className="settings-licence-detail">
                 Status: {licenceStatus.status || 'unknown'}
                 {licenceStatus.expires_at && ` \u00b7 Expires: ${new Date(licenceStatus.expires_at).toLocaleDateString()}`}
+                {licenceStatus.key_id && ` \u00b7 Key ID: ${licenceStatus.key_id}`}
               </div>
               {licenceStatus.status === 'expired' && (
                 <p className="settings-toggle-sub">
@@ -641,7 +642,7 @@ export default function SettingsPanel({
                 <input
                   type="text"
                   className="form-input settings-licence-input"
-                  placeholder="TRIGR-PRO.…"
+                  placeholder="KEYFIRE.…"
                   value={licenceKey}
                   onChange={e => { setLicenceKey(e.target.value.trim()); setLicenceError(null); }}
                 />

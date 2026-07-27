@@ -38,7 +38,7 @@ export default function UpgradeModal({ featureName, onClose, onOpenSettings }) {
           subject: `Keyfire Pro beta key request from ${email.trim()}`,
           email: email.trim(),
           from_name: 'Keyfire Beta Request',
-          message: `${email.trim()} requested a Pro beta key from inside the Keyfire app.\n\nReply to this email with their TRIGR-PRO key.`,
+          message: `${email.trim()} requested a Pro beta key from inside the Keyfire app.\n\nReply to this email with their KEYFIRE key.`,
         }),
       });
       const data = await response.json().catch(() => ({}));

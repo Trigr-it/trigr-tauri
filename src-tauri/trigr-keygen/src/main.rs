@@ -1,12 +1,18 @@
 // Keyfire licence key generator.
 //
+// Emits KEYFIRE. keys by default: 10-byte binary payload + Ed25519 signature,
+// prefix "KEYFIRE.", ~110 chars total. See src-tauri/src/licence.rs top-of-file
+// comment for the exact byte layout.
+//
 // Subcommands:
 //   init                                          Generate keypair, save private key,
 //                                                 print public key for licence.rs.
 //   sign --email <e> [--days N] [--tier T]        Sign a new licence key. Each
 //                                                 issued key is appended to a
 //                                                 local CSV log (use --no-log
-//                                                 to skip).
+//                                                 to skip). --email is required
+//                                                 for the CSV log only; it is
+//                                                 NOT embedded in the key.
 //
 // Private key path defaults to %USERPROFILE%\.trigr\private-signing-key.bin.
 // Log path defaults to %USERPROFILE%\.trigr\issued-keys.csv.
@@ -24,7 +30,11 @@ use chrono::{Duration, Utc};
 use ed25519_dalek::{Signer, SigningKey};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use serde_json::json;
+
+// Payload v2 (KEYFIRE.) layout — see licence.rs for the verifier side.
+const PAYLOAD_V2_VERSION: u8 = 0x01;
+const PAYLOAD_V2_TIER_PRO: u8 = 0x01;
+const KEY_PREFIX: &str = "KEYFIRE.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -202,26 +212,46 @@ fn cmd_sign(args: &[String]) -> ExitCode {
     let signing_key = SigningKey::from_bytes(&key_array);
 
     let exp = Utc::now() + Duration::days(days);
-    let id = {
-        let mut buf = [0u8; 4];
-        OsRng.fill_bytes(&mut buf);
-        hex_encode(&buf)
+
+    // Tier byte — extend the match when new tiers ship. Keep this in sync
+    // with the PAYLOAD_V2_TIER_* constants in licence.rs.
+    let tier_byte = match tier.as_str() {
+        "pro" => PAYLOAD_V2_TIER_PRO,
+        other => {
+            eprintln!("Unknown tier: {} (only 'pro' is supported today)", other);
+            return ExitCode::FAILURE;
+        }
     };
 
-    let payload = json!({
-        "email": email,
-        "exp": exp.to_rfc3339(),
-        "tier": tier,
-        "id": id,
+    // u32 unix seconds — good until year 2106. Well beyond any 30-day beta key.
+    let exp_unix: u32 = exp.timestamp().try_into().unwrap_or_else(|_| {
+        eprintln!("Refusing to sign a key with an exp outside the u32 unix-second range.");
+        std::process::exit(1);
     });
-    let payload_str = serde_json::to_string(&payload).unwrap();
-    let signature = signing_key.sign(payload_str.as_bytes());
 
-    let payload_b64 = B64.encode(payload_str.as_bytes());
+    // Random 4-byte id. Rendered as 8-char lowercase hex for the CSV log
+    // and for the "Key ID: xxxxxxxx" display on the user's Licence card.
+    let id_bytes: [u8; 4] = {
+        let mut buf = [0u8; 4];
+        OsRng.fill_bytes(&mut buf);
+        buf
+    };
+    let id = hex_encode(&id_bytes);
+
+    // Build the 10-byte binary payload.
+    let mut payload = [0u8; 10];
+    payload[0] = PAYLOAD_V2_VERSION;
+    payload[1] = tier_byte;
+    payload[2..6].copy_from_slice(&exp_unix.to_be_bytes());
+    payload[6..10].copy_from_slice(&id_bytes);
+
+    let signature = signing_key.sign(&payload);
+
+    let payload_b64 = B64.encode(payload);
     let sig_b64 = B64.encode(signature.to_bytes());
     // `.` is not in the base64url alphabet, so it's an unambiguous separator
     // even when the payload or signature happens to contain `-` or `_`.
-    let licence_key = format!("TRIGR-PRO.{}.{}", payload_b64, sig_b64);
+    let licence_key = format!("{}{}.{}", KEY_PREFIX, payload_b64, sig_b64);
 
     if key_only {
         // Clipboard-safe path: ONLY the key string, no newline, no extras.

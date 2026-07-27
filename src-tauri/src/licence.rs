@@ -1,16 +1,25 @@
 // Offline Ed25519 licence verification.
 //
-// Keys are signed strings of the form:
-//   TRIGR-PRO-<base64url(payload_json)>-<base64url(signature)>
+// Two key formats are accepted:
 //
-// The "TRIGR-PRO" prefix is preserved across the Keyfire rebrand for backward
-// compatibility with existing signed beta keys. It is an opaque internal token,
-// not user-visible — users see the whole signed blob as a single line of text.
+//   KEYFIRE.<base64url(binary_payload)>.<base64url(signature)>   (current)
+//     Binary payload: 10 bytes total
+//       [0]     version = 0x01
+//       [1]     tier    (0x01 = pro)
+//       [2..6]  exp     u32 big-endian unix seconds
+//       [6..10] id      u32 big-endian (rendered as 8-char lowercase hex)
+//     Result: ~110 char total, ~54% shorter than the legacy format.
+//     No email is signed into the payload — the CSV log at
+//     %USERPROFILE%\.trigr\issued-keys.csv is the authoritative binding.
 //
-// The payload encodes { email, exp, tier, id }. The signature is verified
-// against PUBLIC_KEY_B64 (which is the base64 of the 32-byte Ed25519 public
-// key produced by `cargo run -- init` inside src-tauri/trigr-keygen).
-// Verification is fully local — no network, no LemonSqueezy, no phone-home.
+//   TRIGR-PRO.<base64url(payload_json)>.<base64url(signature)>   (legacy)
+//     Payload JSON: { email, exp, tier, id }. Kept working forever so keys
+//     already in the wild remain valid until they hit their exp timestamp.
+//
+// The signature is verified against PUBLIC_KEY_B64 (the base64 of the 32-byte
+// Ed25519 public key produced by `cargo run -- init` inside
+// src-tauri/trigr-keygen). Verification is fully local — no network, no
+// LemonSqueezy, no phone-home.
 
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -45,8 +54,14 @@ static LICENCE_STATE: OnceLock<Mutex<LicenceState>> = OnceLock::new();
 pub struct LicenceState {
     #[serde(default)]
     pub key: Option<String>,
+    /// Present on legacy TRIGR-PRO keys only; absent on new KEYFIRE keys
+    /// (email is no longer embedded in the signed payload).
     #[serde(default)]
     pub email: Option<String>,
+    /// 8-char lowercase hex identifier for the issued key. Present on both
+    /// key formats. Users can quote this to support to identify their key.
+    #[serde(default)]
+    pub key_id: Option<String>,
     #[serde(default)]
     pub tier: Option<String>,
     #[serde(default)]
@@ -76,7 +91,10 @@ pub struct LicenceStatus {
     pub status: String, // "no_key" | "active" | "expired" | "invalid"
     pub product_name: String,
     pub expires_at: Option<String>,
+    /// Legacy TRIGR-PRO keys only. None for KEYFIRE keys.
     pub email: Option<String>,
+    /// 8-char hex key identifier. Present on both formats when a key is active.
+    pub key_id: Option<String>,
     /// True while the trial is active (started + not yet 14 days old).
     pub trial_active: bool,
     /// Whole days remaining on the trial (0 once expired). Always 0 if trial_active is false.
@@ -87,14 +105,37 @@ pub struct LicenceStatus {
     pub trial_offer_shown: bool,
 }
 
+/// Legacy TRIGR-PRO JSON payload shape. Kept for backward compatibility only —
+/// new keys use the compact binary layout described at the top of this file.
 #[derive(Deserialize)]
-struct Payload {
+struct LegacyPayload {
     email: String,
     exp: String,
     tier: String,
-    #[allow(dead_code)]
+    #[serde(default)]
     id: Option<String>,
 }
+
+/// Unified shape produced by `verify_key` regardless of which key format was
+/// pasted. Callers work off this instead of caring about the wire format.
+struct DecodedKey {
+    /// Legacy TRIGR-PRO keys only; None for KEYFIRE keys.
+    email: Option<String>,
+    /// RFC3339 UTC timestamp — same shape for both formats (v2 converts u32
+    /// unix seconds to RFC3339 on decode so downstream code is unchanged).
+    exp: String,
+    tier: String,
+    /// 8-char lowercase hex. Always Some for KEYFIRE keys; usually Some for
+    /// legacy keys (older test keys may lack it — hence Option).
+    id: Option<String>,
+}
+
+// ── Key format constants ────────────────────────────────────────────────────
+const KEY_PREFIX_LEGACY: &str = "TRIGR-PRO.";
+const KEY_PREFIX_V2: &str = "KEYFIRE.";
+const PAYLOAD_V2_VERSION: u8 = 0x01;
+const PAYLOAD_V2_TIER_PRO: u8 = 0x01;
+const PAYLOAD_V2_LEN: usize = 10;
 
 // ── Initialization ──────────────────────────────────────────────────────────
 
@@ -140,12 +181,16 @@ pub fn get_licence_status() -> LicenceStatus {
 // ── API ─────────────────────────────────────────────────────────────────────
 
 /// Verify a pasted licence key, store it locally, and unlock Pro.
+///
+/// Accepts KEYFIRE. (binary, current) and TRIGR-PRO. (legacy JSON) keys. The
+/// canonical stored form is whatever the user pasted, minus any whitespace
+/// picked up from email line-wrap.
 pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
-    let trimmed = key.trim().to_string();
-    let payload = verify_key(&trimmed)?;
+    let decoded = verify_key(&key)?;
+    let cleaned = strip_whitespace(&key);
 
     // Reject expired keys before saving.
-    let exp_dt = chrono::DateTime::parse_from_rfc3339(&payload.exp)
+    let exp_dt = chrono::DateTime::parse_from_rfc3339(&decoded.exp)
         .map_err(|_| "Key payload has an invalid expiry".to_string())?;
     if exp_dt.to_utc() < chrono::Utc::now() {
         return Err("This key has expired. Email admin@keyfire.app for a new one.".to_string());
@@ -156,10 +201,11 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
         None => LicenceState::default(),
     };
     let state = LicenceState {
-        key: Some(trimmed),
-        email: Some(payload.email.clone()),
-        tier: Some(payload.tier.clone()),
-        expires_at: Some(payload.exp.clone()),
+        key: Some(cleaned),
+        email: decoded.email.clone(),
+        key_id: decoded.id.clone(),
+        tier: Some(decoded.tier.clone()),
+        expires_at: Some(decoded.exp.clone()),
         activated_at: Some(chrono::Utc::now().to_rfc3339()),
         valid: true,
         trial_started_at: prior.trial_started_at,
@@ -168,8 +214,8 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
     };
     update_state(state.clone());
     info!(
-        "[Keyfire] Licence activated for {} (tier {}, expires {})",
-        payload.email, payload.tier, payload.exp
+        "[Keyfire] Licence activated (id {}, tier {}, expires {})",
+        decoded.id.as_deref().unwrap_or("-"), decoded.tier, decoded.exp
     );
     Ok(build_status(&state))
 }
@@ -243,6 +289,7 @@ pub async fn deactivate_licence() -> Result<LicenceStatus, String> {
         trial_offer_shown: prior.trial_offer_shown,
         ..LicenceState::default()
     };
+    // ..Default explicitly zeros key_id back to None on deactivation.
     update_state(state.clone());
     info!("[Keyfire] Licence deactivated");
     Ok(build_status(&state))
@@ -263,15 +310,16 @@ pub async fn check_and_revalidate() -> LicenceStatus {
     };
 
     match verify_key(&key) {
-        Ok(payload) => {
-            let still_valid = chrono::DateTime::parse_from_rfc3339(&payload.exp)
+        Ok(decoded) => {
+            let still_valid = chrono::DateTime::parse_from_rfc3339(&decoded.exp)
                 .map(|d| d.to_utc() > chrono::Utc::now())
                 .unwrap_or(false);
             let new_state = LicenceState {
                 key: Some(key),
-                email: Some(payload.email),
-                tier: Some(payload.tier),
-                expires_at: Some(payload.exp),
+                email: decoded.email,
+                key_id: decoded.id,
+                tier: Some(decoded.tier),
+                expires_at: Some(decoded.exp),
                 activated_at: state.activated_at,
                 valid: still_valid,
                 trial_started_at: state.trial_started_at,
@@ -295,14 +343,114 @@ pub async fn check_and_revalidate() -> LicenceStatus {
 
 // ── Crypto + parsing ────────────────────────────────────────────────────────
 
-fn verify_key(key: &str) -> Result<Payload, String> {
-    // Key format: TRIGR-PRO.<base64url(payload)>.<base64url(signature)>
-    // Prefix preserved across rebrand for backward compatibility — see header.
-    // `.` is the separator — it is NOT in the base64url alphabet so it splits
-    // cleanly even when payload/signature contain `-` or `_`.
-    let body = key
-        .strip_prefix("TRIGR-PRO.")
-        .ok_or_else(|| "Not a Keyfire licence key".to_string())?;
+/// Remove every whitespace char (space, tab, CR, LF, etc.) from the input.
+///
+/// Email clients (Gmail plaintext, some Outlook flows) wrap long strings at
+/// ~76 chars, so users copy-pasting a licence key sometimes drop internal
+/// whitespace into the middle of it. Stripping here fixes activation for
+/// both TRIGR-PRO (existing keys in the wild) and KEYFIRE (new format).
+fn strip_whitespace(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+/// Verify a pasted licence key against the embedded Ed25519 public key.
+///
+/// Handles both formats:
+///   - `KEYFIRE.<b64url(binary)>.<b64url(sig)>`  (current, ~110 chars)
+///   - `TRIGR-PRO.<b64url(json)>.<b64url(sig)>`  (legacy, ~240 chars)
+///
+/// All whitespace is stripped up front, so line-wrapped emails paste cleanly.
+fn verify_key(key: &str) -> Result<DecodedKey, String> {
+    let clean = strip_whitespace(key);
+
+    let verifying_key = load_public_key().map_err(|e| {
+        format!(
+            "This build of Keyfire is missing its signing public key ({}). \
+             Please reinstall the latest version.",
+            e
+        )
+    })?;
+
+    // Order: check the newer, shorter prefix first — future volume will
+    // be KEYFIRE keys, and TRIGR-PRO tails off as legacy keys expire.
+    if let Some(body) = clean.strip_prefix(KEY_PREFIX_V2) {
+        return verify_v2_binary(body, &verifying_key);
+    }
+    if let Some(body) = clean.strip_prefix(KEY_PREFIX_LEGACY) {
+        return verify_legacy_json(body, &verifying_key);
+    }
+    Err("Not a Keyfire licence key".to_string())
+}
+
+/// Decode + verify a KEYFIRE. binary-payload key.
+///
+/// Payload layout (10 bytes, big-endian):
+///   [0]     version = 0x01 (any other byte is a future format we don't know)
+///   [1]     tier    (0x01 = pro)
+///   [2..6]  exp     u32 unix seconds
+///   [6..10] id      u32 (rendered as 8-char lowercase hex)
+fn verify_v2_binary(body: &str, verifying_key: &VerifyingKey) -> Result<DecodedKey, String> {
+    let (payload_b64, sig_b64) = body
+        .split_once('.')
+        .ok_or_else(|| "Key is malformed (missing signature)".to_string())?;
+
+    let payload_bytes = B64
+        .decode(payload_b64)
+        .map_err(|_| "Key payload is not valid base64".to_string())?;
+    let sig_bytes = B64
+        .decode(sig_b64)
+        .map_err(|_| "Key signature is not valid base64".to_string())?;
+
+    if sig_bytes.len() != 64 {
+        return Err("Key signature is the wrong length".to_string());
+    }
+    let mut sig_array = [0u8; 64];
+    sig_array.copy_from_slice(&sig_bytes);
+    let signature = Signature::from_bytes(&sig_array);
+
+    verifying_key
+        .verify(&payload_bytes, &signature)
+        .map_err(|_| "Key signature did not verify (key was tampered with or is fake)".to_string())?;
+
+    if payload_bytes.len() != PAYLOAD_V2_LEN {
+        return Err(format!(
+            "Key payload is the wrong length (expected {} bytes, got {})",
+            PAYLOAD_V2_LEN,
+            payload_bytes.len()
+        ));
+    }
+    if payload_bytes[0] != PAYLOAD_V2_VERSION {
+        return Err(format!(
+            "Key uses an unsupported payload version (0x{:02x}). Please update Keyfire.",
+            payload_bytes[0]
+        ));
+    }
+    let tier = match payload_bytes[1] {
+        PAYLOAD_V2_TIER_PRO => "pro".to_string(),
+        other => return Err(format!("Key has an unknown tier (0x{:02x})", other)),
+    };
+    let exp_unix = u32::from_be_bytes([
+        payload_bytes[2], payload_bytes[3], payload_bytes[4], payload_bytes[5],
+    ]) as i64;
+    let exp_dt = chrono::DateTime::from_timestamp(exp_unix, 0)
+        .ok_or_else(|| "Key has an invalid expiry timestamp".to_string())?;
+    let id_bytes = [payload_bytes[6], payload_bytes[7], payload_bytes[8], payload_bytes[9]];
+    let id_hex = format!(
+        "{:02x}{:02x}{:02x}{:02x}",
+        id_bytes[0], id_bytes[1], id_bytes[2], id_bytes[3]
+    );
+
+    Ok(DecodedKey {
+        email: None,
+        exp: exp_dt.to_rfc3339(),
+        tier,
+        id: Some(id_hex),
+    })
+}
+
+/// Decode + verify a legacy TRIGR-PRO. JSON-payload key. Kept forever so keys
+/// already in the wild continue to work until they hit their exp timestamp.
+fn verify_legacy_json(body: &str, verifying_key: &VerifyingKey) -> Result<DecodedKey, String> {
     let (payload_b64, sig_b64) = body
         .split_once('.')
         .ok_or_else(|| "Key is malformed (missing signature)".to_string())?;
@@ -320,20 +468,19 @@ fn verify_key(key: &str) -> Result<Payload, String> {
     sig_array.copy_from_slice(&sig_bytes);
     let signature = Signature::from_bytes(&sig_array);
 
-    let verifying_key = load_public_key().map_err(|e| {
-        format!(
-            "This build of Keyfire is missing its signing public key ({}). \
-             Please reinstall the latest version.",
-            e
-        )
-    })?;
-
     verifying_key
         .verify(&payload_bytes, &signature)
         .map_err(|_| "Key signature did not verify (key was tampered with or is fake)".to_string())?;
 
-    serde_json::from_slice::<Payload>(&payload_bytes)
-        .map_err(|e| format!("Key payload could not be parsed: {}", e))
+    let payload: LegacyPayload = serde_json::from_slice(&payload_bytes)
+        .map_err(|e| format!("Key payload could not be parsed: {}", e))?;
+
+    Ok(DecodedKey {
+        email: Some(payload.email),
+        exp: payload.exp,
+        tier: payload.tier,
+        id: payload.id,
+    })
 }
 
 fn load_public_key() -> Result<VerifyingKey, String> {
@@ -434,6 +581,7 @@ fn build_status(state: &LicenceState) -> LicenceStatus {
         },
         expires_at: state.expires_at.clone(),
         email: state.email.clone(),
+        key_id: state.key_id.clone(),
         trial_active,
         trial_days_remaining: trial_days,
         trial_used: state.trial_used,
