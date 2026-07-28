@@ -37,7 +37,7 @@
   "url": "https://keyfire.app",
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Windows 10, Windows 11",
-  "softwareVersion": "0.5.4",
+  "softwareVersion": "0.6.8",
   "downloadUrl": "https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe",
   "offers": [
     {
@@ -352,11 +352,12 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
       <div class="price-feat-head">Includes</div>
       <ul class="price-feats">
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Key and mouse button remapping</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Multi-step macros</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Multi-step macros and macro recorder</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>AutoHotkey script runner (v1 and v2 bundled)</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Text expansion with dynamic tokens</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Fill-in fields</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Quick Search and radial menu</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Quick Search overlay</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Radial menus</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Clipboard history <span class="exp">(7 days)</span></li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Up to 5 search templates</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Voice commands <span class="feat-tag">Experimental</span></li>
@@ -377,7 +378,10 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>App-specific profiles</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Shared config across machines</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Double-press hotkeys</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Hold triggers</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Extended clipboard history <span class="exp">(30 days)</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Saved clipboard folders</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Clipboard source-app tagging</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Unlimited search templates</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Expansion variants</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Image expansion</li>
@@ -430,8 +434,10 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
           <tr><td class="cmp-feat">Devices per licence</td><td class="col"><span class="cmp-val">Unlimited</span></td><td class="col"><span class="cmp-val">3</span></td><td class="col"><span class="cmp-val">Per seat</span></td></tr>
           <tr><td class="cmp-feat">Key and mouse remapping</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
           <tr><td class="cmp-feat">Multi-step macros</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Macro recorder<small>Record keystrokes and clicks, replay with timing</small></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
           <tr><td class="cmp-feat">AutoHotkey script runner<small>v1 and v2 bundled</small></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
-          <tr><td class="cmp-feat">Quick Search and radial menu</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Quick Search overlay</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Radial menus</td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
           <tr><td class="cmp-feat">Voice commands<small>Experimental</small></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
 
           <tr class="grp"><td colspan="4">Text expansion</td></tr>
@@ -445,7 +451,10 @@ footer { position:relative; z-index:1; border-top:1px solid var(--hairline); pad
           <tr><td class="cmp-feat">App-specific profiles</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
           <tr><td class="cmp-feat">Shared config across machines</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
           <tr><td class="cmp-feat">Double-press hotkeys</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Hold triggers<small>Hold a key for a different action</small></td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
           <tr><td class="cmp-feat">Clipboard history</td><td class="col"><span class="cmp-val">7 days</span></td><td class="col"><span class="cmp-val">30 days</span></td><td class="col"><span class="cmp-val">30 days</span></td></tr>
+          <tr><td class="cmp-feat">Saved clipboard folders</td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
+          <tr><td class="cmp-feat">Clipboard source-app tagging<small>See which app each item came from</small></td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
           <tr><td class="cmp-feat">Search templates</td><td class="col"><span class="cmp-val">Up to 5</span></td><td class="col"><span class="cmp-val">Unlimited</span></td><td class="col"><span class="cmp-val">Unlimited</span></td></tr>
           <tr><td class="cmp-feat">Sort Files macro step<small>Route files into folders by filename code</small></td><td class="col"><span class="dash">–</span></td><td class="col"><span class="tick">✓</span></td><td class="col"><span class="tick">✓</span></td></tr>
 

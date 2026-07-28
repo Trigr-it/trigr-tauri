@@ -978,7 +978,7 @@
 
   <div class="callout warn">
     <div class="ct">Bare mouse buttons</div>
-    <p>Assigning mouse buttons without a modifier is only supported in app-linked profiles. You would not want left click triggering a macro everywhere.</p>
+    <p>Assigning mouse buttons without a modifier is only supported in app-linked profiles. You would not want left click triggering a macro everywhere. There is one more safeguard: a bare mouse remap only fires while your cursor is actually over a window of the linked app. Move the cursor onto another app and the button behaves normally, even if the linked app still has focus.</p>
   </div>
 
   <h2>Side buttons not firing?</h2>
@@ -1580,6 +1580,10 @@
     <tr><td><code>{if cond}…{else}…{endif}</code></td><td>Keeps one branch based on the condition. Plain text in the editor for inline editing.</td></tr>
   </table>
 
+  <h2>Named values with {set}</h2>
+  <p>For longer snippets, <code>{set name = expr}</code> declares a named intermediate value you can reuse in later formulas, so you compute something once instead of repeating the expression. The <code>{set}</code> token itself produces no output.</p>
+  <p><code>{ifset name cond}…{endif}</code> works like <code>{if}</code> but tests a value declared with <code>{set}</code>. Order is forgiving: a <code>{set}</code> can reference another <code>{set}</code> declared further down the snippet, and sets that depend on an <code>{ifset}</code> branch resolve after the branch does.</p>
+
   <h2>Inserting a formula</h2>
   <p>Click the <strong>Formulas</strong> toolbar icon (the function-square symbol) in the expansion editor.</p>
   <ul>
@@ -1693,6 +1697,10 @@
 
   <h2>What can it find?</h2>
   <p>Every hotkey assignment, expansion, autocorrect entry, and quick action across all your profiles. Quick Search reaches everywhere. The result list includes the trigger and the action type.</p>
+
+  <h2>Quick Actions</h2>
+  <p>A <strong>quick action</strong> is an action without a key bound to it. Instead of living on a key, it lives in your searchable library: fire it by name from Quick Search, add it to a radial menu wedge, or give it a voice phrase. Quick actions are ideal for things you run a few times a week, not worth spending a hotkey on but too fiddly to do by hand.</p>
+  <p>Quick actions can open an app, a URL, or a folder, or run a full macro sequence. Create one from the <strong>Templates</strong> pill in the title bar, under the Quick Actions tab. Group them into categories to keep search results tidy.</p>
 
   <h2>Search templates</h2>
   <p>The Quick Search overlay also exposes <strong>search templates</strong>, prefab snippet packs you can import. Templates live in <strong>Settings → Templates</strong>.</p>
@@ -2158,6 +2166,16 @@
     <tr><td>Close after firing</td><td>Automatically close the overlay after executing a search result.</td></tr>
     <tr><td>Include autocorrect</td><td>Whether autocorrect entries appear in search results.</td></tr>
   </table>
+
+  <h2>Quick Record</h2>
+  <p>The three global Quick Record hotkeys. All are off until you set them, and each must include at least one modifier.</p>
+  <table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td>Record hotkey</td><td>Starts a temp-macro recording from any app. Press it again to stop and save. Suggested: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>R</kbd>.</td></tr>
+    <tr><td>Play hotkey</td><td>Replays the saved recording once. Suggested: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd>.</td></tr>
+    <tr><td>Loop hotkey</td><td>Replays the saved recording on repeat until you press it again or hit <kbd>Esc</kbd>. Suggested: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd>.</td></tr>
+  </table>
+  <p>See the <a href="#page-quick-record">Quick Record</a> page for the full workflow.</p>
 
   <h2>Hold trigger threshold <span class="pro-pill">PRO</span></h2>
   <p>How long you must hold a key before the hold action fires. Adjustable between 200ms and 700ms. Default 350ms.</p>

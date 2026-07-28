@@ -32,7 +32,7 @@ The app is free during alpha and beta. Paid tiers (Personal £29/yr, Pro £49/yr
 ## Features
 
 - **Visual keyboard mapping.** Click a key, assign an action. No config files, no .ahk files.
-- **Six action types.** Type Text, Send Hotkey (with hold and repeat modes), Macro Sequence (10 step types, including AHK Script), Open App / URL / Folder, Focus Window, Run AHK Script.
+- **Eight action types.** Type Text, Fire Expansion, Send Hotkey (with hold and repeat modes), Macro Sequence (over 30 step types, including window, system, and file steps), Open App / URL / Folder, Run AHK Script.
 - **Text expansions.** Trigger snippets, fill-in fields, global variables, categories, image expansion, autocorrect, smart case matching.
 - **App-specific profiles.** Foreground watcher auto-switches profiles when you change app. Your AutoCAD bindings only fire in AutoCAD.
 - **Clipboard manager.** Ctrl+Shift+V overlay with history, search, pin, edit, auto-tagging, source app capture, scratchpad.

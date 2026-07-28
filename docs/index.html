@@ -81,16 +81,17 @@
   },
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Windows 10, Windows 11",
-  "softwareVersion": "0.5.4",
+  "softwareVersion": "0.6.8",
   "downloadUrl": "https://github.com/Trigr-it/trigr-tauri/releases/latest/download/Keyfire_x64-setup.exe",
   "featureList": [
     "Visual hotkey editor",
-    "Macro sequences",
+    "Macro sequences and macro recorder",
     "Text expansion with dynamic tokens",
-    "Clipboard history manager",
+    "Encrypted clipboard history manager",
+    "Radial menus",
     "App-specific profiles",
     "AutoHotkey script runner (v1 and v2)",
-    "Voice commands",
+    "Voice commands (experimental)",
     "Quick search overlay"
   ],
   "offers": [
@@ -142,7 +143,7 @@
     {
       "@type": "Question",
       "name": "How is this different from AutoHotkey?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Keyfire ships with AutoHotkey built in (both v1 and v2), so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Keyfire ships with AutoHotkey built in (both v1 and v2), so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of eight action types, not the only one." }
     },
     {
       "@type": "Question",
@@ -1884,7 +1885,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
 <section class="section reveal" id="features">
   <div class="section-inner">
     <div class="section-meta"><span class="section-num">01</span><span class="section-label">Features</span></div>
-    <h2 class="section-h2">Eight ways to give time<br><em>back</em> every day.</h2>
+    <h2 class="section-h2">Nine ways to give time<br><em>back</em> every day.</h2>
     <p class="section-sub">One app, one install, your whole team. Every feature is set up by clicking. Not scripted, not configured, never IT-blocked.</p>
 
     <div class="bento">
@@ -1893,7 +1894,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       <div class="b-tile b-tile-hero">
         <div class="b-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg></div>
         <div class="b-title">Remap any key,<br>any combination,<br>any action.</div>
-        <div class="b-desc">Pick a modifier, click a key, fill in the action. Live in under a minute. The keyboard shows exactly what's assigned and what's free. No guessing, no syntax.</div>
+        <div class="b-desc">Pick a modifier, click a key, fill in the action. Live in under a minute. One key can carry three actions: tap, double-press, or hold. The keyboard shows exactly what's assigned and what's free. No guessing, no syntax.</div>
         <div class="b-hero-visual">
           <div class="b-mini-kb">
             <div class="b-mini-row">
@@ -1911,7 +1912,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
           </div>
           <div class="b-hero-stats">
             <div class="b-stat"><div class="b-stat-num">100+</div><div class="b-stat-lbl">Assignable keys</div></div>
-            <div class="b-stat"><div class="b-stat-num">4</div><div class="b-stat-lbl">Modifier combos</div></div>
+            <div class="b-stat"><div class="b-stat-num">15</div><div class="b-stat-lbl">Modifier combos</div></div>
           </div>
         </div>
         <span class="b-tag">Hotkey remapping</span>
@@ -1940,7 +1941,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       <div class="b-tile b-tile-wide">
         <div class="b-icon ic-mc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
         <div class="b-title">Chain actions into a single trigger.</div>
-        <div class="b-desc">Build the sequence step by step: open apps, type text, run hotkeys, add delays. Trigger it from any key.</div>
+        <div class="b-desc">Build the sequence from over 30 step types: open apps, type text, move files, focus windows, add delays. Or hit record and capture the real thing, drags included. Trigger it from any key.</div>
         <div class="b-macro-steps">
           <div class="b-step"><span class="b-step-n">1</span><span class="b-step-l">Open Terminal</span><span class="b-step-time">+0ms</span></div>
           <div class="b-step"><span class="b-step-n">2</span><span class="b-step-l">Type:</span> <code style="font-family:var(--font-mono);font-size:11px;color:var(--text)">npm run dev</code><span class="b-step-time">+120ms</span></div>
@@ -1964,6 +1965,23 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <div class="b-desc">Hold Alt+Space, say <em style="color:var(--text);font-style:normal">"open Revit"</em>. Fully offline, grammar-bound. No cloud, no listening. <strong style="color:var(--text);font-weight:500">Early-stage feature</strong>, improving each release.</div>
         <div class="voice-wave"><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span><span class="voice-bar"></span></div>
         <span class="b-tag tag-vc">Offline voice</span>
+      </div>
+
+      <!-- CLIPBOARD MANAGER -->
+      <div class="b-tile b-tile-wide">
+        <div class="b-icon ic-tt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
+        <div class="b-title">Clipboard Manager</div>
+        <div class="b-desc">Everything you copy, searchable and encrypted on your own disk. Press <strong style="color:var(--gold-light);font-weight:500">Ctrl+Shift+V</strong> in any app to paste something from earlier without losing focus. Pin what you reuse, file what you keep.</div>
+        <div class="b-te-line"><span class="b-te-trig">Ctrl+Shift+V</span><span class="b-te-arrow">→</span><span class="b-te-out">Anything you copied this week</span></div>
+        <span class="b-tag">Encrypted history</span>
+      </div>
+
+      <!-- RADIAL MENUS -->
+      <div class="b-tile b-tile-wide">
+        <div class="b-icon ic-hk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div>
+        <div class="b-title">Radial Menus</div>
+        <div class="b-desc">Press one hotkey and up to eight actions fan out around your cursor. Click a wedge or tap its number. Nest folders inside wedges, and build a different wheel for each app.</div>
+        <span class="b-tag">One-key launcher</span>
       </div>
       </div><!-- /bento-rail -->
 
@@ -2247,7 +2265,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
         <div class="sticky-step" data-step="2">
           <span class="step-num">02</span>
           <h3>Click a <em>key</em>.</h3>
-          <p>Any letter, number, function key, even mouse buttons. Pick one of seven action types: Type Text, Send Hotkey, Run Macro, Open App, Open URL, Open Folder, or AHK Script.</p>
+          <p>Any letter, number, function key, even mouse buttons and scroll wheel. Pick one of eight action types: Type Text, Fire Expansion, Send Hotkey, Run Macro, Open App, Open URL, Open Folder, or AHK Script.</p>
         </div>
         <div class="sticky-step" data-step="3">
           <span class="step-num">03</span>
@@ -2319,7 +2337,7 @@ footer { border-top:1px solid var(--hairline); padding:32px 32px; max-width:1180
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q"><h3 class="faq-q-text">How is this different from AutoHotkey?</h3><span class="faq-q-icon"></span></summary>
-        <div class="faq-body">Keyfire ships with AutoHotkey built in (both <code>v1</code> and <code>v2</code>), so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of seven action types, not the only one.</div>
+        <div class="faq-body">Keyfire ships with AutoHotkey built in (both <code>v1</code> and <code>v2</code>), so any script you have today still runs. The difference is everything else: visual setup, app profiles, voice commands, text expansions, quick search, clipboard history. AHK becomes one of eight action types, not the only one.</div>
       </details>
       <details class="faq-item" name="faq">
         <summary class="faq-q"><h3 class="faq-q-text">Does it phone home? Where does my data live?</h3><span class="faq-q-icon"></span></summary>
