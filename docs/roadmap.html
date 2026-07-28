@@ -689,8 +689,17 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <span class="phase-name">
             <span class="phase-version">v0.6</span><span class="phase-subtitle">Macro Recorder &amp; Polish</span>
           </span>
-          <span class="phase-date">Jun 2026 · 8 releases published</span>
+          <span class="phase-date">Jun 2026 · 9 releases published</span>
         </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.6.8</span>
+            <time class="release-date">28 July 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Macros gain a Files category. Create Folder makes a new folder where you are working in Explorer or at a chosen location. It can ask for the name when it runs, copy a template folder's contents into the new folder, and number folders automatically with the {inc} token.</li><li>Copy Files and Move Files steps send your selected files, or files matching a pattern like *.pdf, to a chosen folder or a named subfolder of the current one. Transfers use the native Windows progress dialogs and are recoverable from the Recycle Bin.</li><li>Sort Files step (Pro) routes files into matching folders based on a code or prefix in the filename. You see the full plan and confirm before anything moves. When a file would overwrite another, you choose to overwrite, keep both with a date suffix, or cancel.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>The clipboard popup opens instantly. Your history now loads in the background instead of holding the window back.</li><li>Image previews in the clipboard popup load as they scroll into view, so large histories stay smooth.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Typing in the clipboard popup search no longer leaks characters into the app behind it. While the popup is open your keystrokes go to the search box, the same way the Windows clipboard viewer works.</li></ul>
+          </div>
+        </article>
         <article class="release-entry">
           <header class="release-head">
             <span class="release-version">v0.6.7</span>
