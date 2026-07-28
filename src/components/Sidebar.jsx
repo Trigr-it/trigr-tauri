@@ -778,9 +778,16 @@ export default function Sidebar({
 
   const otherProfiles = (profiles || []).filter(p => p !== activeProfile);
 
-  const comboSource = activeView === 'mouse'
+  // Assignments only appear under the canvas they belong to: mouse view
+  // lists mouse triggers, keyboard view lists keyboard triggers. Other
+  // views (radial) keep the full set.
+  const viewEntries = activeView === 'mouse'
     ? profileEntries.filter(e => e.keyId.startsWith('MOUSE_'))
-    : profileEntries;
+    : activeView === 'keyboard'
+      ? profileEntries.filter(e => !e.keyId.startsWith('MOUSE_'))
+      : profileEntries;
+
+  const comboSource = viewEntries;
   const combos = [...new Set(comboSource.map(e => e.combo))].sort((a, b) => {
     if (a.length !== b.length) return a.length - b.length;
     return a.localeCompare(b);
@@ -895,10 +902,8 @@ export default function Sidebar({
     return label.includes(filterQ) || keyName.includes(filterQ) || typeName.includes(filterQ) || combo.includes(filterQ);
   }
 
-  // When in mouse view, show only mouse button assignments
-  const viewFiltered = activeView === 'mouse'
-    ? profileEntries.filter(e => e.keyId.startsWith('MOUSE_'))
-    : profileEntries;
+  // View-scoped entries (mouse view → mouse only, keyboard view → keyboard only)
+  const viewFiltered = viewEntries;
 
   const filtered = sortEntries((activeTab === 'All'
     ? viewFiltered
@@ -1392,8 +1397,8 @@ export default function Sidebar({
         (() => {
           const gridCombo = sidebarComboFilter || null;
           const gridFiltered = sortEntries((gridCombo
-            ? profileEntries.filter(e => e.combo === gridCombo)
-            : profileEntries
+            ? viewEntries.filter(e => e.combo === gridCombo)
+            : viewEntries
           ).filter(matchesFilter));
           const gridGrouped = {};
           if (!gridCombo) {
@@ -1411,7 +1416,7 @@ export default function Sidebar({
 
           return (
             <div className="sidebar-grid-wrap">
-              {profileEntries.length === 0 ? (
+              {viewEntries.length === 0 ? (
                 <div className="sidebar-empty sidebar-empty--grid">
                   <div className="sidebar-empty-icon" aria-hidden="true"><Keyboard size={28} strokeWidth={1.5} /></div>
                   <p>No assignments yet. Select a modifier above, then press <strong>Record</strong> to capture your first hotkey.</p>
@@ -1448,7 +1453,7 @@ export default function Sidebar({
         /* ── Classic list view ──────────────────────────────── */
         <>
           <div className="sidebar-list">
-            {profileEntries.length === 0 && activeTab !== 'BARE' ? (
+            {viewEntries.length === 0 && activeTab !== 'BARE' ? (
               <div className="sidebar-empty">
                 <div className="sidebar-empty-icon" aria-hidden="true"><Keyboard size={28} strokeWidth={1.5} /></div>
                 <p>Select modifiers above the keyboard, then click a key to assign a hotkey</p>
