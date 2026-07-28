@@ -123,6 +123,13 @@ export function friendlyKeyName(keyId) {
     case 'Backspace':    return '⌫';
     case 'CapsLock':     return 'Caps';
     case 'ContextMenu':  return 'Menu';
+    case 'MOUSE_LEFT':   return 'Left Click';
+    case 'MOUSE_RIGHT':  return 'Right Click';
+    case 'MOUSE_MIDDLE': return 'Middle Click';
+    case 'MOUSE_SIDE1':  return 'Side Button 1';
+    case 'MOUSE_SIDE2':  return 'Side Button 2';
+    case 'MOUSE_SCROLL_UP':   return 'Scroll Up';
+    case 'MOUSE_SCROLL_DOWN': return 'Scroll Down';
     default: break;
   }
   if (keyId.startsWith('Key') && keyId.length === 4) return keyId.slice(3);

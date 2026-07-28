@@ -85,7 +85,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             <button
               className="mod-layer-btn record-btn recording"
               onClick={guardedStopRecord}
-              title="Press any key combination to capture it — click to stop"
+              title="Press a key or mouse combo to capture it. Click to stop"
             >
               <span className="record-dot" />
               Recording…
@@ -94,7 +94,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             <button
               className={`mod-layer-btn record-btn${newTriggerHint ? ' record-btn--pulse' : ''}`}
               onMouseDown={onStartRecord}
-              title="Click then press any key combination to select it"
+              title="Click then press a key or mouse combo to select it"
             >
               <Disc size={12} strokeWidth={2} fill="currentColor" style={{ marginRight: 4, verticalAlign: -1 }} /> Record
             </button>
@@ -113,7 +113,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
 
       <div className="modifier-bar-combo">
         {isRecording ? (
-          <span className="combo-hint record-hint">Press any key combination — click Recording to cancel</span>
+          <span className="combo-hint record-hint">Press any key or mouse combo. Click Recording to cancel</span>
         ) : recordCapture ? (
           <span className="combo-hint record-captured">Captured: {recordCapture}</span>
         ) : newTriggerHint ? (

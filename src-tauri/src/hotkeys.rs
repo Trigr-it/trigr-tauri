@@ -1257,6 +1257,21 @@ fn no_modifiers_held() -> bool {
     !has_any_modifier()
 }
 
+/// Physical modifier check straight from the OS, bypassing the tracked MOD_*
+/// atomics. Those are fed by hook keyboard events, which don't arrive while
+/// Keyfire's own WebView2 has focus — stale-false exactly when the user is
+/// interacting with our UI (e.g. recording a trigger). GetAsyncKeyState is a
+/// fast non-blocking syscall, safe in hook callbacks.
+fn os_any_modifier_down() -> bool {
+    unsafe {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        GetAsyncKeyState(0xA2) < 0 || GetAsyncKeyState(0xA3) < 0   // Ctrl
+            || GetAsyncKeyState(0xA0) < 0 || GetAsyncKeyState(0xA1) < 0   // Shift
+            || GetAsyncKeyState(0xA4) < 0 || GetAsyncKeyState(0xA5) < 0   // Alt
+            || GetAsyncKeyState(0x5B) < 0 || GetAsyncKeyState(0x5C) < 0   // Win
+    }
+}
+
 /// True when Shift is the only modifier held — used to route Shift+printable
 /// keystrokes (`:`, `?`, `"`, etc.) into the text-expansion buffer alongside
 /// the unmodified path. Ctrl/Alt/Win combos still go through the modified-
@@ -1592,6 +1607,44 @@ unsafe extern "system" fn mouse_hook_proc(
                 suppress_id = Some(if delta > 0 { SUPPRESS_MOUSE_SCROLL_UP } else { SUPPRESS_MOUSE_SCROLL_DOWN });
             }
             _ => {}
+        }
+        // ── Trigger-recording capture suppression ───────────────────────────
+        // While hotkey recording is active, a capturable click (any button
+        // with a modifier held, or a bare Middle/Side1/Side2) is consumed as
+        // the recorded trigger by handle_mouse_down on the processor thread —
+        // suppress it here so it doesn't ALSO fire in the app under the
+        // cursor (e.g. Alt+Right Click opening a context menu mid-record).
+        // MIRROR of the capture condition in handle_mouse_down — keep in
+        // sync. Bare Left/Right pass through so the user can still click
+        // Keyfire's own UI (Recording button to cancel). The matching UP is
+        // suppressed by the paired-bit check below when the engine is
+        // enabled; with macros paused the UP passes through orphaned — same
+        // convention as keyboard suppress-set keyups.
+        if IS_RECORDING_HOTKEY.load(Ordering::SeqCst) {
+            if let Some(btn_id) = suppress_id {
+                // OS-state modifier check, NOT the MOD_* atomics — those are
+                // stale-false while Keyfire's WebView2 has focus (see
+                // os_any_modifier_down). The processor-side capture branches
+                // resync from the OS too, so both sides agree.
+                if is_button_down {
+                    let capturable = os_any_modifier_down()
+                        || matches!(btn_id, SUPPRESS_MOUSE_MIDDLE | SUPPRESS_MOUSE_SIDE1 | SUPPRESS_MOUSE_SIDE2);
+                    if capturable {
+                        if let Some(bit) = suppress_btn_bit(btn_id) {
+                            MOUSE_DOWN_SUPPRESSED.fetch_or(bit, Ordering::SeqCst);
+                        }
+                        return 1;
+                    }
+                } else if matches!(btn_id, SUPPRESS_MOUSE_SCROLL_UP | SUPPRESS_MOUSE_SCROLL_DOWN)
+                    && os_any_modifier_down()
+                {
+                    // Wheel capture (modifier required — mirror of the
+                    // handle_mouse_wheel condition). Standalone event, no
+                    // down/up pairing needed. Button UPs don't match the
+                    // scroll ids and fall through to the paired-bit path.
+                    return 1;
+                }
+            }
         }
         // Suppress bare mouse events that have assignments in app-linked profiles.
         // DOWN/UP events are paired: we only suppress an UP if we suppressed the
@@ -2985,6 +3038,40 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // hasn't yet clicked into the overlay.
     check_overlay_outside_click(app);
 
+    // ── Recording mode: capture mouse trigger and send to frontend ──────
+    // Mirror of the keyboard recording branch in handle_keydown, and of the
+    // hook-level suppression condition in mouse_hook_proc — keep both in
+    // sync. Must run BEFORE the APP_INPUT_FOCUSED check so recording works
+    // while the Keyfire UI is focused. Bare Left/Right never capture: the
+    // user must be able to click Keyfire's own UI (Recording button to
+    // cancel) and anything else on screen while recording. Those two stay
+    // assignable via the mouse canvas only.
+    if IS_RECORDING_HOTKEY.load(Ordering::SeqCst) {
+        // The MOD_* atomics are fed by hook keyboard events, which don't
+        // arrive while Keyfire's own WebView2 has focus (the JS keydown path
+        // owns keyboard capture there) — and recording is nearly always done
+        // with our UI focused. Resync from physical OS state before reading,
+        // or modifier+click captures degrade to bare.
+        sync_modifier_state_from_os();
+        let capturable = has_any_modifier()
+            || matches!(button, MouseButton::Middle | MouseButton::Side1 | MouseButton::Side2);
+        if capturable {
+            IS_RECORDING_HOTKEY.store(false, Ordering::SeqCst);
+
+            let mut mods = Vec::new();
+            if MOD_CTRL.load(Ordering::SeqCst) { mods.push("Ctrl"); }
+            if MOD_SHIFT.load(Ordering::SeqCst) { mods.push("Shift"); }
+            if MOD_ALT.load(Ordering::SeqCst) { mods.push("Alt"); }
+            if MOD_META.load(Ordering::SeqCst) { mods.push("Win"); }
+
+            let _ = app.emit(
+                "hotkey-recorded",
+                serde_json::json!({ "modifiers": mods, "keyId": mouse_button_to_key_id(button) }),
+            );
+            return;
+        }
+    }
+
     if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
         return;
     }
@@ -3163,6 +3250,33 @@ fn button_has_hold_assignment(mouse_id: &str) -> bool {
 }
 
 fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
+    // ── Recording mode: capture scroll trigger and send to frontend ─────
+    // Mirror of the mouse-button capture branch in handle_mouse_down and of
+    // the wheel suppression condition in mouse_hook_proc — keep in sync.
+    // Modifier REQUIRED: a bare scroll would capture the instant the user
+    // scrolls anything (including our own UI) while recording. Bare scroll
+    // stays assignable via the mouse canvas only. Same OS-state resync as
+    // the button branch — the MOD_* atomics are stale while our UI has focus.
+    if IS_RECORDING_HOTKEY.load(Ordering::SeqCst) {
+        sync_modifier_state_from_os();
+        if has_any_modifier() {
+            IS_RECORDING_HOTKEY.store(false, Ordering::SeqCst);
+
+            let mut mods = Vec::new();
+            if MOD_CTRL.load(Ordering::SeqCst) { mods.push("Ctrl"); }
+            if MOD_SHIFT.load(Ordering::SeqCst) { mods.push("Shift"); }
+            if MOD_ALT.load(Ordering::SeqCst) { mods.push("Alt"); }
+            if MOD_META.load(Ordering::SeqCst) { mods.push("Win"); }
+
+            let key_id = if delta > 0 { "MOUSE_SCROLL_UP" } else { "MOUSE_SCROLL_DOWN" };
+            let _ = app.emit(
+                "hotkey-recorded",
+                serde_json::json!({ "modifiers": mods, "keyId": key_id }),
+            );
+            return;
+        }
+    }
+
     if APP_INPUT_FOCUSED.load(Ordering::SeqCst) {
         return;
     }
