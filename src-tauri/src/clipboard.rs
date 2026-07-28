@@ -1256,16 +1256,17 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                         );
                     }
                     ClipboardMsg::IncrementPasteCount { id } => {
-                        // Paste = use: bump the counter AND promote the row to
-                        // the top of the timeline (history sorts by recency of
-                        // use, matching Win+V / Paste / Ditto). The panel
-                        // mirrors the reorder via clipboard-item-touched.
-                        let now = chrono::Utc::now().to_rfc3339();
+                        // Counter only — pasting must NOT reorder the list.
+                        // Sequential workflows (copy 5 items, paste them back
+                        // in order from the popup) break if each paste floats
+                        // its row to the top and shuffles the list underneath
+                        // the user (design reversal 2026-07-28; promote-on-
+                        // paste shipped in v0.6.7 and was walked back).
+                        // Explicit panel Copy still promotes via TouchItem.
                         let _ = conn.execute(
-                            "UPDATE clipboard_history SET paste_count = paste_count + 1, timestamp = ?1 WHERE id = ?2",
-                            rusqlite::params![now, id],
+                            "UPDATE clipboard_history SET paste_count = paste_count + 1 WHERE id = ?1",
+                            rusqlite::params![id],
                         );
-                        emit_item_touched(id, &now);
                     }
                     ClipboardMsg::TouchItem { id } => {
                         let now = chrono::Utc::now().to_rfc3339();
