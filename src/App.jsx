@@ -382,7 +382,14 @@ function App() {
           // stale copy could hold an extra ~1MB of duplicated icon data).
           cleanupRadialConfig(map, config);
         }
-        setRadialMenuHotkey(config.radialMenuHotkey || null);
+        // Radial menu hotkey — Ctrl+Shift+Space on fresh installs (field
+        // missing from config). Users who explicitly cleared it have null
+        // stored and keep no hotkey. Mirrors the globalPauseToggleKey
+        // default-on-fresh pattern.
+        const effectiveRadialHotkey = config.radialMenuHotkey === undefined
+          ? 'Ctrl+Shift+Space'
+          : config.radialMenuHotkey;
+        setRadialMenuHotkey(effectiveRadialHotkey || null);
         // Sync new settings to engine on load
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
@@ -422,9 +429,10 @@ function App() {
         } else {
           window.electronAPI?.clearVoiceHotkey();
         }
-        // Register radial menu hotkey with Rust backend
-        if (config.radialMenuHotkey) {
-          window.electronAPI?.setRadialMenuHotkey(config.radialMenuHotkey);
+        // Register radial menu hotkey with Rust backend (default-on-fresh
+        // mirrors the UI state above so Ctrl+Shift+Space is actually live).
+        if (effectiveRadialHotkey) {
+          window.electronAPI?.setRadialMenuHotkey(effectiveRadialHotkey);
         }
         // One-time conflict notice for pre-existing collisions (e.g., voice +
         // radial both bound to Ctrl+Alt+W from before validation was added).
@@ -432,7 +440,7 @@ function App() {
         // legacy duplicate is still in config, and disappears once the user
         // reassigns one of the slots. Voice wins in the LL hook firing order.
         const activeVoice = (config.voiceEnabled ?? false) && config.voiceHotkey;
-        if (activeVoice && config.radialMenuHotkey && config.voiceHotkey === config.radialMenuHotkey) {
+        if (activeVoice && effectiveRadialHotkey && config.voiceHotkey === effectiveRadialHotkey) {
           // Delay slightly so the notification doesn't render before the main
           // window UI is fully mounted (otherwise the toast slot may not exist
           // when setNotification fires).
@@ -717,7 +725,20 @@ function App() {
           }
           setRadialItemsMap(map);
         }
-        setRadialMenuHotkey(config.radialMenuHotkey || null);
+        {
+          // Same default-on-fresh rule as the startup load path, and re-register
+          // with the engine (this sync path previously never re-registered the
+          // radial hotkey, unlike the clipboard-paste hotkey above).
+          const effectiveRadialHotkey = config.radialMenuHotkey === undefined
+            ? 'Ctrl+Shift+Space'
+            : config.radialMenuHotkey;
+          setRadialMenuHotkey(effectiveRadialHotkey || null);
+          if (effectiveRadialHotkey) {
+            window.electronAPI?.setRadialMenuHotkey(effectiveRadialHotkey);
+          } else {
+            window.electronAPI?.clearRadialMenuHotkey();
+          }
+        }
         // Re-sync engine with updated config
         window.electronAPI?.updateAssignments(raw, globalProfile);
         window.electronAPI?.updateProfileSettings(config.profileSettings || {});
