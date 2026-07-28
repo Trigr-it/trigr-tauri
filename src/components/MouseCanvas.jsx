@@ -92,6 +92,7 @@ export default function MouseCanvas({
   onKeySelect,
   getKeyAssignment,
   hasDoubleAssignment,
+  hasHoldAssignment,
   lastFired,
   activeModifiers,
   onToggleModifier,
@@ -129,9 +130,13 @@ export default function MouseCanvas({
 
   function zone(id) {
     const bareBlocked = isBare && !BARE_MOUSE_ALLOWED.has(id);
+    // "Assigned" = any of single / double / hold, so double-only and
+    // hold-only zones still get the highlight (mirrors KeyboardCanvas).
     return {
       isSelected: selectedKey === id,
-      isAssigned: !!getKeyAssignment(id),
+      isAssigned: !!getKeyAssignment(id)
+        || (hasDoubleAssignment ? hasDoubleAssignment(id) : false)
+        || (hasHoldAssignment ? hasHoldAssignment(id) : false),
       isFiring:   firingZoneId === id,
       noLayer:    noMods,
       bareBlocked,

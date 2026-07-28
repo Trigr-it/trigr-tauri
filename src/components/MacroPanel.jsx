@@ -3231,7 +3231,7 @@ function keyIdToLabel(keyId) {
 
 // ── Reassign hotkey overlay ────────────────────────────────────────────────────
 
-function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfile, profileLinked, onConfirm, onCancel, title = 'Reassign Hotkey', titleIcon = '⇄', instruction = 'Press new key or combo…', previewVerb = 'Move to' }) {
+function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfile, profileLinked, onConfirm, onCancel, title = 'Reassign Hotkey', titleIcon = '⇄', instruction = 'Press new key, combo, or mouse button…', previewVerb = 'Move to' }) {
   const [captured, setCaptured] = useState(null);
   const captureRef = useRef(null);
 
@@ -3239,35 +3239,75 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
     if (!captured) captureRef.current?.focus();
   }, [captured]);
 
+  // Shared tail for the keyboard + mouse capture paths: same-trigger silent
+  // dismiss, conflict lookup across ALL press-mode variants, preview state.
+  function captureTarget(newCombo, newKeyId, label) {
+    if (newCombo === currentCombo && newKeyId === currentKeyId) { onCancel(); return; }
+    const base = `${activeProfile}::${newCombo}::${newKeyId}`;
+    const existing = assignments[base]
+      || assignments[`${base}::double`]
+      || assignments[`${base}::hold`]
+      || null;
+    setCaptured({ combo: newCombo, keyId: newKeyId, label, conflict: existing });
+  }
+
+  function collectMods(e) {
+    const mods = [];
+    if (e.ctrlKey)  mods.push('Ctrl');
+    if (e.shiftKey) mods.push('Shift');
+    if (e.altKey)   mods.push('Alt');
+    if (e.metaKey)  mods.push('Win');
+    mods.sort((a, b) => MOD_ORDER.indexOf(a) - MOD_ORDER.indexOf(b));
+    return mods;
+  }
+
   function handleKeyDown(e) {
     e.preventDefault();
     e.stopPropagation();
     if (e.key === 'Escape') { onCancel(); return; }
     if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
 
-    const mods = [];
-    if (e.ctrlKey)  mods.push('Ctrl');
-    if (e.shiftKey) mods.push('Shift');
-    if (e.altKey)   mods.push('Alt');
-    if (e.metaKey)  mods.push('Win');
+    const mods = collectMods(e);
 
     // Bare key (no modifiers held) — app-linked: all keys; static: only non-character keys
     if (mods.length === 0 && !profileLinked && !STATIC_BARE_ALLOWED.has(e.code)) return;
 
-    mods.sort((a, b) => MOD_ORDER.indexOf(a) - MOD_ORDER.indexOf(b));
     const newCombo = mods.length === 0 ? 'BARE' : mods.join('+');
-    const newKeyId = e.code;
-
-    // Same hotkey — dismiss silently
-    if (newCombo === currentCombo && newKeyId === currentKeyId) { onCancel(); return; }
-
     const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : (KEY_DISPLAY_MAP[e.key] ?? e.key);
     const label = mods.length === 0 ? keyDisplay : [...mods, keyDisplay].join('+');
-    // Check both single and double assignments at the target key for conflicts
-    const existingSingle = assignments[`${activeProfile}::${newCombo}::${newKeyId}`] || null;
-    const existingDouble = assignments[`${activeProfile}::${newCombo}::${newKeyId}::double`] || null;
-    const existing = existingSingle || existingDouble;
-    setCaptured({ combo: newCombo, keyId: newKeyId, label, conflict: existing });
+    captureTarget(newCombo, e.code, label);
+  }
+
+  const MOUSE_BUTTON_IDS = { 0: 'MOUSE_LEFT', 1: 'MOUSE_MIDDLE', 2: 'MOUSE_RIGHT', 3: 'MOUSE_SIDE1', 4: 'MOUSE_SIDE2' };
+
+  // Mouse-button capture — same rules as trigger recording: modifier + any
+  // button, or bare Middle/Side. Bare Left/Right pass through so the Cancel
+  // button (whose own onMouseDown preventDefaults — honoured here) and the
+  // rest of the overlay stay clickable.
+  function handleMouseDown(e) {
+    if (captured) return;
+    if (e.defaultPrevented) return;
+    const newKeyId = MOUSE_BUTTON_IDS[e.button];
+    if (!newKeyId) return;
+    const mods = collectMods(e);
+    if (mods.length === 0 && (newKeyId === 'MOUSE_LEFT' || newKeyId === 'MOUSE_RIGHT')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const newCombo = mods.length === 0 ? 'BARE' : mods.join('+');
+    const label = mods.length === 0 ? keyIdToLabel(newKeyId) : [...mods, keyIdToLabel(newKeyId)].join('+');
+    captureTarget(newCombo, newKeyId, label);
+  }
+
+  // Scroll capture — modifier required (a bare scroll would capture while the
+  // user just scrolls the UI). React wheel listeners are passive, so no
+  // preventDefault — a cosmetic scroll of the page behind is acceptable.
+  function handleWheel(e) {
+    if (captured) return;
+    const mods = collectMods(e);
+    if (mods.length === 0) return;
+    const newKeyId = e.deltaY < 0 ? 'MOUSE_SCROLL_UP' : 'MOUSE_SCROLL_DOWN';
+    const label = [...mods, keyIdToLabel(newKeyId)].join('+');
+    captureTarget(mods.join('+'), newKeyId, label);
   }
 
   const currentLabel = [
@@ -3276,7 +3316,12 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
   ].filter(Boolean);
 
   return (
-    <div className="reassign-overlay">
+    <div
+      className="reassign-overlay"
+      onMouseDown={handleMouseDown}
+      onWheel={handleWheel}
+      onContextMenu={e => e.preventDefault()}
+    >
       <div className="reassign-panel">
         <div className="reassign-header">
           <span className="reassign-icon">{titleIcon}</span>
@@ -3378,6 +3423,7 @@ export default function MacroPanel({
   onCancelDraft,
   onReassign,
   onDuplicate,
+  duplicateOverlaySignal = 0,
   isPro = false,
   voiceEnabled = false,
   onShowUpgrade,
@@ -3521,6 +3567,15 @@ export default function MacroPanel({
       }
     }
   }, [selectedKey, effectiveAssignment, effectiveDouble, effectiveHold]);
+
+  // Sidebar right-click → Duplicate: App selects the source item then bumps
+  // this signal to open the duplicate-capture overlay. Declared AFTER the
+  // selection-reset effect above so its setDuplicating(true) wins over the
+  // reset's setDuplicating(false) when both fire in the same commit.
+  useEffect(() => {
+    if (duplicateOverlaySignal > 0 && selectedKey) setDuplicating(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duplicateOverlaySignal]);
 
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {
@@ -3797,7 +3852,7 @@ export default function MacroPanel({
           assignments={assignments}
           activeProfile={activeProfile}
           profileLinked={profileLinked}
-          title={assignment && doubleAssignment ? 'Reassign Hotkey (single + double press)' : 'Reassign Hotkey'}
+          title={[assignment, doubleAssignment, holdAssignment].filter(Boolean).length > 1 ? 'Reassign Hotkey (all press modes)' : 'Reassign Hotkey'}
           onConfirm={(newCombo, newKeyId) => {
             setReassigning(false);
             onReassign?.(newCombo, newKeyId);
@@ -3814,7 +3869,7 @@ export default function MacroPanel({
           profileLinked={profileLinked}
           title="Choose Hotkey for Duplicate"
           titleIcon="⊕"
-          instruction="Press new key or combo for the duplicate…"
+          instruction="Press new key, combo, or mouse button for the duplicate…"
           previewVerb="Duplicate to"
           onConfirm={(newCombo, newKeyId) => {
             setDuplicating(false);
@@ -3849,11 +3904,14 @@ export default function MacroPanel({
           )}
         </div>
         <div className="macro-panel-header-actions">
-          {assignment && !selectedKey?.startsWith('MOUSE_') && (
+          {/* Any saved variant (single / double / hold) can be moved — the
+              handler carries all three suffixes. Mouse triggers included:
+              the overlay captures mouse destinations too. */}
+          {(assignment || doubleAssignment || holdAssignment) && (
             <button
               className="reassign-btn"
               onClick={() => setReassigning(true)}
-              title="Move this macro to a different hotkey"
+              title="Move this macro to a different trigger"
               type="button"
             >
               ⇄ Reassign
@@ -3884,10 +3942,11 @@ export default function MacroPanel({
             ×2 Double Press <span className="pro-badge">PRO</span>
             {doubleAssignment && <span className="press-mode-dot" />}
           </button>
-          {/* Hold is keyboard-only — mouse buttons have their own hold-while-
-              action concept (holdMode) and the engine doesn't arm ::hold for
-              mouse ids. */}
-          {!selectedKey?.startsWith('MOUSE_') && (
+          {/* Hold applies to keyboard keys and mouse BUTTONS (engine arms
+              ::hold for mouse ids since the mouse-hold work, 2026-07-28).
+              Scroll zones are excluded — a wheel tick has no release event
+              to time a hold against. */}
+          {!selectedKey?.startsWith('MOUSE_SCROLL') && (
             <button
               className={`press-mode-btn${pressMode === 'hold' ? ' active' : ''}`}
               onClick={() => {

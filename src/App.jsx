@@ -49,6 +49,9 @@ function App() {
   // state until they pick a destination key. See handleDuplicateFromContext.
   const [draftAssignment, setDraftAssignment] = useState(null);
   const [draftDoubleAssignment, setDraftDoubleAssignment] = useState(null);
+  // Bumped by the sidebar's right-click → Duplicate to open MacroPanel's
+  // duplicate-capture overlay for the freshly-selected source item.
+  const [duplicateOverlaySignal, setDuplicateOverlaySignal] = useState(0);
   const [sidebarComboFilter, setSidebarComboFilter] = useState(null); // null = show all, string = filter by combo
   // Reserved Windows shortcut hazard modal — deferred-save pattern. Shape:
   // { keyId, macro, comboDisplay, osFunction, profileName } or null.
@@ -1397,28 +1400,18 @@ function App() {
     setDraftDoubleAssignment(null);
   }, []);
 
+  // Routes through the overlay-based duplicate (same flow as the editor's
+  // Duplicate button): select the source item, then signal MacroPanel to open
+  // its capture overlay. Unlike the old draft flow this carries ALL press-mode
+  // variants (double-only and hold-only items included) and supports mouse /
+  // scroll triggers as both source and destination.
   const handleDuplicateFromContext = useCallback((combo, keyId) => {
-    const key = `${activeProfile}::${combo}::${keyId}`;
-    const existing = assignments[key];
-    if (!existing) return;
-    const single = {
-      ...existing,
-      label: (existing.label || '') + ' (copy)',
-      data: JSON.parse(JSON.stringify(existing.data || {})),
-    };
-    const doubleKey = `${activeProfile}::${combo}::${keyId}::double`;
-    const existingDouble = assignments[doubleKey];
-    const double = existingDouble ? {
-      ...existingDouble,
-      label: (existingDouble.label || '') + ' (copy)',
-      data: JSON.parse(JSON.stringify(existingDouble.data || {})),
-    } : null;
-    setDraftAssignment(single);
-    setDraftDoubleAssignment(double);
-    // Deselect so the editor shows the draft, not the source assignment
-    setSelectedKey(null);
-    showNotification('Duplicate ready — pick a key (click Record or any keyboard key)', 'info');
-  }, [assignments, activeProfile, showNotification]);
+    const mods = combo === 'BARE' ? ['BARE'] : combo.split('+').filter(Boolean);
+    setActiveModifiers(mods);
+    setSelectedKey(keyId);
+    setActiveView(keyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+    setDuplicateOverlaySignal(s => s + 1);
+  }, []);
 
   // ── Double-tap assignment helpers ────────────────────────
   const makeDoubleKey = useCallback((profile, combo, keyId) => {
@@ -2414,76 +2407,61 @@ function App() {
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
   // ── Reassign hotkey ───────────────────────────────────────
+  // Moves ALL trigger variants (single + double + hold) to the new trigger.
+  // Anything already living at the target swaps back to the old trigger,
+  // variant by variant, so nothing is lost or orphaned.
   const handleReassign = useCallback((newCombo, newKeyId) => {
-    const oldKey       = makeAssignmentKey(activeProfile, currentCombo, selectedKey);
-    const oldDoubleKey = oldKey + '::double';
-    const newKey       = makeAssignmentKey(activeProfile, newCombo, newKeyId);
-    const newDoubleKey = newKey + '::double';
+    const oldKey = makeAssignmentKey(activeProfile, currentCombo, selectedKey);
+    const newKey = makeAssignmentKey(activeProfile, newCombo, newKeyId);
     const newAssignments = { ...assignments };
+    const swapped = ASSIGNMENT_VARIANT_SUFFIXES.some(s => assignments[newKey + s]);
 
-    // If the target key already has an assignment, save it to the old key
-    // so the user doesn't lose their existing macro/action
-    if (newAssignments[newKey]) {
-      newAssignments[oldKey] = newAssignments[newKey];
-    }
-    if (newAssignments[newDoubleKey]) {
-      newAssignments[oldDoubleKey] = newAssignments[newDoubleKey];
-    } else {
-      delete newAssignments[oldDoubleKey];
-    }
-
-    // Move the original assignment to the new key
-    newAssignments[newKey] = assignments[oldKey];
-    if (assignments[oldDoubleKey]) {
-      newAssignments[newDoubleKey] = assignments[oldDoubleKey];
-    }
-
-    // If target had no assignment, clean up old key
-    if (!assignments[newKey]) {
-      delete newAssignments[oldKey];
-    }
-    if (!assignments[newDoubleKey]) {
-      delete newAssignments[oldDoubleKey];
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      const moving = assignments[oldKey + suffix];
+      const atTarget = assignments[newKey + suffix];
+      if (atTarget !== undefined) {
+        newAssignments[oldKey + suffix] = atTarget;
+      } else {
+        delete newAssignments[oldKey + suffix];
+      }
+      if (moving !== undefined) {
+        newAssignments[newKey + suffix] = moving;
+      } else {
+        delete newAssignments[newKey + suffix];
+      }
     }
 
     setAssignments(newAssignments);
     const newMods = newCombo ? newCombo.split('+').filter(Boolean) : [];
     setActiveModifiers(newMods);
     setSelectedKey(newKeyId);
-    if (!newKeyId.startsWith('MOUSE_')) setActiveView('keyboard');
+    setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
     saveConfig(newAssignments, profiles, activeProfile);
-    const swapped = assignments[newKey];
     showNotification(swapped ? 'Hotkeys swapped' : 'Hotkey reassigned');
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
   // ── Duplicate assignment to a new hotkey ─────────────────
+  // Copies every trigger variant that exists (single / double / hold) —
+  // double-only and hold-only items duplicate too.
   const handleDuplicateAssignment = useCallback((newCombo, newKeyId) => {
     const oldKey = makeAssignmentKey(activeProfile, currentCombo, selectedKey);
-    const existing = assignments[oldKey];
-    if (!existing) return;
+    if (!ASSIGNMENT_VARIANT_SUFFIXES.some(s => assignments[oldKey + s])) return;
     const newKey = makeAssignmentKey(activeProfile, newCombo, newKeyId);
-    const duplicated = {
-      ...existing,
-      label: (existing.label || '') + ' (copy)',
-      data: JSON.parse(JSON.stringify(existing.data || {})),
-    };
-    const newAssignments = { ...assignments, [newKey]: duplicated };
-    // Copy double press if it exists
-    const oldDoubleKey = `${activeProfile}::${currentCombo}::${selectedKey}::double`;
-    const existingDouble = assignments[oldDoubleKey];
-    if (existingDouble) {
-      const newDoubleKey = `${activeProfile}::${newCombo}::${newKeyId}::double`;
-      newAssignments[newDoubleKey] = {
-        ...existingDouble,
-        label: (existingDouble.label || '') + ' (copy)',
-        data: JSON.parse(JSON.stringify(existingDouble.data || {})),
+    const newAssignments = { ...assignments };
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      const existing = assignments[oldKey + suffix];
+      if (!existing) continue;
+      newAssignments[newKey + suffix] = {
+        ...existing,
+        label: (existing.label || '') + ' (copy)',
+        data: JSON.parse(JSON.stringify(existing.data || {})),
       };
     }
     setAssignments(newAssignments);
     const newMods = newCombo === 'BARE' ? ['BARE'] : (newCombo ? newCombo.split('+').filter(Boolean) : []);
     setActiveModifiers(newMods);
     setSelectedKey(newKeyId);
-    if (!newKeyId.startsWith('MOUSE_')) setActiveView('keyboard');
+    setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
     saveConfig(newAssignments, profiles, activeProfile);
     const keyLabel = friendlyKeyName(newKeyId);
     const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
@@ -4148,6 +4126,7 @@ function App() {
               onKeySelect={handleKeySelect}
               getKeyAssignment={getKeyAssignment}
               hasDoubleAssignment={hasDoubleAssignment}
+              hasHoldAssignment={hasHoldAssignment}
               lastFired={lastFired}
               activeModifiers={activeModifiers}
               onToggleModifier={handleToggleModifier}
@@ -4452,6 +4431,7 @@ function App() {
             onCancelDraft={clearDraft}
             onReassign={handleReassign}
             onDuplicate={handleDuplicateAssignment}
+            duplicateOverlaySignal={duplicateOverlaySignal}
             isPro={isPro}
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}

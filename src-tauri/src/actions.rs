@@ -1916,6 +1916,21 @@ fn send_mouse_click(button: &str) {
     info!("[Keyfire] Mouse click: {}", button);
 }
 
+/// Synthesize a full click at the current cursor position — used by the mouse
+/// ::hold trigger's early-release passthrough (the hook suppressed the user's
+/// physical button-down, so on a quick tap the app still needs its native
+/// click). 15ms down-up split per the synthetic hold-time rule; button names
+/// are the replay_mouse_button set ("Left".."Side2").
+pub fn send_passthrough_click(button: &str) {
+    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+    replay_mouse_button(button, true);
+    thread::sleep(Duration::from_millis(15));
+    replay_mouse_button(button, false);
+    thread::sleep(Duration::from_millis(5));
+    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+    info!("[Keyfire] [HOLD] mouse passthrough click: {}", button);
+}
+
 // ── Recorder replay helpers ─────────────────────────────────────────────────
 //
 // Used only by the "Record Macro" macro step's replay path. Unlike send_mouse_click,

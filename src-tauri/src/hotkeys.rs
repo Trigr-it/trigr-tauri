@@ -190,6 +190,18 @@ const SUPPRESS_MOUSE_SIDE2: u8 = 5;
 const SUPPRESS_MOUSE_SCROLL_UP: u8 = 6;
 const SUPPRESS_MOUSE_SCROLL_DOWN: u8 = 7;
 
+/// Set of (modifier bits, mouse suppress ID) pairs whose clicks must be
+/// swallowed by the hook: modified mouse combos with a ::hold variant. A
+/// hold-armed press must not leak its click to the app while the watcher
+/// waits for the threshold (mirror of the keyboard ::hold rule in
+/// rebuild_suppress_keys). Plain modified mouse singles/doubles deliberately
+/// do NOT suppress — that's shipped behaviour (the click still lands).
+static SUPPRESS_MOD_MOUSE: OnceLock<RwLock<HashSet<(u8, u8)>>> = OnceLock::new();
+
+fn suppress_mod_mouse() -> &'static RwLock<HashSet<(u8, u8)>> {
+    SUPPRESS_MOD_MOUSE.get_or_init(|| RwLock::new(HashSet::new()))
+}
+
 /// Global map: mouse button suppress ID → set of linked profile names that have
 /// a bare assignment for that button.  Built across ALL linked profiles (not just
 /// the active one) so the hook can suppress mouse events during click-to-refocus
@@ -283,6 +295,7 @@ fn is_static_bare_allowed(key_id: &str) -> bool {
 fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, profile_settings: &HashMap<String, Value>) {
     let mut set = HashSet::new();
     let mut mouse_set = HashSet::new();
+    let mut mod_mouse_set: HashSet<(u8, u8)> = HashSet::new();
     let prefix = format!("{}::", profile);
     let is_linked = profile_settings.get(profile)
         .and_then(|s| s.get("linkedApp"))
@@ -322,14 +335,27 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
             if bits != 0 {
                 set.insert((bits, vk));
             }
+        } else if parts.last() == Some(&"hold") {
+            // Modified mouse combo with a ::hold variant (Pro — free users
+            // already skipped above). Suppress the click so the hold watcher
+            // owns the press cycle; early release synthesizes the click back.
+            if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
+                let bits = modifier_string_to_bits(combo_str);
+                if bits != 0 {
+                    mod_mouse_set.insert((bits, mouse_id));
+                }
+            }
         }
     }
-    log::info!("[HOOK] Rebuilt suppress set: {} key combos, {} bare mouse (before overlay)", set.len(), mouse_set.len());
+    log::info!("[HOOK] Rebuilt suppress set: {} key combos, {} bare mouse, {} mod-mouse hold (before overlay)", set.len(), mouse_set.len(), mod_mouse_set.len());
     if let Ok(mut w) = suppress_keys().write() {
         *w = set;
     }
     if let Ok(mut w) = suppress_bare_mouse().write() {
         *w = mouse_set;
+    }
+    if let Ok(mut w) = suppress_mod_mouse().write() {
+        *w = mod_mouse_set;
     }
 }
 
@@ -347,8 +373,12 @@ fn rebuild_all_linked_mouse(assignments: &HashMap<String, Value>, profile_settin
         let prefix = format!("{}::BARE::", profile);
         for key in assignments.keys() {
             if !key.starts_with(&prefix) { continue; }
-            // Skip double + hold entries (mouse buttons can't have either)
-            if key.ends_with("::double") || key.ends_with("::hold") { continue; }
+            // Skip double entries (single lets the press pass; when both exist
+            // the single entry covers suppression). Hold entries DO count —
+            // a hold-armed bare button must suppress during click-to-refocus
+            // too — but only for Pro (free-tier holds are inert).
+            if key.ends_with("::double") { continue; }
+            if key.ends_with("::hold") && !crate::licence::is_pro() { continue; }
             let key_id = key[prefix.len()..].split("::").next().unwrap_or("");
             if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
                 map.entry(mouse_id).or_default().insert(profile.clone());
@@ -670,6 +700,97 @@ fn spawn_hold_watcher(app: AppHandle) {
         .expect("Failed to spawn hold watcher thread");
 }
 
+/// Outcome of the mouse hold-arm check (see mouse_hold_check).
+enum MouseHoldOutcome {
+    /// No ::hold variant (or Free tier / detection paused) — caller runs
+    /// its normal single/double dispatch.
+    NotArmed,
+    /// Hold timer armed (or a live entry swallowed the press) — the press
+    /// cycle is consumed; handle_mouse_up resolves it.
+    Consumed,
+    /// Second tap of a double landed while hold-armed — caller drops the
+    /// state lock and fires this double immediately.
+    FireDouble(Value),
+}
+
+/// Mouse twin of the keyboard ::hold branch in handle_keydown. A ::hold
+/// variant takes over the whole press cycle: arm the shared watcher timer
+/// and consume the press; handle_mouse_up re-injects the deferred single /
+/// double (or synthesizes a passthrough click) on early release; the watcher
+/// fires the hold at threshold. Differences from keyboard: no OS auto-repeat,
+/// and deferred dispatch fires immediately at mouse-up (mouse has no
+/// modifier-release deferral). Timer map is keyed by the real button VK
+/// (mouse_button_to_vk). Free users fall through — ::hold mappings inert.
+fn mouse_hold_check(
+    state: &mut EngineState,
+    storage_key: &str,
+    vk: u32,
+    is_bare: bool,
+) -> MouseHoldOutcome {
+    let hold_key = format!("{}::hold", storage_key);
+    if !crate::licence::is_pro()
+        || !state.assignments.contains_key(&hold_key)
+        || HOLD_DETECTION_PAUSED.load(Ordering::SeqCst)
+    {
+        return MouseHoldOutcome::NotArmed;
+    }
+
+    // Live-entry swallow: mouse has no auto-repeat, but a mouse-up lost to a
+    // hook reinstall could leave a stale entry — mirror the keyboard guard
+    // (>10s stale entries get replaced inside arm_hold_timer).
+    // Lock order state→timers is safe: no thread nests timers→state.
+    {
+        let timers = hold_timers().lock().unwrap();
+        if let Some(existing) = timers.get(&vk) {
+            if existing.inserted_at.elapsed() < Duration::from_secs(10) {
+                return MouseHoldOutcome::Consumed;
+            }
+        }
+    }
+
+    let hold_macro = state.assignments.get(&hold_key).cloned().unwrap_or(Value::Null);
+    let single_macro = state.assignments.get(storage_key).cloned();
+    let double_key = format!("{}::double", storage_key);
+    let has_double = state.assignments.contains_key(&double_key);
+    let threshold = state.hold_threshold_ms;
+
+    // Double-tap detection stays at button-down (tap-to-tap timing), same as
+    // the keyboard hold branch. Per the conflict matrix, hold is NOT armed on
+    // the second press.
+    if has_double {
+        let now = Instant::now();
+        let dtw = state.double_tap_window_ms;
+        if let Some(last) = state.last_hotkey_time.get(storage_key) {
+            if now.duration_since(*last).as_millis() < dtw as u128 {
+                if let Some(cancel) = state.pending_single_cancel.remove(storage_key) {
+                    cancel.store(true, Ordering::SeqCst);
+                }
+                state.last_hotkey_time.remove(storage_key);
+                info!("[Keyfire] x2 Mouse double-tap (hold-armed button): {}", storage_key);
+                // fired=true sentinel keeps the watcher and the mouse-up
+                // resolution inert for this press cycle.
+                hold_timers().lock().unwrap().insert(vk, HoldEntry {
+                    storage_key: storage_key.to_string(),
+                    fire_at: now,
+                    inserted_at: now,
+                    fired: true,
+                    hold_macro: Value::Null,
+                    single_macro: None,
+                    has_double: true,
+                    is_bare,
+                });
+                let dm = state.assignments.get(&double_key).cloned().unwrap_or(Value::Null);
+                return MouseHoldOutcome::FireDouble(dm);
+            }
+        }
+        // First tap — record for the second-tap check above.
+        state.last_hotkey_time.insert(storage_key.to_string(), now);
+    }
+
+    arm_hold_timer(vk, storage_key.to_string(), hold_macro, single_macro, has_double, is_bare, threshold);
+    MouseHoldOutcome::Consumed
+}
+
 pub(crate) struct EngineState {
     pub(crate) active_profile: String,
     pub(crate) assignments: HashMap<String, Value>,
@@ -989,6 +1110,31 @@ fn mouse_button_to_key_id(button: MouseButton) -> &'static str {
         MouseButton::Middle => "MOUSE_MIDDLE",
         MouseButton::Side1 => "MOUSE_SIDE1",
         MouseButton::Side2 => "MOUSE_SIDE2",
+    }
+}
+
+/// Real Win32 button VKs — used as HOLD_TIMERS keys for mouse hold cycles.
+/// No collision with keyboard entries: the keyboard hook never reports
+/// vk 0x01-0x06, so handle_keyup can't touch mouse entries and vice versa.
+fn mouse_button_to_vk(button: MouseButton) -> u32 {
+    match button {
+        MouseButton::Left => 0x01,   // VK_LBUTTON
+        MouseButton::Right => 0x02,  // VK_RBUTTON
+        MouseButton::Middle => 0x04, // VK_MBUTTON
+        MouseButton::Side1 => 0x05,  // VK_XBUTTON1
+        MouseButton::Side2 => 0x06,  // VK_XBUTTON2
+    }
+}
+
+/// Button name in the form actions::replay_mouse_button expects — used by the
+/// hold early-release click passthrough.
+fn mouse_button_to_replay_name(button: MouseButton) -> &'static str {
+    match button {
+        MouseButton::Left => "Left",
+        MouseButton::Right => "Right",
+        MouseButton::Middle => "Middle",
+        MouseButton::Side1 => "Side1",
+        MouseButton::Side2 => "Side2",
     }
 }
 
@@ -1676,6 +1822,22 @@ unsafe extern "system" fn mouse_hook_proc(
                                         if profiles.contains(&profile_name) {
                                             suppressed = true;
                                         }
+                                    }
+                                }
+                            }
+                        }
+                        // Modified-mouse hold: a (modifier, button) pair with a
+                        // ::hold variant must not leak its click while the hold
+                        // watcher waits (set built in rebuild_suppress_keys).
+                        // Bits come from the tracked atomics — stale-false while
+                        // our own UI is focused, which conveniently skips
+                        // suppression exactly where dispatch is skipped too.
+                        if !suppressed {
+                            let bits = modifier_bits();
+                            if bits != 0 {
+                                if let Ok(set) = suppress_mod_mouse().try_read() {
+                                    if set.contains(&(bits, btn_id)) {
+                                        suppressed = true;
                                     }
                                 }
                             }
@@ -3153,6 +3315,16 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 
         if linked && !in_dialog && (cursor_over_app || refocus_profile.is_some()) {
             let bare_key = format!("{}::BARE::{}", profile, mouse_id);
+            // Hold trigger — a ::hold variant takes over the press cycle.
+            match mouse_hold_check(&mut state, &bare_key, mouse_button_to_vk(button), true) {
+                MouseHoldOutcome::Consumed => return,
+                MouseHoldOutcome::FireDouble(dm) => {
+                    drop(state);
+                    fire_macro(dm, true, Some(bare_key), app);
+                    return;
+                }
+                MouseHoldOutcome::NotArmed => {}
+            }
             if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
                 drop(state);
                 dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
@@ -3171,9 +3343,21 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 
     // Modified mouse button — check for explicit modifier assignment first
     let combo = build_modifier_combo();
-    let state = engine_state().lock().unwrap();
+    let mut state = engine_state().lock().unwrap();
     let profile = state.active_profile.clone();
     let storage_key = format!("{}::{}::{}", profile, combo, mouse_id);
+
+    // Hold trigger — a ::hold variant takes over the press cycle. The hook
+    // already suppressed this click via suppress_mod_mouse.
+    match mouse_hold_check(&mut state, &storage_key, mouse_button_to_vk(button), false) {
+        MouseHoldOutcome::Consumed => return,
+        MouseHoldOutcome::FireDouble(dm) => {
+            drop(state);
+            fire_macro(dm, false, Some(storage_key), app);
+            return;
+        }
+        MouseHoldOutcome::NotArmed => {}
+    }
 
     if let Some(macro_val) = state.assignments.get(&storage_key).cloned() {
         drop(state);
@@ -3203,6 +3387,17 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 
     if linked && !in_dialog && cursor_over_app {
         let bare_key = format!("{}::BARE::{}", profile, mouse_id);
+        // Bare hold fallback (modifiers physically held pass through, same
+        // full-button-replacement model as bare singles).
+        match mouse_hold_check(&mut state, &bare_key, mouse_button_to_vk(button), true) {
+            MouseHoldOutcome::Consumed => return,
+            MouseHoldOutcome::FireDouble(dm) => {
+                drop(state);
+                fire_macro(dm, true, Some(bare_key), app);
+                return;
+            }
+            MouseHoldOutcome::NotArmed => {}
+        }
         if let Some(macro_val) = state.assignments.get(&bare_key).cloned() {
             drop(state);
             dispatch_with_double_tap(&bare_key, macro_val, Some(bare_key.clone()), app);
@@ -3226,6 +3421,96 @@ fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
     // pending release, spamming the log and clobbering the slot a genuinely
     // hold-mapped button may be relying on.
     let mouse_id = mouse_button_to_key_id(button);
+
+    // ── Hold trigger: button release ends the hold cycle ────────────────
+    // Mirror of the keyboard block in handle_keyup. fired == true → the
+    // watcher already fired the hold (or a double resolved this cycle);
+    // suppress everything. fired == false → released before threshold;
+    // dispatch what the button-down deferred. Mouse dispatch fires
+    // immediately (no modifier-release deferral), and "passthrough" means
+    // synthesizing the click the hook suppressed.
+    {
+        let removed = {
+            let mut timers = hold_timers().lock().unwrap();
+            timers.remove(&mouse_button_to_vk(button))
+        };
+        if let Some(entry) = removed {
+            if !entry.fired {
+                if let Some(single) = entry.single_macro {
+                    if entry.has_double {
+                        // Single + double + hold: the single waits out the
+                        // double window on a cancel-able timer — a second tap
+                        // cancels it via pending_single_cancel in
+                        // mouse_hold_check.
+                        let sk = entry.storage_key.clone();
+                        let is_bare = entry.is_bare;
+                        let mut state = engine_state().lock().unwrap();
+                        let dtw = state.double_tap_window_ms;
+                        if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
+                            old_cancel.store(true, Ordering::SeqCst);
+                        }
+                        let cancel_flag = Arc::new(AtomicBool::new(false));
+                        state.pending_single_cancel.insert(sk.clone(), cancel_flag.clone());
+                        drop(state);
+                        let app_clone = app.clone();
+                        thread::spawn(move || {
+                            thread::sleep(Duration::from_millis(dtw));
+                            if cancel_flag.load(Ordering::SeqCst) {
+                                return; // second tap arrived — double fired instead
+                            }
+                            {
+                                let mut state = engine_state().lock().unwrap();
+                                state.pending_single_cancel.remove(&sk);
+                                state.last_hotkey_time.remove(&sk);
+                            }
+                            info!("[Keyfire] x1 Mouse single confirmed (hold-deferred): {}", sk);
+                            fire_macro(single, is_bare, Some(sk), &app_clone);
+                        });
+                    } else {
+                        // Single + hold only: fire the deferred single now.
+                        info!("[Keyfire] x1 Mouse single (hold-deferred): {}", entry.storage_key);
+                        fire_macro(single, entry.is_bare, Some(entry.storage_key.clone()), app);
+                    }
+                } else if entry.has_double {
+                    // Hold + double, NO single — defer the passthrough click
+                    // through the dtw window. A second tap cancels it (double
+                    // fires from mouse_hold_check); otherwise synthesize the
+                    // click the hook suppressed.
+                    let sk = entry.storage_key.clone();
+                    let btn_name = mouse_button_to_replay_name(button);
+                    let mut state = engine_state().lock().unwrap();
+                    let dtw = state.double_tap_window_ms;
+                    if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
+                        old_cancel.store(true, Ordering::SeqCst);
+                    }
+                    let cancel_flag = Arc::new(AtomicBool::new(false));
+                    state.pending_single_cancel.insert(sk.clone(), cancel_flag.clone());
+                    drop(state);
+                    thread::spawn(move || {
+                        thread::sleep(Duration::from_millis(dtw));
+                        if cancel_flag.load(Ordering::SeqCst) {
+                            return; // second tap arrived → double fired instead
+                        }
+                        {
+                            let mut state = engine_state().lock().unwrap();
+                            state.pending_single_cancel.remove(&sk);
+                            state.last_hotkey_time.remove(&sk);
+                        }
+                        info!("[Keyfire] [HOLD] mouse click passthrough (hold+double, no single): {}", sk);
+                        crate::actions::send_passthrough_click(btn_name);
+                    });
+                } else {
+                    // Hold-only — immediate passthrough so the app still gets
+                    // its native click (the hook suppressed the physical down).
+                    info!("[Keyfire] [HOLD] mouse click passthrough (hold-only): {}", entry.storage_key);
+                    crate::actions::send_passthrough_click(mouse_button_to_replay_name(button));
+                }
+            }
+        }
+    }
+
+    // Release held key if this mouse button was the trigger (press-hold
+    // mirroring — the holdMode ACTION concept, independent of ::hold triggers).
     let allow_pending = button_has_hold_assignment(mouse_id);
     if let Some(label) = crate::actions::release_held_if_mouse_trigger(mouse_id, allow_pending) {
         crate::tray::update_tray_icon_normal(app);
