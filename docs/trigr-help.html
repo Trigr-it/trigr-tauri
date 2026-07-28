@@ -925,6 +925,7 @@
   <div class="step-row"><div class="step-num">3</div><div class="step-text">Choose an action type, configure it, click <strong>Save</strong>. The key is now highlighted on the canvas.</div></div>
 
   <p>Alternatively, click <strong>+ New Trigger</strong> in the sidebar. The Record button pulses gold and a hint reads "Press Record or click a key to start". Then either press a combination physically or click a key on the canvas.</p>
+  <p>Recording captures mouse triggers too. While recording is armed, press a modifier plus any mouse button (for example <kbd>Alt</kbd> + right click), a modifier plus a scroll tick, or a bare middle or side button. Bare left and right clicks are never captured, so you can still click around the app, including the Recording button to cancel. The captured click does not reach the app under your cursor.</p>
 
   <h2>Modifier layers</h2>
   <p>Each modifier combination is a separate layer: Ctrl, Alt, Shift, Win, Ctrl+Shift, Ctrl+Alt, Shift+Alt, and so on. The same physical key can have a different action on each layer. <kbd>Ctrl</kbd>+<kbd>E</kbd> and <kbd>Ctrl+Shift</kbd>+<kbd>E</kbd> are entirely independent assignments.</p>
@@ -981,6 +982,9 @@
     <p>Assigning mouse buttons without a modifier is only supported in app-linked profiles. You would not want left click triggering a macro everywhere. There is one more safeguard: a bare mouse remap only fires while your cursor is actually over a window of the linked app. Move the cursor onto another app and the button behaves normally, even if the linked app still has focus.</p>
   </div>
 
+  <h2>Double press and hold on mouse buttons</h2>
+  <p>Mouse buttons support the same three press modes as keyboard keys: single press, double press (PRO), and hold (PRO). Select a button and use the Single / Double / Hold pills in the editor. Scroll wheel triggers are single-press only. See <a onclick="show(event,'trigger-modes')" href="#">Trigger Modes</a> for how the timing works.</p>
+
   <h2>Side buttons not firing?</h2>
   <p>If your mouse has manufacturer software (Logitech G Hub, Razer Synapse, etc.), it may be translating side buttons to other inputs before Windows sees them. Open the mouse software and set Side 1 and Side 2 to their <strong>default mouse button</strong> mapping. Then Keyfire can see them.</p>
 
@@ -1018,6 +1022,13 @@
 
   <h2>How hold detection works</h2>
   <p>When you press a hold-armed key, Keyfire starts a timer. If you release before the threshold, the single-press action fires (if assigned) or the keystroke passes through to the focused app. If you cross the threshold, the hold action fires and the key release is suppressed.</p>
+
+  <h2>Hold on mouse buttons</h2>
+  <p>Hold triggers work on all five mouse buttons as well, with the same threshold and the same rules. A quick click fires the single-press action, or passes the click through to the app if nothing else is assigned, so a hold-mapped button still behaves normally for fast clicks. Scroll wheel triggers cannot have a hold action because a scroll tick has no press and release to time.</p>
+  <div class="callout warn">
+    <div class="ct">Drags need the button down</div>
+    <p>While a button has a hold action, press-and-drag with that button is taken over by the hold timer in the contexts where the trigger applies. Keep drag-heavy buttons (usually left click) free of hold actions.</p>
+  </div>
 
   <h2>Double-tap window</h2>
   <p>The interval Keyfire waits for a second tap before firing the single-press action. Adjust in <strong>Settings → Compatibility → Double-tap window</strong>. Default is 300ms.</p>
@@ -1300,7 +1311,7 @@
   <p>The macro recorder is currently a literal-replay tool, which means:</p>
   <ul>
     <li>Mouse clicks replay at the exact screen coordinates you recorded. If you move or resize the target window between recording and replay, the clicks land at the original screen position rather than following the window.</li>
-    <li>The radial menu does not fire during replay. It requires a real physical key hold, not a synthetic one.</li>
+    <li>The radial menu does not fire during replay. It requires a real physical key press, not a synthetic one.</li>
     <li>Text input inside Keyfire's own Quick Search overlay does not replay. The overlay routes input differently from regular apps.</li>
   </ul>
   <p>A future release will add an option to translate recorded coordinates into window-relative positions so macros survive window moves and resizes.</p>
@@ -1737,7 +1748,7 @@
   <div class="step-row"><div class="step-num">6</div><div class="step-text">Save.</div></div>
 
   <h2>Firing the menu</h2>
-  <p>Press the menu's hotkey from anywhere. The wheel appears under your cursor. Move the mouse over a wedge to highlight it, then click. The action fires in the app you were in before the menu opened.</p>
+  <p>Press the menu's hotkey from anywhere. On fresh installs the default is <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd>; change or clear it in the radial editor. The wheel appears under your cursor. Move the mouse over a wedge to highlight it, then click, or press the wedge's number key. The action fires in the app you were in before the menu opened.</p>
 
   <h2>Nested radial menus</h2>
   <p>Drag a folder onto the canvas to create a nested wheel. Clicking it opens a sub-radial of actions. Useful for grouping by category, for example a "Tools" folder containing six specific tool macros.</p>
@@ -1822,7 +1833,7 @@
   <p>Keyfire captures everything you copy to the clipboard: text, links, code, and images. All data is stored locally in a SQLite database on your machine, encrypted at rest. Nothing is transmitted.</p>
 
   <h2>The clipboard panel</h2>
-  <p>Open the <strong>Clipboard</strong> tab in the title bar to see your full clipboard history. Items are displayed as a masonry grid sorted by most recently used, with your Saved and Pinned tiers always at the top. A preview pane sits on the right at all times. Select any item to inspect it, and drag the pane's left edge to resize it.</p>
+  <p>Open the <strong>Clipboard</strong> tab in the title bar to see your full clipboard history. Items are displayed as a masonry grid sorted newest first, with your Saved and Pinned tiers always at the top. A preview pane sits on the right at all times. Select any item to inspect it, and drag the pane's left edge to resize it.</p>
 
   <div class="screenshot-slot">
     <strong>Screenshot slot · Clipboard panel</strong>
@@ -1861,8 +1872,9 @@
   <p>To file an item into a folder, drag its card onto the folder's header, or right-click the item and choose <strong>Move to Folder</strong>. Dragging onto the main Saved header moves an item back out of its folder. Hold a drag over a collapsed folder for a moment and it springs open. Double-click a folder's name to rename it, and right-click its header to rename or delete it. Deleting a folder never deletes the items inside; they return to the main Saved area.</p>
   <p>Folder names are encrypted at rest with the same AES-256-GCM protection as your clipboard content. If your Pro licence lapses, existing folders keep working; only creating new ones requires Pro.</p>
 
-  <h2>Recently used floats to the top</h2>
-  <p>Copying an item from the panel or pasting it from the quick paste popup moves it to the top of your history, the same way the Windows clipboard works. The item is not duplicated; its position simply updates, so the things you use most are always nearest the top and first in the popup. Saved and pinned items stay in their own sections when reused. The preview pane's <strong>Last copied</strong> field shows when an item was last put on your clipboard.</p>
+  <h2>Copying floats an item to the top</h2>
+  <p>Clicking <strong>Copy</strong> on an item in the panel moves it to the top of your history. The item is not duplicated; its position simply updates, so the things you actively reuse sit nearest the top. Saved and pinned items stay in their own sections when reused. The preview pane's <strong>Last copied</strong> field shows when an item was last put on your clipboard.</p>
+  <p>Pasting from the quick paste popup deliberately does <strong>not</strong> reorder your history. Copy five things in a row and you can paste them back one after another without the list shuffling underneath you.</p>
 
   <h2>Keyboard control and multi-select</h2>
   <p>The panel is fully keyboard-navigable. With the panel open:</p>
