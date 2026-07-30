@@ -1792,6 +1792,28 @@ unsafe extern "system" fn mouse_hook_proc(
                 }
             }
         }
+
+        // ── CAPTURE_KEY suppression (action-editor mouse capture) ──────────
+        // Tighter rules than the trigger recorder: L/R/M only (send_mouse_click
+        // doesn't output side buttons), so Side1/Side2 clicks fall through and
+        // work normally during capture. MIRROR of the CAPTURE_KEY branch in
+        // handle_mouse_down — keep in sync.
+        if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
+            if let Some(btn_id) = suppress_id {
+                if is_button_down
+                    && matches!(btn_id, SUPPRESS_MOUSE_LEFT | SUPPRESS_MOUSE_RIGHT | SUPPRESS_MOUSE_MIDDLE)
+                {
+                    let capturable = os_any_modifier_down()
+                        || btn_id == SUPPRESS_MOUSE_MIDDLE;
+                    if capturable {
+                        if let Some(bit) = suppress_btn_bit(btn_id) {
+                            MOUSE_DOWN_SUPPRESSED.fetch_or(bit, Ordering::SeqCst);
+                        }
+                        return 1;
+                    }
+                }
+            }
+        }
         // Suppress bare mouse events that have assignments in app-linked profiles.
         // DOWN/UP events are paired: we only suppress an UP if we suppressed the
         // matching DOWN. This prevents mismatched events when the suppress set
@@ -3231,6 +3253,45 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
                 serde_json::json!({ "modifiers": mods, "keyId": mouse_button_to_key_id(button) }),
             );
             return;
+        }
+    }
+
+    // ── Action-editor key-capture mode: capture mouse combo for Send Hotkey ──
+    // Mirror of the trigger recorder branch above and of the keyboard
+    // IS_CAPTURING_KEY branch in handle_keydown — keep all three in sync.
+    // Restricted to L/R/M buttons because the executor (send_mouse_click)
+    // only supports LButton/RButton/MButton output — Side1/Side2 would
+    // capture cleanly but never fire on playback, which is a worse UX than
+    // just letting the side click through here. Emits the pill-picker
+    // naming convention ("LButton" etc, matching MOUSE_CLICK_OPTIONS) so a
+    // captured "Shift+LButton" saves identically to a modifier+pill combo
+    // and executes through the existing execute_send_hotkey mouse path.
+    if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
+        let output_name = match button {
+            MouseButton::Left => "LButton",
+            MouseButton::Right => "RButton",
+            MouseButton::Middle => "MButton",
+            _ => "",
+        };
+        if !output_name.is_empty() {
+            sync_modifier_state_from_os();
+            // Modifier required for L/R; bare Middle allowed. Bare L/R would
+            // eat clicks on Keyfire's own Cancel button during capture.
+            let capturable = has_any_modifier() || matches!(button, MouseButton::Middle);
+            if capturable {
+                IS_CAPTURING_KEY.store(false, Ordering::SeqCst);
+
+                let mut parts = Vec::new();
+                if MOD_CTRL.load(Ordering::SeqCst) { parts.push("Ctrl".to_string()); }
+                if MOD_SHIFT.load(Ordering::SeqCst) { parts.push("Shift".to_string()); }
+                if MOD_ALT.load(Ordering::SeqCst) { parts.push("Alt".to_string()); }
+                if MOD_META.load(Ordering::SeqCst) { parts.push("Win".to_string()); }
+                parts.push(output_name.to_string());
+
+                let combo = parts.join("+");
+                let _ = app.emit("key-captured", Value::String(combo));
+                return;
+            }
         }
     }
 

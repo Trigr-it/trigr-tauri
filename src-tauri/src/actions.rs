@@ -1383,15 +1383,17 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
 
     let is_mouse = is_mouse_button(key_name);
 
-    // Parse modifiers and VK (keyboard only)
-    let modifiers: Vec<String> = if is_mouse {
-        vec![]
-    } else {
-        data.get("modifiers")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default()
-    };
+    // Parse modifiers. Keep them for mouse output too so combos like
+    // Shift+LButton or Ctrl+RButton fire the click with the modifier held —
+    // captured from the mouse hook (handle_mouse_down CAPTURING_KEY branch).
+    // The normal-mode mouse path below wraps the click with mod_down/up
+    // SendInput batches; hold-mode and repeat-mode mouse paths still ignore
+    // modifiers (edge case, follow-up).
+    let modifiers: Vec<String> = data
+        .get("modifiers")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
 
     // Bare-modifier mode: when the user captured a sole modifier (Ctrl / Shift
     // / Alt / Win alone), the frontend sends key="" with non-empty modifiers.
@@ -1701,8 +1703,49 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
 
     // ── Normal mode ──
     if is_mouse {
-        info!("[Keyfire] Send Hotkey → mouse click: {}", key_name);
-        send_mouse_click(key_name);
+        info!("[Keyfire] Send Hotkey → mouse click: {}", combo_label);
+        // Build the click as two SendInput batches inside one SuppressionGuard:
+        //   1) mod_downs + mouse_down
+        //   2) mouse_up + mod_ups (reversed)
+        // The 15ms mid-sleep matches send_mouse_click's Chromium-fix hold time
+        // per [[feedback_synthetic_key_hold_time]]. Not calling send_mouse_click
+        // directly because it toggles SUPPRESS_SIMULATED off before returning,
+        // which would unmask the mod_up batch as real input to our own hook.
+        let (down_flag, up_flag) = match key_name {
+            "LButton" => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+            "RButton" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            "MButton" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+            _ => {
+                warn!("[Keyfire] Unknown mouse button: {}", key_name);
+                return;
+            }
+        };
+        let make_mouse = |flag: u32| INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0, dy: 0, mouseData: 0, dwFlags: flag, time: 0, dwExtraInfo: 0,
+                },
+            },
+        };
+        let held = release_held_modifiers();
+        {
+            let _guard = SuppressionGuard::new();
+            let mut down_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+            for &vk in &mod_vks { down_batch.push(make_vk_input(vk, false)); }
+            down_batch.push(make_mouse(down_flag));
+            unsafe {
+                SendInput(down_batch.len() as u32, down_batch.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+            }
+            thread::sleep(Duration::from_millis(15));
+            let mut up_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+            up_batch.push(make_mouse(up_flag));
+            for &vk in mod_vks.iter().rev() { up_batch.push(make_vk_input(vk, true)); }
+            unsafe {
+                SendInput(up_batch.len() as u32, up_batch.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+            }
+        }
+        restore_modifiers(&held);
     } else {
         let held = release_held_modifiers();
         let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() * 2 + 2);
