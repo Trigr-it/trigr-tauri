@@ -116,6 +116,12 @@ pub fn update_item(id: i64, new_text: String) -> Option<String> {
 
 pub fn set_ocr_text(id: i64, text: String) {}
 
+pub fn auto_ocr_enabled() -> bool { false }
+pub fn set_auto_ocr_enabled(enabled: bool) {}
+pub fn search_inside_images_enabled() -> bool { false }
+pub fn set_search_inside_images_enabled(enabled: bool) {}
+pub fn run_ocr_backfill() {}
+
 pub fn set_retention_days(days: u32) {}
 
 pub fn set_capture_enabled(enabled: bool) {}

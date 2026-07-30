@@ -136,7 +136,15 @@ export default function ClipboardOverlay() {
 
   const filtered = useMemo(() => {
     return items.filter(i => {
-      if (search.trim() && !(i.preview || i.text_content || '').toLowerCase().includes(search.toLowerCase())) return false;
+      if (search.trim()) {
+        const needle = search.toLowerCase();
+        const inPreview = (i.preview || i.text_content || '').toLowerCase().includes(needle);
+        // Search-inside-images (Pro): image rows with cached OCR text match
+        // the popup search too. Backend enforces the Pro + setting gate; if
+        // ocr_text is populated it means the row was OCR'd successfully.
+        const inOcr = (i.ocr_text || '').toLowerCase().includes(needle);
+        if (!inPreview && !inOcr) return false;
+      }
       if (filterTag !== 'All' && i.content_tag !== filterTag) return false;
       return true;
     });

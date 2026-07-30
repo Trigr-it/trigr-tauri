@@ -937,6 +937,25 @@
   max-width: 100px;
 }
 
+/* Search hit came from OCR text on an image card. Sits top-right of the
+   thumbnail to signal "found because of text inside the image". */
+.cbg-ocr-match-chip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* ── Link icon ───────────────────────────────────────────────────────────── */
 
 .cbg-link-icon {

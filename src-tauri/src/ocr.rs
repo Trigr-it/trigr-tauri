@@ -6,11 +6,31 @@
 //! can show "OCR not available on this system" rather than crashing.
 //!
 //! Blocks the calling thread — call from spawn_blocking / a dedicated thread.
+//!
+//! Large-image handling: `OcrEngine.MaxImageDimension` is a hard cap (~2600
+//! pixels historically) above which the engine silently truncates the input,
+//! producing OCR output that's missing the bottom/right of the image. When
+//! the source exceeds this, we scale down proportionally via BitmapTransform
+//! during decode so the full image reaches the engine.
 
-use windows::Graphics::Imaging::BitmapDecoder;
+use std::sync::OnceLock;
+use windows::Graphics::Imaging::{
+    BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat, BitmapTransform, ColorManagementMode,
+    ExifOrientationMode,
+};
 use windows::Media::Ocr::OcrEngine;
 use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
 use windows_core::Interface;
+
+/// Cached `OcrEngine.MaxImageDimension`. It's a static property on the class
+/// and doesn't change at runtime, so querying once is enough. `None` means we
+/// couldn't fetch it (Windows without the Media OCR component); in that case
+/// we skip the scale-down path entirely and hope the engine handles the size.
+static MAX_OCR_DIMENSION: OnceLock<Option<u32>> = OnceLock::new();
+
+fn max_ocr_dimension() -> Option<u32> {
+    *MAX_OCR_DIMENSION.get_or_init(|| OcrEngine::MaxImageDimension().ok())
+}
 
 /// Run OCR over PNG bytes. Blocks until complete. Returns recognised text or a
 /// user-friendly error string.
@@ -55,16 +75,68 @@ pub fn ocr_png_bytes(png: &[u8]) -> Result<String, String> {
         .Seek(0)
         .map_err(|e| format!("Stream seek failed: {}", e))?;
 
-    // Step 2: decode the PNG into a SoftwareBitmap.
+    // Step 2: decode the PNG into a SoftwareBitmap. When the source exceeds
+    // OcrEngine.MaxImageDimension we scale down at decode time (BitmapTransform)
+    // so the whole image reaches OCR — the engine would otherwise crop
+    // silently, dropping the bottom/right rows.
     let decoder = BitmapDecoder::CreateAsync(&stream_iras)
         .map_err(|e| format!("BitmapDecoder::CreateAsync failed: {}", e))?
         .get()
         .map_err(|e| format!("BitmapDecoder await failed: {}", e))?;
-    let bitmap = decoder
-        .GetSoftwareBitmapAsync()
-        .map_err(|e| format!("GetSoftwareBitmapAsync failed: {}", e))?
-        .get()
-        .map_err(|e| format!("GetSoftwareBitmap await failed: {}", e))?;
+
+    let src_w = decoder
+        .PixelWidth()
+        .map_err(|e| format!("PixelWidth failed: {}", e))?;
+    let src_h = decoder
+        .PixelHeight()
+        .map_err(|e| format!("PixelHeight failed: {}", e))?;
+
+    let max_dim = max_ocr_dimension();
+    let needs_scale = match max_dim {
+        Some(m) => src_w > m || src_h > m,
+        None => false,
+    };
+
+    let bitmap = if needs_scale {
+        // Preserve aspect ratio. floor() is safe — a stray fractional pixel
+        // makes no OCR difference and matches how WinRT rounds internally.
+        let m = max_dim.unwrap() as f64;
+        let scale = (m / src_w.max(src_h) as f64).min(1.0);
+        let dst_w = ((src_w as f64) * scale).floor().max(1.0) as u32;
+        let dst_h = ((src_h as f64) * scale).floor().max(1.0) as u32;
+
+        let transform = BitmapTransform::new()
+            .map_err(|e| format!("BitmapTransform::new failed: {}", e))?;
+        transform
+            .SetScaledWidth(dst_w)
+            .map_err(|e| format!("SetScaledWidth failed: {}", e))?;
+        transform
+            .SetScaledHeight(dst_h)
+            .map_err(|e| format!("SetScaledHeight failed: {}", e))?;
+
+        log::debug!(
+            "[Keyfire] OCR: scaling {}x{} -> {}x{} (MaxImageDimension={})",
+            src_w, src_h, dst_w, dst_h, max_dim.unwrap()
+        );
+
+        decoder
+            .GetSoftwareBitmapTransformedAsync(
+                BitmapPixelFormat::Bgra8,
+                BitmapAlphaMode::Premultiplied,
+                &transform,
+                ExifOrientationMode::RespectExifOrientation,
+                ColorManagementMode::DoNotColorManage,
+            )
+            .map_err(|e| format!("GetSoftwareBitmapTransformedAsync failed: {}", e))?
+            .get()
+            .map_err(|e| format!("GetSoftwareBitmapTransformed await failed: {}", e))?
+    } else {
+        decoder
+            .GetSoftwareBitmapAsync()
+            .map_err(|e| format!("GetSoftwareBitmapAsync failed: {}", e))?
+            .get()
+            .map_err(|e| format!("GetSoftwareBitmap await failed: {}", e))?
+    };
 
     // Step 3: try to create an OCR engine for the user's installed languages.
     // If no language packs are installed, RecognizeAsync will fail or the

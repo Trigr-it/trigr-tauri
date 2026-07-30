@@ -736,6 +736,12 @@ enum ClipboardMsg {
         id: i64,
         text: String,
     },
+    /// One-off backfill helper: return every image row that hasn't been OCR'd
+    /// yet. Used by `run_ocr_backfill` after a fresh Pro upgrade to catch up
+    /// on the existing clipboard history.
+    GetPendingOcrIds {
+        reply: mpsc::Sender<Vec<i64>>,
+    },
     IncrementPasteCount {
         id: i64,
     },
@@ -821,6 +827,107 @@ fn is_app_excluded(proc_name: &str) -> bool {
         .read()
         .map(|set| set.contains(&normalized))
         .unwrap_or(false)
+}
+
+// ── Auto-OCR (Pro) + search-inside-images (Pro) ─────────────────────────────
+//
+// Both default ON. The Pro gate is checked at dispatch time in handle_new_entry
+// (auto-OCR) and in search_history (search-inside-images), so a licence
+// transition takes effect on the next capture / search without restart.
+//
+// Auto-OCR dispatches to a dedicated worker thread via `OCR_TX`. The worker
+// receives (id, plaintext_png_bytes) — cheaper than round-tripping through
+// the writer thread + decryption. It calls `ocr_png_bytes` (blocking WinRT),
+// then sends the recognised text back through the writer thread via
+// `set_ocr_text` so it lands in the DB encrypted on the same path the manual
+// Extract text button uses.
+//
+// Size floor (64x64) skips icons + tiny sprites (OCR would just be noise).
+// Size cap (4000x4000) skips huge photos where OCR takes multiple seconds and
+// is unlikely to yield useful text — user can still trigger Extract text
+// manually for those.
+
+static AUTO_OCR_ENABLED: AtomicBool = AtomicBool::new(true);
+static SEARCH_INSIDE_IMAGES_ENABLED: AtomicBool = AtomicBool::new(true);
+
+const OCR_MIN_DIMENSION: u32 = 64;
+const OCR_MAX_DIMENSION: u32 = 4000;
+
+pub fn auto_ocr_enabled() -> bool {
+    AUTO_OCR_ENABLED.load(Ordering::SeqCst)
+}
+
+pub fn set_auto_ocr_enabled(enabled: bool) {
+    AUTO_OCR_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub fn search_inside_images_enabled() -> bool {
+    SEARCH_INSIDE_IMAGES_ENABLED.load(Ordering::SeqCst)
+}
+
+pub fn set_search_inside_images_enabled(enabled: bool) {
+    SEARCH_INSIDE_IMAGES_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+/// Job dispatched to the OCR worker thread. Holds the plaintext PNG bytes so
+/// the worker doesn't need DB access. `id` is the row we'll update once the
+/// text is recognised.
+struct OcrJob {
+    id: i64,
+    png: Vec<u8>,
+}
+
+static OCR_TX: OnceLock<Mutex<mpsc::Sender<OcrJob>>> = OnceLock::new();
+
+/// Dispatch an OCR job to the worker thread. No-op if the worker hasn't been
+/// spawned or the channel has closed. Never blocks the caller.
+fn dispatch_ocr_job(id: i64, png: Vec<u8>) {
+    if let Some(tx) = OCR_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(OcrJob { id, png });
+        }
+    }
+}
+
+/// Spawn the single OCR worker thread. Called once from `init()`. Serial
+/// processing keeps CPU usage bounded even under a paste-burst of images.
+fn spawn_ocr_worker() {
+    let (tx, rx) = mpsc::channel::<OcrJob>();
+    let _ = OCR_TX.set(Mutex::new(tx));
+    thread::spawn(move || {
+        while let Ok(job) = rx.recv() {
+            let started = std::time::Instant::now();
+            match crate::ocr::ocr_png_bytes(&job.png) {
+                Ok(text) => {
+                    let has_text = !text.trim().is_empty();
+                    debug!(
+                        "[Keyfire] Clipboard: auto-OCR id={} {} chars in {}ms",
+                        job.id,
+                        text.len(),
+                        started.elapsed().as_millis()
+                    );
+                    // Always write, even for empty results — a NULL ocr_text
+                    // still means "not tried"; empty string means "tried, no
+                    // text found" and prevents redundant re-OCR.
+                    set_ocr_text(job.id, text);
+                    if let Some(app) = APP_HANDLE.get() {
+                        use tauri::Emitter;
+                        let _ = app.emit(
+                            "clipboard-item-ocred",
+                            serde_json::json!({ "id": job.id, "has_text": has_text }),
+                        );
+                    }
+                }
+                Err(e) => {
+                    // OCR engine missing / no language pack / decode failed.
+                    // Log at debug so we don't spam trigr.log on systems
+                    // without OCR — user will still see "OCR not available"
+                    // if they click Extract text manually.
+                    debug!("[Keyfire] Clipboard: auto-OCR id={} failed: {}", job.id, e);
+                }
+            }
+        }
+    });
 }
 
 // ── Deduplication ────────────────────────────────────────────────────────────
@@ -1125,7 +1232,20 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                 .collect();
             set_excluded_apps(apps);
         }
+        // Auto-OCR settings default ON. Only override if the user has explicitly
+        // saved a value — a missing key on a fresh install (or an install that
+        // predates this feature) keeps the default enabled experience.
+        if let Some(v) = cfg.get("clipboardAutoOcr").and_then(|v| v.as_bool()) {
+            AUTO_OCR_ENABLED.store(v, Ordering::SeqCst);
+        }
+        if let Some(v) = cfg.get("clipboardSearchInsideImages").and_then(|v| v.as_bool()) {
+            SEARCH_INSIDE_IMAGES_ENABLED.store(v, Ordering::SeqCst);
+        }
     }
+
+    // Spawn the OCR worker thread. Idle until the first capture-with-image
+    // arrives and the Pro / setting gates pass in handle_new_entry.
+    spawn_ocr_worker();
 
     // Phase 2: build the AES-256-GCM cipher from the DPAPI-wrapped master key
     // BEFORE spawning the writer thread. If this fails, the writer still spawns
@@ -1254,6 +1374,16 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                             "UPDATE clipboard_history SET ocr_text = ?1, iv_ocr = ?2 WHERE id = ?3",
                             rusqlite::params![ocr_ct, iv_ocr, id],
                         );
+                    }
+                    ClipboardMsg::GetPendingOcrIds { reply } => {
+                        let ids: Vec<i64> = conn
+                            .prepare("SELECT id FROM clipboard_history WHERE content_type = 'image' AND ocr_text IS NULL AND image_blob IS NOT NULL ORDER BY id DESC")
+                            .and_then(|mut stmt| {
+                                let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+                                Ok(rows.filter_map(|r| r.ok()).collect())
+                            })
+                            .unwrap_or_default();
+                        let _ = reply.send(ids);
                     }
                     ClipboardMsg::IncrementPasteCount { id } => {
                         // Counter only — pasting must NOT reorder the list.
@@ -1644,6 +1774,98 @@ pub fn set_ocr_text(id: i64, text: String) {
     }
 }
 
+/// One-off OCR backfill for existing image rows. Called from the frontend on
+/// first launch after a Pro upgrade (guarded by a localStorage flag so it
+/// only runs once). Runs on a dedicated thread so we don't block the caller.
+///
+/// Emits `clipboard-ocr-backfill-progress` with `{processed, total}` after
+/// each item, and `clipboard-ocr-backfill-done` when the queue drains. The
+/// status bar listens for both. Silent no-op if the user isn't Pro or auto-
+/// OCR is disabled — the frontend guard should skip in those cases anyway.
+///
+/// Aborts after `MAX_CONSECUTIVE_FAILURES` OCR errors in a row — usually
+/// means the OCR engine or language pack is missing and every subsequent
+/// call would fail the same way.
+pub fn run_ocr_backfill() {
+    if !crate::licence::is_pro() || !auto_ocr_enabled() {
+        return;
+    }
+    const MAX_CONSECUTIVE_FAILURES: u32 = 3;
+
+    thread::spawn(move || {
+        let ids: Vec<i64> = if let Some(tx) = CLIPBOARD_TX.get() {
+            if let Ok(tx) = tx.lock() {
+                let (reply_tx, reply_rx) = mpsc::channel();
+                if tx.send(ClipboardMsg::GetPendingOcrIds { reply: reply_tx }).is_ok() {
+                    reply_rx
+                        .recv_timeout(std::time::Duration::from_secs(10))
+                        .unwrap_or_default()
+                } else {
+                    return;
+                }
+            } else {
+                return;
+            }
+        } else {
+            return;
+        };
+
+        let total = ids.len();
+        if total == 0 {
+            return;
+        }
+
+        info!("[Keyfire] Clipboard: OCR backfill starting, {} image(s) pending", total);
+        emit_backfill_progress(0, total);
+
+        let mut consecutive_failures: u32 = 0;
+        for (i, id) in ids.iter().enumerate() {
+            // If the user disables auto-OCR mid-backfill, bail out cleanly.
+            if !auto_ocr_enabled() || !crate::licence::is_pro() {
+                info!("[Keyfire] Clipboard: OCR backfill cancelled (setting/licence change)");
+                break;
+            }
+            let blob = get_image_blob(*id);
+            if let Some(blob) = blob {
+                match crate::ocr::ocr_png_bytes(&blob) {
+                    Ok(text) => {
+                        consecutive_failures = 0;
+                        set_ocr_text(*id, text);
+                    }
+                    Err(e) => {
+                        consecutive_failures += 1;
+                        debug!("[Keyfire] Clipboard: backfill OCR id={} failed: {}", id, e);
+                        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                            warn!(
+                                "[Keyfire] Clipboard: OCR backfill aborting after {} consecutive failures — engine or language pack likely missing",
+                                consecutive_failures
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+            emit_backfill_progress(i + 1, total);
+        }
+
+        info!("[Keyfire] Clipboard: OCR backfill done");
+        if let Some(app) = APP_HANDLE.get() {
+            use tauri::Emitter;
+            let _ = app.emit("clipboard-ocr-backfill-done", serde_json::json!({ "total": total }));
+        }
+    });
+}
+
+fn emit_backfill_progress(processed: usize, total: usize) {
+    if let Some(app) = APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit(
+            "clipboard-ocr-backfill-progress",
+            serde_json::json!({ "processed": processed, "total": total }),
+        );
+    }
+}
+
 pub fn set_retention_days(days: u32) {
     let clamped = days.clamp(1, 30);
     if let Some(m) = RETENTION_DAYS.get() {
@@ -1829,6 +2051,22 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
 
     let new_id = conn.last_insert_rowid();
     handle_prune(conn);
+
+    // Auto-OCR dispatch (Pro, setting-gated, size-gated). Uses plaintext PNG
+    // bytes from the entry directly — cheaper than round-tripping through DB
+    // decrypt. Skips icons (<64px) and huge images (>4000px) that either lack
+    // meaningful text or would monopolise the OCR worker.
+    if entry.content_type == "image" && crate::licence::is_pro() && auto_ocr_enabled() {
+        if let Some(png) = entry.image_blob.as_deref() {
+            let w = entry.image_width;
+            let h = entry.image_height;
+            let within_floor = w >= OCR_MIN_DIMENSION && h >= OCR_MIN_DIMENSION;
+            let within_cap = w <= OCR_MAX_DIMENSION && h <= OCR_MAX_DIMENSION;
+            if within_floor && within_cap {
+                dispatch_ocr_job(new_id, png.to_vec());
+            }
+        }
+    }
 
     if let Some(app) = APP_HANDLE.get() {
         use tauri::Emitter;
@@ -2038,8 +2276,14 @@ fn search_history(
     let started = std::time::Instant::now();
     let order_clause = order_by_clause(promote_starred);
 
+    // Search-inside-images (Pro + setting): also decrypt and scan ocr_text on
+    // image rows. Gated at scan time so a licence transition or setting flip
+    // takes effect on the next query without restart. Non-image rows have
+    // ocr_text = NULL so pulling those columns is cheap.
+    let search_images = crate::licence::is_pro() && search_inside_images_enabled();
+
     let scan_sql = format!(
-        "SELECT id, preview, iv_preview FROM clipboard_history WHERE {} ORDER BY {}",
+        "SELECT id, preview, iv_preview, ocr_text, iv_ocr FROM clipboard_history WHERE {} ORDER BY {}",
         where_clause, order_clause
     );
     let bind_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
@@ -2051,18 +2295,40 @@ fn search_history(
         }
     };
     let mut scanned: usize = 0;
+    let mut ocr_matches: HashSet<i64> = HashSet::new();
     let matched_ids: Vec<i64> = stmt
         .query_map(rusqlite::params_from_iter(bind_refs.iter()), |row| {
             let id = row.get::<_, i64>(0)?;
             let preview_ct = get_optional_bytes(row, 1)?.unwrap_or_default();
             let iv_preview = row.get::<_, Option<Vec<u8>>>(2)?;
-            Ok((id, resolve_required_text(preview_ct, iv_preview)))
+            let ocr_ct = get_optional_bytes(row, 3)?;
+            let iv_ocr = row.get::<_, Option<Vec<u8>>>(4)?;
+            Ok((
+                id,
+                resolve_required_text(preview_ct, iv_preview),
+                ocr_ct.and_then(|ct| resolve_optional_text(Some(ct), iv_ocr)),
+            ))
         })
         .map(|iter| {
             iter.filter_map(|r| r.ok())
                 .inspect(|_| scanned += 1)
-                .filter(|(_, preview)| preview.to_lowercase().contains(needle))
-                .map(|(id, _)| id)
+                .filter_map(|(id, preview, ocr)| {
+                    let preview_hit = preview.to_lowercase().contains(needle);
+                    let ocr_hit = search_images
+                        && ocr
+                            .as_deref()
+                            .map(|s| s.to_lowercase().contains(needle))
+                            .unwrap_or(false);
+                    if preview_hit || ocr_hit {
+                        // Track OCR-only hits so the UI can chip them.
+                        if ocr_hit && !preview_hit {
+                            ocr_matches.insert(id);
+                        }
+                        Some(id)
+                    } else {
+                        None
+                    }
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -2074,7 +2340,7 @@ fn search_history(
         .take(per_page as usize)
         .collect();
 
-    let items: Vec<Value> = if page_ids.is_empty() {
+    let mut items: Vec<Value> = if page_ids.is_empty() {
         Vec::new()
     } else {
         // page_ids are i64s we produced ourselves — safe to inline. The same
@@ -2096,10 +2362,24 @@ fn search_history(
         }
     };
 
+    // Tag rows whose match came from OCR text only (preview did not match).
+    // The panel uses this to render a small "in image" chip so the user
+    // understands why a screenshot appeared for a text query.
+    for item in items.iter_mut() {
+        if let Some(id) = item.get("id").and_then(|v| v.as_i64()) {
+            if ocr_matches.contains(&id) {
+                if let Some(obj) = item.as_object_mut() {
+                    obj.insert("search_source".to_string(), serde_json::json!("ocr"));
+                }
+            }
+        }
+    }
+
     debug!(
-        "[Keyfire] Clipboard: search scanned {} row(s), {} match(es) in {}ms",
+        "[Keyfire] Clipboard: search scanned {} row(s), {} match(es) ({} via OCR) in {}ms",
         scanned,
         total,
+        ocr_matches.len(),
         started.elapsed().as_millis()
     );
 

@@ -561,6 +561,21 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-OCR (Pro): the worker finished OCR on a row — fetch its ocr_text
+  // and merge it into local state so search-inside-images picks it up
+  // immediately without a full history reload.
+  useEffect(() => {
+    window.electronAPI?.onClipboardItemOcred?.(({ id, has_text }) => {
+      if (!has_text) return;
+      window.electronAPI?.getClipboardOcrText?.(id).then(text => {
+        if (!text) return;
+        setItems(prev => prev.map(i => i.id === id ? { ...i, ocr_text: text } : i));
+      }).catch(() => {});
+    });
+    return () => window.electronAPI?.removeAllListeners('clipboard-item-ocred');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!ctxMenu) return;
     const handler = (e) => {
@@ -824,6 +839,13 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
 
   const handleRunOcr = async () => {
     if (!selectedId) return;
+    // Pro gate: OCR (manual + auto + search-inside-images) is a Pro feature.
+    // Route free users to the upgrade modal instead of hitting the backend,
+    // which returns OCR_PRO_REQUIRED as belt-and-braces.
+    if (!isPro) {
+      onShowUpgrade?.('Text extraction from images (OCR)');
+      return;
+    }
     setOcrLoading(true);
     setOcrError(null);
     try {
@@ -835,6 +857,14 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
       // (Rust already persisted it via set_ocr_text).
       setItems(prev => prev.map(i => i.id === selectedId ? { ...i, ocr_text: value } : i));
     } catch (e) {
+      // Sentinel from the backend Pro gate — surface the upgrade modal even
+      // if we somehow reached the invoke (setting-drift, race with a licence
+      // change mid-click).
+      if (e === 'OCR_PRO_REQUIRED' || (typeof e === 'string' && e.includes('OCR_PRO_REQUIRED'))) {
+        onShowUpgrade?.('Text extraction from images (OCR)');
+        setOcrLoading(false);
+        return;
+      }
       setOcrError(typeof e === 'string' ? e : (e?.message || 'OCR failed'));
     } finally {
       setOcrLoading(false);
@@ -1181,7 +1211,16 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     }
     if (filterApp && i.source_app !== filterApp) return false;
     if (filterTag !== 'All' && i.content_tag !== filterTag) return false;
-    if (search.trim() && !(i.preview || '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (search.trim()) {
+      const needle = search.toLowerCase();
+      const inPreview = (i.preview || '').toLowerCase().includes(needle);
+      // Search-inside-images: match against cached OCR text on image rows.
+      // Backend enforces the Pro + setting gate on paginated queries; this
+      // JS layer just needs to not filter OCR hits back out. Legacy rows
+      // (before auto-OCR) simply have ocr_text = null and won't match.
+      const inOcr = (i.ocr_text || '').toLowerCase().includes(needle);
+      if (!inPreview && !inOcr) return false;
+    }
     return true;
   });
 
@@ -1476,6 +1515,17 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                   const isLink = tag === 'Link';
                   const isSel = item.id === selectedId;
                   const isMulti = multiSel.has(item.id);
+                  // "in image" chip: appears when the active search matched the
+                  // row's OCR text but NOT its preview — helps the user
+                  // understand why a screenshot appeared for a text query.
+                  // Trust the backend hint (search_source) when present, and
+                  // recompute locally for defensive JS-side matches.
+                  const needle = search.trim().toLowerCase();
+                  const isOcrMatch = isImage && needle.length > 0 && (
+                    item.search_source === 'ocr' ||
+                    (!(item.preview || '').toLowerCase().includes(needle) &&
+                      (item.ocr_text || '').toLowerCase().includes(needle))
+                  );
                   const className = `cbg-card${isImage ? ' cbg-card-img' : ' cbg-card-text'}${isSel ? ' cbg-card-sel' : ''}${isMulti ? ' cbg-card-multisel' : ''}${item.id === newItemId ? ' cbg-card-arrive' : ''}${sortable ? ' cbg-card-sortable' : ''}`;
                   const onClick = (e) => {
                     // Ctrl/Cmd+click builds a multi-selection for bulk actions
@@ -1525,6 +1575,11 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                       {isImage ? (
                         <>
                           <ImageThumb id={item.id} className="cbg-card-image" />
+                          {isOcrMatch && (
+                            <span className="cbg-ocr-match-chip" aria-label="Match found in image text">
+                              in image
+                            </span>
+                          )}
                           <div className="cbg-card-img-overlay">
                             {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
                             <span className="cbg-overlay-right">{item.image_width}×{item.image_height} · {formatTime(item.timestamp)}</span>
@@ -1902,10 +1957,12 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                     type="button"
                     onClick={handleRunOcr}
                     disabled={ocrLoading}
+                    title={isPro ? 'Run OCR on this image' : 'OCR text extraction is a Pro feature'}
                   >
                     {ocrLoading
                       ? 'Extracting…'
                       : (ocrText !== null && !ocrError ? 'Re-extract text' : 'Extract text')}
+                    {!isPro && <span className="cbg-pro-chip" style={{ marginLeft: 6 }}>PRO</span>}
                   </button>
                   <button
                     className="cbg-dbtn"

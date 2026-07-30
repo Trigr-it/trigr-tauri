@@ -1,9 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import './StatusBar.css';
 import { friendlyKeyName } from './keyboardLayout';
 
 export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, assignmentCount, engineStatus, lastFired, appVersion, globalPauseToggleKey }) {
   const { uiohookAvailable, nutjsAvailable, isDemoMode } = engineStatus || {};
+
+  // Silent OCR backfill progress. `null` = idle, otherwise {processed, total}.
+  // Self-contained inside StatusBar so App.jsx doesn't need to route these
+  // events through props. Auto-clears on the done event.
+  const [ocrBackfill, setOcrBackfill] = useState(null);
+  useEffect(() => {
+    window.electronAPI?.onClipboardOcrBackfillProgress?.(({ processed, total }) => {
+      setOcrBackfill({ processed, total });
+    });
+    window.electronAPI?.onClipboardOcrBackfillDone?.(() => {
+      // Hold on "done" for a beat so the user sees completion.
+      setOcrBackfill({ processed: -1, total: -1 });
+      setTimeout(() => setOcrBackfill(null), 2500);
+    });
+    return () => {
+      window.electronAPI?.removeAllListeners?.('clipboard-ocr-backfill-progress');
+      window.electronAPI?.removeAllListeners?.('clipboard-ocr-backfill-done');
+    };
+  }, []);
 
   function pauseHotkeyLabel(combo) {
     if (!combo) return null;
@@ -44,6 +63,17 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
           <>
             <span className="status-sep">·</span>
             <span className="status-fired">▶ {lastFired.label}</span>
+          </>
+        )}
+
+        {ocrBackfill && (
+          <>
+            <span className="status-sep">·</span>
+            <span className="status-info" style={{ opacity: 0.85 }}>
+              {ocrBackfill.total < 0
+                ? '✓ Image text extraction complete'
+                : `Extracting text from images… ${ocrBackfill.processed}/${ocrBackfill.total}`}
+            </span>
           </>
         )}
       </div>

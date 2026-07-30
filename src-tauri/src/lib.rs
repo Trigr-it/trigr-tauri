@@ -3413,8 +3413,16 @@ fn copy_text(text: String) {
 /// On success, caches the recognised text back on the image row via
 /// `clipboard::set_ocr_text` so re-selecting the same image returns instantly
 /// without re-running OCR.
+///
+/// Pro-gated: OCR (both this manual path and the auto-OCR-on-capture path)
+/// is part of the Pro clipboard tier. Returns the sentinel string
+/// "OCR_PRO_REQUIRED" so the frontend can distinguish "needs upgrade" from
+/// generic failures and route to the upgrade modal.
 #[tauri::command]
 async fn ocr_clipboard_image(id: i64) -> Result<String, String> {
+    if !licence::is_pro() {
+        return Err("OCR_PRO_REQUIRED".to_string());
+    }
     let blob = match clipboard::get_image_blob(id) {
         Some(b) => b,
         None => return Err("Image not found".to_string()),
@@ -3848,6 +3856,8 @@ fn get_clipboard_settings() -> Value {
     serde_json::json!({
         "retention_days": clipboard::get_retention(),
         "enabled": true,
+        "auto_ocr": clipboard::auto_ocr_enabled(),
+        "search_inside_images": clipboard::search_inside_images_enabled(),
     })
 }
 
@@ -3865,6 +3875,49 @@ fn set_clipboard_settings(retention_days: u32) {
         obj.insert("clipboardRetentionDays".to_string(), serde_json::json!(clamped));
         config::save_config(&cfg);
     }
+}
+
+/// Set both auto-OCR toggles in one command. Both default true for Pro; the
+/// gates in clipboard.rs (auto-OCR dispatch + search_history) enforce Pro at
+/// use-time, so a Free user can technically flip them but nothing happens.
+#[tauri::command]
+fn set_clipboard_ocr_settings(auto_ocr: bool, search_inside_images: bool) {
+    clipboard::set_auto_ocr_enabled(auto_ocr);
+    clipboard::set_search_inside_images_enabled(search_inside_images);
+
+    let mut cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = cfg.as_object_mut() {
+        obj.insert("clipboardAutoOcr".to_string(), serde_json::json!(auto_ocr));
+        obj.insert(
+            "clipboardSearchInsideImages".to_string(),
+            serde_json::json!(search_inside_images),
+        );
+        config::save_config(&cfg);
+    }
+}
+
+/// Kick off the one-off OCR backfill for existing image rows. Pro-gated
+/// inside clipboard::run_ocr_backfill so the guard survives even if the
+/// frontend calls it without checking. Returns immediately — work happens
+/// on a background thread and emits progress events.
+#[tauri::command]
+fn backfill_clipboard_ocr() {
+    clipboard::run_ocr_backfill();
+}
+
+/// Fetch just the decrypted OCR text for a row. Used by the auto-OCR
+/// completion listener in ClipboardPanel to merge newly-recognised text
+/// into local state without a full get_item_full round-trip. Returns
+/// empty string if the row has no OCR text yet.
+#[tauri::command]
+async fn get_clipboard_ocr_text(id: i64) -> String {
+    tauri::async_runtime::spawn_blocking(move || {
+        clipboard::get_item_full(id)
+            .and_then(|item| item.ocr_text)
+            .unwrap_or_default()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -4773,6 +4826,9 @@ pub fn run() {
             update_clipboard_item,
             get_clipboard_settings,
             set_clipboard_settings,
+            set_clipboard_ocr_settings,
+            backfill_clipboard_ocr,
+            get_clipboard_ocr_text,
             set_clipboard_capture_enabled,
             set_clipboard_excluded_apps,
             get_clipboard_storage_size,

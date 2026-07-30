@@ -263,6 +263,10 @@ export default function SettingsPanel({
   // matches inside collapsed sections.
   const [expandedSections, setExpandedSections] = useState(() => new Set());
   const [clipboardRetention, setClipboardRetention] = useState(7);
+  // OCR (Pro) — auto-extract on capture + include image text in search results.
+  // Both default true; backend enforces Pro at use-time.
+  const [autoOcr, setAutoOcr] = useState(true);
+  const [searchInsideImages, setSearchInsideImages] = useState(true);
   const [licenceKey, setLicenceKey]             = useState('');
   const [licenceActivating, setLicenceActivating] = useState(false);
   const [licenceError, setLicenceError]         = useState(null);
@@ -285,6 +289,8 @@ export default function SettingsPanel({
     window.electronAPI?.getSharedConfigPath?.().then(p => setSharedConfigPath(p || null));
     window.electronAPI?.getClipboardSettings?.().then(s => {
       if (s?.retention_days) setClipboardRetention(s.retention_days);
+      if (typeof s?.auto_ocr === 'boolean') setAutoOcr(s.auto_ocr);
+      if (typeof s?.search_inside_images === 'boolean') setSearchInsideImages(s.search_inside_images);
     });
     window.electronAPI?.getClipboardEncryptionStatus?.().then(s => setEncStatus(s || null));
     window.electronAPI?.getTempMacroStatus?.().then(s => { if (s) setTempMacroStatus(s); });
@@ -1535,6 +1541,52 @@ export default function SettingsPanel({
                   />
                   <span className="settings-retention-unit">days</span>
                 </div>
+              </div>
+
+              <div className="settings-toggle-row">
+                <div className="settings-toggle-info">
+                  <span className="settings-toggle-label">
+                    Auto-extract text from images <span className="pro-badge">PRO</span>
+                  </span>
+                  <span className="settings-toggle-sub">
+                    Runs OCR on every new screenshot or image copy so their text becomes searchable. Stored encrypted alongside the image.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-toggle${autoOcr ? ' on' : ''}`}
+                  onClick={() => {
+                    if (!isPro) { onShowUpgrade?.('Auto-extract text from images (OCR)'); return; }
+                    const next = !autoOcr;
+                    setAutoOcr(next);
+                    window.electronAPI?.setClipboardOcrSettings(next, searchInsideImages);
+                  }}
+                  role="switch"
+                  aria-checked={autoOcr}
+                />
+              </div>
+
+              <div className="settings-toggle-row">
+                <div className="settings-toggle-info">
+                  <span className="settings-toggle-label">
+                    Search inside image text <span className="pro-badge">PRO</span>
+                  </span>
+                  <span className="settings-toggle-sub">
+                    Includes text extracted from images when you search the clipboard. Matches show an "in image" chip.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`settings-toggle${searchInsideImages ? ' on' : ''}`}
+                  onClick={() => {
+                    if (!isPro) { onShowUpgrade?.('Search inside image text'); return; }
+                    const next = !searchInsideImages;
+                    setSearchInsideImages(next);
+                    window.electronAPI?.setClipboardOcrSettings(autoOcr, next);
+                  }}
+                  role="switch"
+                  aria-checked={searchInsideImages}
+                />
               </div>
             </>
           )}

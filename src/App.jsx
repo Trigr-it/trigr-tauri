@@ -818,6 +818,23 @@ function App() {
     window.electronAPI?.getGracePeriodState?.().then(g => setGracePeriodState(g));
   }, [licenceStatus.is_pro]);
 
+  // One-shot OCR backfill after the first Pro launch that includes auto-OCR.
+  // Guarded by localStorage `trigr_ocr_backfilled_v1` so it only ever runs
+  // once per install. Runs after the licence check has resolved so we're
+  // reading a settled isPro. Backend also gates on Pro + setting so an
+  // accidental re-run costs nothing.
+  useEffect(() => {
+    if (!licenceChecked || !isPro) return;
+    try {
+      if (localStorage.getItem('trigr_ocr_backfilled_v1')) return;
+    } catch { /* localStorage may be blocked in rare embed contexts */ }
+    window.electronAPI?.getClipboardSettings?.().then(cs => {
+      if (!cs?.auto_ocr) return; // user disabled it before we got here
+      window.electronAPI?.backfillClipboardOcr?.();
+      try { localStorage.setItem('trigr_ocr_backfilled_v1', String(Date.now())); } catch {}
+    }).catch(() => {});
+  }, [licenceChecked, isPro]);
+
   // ── Licence re-validation on window focus ──
   useEffect(() => {
     const handleFocus = () => {

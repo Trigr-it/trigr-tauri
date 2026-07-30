@@ -317,6 +317,12 @@ window.electronAPI = {
   updateClipboardItem:    (id, newText)   => invoke('update_clipboard_item', { id, newText }),
   getClipboardSettings:   ()              => invoke('get_clipboard_settings'),
   setClipboardSettings:   (retentionDays) => invoke('set_clipboard_settings', { retentionDays }),
+  // Auto-OCR + search-inside-images (Pro). Backfill runs once after upgrade,
+  // guarded by a localStorage flag in App.jsx.
+  setClipboardOcrSettings: (autoOcr, searchInsideImages) =>
+    invoke('set_clipboard_ocr_settings', { autoOcr, searchInsideImages }),
+  backfillClipboardOcr:   ()              => invoke('backfill_clipboard_ocr'),
+  getClipboardOcrText:    (id)            => invoke('get_clipboard_ocr_text', { id }),
   setClipboardCaptureEnabled: (enabled)   => invoke('set_clipboard_capture_enabled', { enabled }),
   setClipboardExcludedApps: (apps)        => invoke('set_clipboard_excluded_apps', { apps }),
   getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
@@ -340,6 +346,19 @@ window.electronAPI = {
   // storage pattern as onClipboardNewItem.
   onClipboardItemTouched: (callback) => {
     listeners['clipboard-item-touched'] = listen('clipboard-item-touched', (event) => callback(event.payload));
+  },
+  // Auto-OCR (Pro): the OCR worker finished a row. Payload = { id, has_text }.
+  // Panel refetches ocr_text on demand (it's already in the row model post-
+  // reload) — this event just signals "the search index for this row is now
+  // richer, refresh if you're showing it".
+  onClipboardItemOcred: (callback) => {
+    listeners['clipboard-item-ocred'] = listen('clipboard-item-ocred', (event) => callback(event.payload));
+  },
+  onClipboardOcrBackfillProgress: (callback) => {
+    listeners['clipboard-ocr-backfill-progress'] = listen('clipboard-ocr-backfill-progress', (event) => callback(event.payload));
+  },
+  onClipboardOcrBackfillDone: (callback) => {
+    listeners['clipboard-ocr-backfill-done'] = listen('clipboard-ocr-backfill-done', (event) => callback(event.payload));
   },
   onClipboardOverlayData: (callback) => {
     listen('clipboard-overlay-data', (event) => callback(event.payload)).then(u => { listeners['clipboard-overlay-data'] = u; });
