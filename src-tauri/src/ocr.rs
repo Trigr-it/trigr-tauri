@@ -12,7 +12,14 @@
 //! producing OCR output that's missing the bottom/right of the image. When
 //! the source exceeds this, we scale down proportionally via BitmapTransform
 //! during decode so the full image reaches the engine.
+//!
+//! Accuracy preprocessing: the engine has no tuning knobs and internally
+//! binarizes, so low-contrast coloured text (red on white, grey on grey)
+//! misreads. Before recognition we grayscale + contrast-stretch the image
+//! (robust min/max, not hard threshold — mixed light/dark regions survive)
+//! and 2x-upscale small captures, both of which measurably help it.
 
+use std::io::Cursor;
 use std::sync::OnceLock;
 use windows::Graphics::Imaging::{
     BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat, BitmapTransform, ColorManagementMode,
@@ -32,6 +39,90 @@ fn max_ocr_dimension() -> Option<u32> {
     *MAX_OCR_DIMENSION.get_or_init(|| OcrEngine::MaxImageDimension().ok())
 }
 
+/// Fallback engine cap when `MaxImageDimension` can't be queried. Matches the
+/// value the API has returned on every Windows build to date.
+const FALLBACK_MAX_DIMENSION: u32 = 2600;
+
+/// Preprocess PNG bytes for better recognition accuracy. Returns re-encoded
+/// PNG bytes, or `None` when preprocessing isn't needed (image already
+/// high-contrast and large enough) or fails for any reason — the caller falls
+/// back to the original bytes, so this can never make OCR worse than before.
+///
+/// Two transforms:
+/// 1. Grayscale + linear contrast stretch. The black/white points come from
+///    the darkest and lightest histogram bins holding at least 0.05% of
+///    pixels — robust against single-pixel outliers, but a sparse run of
+///    coloured text (~2% of pixels) still anchors the black point, so red
+///    text on a white page maps to near-black. Deliberately NOT a hard
+///    threshold: screenshots mixing dark and light regions keep their
+///    mid-tones and dark-mode captures don't get noise blown up to full range.
+/// 2. 2x upscale (Catmull-Rom) when the result still fits inside the engine's
+///    MaxImageDimension — the engine is measurably more accurate once glyphs
+///    are ~20px+ tall.
+fn preprocess_for_ocr(png: &[u8]) -> Option<Vec<u8>> {
+    let img = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?;
+    let mut gray = img.to_luma8();
+    let (w, h) = gray.dimensions();
+
+    // Histogram over luma values.
+    let mut hist = [0u64; 256];
+    for p in gray.pixels() {
+        hist[p.0[0] as usize] += 1;
+    }
+    let total = (w as u64) * (h as u64);
+
+    // Robust black/white points: darkest and lightest bins with at least
+    // 0.05% of pixels (floor of 4 so tiny images aren't outlier-driven).
+    let floor = (total / 2000).max(4);
+    let lo = (0..256).find(|&i| hist[i] >= floor).unwrap_or(0) as u32;
+    let hi = (0..256).rfind(|&i| hist[i] >= floor).unwrap_or(255) as u32;
+
+    // Near-flat image: nothing meaningful to stretch (and dividing by a tiny
+    // range would amplify noise). Leave the original alone.
+    if hi <= lo || hi - lo < 16 {
+        return None;
+    }
+
+    let needs_stretch = lo > 8 || hi < 247;
+    let cap = max_ocr_dimension().unwrap_or(FALLBACK_MAX_DIMENSION);
+    let needs_upscale = w.max(h) * 2 <= cap;
+
+    if !needs_stretch && !needs_upscale {
+        return None;
+    }
+
+    if needs_stretch {
+        let mut lut = [0u8; 256];
+        for (i, entry) in lut.iter_mut().enumerate() {
+            let v = ((i as f32 - lo as f32) / (hi - lo) as f32 * 255.0).clamp(0.0, 255.0);
+            *entry = v as u8;
+        }
+        for p in gray.pixels_mut() {
+            p.0[0] = lut[p.0[0] as usize];
+        }
+    }
+
+    if needs_upscale {
+        gray = image::imageops::resize(
+            &gray,
+            w * 2,
+            h * 2,
+            image::imageops::FilterType::CatmullRom,
+        );
+    }
+
+    log::debug!(
+        "[Keyfire] OCR preprocess: {}x{} lo={} hi={} stretch={} upscale={}",
+        w, h, lo, hi, needs_stretch, needs_upscale
+    );
+
+    let mut out = Vec::new();
+    image::DynamicImage::ImageLuma8(gray)
+        .write_to(&mut Cursor::new(&mut out), image::ImageFormat::Png)
+        .ok()?;
+    Some(out)
+}
+
 /// Run OCR over PNG bytes. Blocks until complete. Returns recognised text or a
 /// user-friendly error string.
 ///
@@ -44,6 +135,11 @@ pub fn ocr_png_bytes(png: &[u8]) -> Result<String, String> {
     if png.is_empty() {
         return Err("Empty image data".to_string());
     }
+
+    // Step 0: contrast/scale preprocessing. Falls back to the original bytes
+    // when unnecessary or on any decode/encode failure.
+    let preprocessed = preprocess_for_ocr(png);
+    let png: &[u8] = preprocessed.as_deref().unwrap_or(png);
 
     // Step 1: write PNG bytes into an InMemoryRandomAccessStream.
     let stream = InMemoryRandomAccessStream::new()
