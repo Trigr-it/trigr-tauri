@@ -1124,6 +1124,8 @@
 
   <h2>Mouse button targets</h2>
   <p>Send Hotkey supports mouse buttons (Left Click, Right Click, Middle Click) as targets in all three modes: normal, hold, and repeat. Select a mouse button from the pill buttons below the capture field.</p>
+  <p>Mouse clicks can also be combined with modifiers. Press <strong>Record</strong> and perform the combo, for example <kbd>Shift</kbd>+Left Click, and Keyfire captures it exactly. On playback the modifiers are held around the click, so the target app sees a genuine modified click. Bare left and right clicks cannot be captured live (you need them to operate the recorder itself); assign those from the pill buttons instead.</p>
+  <p>Modifier+click combos fire in normal mode. Hold and repeat modes currently send the click without its modifiers. Side buttons (Side 1 and Side 2) work as triggers but are not yet available as Send Hotkey outputs.</p>
 
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
 </div>
@@ -1853,7 +1855,7 @@
     <tr><td><strong>Rich text</strong></td><td>Formatted content keeps its bullets, bold, links and colour when pasted into rich editors. See Rich text stays formatted below.</td></tr>
     <tr><td><strong>Inline editing</strong></td><td>Edit any text-based clipboard item directly. Click Edit in the detail pane.</td></tr>
     <tr><td><strong>Image support</strong></td><td>Screenshots and copied images are captured as PNG with full preview and zoom.</td></tr>
-    <tr><td><strong>OCR</strong></td><td>Captured images run through OCR. Extracted text becomes searchable and copyable.</td></tr>
+    <tr><td><strong>OCR</strong> <span style="opacity:.7">(Pro)</span></td><td>Text inside captured images is extracted automatically and becomes searchable and copyable. See Text from images below.</td></tr>
     <tr><td><strong>Timeline grouping</strong></td><td>Items grouped by Saved, Pinned, Today, Yesterday, This Week, This Month, Older. Click any group header to collapse or expand it. Your layout is remembered.</td></tr>
     <tr><td><strong>Storage indicator</strong></td><td>Shows the total size of your clipboard database in the panel toolbar.</td></tr>
     <tr><td><strong>Column toggle</strong></td><td>Switch between 1, 2, or auto-column grid. Useful when comparing long snippets.</td></tr>
@@ -1871,6 +1873,17 @@
   <p>Pro users can organise the Saved tier into folders. Click <strong>+ Add Folder</strong> in the panel sidebar, type a name and press Enter. Folders appear as their own rows in the sidebar and as sub-sections inside the Saved area.</p>
   <p>To file an item into a folder, drag its card onto the folder's header, or right-click the item and choose <strong>Move to Folder</strong>. Dragging onto the main Saved header moves an item back out of its folder. Hold a drag over a collapsed folder for a moment and it springs open. Double-click a folder's name to rename it, and right-click its header to rename or delete it. Deleting a folder never deletes the items inside; they return to the main Saved area.</p>
   <p>Folder names are encrypted at rest with the same AES-256-GCM protection as your clipboard content. If your Pro licence lapses, existing folders keep working; only creating new ones requires Pro.</p>
+
+  <h2>Text from images (OCR) <span style="font-size:.7em;opacity:.7">(Pro)</span></h2>
+  <p>Keyfire reads the text inside images you copy. When a new screenshot or image lands in your history, its text is extracted automatically in the background and stored encrypted alongside the image. Select an image and use <strong>Extract text</strong> in the preview pane to view and copy it.</p>
+  <p>With <strong>Search inside images</strong> enabled, the panel and quick paste search also match against this extracted text. A result found inside an image is marked with a small chip so you can see why it matched.</p>
+  <p>Both behaviours have their own toggles in <strong>Settings → Clipboard</strong>: automatic extraction and search inside images. On your first launch as a Pro user, Keyfire also runs a one-off pass over images already in your history, with progress shown in the status bar.</p>
+  <p>Very small images (under 64x64 pixels) are skipped. Coloured or low-contrast text, such as red text in a document, is enhanced automatically before extraction for better accuracy.</p>
+
+  <div class="callout info">
+    <div class="ct">Language packs</div>
+    <p>Extraction uses the Windows OCR engine and works fully offline. It reads the languages you have installed as Windows language packs. For non-English text, install the matching pack in Windows Settings → Time &amp; Language → Language.</p>
+  </div>
 
   <h2>Copying floats an item to the top</h2>
   <p>Clicking <strong>Copy</strong> on an item in the panel moves it to the top of your history. The item is not duplicated; its position simply updates, so the things you actively reuse sit nearest the top. Saved and pinned items stay in their own sections when reused. The preview pane's <strong>Last copied</strong> field shows when an item was last put on your clipboard.</p>
