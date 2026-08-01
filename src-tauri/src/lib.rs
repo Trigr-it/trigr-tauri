@@ -1416,6 +1416,11 @@ fn update_autocorrect_enabled(enabled: bool) {
 }
 
 #[tauri::command]
+fn get_builtin_autocorrect_entries() -> Vec<(String, String)> {
+    expansions::builtin_autocorrect_entries()
+}
+
+#[tauri::command]
 fn update_autocorrect_settings(
     enabled: bool,
     builtin_typos: bool,
@@ -4725,6 +4730,7 @@ pub fn run() {
             update_global_settings,
             update_autocorrect_enabled,
             update_autocorrect_settings,
+            get_builtin_autocorrect_entries,
             update_global_variables,
             // Pause
             set_global_pause_key,

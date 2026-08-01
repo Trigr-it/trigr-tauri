@@ -2316,6 +2316,16 @@ export default function TextExpansions({
   const [acTypoInput, setAcTypoInput] = useState('');   // chip input value
   const [acDcInput, setAcDcInput]     = useState('');   // double-caps exception input
 
+  // Built-in dictionary for the "Common typos" column — fetched from the
+  // engine once, first time the tab opens (single source of truth in Rust).
+  const [builtinEntries, setBuiltinEntries] = useState([]); // [[typo, correction], ...]
+  useEffect(() => {
+    if (panelMode !== 'autocorrect' || builtinEntries.length > 0) return;
+    window.electronAPI?.getBuiltinAutocorrectEntries?.()
+      .then(list => { if (Array.isArray(list)) setBuiltinEntries(list); })
+      .catch(() => {});
+  }, [panelMode, builtinEntries.length]);
+
   // ── Global Variables form state ──
   const [gdEditing, setGdEditing]   = useState(null); // null | { isNew, originalKey? }
   const [gdTitle,   setGdTitle]     = useState('');
@@ -2838,6 +2848,17 @@ export default function TextExpansions({
     }, {})
   ).sort((a, b) => a.correction.localeCompare(b.correction));
   acGroups.forEach(g => g.typos.sort());
+
+  // Built-in dictionary grouped the same way for the Common column
+  const builtinGroups = Object.values(
+    builtinEntries.reduce((acc, [typo, correction]) => {
+      const key = correction.toLowerCase();
+      if (!acc[key]) acc[key] = { correction, typos: [] };
+      acc[key].typos.push(typo);
+      return acc;
+    }, {})
+  ).sort((a, b) => a.correction.localeCompare(b.correction));
+  builtinGroups.forEach(g => g.typos.sort());
 
   // ── Global Variables handlers ────────────────────────────────────────────
 
@@ -3799,22 +3820,6 @@ export default function TextExpansions({
             />
           </div>
 
-          {/* ── Built-in dictionary toggle ── */}
-          <div className="ac-builtin-row">
-            <div className="ac-builtin-info">
-              <span className="ac-builtin-label">Common typos</span>
-              <span className="ac-builtin-sub">Fifty everyday slips: teh → the, adn → and, dont → don't</span>
-            </div>
-            <button
-              className={`ac-toggle${autocorrectBuiltinTypos ? ' ac-toggle-on' : ''}`}
-              onClick={() => onUpdateAutocorrectSettings?.({ builtinTypos: !autocorrectBuiltinTypos })}
-              type="button"
-              role="switch"
-              aria-checked={autocorrectBuiltinTypos}
-              title={autocorrectBuiltinTypos ? 'Disable built-in corrections' : 'Enable built-in corrections'}
-            />
-          </div>
-
           {/* ── Double caps toggle + exceptions ── */}
           <div className="ac-builtin-row">
             <div className="ac-builtin-info">
@@ -3865,7 +3870,46 @@ export default function TextExpansions({
             </div>
           )}
 
-          {/* ── Custom corrections ── */}
+          {/* ── Two columns: built-in dictionary | custom corrections ── */}
+          <div className="ac-columns">
+
+          {/* Left: Common typos — toggle above the visible dictionary */}
+          <div className="ac-col ac-col-common">
+            <div className="ac-builtin-row">
+              <div className="ac-builtin-info">
+                <span className="ac-builtin-label">Common typos</span>
+                <span className="ac-builtin-sub">Everyday slips fixed out of the box</span>
+              </div>
+              <button
+                className={`ac-toggle${autocorrectBuiltinTypos ? ' ac-toggle-on' : ''}`}
+                onClick={() => onUpdateAutocorrectSettings?.({ builtinTypos: !autocorrectBuiltinTypos })}
+                type="button"
+                role="switch"
+                aria-checked={autocorrectBuiltinTypos}
+                title={autocorrectBuiltinTypos ? 'Disable built-in corrections' : 'Enable built-in corrections'}
+              />
+            </div>
+            <div className="ac-section-header">
+              <span>Included</span>
+              <span className="ac-section-count">{builtinEntries.length}</span>
+            </div>
+            <div className={`ac-list ac-col-scroll${autocorrectBuiltinTypos ? '' : ' ac-list-dim'}`}>
+              {builtinGroups.map(group => (
+                <div key={group.correction} className="ac-item ac-item-readonly">
+                  <div className="ac-group-typos">
+                    {group.typos.map(t => (
+                      <kbd key={t} className="te-trigger-badge ac-typo-badge">{t}</kbd>
+                    ))}
+                  </div>
+                  <span className="te-item-arrow">→</span>
+                  <span className="ac-correction">{group.correction}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: the user's custom corrections */}
+          <div className="ac-col">
           <div className="ac-section-header">
             <span>Your corrections</span>
             <span className="ac-section-count">{acGroups.length}</span>
@@ -3938,7 +3982,7 @@ export default function TextExpansions({
               No corrections yet. Add a correct word with the misspellings you want fixed.
             </div>
           ) : (
-            <div className="ac-list">
+            <div className="ac-list ac-col-scroll">
               {acGroups.map(group => (
                 <div key={group.correction} className="ac-item">
                   <div className="ac-group-typos">
@@ -3961,6 +4005,9 @@ export default function TextExpansions({
               ))}
             </div>
           )}
+          </div>
+          {/* end .ac-columns */}
+          </div>
         </div>
       )}
 

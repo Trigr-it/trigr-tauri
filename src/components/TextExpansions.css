@@ -2528,6 +2528,49 @@ button.te-col-header:hover {
   padding-bottom: 4px;
 }
 
+/* ── Two-column layout: Common typos | Your corrections ─────────────────── */
+
+/* The view itself no longer scrolls — each column scrolls independently */
+.ac-view {
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.ac-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.ac-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ac-col-common {
+  max-width: 42%;
+  border-right: 1px solid var(--border);
+}
+
+.ac-col-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Built-in list is informational — no hover affordance, dim when its toggle is off */
+.ac-item-readonly:hover {
+  background: none;
+}
+
+.ac-list-dim {
+  opacity: 0.45;
+}
+
 /* ── Delete confirmation dialog ─────────────────────────────────────────── */
 
 .te-delete-overlay {

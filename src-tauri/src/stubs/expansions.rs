@@ -53,6 +53,10 @@ pub fn set_autocorrect_settings(
     double_caps_exceptions: Vec<String>,
 ) {}
 
+pub fn builtin_autocorrect_entries() -> Vec<(String, String)> {
+    Vec::new()
+}
+
 pub fn update_assignments(assignments: HashMap<String, Value>) {}
 
 pub fn update_global_variables(vars: HashMap<String, String>) {}

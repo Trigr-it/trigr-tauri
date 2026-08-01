@@ -3762,66 +3762,84 @@ fn send_left_arrows_batch(count: usize) {
 
 // ── Built-in autocorrect dictionary ─────────────────────────────────────────
 
+/// (typo, correction) pairs — single source of truth shared by the engine
+/// lookup and the get_builtin_autocorrect_entries command that feeds the
+/// visible "Common typos" list in the UI.
+const BUILTIN_TYPOS: &[(&str, &str)] = &[
+    ("teh", "the"),
+    ("hte", "the"),
+    ("adn", "and"),
+    ("nad", "and"),
+    ("ahve", "have"),
+    ("hvae", "have"),
+    ("taht", "that"),
+    ("tath", "that"),
+    ("wiht", "with"),
+    ("iwth", "with"),
+    ("whic", "which"),
+    ("whihc", "which"),
+    ("thier", "their"),
+    ("theri", "their"),
+    // "form" is deliberately absent — it's a real word, not a typo of "from".
+    ("fomr", "from"),
+    ("frome", "from"),
+    ("jsut", "just"),
+    ("juts", "just"),
+    ("knwo", "know"),
+    ("konw", "know"),
+    ("lik", "like"),
+    ("liek", "like"),
+    ("mroe", "more"),
+    ("moer", "more"),
+    ("soem", "some"),
+    ("smoe", "some"),
+    ("thsi", "this"),
+    ("htis", "this"),
+    ("waht", "what"),
+    ("hwat", "what"),
+    ("wehn", "when"),
+    ("hwen", "when"),
+    ("woudl", "would"),
+    ("wuold", "would"),
+    ("yoru", "your"),
+    ("yuor", "your"),
+    ("abotu", "about"),
+    ("baout", "about"),
+    ("becuase", "because"),
+    ("becasue", "because"),
+    ("befoer", "before"),
+    ("befroe", "before"),
+    ("coudl", "could"),
+    ("cuold", "could"),
+    ("doesnt", "doesn't"),
+    ("dont", "don't"),
+    ("didnt", "didn't"),
+    ("hasnt", "hasn't"),
+    ("hadnt", "hadn't"),
+    ("isnt", "isn't"),
+    ("wasnt", "wasn't"),
+    ("wont", "won't"),
+    ("wouldnt", "wouldn't"),
+    ("cant", "can't"),
+    ("shouldnt", "shouldn't"),
+];
+
+fn builtin_map() -> &'static HashMap<&'static str, &'static str> {
+    static MAP: std::sync::OnceLock<HashMap<&'static str, &'static str>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| BUILTIN_TYPOS.iter().copied().collect())
+}
+
 fn builtin_autocorrect(word: &str) -> Option<&'static str> {
-    match word {
-        "teh" => Some("the"),
-        "hte" => Some("the"),
-        "adn" => Some("and"),
-        "nad" => Some("and"),
-        "ahve" => Some("have"),
-        "hvae" => Some("have"),
-        "taht" => Some("that"),
-        "tath" => Some("that"),
-        "wiht" => Some("with"),
-        "iwth" => Some("with"),
-        "whic" => Some("which"),
-        "whihc" => Some("which"),
-        "thier" => Some("their"),
-        "theri" => Some("their"),
-        "form" => None, // Not a typo — "form" is a real word
-        "fomr" => Some("from"),
-        "frome" => Some("from"),
-        "jsut" => Some("just"),
-        "juts" => Some("just"),
-        "knwo" => Some("know"),
-        "konw" => Some("know"),
-        "lik" => Some("like"),
-        "liek" => Some("like"),
-        "mroe" => Some("more"),
-        "moer" => Some("more"),
-        "soem" => Some("some"),
-        "smoe" => Some("some"),
-        "thsi" => Some("this"),
-        "htis" => Some("this"),
-        "waht" => Some("what"),
-        "hwat" => Some("what"),
-        "wehn" => Some("when"),
-        "hwen" => Some("when"),
-        "woudl" => Some("would"),
-        "wuold" => Some("would"),
-        "yoru" => Some("your"),
-        "yuor" => Some("your"),
-        "abotu" => Some("about"),
-        "baout" => Some("about"),
-        "becuase" => Some("because"),
-        "becasue" => Some("because"),
-        "befoer" => Some("before"),
-        "befroe" => Some("before"),
-        "coudl" => Some("could"),
-        "cuold" => Some("could"),
-        "doesnt" => Some("doesn't"),
-        "dont" => Some("don't"),
-        "didnt" => Some("didn't"),
-        "hasnt" => Some("hasn't"),
-        "hadnt" => Some("hadn't"),
-        "isnt" => Some("isn't"),
-        "wasnt" => Some("wasn't"),
-        "wont" => Some("won't"),
-        "wouldnt" => Some("wouldn't"),
-        "cant" => Some("can't"),
-        "shouldnt" => Some("shouldn't"),
-        _ => None,
-    }
+    builtin_map().get(word).copied()
+}
+
+/// Full built-in dictionary for the UI list.
+pub fn builtin_autocorrect_entries() -> Vec<(String, String)> {
+    BUILTIN_TYPOS
+        .iter()
+        .map(|(t, c)| (t.to_string(), c.to_string()))
+        .collect()
 }
 
 // ── Public API for Tauri commands ───────────────────────────────────────────
