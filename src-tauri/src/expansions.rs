@@ -346,7 +346,18 @@ struct ExpansionState {
     /// to decide whether to pre-swallow a Space keystroke before it leaks to
     /// the target app. Rebuilt whenever assignments change.
     space_triggers: HashSet<String>,
+    /// Lowercase misspellings from GLOBAL::AUTOCORRECT:: assignment keys.
+    /// Rebuilt whenever assignments change — drives AUTOCORRECT_PENDING.
+    autocorrect_words: HashSet<String>,
+    /// Master autocorrect toggle (Pro). Gates the custom map, the built-in
+    /// dictionary, and double-caps correction.
     autocorrect_enabled: bool,
+    /// "Correct common typos" — the built-in dictionary sub-toggle.
+    builtin_typos_enabled: bool,
+    /// Double-caps sub-toggle: HEllo → Hello at word completion.
+    double_caps_enabled: bool,
+    /// Lowercase words exempt from double-caps ("ids", "pcs", "tvs"...).
+    double_caps_exceptions: HashSet<String>,
     global_variables: HashMap<String, String>,
 }
 
@@ -356,7 +367,13 @@ impl Default for ExpansionState {
             buffer: String::new(),
             assignments: HashMap::new(),
             space_triggers: HashSet::new(),
-            autocorrect_enabled: true,
+            autocorrect_words: HashSet::new(),
+            // Off until the startup settings sync says otherwise — autocorrect
+            // is an opt-in Pro feature, never active before config loads.
+            autocorrect_enabled: false,
+            builtin_typos_enabled: false,
+            double_caps_enabled: false,
+            double_caps_exceptions: HashSet::new(),
             global_variables: HashMap::new(),
         }
     }
@@ -373,18 +390,47 @@ pub static EXPANSION_PENDING_SPACE: AtomicBool = AtomicBool::new(false);
 /// If no expansion ends up matching, the swallowed Space is re-injected.
 pub static SPACE_PRE_SWALLOWED: AtomicBool = AtomicBool::new(false);
 
+/// When true, the current expansion buffer resolves an autocorrect correction
+/// (custom map, built-in dictionary, or double-caps pattern). The LL hook
+/// reads this to pre-swallow word-terminator keystrokes (Space, Enter, Tab,
+/// unshifted punctuation) so the erase count is exact — the same race fix
+/// EXPANSION_PENDING_SPACE provides for space-mode expansions.
+pub static AUTOCORRECT_PENDING: AtomicBool = AtomicBool::new(false);
+
+/// Latched by the LL hook when it swallows a non-Space terminator for
+/// autocorrect. Read once and cleared by the processor-side terminator check.
+/// If nothing ends up firing (layout resolved the key to a non-terminator
+/// char, settings changed mid-flight), the swallowed keystroke is re-injected
+/// so the user's input is never lost.
+pub static AC_KEY_PRE_SWALLOWED: AtomicBool = AtomicBool::new(false);
+
 // ── Buffer management (called from hotkeys.rs) ─────────────────────────────
 
-/// Recompute EXPANSION_PENDING_SPACE from the current buffer state. Called from
-/// every path that mutates the buffer or the space_triggers set. The flag is
-/// the only thing the LL hook reads to decide whether to pre-swallow a Space.
+/// Recompute EXPANSION_PENDING_SPACE and AUTOCORRECT_PENDING from the current
+/// buffer state. Called from every path that mutates the buffer, the trigger
+/// sets, or the autocorrect settings. These flags are the only things the LL
+/// hook reads to decide whether to pre-swallow a terminator keystroke.
 fn refresh_pending_flag(s: &ExpansionState) {
-    if s.buffer.is_empty() || s.space_triggers.is_empty() {
+    if s.buffer.is_empty() {
         EXPANSION_PENDING_SPACE.store(false, Ordering::SeqCst);
+        AUTOCORRECT_PENDING.store(false, Ordering::SeqCst);
         return;
     }
     let buf_lower = s.buffer.to_lowercase();
-    EXPANSION_PENDING_SPACE.store(s.space_triggers.contains(&buf_lower), Ordering::SeqCst);
+    EXPANSION_PENDING_SPACE.store(
+        !s.space_triggers.is_empty() && s.space_triggers.contains(&buf_lower),
+        Ordering::SeqCst,
+    );
+    // Pro-gated at the flag so the hook never swallows for free-tier users
+    // (is_pro is a cached atomic load — safe per keystroke).
+    let ac = s.autocorrect_enabled
+        && crate::licence::is_pro()
+        && (s.autocorrect_words.contains(&buf_lower)
+            || (s.builtin_typos_enabled && builtin_autocorrect(&buf_lower).is_some())
+            || (s.double_caps_enabled
+                && double_caps_candidate(&s.buffer)
+                && !s.double_caps_exceptions.contains(&buf_lower)));
+    AUTOCORRECT_PENDING.store(ac, Ordering::SeqCst);
 }
 
 /// Append a character to the buffer. Called for bare (unmodified) key presses.
@@ -435,42 +481,8 @@ pub fn check_space_trigger() -> bool {
     let original_buffer = s.buffer.clone();
     let buffer_lower = s.buffer.to_lowercase();
 
-    // Priority 1: Custom autocorrect — DISABLED FOR ALPHA
-    // let ac_key = format!("GLOBAL::AUTOCORRECT::{}", buffer_lower);
-    // if let Some(entry) = s.assignments.get(&ac_key).cloned() {
-    //     let correction = entry
-    //         .get("data")
-    //         .and_then(|d| d.get("correction"))
-    //         .and_then(|v| v.as_str())
-    //         .unwrap_or("")
-    //         .to_string();
-    //     let trigger_len = s.buffer.len();
-    //     let global_vars = s.global_variables.clone();
-    //     s.buffer.clear();
-    //     drop(s);
-    //
-    //     info!("[Keyfire] Autocorrect: \"{}\" → \"{}\"", buffer_lower, correction);
-    //     let replacement = format!("{}", correction);
-    //     fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
-    //     return true;
-    // }
-
-    // Priority 2: Built-in autocorrect — DISABLED FOR ALPHA
-    // if s.autocorrect_enabled {
-    //     if let Some(correction) = builtin_autocorrect(&buffer_lower) {
-    //         let trigger_len = s.buffer.len();
-    //         let global_vars = s.global_variables.clone();
-    //         s.buffer.clear();
-    //         drop(s);
-    //
-    //         info!("[Keyfire] Autocorrect (built-in): \"{}\" → \"{}\"", buffer_lower, correction);
-    //         let replacement = format!("{}", correction);
-    //         fire_expansion(&buffer_lower, trigger_len, true, &replacement, &global_vars);
-    //         return true;
-    //     }
-    // }
-
-    // Priority 3: Text expansion (space-triggered)
+    // Priority 1: Text expansion (space-triggered). Deliberate triggers win
+    // over passive autocorrect when a word is somehow both.
     let exp_key = format!("GLOBAL::EXPANSION::{}", buffer_lower);
     if let Some(entry) = s.assignments.get(&exp_key).cloned() {
         let trigger_mode = entry
@@ -594,6 +606,22 @@ pub fn check_space_trigger() -> bool {
         return true;
     }
 
+    // Priority 2: Autocorrect (Pro) — custom map, built-in typos, double caps.
+    if let Some(correction) = resolve_autocorrect(&s, &original_buffer) {
+        let word_len = original_buffer.chars().count();
+        s.buffer.clear();
+        refresh_pending_flag(&s);
+        drop(s);
+        info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term Space)", original_buffer, correction);
+        let term = if was_pre_swallowed {
+            AcTerminator::SwallowedVk(VK_SPACE)
+        } else {
+            AcTerminator::AlreadySentChar(' ')
+        };
+        fire_autocorrect(word_len, &correction, term);
+        return true;
+    }
+
     s.buffer.clear();
     drop(s);
     if was_pre_swallowed {
@@ -609,6 +637,319 @@ fn reinject_swallowed_space() {
     crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
     send_vk_tap(VK_SPACE);
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+}
+
+// ── Autocorrect engine (Pro, v0.6.11) ───────────────────────────────────────
+//
+// Word-level correction fired at word terminators. Unlike expansions this
+// NEVER touches the clipboard and has no settle sleeps: the erase, the
+// corrected word, and the terminator go out as ONE batched SendInput call,
+// so a 3-char fix is 8 input events injected in a single syscall. Windows
+// guarantees batch order, and the InjectionGuard buffers any keystrokes the
+// user types in the same instant (replayed after, same as expansions).
+
+/// Punctuation characters that complete a word for autocorrect purposes.
+/// Space / Enter / Tab are handled as keys, not chars.
+pub(crate) fn is_terminator_char(ch: char) -> bool {
+    matches!(ch, '.' | ',' | '!' | '?' | ';' | ':')
+}
+
+/// True when a word matches the double-caps typo shape: two leading capitals
+/// followed by lowercase (HEllo, TWo, DOn't). Apostrophes are allowed in the
+/// tail so contractions correct cleanly. Words of ALL caps (acronyms) never
+/// match — the third char must be lowercase.
+fn double_caps_candidate(word: &str) -> bool {
+    let mut chars = word.chars();
+    let (Some(c0), Some(c1)) = (chars.next(), chars.next()) else { return false; };
+    if !(c0.is_alphabetic() && c0.is_uppercase() && c1.is_alphabetic() && c1.is_uppercase()) {
+        return false;
+    }
+    let mut saw_tail = false;
+    for c in chars {
+        if !(c.is_lowercase() || c == '\'') {
+            return false;
+        }
+        saw_tail = true;
+    }
+    saw_tail
+}
+
+/// Lower ONLY the second character: "HEllo" → "Hello".
+fn double_caps_fix(word: &str) -> String {
+    word.chars()
+        .enumerate()
+        .flat_map(|(i, c)| {
+            let iter: Box<dyn Iterator<Item = char>> = if i == 1 {
+                Box::new(c.to_lowercase())
+            } else {
+                Box::new(std::iter::once(c))
+            };
+            iter
+        })
+        .collect()
+}
+
+/// Resolve the correction for a completed word, or None. Priority: custom
+/// map → built-in dictionary → double-caps. Case of the typed word carries
+/// onto map corrections (Teh → The, TEH → THE); a lowercase typed word takes
+/// the stored correction verbatim so deliberate case in corrections survives
+/// (e.g. "im" → "I'm").
+fn resolve_autocorrect(s: &ExpansionState, original: &str) -> Option<String> {
+    if !s.autocorrect_enabled || !crate::licence::is_pro() {
+        return None;
+    }
+    let lower = original.to_lowercase();
+
+    let ac_key = format!("GLOBAL::AUTOCORRECT::{}", lower);
+    if let Some(entry) = s.assignments.get(&ac_key) {
+        let correction = entry
+            .get("data")
+            .and_then(|d| d.get("correction"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !correction.is_empty() {
+            return Some(apply_case(correction, detect_case(original)));
+        }
+    }
+
+    if s.builtin_typos_enabled {
+        if let Some(c) = builtin_autocorrect(&lower) {
+            return Some(apply_case(c, detect_case(original)));
+        }
+    }
+
+    if s.double_caps_enabled
+        && double_caps_candidate(original)
+        && !s.double_caps_exceptions.contains(&lower)
+    {
+        return Some(double_caps_fix(original));
+    }
+
+    None
+}
+
+/// How the word was completed, and whether the terminator keystroke already
+/// reached the target app.
+pub(crate) enum AcTerminator {
+    /// Hook pre-swallowed the key — re-emit it inside the batch.
+    SwallowedVk(u16),
+    /// Hook pre-swallowed the keystroke that resolved to this char.
+    SwallowedChar(char),
+    /// The char already landed in the app (shifted punctuation isn't
+    /// pre-swallowed) — erase it too (+1 backspace) and retype it.
+    AlreadySentChar(char),
+    /// The key (Enter/Tab) already landed in the app — erase it too
+    /// (+1 backspace kills the newline/tab) and re-tap it.
+    AlreadySentVk(u16),
+}
+
+fn push_vk_pair(inputs: &mut Vec<INPUT>, vk: u16) {
+    for flags in [0u32, KEYEVENTF_KEYUP] {
+        inputs.push(INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT { wVk: vk, wScan: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 },
+            },
+        });
+    }
+}
+
+fn push_unicode(inputs: &mut Vec<INPUT>, text: &str) {
+    for code_unit in text.encode_utf16() {
+        for flags in [KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP] {
+            inputs.push(INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT { wVk: 0, wScan: code_unit, dwFlags: flags, time: 0, dwExtraInfo: 0 },
+                },
+            });
+        }
+    }
+}
+
+/// Fire a correction: erase the typed word, type the correction, re-emit the
+/// terminator — one SendInput batch, zero sleeps before it. Runs on its own
+/// thread only for the post-batch suppress drain; the InjectionGuard is
+/// created HERE on the processor thread so there is no window for user
+/// keystrokes to slip between the decision and the buffering.
+fn fire_autocorrect(word_char_len: usize, replacement: &str, term: AcTerminator) {
+    if !fire_rate_ok(replacement) {
+        return;
+    }
+
+    let backspaces = word_char_len
+        + match term {
+            AcTerminator::AlreadySentChar(_) | AcTerminator::AlreadySentVk(_) => 1,
+            _ => 0,
+        };
+
+    let mut inputs: Vec<INPUT> =
+        Vec::with_capacity(backspaces * 2 + replacement.len() * 2 + 4);
+    for _ in 0..backspaces {
+        push_vk_pair(&mut inputs, VK_BACKSPACE);
+    }
+    push_unicode(&mut inputs, replacement);
+    match term {
+        AcTerminator::SwallowedVk(vk) | AcTerminator::AlreadySentVk(vk) => {
+            push_vk_pair(&mut inputs, vk)
+        }
+        AcTerminator::SwallowedChar(ch) | AcTerminator::AlreadySentChar(ch) => {
+            push_unicode(&mut inputs, &ch.to_string())
+        }
+    }
+
+    crate::analytics::log_action("autocorrect", replacement.chars().count() as u32, replacement, replacement);
+
+    // Guard on the processor thread — concurrent real keystrokes buffer from
+    // this instant and replay after the batch.
+    let guard = InjectionGuard::new();
+
+    thread::spawn(move || {
+        let _guard_slot = guard; // moved in; released by replay helper below
+
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+        // Ctrl/Alt/Win held would corrupt the batch (Ctrl+Backspace = delete
+        // word). Physical modifier release + restore, same as every injector.
+        let held = crate::actions::release_held_modifiers();
+
+        unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            );
+        }
+
+        crate::actions::restore_modifiers(&held);
+
+        // Suppress drain — keep SUPPRESS_SIMULATED true until the LL hook has
+        // consumed our injected events (rule 1 in replay_buffered_and_recheck).
+        thread::sleep(Duration::from_millis(10));
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+
+        replay_buffered_and_recheck(_guard_slot);
+    });
+}
+
+/// Terminator check for a resolved typed character, called by the processor
+/// BEFORE the char is pushed into the buffer. Returns true when a correction
+/// fired (caller must NOT push the char — the batch already emitted it).
+/// Consumes AC_KEY_PRE_SWALLOWED; a swallowed keystroke that doesn't fire is
+/// re-injected so the user's input is never lost.
+pub fn check_char_terminator(ch: char) -> bool {
+    let was_swallowed = AC_KEY_PRE_SWALLOWED.swap(false, Ordering::SeqCst);
+
+    if !is_terminator_char(ch) {
+        // Layout surprise: the hook swallowed an OEM key that isn't
+        // punctuation on this layout. Give the char back; caller pushes it.
+        if was_swallowed {
+            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+            send_unicode_char_tap(ch);
+            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+        }
+        return false;
+    }
+
+    let mut s = state().lock().unwrap();
+    let original = s.buffer.clone();
+    let fired = if original.is_empty() {
+        None
+    } else {
+        resolve_autocorrect(&s, &original)
+    };
+
+    match fired {
+        Some(correction) => {
+            let word_len = original.chars().count();
+            s.buffer.clear();
+            refresh_pending_flag(&s);
+            drop(s);
+            info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term '{}')", original, correction, ch);
+            let term = if was_swallowed {
+                AcTerminator::SwallowedChar(ch)
+            } else {
+                AcTerminator::AlreadySentChar(ch)
+            };
+            fire_autocorrect(word_len, &correction, term);
+            true
+        }
+        None => {
+            drop(s);
+            if was_swallowed {
+                crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                send_unicode_char_tap(ch);
+                crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+            }
+            false
+        }
+    }
+}
+
+/// Terminator check for Enter / Tab keydowns, called by the processor before
+/// it clears the buffer. Returns true when a correction fired. Consumes
+/// AC_KEY_PRE_SWALLOWED and re-injects the key when nothing fires.
+pub fn check_key_terminator(vk: u16) -> bool {
+    let was_swallowed = AC_KEY_PRE_SWALLOWED.swap(false, Ordering::SeqCst);
+
+    let mut s = state().lock().unwrap();
+    let original = s.buffer.clone();
+    let fired = if original.is_empty() {
+        None
+    } else {
+        resolve_autocorrect(&s, &original)
+    };
+
+    match fired {
+        Some(correction) => {
+            let word_len = original.chars().count();
+            s.buffer.clear();
+            refresh_pending_flag(&s);
+            drop(s);
+            info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term vk 0x{:02X})", original, correction, vk);
+            let term = if was_swallowed {
+                AcTerminator::SwallowedVk(vk)
+            } else {
+                // Key already reached the app (hook didn't swallow — settings
+                // changed mid-flight). Erase the newline/tab too, re-tap after.
+                AcTerminator::AlreadySentVk(vk)
+            };
+            fire_autocorrect(word_len, &correction, term);
+            true
+        }
+        None => {
+            drop(s);
+            if was_swallowed {
+                crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                send_vk_tap(vk);
+                crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+            }
+            false
+        }
+    }
+}
+
+/// Consume a stale pre-swallow latch for a keystroke that resolved to no
+/// character (dead key on this layout) — re-tap the original VK so the
+/// user's keystroke isn't lost. No-op when nothing was swallowed.
+pub fn reinject_if_swallowed(vk: u16) {
+    if AC_KEY_PRE_SWALLOWED.swap(false, Ordering::SeqCst) {
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+        send_vk_tap(vk);
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Single unicode char tap outside a batch (re-inject path).
+fn send_unicode_char_tap(ch: char) {
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(4);
+    push_unicode(&mut inputs, &ch.to_string());
+    unsafe {
+        SendInput(
+            inputs.len() as u32,
+            inputs.as_ptr(),
+            std::mem::size_of::<INPUT>() as i32,
+        );
+    }
 }
 
 /// Called after each character is added to the buffer. Checks for immediate-mode triggers.
@@ -3512,17 +3853,51 @@ pub fn update_assignments(assignments: HashMap<String, Value>) {
         })
         .map(|(k, _)| k["GLOBAL::EXPANSION::".len()..].to_string())
         .collect();
+    // Rebuild the misspelling set driving AUTOCORRECT_PENDING.
+    s.autocorrect_words = s
+        .assignments
+        .keys()
+        .filter_map(|k| k.strip_prefix("GLOBAL::AUTOCORRECT::"))
+        .map(|w| w.to_lowercase())
+        .collect();
     info!(
-        "[Keyfire] Expansion assignments updated: {} entries ({} space-triggers)",
+        "[Keyfire] Expansion assignments updated: {} entries ({} space-triggers, {} autocorrect words)",
         s.assignments.len(),
-        s.space_triggers.len()
+        s.space_triggers.len(),
+        s.autocorrect_words.len()
     );
     refresh_pending_flag(&s);
 }
 
 pub fn set_autocorrect_enabled(enabled: bool) {
-    state().lock().unwrap().autocorrect_enabled = enabled;
-    info!("[Keyfire] Autocorrect config: {} (engine disabled for Alpha)", enabled);
+    let mut s = state().lock().unwrap();
+    s.autocorrect_enabled = enabled;
+    refresh_pending_flag(&s);
+    info!("[Keyfire] Autocorrect config: enabled={}", enabled);
+}
+
+/// Full autocorrect settings sync — called on startup config load and on
+/// every settings change from the frontend.
+pub fn set_autocorrect_settings(
+    enabled: bool,
+    builtin_typos: bool,
+    double_caps: bool,
+    double_caps_exceptions: Vec<String>,
+) {
+    let mut s = state().lock().unwrap();
+    s.autocorrect_enabled = enabled;
+    s.builtin_typos_enabled = builtin_typos;
+    s.double_caps_enabled = double_caps;
+    s.double_caps_exceptions = double_caps_exceptions
+        .into_iter()
+        .map(|w| w.trim().to_lowercase())
+        .filter(|w| !w.is_empty())
+        .collect();
+    refresh_pending_flag(&s);
+    info!(
+        "[Keyfire] Autocorrect settings: enabled={} builtin={} double_caps={} ({} exceptions)",
+        enabled, builtin_typos, double_caps, s.double_caps_exceptions.len()
+    );
 }
 
 pub fn update_global_variables(vars: HashMap<String, String>) {

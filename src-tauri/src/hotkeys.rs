@@ -1575,7 +1575,12 @@ unsafe extern "system" fn keyboard_hook_proc(
                 // the atomic is stored, causing it to take the legacy +1-
                 // backspace path and corrupt the character before the trigger.
                 let space_swallow = if kb.vkCode == 0x20 /* VK_SPACE */ {
-                    let should_swallow = crate::expansions::EXPANSION_PENDING_SPACE.load(Ordering::SeqCst)
+                    // AUTOCORRECT_PENDING joins the space pre-swallow: a buffer
+                    // matching a misspelling needs the exact same race fix as a
+                    // space-mode trigger. check_space_trigger consumes the same
+                    // SPACE_PRE_SWALLOWED latch for both.
+                    let should_swallow = (crate::expansions::EXPANSION_PENDING_SPACE.load(Ordering::SeqCst)
+                        || crate::expansions::AUTOCORRECT_PENDING.load(Ordering::SeqCst))
                         && modifier_bits() == 0
                         && MACROS_ENABLED.load(Ordering::SeqCst)
                         && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
@@ -1585,6 +1590,39 @@ unsafe extern "system" fn keyboard_hook_proc(
                         && FILLIN_HWND.load(Ordering::SeqCst) == 0;
                     if should_swallow {
                         crate::expansions::SPACE_PRE_SWALLOWED.store(true, Ordering::SeqCst);
+                    }
+                    should_swallow
+                } else {
+                    false
+                };
+
+                // Autocorrect terminator pre-swallow: Enter, Tab, and the
+                // unshifted punctuation OEM keys complete a word the same way
+                // Space does. Swallow only when the buffer already resolves a
+                // correction (AUTOCORRECT_PENDING) under the exact guard set
+                // the Space branch uses — MUST stay mirrored with it. Shifted
+                // punctuation ('!', '?') is deliberately NOT swallowed: shifted
+                // combos can be hotkey territory, so those fall back to the
+                // +1-backspace path in check_char_terminator. The processor
+                // re-injects any swallowed key that doesn't end up firing.
+                let ac_swallow = if !space_swallow
+                    && matches!(
+                        kb.vkCode,
+                        0x0D /* RETURN */ | 0x09 /* TAB */
+                        | 0xBE /* OEM_PERIOD . */ | 0xBC /* OEM_COMMA , */
+                        | 0xBA /* OEM_1 ; */
+                    )
+                {
+                    let should_swallow = crate::expansions::AUTOCORRECT_PENDING.load(Ordering::SeqCst)
+                        && modifier_bits() == 0
+                        && MACROS_ENABLED.load(Ordering::SeqCst)
+                        && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
+                        && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst)
+                        && !IS_CAPTURING_KEY.load(Ordering::SeqCst)
+                        && !CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
+                        && FILLIN_HWND.load(Ordering::SeqCst) == 0;
+                    if should_swallow {
+                        crate::expansions::AC_KEY_PRE_SWALLOWED.store(true, Ordering::SeqCst);
                     }
                     should_swallow
                 } else {
@@ -1635,7 +1673,7 @@ unsafe extern "system" fn keyboard_hook_proc(
                         }
                     }
                 }
-                if space_swallow {
+                if space_swallow || ac_swallow {
                     return 1;
                 }
             }
@@ -2188,13 +2226,31 @@ fn process_expansion_keystroke(key_id: &str, vk: u32, scan: u32) {
     } else if key_id == "Space" {
         crate::expansions::check_space_trigger();
         crate::expansions::buffer_clear();
-    } else if key_id == "Enter" || key_id == "Escape" || key_id == "Tab" {
+    } else if key_id == "Enter" || key_id == "Tab" {
+        // Word terminators for autocorrect (hook may have pre-swallowed the
+        // key — check_key_terminator re-injects it when nothing fires).
+        crate::expansions::check_key_terminator(vk as u16);
+        crate::expansions::buffer_clear();
+    } else if key_id == "Escape" {
+        crate::expansions::buffer_clear();
+    } else if matches!(key_id, "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" | "Home" | "End" | "Delete") {
+        // Caret moved — the buffer no longer reflects what's left of the
+        // caret, so triggers and autocorrect must not fire against it.
         crate::expansions::buffer_clear();
     } else {
         let shift = MOD_SHIFT.load(Ordering::SeqCst);
         if let Some(ch) = resolve_char_with_shift(vk, scan, shift) {
+            // Punctuation terminators check the buffer BEFORE the char joins
+            // it. Fired → the batch already emitted the char, don't push.
+            if crate::expansions::check_char_terminator(ch) {
+                return;
+            }
             crate::expansions::buffer_push(ch);
             crate::expansions::check_immediate_triggers();
+        } else {
+            // Dead key or unresolvable — if the hook pre-swallowed it for
+            // autocorrect, give the keystroke back.
+            crate::expansions::reinject_if_swallowed(vk as u16);
         }
     }
 }
@@ -3248,6 +3304,11 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // Runs before the input-focus early return so this still fires when the user
     // hasn't yet clicked into the overlay.
     check_overlay_outside_click(app);
+
+    // A click moves the caret (or focus) — the expansion buffer no longer
+    // reflects what's left of the caret, so expansion triggers and autocorrect
+    // must not fire against stale text.
+    crate::expansions::buffer_clear();
 
     // ── Recording mode: capture mouse trigger and send to frontend ──────
     // Mirror of the keyboard recording branch in handle_keydown, and of the

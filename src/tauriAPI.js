@@ -113,6 +113,8 @@ window.electronAPI = {
 
   // ── Autocorrect ─────────────────────────────────────────────────────────────
   updateAutocorrectEnabled: (enabled) => invoke('update_autocorrect_enabled', { enabled }),
+  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions) =>
+    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions }),
 
   // ── Global compatibility settings ───────────────────────────────────────────
   updateGlobalSettings: (settings) => invoke('update_global_settings', { settings }),

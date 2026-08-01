@@ -46,6 +46,13 @@ pub fn resolve_tokens(
 
 pub fn set_autocorrect_enabled(enabled: bool) {}
 
+pub fn set_autocorrect_settings(
+    enabled: bool,
+    builtin_typos: bool,
+    double_caps: bool,
+    double_caps_exceptions: Vec<String>,
+) {}
+
 pub fn update_assignments(assignments: HashMap<String, Value>) {}
 
 pub fn update_global_variables(vars: HashMap<String, String>) {}

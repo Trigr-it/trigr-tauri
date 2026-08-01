@@ -86,6 +86,9 @@ function App() {
   const [backupRestoredFrom, setBackupRestoredFrom] = useState(null); // non-null = show banner
   const [activeGlobalProfile, setActiveGlobalProfile] = useState('Default');
   const [autocorrectEnabled, setAutocorrectEnabled] = useState(false);
+  const [autocorrectBuiltinTypos, setAutocorrectBuiltinTypos] = useState(false);
+  const [autocorrectDoubleCaps, setAutocorrectDoubleCaps] = useState(false);
+  const [autocorrectDoubleCapsExceptions, setAutocorrectDoubleCapsExceptions] = useState([]);
   const [showSettings, setShowSettings]             = useState(false);
   const [showWelcome, setShowWelcome]               = useState(false);
   const [showOnboarding, setShowOnboarding]         = useState(false);
@@ -307,10 +310,14 @@ function App() {
         setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
         setGlobalVariables(config.globalVariables || {});
         const savedAcEnabled = config.autocorrectEnabled ?? false;
+        const savedAcBuiltin = config.autocorrectBuiltinTypos ?? false;
+        const savedAcDoubleCaps = config.autocorrectDoubleCaps ?? false;
+        const savedAcExceptions = Array.isArray(config.autocorrectDoubleCapsExceptions) ? config.autocorrectDoubleCapsExceptions : [];
         setAutocorrectEnabled(savedAcEnabled);
-        if (savedAcEnabled) {
-          window.electronAPI?.updateAutocorrectEnabled(savedAcEnabled);
-        }
+        setAutocorrectBuiltinTypos(savedAcBuiltin);
+        setAutocorrectDoubleCaps(savedAcDoubleCaps);
+        setAutocorrectDoubleCapsExceptions(savedAcExceptions);
+        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
         // Clipboard privacy controls — defaults preserve existing behaviour.
@@ -674,7 +681,17 @@ function App() {
         const rawCats = config.expansionCategories || [];
         setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
         setGlobalVariables(config.globalVariables || {});
-        setAutocorrectEnabled(config.autocorrectEnabled ?? false);
+        {
+          const cfgAcEnabled = config.autocorrectEnabled ?? false;
+          const cfgAcBuiltin = config.autocorrectBuiltinTypos ?? false;
+          const cfgAcDoubleCaps = config.autocorrectDoubleCaps ?? false;
+          const cfgAcExceptions = Array.isArray(config.autocorrectDoubleCapsExceptions) ? config.autocorrectDoubleCapsExceptions : [];
+          setAutocorrectEnabled(cfgAcEnabled);
+          setAutocorrectBuiltinTypos(cfgAcBuiltin);
+          setAutocorrectDoubleCaps(cfgAcDoubleCaps);
+          setAutocorrectDoubleCapsExceptions(cfgAcExceptions);
+          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions);
+        }
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
         const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
         const cfgClipboardExcluded = Array.isArray(config.clipboardExcludedApps) ? config.clipboardExcludedApps : [];

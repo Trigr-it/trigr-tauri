@@ -1416,6 +1416,16 @@ fn update_autocorrect_enabled(enabled: bool) {
 }
 
 #[tauri::command]
+fn update_autocorrect_settings(
+    enabled: bool,
+    builtin_typos: bool,
+    double_caps: bool,
+    double_caps_exceptions: Vec<String>,
+) {
+    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions);
+}
+
+#[tauri::command]
 fn update_global_variables(vars: std::collections::HashMap<String, String>) {
     expansions::update_global_variables(vars);
 }
@@ -4714,6 +4724,7 @@ pub fn run() {
             // Settings
             update_global_settings,
             update_autocorrect_enabled,
+            update_autocorrect_settings,
             update_global_variables,
             // Pause
             set_global_pause_key,
