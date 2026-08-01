@@ -3828,22 +3828,6 @@ export default function TextExpansions({
       {panelMode === 'autocorrect' && (
         <div className="ac-view">
 
-          {/* ── Master toggle ── */}
-          <div className="ac-builtin-row ac-master-row">
-            <div className="ac-builtin-info">
-              <span className="ac-builtin-label">Autocorrect</span>
-              <span className="ac-builtin-sub">Fixes typos the instant you finish a word. Works in every app.</span>
-            </div>
-            <button
-              className={`ac-toggle${autocorrectEnabled ? ' ac-toggle-on' : ''}`}
-              onClick={() => onUpdateAutocorrectSettings?.({ enabled: !autocorrectEnabled })}
-              type="button"
-              role="switch"
-              aria-checked={autocorrectEnabled}
-              title={autocorrectEnabled ? 'Turn autocorrect off' : 'Turn autocorrect on'}
-            />
-          </div>
-
           <div className="te-content">
 
           {/* ── Section rail — same pattern as the expansions category sidebar ── */}
@@ -3885,6 +3869,22 @@ export default function TextExpansions({
 
           {/* ── Main area ── */}
           <div className="te-main">
+
+          {/* ── Master toggle — spans the main area only, sidebar runs full height ── */}
+          <div className="ac-builtin-row ac-master-row">
+            <div className="ac-builtin-info">
+              <span className="ac-builtin-label">Autocorrect</span>
+              <span className="ac-builtin-sub">Fixes typos the instant you finish a word. Works in every app.</span>
+            </div>
+            <button
+              className={`ac-toggle${autocorrectEnabled ? ' ac-toggle-on' : ''}`}
+              onClick={() => onUpdateAutocorrectSettings?.({ enabled: !autocorrectEnabled })}
+              type="button"
+              role="switch"
+              aria-checked={autocorrectEnabled}
+              title={autocorrectEnabled ? 'Turn autocorrect off' : 'Turn autocorrect on'}
+            />
+          </div>
 
           {/* Your corrections */}
           {acSection === 'custom' && (<>
