@@ -528,10 +528,17 @@ pub fn check_space_trigger() -> bool {
     let original_buffer = s.buffer.clone();
     let buffer_lower = s.buffer.to_lowercase();
 
-    // Sentence-caps context: this word consumes any pending sentence-start
-    // flag, and a Space never starts a new sentence.
-    let sentence_start = s.sentence_start_pending;
-    s.sentence_start_pending = false;
+    // Sentence-caps context: only a CLEAN word (letters/apostrophes) consumes
+    // the pending sentence-start flag. A buffer like "end." is the tail of
+    // the word that just SET the flag — the space after it must not eat the
+    // flag meant for the next word.
+    let sentence_start = if original_buffer.chars().all(|c| c.is_alphabetic() || c == '\'') {
+        let prev = s.sentence_start_pending;
+        s.sentence_start_pending = false;
+        prev
+    } else {
+        false
+    };
 
     // Priority 1: Text expansion (space-triggered). Deliberate triggers win
     // over passive autocorrect when a word is somehow both.
@@ -1000,16 +1007,26 @@ pub fn check_char_terminator(ch: char) -> bool {
     let mut s = state().lock().unwrap();
     let original = s.buffer.clone();
 
-    // Sentence-caps context: consume the pending flag for this word, then
-    // set it for the next one. '.' only marks a sentence end after a clean
-    // word of 2+ letters — cuts most "e.g." / initials false positives.
+    // Sentence-caps context: only a CLEAN word (letters/apostrophes) consumes
+    // the pending flag — punctuation-carrying buffers ("end.", "wait..") are
+    // tails of the word that set it. '!' and '?' always mark a sentence end;
+    // '.' only after a clean word of 2+ letters (cuts most "e.g." / initials
+    // false positives). Ellipsis dots on a non-clean buffer leave a pending
+    // flag standing rather than killing it.
     let sentence_start = if original.is_empty() {
         false
     } else {
-        let prev = s.sentence_start_pending;
-        let clean_word = original.chars().count() >= 2
-            && original.chars().all(|c| c.is_alphabetic() || c == '\'');
-        s.sentence_start_pending = matches!(ch, '!' | '?') || (ch == '.' && clean_word);
+        let clean = original.chars().all(|c| c.is_alphabetic() || c == '\'');
+        let prev = if clean {
+            let p = s.sentence_start_pending;
+            s.sentence_start_pending = false;
+            p
+        } else {
+            false
+        };
+        if matches!(ch, '!' | '?') || (ch == '.' && clean && original.chars().count() >= 2) {
+            s.sentence_start_pending = true;
+        }
         prev
     };
 
@@ -1056,15 +1073,25 @@ pub fn check_key_terminator(vk: u16) -> bool {
 
     // Sentence-caps context: Enter starts a new sentence, Tab doesn't.
     // Empty buffer (Enter straight after a fired word) leaves the pending
-    // flag alone — it still applies to the next real word.
+    // flag alone — it still applies to the next real word. Only a clean
+    // word consumes the flag; "end." tails must not eat it.
     let sentence_start = if original.is_empty() {
         if vk == 0x0D {
             s.sentence_start_pending = true;
         }
         false
     } else {
-        let prev = s.sentence_start_pending;
-        s.sentence_start_pending = vk == 0x0D;
+        let clean = original.chars().all(|c| c.is_alphabetic() || c == '\'');
+        let prev = if clean {
+            let p = s.sentence_start_pending;
+            s.sentence_start_pending = false;
+            p
+        } else {
+            false
+        };
+        if vk == 0x0D {
+            s.sentence_start_pending = true;
+        }
         prev
     };
 
