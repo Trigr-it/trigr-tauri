@@ -3838,7 +3838,7 @@ export default function TextExpansions({
                 className={`te-cat-row${acSection === 'custom' ? ' te-cat-row-active' : ''}`}
                 onClick={() => setAcSection('custom')}
               >
-                <span className="te-cat-row-name">Your corrections</span>
+                <span className="te-cat-row-name">Your Corrections</span>
                 <span className="te-cat-count">{acGroups.length}</span>
               </button>
               <button
@@ -3846,7 +3846,7 @@ export default function TextExpansions({
                 className={`te-cat-row${acSection === 'starter' ? ' te-cat-row-active' : ''}`}
                 onClick={() => { setAcSection('starter'); setAcDictFilter(''); }}
               >
-                <span className="te-cat-row-name">Common typos</span>
+                <span className="te-cat-row-name">Common Typos</span>
                 <span className="te-cat-count">{starterCount}</span>
               </button>
               <button
@@ -3854,7 +3854,7 @@ export default function TextExpansions({
                 className={`te-cat-row${acSection === 'extended' ? ' te-cat-row-active' : ''}`}
                 onClick={() => { setAcSection('extended'); setAcDictFilter(''); }}
               >
-                <span className="te-cat-row-name">Extended dictionary</span>
+                <span className="te-cat-row-name">Extended Dictionary</span>
                 <span className="te-cat-count">{extendedCount}</span>
               </button>
               <button
@@ -3862,7 +3862,7 @@ export default function TextExpansions({
                 className={`te-cat-row${acSection === 'fixes' ? ' te-cat-row-active' : ''}`}
                 onClick={() => setAcSection('fixes')}
               >
-                <span className="te-cat-row-name">Typing fixes</span>
+                <span className="te-cat-row-name">Autocorrect Settings</span>
               </button>
             </div>
           </div>
