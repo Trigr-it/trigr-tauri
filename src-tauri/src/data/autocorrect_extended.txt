@@ -2538,7 +2538,7 @@ organistion	organisation
 organiztion	organization
 orginal	original
 orginally	originally
-orginize	organise
+orginize	organize
 oridinarily	ordinarily
 origanaly	originally
 originaly	originally
