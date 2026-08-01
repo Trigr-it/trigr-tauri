@@ -54,6 +54,7 @@ pub fn set_autocorrect_settings(
     caps_lock_fix: bool,
     sentence_caps: bool,
     extended_typos: bool,
+    excluded_apps: Vec<String>,
 ) {}
 
 pub fn builtin_autocorrect_entries() -> Vec<(String, String, String)> {

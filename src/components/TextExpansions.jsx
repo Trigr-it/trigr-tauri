@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import './TextExpansions.css';
 import { SearchBar } from './SearchBar';
+import { ClipboardExcludedAppsEditor } from './SettingsPanel';
 import NumberField from './NumberField';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -2178,6 +2179,7 @@ export default function TextExpansions({
   autocorrectCapsLockFix = false,
   autocorrectSentenceCaps = false,
   autocorrectExtendedTypos = false,
+  autocorrectExcludedApps = [],
   onUpdateAutocorrectSettings,
   autocorrections = [],
   onSaveAutocorrectGroup,
@@ -4083,6 +4085,15 @@ export default function TextExpansions({
                     title={autocorrectSentenceCaps ? 'Disable sentence capitalization' : 'Enable sentence capitalization'}
                   />
                 </div>
+              </div>
+              {/* Excluded apps — autocorrect never fires while these are foreground */}
+              <div className="ac-excluded-wrap">
+                <ClipboardExcludedAppsEditor
+                  apps={autocorrectExcludedApps}
+                  onChange={apps => onUpdateAutocorrectSettings?.({ excludedApps: apps })}
+                  label="Excluded apps"
+                  sub="Autocorrect stays out of these apps entirely. Useful for code editors, terminals and games."
+                />
               </div>
               {(autocorrectDoubleCaps || autocorrectCapsLockFix) && (
                 <div className="ac-dc-exceptions">

@@ -2543,6 +2543,14 @@ button.te-col-header:hover {
   overflow-y: auto;
 }
 
+/* Excluded-apps editor gets the same band treatment as the toggle rows */
+.ac-excluded-wrap {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
 /* Pack on/off toggle in the dictionary toolbar */
 .ac-pack-toggle {
   display: flex;

@@ -374,6 +374,11 @@ struct ExpansionState {
     /// True when the next completed word starts a sentence. Set by the
     /// terminator checks, cleared on consumption, clicks and caret moves.
     sentence_start_pending: bool,
+    /// Lowercase exe basenames (no .exe) where autocorrect must never fire —
+    /// code editors, terminals, games. Checked against the foreground
+    /// watcher's cached process name (may lag a fast alt-tab by one 1500ms
+    /// poll, same tolerance as app-profile switching).
+    excluded_apps: HashSet<String>,
     global_variables: HashMap<String, String>,
 }
 
@@ -394,6 +399,7 @@ impl Default for ExpansionState {
             caps_lock_fix_enabled: false,
             sentence_caps_enabled: false,
             sentence_start_pending: false,
+            excluded_apps: HashSet::new(),
             global_variables: HashMap::new(),
         }
     }
@@ -477,6 +483,11 @@ fn refresh_pending_flag(s: &ExpansionState) {
                 && s.sentence_start_pending
                 && s.buffer.chars().next().map_or(false, |c| c.is_alphabetic() && c.is_lowercase())
                 && s.buffer.chars().all(|c| c.is_alphabetic() || c == '\'')));
+    // Excluded apps veto last — the cached-foreground read only happens when
+    // a correction would otherwise be pending.
+    let ac = ac
+        && (s.excluded_apps.is_empty()
+            || !s.excluded_apps.contains(&crate::foreground::get_current_fg_proc()));
     AUTOCORRECT_PENDING.store(ac, Ordering::SeqCst);
 }
 
@@ -801,6 +812,13 @@ struct AcFix {
 /// (e.g. "im" → "I'm").
 fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool) -> Option<AcFix> {
     if !s.autocorrect_enabled || !crate::licence::is_pro() {
+        return None;
+    }
+    // Excluded app in the foreground — never fire (mirrors the pending-flag
+    // veto; this covers the resolve-time race after a fast app switch).
+    if !s.excluded_apps.is_empty()
+        && s.excluded_apps.contains(&crate::foreground::get_current_fg_proc())
+    {
         return None;
     }
     let lower = original.to_lowercase();
@@ -4220,12 +4238,18 @@ pub fn set_autocorrect_settings(
     caps_lock_fix: bool,
     sentence_caps: bool,
     extended_typos: bool,
+    excluded_apps: Vec<String>,
 ) {
     let mut s = state().lock().unwrap();
     s.autocorrect_enabled = enabled;
     s.builtin_typos_enabled = builtin_typos;
     s.extended_typos_enabled = extended_typos;
     s.double_caps_enabled = double_caps;
+    s.excluded_apps = excluded_apps
+        .into_iter()
+        .map(|a| a.trim().to_lowercase().trim_end_matches(".exe").to_string())
+        .filter(|a| !a.is_empty())
+        .collect();
     s.double_caps_exceptions = double_caps_exceptions
         .into_iter()
         .map(|w| w.trim().to_lowercase())
@@ -4235,8 +4259,9 @@ pub fn set_autocorrect_settings(
     s.sentence_caps_enabled = sentence_caps;
     refresh_pending_flag(&s);
     info!(
-        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions)",
-        enabled, builtin_typos, extended_typos, double_caps, caps_lock_fix, sentence_caps, s.double_caps_exceptions.len()
+        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps)",
+        enabled, builtin_typos, extended_typos, double_caps, caps_lock_fix, sentence_caps,
+        s.double_caps_exceptions.len(), s.excluded_apps.len()
     );
 }
 

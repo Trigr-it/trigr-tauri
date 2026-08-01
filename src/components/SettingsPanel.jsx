@@ -25,7 +25,8 @@ const MACRO_SPEED_PRESETS = [
 // Chips list + manual add + pick-from-open-windows dropdown. Normalization
 // (lowercase, strip .exe, dedupe) is performed by the parent before persisting
 // to Rust, so this component can pass raw strings through.
-function ClipboardExcludedAppsEditor({ apps, onChange }) {
+// Exported: also used by the Autocorrect Settings section in TextExpansions.
+export function ClipboardExcludedAppsEditor({ apps, onChange, label, sub }) {
   const [typed, setTyped]               = useState('');
   const [pickerOpen, setPickerOpen]     = useState(false);
   const [openWindows, setOpenWindows]   = useState(null);
@@ -105,9 +106,9 @@ function ClipboardExcludedAppsEditor({ apps, onChange }) {
   return (
     <div className="settings-excluded-apps">
       <div className="settings-excluded-apps-header">
-        <span className="settings-toggle-label">Excluded apps</span>
+        <span className="settings-toggle-label">{label ?? 'Excluded apps'}</span>
         <span className="settings-toggle-sub">
-          Clipboard copies from these apps are silently ignored. Useful for password managers and terminals.
+          {sub ?? 'Clipboard copies from these apps are silently ignored. Useful for password managers and terminals.'}
         </span>
       </div>
 

@@ -92,6 +92,7 @@ function App() {
   const [autocorrectCapsLockFix, setAutocorrectCapsLockFix] = useState(false);
   const [autocorrectSentenceCaps, setAutocorrectSentenceCaps] = useState(false);
   const [autocorrectExtendedTypos, setAutocorrectExtendedTypos] = useState(false);
+  const [autocorrectExcludedApps, setAutocorrectExcludedApps] = useState([]);
   const [showSettings, setShowSettings]             = useState(false);
   const [showWelcome, setShowWelcome]               = useState(false);
   const [showOnboarding, setShowOnboarding]         = useState(false);
@@ -319,6 +320,7 @@ function App() {
         const savedAcCapsLockFix = config.autocorrectCapsLockFix ?? false;
         const savedAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
         const savedAcExtended = config.autocorrectExtendedTypos ?? false;
+        const savedAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
         setAutocorrectEnabled(savedAcEnabled);
         setAutocorrectBuiltinTypos(savedAcBuiltin);
         setAutocorrectDoubleCaps(savedAcDoubleCaps);
@@ -326,7 +328,8 @@ function App() {
         setAutocorrectCapsLockFix(savedAcCapsLockFix);
         setAutocorrectSentenceCaps(savedAcSentenceCaps);
         setAutocorrectExtendedTypos(savedAcExtended);
-        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended);
+        setAutocorrectExcludedApps(savedAcExcluded);
+        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
         // Clipboard privacy controls — defaults preserve existing behaviour.
@@ -698,6 +701,7 @@ function App() {
           const cfgAcCapsLockFix = config.autocorrectCapsLockFix ?? false;
           const cfgAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
           const cfgAcExtended = config.autocorrectExtendedTypos ?? false;
+          const cfgAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
           setAutocorrectEnabled(cfgAcEnabled);
           setAutocorrectBuiltinTypos(cfgAcBuiltin);
           setAutocorrectDoubleCaps(cfgAcDoubleCaps);
@@ -705,7 +709,8 @@ function App() {
           setAutocorrectCapsLockFix(cfgAcCapsLockFix);
           setAutocorrectSentenceCaps(cfgAcSentenceCaps);
           setAutocorrectExtendedTypos(cfgAcExtended);
-          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended);
+          setAutocorrectExcludedApps(cfgAcExcluded);
+          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded);
         }
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
         const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
@@ -2207,7 +2212,15 @@ function App() {
       capsLockFix: patch.capsLockFix ?? autocorrectCapsLockFix,
       sentenceCaps: patch.sentenceCaps ?? autocorrectSentenceCaps,
       extendedTypos: patch.extendedTypos ?? autocorrectExtendedTypos,
+      excludedApps: patch.excludedApps ?? autocorrectExcludedApps,
     };
+    // Normalize excluded apps: lowercase, strip .exe, dedupe, drop empties —
+    // mirrors the Rust-side normalization in expansions::set_autocorrect_settings.
+    next.excludedApps = Array.from(new Set(
+      (next.excludedApps || [])
+        .map(a => (a || '').toLowerCase().replace(/\.exe$/, '').trim())
+        .filter(Boolean)
+    ));
     setAutocorrectEnabled(next.enabled);
     setAutocorrectBuiltinTypos(next.builtinTypos);
     setAutocorrectDoubleCaps(next.doubleCaps);
@@ -2215,7 +2228,8 @@ function App() {
     setAutocorrectCapsLockFix(next.capsLockFix);
     setAutocorrectSentenceCaps(next.sentenceCaps);
     setAutocorrectExtendedTypos(next.extendedTypos);
-    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos);
+    setAutocorrectExcludedApps(next.excludedApps);
+    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps);
     window.electronAPI?.saveConfig({
       autocorrectEnabled: next.enabled,
       autocorrectBuiltinTypos: next.builtinTypos,
@@ -2224,8 +2238,9 @@ function App() {
       autocorrectCapsLockFix: next.capsLockFix,
       autocorrectSentenceCaps: next.sentenceCaps,
       autocorrectExtendedTypos: next.extendedTypos,
+      autocorrectExcludedApps: next.excludedApps,
     });
-  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos]);
+  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos, autocorrectExcludedApps]);
 
   // Save one correct word with its full misspelling list. Storage is flat
   // (one GLOBAL::AUTOCORRECT::<typo> key per misspelling); typos dropped from
@@ -4374,6 +4389,7 @@ function App() {
               autocorrectCapsLockFix={autocorrectCapsLockFix}
               autocorrectSentenceCaps={autocorrectSentenceCaps}
               autocorrectExtendedTypos={autocorrectExtendedTypos}
+              autocorrectExcludedApps={autocorrectExcludedApps}
               onUpdateAutocorrectSettings={handleUpdateAutocorrectSettings}
               autocorrections={autocorrections}
               onSaveAutocorrectGroup={handleSaveAutocorrectGroup}
