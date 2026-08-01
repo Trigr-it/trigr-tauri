@@ -693,6 +693,7 @@
 
   <div class="sidebar-section-label">Text Expansion</div>
   <a class="nav-item" onclick="show(event,'expansions')" href="#">Text Expansions</a>
+  <a class="nav-item" onclick="show(event,'autocorrect')" href="#">Autocorrect<span class="nav-new">NEW</span></a>
   <a class="nav-item" onclick="show(event,'dynamic-tokens')" href="#">Dynamic Tokens</a>
   <a class="nav-item" onclick="show(event,'fill-ins')" href="#">Fill-in Fields<span class="nav-new">NEW</span></a>
   <a class="nav-item" onclick="show(event,'formulas')" href="#">Formulas<span class="nav-pro">PRO</span></a>
@@ -1417,12 +1418,77 @@
   </table>
   <p>When the trigger fires, Keyfire writes the image to the clipboard and sends a paste command. Works in Word, Outlook, Google Docs, and any app that accepts pasted images.</p>
 
-  <h2>Autocorrect</h2>
-  <p>The Autocorrect tab manages typo replacements. Type a common misspelling, get the correct version. Behaves identically to expansions but with a separate management surface.</p>
+  <h2>Autocorrect <span class="pro-pill">PRO</span></h2>
+  <p>The Autocorrect tab fixes typos as you type: your own misspelling list, two bundled dictionaries, and automatic fixes for stray capitals. It has its own page in this guide. See <strong>Autocorrect</strong> in the sidebar.</p>
 
   <div class="callout tip">
     <div class="ct">Type filter</div>
     <p>Use the <strong>All / Text / Image</strong> filter pills above the expansion list to find expansions by type.</p>
+  </div>
+
+  <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     AUTOCORRECT
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-autocorrect">
+  <div class="section-meta"><span class="section-num">13a</span><span class="section-label">Text Expansion</span></div>
+  <div class="section-title">Autocorrect <span class="pro-pill">PRO</span></div>
+  <div class="section-subtitle">Typos fixed the instant you finish a word. Your own corrections, bundled dictionaries, and automatic capital fixes.</div>
+
+  <p>Autocorrect watches for complete words and replaces known misspellings with the right spelling, in any application. A correction fires the moment you finish a word with <kbd>Space</kbd>, <kbd>Enter</kbd>, <kbd>Tab</kbd> or punctuation. The replacement happens in a single input burst, so it never interrupts your typing rhythm.</p>
+
+  <p>Find it under <strong>Text Expansions → Autocorrect</strong>. The sidebar inside the tab has four sections: Your Corrections, Common Typos, Extended Dictionary, and Autocorrect Settings. The master on/off switch lives at the top of Autocorrect Settings.</p>
+
+  <div class="screenshot-slot">
+    <strong>Screenshot slot · Autocorrect tab</strong>
+    The Autocorrect tab with the section sidebar on the left, Your Corrections selected, and a few grouped entries showing misspelling chips pointing at their correct word.
+  </div>
+
+  <h2>Your corrections</h2>
+  <p>Each entry is one correct word with as many misspellings as you like. Click <strong>+ New Correction</strong>, type each misspelling and press <kbd>Enter</kbd> or comma to add it as a chip, then enter the correct word and save.</p>
+  <ul>
+    <li>Your entries always win over the bundled dictionaries, so you can override any built-in correction by adding the same misspelling with your own replacement.</li>
+    <li>A misspelling belongs to one correct word. Adding it under a second word moves it there.</li>
+    <li>Corrections work in any language. The bundled dictionaries are English, but your own entries can be anything.</li>
+  </ul>
+
+  <h2>Case follows what you typed</h2>
+  <p>Corrections keep your capitalisation: <code>teh</code> becomes <code>the</code>, <code>Teh</code> becomes <code>The</code>, and <code>TEH</code> becomes <code>THE</code>. A lowercase typo takes the stored correction exactly as written, so entries like <code>im</code> → <code>I'm</code> keep their intended capitals.</p>
+
+  <h2>Bundled dictionaries</h2>
+  <table>
+    <tr><th>Dictionary</th><th>What it covers</th></tr>
+    <tr><td>Common Typos</td><td>Around fifty everyday slips: teh, adn, dont, becuase and friends.</td></tr>
+    <tr><td>Extended Dictionary</td><td>Over four thousand English misspellings, each mapped to a single unambiguous correction. Browse or search the full list inside the tab.</td></tr>
+  </table>
+  <p>Both switch on and off independently. British and American spellings are both respected: corrections follow the shape of what you typed, so <code>recogise</code> becomes <code>recognise</code> and <code>recogize</code> becomes <code>recognize</code>. Neither dictionary ever changes a correctly spelled word from one variant to the other.</p>
+  <p><em>The Extended Dictionary is derived from Wikipedia's list of common misspellings, used under the CC BY-SA licence.</em></p>
+
+  <h2>Typing fixes</h2>
+  <p>Three automatic fixes live in Autocorrect Settings, each with its own toggle:</p>
+  <table>
+    <tr><th>Fix</th><th>What it does</th></tr>
+    <tr><td>Fix double capitals</td><td><code>HEllo</code> becomes <code>Hello</code>. Words like IDs or PCs can be protected via the exceptions list.</td></tr>
+    <tr><td>Fix accidental Caps Lock</td><td><code>tHE</code> becomes <code>The</code> and Caps Lock switches off. Only fires while Caps Lock is actually on.</td></tr>
+    <tr><td>Capitalize sentences</td><td>A lowercase word straight after a full stop, question mark, exclamation mark or new line gets its first letter capitalised.</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <div class="ct">Abbreviations</div>
+    <p>Sentence capitalisation treats every full stop after a word as a sentence end, so the word after an abbreviation like <code>approx.</code> will be capitalised too. Toggle the fix off if you write abbreviation-heavy text, or press Backspace to undo any single fix.</p>
+  </div>
+
+  <h2>Undo any correction with Backspace</h2>
+  <p>Press <kbd>Backspace</kbd> immediately after a correction fires and your original typing comes back, including the space or punctuation you ended the word with. Only the very next keystroke counts: once you type anything else, Backspace goes back to deleting normally.</p>
+
+  <h2>Excluded apps</h2>
+  <p>Add apps to the excluded list in Autocorrect Settings and autocorrect will never fire while they are in the foreground. Recommended for code editors, terminals, and games, where deliberate non-words are normal. Type a process name or pick from your open apps.</p>
+
+  <div class="callout tip">
+    <div class="ct">Expansions win</div>
+    <p>If a word is both an expansion trigger and a listed misspelling, the expansion fires. Deliberate triggers always beat passive correction.</p>
   </div>
 
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
