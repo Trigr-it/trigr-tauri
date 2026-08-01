@@ -2323,6 +2323,9 @@ export default function TextExpansions({
   // engine once, first time the tab opens (single source of truth in Rust).
   const [builtinEntries, setBuiltinEntries] = useState([]); // [[typo, correction, pack], ...]
   const [acDictFilter, setAcDictFilter] = useState('');
+  // Autocorrect section rail: 'custom' | 'starter' | 'extended' | 'fixes' —
+  // mirrors the expansions category sidebar pattern.
+  const [acSection, setAcSection] = useState('custom');
   useEffect(() => {
     if (panelMode !== 'autocorrect' || builtinEntries.length > 0) return;
     window.electronAPI?.getBuiltinAutocorrectEntries?.()
@@ -2853,19 +2856,17 @@ export default function TextExpansions({
   ).sort((a, b) => a.correction.localeCompare(b.correction));
   acGroups.forEach(g => g.typos.sort());
 
-  // Bundled dictionaries grouped the same way for the Common column.
-  // Dedup by typo across packs (starter listed first, so it wins display),
-  // filtered by the search box, and render-capped for the 4k extended pack.
+  // Bundled dictionary for the ACTIVE rail section, grouped by correction,
+  // filtered by the toolbar search, render-capped for the 4k extended pack.
   const AC_DICT_RENDER_CAP = 150;
   const starterCount = builtinEntries.filter(e => e[2] === 'starter').length;
   const extendedCount = builtinEntries.length - starterCount;
+  const dictPack = acSection === 'extended' ? 'extended' : 'starter';
   const dictQuery = acDictFilter.trim().toLowerCase();
-  const seenDictTypos = new Set();
   const dictGroupMap = {};
   let dictGroupTotal = 0;
-  for (const [typo, correction] of builtinEntries) {
-    if (seenDictTypos.has(typo)) continue;
-    seenDictTypos.add(typo);
+  for (const [typo, correction, pack] of builtinEntries) {
+    if (pack !== dictPack) continue;
     if (dictQuery && !typo.includes(dictQuery) && !correction.toLowerCase().includes(dictQuery)) continue;
     const key = correction.toLowerCase();
     if (!dictGroupMap[key]) { dictGroupMap[key] = { correction, typos: [] }; dictGroupTotal += 1; }
@@ -2876,6 +2877,7 @@ export default function TextExpansions({
     .slice(0, AC_DICT_RENDER_CAP);
   builtinGroups.forEach(g => g.typos.sort());
   const dictHiddenGroups = Math.max(0, dictGroupTotal - builtinGroups.length);
+  const dictPackEnabled = dictPack === 'starter' ? autocorrectBuiltinTypos : autocorrectExtendedTypos;
 
   // ── Global Variables handlers ────────────────────────────────────────────
 
@@ -2984,7 +2986,12 @@ export default function TextExpansions({
             </button>
           )}
           {panelMode === 'autocorrect' && (
-            <button className="te-add-btn" onClick={openAcAdd} title="Add custom correction" type="button">
+            <button
+              className="te-add-btn"
+              onClick={() => { setAcSection('custom'); openAcAdd(); }}
+              title="Add custom correction"
+              type="button"
+            >
               + New Correction
             </button>
           )}
@@ -3837,156 +3844,53 @@ export default function TextExpansions({
             />
           </div>
 
-          {/* ── Typing fixes: responsive card grid ── */}
-          <div className="ac-fixes-grid">
-            <div className="ac-builtin-row">
-              <div className="ac-builtin-info">
-                <span className="ac-builtin-label">Fix double capitals</span>
-                <span className="ac-builtin-sub">HEllo becomes Hello. List words to leave alone below.</span>
-              </div>
-              <button
-                className={`ac-toggle${autocorrectDoubleCaps ? ' ac-toggle-on' : ''}`}
-                onClick={() => onUpdateAutocorrectSettings?.({ doubleCaps: !autocorrectDoubleCaps })}
-                type="button"
-                role="switch"
-                aria-checked={autocorrectDoubleCaps}
-                title={autocorrectDoubleCaps ? 'Disable double-capital fix' : 'Enable double-capital fix'}
-              />
-            </div>
-            <div className="ac-builtin-row">
-              <div className="ac-builtin-info">
-                <span className="ac-builtin-label">Fix accidental Caps Lock</span>
-                <span className="ac-builtin-sub">tHE becomes The and Caps Lock switches off</span>
-              </div>
-              <button
-                className={`ac-toggle${autocorrectCapsLockFix ? ' ac-toggle-on' : ''}`}
-                onClick={() => onUpdateAutocorrectSettings?.({ capsLockFix: !autocorrectCapsLockFix })}
-                type="button"
-                role="switch"
-                aria-checked={autocorrectCapsLockFix}
-                title={autocorrectCapsLockFix ? 'Disable Caps Lock fix' : 'Enable Caps Lock fix'}
-              />
-            </div>
-            <div className="ac-builtin-row">
-              <div className="ac-builtin-info">
-                <span className="ac-builtin-label">Capitalize sentences</span>
-                <span className="ac-builtin-sub">Lowercase words get capitalized after . ! ? or a new line</span>
-              </div>
-              <button
-                className={`ac-toggle${autocorrectSentenceCaps ? ' ac-toggle-on' : ''}`}
-                onClick={() => onUpdateAutocorrectSettings?.({ sentenceCaps: !autocorrectSentenceCaps })}
-                type="button"
-                role="switch"
-                aria-checked={autocorrectSentenceCaps}
-                title={autocorrectSentenceCaps ? 'Disable sentence capitalization' : 'Enable sentence capitalization'}
-              />
-            </div>
-          </div>
-          {(autocorrectDoubleCaps || autocorrectCapsLockFix) && (
-            <div className="ac-dc-exceptions">
-              <label className="form-label">DON'T CORRECT THESE WORDS</label>
-              <div className="ac-chiprow">
-                {autocorrectDoubleCapsExceptions.map(w => (
-                  <span key={w} className="ac-chip">
-                    {w}
-                    <button
-                      className="ac-chip-x"
-                      onClick={() => onUpdateAutocorrectSettings?.({ exceptions: autocorrectDoubleCapsExceptions.filter(x => x !== w) })}
-                      type="button"
-                      title={`Remove "${w}"`}
-                      aria-label={`Remove exception ${w}`}
-                    >&#10005;</button>
-                  </span>
-                ))}
-                <input
-                  className="ac-chip-input"
-                  placeholder="IDs"
-                  value={acDcInput}
-                  onChange={e => setAcDcInput(e.target.value.replace(/\s/g, ''))}
-                  onKeyDown={e => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); acCommitDcInput(); }
-                    if (e.key === 'Backspace' && !acDcInput && autocorrectDoubleCapsExceptions.length > 0) {
-                      onUpdateAutocorrectSettings?.({ exceptions: autocorrectDoubleCapsExceptions.slice(0, -1) });
-                    }
-                  }}
-                  onBlur={acCommitDcInput}
-                  spellCheck={false}
-                />
-              </div>
-            </div>
-          )}
+          <div className="te-content">
 
-          {/* ── Two columns: built-in dictionary | custom corrections ── */}
-          <div className="ac-columns">
-
-          {/* Left: bundled dictionaries — toggles above the visible list */}
-          <div className="ac-col ac-col-common">
-            <div className="ac-builtin-row">
-              <div className="ac-builtin-info">
-                <span className="ac-builtin-label">Common typos <span className="ac-section-count">{starterCount}</span></span>
-                <span className="ac-builtin-sub">Everyday slips fixed out of the box</span>
-              </div>
+          {/* ── Section rail — same pattern as the expansions category sidebar ── */}
+          <div className="te-cat-sidebar">
+            <div className="te-cat-sidebar-list">
               <button
-                className={`ac-toggle${autocorrectBuiltinTypos ? ' ac-toggle-on' : ''}`}
-                onClick={() => onUpdateAutocorrectSettings?.({ builtinTypos: !autocorrectBuiltinTypos })}
                 type="button"
-                role="switch"
-                aria-checked={autocorrectBuiltinTypos}
-                title={autocorrectBuiltinTypos ? 'Disable common typo corrections' : 'Enable common typo corrections'}
-              />
-            </div>
-            <div className="ac-builtin-row">
-              <div className="ac-builtin-info">
-                <span className="ac-builtin-label">Extended dictionary <span className="ac-section-count">{extendedCount}</span></span>
-                <span className="ac-builtin-sub">Thousands more English misspellings</span>
-              </div>
+                className={`te-cat-row${acSection === 'custom' ? ' te-cat-row-active' : ''}`}
+                onClick={() => setAcSection('custom')}
+              >
+                <span className="te-cat-row-name">Your corrections</span>
+                <span className="te-cat-count">{acGroups.length}</span>
+              </button>
               <button
-                className={`ac-toggle${autocorrectExtendedTypos ? ' ac-toggle-on' : ''}`}
-                onClick={() => onUpdateAutocorrectSettings?.({ extendedTypos: !autocorrectExtendedTypos })}
                 type="button"
-                role="switch"
-                aria-checked={autocorrectExtendedTypos}
-                title={autocorrectExtendedTypos ? 'Disable the extended dictionary' : 'Enable the extended dictionary'}
-              />
-            </div>
-            <div className="ac-section-header">
-              <span>Included</span>
-              <span className="ac-section-count">{dictGroupTotal}</span>
-              <input
-                className="ac-dict-search"
-                placeholder="Search corrections"
-                value={acDictFilter}
-                onChange={e => setAcDictFilter(e.target.value)}
-                onKeyDown={e => e.stopPropagation()}
-                spellCheck={false}
-              />
-            </div>
-            <div className={`ac-list ac-col-scroll${(autocorrectBuiltinTypos || autocorrectExtendedTypos) ? '' : ' ac-list-dim'}`}>
-              {builtinGroups.map(group => (
-                <div key={group.correction} className="ac-item ac-item-readonly">
-                  <div className="ac-group-typos">
-                    {group.typos.map(t => (
-                      <kbd key={t} className="te-trigger-badge ac-typo-badge">{t}</kbd>
-                    ))}
-                  </div>
-                  <span className="te-item-arrow">→</span>
-                  <span className="ac-correction">{group.correction}</span>
-                </div>
-              ))}
-              {dictHiddenGroups > 0 && (
-                <div className="te-empty-row">
-                  {dictHiddenGroups} more. Type in the search box to find a word.
-                </div>
-              )}
+                className={`te-cat-row${acSection === 'starter' ? ' te-cat-row-active' : ''}`}
+                onClick={() => { setAcSection('starter'); setAcDictFilter(''); }}
+              >
+                <span className="te-cat-row-name">Common typos</span>
+                <span className="te-cat-count">{starterCount}</span>
+              </button>
+              <button
+                type="button"
+                className={`te-cat-row${acSection === 'extended' ? ' te-cat-row-active' : ''}`}
+                onClick={() => { setAcSection('extended'); setAcDictFilter(''); }}
+              >
+                <span className="te-cat-row-name">Extended dictionary</span>
+                <span className="te-cat-count">{extendedCount}</span>
+              </button>
+              <button
+                type="button"
+                className={`te-cat-row${acSection === 'fixes' ? ' te-cat-row-active' : ''}`}
+                onClick={() => setAcSection('fixes')}
+              >
+                <span className="te-cat-row-name">Typing fixes</span>
+              </button>
             </div>
           </div>
 
-          {/* Right: the user's custom corrections */}
-          <div className="ac-col">
-          <div className="ac-section-header">
-            <span>Your corrections</span>
-            <span className="ac-section-count">{acGroups.length}</span>
+          {/* ── Main area ── */}
+          <div className="te-main">
+
+          {/* Your corrections */}
+          {acSection === 'custom' && (<>
+          <div className="te-toolbar">
+            <span className="te-toolbar-count">Grouped by correct word. Your entries always win over the bundled lists.</span>
+            <span className="te-toolbar-count">{acGroups.length} {acGroups.length === 1 ? 'word' : 'words'}</span>
           </div>
 
           {/* Add / Edit form — misspelling chips on the left, correct word on the right */}
@@ -4083,8 +3987,143 @@ export default function TextExpansions({
               ))}
             </div>
           )}
+          </>)}
+
+          {/* Bundled dictionaries: Common typos / Extended dictionary */}
+          {(acSection === 'starter' || acSection === 'extended') && (<>
+          <div className="te-toolbar">
+            <div className="ac-pack-toggle">
+              <button
+                className={`ac-toggle${dictPackEnabled ? ' ac-toggle-on' : ''}`}
+                onClick={() => onUpdateAutocorrectSettings?.(dictPack === 'starter'
+                  ? { builtinTypos: !autocorrectBuiltinTypos }
+                  : { extendedTypos: !autocorrectExtendedTypos })}
+                type="button"
+                role="switch"
+                aria-checked={dictPackEnabled}
+                title={dictPackEnabled ? 'Switch this list off' : 'Switch this list on'}
+              />
+              <span className="ac-pack-toggle-label">
+                {dictPackEnabled ? 'Fixing these as you type' : 'Switched off'}
+              </span>
+            </div>
+            <SearchBar
+              className="te-search-bar"
+              placeholder="Search…"
+              value={acDictFilter}
+              onChange={e => setAcDictFilter(e.target.value)}
+              onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { setAcDictFilter(''); e.target.blur(); } }}
+            />
           </div>
-          {/* end .ac-columns */}
+          <div className={`ac-list ac-col-scroll${dictPackEnabled ? '' : ' ac-list-dim'}`}>
+            {builtinGroups.map(group => (
+              <div key={group.correction} className="ac-item ac-item-readonly">
+                <div className="ac-group-typos">
+                  {group.typos.map(t => (
+                    <kbd key={t} className="te-trigger-badge ac-typo-badge">{t}</kbd>
+                  ))}
+                </div>
+                <span className="te-item-arrow">→</span>
+                <span className="ac-correction">{group.correction}</span>
+              </div>
+            ))}
+            {dictHiddenGroups > 0 && (
+              <div className="te-empty-row">
+                {dictHiddenGroups} more. Use the search box to find a word.
+              </div>
+            )}
+            {dictGroupTotal === 0 && dictQuery && (
+              <div className="te-empty-row">No matches for "{acDictFilter}"</div>
+            )}
+          </div>
+          </>)}
+
+          {/* Typing fixes */}
+          {acSection === 'fixes' && (
+            <div className="ac-col-scroll">
+              <div className="ac-fixes-grid">
+                <div className="ac-builtin-row">
+                  <div className="ac-builtin-info">
+                    <span className="ac-builtin-label">Fix double capitals</span>
+                    <span className="ac-builtin-sub">HEllo becomes Hello. List words to leave alone below.</span>
+                  </div>
+                  <button
+                    className={`ac-toggle${autocorrectDoubleCaps ? ' ac-toggle-on' : ''}`}
+                    onClick={() => onUpdateAutocorrectSettings?.({ doubleCaps: !autocorrectDoubleCaps })}
+                    type="button"
+                    role="switch"
+                    aria-checked={autocorrectDoubleCaps}
+                    title={autocorrectDoubleCaps ? 'Disable double-capital fix' : 'Enable double-capital fix'}
+                  />
+                </div>
+                <div className="ac-builtin-row">
+                  <div className="ac-builtin-info">
+                    <span className="ac-builtin-label">Fix accidental Caps Lock</span>
+                    <span className="ac-builtin-sub">tHE becomes The and Caps Lock switches off</span>
+                  </div>
+                  <button
+                    className={`ac-toggle${autocorrectCapsLockFix ? ' ac-toggle-on' : ''}`}
+                    onClick={() => onUpdateAutocorrectSettings?.({ capsLockFix: !autocorrectCapsLockFix })}
+                    type="button"
+                    role="switch"
+                    aria-checked={autocorrectCapsLockFix}
+                    title={autocorrectCapsLockFix ? 'Disable Caps Lock fix' : 'Enable Caps Lock fix'}
+                  />
+                </div>
+                <div className="ac-builtin-row">
+                  <div className="ac-builtin-info">
+                    <span className="ac-builtin-label">Capitalize sentences</span>
+                    <span className="ac-builtin-sub">Lowercase words get capitalized after . ! ? or a new line</span>
+                  </div>
+                  <button
+                    className={`ac-toggle${autocorrectSentenceCaps ? ' ac-toggle-on' : ''}`}
+                    onClick={() => onUpdateAutocorrectSettings?.({ sentenceCaps: !autocorrectSentenceCaps })}
+                    type="button"
+                    role="switch"
+                    aria-checked={autocorrectSentenceCaps}
+                    title={autocorrectSentenceCaps ? 'Disable sentence capitalization' : 'Enable sentence capitalization'}
+                  />
+                </div>
+              </div>
+              {(autocorrectDoubleCaps || autocorrectCapsLockFix) && (
+                <div className="ac-dc-exceptions">
+                  <label className="form-label">DON'T CORRECT THESE WORDS</label>
+                  <div className="ac-chiprow">
+                    {autocorrectDoubleCapsExceptions.map(w => (
+                      <span key={w} className="ac-chip">
+                        {w}
+                        <button
+                          className="ac-chip-x"
+                          onClick={() => onUpdateAutocorrectSettings?.({ exceptions: autocorrectDoubleCapsExceptions.filter(x => x !== w) })}
+                          type="button"
+                          title={`Remove "${w}"`}
+                          aria-label={`Remove exception ${w}`}
+                        >&#10005;</button>
+                      </span>
+                    ))}
+                    <input
+                      className="ac-chip-input"
+                      placeholder="IDs"
+                      value={acDcInput}
+                      onChange={e => setAcDcInput(e.target.value.replace(/\s/g, ''))}
+                      onKeyDown={e => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); acCommitDcInput(); }
+                        if (e.key === 'Backspace' && !acDcInput && autocorrectDoubleCapsExceptions.length > 0) {
+                          onUpdateAutocorrectSettings?.({ exceptions: autocorrectDoubleCapsExceptions.slice(0, -1) });
+                        }
+                      }}
+                      onBlur={acCommitDcInput}
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          </div>
+          {/* end .te-main / .te-content */}
           </div>
         </div>
       )}

@@ -2528,38 +2528,31 @@ button.te-col-header:hover {
   padding-bottom: 4px;
 }
 
-/* ── Two-column layout: Common typos | Your corrections ─────────────────── */
+/* ── Rail + main layout (reuses te-content / te-cat-sidebar / te-main) ──── */
 
-/* The view itself no longer scrolls — each column scrolls independently */
+/* The view itself no longer scrolls — section content scrolls inside te-main */
 .ac-view {
   overflow: hidden;
   flex: 1;
   min-height: 0;
 }
 
-.ac-columns {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: stretch;
-}
-
-.ac-col {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.ac-col-common {
-  max-width: 42%;
-  border-right: 1px solid var(--border);
-}
-
 .ac-col-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Pack on/off toggle in the dictionary toolbar */
+.ac-pack-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ac-pack-toggle-label {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* Built-in list is informational — no hover affordance, dim when its toggle is off */
@@ -2607,29 +2600,6 @@ button.te-col-header:hover {
   max-width: 340px;
   line-height: 1.5;
   margin-bottom: 6px;
-}
-
-/* Dictionary search — sits inline at the right of the Included header */
-.ac-dict-search {
-  margin-left: auto;
-  width: 45%;
-  min-width: 90px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-bright);
-  border-radius: 5px;
-  outline: none;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  padding: 3px 6px;
-}
-
-.ac-dict-search::placeholder {
-  color: var(--text-muted);
-  opacity: 0.7;
 }
 
 .ac-list-dim {
