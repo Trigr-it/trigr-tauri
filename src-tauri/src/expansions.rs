@@ -116,6 +116,10 @@ fn replay_buffered_and_recheck(guard: InjectionGuard) {
 
     if !buffered.is_empty() {
         log::info!("[Keyfire] Replaying {} buffered keystrokes", buffered.len());
+        // The user outran the injection — the replayed keys land as plain
+        // synthetic events, so the one-shot Backspace undo would miscount.
+        // Drop it for this fire rather than corrupt text.
+        disarm_undo();
         crate::hotkeys::SUPPRESS_SIMULATED
             .store(true, std::sync::atomic::Ordering::SeqCst);
         for key in &buffered {
@@ -356,8 +360,18 @@ struct ExpansionState {
     builtin_typos_enabled: bool,
     /// Double-caps sub-toggle: HEllo → Hello at word completion.
     double_caps_enabled: bool,
-    /// Lowercase words exempt from double-caps ("ids", "pcs", "tvs"...).
+    /// Lowercase words exempt from double-caps AND the Caps Lock fix
+    /// ("ids", "pcs", "tvs"...).
     double_caps_exceptions: HashSet<String>,
+    /// Caps Lock accident sub-toggle: tHE → The when Caps Lock is
+    /// physically on, plus a synthetic tap to switch Caps Lock off.
+    caps_lock_fix_enabled: bool,
+    /// Sentence-capitalization sub-toggle: lowercase word starts get
+    /// capitalized when the previous word ended a sentence (. ! ? Enter).
+    sentence_caps_enabled: bool,
+    /// True when the next completed word starts a sentence. Set by the
+    /// terminator checks, cleared on consumption, clicks and caret moves.
+    sentence_start_pending: bool,
     global_variables: HashMap<String, String>,
 }
 
@@ -374,6 +388,9 @@ impl Default for ExpansionState {
             builtin_typos_enabled: false,
             double_caps_enabled: false,
             double_caps_exceptions: HashSet::new(),
+            caps_lock_fix_enabled: false,
+            sentence_caps_enabled: false,
+            sentence_start_pending: false,
             global_variables: HashMap::new(),
         }
     }
@@ -404,6 +421,24 @@ pub static AUTOCORRECT_PENDING: AtomicBool = AtomicBool::new(false);
 /// so the user's input is never lost.
 pub static AC_KEY_PRE_SWALLOWED: AtomicBool = AtomicBool::new(false);
 
+/// One-shot Backspace undo: true from the moment a correction fires until
+/// the next input event. While armed, the LL hook pre-swallows a bare
+/// Backspace so try_undo_autocorrect can revert the correction atomically.
+pub static AC_UNDO_ARMED: AtomicBool = AtomicBool::new(false);
+
+/// Latched by the LL hook when it swallows the Backspace of an armed undo.
+pub static AC_BS_PRE_SWALLOWED: AtomicBool = AtomicBool::new(false);
+
+/// What the last correction did — everything needed to put the typed text
+/// back. Kept for exactly one follow-up input event.
+struct AcUndo {
+    original: String,
+    replacement: String,
+    term: AcTerminator,
+}
+
+static AC_UNDO: Mutex<Option<AcUndo>> = Mutex::new(None);
+
 // ── Buffer management (called from hotkeys.rs) ─────────────────────────────
 
 /// Recompute EXPANSION_PENDING_SPACE and AUTOCORRECT_PENDING from the current
@@ -429,7 +464,15 @@ fn refresh_pending_flag(s: &ExpansionState) {
             || (s.builtin_typos_enabled && builtin_autocorrect(&buf_lower).is_some())
             || (s.double_caps_enabled
                 && double_caps_candidate(&s.buffer)
-                && !s.double_caps_exceptions.contains(&buf_lower)));
+                && !s.double_caps_exceptions.contains(&buf_lower))
+            || (s.caps_lock_fix_enabled
+                && caps_lock_on()
+                && caps_lock_candidate(&s.buffer)
+                && !s.double_caps_exceptions.contains(&buf_lower))
+            || (s.sentence_caps_enabled
+                && s.sentence_start_pending
+                && s.buffer.chars().next().map_or(false, |c| c.is_alphabetic() && c.is_lowercase())
+                && s.buffer.chars().all(|c| c.is_alphabetic() || c == '\'')));
     AUTOCORRECT_PENDING.store(ac, Ordering::SeqCst);
 }
 
@@ -480,6 +523,11 @@ pub fn check_space_trigger() -> bool {
 
     let original_buffer = s.buffer.clone();
     let buffer_lower = s.buffer.to_lowercase();
+
+    // Sentence-caps context: this word consumes any pending sentence-start
+    // flag, and a Space never starts a new sentence.
+    let sentence_start = s.sentence_start_pending;
+    s.sentence_start_pending = false;
 
     // Priority 1: Text expansion (space-triggered). Deliberate triggers win
     // over passive autocorrect when a word is somehow both.
@@ -606,19 +654,18 @@ pub fn check_space_trigger() -> bool {
         return true;
     }
 
-    // Priority 2: Autocorrect (Pro) — custom map, built-in typos, double caps.
-    if let Some(correction) = resolve_autocorrect(&s, &original_buffer) {
-        let word_len = original_buffer.chars().count();
+    // Priority 2: Autocorrect (Pro) — custom map, built-in typos, typing fixes.
+    if let Some(fix) = resolve_autocorrect(&s, &original_buffer, sentence_start) {
         s.buffer.clear();
         refresh_pending_flag(&s);
         drop(s);
-        info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term Space)", original_buffer, correction);
+        info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term Space)", original_buffer, fix.text);
         let term = if was_pre_swallowed {
             AcTerminator::SwallowedVk(VK_SPACE)
         } else {
             AcTerminator::AlreadySentChar(' ')
         };
-        fire_autocorrect(word_len, &correction, term);
+        fire_autocorrect(&original_buffer, &fix.text, term, fix.caps_off);
         return true;
     }
 
@@ -674,6 +721,44 @@ fn double_caps_candidate(word: &str) -> bool {
     saw_tail
 }
 
+/// True when Caps Lock is physically toggled on.
+fn caps_lock_on() -> bool {
+    unsafe {
+        windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyState(0x14 /* VK_CAPITAL */) & 1 != 0
+    }
+}
+
+/// True when a word matches the accidental-Caps-Lock shape: lowercase first
+/// letter, everything after it uppercase (tHE, dON'T). Requires at least two
+/// uppercase tail letters so short intentional oddities ("tO") survive.
+/// Only meaningful when Caps Lock is actually on — the caller checks that.
+fn caps_lock_candidate(word: &str) -> bool {
+    let mut chars = word.chars();
+    let Some(c0) = chars.next() else { return false; };
+    if !(c0.is_alphabetic() && c0.is_lowercase()) {
+        return false;
+    }
+    let mut upper_tail = 0;
+    for c in chars {
+        if c == '\'' {
+            continue;
+        }
+        if !(c.is_alphabetic() && c.is_uppercase()) {
+            return false;
+        }
+        upper_tail += 1;
+    }
+    upper_tail >= 2
+}
+
+/// Invert an accidental-Caps-Lock word: "tHE" → "The".
+fn caps_lock_fix(word: &str) -> String {
+    let mut chars = word.chars();
+    let first: String = chars.next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+    let rest: String = chars.as_str().to_lowercase();
+    first + &rest
+}
+
 /// Lower ONLY the second character: "HEllo" → "Hello".
 fn double_caps_fix(word: &str) -> String {
     word.chars()
@@ -689,16 +774,27 @@ fn double_caps_fix(word: &str) -> String {
         .collect()
 }
 
+/// A resolved correction plus its side effects.
+struct AcFix {
+    text: String,
+    /// Tap Caps Lock off inside the correction batch (Caps Lock fix path).
+    caps_off: bool,
+}
+
 /// Resolve the correction for a completed word, or None. Priority: custom
-/// map → built-in dictionary → double-caps. Case of the typed word carries
+/// map → built-in dictionary → Caps Lock fix → double-caps, then sentence
+/// capitalization composes over whichever result (or the raw word) so
+/// "teh" at a sentence start becomes "The". Case of the typed word carries
 /// onto map corrections (Teh → The, TEH → THE); a lowercase typed word takes
 /// the stored correction verbatim so deliberate case in corrections survives
 /// (e.g. "im" → "I'm").
-fn resolve_autocorrect(s: &ExpansionState, original: &str) -> Option<String> {
+fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool) -> Option<AcFix> {
     if !s.autocorrect_enabled || !crate::licence::is_pro() {
         return None;
     }
     let lower = original.to_lowercase();
+
+    let mut base: Option<AcFix> = None;
 
     let ac_key = format!("GLOBAL::AUTOCORRECT::{}", lower);
     if let Some(entry) = s.assignments.get(&ac_key) {
@@ -708,28 +804,53 @@ fn resolve_autocorrect(s: &ExpansionState, original: &str) -> Option<String> {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if !correction.is_empty() {
-            return Some(apply_case(correction, detect_case(original)));
+            base = Some(AcFix { text: apply_case(correction, detect_case(original)), caps_off: false });
         }
     }
 
-    if s.builtin_typos_enabled {
+    if base.is_none() && s.builtin_typos_enabled {
         if let Some(c) = builtin_autocorrect(&lower) {
-            return Some(apply_case(c, detect_case(original)));
+            base = Some(AcFix { text: apply_case(c, detect_case(original)), caps_off: false });
         }
     }
 
-    if s.double_caps_enabled
+    if base.is_none()
+        && s.caps_lock_fix_enabled
+        && caps_lock_on()
+        && caps_lock_candidate(original)
+        && !s.double_caps_exceptions.contains(&lower)
+    {
+        base = Some(AcFix { text: caps_lock_fix(original), caps_off: true });
+    }
+
+    if base.is_none()
+        && s.double_caps_enabled
         && double_caps_candidate(original)
         && !s.double_caps_exceptions.contains(&lower)
     {
-        return Some(double_caps_fix(original));
+        base = Some(AcFix { text: double_caps_fix(original), caps_off: false });
     }
 
-    None
+    // Sentence capitalization — composes over the resolved text or the raw
+    // word when nothing else matched. Only clean words qualify (letters and
+    // apostrophes): the buffer can carry punctuation left over from an
+    // earlier non-firing terminator ("world.") which must never re-fire.
+    if s.sentence_caps_enabled && sentence_start {
+        let current = base.as_ref().map(|f| f.text.as_str()).unwrap_or(original);
+        if current.chars().next().map_or(false, |c| c.is_alphabetic() && c.is_lowercase())
+            && current.chars().all(|c| c.is_alphabetic() || c == '\'')
+        {
+            let capped = apply_case(current, CasePattern::Capitalized);
+            return Some(AcFix { text: capped, caps_off: base.map_or(false, |f| f.caps_off) });
+        }
+    }
+
+    base
 }
 
 /// How the word was completed, and whether the terminator keystroke already
 /// reached the target app.
+#[derive(Clone, Copy)]
 pub(crate) enum AcTerminator {
     /// Hook pre-swallowed the key — re-emit it inside the batch.
     SwallowedVk(u16),
@@ -772,11 +893,13 @@ fn push_unicode(inputs: &mut Vec<INPUT>, text: &str) {
 /// thread only for the post-batch suppress drain; the InjectionGuard is
 /// created HERE on the processor thread so there is no window for user
 /// keystrokes to slip between the decision and the buffering.
-fn fire_autocorrect(word_char_len: usize, replacement: &str, term: AcTerminator) {
+/// Also arms the one-shot Backspace undo with everything needed to revert.
+fn fire_autocorrect(original: &str, replacement: &str, term: AcTerminator, caps_off: bool) {
     if !fire_rate_ok(replacement) {
         return;
     }
 
+    let word_char_len = original.chars().count();
     let backspaces = word_char_len
         + match term {
             AcTerminator::AlreadySentChar(_) | AcTerminator::AlreadySentVk(_) => 1,
@@ -784,7 +907,7 @@ fn fire_autocorrect(word_char_len: usize, replacement: &str, term: AcTerminator)
         };
 
     let mut inputs: Vec<INPUT> =
-        Vec::with_capacity(backspaces * 2 + replacement.len() * 2 + 4);
+        Vec::with_capacity(backspaces * 2 + replacement.len() * 2 + 6);
     for _ in 0..backspaces {
         push_vk_pair(&mut inputs, VK_BACKSPACE);
     }
@@ -797,8 +920,22 @@ fn fire_autocorrect(word_char_len: usize, replacement: &str, term: AcTerminator)
             push_unicode(&mut inputs, &ch.to_string())
         }
     }
+    if caps_off {
+        // Caps Lock accident fix: switch Caps Lock off as part of the batch.
+        // The unicode text events above are layout/caps independent, so batch
+        // position doesn't affect the corrected text.
+        push_vk_pair(&mut inputs, 0x14 /* VK_CAPITAL */);
+    }
 
     crate::analytics::log_action("autocorrect", replacement.chars().count() as u32, replacement, replacement);
+
+    // Arm the one-shot Backspace undo before anything can land.
+    *AC_UNDO.lock().unwrap() = Some(AcUndo {
+        original: original.to_string(),
+        replacement: replacement.to_string(),
+        term,
+    });
+    AC_UNDO_ARMED.store(true, Ordering::SeqCst);
 
     // Guard on the processor thread — concurrent real keystrokes buffer from
     // this instant and replay after the batch.
@@ -852,25 +989,38 @@ pub fn check_char_terminator(ch: char) -> bool {
 
     let mut s = state().lock().unwrap();
     let original = s.buffer.clone();
+
+    // Sentence-caps context: consume the pending flag for this word, then
+    // set it for the next one. '.' only marks a sentence end after a clean
+    // word of 2+ letters — cuts most "e.g." / initials false positives.
+    let sentence_start = if original.is_empty() {
+        false
+    } else {
+        let prev = s.sentence_start_pending;
+        let clean_word = original.chars().count() >= 2
+            && original.chars().all(|c| c.is_alphabetic() || c == '\'');
+        s.sentence_start_pending = matches!(ch, '!' | '?') || (ch == '.' && clean_word);
+        prev
+    };
+
     let fired = if original.is_empty() {
         None
     } else {
-        resolve_autocorrect(&s, &original)
+        resolve_autocorrect(&s, &original, sentence_start)
     };
 
     match fired {
-        Some(correction) => {
-            let word_len = original.chars().count();
+        Some(fix) => {
             s.buffer.clear();
             refresh_pending_flag(&s);
             drop(s);
-            info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term '{}')", original, correction, ch);
+            info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term '{}')", original, fix.text, ch);
             let term = if was_swallowed {
                 AcTerminator::SwallowedChar(ch)
             } else {
                 AcTerminator::AlreadySentChar(ch)
             };
-            fire_autocorrect(word_len, &correction, term);
+            fire_autocorrect(&original, &fix.text, term, fix.caps_off);
             true
         }
         None => {
@@ -893,19 +1043,33 @@ pub fn check_key_terminator(vk: u16) -> bool {
 
     let mut s = state().lock().unwrap();
     let original = s.buffer.clone();
+
+    // Sentence-caps context: Enter starts a new sentence, Tab doesn't.
+    // Empty buffer (Enter straight after a fired word) leaves the pending
+    // flag alone — it still applies to the next real word.
+    let sentence_start = if original.is_empty() {
+        if vk == 0x0D {
+            s.sentence_start_pending = true;
+        }
+        false
+    } else {
+        let prev = s.sentence_start_pending;
+        s.sentence_start_pending = vk == 0x0D;
+        prev
+    };
+
     let fired = if original.is_empty() {
         None
     } else {
-        resolve_autocorrect(&s, &original)
+        resolve_autocorrect(&s, &original, sentence_start)
     };
 
     match fired {
-        Some(correction) => {
-            let word_len = original.chars().count();
+        Some(fix) => {
             s.buffer.clear();
             refresh_pending_flag(&s);
             drop(s);
-            info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term vk 0x{:02X})", original, correction, vk);
+            info!("[Keyfire] Autocorrect: \"{}\" -> \"{}\" (term vk 0x{:02X})", original, fix.text, vk);
             let term = if was_swallowed {
                 AcTerminator::SwallowedVk(vk)
             } else {
@@ -913,7 +1077,7 @@ pub fn check_key_terminator(vk: u16) -> bool {
                 // changed mid-flight). Erase the newline/tab too, re-tap after.
                 AcTerminator::AlreadySentVk(vk)
             };
-            fire_autocorrect(word_len, &correction, term);
+            fire_autocorrect(&original, &fix.text, term, fix.caps_off);
             true
         }
         None => {
@@ -926,6 +1090,91 @@ pub fn check_key_terminator(vk: u16) -> bool {
             false
         }
     }
+}
+
+/// Backspace pressed as the very next input after a correction: revert it.
+/// Erases the correction + terminator, retypes the original word + the same
+/// terminator — one batch, same machinery as the fire. Returns true when the
+/// undo consumed the Backspace (caller must not treat it as a deletion).
+pub fn try_undo_autocorrect() -> bool {
+    let was_swallowed = AC_BS_PRE_SWALLOWED.swap(false, Ordering::SeqCst);
+    if !AC_UNDO_ARMED.swap(false, Ordering::SeqCst) {
+        // Hook swallowed on a stale armed flag (processor disarmed first) —
+        // give the Backspace back so the user's deletion still happens.
+        if was_swallowed {
+            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+            send_vk_tap(VK_BACKSPACE);
+            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+            return true;
+        }
+        return false;
+    }
+    let Some(u) = AC_UNDO.lock().unwrap().take() else {
+        if was_swallowed {
+            crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+            send_vk_tap(VK_BACKSPACE);
+            crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+            return true;
+        }
+        return false;
+    };
+
+    // Swallowed → the terminator is still on screen and must be erased too.
+    // Not swallowed → the physical Backspace already deleted the terminator.
+    let replacement_chars = u.replacement.chars().count();
+    let backspaces = replacement_chars + if was_swallowed { 1 } else { 0 };
+
+    let mut inputs: Vec<INPUT> =
+        Vec::with_capacity(backspaces * 2 + u.original.len() * 2 + 4);
+    for _ in 0..backspaces {
+        push_vk_pair(&mut inputs, VK_BACKSPACE);
+    }
+    push_unicode(&mut inputs, &u.original);
+    match u.term {
+        AcTerminator::SwallowedVk(vk) | AcTerminator::AlreadySentVk(vk) => {
+            push_vk_pair(&mut inputs, vk)
+        }
+        AcTerminator::SwallowedChar(ch) | AcTerminator::AlreadySentChar(ch) => {
+            push_unicode(&mut inputs, &ch.to_string())
+        }
+    }
+
+    info!("[Keyfire] Autocorrect undo: \"{}\" restored over \"{}\"", u.original, u.replacement);
+
+    let guard = InjectionGuard::new();
+    thread::spawn(move || {
+        let _guard_slot = guard;
+        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+        let held = crate::actions::release_held_modifiers();
+        unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            );
+        }
+        crate::actions::restore_modifiers(&held);
+        thread::sleep(Duration::from_millis(10));
+        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+        replay_buffered_and_recheck(_guard_slot);
+    });
+    true
+}
+
+/// Any input other than an immediate Backspace invalidates the one-shot undo.
+pub fn disarm_undo() {
+    if AC_UNDO_ARMED.swap(false, Ordering::SeqCst) {
+        AC_UNDO.lock().unwrap().take();
+    }
+}
+
+/// Click or caret-moving key: undo no longer applies and the sentence-start
+/// context is unknown. Called alongside buffer_clear from those paths.
+pub fn on_caret_moved() {
+    disarm_undo();
+    let mut s = state().lock().unwrap();
+    s.sentence_start_pending = false;
+    refresh_pending_flag(&s);
 }
 
 /// Consume a stale pre-swallow latch for a keystroke that resolved to no
@@ -3901,6 +4150,8 @@ pub fn set_autocorrect_settings(
     builtin_typos: bool,
     double_caps: bool,
     double_caps_exceptions: Vec<String>,
+    caps_lock_fix: bool,
+    sentence_caps: bool,
 ) {
     let mut s = state().lock().unwrap();
     s.autocorrect_enabled = enabled;
@@ -3911,10 +4162,12 @@ pub fn set_autocorrect_settings(
         .map(|w| w.trim().to_lowercase())
         .filter(|w| !w.is_empty())
         .collect();
+    s.caps_lock_fix_enabled = caps_lock_fix;
+    s.sentence_caps_enabled = sentence_caps;
     refresh_pending_flag(&s);
     info!(
-        "[Keyfire] Autocorrect settings: enabled={} builtin={} double_caps={} ({} exceptions)",
-        enabled, builtin_typos, double_caps, s.double_caps_exceptions.len()
+        "[Keyfire] Autocorrect settings: enabled={} builtin={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions)",
+        enabled, builtin_typos, double_caps, caps_lock_fix, sentence_caps, s.double_caps_exceptions.len()
     );
 }
 

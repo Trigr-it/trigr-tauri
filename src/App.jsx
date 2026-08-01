@@ -89,6 +89,8 @@ function App() {
   const [autocorrectBuiltinTypos, setAutocorrectBuiltinTypos] = useState(false);
   const [autocorrectDoubleCaps, setAutocorrectDoubleCaps] = useState(false);
   const [autocorrectDoubleCapsExceptions, setAutocorrectDoubleCapsExceptions] = useState([]);
+  const [autocorrectCapsLockFix, setAutocorrectCapsLockFix] = useState(false);
+  const [autocorrectSentenceCaps, setAutocorrectSentenceCaps] = useState(false);
   const [showSettings, setShowSettings]             = useState(false);
   const [showWelcome, setShowWelcome]               = useState(false);
   const [showOnboarding, setShowOnboarding]         = useState(false);
@@ -313,11 +315,15 @@ function App() {
         const savedAcBuiltin = config.autocorrectBuiltinTypos ?? false;
         const savedAcDoubleCaps = config.autocorrectDoubleCaps ?? false;
         const savedAcExceptions = Array.isArray(config.autocorrectDoubleCapsExceptions) ? config.autocorrectDoubleCapsExceptions : [];
+        const savedAcCapsLockFix = config.autocorrectCapsLockFix ?? false;
+        const savedAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
         setAutocorrectEnabled(savedAcEnabled);
         setAutocorrectBuiltinTypos(savedAcBuiltin);
         setAutocorrectDoubleCaps(savedAcDoubleCaps);
         setAutocorrectDoubleCapsExceptions(savedAcExceptions);
-        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions);
+        setAutocorrectCapsLockFix(savedAcCapsLockFix);
+        setAutocorrectSentenceCaps(savedAcSentenceCaps);
+        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
         // Clipboard privacy controls — defaults preserve existing behaviour.
@@ -686,11 +692,15 @@ function App() {
           const cfgAcBuiltin = config.autocorrectBuiltinTypos ?? false;
           const cfgAcDoubleCaps = config.autocorrectDoubleCaps ?? false;
           const cfgAcExceptions = Array.isArray(config.autocorrectDoubleCapsExceptions) ? config.autocorrectDoubleCapsExceptions : [];
+          const cfgAcCapsLockFix = config.autocorrectCapsLockFix ?? false;
+          const cfgAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
           setAutocorrectEnabled(cfgAcEnabled);
           setAutocorrectBuiltinTypos(cfgAcBuiltin);
           setAutocorrectDoubleCaps(cfgAcDoubleCaps);
           setAutocorrectDoubleCapsExceptions(cfgAcExceptions);
-          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions);
+          setAutocorrectCapsLockFix(cfgAcCapsLockFix);
+          setAutocorrectSentenceCaps(cfgAcSentenceCaps);
+          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps);
         }
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
         const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
@@ -2189,19 +2199,25 @@ function App() {
       builtinTypos: patch.builtinTypos ?? autocorrectBuiltinTypos,
       doubleCaps: patch.doubleCaps ?? autocorrectDoubleCaps,
       exceptions: patch.exceptions ?? autocorrectDoubleCapsExceptions,
+      capsLockFix: patch.capsLockFix ?? autocorrectCapsLockFix,
+      sentenceCaps: patch.sentenceCaps ?? autocorrectSentenceCaps,
     };
     setAutocorrectEnabled(next.enabled);
     setAutocorrectBuiltinTypos(next.builtinTypos);
     setAutocorrectDoubleCaps(next.doubleCaps);
     setAutocorrectDoubleCapsExceptions(next.exceptions);
-    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions);
+    setAutocorrectCapsLockFix(next.capsLockFix);
+    setAutocorrectSentenceCaps(next.sentenceCaps);
+    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps);
     window.electronAPI?.saveConfig({
       autocorrectEnabled: next.enabled,
       autocorrectBuiltinTypos: next.builtinTypos,
       autocorrectDoubleCaps: next.doubleCaps,
       autocorrectDoubleCapsExceptions: next.exceptions,
+      autocorrectCapsLockFix: next.capsLockFix,
+      autocorrectSentenceCaps: next.sentenceCaps,
     });
-  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions]);
+  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps]);
 
   // Save one correct word with its full misspelling list. Storage is flat
   // (one GLOBAL::AUTOCORRECT::<typo> key per misspelling); typos dropped from
@@ -4347,6 +4363,8 @@ function App() {
               autocorrectBuiltinTypos={autocorrectBuiltinTypos}
               autocorrectDoubleCaps={autocorrectDoubleCaps}
               autocorrectDoubleCapsExceptions={autocorrectDoubleCapsExceptions}
+              autocorrectCapsLockFix={autocorrectCapsLockFix}
+              autocorrectSentenceCaps={autocorrectSentenceCaps}
               onUpdateAutocorrectSettings={handleUpdateAutocorrectSettings}
               autocorrections={autocorrections}
               onSaveAutocorrectGroup={handleSaveAutocorrectGroup}

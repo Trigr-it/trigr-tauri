@@ -1605,7 +1605,27 @@ unsafe extern "system" fn keyboard_hook_proc(
                 // combos can be hotkey territory, so those fall back to the
                 // +1-backspace path in check_char_terminator. The processor
                 // re-injects any swallowed key that doesn't end up firing.
+                // Backspace pre-swallow for the one-shot autocorrect undo:
+                // while AC_UNDO_ARMED, a bare Backspace is consumed here and
+                // try_undo_autocorrect reverts the whole correction. Guard set
+                // mirrors the terminator swallows. A swallow on a stale armed
+                // flag is safe — try_undo re-injects the Backspace.
                 let ac_swallow = if !space_swallow
+                    && kb.vkCode == 0x08 /* BACKSPACE */
+                    && crate::expansions::AC_UNDO_ARMED.load(Ordering::SeqCst)
+                {
+                    let should_swallow = modifier_bits() == 0
+                        && MACROS_ENABLED.load(Ordering::SeqCst)
+                        && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
+                        && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst)
+                        && !IS_CAPTURING_KEY.load(Ordering::SeqCst)
+                        && !CLIPBOARD_OVERLAY_VISIBLE.load(Ordering::SeqCst)
+                        && FILLIN_HWND.load(Ordering::SeqCst) == 0;
+                    if should_swallow {
+                        crate::expansions::AC_BS_PRE_SWALLOWED.store(true, Ordering::SeqCst);
+                    }
+                    should_swallow
+                } else if !space_swallow
                     && matches!(
                         kb.vkCode,
                         0x0D /* RETURN */ | 0x09 /* TAB */
@@ -2221,7 +2241,18 @@ fn process_expansion_keystroke(key_id: &str, vk: u32, scan: u32) {
     if FILLIN_HWND.load(Ordering::SeqCst) != 0 {
         return;
     }
+    // Any input other than an immediate Backspace invalidates the one-shot
+    // undo. Runs BEFORE handling so a fire during handling re-arms cleanly.
+    if key_id != "Backspace" {
+        crate::expansions::disarm_undo();
+    }
+
     if key_id == "Backspace" {
+        // One-shot undo: Backspace as the very next input after a correction
+        // reverts it (the hook pre-swallowed the keystroke when armed).
+        if crate::expansions::try_undo_autocorrect() {
+            return;
+        }
         crate::expansions::buffer_pop();
     } else if key_id == "Space" {
         crate::expansions::check_space_trigger();
@@ -2232,10 +2263,12 @@ fn process_expansion_keystroke(key_id: &str, vk: u32, scan: u32) {
         crate::expansions::check_key_terminator(vk as u16);
         crate::expansions::buffer_clear();
     } else if key_id == "Escape" {
+        crate::expansions::on_caret_moved();
         crate::expansions::buffer_clear();
     } else if matches!(key_id, "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" | "Home" | "End" | "Delete") {
         // Caret moved — the buffer no longer reflects what's left of the
-        // caret, so triggers and autocorrect must not fire against it.
+        // caret, so triggers, autocorrect, and sentence context must reset.
+        crate::expansions::on_caret_moved();
         crate::expansions::buffer_clear();
     } else {
         let shift = MOD_SHIFT.load(Ordering::SeqCst);
@@ -2268,8 +2301,11 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // Update modifier state
     if is_modifier_vk(vk) {
         update_modifier_state(vk, true);
-        // Clear expansion buffer on any modifier press (ARM64 timing safety)
+        // Clear expansion buffer on any modifier press (ARM64 timing safety).
+        // Also invalidates the one-shot autocorrect undo — a modifier means
+        // the next Backspace isn't the "revert that" gesture.
         crate::expansions::buffer_clear();
+        crate::expansions::disarm_undo();
 
         // Track sole modifier for key capture mode
         if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
@@ -3306,8 +3342,9 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     check_overlay_outside_click(app);
 
     // A click moves the caret (or focus) — the expansion buffer no longer
-    // reflects what's left of the caret, so expansion triggers and autocorrect
-    // must not fire against stale text.
+    // reflects what's left of the caret, so expansion triggers, autocorrect,
+    // the one-shot undo, and sentence context must all reset.
+    crate::expansions::on_caret_moved();
     crate::expansions::buffer_clear();
 
     // ── Recording mode: capture mouse trigger and send to frontend ──────

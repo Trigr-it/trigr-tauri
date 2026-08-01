@@ -113,8 +113,8 @@ window.electronAPI = {
 
   // ── Autocorrect ─────────────────────────────────────────────────────────────
   updateAutocorrectEnabled: (enabled) => invoke('update_autocorrect_enabled', { enabled }),
-  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions) =>
-    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions }),
+  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps) =>
+    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps }),
   getBuiltinAutocorrectEntries: () => invoke('get_builtin_autocorrect_entries'),
 
   // ── Global compatibility settings ───────────────────────────────────────────

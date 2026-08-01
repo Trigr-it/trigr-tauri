@@ -1426,8 +1426,10 @@ fn update_autocorrect_settings(
     builtin_typos: bool,
     double_caps: bool,
     double_caps_exceptions: Vec<String>,
+    caps_lock_fix: bool,
+    sentence_caps: bool,
 ) {
-    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions);
+    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps);
 }
 
 #[tauri::command]
