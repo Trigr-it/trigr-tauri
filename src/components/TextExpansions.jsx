@@ -2169,12 +2169,16 @@ export default function TextExpansions({
   onReorderCategories,
   onUpdateCategoryColour,
   onRenameCategory,
-  // Autocorrect props
-  autocorrectEnabled,
-  onToggleAutocorrect,
+  // Autocorrect props (Pro) — settings live in App.jsx state, entries are
+  // flat GLOBAL::AUTOCORRECT:: assignments grouped by correct word here.
+  autocorrectEnabled = false,
+  autocorrectBuiltinTypos = false,
+  autocorrectDoubleCaps = false,
+  autocorrectDoubleCapsExceptions = [],
+  onUpdateAutocorrectSettings,
   autocorrections = [],
-  onAddAutocorrect,
-  onDeleteAutocorrect,
+  onSaveAutocorrectGroup,
+  onDeleteAutocorrectGroup,
   // ── Global Variables
   globalVariables = {},
   onSaveGlobalVariables,
@@ -2306,9 +2310,11 @@ export default function TextExpansions({
   );
 
   // ── Autocorrect form state ──
-  const [acEditing, setAcEditing]       = useState(null); // null | { isNew, originalTypo? }
-  const [acTypo, setAcTypo]             = useState('');
-  const [acCorrection, setAcCorrection] = useState('');
+  const [acEditing, setAcEditing]     = useState(null); // null | { isNew, originalWord?, originalTypos? }
+  const [acWord, setAcWord]           = useState('');   // the CORRECT word
+  const [acTypos, setAcTypos]         = useState([]);   // misspelling chips
+  const [acTypoInput, setAcTypoInput] = useState('');   // chip input value
+  const [acDcInput, setAcDcInput]     = useState('');   // double-caps exception input
 
   // ── Global Variables form state ──
   const [gdEditing, setGdEditing]   = useState(null); // null | { isNew, originalKey? }
@@ -2686,24 +2692,37 @@ export default function TextExpansions({
   }
 
   // ── Autocorrect handlers ──
+  // One UI row = one correct word with all its misspelling chips; storage
+  // stays flat (one GLOBAL::AUTOCORRECT:: entry per misspelling).
   function openAcAdd() {
-    setAcTypo('');
-    setAcCorrection('');
+    setAcWord('');
+    setAcTypos([]);
+    setAcTypoInput('');
     setAcEditing({ isNew: true });
   }
 
-  function openAcEdit(ac) {
-    setAcTypo(ac.typo);
-    setAcCorrection(ac.correction);
-    setAcEditing({ isNew: false, originalTypo: ac.typo });
+  function openAcEdit(group) {
+    setAcWord(group.correction);
+    setAcTypos([...group.typos]);
+    setAcTypoInput('');
+    setAcEditing({ isNew: false, originalWord: group.correction, originalTypos: [...group.typos] });
+  }
+
+  function acCommitTypoInput() {
+    const t = acTypoInput.trim().toLowerCase().replace(/\s/g, '');
+    setAcTypoInput('');
+    if (!t) return;
+    setAcTypos(prev => (prev.includes(t) ? prev : [...prev, t]));
   }
 
   function handleAcSave() {
-    const typo = acTypo.trim().toLowerCase().replace(/\s/g, '');
-    const correction = acCorrection.trim();
-    if (!typo || !correction) return;
-    const originalTypo = acEditing.isNew ? null : acEditing.originalTypo;
-    onAddAutocorrect?.(typo, correction, originalTypo);
+    const word = acWord.trim();
+    // Text still sitting in the chip input counts — covers "typed the typo
+    // but didn't press Enter" before hitting Save.
+    const pending = acTypoInput.trim().toLowerCase().replace(/\s/g, '');
+    const typos = pending && !acTypos.includes(pending) ? [...acTypos, pending] : [...acTypos];
+    if (!word || typos.length === 0) return;
+    onSaveAutocorrectGroup?.(word, typos, acEditing?.originalTypos || []);
     setAcEditing(null);
   }
 
@@ -2711,11 +2730,18 @@ export default function TextExpansions({
     setAcEditing(null);
   }
 
+  function acCommitDcInput() {
+    const w = acDcInput.trim().toLowerCase().replace(/\s/g, '');
+    setAcDcInput('');
+    if (!w || autocorrectDoubleCapsExceptions.includes(w)) return;
+    onUpdateAutocorrectSettings?.({ exceptions: [...autocorrectDoubleCapsExceptions, w] });
+  }
+
   const hasVariants = variantOptions.length > 0 && variantOptions.some(o => o.text?.trim());
   const canSave   = trigger.trim() && !triggerError && (
     expansionType === 'image' ? !!imagePath : (hasVariants || !!editorValue.text.trim())
   );
-  const canAcSave = acTypo.trim() && acCorrection.trim();
+  const canAcSave = acWord.trim() && (acTypos.length > 0 || acTypoInput.trim());
 
   // Normalise categories — guard against old string-array format surviving in
   // config or being introduced by a stale drag-and-drop state.
@@ -2802,8 +2828,16 @@ export default function TextExpansions({
     });
   })();
 
-  // Sorted custom autocorrections
-  const sortedAc = [...autocorrections].sort((a, b) => a.typo.localeCompare(b.typo));
+  // Custom autocorrections grouped by correct word, both levels alphabetical
+  const acGroups = Object.values(
+    autocorrections.reduce((acc, { typo, correction }) => {
+      const key = correction.toLowerCase();
+      if (!acc[key]) acc[key] = { correction, typos: [] };
+      acc[key].typos.push(typo);
+      return acc;
+    }, {})
+  ).sort((a, b) => a.correction.localeCompare(b.correction));
+  acGroups.forEach(g => g.typos.sort());
 
   // ── Global Variables handlers ────────────────────────────────────────────
 
@@ -2874,15 +2908,16 @@ export default function TextExpansions({
           >
             <span className="te-mode-tab-icon" aria-hidden="true">✦</span> Text Expansions
           </button>
-          {/* Autocorrect tab hidden for Alpha
           <button
             className={`te-mode-tab${panelMode === 'autocorrect' ? ' active' : ''}`}
-            onClick={() => setPanelMode('autocorrect')}
+            onClick={() => {
+              if (!isPro) { onShowUpgrade?.('Autocorrect'); return; }
+              setPanelMode('autocorrect');
+            }}
             type="button"
           >
-            Autocorrect
+            <span className="te-mode-tab-icon" aria-hidden="true">✓</span> Autocorrect <span className="pro-badge">PRO</span>
           </button>
-          */}
         </div>
         {/* How-to tip — same gold TIP treatment as the radial editor and
             templates panel. Replaces the old te-hint one-liner. */}
@@ -2893,6 +2928,15 @@ export default function TextExpansions({
               Type your trigger characters then <kbd className="te-tip-kbd">Space</kbd> to fire the expansion, or select <span className="te-tip-instant">⚡ Instant</span> mode to fire immediately on the last character.
             </span>
             <button type="button" className="te-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('expansions')}>&#10005;</button>
+          </div>
+        )}
+        {panelMode === 'autocorrect' && !hiddenTips.includes('autocorrect') && (
+          <div className="te-tip">
+            <span className="te-tip-badge">TIP</span>
+            <span>
+              Corrections fire the moment you finish a word with <kbd className="te-tip-kbd">Space</kbd>, <kbd className="te-tip-kbd">Enter</kbd>, <kbd className="te-tip-kbd">Tab</kbd> or punctuation. Each correct word can have as many misspellings as you like.
+            </span>
+            <button type="button" className="te-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('autocorrect')}>&#10005;</button>
           </div>
         )}
         <div className="te-header-right">
@@ -3739,58 +3783,147 @@ export default function TextExpansions({
       {panelMode === 'autocorrect' && (
         <div className="ac-view">
 
-          {/* ── Built-in library toggle ── */}
-          <div className="ac-builtin-row">
+          {/* ── Master toggle ── */}
+          <div className="ac-builtin-row ac-master-row">
             <div className="ac-builtin-info">
-              <span className="ac-builtin-label">Built-in corrections</span>
-              <span className="ac-builtin-sub">50 common typos — teh→the, recieve→receive, definately→definitely…</span>
+              <span className="ac-builtin-label">Autocorrect</span>
+              <span className="ac-builtin-sub">Fixes typos the instant you finish a word. Works in every app.</span>
             </div>
             <button
               className={`ac-toggle${autocorrectEnabled ? ' ac-toggle-on' : ''}`}
-              onClick={onToggleAutocorrect}
+              onClick={() => onUpdateAutocorrectSettings?.({ enabled: !autocorrectEnabled })}
               type="button"
               role="switch"
               aria-checked={autocorrectEnabled}
-              title={autocorrectEnabled ? 'Disable built-in corrections' : 'Enable built-in corrections'}
+              title={autocorrectEnabled ? 'Turn autocorrect off' : 'Turn autocorrect on'}
             />
           </div>
 
-          {/* ── Custom corrections ── */}
-          <div className="ac-section-header">
-            <span>Custom Corrections</span>
-            <span className="ac-section-count">{autocorrections.length}</span>
+          {/* ── Built-in dictionary toggle ── */}
+          <div className="ac-builtin-row">
+            <div className="ac-builtin-info">
+              <span className="ac-builtin-label">Common typos</span>
+              <span className="ac-builtin-sub">Fifty everyday slips: teh → the, adn → and, dont → don't</span>
+            </div>
+            <button
+              className={`ac-toggle${autocorrectBuiltinTypos ? ' ac-toggle-on' : ''}`}
+              onClick={() => onUpdateAutocorrectSettings?.({ builtinTypos: !autocorrectBuiltinTypos })}
+              type="button"
+              role="switch"
+              aria-checked={autocorrectBuiltinTypos}
+              title={autocorrectBuiltinTypos ? 'Disable built-in corrections' : 'Enable built-in corrections'}
+            />
           </div>
 
-          {/* Add / Edit form */}
+          {/* ── Double caps toggle + exceptions ── */}
+          <div className="ac-builtin-row">
+            <div className="ac-builtin-info">
+              <span className="ac-builtin-label">Fix double capitals</span>
+              <span className="ac-builtin-sub">HEllo becomes Hello. List words to leave alone below.</span>
+            </div>
+            <button
+              className={`ac-toggle${autocorrectDoubleCaps ? ' ac-toggle-on' : ''}`}
+              onClick={() => onUpdateAutocorrectSettings?.({ doubleCaps: !autocorrectDoubleCaps })}
+              type="button"
+              role="switch"
+              aria-checked={autocorrectDoubleCaps}
+              title={autocorrectDoubleCaps ? 'Disable double-capital fix' : 'Enable double-capital fix'}
+            />
+          </div>
+          {autocorrectDoubleCaps && (
+            <div className="ac-dc-exceptions">
+              <label className="form-label">DON'T CORRECT THESE WORDS</label>
+              <div className="ac-chiprow">
+                {autocorrectDoubleCapsExceptions.map(w => (
+                  <span key={w} className="ac-chip">
+                    {w}
+                    <button
+                      className="ac-chip-x"
+                      onClick={() => onUpdateAutocorrectSettings?.({ exceptions: autocorrectDoubleCapsExceptions.filter(x => x !== w) })}
+                      type="button"
+                      title={`Remove "${w}"`}
+                      aria-label={`Remove exception ${w}`}
+                    >&#10005;</button>
+                  </span>
+                ))}
+                <input
+                  className="ac-chip-input"
+                  placeholder="IDs"
+                  value={acDcInput}
+                  onChange={e => setAcDcInput(e.target.value.replace(/\s/g, ''))}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); acCommitDcInput(); }
+                    if (e.key === 'Backspace' && !acDcInput && autocorrectDoubleCapsExceptions.length > 0) {
+                      onUpdateAutocorrectSettings?.({ exceptions: autocorrectDoubleCapsExceptions.slice(0, -1) });
+                    }
+                  }}
+                  onBlur={acCommitDcInput}
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── Custom corrections ── */}
+          <div className="ac-section-header">
+            <span>Your corrections</span>
+            <span className="ac-section-count">{acGroups.length}</span>
+          </div>
+
+          {/* Add / Edit form — misspelling chips on the left, correct word on the right */}
           {acEditing && (
             <div className="ac-form">
               <div className="ac-form-fields">
-                <div className="ac-form-col">
-                  <label className="form-label">TYPO</label>
-                  <input
-                    className="form-input ac-field-input"
-                    placeholder="recieve"
-                    value={acTypo}
-                    onChange={e => setAcTypo(e.target.value.replace(/\s/g, ''))}
-                    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') handleAcCancel(); }}
-                    autoFocus
-                    spellCheck={false}
-                  />
+                <div className="ac-form-col ac-form-col-typos">
+                  <label className="form-label">MISSPELLINGS</label>
+                  <div className="ac-chiprow ac-chiprow-input">
+                    {acTypos.map(t => (
+                      <span key={t} className="ac-chip">
+                        {t}
+                        <button
+                          className="ac-chip-x"
+                          onClick={() => setAcTypos(prev => prev.filter(x => x !== t))}
+                          type="button"
+                          title={`Remove "${t}"`}
+                          aria-label={`Remove misspelling ${t}`}
+                        >&#10005;</button>
+                      </span>
+                    ))}
+                    <input
+                      className="ac-chip-input"
+                      placeholder={acTypos.length === 0 ? 'teh, hte' : 'add another'}
+                      value={acTypoInput}
+                      onChange={e => setAcTypoInput(e.target.value.replace(/\s/g, ''))}
+                      onKeyDown={e => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); acCommitTypoInput(); }
+                        if (e.key === 'Backspace' && !acTypoInput && acTypos.length > 0) {
+                          setAcTypos(prev => prev.slice(0, -1));
+                        }
+                        if (e.key === 'Escape') handleAcCancel();
+                      }}
+                      onBlur={acCommitTypoInput}
+                      autoFocus
+                      spellCheck={false}
+                    />
+                  </div>
                 </div>
                 <div className="ac-form-arrow">→</div>
                 <div className="ac-form-col">
-                  <label className="form-label">CORRECTION</label>
+                  <label className="form-label">CORRECT WORD</label>
                   <input
                     className="form-input ac-field-input"
-                    placeholder="receive"
-                    value={acCorrection}
-                    onChange={e => setAcCorrection(e.target.value)}
+                    placeholder="the"
+                    value={acWord}
+                    onChange={e => setAcWord(e.target.value)}
                     onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') handleAcSave(); if (e.key === 'Escape') handleAcCancel(); }}
                     spellCheck={false}
                   />
                 </div>
               </div>
               <div className="ac-form-footer">
+                <span className="ac-form-hint">Press Enter or comma to add each misspelling</span>
                 <button className="te-cancel-btn" onClick={handleAcCancel} type="button">Cancel</button>
                 <button className="te-save-btn" onClick={handleAcSave} disabled={!canAcSave} type="button">
                   Save
@@ -3799,21 +3932,30 @@ export default function TextExpansions({
             </div>
           )}
 
-          {/* Custom corrections list */}
-          {sortedAc.length === 0 && !acEditing ? (
+          {/* Grouped corrections list */}
+          {acGroups.length === 0 && !acEditing ? (
             <div className="te-empty-row">
-              No custom corrections yet — add your own typo→correction pairs above
+              No corrections yet. Add a correct word with the misspellings you want fixed.
             </div>
           ) : (
             <div className="ac-list">
-              {sortedAc.map(ac => (
-                <div key={ac.typo} className="ac-item">
-                  <kbd className="te-trigger-badge ac-typo-badge">{ac.typo}</kbd>
+              {acGroups.map(group => (
+                <div key={group.correction} className="ac-item">
+                  <div className="ac-group-typos">
+                    {group.typos.map(t => (
+                      <kbd key={t} className="te-trigger-badge ac-typo-badge">{t}</kbd>
+                    ))}
+                  </div>
                   <span className="te-item-arrow">→</span>
-                  <span className="ac-correction">{ac.correction}</span>
+                  <span className="ac-correction">{group.correction}</span>
                   <div className="te-item-actions">
-                    <button className="te-item-edit" onClick={() => openAcEdit(ac)} type="button">Edit</button>
-                    <button className="te-item-delete" onClick={() => onDeleteAutocorrect?.(ac.typo)} type="button">✕</button>
+                    <button className="te-item-edit" onClick={() => openAcEdit(group)} type="button">Edit</button>
+                    <button
+                      className="te-item-delete"
+                      onClick={() => onDeleteAutocorrectGroup?.(group.correction, group.typos)}
+                      type="button"
+                      title={`Delete "${group.correction}" and its ${group.typos.length} ${group.typos.length === 1 ? 'misspelling' : 'misspellings'}`}
+                    >&#10005;</button>
                   </div>
                 </div>
               ))}

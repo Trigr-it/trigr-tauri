@@ -2181,34 +2181,54 @@ function App() {
       correction: v.data?.correction || '',
     }));
 
-  const handleToggleAutocorrect = useCallback(() => {
-    const next = !autocorrectEnabled;
-    setAutocorrectEnabled(next);
-    window.electronAPI?.updateAutocorrectEnabled(next);
-    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled: next, macrosEnabledOnStartup, hasSeenWelcome: true });
-  }, [autocorrectEnabled, assignments, profiles, activeProfile, profileSettings, theme, expansionCategories]);
-
-  const handleAddAutocorrect = useCallback((typo, correction, originalTypo) => {
-    const newAssignments = { ...assignments };
-    if (originalTypo && originalTypo !== typo) {
-      delete newAssignments[`GLOBAL::AUTOCORRECT::${originalTypo}`];
-    }
-    newAssignments[`GLOBAL::AUTOCORRECT::${typo}`] = {
-      type: 'autocorrect',
-      label: `Autocorrect: ${typo}`,
-      data: { correction },
+  // Unified settings patch: {enabled?, builtinTypos?, doubleCaps?, exceptions?}.
+  // Syncs the engine and persists via shallow-merge saveConfig.
+  const handleUpdateAutocorrectSettings = useCallback((patch) => {
+    const next = {
+      enabled: patch.enabled ?? autocorrectEnabled,
+      builtinTypos: patch.builtinTypos ?? autocorrectBuiltinTypos,
+      doubleCaps: patch.doubleCaps ?? autocorrectDoubleCaps,
+      exceptions: patch.exceptions ?? autocorrectDoubleCapsExceptions,
     };
+    setAutocorrectEnabled(next.enabled);
+    setAutocorrectBuiltinTypos(next.builtinTypos);
+    setAutocorrectDoubleCaps(next.doubleCaps);
+    setAutocorrectDoubleCapsExceptions(next.exceptions);
+    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions);
+    window.electronAPI?.saveConfig({
+      autocorrectEnabled: next.enabled,
+      autocorrectBuiltinTypos: next.builtinTypos,
+      autocorrectDoubleCaps: next.doubleCaps,
+      autocorrectDoubleCapsExceptions: next.exceptions,
+    });
+  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions]);
+
+  // Save one correct word with its full misspelling list. Storage is flat
+  // (one GLOBAL::AUTOCORRECT::<typo> key per misspelling); typos dropped from
+  // the list since the last save are deleted.
+  const handleSaveAutocorrectGroup = useCallback((correction, typos, originalTypos = []) => {
+    const newAssignments = { ...assignments };
+    for (const t of originalTypos) {
+      if (!typos.includes(t)) delete newAssignments[`GLOBAL::AUTOCORRECT::${t}`];
+    }
+    for (const t of typos) {
+      newAssignments[`GLOBAL::AUTOCORRECT::${t}`] = {
+        type: 'autocorrect',
+        label: `Autocorrect: ${t}`,
+        data: { correction },
+      };
+    }
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification(`Autocorrect "${typo}" saved`);
+    showNotification(`Autocorrect "${correction}" saved (${typos.length} ${typos.length === 1 ? 'misspelling' : 'misspellings'})`);
   }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
 
-  const handleDeleteAutocorrect = useCallback((typo) => {
+  const handleDeleteAutocorrectGroup = useCallback((correction, typos) => {
     const newAssignments = { ...assignments };
-    delete newAssignments[`GLOBAL::AUTOCORRECT::${typo}`];
+    for (const t of typos) delete newAssignments[`GLOBAL::AUTOCORRECT::${t}`];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification(`Autocorrect "${typo}" deleted`, 'info');
+    showNotification(`Autocorrect "${correction}" deleted`, 'info');
   }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
 
   // ── Profile settings (app-linking) ───────────────────────
@@ -4324,10 +4344,13 @@ function App() {
               onUpdateCategoryColour={handleUpdateCategoryColour}
               onRenameCategory={handleRenameCategory}
               autocorrectEnabled={autocorrectEnabled}
-              onToggleAutocorrect={handleToggleAutocorrect}
+              autocorrectBuiltinTypos={autocorrectBuiltinTypos}
+              autocorrectDoubleCaps={autocorrectDoubleCaps}
+              autocorrectDoubleCapsExceptions={autocorrectDoubleCapsExceptions}
+              onUpdateAutocorrectSettings={handleUpdateAutocorrectSettings}
               autocorrections={autocorrections}
-              onAddAutocorrect={handleAddAutocorrect}
-              onDeleteAutocorrect={handleDeleteAutocorrect}
+              onSaveAutocorrectGroup={handleSaveAutocorrectGroup}
+              onDeleteAutocorrectGroup={handleDeleteAutocorrectGroup}
               globalVariables={globalVariables}
               onSaveGlobalVariables={handleSaveGlobalVariables}
               isPro={isPro}
