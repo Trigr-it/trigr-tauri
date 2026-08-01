@@ -53,9 +53,10 @@ pub fn set_autocorrect_settings(
     double_caps_exceptions: Vec<String>,
     caps_lock_fix: bool,
     sentence_caps: bool,
+    extended_typos: bool,
 ) {}
 
-pub fn builtin_autocorrect_entries() -> Vec<(String, String)> {
+pub fn builtin_autocorrect_entries() -> Vec<(String, String, String)> {
     Vec::new()
 }
 

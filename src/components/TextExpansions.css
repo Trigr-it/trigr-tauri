@@ -2567,6 +2567,29 @@ button.te-col-header:hover {
   background: none;
 }
 
+/* Dictionary search — sits inline at the right of the Included header */
+.ac-dict-search {
+  margin-left: auto;
+  width: 45%;
+  min-width: 90px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 3px 6px;
+}
+
+.ac-dict-search::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
 .ac-list-dim {
   opacity: 0.45;
 }

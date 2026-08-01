@@ -356,8 +356,10 @@ struct ExpansionState {
     /// Master autocorrect toggle (Pro). Gates the custom map, the built-in
     /// dictionary, and double-caps correction.
     autocorrect_enabled: bool,
-    /// "Correct common typos" — the built-in dictionary sub-toggle.
+    /// "Common typos" — the built-in starter dictionary sub-toggle.
     builtin_typos_enabled: bool,
+    /// "Extended dictionary" — the bundled ~4k-entry Wikipedia list sub-toggle.
+    extended_typos_enabled: bool,
     /// Double-caps sub-toggle: HEllo → Hello at word completion.
     double_caps_enabled: bool,
     /// Lowercase words exempt from double-caps AND the Caps Lock fix
@@ -386,6 +388,7 @@ impl Default for ExpansionState {
             // is an opt-in Pro feature, never active before config loads.
             autocorrect_enabled: false,
             builtin_typos_enabled: false,
+            extended_typos_enabled: false,
             double_caps_enabled: false,
             double_caps_exceptions: HashSet::new(),
             caps_lock_fix_enabled: false,
@@ -462,6 +465,7 @@ fn refresh_pending_flag(s: &ExpansionState) {
         && crate::licence::is_pro()
         && (s.autocorrect_words.contains(&buf_lower)
             || (s.builtin_typos_enabled && builtin_autocorrect(&buf_lower).is_some())
+            || (s.extended_typos_enabled && extended_autocorrect(&buf_lower).is_some())
             || (s.double_caps_enabled
                 && double_caps_candidate(&s.buffer)
                 && !s.double_caps_exceptions.contains(&buf_lower))
@@ -810,6 +814,12 @@ fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool)
 
     if base.is_none() && s.builtin_typos_enabled {
         if let Some(c) = builtin_autocorrect(&lower) {
+            base = Some(AcFix { text: apply_case(c, detect_case(original)), caps_off: false });
+        }
+    }
+
+    if base.is_none() && s.extended_typos_enabled {
+        if let Some(c) = extended_autocorrect(&lower) {
             base = Some(AcFix { text: apply_case(c, detect_case(original)), caps_off: false });
         }
     }
@@ -4083,12 +4093,42 @@ fn builtin_autocorrect(word: &str) -> Option<&'static str> {
     builtin_map().get(word).copied()
 }
 
-/// Full built-in dictionary for the UI list.
-pub fn builtin_autocorrect_entries() -> Vec<(String, String)> {
-    BUILTIN_TYPOS
+/// Extended dictionary — ~4k tab-separated (typo, correction) pairs derived
+/// from Wikipedia's machine-readable list of common misspellings (CC BY-SA;
+/// credit in the help guide). Filtered at generation time: unambiguous
+/// corrections only, lowercase typos of 3+ letters. Bundled at build per the
+/// offline-first rule; parsed once on first use.
+const EXTENDED_TYPOS_RAW: &str = include_str!("data/autocorrect_extended.txt");
+
+fn extended_map() -> &'static HashMap<&'static str, &'static str> {
+    static MAP: std::sync::OnceLock<HashMap<&'static str, &'static str>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| {
+        EXTENDED_TYPOS_RAW
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .collect()
+    })
+}
+
+fn extended_autocorrect(word: &str) -> Option<&'static str> {
+    extended_map().get(word).copied()
+}
+
+/// Every bundled dictionary entry as (typo, correction, pack) for the UI
+/// list. Packs: "starter" | "extended".
+pub fn builtin_autocorrect_entries() -> Vec<(String, String, String)> {
+    let mut v: Vec<(String, String, String)> = BUILTIN_TYPOS
         .iter()
-        .map(|(t, c)| (t.to_string(), c.to_string()))
-        .collect()
+        .map(|(t, c)| (t.to_string(), c.to_string(), "starter".to_string()))
+        .collect();
+    v.extend(
+        EXTENDED_TYPOS_RAW
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .map(|(t, c)| (t.to_string(), c.to_string(), "extended".to_string())),
+    );
+    v
 }
 
 // ── Public API for Tauri commands ───────────────────────────────────────────
@@ -4152,10 +4192,12 @@ pub fn set_autocorrect_settings(
     double_caps_exceptions: Vec<String>,
     caps_lock_fix: bool,
     sentence_caps: bool,
+    extended_typos: bool,
 ) {
     let mut s = state().lock().unwrap();
     s.autocorrect_enabled = enabled;
     s.builtin_typos_enabled = builtin_typos;
+    s.extended_typos_enabled = extended_typos;
     s.double_caps_enabled = double_caps;
     s.double_caps_exceptions = double_caps_exceptions
         .into_iter()
@@ -4166,8 +4208,8 @@ pub fn set_autocorrect_settings(
     s.sentence_caps_enabled = sentence_caps;
     refresh_pending_flag(&s);
     info!(
-        "[Keyfire] Autocorrect settings: enabled={} builtin={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions)",
-        enabled, builtin_typos, double_caps, caps_lock_fix, sentence_caps, s.double_caps_exceptions.len()
+        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions)",
+        enabled, builtin_typos, extended_typos, double_caps, caps_lock_fix, sentence_caps, s.double_caps_exceptions.len()
     );
 }
 

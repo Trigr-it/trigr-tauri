@@ -1416,7 +1416,7 @@ fn update_autocorrect_enabled(enabled: bool) {
 }
 
 #[tauri::command]
-fn get_builtin_autocorrect_entries() -> Vec<(String, String)> {
+fn get_builtin_autocorrect_entries() -> Vec<(String, String, String)> {
     expansions::builtin_autocorrect_entries()
 }
 
@@ -1428,8 +1428,9 @@ fn update_autocorrect_settings(
     double_caps_exceptions: Vec<String>,
     caps_lock_fix: bool,
     sentence_caps: bool,
+    extended_typos: bool,
 ) {
-    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps);
+    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos);
 }
 
 #[tauri::command]
