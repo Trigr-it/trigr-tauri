@@ -101,8 +101,8 @@ function App() {
   const [globalInputMethod,  setGlobalInputMethod]  = useState('direct');
   const [macroSpeed,         setMacroSpeed]         = useState('safe');
   const [defaultDateFormat,  setDefaultDateFormat]  = useState('DD/MM/YYYY');
-  const [keystrokeDelay,     setKeystrokeDelay]     = useState(30);
-  const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(150);
+  const [keystrokeDelay,     setKeystrokeDelay]     = useState(10);
+  const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(10);
   const [searchOverlayHotkey,       setSearchOverlayHotkey]       = useState('Ctrl+Space');
   const [voiceEnabled,              setVoiceEnabled]              = useState(false);
   const [voiceHotkey,               setVoiceHotkey]               = useState('');
@@ -114,6 +114,7 @@ function App() {
   const [clipboardColumnMode,        setClipboardColumnMode]        = useState('auto');
   const [doubleTapWindow,            setDoubleTapWindow]            = useState(300);
   const [holdThresholdMs,            setHoldThresholdMs]            = useState(350);
+  const [fireOnPress,                setFireOnPress]                = useState(false);
   const [updateInfo,     setUpdateInfo]     = useState(null);   // { version, percent, ready, dismissed }
   const [appVersion,     setAppVersion]     = useState('');
   const [globalPauseToggleKey, setGlobalPauseToggleKey] = useState(null);
@@ -321,10 +322,11 @@ function App() {
         window.electronAPI?.setClipboardExcludedApps(savedClipboardExcluded);
         setGlobalInputMethod(config.globalInputMethod   || 'direct');
         setMacroSpeed(       config.macroSpeed          || 'safe');
-        setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
-        setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
+        setKeystrokeDelay(   config.keystrokeDelay      ?? 10);
+        setMacroTriggerDelay(config.macroTriggerDelay   ?? 10);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         setHoldThresholdMs(  config.holdThresholdMs     ?? 350);
+        setFireOnPress(      config.fireOnPress         ?? false);
         setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
         // Always start on the Mapping view — do not restore last-used view/area
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
@@ -394,10 +396,11 @@ function App() {
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
           macroSpeed:        config.macroSpeed         || 'safe',
-          keystrokeDelay:    config.keystrokeDelay     ?? 30,
-          macroTriggerDelay: config.macroTriggerDelay  ?? 150,
+          keystrokeDelay:    config.keystrokeDelay     ?? 10,
+          macroTriggerDelay: config.macroTriggerDelay  ?? 10,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
           holdThresholdMs:   config.holdThresholdMs    ?? 350,
+          fireOnPress:       config.fireOnPress        ?? false,
           defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
         });
         // CRITICAL: updateAssignments MUST be called after config loads on startup.
@@ -681,10 +684,11 @@ function App() {
         window.electronAPI?.setClipboardExcludedApps(cfgClipboardExcluded);
         setGlobalInputMethod(config.globalInputMethod   || 'direct');
         setMacroSpeed(       config.macroSpeed          || 'safe');
-        setKeystrokeDelay(   config.keystrokeDelay      ?? 30);
-        setMacroTriggerDelay(config.macroTriggerDelay   ?? 150);
+        setKeystrokeDelay(   config.keystrokeDelay      ?? 10);
+        setMacroTriggerDelay(config.macroTriggerDelay   ?? 10);
         setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
         setHoldThresholdMs(  config.holdThresholdMs     ?? 350);
+        setFireOnPress(      config.fireOnPress         ?? false);
         setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
         setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
         setVoiceEnabled(            config.voiceEnabled             ?? false);
@@ -747,10 +751,11 @@ function App() {
         window.electronAPI?.updateGlobalSettings({
           globalInputMethod: config.globalInputMethod  || 'direct',
           macroSpeed:        config.macroSpeed         || 'safe',
-          keystrokeDelay:    config.keystrokeDelay     ?? 30,
-          macroTriggerDelay: config.macroTriggerDelay  ?? 150,
+          keystrokeDelay:    config.keystrokeDelay     ?? 10,
+          macroTriggerDelay: config.macroTriggerDelay  ?? 10,
           doubleTapWindow:   config.doubleTapWindow    ?? 300,
           holdThresholdMs:   config.holdThresholdMs    ?? 350,
+          fireOnPress:       config.fireOnPress        ?? false,
           defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
         });
         showNotification('Config updated from sync', 'info');
@@ -2698,6 +2703,7 @@ function App() {
       macroTriggerDelay:  patch.macroTriggerDelay  ?? macroTriggerDelay,
       doubleTapWindow:    patch.doubleTapWindow     ?? doubleTapWindow,
       holdThresholdMs:    patch.holdThresholdMs    ?? holdThresholdMs,
+      fireOnPress:        patch.fireOnPress        ?? fireOnPress,
       defaultDateFormat:  patch.defaultDateFormat  ?? defaultDateFormat,
     };
     setGlobalInputMethod(next.globalInputMethod);
@@ -2706,10 +2712,11 @@ function App() {
     setMacroTriggerDelay(next.macroTriggerDelay);
     setDoubleTapWindow(next.doubleTapWindow);
     setHoldThresholdMs(next.holdThresholdMs);
+    setFireOnPress(next.fireOnPress);
     setDefaultDateFormat(next.defaultDateFormat);
     window.electronAPI?.updateGlobalSettings(next);
     window.electronAPI?.saveConfig(next);
-  }, [globalInputMethod, macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow, holdThresholdMs, defaultDateFormat]);
+  }, [globalInputMethod, macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow, holdThresholdMs, fireOnPress, defaultDateFormat]);
 
   // ── Global pause toggle ───────────────────────────────────
   const handleSetPauseKey = useCallback(async (combo) => {
@@ -4335,6 +4342,7 @@ function App() {
             macroTriggerDelay={macroTriggerDelay}
             doubleTapWindow={doubleTapWindow}
             holdThresholdMs={holdThresholdMs}
+            fireOnPress={fireOnPress}
             defaultDateFormat={defaultDateFormat}
             onUpdateGlobalSettings={handleUpdateGlobalSettings}
             searchOverlayHotkey={searchOverlayHotkey}

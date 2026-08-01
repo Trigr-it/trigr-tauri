@@ -817,6 +817,10 @@ pub(crate) struct EngineState {
     pub(crate) global_input_method: String,
     // Macro speed preset — "safe" | "fast" | "instant" | "custom"
     pub(crate) macro_speed: String,
+    // Fire single-only assignments at keydown instead of deferring to keyup
+    // (opt-in, "Fire on key press" in Settings). Only applies to keys with no
+    // ::double and no ::hold variant — those gestures need the deferred paths.
+    pub(crate) fire_on_press: bool,
     // Custom speed slider values (only used when macro_speed == "custom")
     pub(crate) custom_keystroke_delay: u64,
     pub(crate) custom_pre_execution_delay: u64,
@@ -873,6 +877,7 @@ impl Default for EngineState {
             pause_hotkey_str: None,
             global_input_method: "direct".to_string(),
             macro_speed: "safe".to_string(),
+            fire_on_press: false,
             custom_keystroke_delay: 30,
             custom_pre_execution_delay: 150,
             voice_hotkey: None, // Voice ships unmapped; user picks a hotkey when they enable voice (Pro-gated).
@@ -2660,6 +2665,19 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                     return;
                 }
 
+                // Fire on key press (opt-in): bare single-only assignments fire
+                // at keydown instead of keyup. Keys with a double variant keep
+                // the deferred path — dispatch_with_double_tap owns the tap
+                // window at keyup. is_bare stays false to match that path (the
+                // assigned bare key was hook-suppressed, nothing leaked).
+                if state.fire_on_press && !has_double {
+                    let trigger = bare_key.clone();
+                    drop(state);
+                    info!("[Keyfire] Fire on press (bare): {}", trigger);
+                    fire_macro_on_press(macro_val, Some(trigger), app);
+                    return;
+                }
+
                 state.pending_macro = Some(macro_val);
                 state.pending_storage_key = Some(bare_key.clone());
                 state.pending_trigger_key = Some(bare_key);
@@ -2867,7 +2885,10 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         } else {
             // No double variant.
             // Hotkey actions: fire inline at keydown (no thread, no deferred wait).
-            // Everything else fires at keyup via pending_macro (needs clean modifier state).
+            // Everything else fires at keyup via pending_macro (needs clean modifier state),
+            // unless Fire on key press is enabled — then single-only assignments
+            // dispatch here at keydown for AHK-parity latency. The injection
+            // handlers release still-held physical modifiers themselves.
             let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
             if action_type == "hotkey" {
                 if let Some(data) = macro_val.get("data") {
@@ -2876,6 +2897,12 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                         return;
                     }
                 }
+            }
+            if state.fire_on_press {
+                drop(state);
+                info!("[Keyfire] Fire on press: {}", storage_key);
+                fire_macro_on_press(macro_val, Some(storage_key), app);
+                return;
             }
             state.pending_macro = Some(macro_val);
             state.pending_storage_key = None;
@@ -3769,6 +3796,20 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Op
 // ── Fire macro — execute action + notify frontend ───────────────────────────
 
 fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app: &AppHandle) {
+    fire_macro_impl(macro_val, is_bare, trigger_key, app, false)
+}
+
+/// Fire-on-press variant: dispatches at keydown while the trigger key (and any
+/// modifiers) are still physically held. Skips the AltGr dead-character erase:
+/// the trigger keydown was hook-suppressed so nothing leaked, but the live
+/// Ctrl+Alt state would read as AltGr and the erase would eat a real character
+/// from the target app. Injection paths handle the still-held modifiers via
+/// release_held_modifiers (physical state read through GetAsyncKeyState).
+fn fire_macro_on_press(macro_val: Value, trigger_key: Option<String>, app: &AppHandle) {
+    fire_macro_impl(macro_val, false, trigger_key, app, true)
+}
+
+fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app: &AppHandle, skip_altgr_erase: bool) {
     // Re-press cancel — if a loop is already running for this trigger, the user
     // pressing it again is the canonical stop gesture. Set the cancel flag and
     // bail before any thread spawn / clipboard work happens. The running loop
@@ -3807,8 +3848,10 @@ fn fire_macro(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app:
     };
 
     // Detect AltGr (Ctrl+Alt held simultaneously) — snapshot now, modifiers
-    // will be cleared by the time execute_action runs.
-    let is_altgr = MOD_CTRL.load(Ordering::SeqCst) && MOD_ALT.load(Ordering::SeqCst);
+    // will be cleared by the time execute_action runs. Fire-on-press dispatch
+    // skips this: Ctrl+Alt is legitimately still held at keydown-fire time.
+    let is_altgr = !skip_altgr_erase
+        && MOD_CTRL.load(Ordering::SeqCst) && MOD_ALT.load(Ordering::SeqCst);
     if is_altgr {
         log::info!("[FIRE] AltGr combo detected — will erase dead character");
     }
@@ -4355,6 +4398,9 @@ pub fn update_global_settings(settings: &Value) {
     }
     if let Some(s) = settings.get("macroSpeed").and_then(|v| v.as_str()) {
         state.macro_speed = s.to_string();
+    }
+    if let Some(v) = settings.get("fireOnPress").and_then(|v| v.as_bool()) {
+        state.fire_on_press = v;
     }
     if let Some(v) = settings.get("keystrokeDelay").and_then(|v| v.as_u64()) {
         state.custom_keystroke_delay = v;

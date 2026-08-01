@@ -11,9 +11,13 @@ const GLOBAL_INPUT_METHODS = [
   { id: 'shift-insert', label: 'Paste All at Once', hint: 'Fastest for long text. Sends everything in a single paste.' },
 ];
 
+// Delay numbers mirror the backend presets in actions.rs (speed_delays +
+// keystroke_delay_ms) — keep both in sync. Preset clicks write these values
+// into config so the sliders seed to what the preset actually does.
 const MACRO_SPEED_PRESETS = [
-  { id: 'safe',    label: 'Safe',    hint: 'Maximum compatibility. Works in all apps.',  keystrokeDelay: 30, macroTriggerDelay: 150, doubleTapWindow: 300 },
-  { id: 'fast',    label: 'Fast',    hint: 'Reduced delays. Good for most apps.',        keystrokeDelay: 15, macroTriggerDelay: 75,  doubleTapWindow: 200 },
+  { id: 'safe',    label: 'Safe',    hint: 'Maximum compatibility. Works in all apps.',            keystrokeDelay: 10, macroTriggerDelay: 10, doubleTapWindow: 300 },
+  { id: 'fast',    label: 'Fast',    hint: 'Reduced delays. Good for most apps.',                  keystrokeDelay: 5,  macroTriggerDelay: 5,  doubleTapWindow: 200 },
+  { id: 'instant', label: 'Instant', hint: 'No delays. Slow apps may miss characters.',            keystrokeDelay: 0,  macroTriggerDelay: 0,  doubleTapWindow: 200 },
   { id: 'custom',  label: 'Custom',  hint: 'Manual slider control' },
 ];
 
@@ -180,10 +184,11 @@ export default function SettingsPanel({
   onRestoreBackup,
   globalInputMethod = 'direct',
   macroSpeed        = 'safe',
-  keystrokeDelay    = 30,
-  macroTriggerDelay = 150,
+  keystrokeDelay    = 10,
+  macroTriggerDelay = 10,
   doubleTapWindow   = 300,
   holdThresholdMs   = 350,
+  fireOnPress       = false,
   defaultDateFormat = 'DD/MM/YYYY',
   onUpdateGlobalSettings,
   searchOverlayHotkey      = 'Ctrl+Space',
@@ -2108,13 +2113,13 @@ export default function SettingsPanel({
           </>)}
         </section>
 
-        {/* ── COMPATIBILITY ──────────────────────────────── */}
+        {/* ── PERFORMANCE ────────────────────────────────── */}
         <section className="settings-section">
           <div
             className="settings-section-title settings-accordion-header"
             onClick={() => toggleSection('compatibility')}
           >
-            COMPATIBILITY
+            PERFORMANCE
             <span className={`settings-accordion-chevron${isExpanded('compatibility') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('compatibility') && (<>
@@ -2170,6 +2175,21 @@ export default function SettingsPanel({
             ))}
           </div>
 
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Fire on key press</span>
+              <span className="settings-toggle-sub">Actions fire the moment you press the trigger instead of when you release it. Keys with double-press or hold triggers still wait.</span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${fireOnPress ? ' on' : ''}`}
+              onClick={() => onUpdateGlobalSettings?.({ fireOnPress: !fireOnPress })}
+              role="switch"
+              aria-checked={fireOnPress}
+              title={fireOnPress ? 'Fire actions on key release' : 'Fire actions on key press'}
+            />
+          </div>
+
           {globalInputMethod === 'direct' && (
             <div className="settings-slider-row">
               <div className="settings-slider-info">
@@ -2185,12 +2205,12 @@ export default function SettingsPanel({
                   onChange={e => onUpdateGlobalSettings?.({ keystrokeDelay: Number(e.target.value), macroSpeed: 'custom' })}
                 />
                 <span className="settings-slider-val">{keystrokeDelay}ms</span>
-                {keystrokeDelay !== 30 && (
+                {keystrokeDelay !== 10 && (
                   <button
                     type="button"
                     className="settings-slider-reset"
-                    onClick={() => onUpdateGlobalSettings?.({ keystrokeDelay: 30, macroSpeed: 'custom' })}
-                    title="Reset to default (30ms)"
+                    onClick={() => onUpdateGlobalSettings?.({ keystrokeDelay: 10, macroSpeed: 'custom' })}
+                    title="Reset to default (10ms)"
                     aria-label="Reset keystroke delay"
                   >↺</button>
                 )}
@@ -2212,12 +2232,12 @@ export default function SettingsPanel({
                 onChange={e => onUpdateGlobalSettings?.({ macroTriggerDelay: Number(e.target.value), macroSpeed: 'custom' })}
               />
               <span className="settings-slider-val">{macroTriggerDelay}ms</span>
-              {macroTriggerDelay !== 150 && (
+              {macroTriggerDelay !== 10 && (
                 <button
                   type="button"
                   className="settings-slider-reset"
-                  onClick={() => onUpdateGlobalSettings?.({ macroTriggerDelay: 150, macroSpeed: 'custom' })}
-                  title="Reset to default (150ms)"
+                  onClick={() => onUpdateGlobalSettings?.({ macroTriggerDelay: 10, macroSpeed: 'custom' })}
+                  title="Reset to default (10ms)"
                   aria-label="Reset pre-execution delay"
                 >↺</button>
               )}

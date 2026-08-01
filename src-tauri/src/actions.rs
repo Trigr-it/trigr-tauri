@@ -429,7 +429,8 @@ pub fn get_repeating_trigger() -> Option<String> {
 // ── Timing constants ────────────────────────────────────────────────────────
 
 const MODIFIER_SETTLE_MS: u64 = 30;
-const KEYSTROKE_DELAY_MS: u64 = 10;
+// Per-character typing delay lives in keystroke_delay_ms() — preset-resolved,
+// no longer a constant (the Keystroke delay slider was dead until v0.6.11).
 
 // Open URL launches the default browser via ShellExecute, which is async.
 // Without a settle pause the next macro step targets Keyfire's HWND instead of
@@ -465,13 +466,29 @@ fn speed_delays() -> (u64, u64, u64, u64) {
         "fast"    => (5,  5,  5, 25),
         "instant" => (0,  0,  5, 25),
         "custom"  => {
-            let pre = state.custom_pre_execution_delay;
+            // Pre-execution slider applies in full (clamped to the UI max) —
+            // "Pause before sending any output" must mean what it says.
+            let pre = state.custom_pre_execution_delay.min(500);
             // Scale foreground settle and clipboard restore proportionally to pre-execution
             let fg = if pre == 0 { 5 } else { (pre / 10).max(5) };
             let clip = if pre == 0 { 25 } else { (pre / 3).max(25) };
-            (pre.min(10), pre.min(10), fg, clip)
+            (pre, pre.min(10), fg, clip)
         }
         _         => (10, 10, 10, 50), // "safe" (default)
+    }
+}
+
+/// Per-character delay for direct (Type Each Key) text injection.
+/// Presets: safe 10 / fast 5 / instant 0. Custom reads the Keystroke delay
+/// slider (clamped to the UI max). The frontend preset cards mirror these
+/// numbers — keep MACRO_SPEED_PRESETS in SettingsPanel.jsx in sync.
+fn keystroke_delay_ms() -> u64 {
+    let state = crate::hotkeys::engine_state().lock().unwrap();
+    match state.macro_speed.as_str() {
+        "fast"    => 5,
+        "instant" => 0,
+        "custom"  => state.custom_keystroke_delay.min(200),
+        _         => 10, // "safe" (default)
     }
 }
 
@@ -1112,6 +1129,7 @@ fn write_clipboard_impl(text: &str, suppress_listener: bool) -> bool {
 
 fn send_unicode_text(text: &str, target_hwnd: isize) {
     let (_, _, fg_settle_ms, _) = speed_delays();
+    let key_delay_ms = keystroke_delay_ms();
     let _suppress = SuppressionGuard::new();
     let held = release_held_modifiers();
 
@@ -1139,8 +1157,8 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
             send_unicode_key(code as u16, true);
         }
         char_count += 1;
-        if KEYSTROKE_DELAY_MS > 0 {
-            thread::sleep(Duration::from_millis(KEYSTROKE_DELAY_MS));
+        if key_delay_ms > 0 {
+            thread::sleep(Duration::from_millis(key_delay_ms));
         }
     }
 
@@ -1152,8 +1170,10 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
     // been processed, producing the visible "next action fires before text
     // finishes typing" bug. Scale = half the typing time, capped so very
     // long text doesn't drag — empirically enough for browsers/IDEs.
-    if KEYSTROKE_DELAY_MS > 0 && char_count > 0 {
-        let drain_ms = (char_count * KEYSTROKE_DELAY_MS / 2).min(500);
+    // 10ms floor keeps a minimal drain even at 0ms keystroke delay (instant) —
+    // the sequencing bug this guards against doesn't care how fast we typed.
+    if char_count > 0 {
+        let drain_ms = (char_count * key_delay_ms / 2).clamp(10, 500);
         thread::sleep(Duration::from_millis(drain_ms));
     }
 
