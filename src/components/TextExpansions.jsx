@@ -3870,22 +3870,6 @@ export default function TextExpansions({
           {/* ── Main area ── */}
           <div className="te-main">
 
-          {/* ── Master toggle — spans the main area only, sidebar runs full height ── */}
-          <div className="ac-builtin-row ac-master-row">
-            <div className="ac-builtin-info">
-              <span className="ac-builtin-label">Autocorrect</span>
-              <span className="ac-builtin-sub">Fixes typos the instant you finish a word. Works in every app.</span>
-            </div>
-            <button
-              className={`ac-toggle${autocorrectEnabled ? ' ac-toggle-on' : ''}`}
-              onClick={() => onUpdateAutocorrectSettings?.({ enabled: !autocorrectEnabled })}
-              type="button"
-              role="switch"
-              aria-checked={autocorrectEnabled}
-              title={autocorrectEnabled ? 'Turn autocorrect off' : 'Turn autocorrect on'}
-            />
-          </div>
-
           {/* Your corrections */}
           {acSection === 'custom' && (<>
           <div className="te-toolbar">
@@ -4038,9 +4022,24 @@ export default function TextExpansions({
           </div>
           </>)}
 
-          {/* Typing fixes */}
+          {/* Autocorrect settings */}
           {acSection === 'fixes' && (
             <div className="ac-col-scroll">
+              {/* Master switch for the whole feature */}
+              <div className="ac-builtin-row ac-master-row">
+                <div className="ac-builtin-info">
+                  <span className="ac-builtin-label">Autocorrect</span>
+                  <span className="ac-builtin-sub">Fixes typos the instant you finish a word. Works in every app.</span>
+                </div>
+                <button
+                  className={`ac-toggle${autocorrectEnabled ? ' ac-toggle-on' : ''}`}
+                  onClick={() => onUpdateAutocorrectSettings?.({ enabled: !autocorrectEnabled })}
+                  type="button"
+                  role="switch"
+                  aria-checked={autocorrectEnabled}
+                  title={autocorrectEnabled ? 'Turn autocorrect off' : 'Turn autocorrect on'}
+                />
+              </div>
               <div className="ac-fixes-grid">
                 <div className="ac-builtin-row">
                   <div className="ac-builtin-info">
