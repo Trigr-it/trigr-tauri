@@ -3837,52 +3837,50 @@ export default function TextExpansions({
             />
           </div>
 
-          {/* ── Double caps toggle + exceptions ── */}
-          <div className="ac-builtin-row">
-            <div className="ac-builtin-info">
-              <span className="ac-builtin-label">Fix double capitals</span>
-              <span className="ac-builtin-sub">HEllo becomes Hello. List words to leave alone below.</span>
+          {/* ── Typing fixes: responsive card grid ── */}
+          <div className="ac-fixes-grid">
+            <div className="ac-builtin-row">
+              <div className="ac-builtin-info">
+                <span className="ac-builtin-label">Fix double capitals</span>
+                <span className="ac-builtin-sub">HEllo becomes Hello. List words to leave alone below.</span>
+              </div>
+              <button
+                className={`ac-toggle${autocorrectDoubleCaps ? ' ac-toggle-on' : ''}`}
+                onClick={() => onUpdateAutocorrectSettings?.({ doubleCaps: !autocorrectDoubleCaps })}
+                type="button"
+                role="switch"
+                aria-checked={autocorrectDoubleCaps}
+                title={autocorrectDoubleCaps ? 'Disable double-capital fix' : 'Enable double-capital fix'}
+              />
             </div>
-            <button
-              className={`ac-toggle${autocorrectDoubleCaps ? ' ac-toggle-on' : ''}`}
-              onClick={() => onUpdateAutocorrectSettings?.({ doubleCaps: !autocorrectDoubleCaps })}
-              type="button"
-              role="switch"
-              aria-checked={autocorrectDoubleCaps}
-              title={autocorrectDoubleCaps ? 'Disable double-capital fix' : 'Enable double-capital fix'}
-            />
-          </div>
-
-          {/* ── Caps Lock accident fix ── */}
-          <div className="ac-builtin-row">
-            <div className="ac-builtin-info">
-              <span className="ac-builtin-label">Fix accidental Caps Lock</span>
-              <span className="ac-builtin-sub">tHE becomes The and Caps Lock switches off. Uses the same exceptions list.</span>
+            <div className="ac-builtin-row">
+              <div className="ac-builtin-info">
+                <span className="ac-builtin-label">Fix accidental Caps Lock</span>
+                <span className="ac-builtin-sub">tHE becomes The and Caps Lock switches off</span>
+              </div>
+              <button
+                className={`ac-toggle${autocorrectCapsLockFix ? ' ac-toggle-on' : ''}`}
+                onClick={() => onUpdateAutocorrectSettings?.({ capsLockFix: !autocorrectCapsLockFix })}
+                type="button"
+                role="switch"
+                aria-checked={autocorrectCapsLockFix}
+                title={autocorrectCapsLockFix ? 'Disable Caps Lock fix' : 'Enable Caps Lock fix'}
+              />
             </div>
-            <button
-              className={`ac-toggle${autocorrectCapsLockFix ? ' ac-toggle-on' : ''}`}
-              onClick={() => onUpdateAutocorrectSettings?.({ capsLockFix: !autocorrectCapsLockFix })}
-              type="button"
-              role="switch"
-              aria-checked={autocorrectCapsLockFix}
-              title={autocorrectCapsLockFix ? 'Disable Caps Lock fix' : 'Enable Caps Lock fix'}
-            />
-          </div>
-
-          {/* ── Sentence capitalization ── */}
-          <div className="ac-builtin-row">
-            <div className="ac-builtin-info">
-              <span className="ac-builtin-label">Capitalize sentences</span>
-              <span className="ac-builtin-sub">Lowercase words get capitalized after a full stop, question mark, exclamation mark or new line</span>
+            <div className="ac-builtin-row">
+              <div className="ac-builtin-info">
+                <span className="ac-builtin-label">Capitalize sentences</span>
+                <span className="ac-builtin-sub">Lowercase words get capitalized after . ! ? or a new line</span>
+              </div>
+              <button
+                className={`ac-toggle${autocorrectSentenceCaps ? ' ac-toggle-on' : ''}`}
+                onClick={() => onUpdateAutocorrectSettings?.({ sentenceCaps: !autocorrectSentenceCaps })}
+                type="button"
+                role="switch"
+                aria-checked={autocorrectSentenceCaps}
+                title={autocorrectSentenceCaps ? 'Disable sentence capitalization' : 'Enable sentence capitalization'}
+              />
             </div>
-            <button
-              className={`ac-toggle${autocorrectSentenceCaps ? ' ac-toggle-on' : ''}`}
-              onClick={() => onUpdateAutocorrectSettings?.({ sentenceCaps: !autocorrectSentenceCaps })}
-              type="button"
-              role="switch"
-              aria-checked={autocorrectSentenceCaps}
-              title={autocorrectSentenceCaps ? 'Disable sentence capitalization' : 'Enable sentence capitalization'}
-            />
           </div>
           {(autocorrectDoubleCaps || autocorrectCapsLockFix) && (
             <div className="ac-dc-exceptions">
@@ -4054,8 +4052,12 @@ export default function TextExpansions({
 
           {/* Grouped corrections list */}
           {acGroups.length === 0 && !acEditing ? (
-            <div className="te-empty-row">
-              No corrections yet. Add a correct word with the misspellings you want fixed.
+            <div className="ac-empty-state">
+              <div className="ac-empty-title">No corrections of your own yet</div>
+              <div className="ac-empty-sub">Add a correct word with every misspelling you want fixed. Your entries always win over the bundled lists.</div>
+              <button className="te-add-btn" onClick={openAcAdd} type="button">
+                + Add your first correction
+              </button>
             </div>
           ) : (
             <div className="ac-list ac-col-scroll">

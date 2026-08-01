@@ -2567,6 +2567,48 @@ button.te-col-header:hover {
   background: none;
 }
 
+/* Typing-fix toggles: side by side when there's room, stacked when narrow.
+   1px gap over the border colour draws the dividers between cells. */
+.ac-fixes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ac-fixes-grid .ac-builtin-row {
+  border-bottom: none;
+  height: 100%;
+}
+
+/* Centered empty state for the custom column */
+.ac-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.ac-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ac-empty-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 340px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
 /* Dictionary search — sits inline at the right of the Included header */
 .ac-dict-search {
   margin-left: auto;
