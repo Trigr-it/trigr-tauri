@@ -2341,6 +2341,8 @@ export default function TextExpansions({
   // mirrors the expansions category sidebar pattern.
   const [acSection, setAcSection] = useState('custom');
   const [acCustomFilter, setAcCustomFilter] = useState('');
+  // Where a Customise jump came from — Cancel returns there, Save clears it.
+  const [acReturnSection, setAcReturnSection] = useState(null);
   useEffect(() => {
     if (panelMode !== 'autocorrect' || builtinEntries.length > 0) return;
     window.electronAPI?.getBuiltinAutocorrectEntries?.()
@@ -2731,6 +2733,7 @@ export default function TextExpansions({
     setAcTypos([]);
     setAcTypoInput('');
     setAcEditing({ isNew: true });
+    setAcReturnSection(null);
   }
 
   function openAcEdit(group) {
@@ -2738,12 +2741,16 @@ export default function TextExpansions({
     setAcTypos([...group.typos]);
     setAcTypoInput('');
     setAcEditing({ isNew: false, originalWord: group.correction, originalTypos: [...group.typos] });
+    setAcReturnSection(null);
   }
 
   // Customise a bundled entry: pre-fill the custom form with the bundled
   // group and jump to Your Corrections. The saved custom entries shadow the
-  // bundled ones per-typo (custom always wins in the engine).
+  // bundled ones per-typo (custom always wins in the engine). Remembers the
+  // section the user came from so Cancel returns there; Save stays in Your
+  // Corrections so the new entry is visible.
   function openAcCustomise(typos, correction) {
+    setAcReturnSection(acSection);
     setAcSection('custom');
     setAcWord(correction);
     setAcTypos([...typos]);
@@ -2767,10 +2774,19 @@ export default function TextExpansions({
     if (!word || typos.length === 0) return;
     onSaveAutocorrectGroup?.(word, typos, acEditing?.originalTypos || []);
     setAcEditing(null);
+    // Deliberately stay in Your Corrections after a save — the user sees
+    // their new entry land. The return marker only serves Cancel.
+    setAcReturnSection(null);
   }
 
   function handleAcCancel() {
     setAcEditing(null);
+    // Cancelled a Customise jump — go back to the dictionary section the
+    // user was browsing.
+    if (acReturnSection) {
+      setAcSection(acReturnSection);
+      setAcReturnSection(null);
+    }
   }
 
   function acCommitDcInput() {

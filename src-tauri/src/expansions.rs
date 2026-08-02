@@ -922,6 +922,20 @@ fn resolve_dict_correction(
                 hit = Some((c, AcSource::Symbols));
             }
         }
+        // Superscript/subscript suffix matching: "m^2" → "m²". The whole
+        // buffered word is replaced (typed-case prefix + symbol), so the
+        // normal fire/undo machinery applies unchanged. Trigger shapes are
+        // unambiguous (^N/_N can't end an English word), and "x^10" matches
+        // nothing — no partial corruption possible.
+        if hit.is_none() && s.symbols_enabled {
+            for (trig, sym) in SUPERSUB_ENTRIES {
+                if lower.ends_with(trig) && !s.disabled_entries.contains(*trig) {
+                    let prefix_chars = original.chars().count() - trig.chars().count();
+                    let prefix: String = original.chars().take(prefix_chars).collect();
+                    return Some((format!("{}{}", prefix, sym), AcSource::Symbols));
+                }
+            }
+        }
     }
 
     let (correction, source) = hit?;
@@ -4322,6 +4336,54 @@ const SYMBOL_ENTRIES: &[(&str, &str)] = &[
     ("3/4", "¾"),
     ("1/3", "⅓"),
     ("2/3", "⅔"),
+    ("1/8", "⅛"),
+    ("3/8", "⅜"),
+    ("5/8", "⅝"),
+    ("7/8", "⅞"),
+    // Engineering / maths
+    (">=", "≥"),
+    ("<=", "≤"),
+    ("=/=", "≠"),
+    ("(deg)", "°"),
+    ("(ohm)", "Ω"),
+    ("(mu)", "µ"),
+    ("(pi)", "π"),
+    ("(sqrt)", "√"),
+    // Finance / currency (for layouts without the key — UK has £, US doesn't;
+    // € needs AltGr on UK)
+    ("(eur)", "€"),
+    ("(gbp)", "£"),
+    ("(yen)", "¥"),
+    ("(cent)", "¢"),
+];
+
+/// Superscript/subscript entries fire on words ENDING with the trigger —
+/// "m^2" → "m²", "10^3" → "10³", "co_2" → "co₂" — because nobody types "^2"
+/// as a standalone word. Suffix semantics are deliberately limited to these
+/// ^N/_N shapes: generalizing to the arrow/dash triggers would corrupt
+/// code-like tokens ("<!--" must never become "<!–"). Displayed in the
+/// Symbols pack; per-entry disable applies by trigger like everything else.
+const SUPERSUB_ENTRIES: &[(&str, &str)] = &[
+    ("^0", "⁰"),
+    ("^1", "¹"),
+    ("^2", "²"),
+    ("^3", "³"),
+    ("^4", "⁴"),
+    ("^5", "⁵"),
+    ("^6", "⁶"),
+    ("^7", "⁷"),
+    ("^8", "⁸"),
+    ("^9", "⁹"),
+    ("_0", "₀"),
+    ("_1", "₁"),
+    ("_2", "₂"),
+    ("_3", "₃"),
+    ("_4", "₄"),
+    ("_5", "₅"),
+    ("_6", "₆"),
+    ("_7", "₇"),
+    ("_8", "₈"),
+    ("_9", "₉"),
 ];
 
 fn symbols_map() -> &'static HashMap<&'static str, &'static str> {
@@ -4376,6 +4438,11 @@ pub fn builtin_autocorrect_entries() -> Vec<(String, String, String)> {
     );
     v.extend(
         SYMBOL_ENTRIES
+            .iter()
+            .map(|(t, c)| (t.to_string(), c.to_string(), "symbols".to_string())),
+    );
+    v.extend(
+        SUPERSUB_ENTRIES
             .iter()
             .map(|(t, c)| (t.to_string(), c.to_string(), "symbols".to_string())),
     );
