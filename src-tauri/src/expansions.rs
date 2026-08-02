@@ -383,6 +383,14 @@ struct ExpansionState {
     /// bundled dictionaries. Custom-map entries are never checked against
     /// this — users delete those outright instead.
     disabled_entries: HashSet<String>,
+    /// "Days of the week" bundled pack sub-toggle (monday → Monday).
+    days_enabled: bool,
+    /// "Symbols" bundled pack sub-toggle ((c) → ©, -> → →).
+    symbols_enabled: bool,
+    /// Lowercase exe basenames where TEXT EXPANSIONS never fire — separate
+    /// list from the autocorrect one (same normalization, same cached
+    /// foreground read).
+    expansion_excluded_apps: HashSet<String>,
     global_variables: HashMap<String, String>,
 }
 
@@ -405,6 +413,9 @@ impl Default for ExpansionState {
             sentence_start_pending: false,
             excluded_apps: HashSet::new(),
             disabled_entries: HashSet::new(),
+            days_enabled: false,
+            symbols_enabled: false,
+            expansion_excluded_apps: HashSet::new(),
             global_variables: HashMap::new(),
         }
     }
@@ -469,8 +480,13 @@ fn refresh_pending_flag(s: &ExpansionState) {
         return;
     }
     let buf_lower = s.buffer.to_lowercase();
+    // Excluded-app veto short-circuits last so the cached foreground read
+    // only happens when a trigger actually matches — mirrors the autocorrect
+    // veto below.
     EXPANSION_PENDING_SPACE.store(
-        !s.space_triggers.is_empty() && s.space_triggers.contains(&buf_lower),
+        !s.space_triggers.is_empty()
+            && s.space_triggers.contains(&buf_lower)
+            && !expansion_app_excluded(s),
         Ordering::SeqCst,
     );
     // Pro-gated at the flag so the hook never swallows for free-tier users
@@ -561,9 +577,16 @@ pub fn check_space_trigger() -> bool {
     };
 
     // Priority 1: Text expansion (space-triggered). Deliberate triggers win
-    // over passive autocorrect when a word is somehow both.
+    // over passive autocorrect when a word is somehow both. Excluded-app
+    // veto falls through to autocorrect (its own separate list) and then to
+    // the normal clear + reinject path.
     let exp_key = format!("GLOBAL::EXPANSION::{}", buffer_lower);
-    if let Some(entry) = s.assignments.get(&exp_key).cloned() {
+    if let Some(entry) = s
+        .assignments
+        .get(&exp_key)
+        .cloned()
+        .filter(|_| !expansion_app_excluded(&s))
+    {
         let trigger_mode = entry
             .get("data")
             .and_then(|d| d.get("triggerMode"))
@@ -732,6 +755,15 @@ pub(crate) fn is_terminator_char(ch: char) -> bool {
     matches!(ch, '.' | ',' | '!' | '?' | ';' | ':')
 }
 
+/// True when the foreground app is on the TEXT EXPANSION exclusion list
+/// (separate list from the autocorrect one). Cached mutex read, cheap; the
+/// empty-list check short-circuits it away entirely for users without
+/// exclusions.
+fn expansion_app_excluded(s: &ExpansionState) -> bool {
+    !s.expansion_excluded_apps.is_empty()
+        && s.expansion_excluded_apps.contains(&crate::foreground::get_current_fg_proc())
+}
+
 /// True when a word matches the double-caps typo shape: two leading capitals
 /// followed by lowercase (HEllo, TWo, DOn't). Apostrophes are allowed in the
 /// tail so contractions correct cleanly. Words of ALL caps (acronyms) never
@@ -813,6 +845,8 @@ enum AcSource {
     Custom,
     Builtin,
     Extended,
+    Days,
+    Symbols,
     DoubleCaps,
     CapsLock,
     SentenceCaps,
@@ -824,6 +858,8 @@ impl AcSource {
             AcSource::Custom => "custom",
             AcSource::Builtin => "builtin",
             AcSource::Extended => "extended",
+            AcSource::Days => "days",
+            AcSource::Symbols => "symbols",
             AcSource::DoubleCaps => "doubleCaps",
             AcSource::CapsLock => "capsLock",
             AcSource::SentenceCaps => "sentenceCaps",
@@ -874,6 +910,16 @@ fn resolve_dict_correction(
         if hit.is_none() && s.extended_typos_enabled {
             if let Some(c) = extended_autocorrect(lower) {
                 hit = Some((c, AcSource::Extended));
+            }
+        }
+        if hit.is_none() && s.days_enabled {
+            if let Some(c) = days_autocorrect(lower) {
+                hit = Some((c, AcSource::Days));
+            }
+        }
+        if hit.is_none() && s.symbols_enabled {
+            if let Some(c) = symbols_autocorrect(lower) {
+                hit = Some((c, AcSource::Symbols));
             }
         }
     }
@@ -1345,6 +1391,12 @@ fn send_unicode_char_tap(ch: char) {
 pub fn check_immediate_triggers() -> bool {
     let mut s = state().lock().unwrap();
     if s.buffer.is_empty() {
+        return false;
+    }
+
+    // Excluded app in the foreground — immediate expansions never fire
+    // there. Empty-list short-circuit keeps this free for everyone else.
+    if expansion_app_excluded(&s) {
         return false;
     }
 
@@ -4226,6 +4278,62 @@ fn builtin_autocorrect(word: &str) -> Option<&'static str> {
     builtin_map().get(word).copied()
 }
 
+/// Days of the week — Word-style capitalization pack. Months are deliberately
+/// absent: "may", "march" and "august" are ordinary words, so the pack would
+/// misfire constantly. The identity guard keeps a correctly typed "Monday"
+/// from firing.
+const DAYS_ENTRIES: &[(&str, &str)] = &[
+    ("monday", "Monday"),
+    ("tuesday", "Tuesday"),
+    ("wednesday", "Wednesday"),
+    ("thursday", "Thursday"),
+    ("friday", "Friday"),
+    ("saturday", "Saturday"),
+    ("sunday", "Sunday"),
+];
+
+fn days_map() -> &'static HashMap<&'static str, &'static str> {
+    static MAP: std::sync::OnceLock<HashMap<&'static str, &'static str>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| DAYS_ENTRIES.iter().copied().collect())
+}
+
+fn days_autocorrect(word: &str) -> Option<&'static str> {
+    days_map().get(word).copied()
+}
+
+/// Symbol replacements, Typinator-style. Constraint: a trigger must never
+/// contain a terminator char (. , ! ? ; :) — those end the buffer word, so
+/// such a trigger could never accumulate. Ellipsis and != are impossible for
+/// that reason. Triggers fire as standalone "words" only (buffer-boundary
+/// matching): "x->y" stays untouched, "foo -> bar" converts.
+const SYMBOL_ENTRIES: &[(&str, &str)] = &[
+    ("(c)", "©"),
+    ("(r)", "®"),
+    ("(tm)", "™"),
+    ("->", "→"),
+    ("<-", "←"),
+    ("=>", "⇒"),
+    ("+-", "±"),
+    ("~=", "≈"),
+    ("--", "–"),
+    ("1/2", "½"),
+    ("1/4", "¼"),
+    ("3/4", "¾"),
+    ("1/3", "⅓"),
+    ("2/3", "⅔"),
+];
+
+fn symbols_map() -> &'static HashMap<&'static str, &'static str> {
+    static MAP: std::sync::OnceLock<HashMap<&'static str, &'static str>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| SYMBOL_ENTRIES.iter().copied().collect())
+}
+
+fn symbols_autocorrect(word: &str) -> Option<&'static str> {
+    symbols_map().get(word).copied()
+}
+
 /// Extended dictionary — ~4k tab-separated (typo, correction) pairs derived
 /// from Wikipedia's machine-readable list of common misspellings (CC BY-SA;
 /// credit in the help guide). Filtered at generation time: unambiguous
@@ -4260,6 +4368,16 @@ pub fn builtin_autocorrect_entries() -> Vec<(String, String, String)> {
             .lines()
             .filter_map(|l| l.split_once('\t'))
             .map(|(t, c)| (t.to_string(), c.to_string(), "extended".to_string())),
+    );
+    v.extend(
+        DAYS_ENTRIES
+            .iter()
+            .map(|(t, c)| (t.to_string(), c.to_string(), "days".to_string())),
+    );
+    v.extend(
+        SYMBOL_ENTRIES
+            .iter()
+            .map(|(t, c)| (t.to_string(), c.to_string(), "symbols".to_string())),
     );
     v
 }
@@ -4328,11 +4446,15 @@ pub fn set_autocorrect_settings(
     extended_typos: bool,
     excluded_apps: Vec<String>,
     disabled_entries: Vec<String>,
+    days: bool,
+    symbols: bool,
 ) {
     let mut s = state().lock().unwrap();
     s.autocorrect_enabled = enabled;
     s.builtin_typos_enabled = builtin_typos;
     s.extended_typos_enabled = extended_typos;
+    s.days_enabled = days;
+    s.symbols_enabled = symbols;
     s.double_caps_enabled = double_caps;
     s.disabled_entries = disabled_entries
         .into_iter()
@@ -4353,10 +4475,23 @@ pub fn set_autocorrect_settings(
     s.sentence_caps_enabled = sentence_caps;
     refresh_pending_flag(&s);
     info!(
-        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps, {} disabled entries)",
-        enabled, builtin_typos, extended_typos, double_caps, caps_lock_fix, sentence_caps,
+        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} days={} symbols={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps, {} disabled entries)",
+        enabled, builtin_typos, extended_typos, days, symbols, double_caps, caps_lock_fix, sentence_caps,
         s.double_caps_exceptions.len(), s.excluded_apps.len(), s.disabled_entries.len()
     );
+}
+
+/// Text-expansion excluded apps — separate list from the autocorrect one.
+/// Same normalization (lowercase, no .exe) so the foreground compare works.
+pub fn set_expansion_excluded_apps(apps: Vec<String>) {
+    let mut s = state().lock().unwrap();
+    s.expansion_excluded_apps = apps
+        .into_iter()
+        .map(|a| a.trim().to_lowercase().trim_end_matches(".exe").to_string())
+        .filter(|a| !a.is_empty())
+        .collect();
+    refresh_pending_flag(&s);
+    info!("[Keyfire] Expansion excluded apps: {}", s.expansion_excluded_apps.len());
 }
 
 pub fn update_global_variables(vars: HashMap<String, String>) {

@@ -2179,6 +2179,8 @@ export default function TextExpansions({
   autocorrectCapsLockFix = false,
   autocorrectSentenceCaps = false,
   autocorrectExtendedTypos = false,
+  autocorrectDays = false,
+  autocorrectSymbols = false,
   autocorrectExcludedApps = [],
   onUpdateAutocorrectSettings,
   autocorrections = [],
@@ -2738,6 +2740,17 @@ export default function TextExpansions({
     setAcEditing({ isNew: false, originalWord: group.correction, originalTypos: [...group.typos] });
   }
 
+  // Customise a bundled entry: pre-fill the custom form with the bundled
+  // group and jump to Your Corrections. The saved custom entries shadow the
+  // bundled ones per-typo (custom always wins in the engine).
+  function openAcCustomise(typos, correction) {
+    setAcSection('custom');
+    setAcWord(correction);
+    setAcTypos([...typos]);
+    setAcTypoInput('');
+    setAcEditing({ isNew: true });
+  }
+
   function acCommitTypoInput() {
     const t = acTypoInput.trim().toLowerCase().replace(/\s/g, '');
     setAcTypoInput('');
@@ -2883,10 +2896,20 @@ export default function TextExpansions({
 
   // Bundled dictionary for the ACTIVE rail section, grouped by correction,
   // filtered by the toolbar search, render-capped for the 4k extended pack.
+  // One entry per bundled pack: rail label, enabled flag, and the settings
+  // patch key its toggle flips.
+  const AC_DICT_SECTIONS = {
+    starter:  { enabled: autocorrectBuiltinTypos,  patchKey: 'builtinTypos' },
+    extended: { enabled: autocorrectExtendedTypos, patchKey: 'extendedTypos' },
+    days:     { enabled: autocorrectDays,          patchKey: 'days' },
+    symbols:  { enabled: autocorrectSymbols,       patchKey: 'symbols' },
+  };
   const AC_DICT_RENDER_CAP = 150;
   const starterCount = builtinEntries.filter(e => e[2] === 'starter').length;
-  const extendedCount = builtinEntries.length - starterCount;
-  const dictPack = acSection === 'extended' ? 'extended' : 'starter';
+  const extendedCount = builtinEntries.filter(e => e[2] === 'extended').length;
+  const daysCount = builtinEntries.filter(e => e[2] === 'days').length;
+  const symbolsCount = builtinEntries.filter(e => e[2] === 'symbols').length;
+  const dictPack = AC_DICT_SECTIONS[acSection] ? acSection : 'starter';
   const dictQuery = acDictFilter.trim().toLowerCase();
   const dictGroupMap = {};
   let dictGroupTotal = 0;
@@ -2902,7 +2925,8 @@ export default function TextExpansions({
     .slice(0, AC_DICT_RENDER_CAP);
   builtinGroups.forEach(g => g.typos.sort());
   const dictHiddenGroups = Math.max(0, dictGroupTotal - builtinGroups.length);
-  const dictPackEnabled = dictPack === 'starter' ? autocorrectBuiltinTypos : autocorrectExtendedTypos;
+  const dictPackEnabled = AC_DICT_SECTIONS[dictPack].enabled;
+  const dictPackPatchKey = AC_DICT_SECTIONS[dictPack].patchKey;
 
   // ── Global Variables handlers ────────────────────────────────────────────
 
@@ -3914,6 +3938,22 @@ export default function TextExpansions({
               </button>
               <button
                 type="button"
+                className={`te-cat-row${acSection === 'days' ? ' te-cat-row-active' : ''}`}
+                onClick={() => { setAcSection('days'); setAcDictFilter(''); }}
+              >
+                <span className="te-cat-row-name">Days Of The Week</span>
+                <span className="te-cat-count">{daysCount}</span>
+              </button>
+              <button
+                type="button"
+                className={`te-cat-row${acSection === 'symbols' ? ' te-cat-row-active' : ''}`}
+                onClick={() => { setAcSection('symbols'); setAcDictFilter(''); }}
+              >
+                <span className="te-cat-row-name">Symbols</span>
+                <span className="te-cat-count">{symbolsCount}</span>
+              </button>
+              <button
+                type="button"
                 className={`te-cat-row${acSection === 'fixes' ? ' te-cat-row-active' : ''}`}
                 onClick={() => setAcSection('fixes')}
               >
@@ -4056,15 +4096,13 @@ export default function TextExpansions({
           )}
           </>)}
 
-          {/* Bundled dictionaries: Common typos / Extended dictionary */}
-          {(acSection === 'starter' || acSection === 'extended') && (<>
+          {/* Bundled dictionaries: Common typos / Extended / Days / Symbols */}
+          {AC_DICT_SECTIONS[acSection] && (<>
           <div className="te-toolbar">
             <div className="ac-pack-toggle">
               <button
                 className={`ac-toggle${dictPackEnabled ? ' ac-toggle-on' : ''}`}
-                onClick={() => onUpdateAutocorrectSettings?.(dictPack === 'starter'
-                  ? { builtinTypos: !autocorrectBuiltinTypos }
-                  : { extendedTypos: !autocorrectExtendedTypos })}
+                onClick={() => onUpdateAutocorrectSettings?.({ [dictPackPatchKey]: !dictPackEnabled })}
                 type="button"
                 role="switch"
                 aria-checked={dictPackEnabled}
@@ -4109,6 +4147,14 @@ export default function TextExpansions({
                 </div>
                 <span className="te-item-arrow">→</span>
                 <span className="ac-correction">{group.correction}</span>
+                <div className="te-item-actions">
+                  <button
+                    className="te-item-edit"
+                    onClick={() => openAcCustomise(group.typos, group.correction)}
+                    type="button"
+                    title="Copy this entry into Your Corrections and change what it corrects to. Your version wins."
+                  >Customise</button>
+                </div>
               </div>
             ))}
             {dictHiddenGroups > 0 && (

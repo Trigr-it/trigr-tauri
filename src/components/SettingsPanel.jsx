@@ -183,6 +183,8 @@ export default function SettingsPanel({
   onExportConfig,
   onImportConfig,
   onRestoreBackup,
+  expansionExcludedApps = [],
+  onUpdateExpansionExcludedApps,
   globalInputMethod = 'direct',
   macroSpeed        = 'safe',
   keystrokeDelay    = 10,
@@ -1620,6 +1622,26 @@ export default function SettingsPanel({
           >
             Open clipboard folder
           </button>
+          </>)}
+        </section>
+
+        {/* ── TEXT EXPANSIONS ────────────────────────────── */}
+        <section className="settings-section">
+          <div
+            className="settings-section-title settings-accordion-header"
+            onClick={() => toggleSection('text-expansions')}
+          >
+            TEXT EXPANSIONS
+            <span className={`settings-accordion-chevron${isExpanded('text-expansions') ? ' open' : ''}`}>▾</span>
+          </div>
+          {isExpanded('text-expansions') && (<>
+
+          <ClipboardExcludedAppsEditor
+            apps={expansionExcludedApps}
+            onChange={onUpdateExpansionExcludedApps}
+            label="Excluded apps"
+            sub="Text expansions never fire while these apps are in the foreground. Separate from the Autocorrect exclusion list."
+          />
           </>)}
         </section>
 

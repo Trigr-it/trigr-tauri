@@ -1506,8 +1506,15 @@ fn update_autocorrect_settings(
     extended_typos: bool,
     excluded_apps: Vec<String>,
     disabled_entries: Vec<String>,
+    days: bool,
+    symbols: bool,
 ) {
-    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos, excluded_apps, disabled_entries);
+    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos, excluded_apps, disabled_entries, days, symbols);
+}
+
+#[tauri::command]
+fn update_expansion_excluded_apps(apps: Vec<String>) {
+    expansions::set_expansion_excluded_apps(apps);
 }
 
 #[tauri::command]
@@ -4810,6 +4817,7 @@ pub fn run() {
             update_global_settings,
             update_autocorrect_enabled,
             update_autocorrect_settings,
+            update_expansion_excluded_apps,
             export_text_file,
             import_text_file,
             get_builtin_autocorrect_entries,

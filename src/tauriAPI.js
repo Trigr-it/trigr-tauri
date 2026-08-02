@@ -120,9 +120,10 @@ window.electronAPI = {
 
   // ── Autocorrect ─────────────────────────────────────────────────────────────
   updateAutocorrectEnabled: (enabled) => invoke('update_autocorrect_enabled', { enabled }),
-  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries) =>
-    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries: disabledEntries || [] }),
+  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries, days, symbols) =>
+    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries: disabledEntries || [], days: !!days, symbols: !!symbols }),
   getBuiltinAutocorrectEntries: () => invoke('get_builtin_autocorrect_entries'),
+  updateExpansionExcludedApps: (apps) => invoke('update_expansion_excluded_apps', { apps }),
 
   // ── Generic text-file dialogs (CSV packs etc.) ──────────────────────────────
   exportTextFile: (filenameHint, content, title, filterName, extensions) =>

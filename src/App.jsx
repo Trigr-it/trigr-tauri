@@ -92,7 +92,11 @@ function App() {
   const [autocorrectCapsLockFix, setAutocorrectCapsLockFix] = useState(false);
   const [autocorrectSentenceCaps, setAutocorrectSentenceCaps] = useState(false);
   const [autocorrectExtendedTypos, setAutocorrectExtendedTypos] = useState(false);
+  const [autocorrectDays, setAutocorrectDays] = useState(false);
+  const [autocorrectSymbols, setAutocorrectSymbols] = useState(false);
   const [autocorrectExcludedApps, setAutocorrectExcludedApps] = useState([]);
+  // Apps where text expansions never fire (separate from autocorrect exclusions).
+  const [expansionExcludedApps, setExpansionExcludedApps] = useState([]);
   // Individual bundled-dictionary entries the user switched off (lowercase typo keys).
   const [autocorrectDisabledEntries, setAutocorrectDisabledEntries] = useState([]);
   // Backspace-undo tracking: { [originalLower]: { count, replacement, source } }.
@@ -330,6 +334,9 @@ function App() {
         const savedAcExtended = config.autocorrectExtendedTypos ?? false;
         const savedAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
         const savedAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
+        const savedAcDays = config.autocorrectDays ?? false;
+        const savedAcSymbols = config.autocorrectSymbols ?? false;
+        const savedExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
         setAutocorrectEnabled(savedAcEnabled);
         setAutocorrectBuiltinTypos(savedAcBuiltin);
         setAutocorrectDoubleCaps(savedAcDoubleCaps);
@@ -337,11 +344,15 @@ function App() {
         setAutocorrectCapsLockFix(savedAcCapsLockFix);
         setAutocorrectSentenceCaps(savedAcSentenceCaps);
         setAutocorrectExtendedTypos(savedAcExtended);
+        setAutocorrectDays(savedAcDays);
+        setAutocorrectSymbols(savedAcSymbols);
         setAutocorrectExcludedApps(savedAcExcluded);
         setAutocorrectDisabledEntries(savedAcDisabled);
         setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
         setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
-        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded, savedAcDisabled);
+        setExpansionExcludedApps(savedExpExcluded);
+        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded, savedAcDisabled, savedAcDays, savedAcSymbols);
+        window.electronAPI?.updateExpansionExcludedApps(savedExpExcluded);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
         // Clipboard privacy controls — defaults preserve existing behaviour.
@@ -733,6 +744,9 @@ function App() {
           const cfgAcExtended = config.autocorrectExtendedTypos ?? false;
           const cfgAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
           const cfgAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
+          const cfgAcDays = config.autocorrectDays ?? false;
+          const cfgAcSymbols = config.autocorrectSymbols ?? false;
+          const cfgExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
           setAutocorrectEnabled(cfgAcEnabled);
           setAutocorrectBuiltinTypos(cfgAcBuiltin);
           setAutocorrectDoubleCaps(cfgAcDoubleCaps);
@@ -740,11 +754,15 @@ function App() {
           setAutocorrectCapsLockFix(cfgAcCapsLockFix);
           setAutocorrectSentenceCaps(cfgAcSentenceCaps);
           setAutocorrectExtendedTypos(cfgAcExtended);
+          setAutocorrectDays(cfgAcDays);
+          setAutocorrectSymbols(cfgAcSymbols);
           setAutocorrectExcludedApps(cfgAcExcluded);
           setAutocorrectDisabledEntries(cfgAcDisabled);
           setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
           setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
-          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded, cfgAcDisabled);
+          setExpansionExcludedApps(cfgExpExcluded);
+          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded, cfgAcDisabled, cfgAcDays, cfgAcSymbols);
+          window.electronAPI?.updateExpansionExcludedApps(cfgExpExcluded);
         }
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
         const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
@@ -2248,6 +2266,8 @@ function App() {
       extendedTypos: patch.extendedTypos ?? autocorrectExtendedTypos,
       excludedApps: patch.excludedApps ?? autocorrectExcludedApps,
       disabledEntries: patch.disabledEntries ?? autocorrectDisabledEntries,
+      days: patch.days ?? autocorrectDays,
+      symbols: patch.symbols ?? autocorrectSymbols,
     };
     // Normalize disabled entries: lowercase, dedupe, drop empties — mirrors
     // the Rust-side normalization in expansions::set_autocorrect_settings.
@@ -2270,9 +2290,11 @@ function App() {
     setAutocorrectCapsLockFix(next.capsLockFix);
     setAutocorrectSentenceCaps(next.sentenceCaps);
     setAutocorrectExtendedTypos(next.extendedTypos);
+    setAutocorrectDays(next.days);
+    setAutocorrectSymbols(next.symbols);
     setAutocorrectExcludedApps(next.excludedApps);
     setAutocorrectDisabledEntries(next.disabledEntries);
-    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps, next.disabledEntries);
+    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps, next.disabledEntries, next.days, next.symbols);
     window.electronAPI?.saveConfig({
       autocorrectEnabled: next.enabled,
       autocorrectBuiltinTypos: next.builtinTypos,
@@ -2283,8 +2305,22 @@ function App() {
       autocorrectExtendedTypos: next.extendedTypos,
       autocorrectExcludedApps: next.excludedApps,
       autocorrectDisabledEntries: next.disabledEntries,
+      autocorrectDays: next.days,
+      autocorrectSymbols: next.symbols,
     });
-  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos, autocorrectExcludedApps, autocorrectDisabledEntries]);
+  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos, autocorrectExcludedApps, autocorrectDisabledEntries, autocorrectDays, autocorrectSymbols]);
+
+  // Text-expansion excluded apps — separate list from autocorrect's.
+  const handleUpdateExpansionExcludedApps = useCallback((apps) => {
+    const next = Array.from(new Set(
+      (apps || [])
+        .map(a => (a || '').toLowerCase().replace(/\.exe$/, '').trim())
+        .filter(Boolean)
+    ));
+    setExpansionExcludedApps(next);
+    window.electronAPI?.updateExpansionExcludedApps(next);
+    window.electronAPI?.saveConfig({ expansionExcludedApps: next });
+  }, []);
 
   // Save one correct word with its full misspelling list. Storage is flat
   // (one GLOBAL::AUTOCORRECT::<typo> key per misspelling); typos dropped from
@@ -4574,6 +4610,8 @@ function App() {
               autocorrectCapsLockFix={autocorrectCapsLockFix}
               autocorrectSentenceCaps={autocorrectSentenceCaps}
               autocorrectExtendedTypos={autocorrectExtendedTypos}
+              autocorrectDays={autocorrectDays}
+              autocorrectSymbols={autocorrectSymbols}
               autocorrectExcludedApps={autocorrectExcludedApps}
               onUpdateAutocorrectSettings={handleUpdateAutocorrectSettings}
               autocorrections={autocorrections}
@@ -4611,6 +4649,8 @@ function App() {
             onExportConfig={handleExportConfig}
             onImportConfig={handleImportConfig}
             onRestoreBackup={handleRestoreBackup}
+            expansionExcludedApps={expansionExcludedApps}
+            onUpdateExpansionExcludedApps={handleUpdateExpansionExcludedApps}
             globalInputMethod={globalInputMethod}
             macroSpeed={macroSpeed}
             keystrokeDelay={keystrokeDelay}
