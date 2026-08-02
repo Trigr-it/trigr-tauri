@@ -120,8 +120,24 @@ window.electronAPI = {
 
   // ── Autocorrect ─────────────────────────────────────────────────────────────
   updateAutocorrectEnabled: (enabled) => invoke('update_autocorrect_enabled', { enabled }),
-  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries, days, symbols, emojis) =>
-    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries: disabledEntries || [], days: !!days, symbols: !!symbols, emojis: !!emojis }),
+  // Single settings object end to end — keys mirror the Rust
+  // AutocorrectSettings struct (camelCase). Arrays are defensively defaulted
+  // so a partial caller can't hand serde an undefined.
+  updateAutocorrectSettings: (settings) =>
+    invoke('update_autocorrect_settings', { settings: {
+      enabled:               !!settings.enabled,
+      builtinTypos:          !!settings.builtinTypos,
+      extendedTypos:         !!settings.extendedTypos,
+      days:                  !!settings.days,
+      symbols:               !!settings.symbols,
+      emojis:                !!settings.emojis,
+      doubleCaps:            !!settings.doubleCaps,
+      doubleCapsExceptions:  settings.doubleCapsExceptions || [],
+      capsLockFix:           !!settings.capsLockFix,
+      sentenceCaps:          !!settings.sentenceCaps,
+      excludedApps:          settings.excludedApps || [],
+      disabledEntries:       settings.disabledEntries || [],
+    } }),
   getBuiltinAutocorrectEntries: () => invoke('get_builtin_autocorrect_entries'),
   updateExpansionExcludedApps: (apps) => invoke('update_expansion_excluded_apps', { apps }),
 

@@ -1496,21 +1496,8 @@ fn get_builtin_autocorrect_entries() -> Vec<(String, String, String)> {
 }
 
 #[tauri::command]
-fn update_autocorrect_settings(
-    enabled: bool,
-    builtin_typos: bool,
-    double_caps: bool,
-    double_caps_exceptions: Vec<String>,
-    caps_lock_fix: bool,
-    sentence_caps: bool,
-    extended_typos: bool,
-    excluded_apps: Vec<String>,
-    disabled_entries: Vec<String>,
-    days: bool,
-    symbols: bool,
-    emojis: bool,
-) {
-    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos, excluded_apps, disabled_entries, days, symbols, emojis);
+fn update_autocorrect_settings(settings: expansions::AutocorrectSettings) {
+    expansions::set_autocorrect_settings(settings);
 }
 
 #[tauri::command]

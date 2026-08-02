@@ -4612,51 +4612,63 @@ pub fn set_autocorrect_enabled(enabled: bool) {
     info!("[Keyfire] Autocorrect config: enabled={}", enabled);
 }
 
+/// Full autocorrect settings payload — one struct end to end (frontend JSON
+/// object → Tauri command → engine) instead of the old positional-parameter
+/// list that had grown to 12 arguments. `#[serde(default)]` keeps it forward
+/// compatible: a caller omitting a newly added field gets the off/empty
+/// default instead of a deserialization error.
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AutocorrectSettings {
+    pub enabled: bool,
+    pub builtin_typos: bool,
+    pub extended_typos: bool,
+    pub days: bool,
+    pub symbols: bool,
+    pub emojis: bool,
+    pub double_caps: bool,
+    pub double_caps_exceptions: Vec<String>,
+    pub caps_lock_fix: bool,
+    pub sentence_caps: bool,
+    pub excluded_apps: Vec<String>,
+    pub disabled_entries: Vec<String>,
+}
+
 /// Full autocorrect settings sync — called on startup config load and on
 /// every settings change from the frontend.
-pub fn set_autocorrect_settings(
-    enabled: bool,
-    builtin_typos: bool,
-    double_caps: bool,
-    double_caps_exceptions: Vec<String>,
-    caps_lock_fix: bool,
-    sentence_caps: bool,
-    extended_typos: bool,
-    excluded_apps: Vec<String>,
-    disabled_entries: Vec<String>,
-    days: bool,
-    symbols: bool,
-    emojis: bool,
-) {
+pub fn set_autocorrect_settings(cfg: AutocorrectSettings) {
     let mut s = state().lock().unwrap();
-    s.autocorrect_enabled = enabled;
-    s.builtin_typos_enabled = builtin_typos;
-    s.extended_typos_enabled = extended_typos;
-    s.days_enabled = days;
-    s.symbols_enabled = symbols;
-    s.emojis_enabled = emojis;
-    s.double_caps_enabled = double_caps;
-    s.disabled_entries = disabled_entries
+    s.autocorrect_enabled = cfg.enabled;
+    s.builtin_typos_enabled = cfg.builtin_typos;
+    s.extended_typos_enabled = cfg.extended_typos;
+    s.days_enabled = cfg.days;
+    s.symbols_enabled = cfg.symbols;
+    s.emojis_enabled = cfg.emojis;
+    s.double_caps_enabled = cfg.double_caps;
+    s.disabled_entries = cfg
+        .disabled_entries
         .into_iter()
         .map(|w| w.trim().to_lowercase())
         .filter(|w| !w.is_empty())
         .collect();
-    s.excluded_apps = excluded_apps
+    s.excluded_apps = cfg
+        .excluded_apps
         .into_iter()
         .map(|a| a.trim().to_lowercase().trim_end_matches(".exe").to_string())
         .filter(|a| !a.is_empty())
         .collect();
-    s.double_caps_exceptions = double_caps_exceptions
+    s.double_caps_exceptions = cfg
+        .double_caps_exceptions
         .into_iter()
         .map(|w| w.trim().to_lowercase())
         .filter(|w| !w.is_empty())
         .collect();
-    s.caps_lock_fix_enabled = caps_lock_fix;
-    s.sentence_caps_enabled = sentence_caps;
+    s.caps_lock_fix_enabled = cfg.caps_lock_fix;
+    s.sentence_caps_enabled = cfg.sentence_caps;
     refresh_pending_flag(&s);
     info!(
         "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} days={} symbols={} emojis={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps, {} disabled entries)",
-        enabled, builtin_typos, extended_typos, days, symbols, emojis, double_caps, caps_lock_fix, sentence_caps,
+        cfg.enabled, cfg.builtin_typos, cfg.extended_typos, cfg.days, cfg.symbols, cfg.emojis, cfg.double_caps, cfg.caps_lock_fix, cfg.sentence_caps,
         s.double_caps_exceptions.len(), s.excluded_apps.len(), s.disabled_entries.len()
     );
 }

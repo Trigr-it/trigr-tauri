@@ -354,7 +354,20 @@ function App() {
         setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
         setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
         setExpansionExcludedApps(savedExpExcluded);
-        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded, savedAcDisabled, savedAcDays, savedAcSymbols, savedAcEmojis);
+        window.electronAPI?.updateAutocorrectSettings({
+          enabled: savedAcEnabled,
+          builtinTypos: savedAcBuiltin,
+          extendedTypos: savedAcExtended,
+          days: savedAcDays,
+          symbols: savedAcSymbols,
+          emojis: savedAcEmojis,
+          doubleCaps: savedAcDoubleCaps,
+          doubleCapsExceptions: savedAcExceptions,
+          capsLockFix: savedAcCapsLockFix,
+          sentenceCaps: savedAcSentenceCaps,
+          excludedApps: savedAcExcluded,
+          disabledEntries: savedAcDisabled,
+        });
         window.electronAPI?.updateExpansionExcludedApps(savedExpExcluded);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
@@ -766,7 +779,20 @@ function App() {
           setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
           setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
           setExpansionExcludedApps(cfgExpExcluded);
-          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded, cfgAcDisabled, cfgAcDays, cfgAcSymbols, cfgAcEmojis);
+          window.electronAPI?.updateAutocorrectSettings({
+            enabled: cfgAcEnabled,
+            builtinTypos: cfgAcBuiltin,
+            extendedTypos: cfgAcExtended,
+            days: cfgAcDays,
+            symbols: cfgAcSymbols,
+            emojis: cfgAcEmojis,
+            doubleCaps: cfgAcDoubleCaps,
+            doubleCapsExceptions: cfgAcExceptions,
+            capsLockFix: cfgAcCapsLockFix,
+            sentenceCaps: cfgAcSentenceCaps,
+            excludedApps: cfgAcExcluded,
+            disabledEntries: cfgAcDisabled,
+          });
           window.electronAPI?.updateExpansionExcludedApps(cfgExpExcluded);
         }
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
@@ -2301,7 +2327,20 @@ function App() {
     setAutocorrectEmojis(next.emojis);
     setAutocorrectExcludedApps(next.excludedApps);
     setAutocorrectDisabledEntries(next.disabledEntries);
-    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps, next.disabledEntries, next.days, next.symbols, next.emojis);
+    window.electronAPI?.updateAutocorrectSettings({
+      enabled: next.enabled,
+      builtinTypos: next.builtinTypos,
+      extendedTypos: next.extendedTypos,
+      days: next.days,
+      symbols: next.symbols,
+      emojis: next.emojis,
+      doubleCaps: next.doubleCaps,
+      doubleCapsExceptions: next.exceptions,
+      capsLockFix: next.capsLockFix,
+      sentenceCaps: next.sentenceCaps,
+      excludedApps: next.excludedApps,
+      disabledEntries: next.disabledEntries,
+    });
     window.electronAPI?.saveConfig({
       autocorrectEnabled: next.enabled,
       autocorrectBuiltinTypos: next.builtinTypos,
