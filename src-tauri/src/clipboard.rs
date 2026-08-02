@@ -23,7 +23,7 @@ use windows_sys::Win32::Security::Cryptography::{
 };
 use windows_sys::Win32::System::DataExchange::{
     AddClipboardFormatListener, CloseClipboard, GetClipboardData, IsClipboardFormatAvailable,
-    OpenClipboard, RemoveClipboardFormatListener,
+    OpenClipboard, RegisterClipboardFormatW, RemoveClipboardFormatListener,
 };
 use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
@@ -3017,6 +3017,63 @@ unsafe extern "system" fn clipboard_wnd_proc(
     DefWindowProcW(hwnd, msg, w_param, l_param)
 }
 
+/// Registered clipboard formats that mark a copy as private. Password managers
+/// (1Password, Bitwarden, KeePass) and "copy without history" features stamp
+/// these alongside the real content so clipboard monitors skip the copy —
+/// Windows' own Win+V history honours them, and so must we.
+///
+/// - `ExcludeClipboardContentFromMonitorProcessing` — presence alone means skip.
+/// - `Clipboard Viewer Ignore` — older convention (KeePass etc.), presence = skip.
+/// - `CanIncludeInClipboardHistory` — value semantics: a DWORD 0 means exclude
+///   (a 1 explicitly ALLOWS history, so presence alone is not a skip).
+fn privacy_format_atoms() -> (u32, u32, u32) {
+    static ATOMS: std::sync::OnceLock<(u32, u32, u32)> = std::sync::OnceLock::new();
+    *ATOMS.get_or_init(|| {
+        fn wide(s: &str) -> Vec<u16> {
+            s.encode_utf16().chain(std::iter::once(0)).collect()
+        }
+        unsafe {
+            (
+                RegisterClipboardFormatW(wide("ExcludeClipboardContentFromMonitorProcessing").as_ptr()),
+                RegisterClipboardFormatW(wide("Clipboard Viewer Ignore").as_ptr()),
+                RegisterClipboardFormatW(wide("CanIncludeInClipboardHistory").as_ptr()),
+            )
+        }
+    })
+}
+
+/// True when the current clipboard contents are marked private by the source
+/// app. MUST be called with the clipboard open (between OpenClipboard and
+/// CloseClipboard). Never logs content.
+unsafe fn clipboard_marked_private() -> bool {
+    let (exclude, viewer_ignore, can_include) = privacy_format_atoms();
+
+    if exclude != 0 && IsClipboardFormatAvailable(exclude) != 0 {
+        return true;
+    }
+    if viewer_ignore != 0 && IsClipboardFormatAvailable(viewer_ignore) != 0 {
+        return true;
+    }
+    if can_include != 0 && IsClipboardFormatAvailable(can_include) != 0 {
+        let handle = GetClipboardData(can_include);
+        if !handle.is_null() {
+            let ptr = GlobalLock(handle) as *const u32;
+            if !ptr.is_null() {
+                let allowed = *ptr != 0;
+                GlobalUnlock(handle);
+                if !allowed {
+                    return true;
+                }
+            }
+        } else {
+            // Format advertised but unreadable — treat as private rather than
+            // risk capturing something the source app tried to protect.
+            return true;
+        }
+    }
+    false
+}
+
 fn handle_clipboard_update() {
     // Skip Keyfire's own injected writes. Two layers: the level flag covers the
     // synchronous write window, and the per-write sequence-number record covers
@@ -3070,6 +3127,14 @@ fn handle_clipboard_update() {
         }
         if !opened {
             log::warn!("[Keyfire] Clipboard: OpenClipboard still locked after 10 attempts — copy not captured");
+            return;
+        }
+
+        // Source app marked this copy private (password managers, "copy
+        // without history"). Same treatment Win+V gives it: never captured.
+        if clipboard_marked_private() {
+            CloseClipboard();
+            log::info!("[Keyfire] Clipboard: copy marked private by source app — not captured");
             return;
         }
 
