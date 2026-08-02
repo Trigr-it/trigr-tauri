@@ -2344,6 +2344,13 @@ export default function TextExpansions({
   const [acCustomFilter, setAcCustomFilter] = useState('');
   // Where a Customise jump came from — Cancel returns there, Save clears it.
   const [acReturnSection, setAcReturnSection] = useState(null);
+  // Snapshot of the correction form when it opened ("word|typo,typo") — the
+  // form is dirty when current content differs or text sits uncommitted in
+  // the chip input. A prefilled-but-untouched Customise form is NOT dirty.
+  const [acFormBaseline, setAcFormBaseline] = useState('');
+  // Rail section the user tried to open while the form had unsaved changes.
+  // Non-null renders the discard prompt.
+  const [acPendingNav, setAcPendingNav] = useState(null);
   useEffect(() => {
     if (panelMode !== 'autocorrect' || builtinEntries.length > 0) return;
     window.electronAPI?.getBuiltinAutocorrectEntries?.()
@@ -2735,6 +2742,7 @@ export default function TextExpansions({
     setAcTypoInput('');
     setAcEditing({ isNew: true });
     setAcReturnSection(null);
+    setAcFormBaseline('|');
   }
 
   function openAcEdit(group) {
@@ -2743,6 +2751,36 @@ export default function TextExpansions({
     setAcTypoInput('');
     setAcEditing({ isNew: false, originalWord: group.correction, originalTypos: [...group.typos] });
     setAcReturnSection(null);
+    setAcFormBaseline(`${group.correction}|${[...group.typos].join(',')}`);
+  }
+
+  function acFormDirty() {
+    if (!acEditing) return false;
+    return `${acWord}|${acTypos.join(',')}` !== acFormBaseline || acTypoInput.trim() !== '';
+  }
+
+  // Rail navigation with an unsaved-changes gate: leaving the section closes
+  // the open correction form; if it has uncommitted edits, prompt first.
+  function acNavigate(section) {
+    if (section === acSection) return;
+    if (acEditing && acFormDirty()) {
+      setAcPendingNav(section);
+      return;
+    }
+    setAcEditing(null);
+    setAcReturnSection(null);
+    setAcSection(section);
+    if (section !== 'custom') setAcDictFilter('');
+  }
+
+  function acConfirmDiscardNav() {
+    const target = acPendingNav;
+    setAcPendingNav(null);
+    if (!target) return;
+    setAcEditing(null);
+    setAcReturnSection(null);
+    setAcSection(target);
+    if (target !== 'custom') setAcDictFilter('');
   }
 
   // Customise a bundled entry: pre-fill the custom form with the bundled
@@ -2757,6 +2795,7 @@ export default function TextExpansions({
     setAcTypos([...typos]);
     setAcTypoInput('');
     setAcEditing({ isNew: true });
+    setAcFormBaseline(`${correction}|${[...typos].join(',')}`);
   }
 
   function acCommitTypoInput() {
@@ -3934,7 +3973,7 @@ export default function TextExpansions({
               <button
                 type="button"
                 className={`te-cat-row${acSection === 'custom' ? ' te-cat-row-active' : ''}`}
-                onClick={() => setAcSection('custom')}
+                onClick={() => acNavigate('custom')}
               >
                 <span className="te-cat-row-name">Your Corrections</span>
                 <span className="te-cat-count">{acGroups.length}</span>
@@ -3942,7 +3981,7 @@ export default function TextExpansions({
               <button
                 type="button"
                 className={`te-cat-row${acSection === 'starter' ? ' te-cat-row-active' : ''}`}
-                onClick={() => { setAcSection('starter'); setAcDictFilter(''); }}
+                onClick={() => acNavigate('starter')}
               >
                 <span className="te-cat-row-name">Common Typos</span>
                 <span className="te-cat-count">{starterCount}</span>
@@ -3950,7 +3989,7 @@ export default function TextExpansions({
               <button
                 type="button"
                 className={`te-cat-row${acSection === 'extended' ? ' te-cat-row-active' : ''}`}
-                onClick={() => { setAcSection('extended'); setAcDictFilter(''); }}
+                onClick={() => acNavigate('extended')}
               >
                 <span className="te-cat-row-name">Extended Dictionary</span>
                 <span className="te-cat-count">{extendedCount}</span>
@@ -3958,7 +3997,7 @@ export default function TextExpansions({
               <button
                 type="button"
                 className={`te-cat-row${acSection === 'days' ? ' te-cat-row-active' : ''}`}
-                onClick={() => { setAcSection('days'); setAcDictFilter(''); }}
+                onClick={() => acNavigate('days')}
               >
                 <span className="te-cat-row-name">Days Of The Week</span>
                 <span className="te-cat-count">{daysCount}</span>
@@ -3966,7 +4005,7 @@ export default function TextExpansions({
               <button
                 type="button"
                 className={`te-cat-row${acSection === 'symbols' ? ' te-cat-row-active' : ''}`}
-                onClick={() => { setAcSection('symbols'); setAcDictFilter(''); }}
+                onClick={() => acNavigate('symbols')}
               >
                 <span className="te-cat-row-name">Symbols</span>
                 <span className="te-cat-count">{symbolsCount}</span>
@@ -3974,7 +4013,7 @@ export default function TextExpansions({
               <button
                 type="button"
                 className={`te-cat-row${acSection === 'emojis' ? ' te-cat-row-active' : ''}`}
-                onClick={() => { setAcSection('emojis'); setAcDictFilter(''); }}
+                onClick={() => acNavigate('emojis')}
               >
                 <span className="te-cat-row-name">Emoji</span>
                 <span className="te-cat-count">{emojisCount}</span>
@@ -3982,7 +4021,7 @@ export default function TextExpansions({
               <button
                 type="button"
                 className={`te-cat-row${acSection === 'fixes' ? ' te-cat-row-active' : ''}`}
-                onClick={() => setAcSection('fixes')}
+                onClick={() => acNavigate('fixes')}
               >
                 <span className="te-cat-row-name">Autocorrect Settings</span>
               </button>
@@ -4504,6 +4543,34 @@ export default function TextExpansions({
                 title="Replace your existing expansions with the ones in this pack"
               >
                 Overwrite All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved correction — user navigated away from an edited form */}
+      {acPendingNav && (
+        <div className="te-delete-overlay">
+          <div className="te-delete-dialog">
+            <div className="te-delete-title">Discard Changes</div>
+            <p className="te-delete-body">
+              You have an unsaved correction. Leave without saving it?
+            </p>
+            <div className="te-delete-actions">
+              <button
+                className="te-cancel-btn"
+                onClick={() => setAcPendingNav(null)}
+                type="button"
+              >
+                Keep Editing
+              </button>
+              <button
+                className="te-delete-confirm-btn"
+                onClick={acConfirmDiscardNav}
+                type="button"
+              >
+                Discard
               </button>
             </div>
           </div>
