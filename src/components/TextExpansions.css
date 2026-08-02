@@ -2419,6 +2419,18 @@ button.te-col-header:hover {
   border-color: rgba(100, 180, 255, 0.45);
 }
 
+/* The light blue reads at 2.2:1 on white — darken for light theme (4.9:1). */
+[data-theme="light"] .ac-typo-badge {
+  color: #2569b8;
+  border-color: rgba(37, 105, 184, 0.45);
+}
+
+[data-theme="light"] .ac-chip {
+  color: #2569b8;
+  border-color: rgba(37, 105, 184, 0.45);
+  background: rgba(37, 105, 184, 0.08);
+}
+
 .ac-correction {
   flex: 1;
   min-width: 0;
@@ -2549,6 +2561,30 @@ button.te-col-header:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Scroll affordance: soft shadows at top/bottom edges while more content
+     is out of view. The local-attachment cover gradients scroll WITH the
+     content and hide the scroll-attached shadows at the extremes, so the
+     shadow only shows when there is actually more to scroll. Cover colour
+     must match the effective page background (--bg-base via .main-area). */
+  background:
+    linear-gradient(var(--bg-base) 30%, transparent) center top,
+    linear-gradient(transparent, var(--bg-base) 70%) center bottom,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.28), transparent) center top,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.28), transparent) center bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+  background-attachment: local, local, scroll, scroll;
+}
+
+[data-theme="light"] .ac-col-scroll {
+  background:
+    linear-gradient(var(--bg-base) 30%, transparent) center top,
+    linear-gradient(transparent, var(--bg-base) 70%) center bottom,
+    radial-gradient(farthest-side at 50% 0, rgba(26, 26, 46, 0.14), transparent) center top,
+    radial-gradient(farthest-side at 50% 100%, rgba(26, 26, 46, 0.14), transparent) center bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+  background-attachment: local, local, scroll, scroll;
 }
 
 /* Excluded-apps editor gets the same band treatment as the toggle rows */

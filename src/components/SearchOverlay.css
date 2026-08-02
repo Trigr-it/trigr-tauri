@@ -28,13 +28,14 @@
   --bg-surface:  #ffffff;
   --bg-elevated: #f5f5fa;
   --bg-hover:    #ebebf0;
-  --accent:      #e8a020;
-  --accent-glow: rgba(232, 160, 32, 0.08);
+  /* Light gold + muted lifted for WCAG — mirrors global.css (2026-08-02). */
+  --accent:      #b8790a;
+  --accent-glow: rgba(184, 121, 10, 0.08);
   --text-primary:   #1a1a2e;
   --text-secondary: #4a4a6a;
-  --text-muted:     #9090b0;
+  --text-muted:     #6b6b88;
   --border-bright:  #c8c8dc;
-  --border-accent:  rgba(232, 160, 32, 0.5);
+  --border-accent:  rgba(184, 121, 10, 0.55);
   --shadow-overlay: 0 4px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
   --backdrop-blur: blur(20px) saturate(130%);
 }
@@ -521,4 +522,16 @@ html, body {
   0%   { transform: scale(0.5); opacity: 0; }
   60%  { transform: scale(1.2); }
   100% { transform: scale(1); opacity: 1; }
+}
+
+
+/* == Accessibility parity with global.css (overlay windows do not import it) == */
+
+html.using-keyboard :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:not(:disabled):active {
+  filter: brightness(0.92);
 }

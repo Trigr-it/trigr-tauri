@@ -33,14 +33,15 @@
   --bg-surface:    #ffffff;
   --bg-elevated:   #f5f5fa;
   --bg-hover:      #ebebf0;
-  --accent:        #e8a020;
-  --accent-glow:   rgba(232, 160, 32, 0.08);
-  --accent-rgb:    232, 160, 32;
+  /* Light gold + muted lifted for WCAG — mirrors global.css (2026-08-02). */
+  --accent:        #b8790a;
+  --accent-glow:   rgba(184, 121, 10, 0.08);
+  --accent-rgb:    184, 121, 10;
   --text-primary:  #1a1a2e;
   --text-secondary:#4a4a6a;
-  --text-muted:    #9090b0;
+  --text-muted:    #6b6b88;
   --border-bright: #c8c8dc;
-  --border-accent: rgba(232, 160, 32, 0.5);
+  --border-accent: rgba(184, 121, 10, 0.55);
   --backdrop-blur:  blur(20px) saturate(130%);
   --accent-surface: #f5e0b0;
   --radial-wedge:   #ffffff;
@@ -138,4 +139,24 @@ html, body {
   pointer-events: none;
   animation: radial-appear 150ms ease-out both;
   z-index: 5;
+}
+
+
+/* == Accessibility parity with global.css (overlay windows do not import it) == */
+
+html.using-keyboard :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:not(:disabled):active {
+  filter: brightness(0.92);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
