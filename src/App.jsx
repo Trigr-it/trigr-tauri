@@ -94,6 +94,7 @@ function App() {
   const [autocorrectExtendedTypos, setAutocorrectExtendedTypos] = useState(false);
   const [autocorrectDays, setAutocorrectDays] = useState(false);
   const [autocorrectSymbols, setAutocorrectSymbols] = useState(false);
+  const [autocorrectEmojis, setAutocorrectEmojis] = useState(false);
   const [autocorrectExcludedApps, setAutocorrectExcludedApps] = useState([]);
   // Apps where text expansions never fire (separate from autocorrect exclusions).
   const [expansionExcludedApps, setExpansionExcludedApps] = useState([]);
@@ -336,6 +337,7 @@ function App() {
         const savedAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
         const savedAcDays = config.autocorrectDays ?? false;
         const savedAcSymbols = config.autocorrectSymbols ?? false;
+        const savedAcEmojis = config.autocorrectEmojis ?? false;
         const savedExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
         setAutocorrectEnabled(savedAcEnabled);
         setAutocorrectBuiltinTypos(savedAcBuiltin);
@@ -346,12 +348,13 @@ function App() {
         setAutocorrectExtendedTypos(savedAcExtended);
         setAutocorrectDays(savedAcDays);
         setAutocorrectSymbols(savedAcSymbols);
+        setAutocorrectEmojis(savedAcEmojis);
         setAutocorrectExcludedApps(savedAcExcluded);
         setAutocorrectDisabledEntries(savedAcDisabled);
         setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
         setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
         setExpansionExcludedApps(savedExpExcluded);
-        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded, savedAcDisabled, savedAcDays, savedAcSymbols);
+        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded, savedAcDisabled, savedAcDays, savedAcSymbols, savedAcEmojis);
         window.electronAPI?.updateExpansionExcludedApps(savedExpExcluded);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
@@ -746,6 +749,7 @@ function App() {
           const cfgAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
           const cfgAcDays = config.autocorrectDays ?? false;
           const cfgAcSymbols = config.autocorrectSymbols ?? false;
+          const cfgAcEmojis = config.autocorrectEmojis ?? false;
           const cfgExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
           setAutocorrectEnabled(cfgAcEnabled);
           setAutocorrectBuiltinTypos(cfgAcBuiltin);
@@ -756,12 +760,13 @@ function App() {
           setAutocorrectExtendedTypos(cfgAcExtended);
           setAutocorrectDays(cfgAcDays);
           setAutocorrectSymbols(cfgAcSymbols);
+          setAutocorrectEmojis(cfgAcEmojis);
           setAutocorrectExcludedApps(cfgAcExcluded);
           setAutocorrectDisabledEntries(cfgAcDisabled);
           setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
           setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
           setExpansionExcludedApps(cfgExpExcluded);
-          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded, cfgAcDisabled, cfgAcDays, cfgAcSymbols);
+          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded, cfgAcDisabled, cfgAcDays, cfgAcSymbols, cfgAcEmojis);
           window.electronAPI?.updateExpansionExcludedApps(cfgExpExcluded);
         }
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
@@ -2268,6 +2273,7 @@ function App() {
       disabledEntries: patch.disabledEntries ?? autocorrectDisabledEntries,
       days: patch.days ?? autocorrectDays,
       symbols: patch.symbols ?? autocorrectSymbols,
+      emojis: patch.emojis ?? autocorrectEmojis,
     };
     // Normalize disabled entries: lowercase, dedupe, drop empties — mirrors
     // the Rust-side normalization in expansions::set_autocorrect_settings.
@@ -2292,9 +2298,10 @@ function App() {
     setAutocorrectExtendedTypos(next.extendedTypos);
     setAutocorrectDays(next.days);
     setAutocorrectSymbols(next.symbols);
+    setAutocorrectEmojis(next.emojis);
     setAutocorrectExcludedApps(next.excludedApps);
     setAutocorrectDisabledEntries(next.disabledEntries);
-    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps, next.disabledEntries, next.days, next.symbols);
+    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps, next.disabledEntries, next.days, next.symbols, next.emojis);
     window.electronAPI?.saveConfig({
       autocorrectEnabled: next.enabled,
       autocorrectBuiltinTypos: next.builtinTypos,
@@ -2307,8 +2314,9 @@ function App() {
       autocorrectDisabledEntries: next.disabledEntries,
       autocorrectDays: next.days,
       autocorrectSymbols: next.symbols,
+      autocorrectEmojis: next.emojis,
     });
-  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos, autocorrectExcludedApps, autocorrectDisabledEntries, autocorrectDays, autocorrectSymbols]);
+  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos, autocorrectExcludedApps, autocorrectDisabledEntries, autocorrectDays, autocorrectSymbols, autocorrectEmojis]);
 
   // Text-expansion excluded apps — separate list from autocorrect's.
   const handleUpdateExpansionExcludedApps = useCallback((apps) => {
@@ -4612,6 +4620,7 @@ function App() {
               autocorrectExtendedTypos={autocorrectExtendedTypos}
               autocorrectDays={autocorrectDays}
               autocorrectSymbols={autocorrectSymbols}
+              autocorrectEmojis={autocorrectEmojis}
               autocorrectExcludedApps={autocorrectExcludedApps}
               onUpdateAutocorrectSettings={handleUpdateAutocorrectSettings}
               autocorrections={autocorrections}

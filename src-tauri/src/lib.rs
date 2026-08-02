@@ -1508,8 +1508,9 @@ fn update_autocorrect_settings(
     disabled_entries: Vec<String>,
     days: bool,
     symbols: bool,
+    emojis: bool,
 ) {
-    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos, excluded_apps, disabled_entries, days, symbols);
+    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos, excluded_apps, disabled_entries, days, symbols, emojis);
 }
 
 #[tauri::command]

@@ -387,6 +387,8 @@ struct ExpansionState {
     days_enabled: bool,
     /// "Symbols" bundled pack sub-toggle ((c) → ©, -> → →).
     symbols_enabled: bool,
+    /// "Emoji" bundled pack sub-toggle ((smile) → 😄).
+    emojis_enabled: bool,
     /// Lowercase exe basenames where TEXT EXPANSIONS never fire — separate
     /// list from the autocorrect one (same normalization, same cached
     /// foreground read).
@@ -415,6 +417,7 @@ impl Default for ExpansionState {
             disabled_entries: HashSet::new(),
             days_enabled: false,
             symbols_enabled: false,
+            emojis_enabled: false,
             expansion_excluded_apps: HashSet::new(),
             global_variables: HashMap::new(),
         }
@@ -847,6 +850,7 @@ enum AcSource {
     Extended,
     Days,
     Symbols,
+    Emojis,
     DoubleCaps,
     CapsLock,
     SentenceCaps,
@@ -860,6 +864,7 @@ impl AcSource {
             AcSource::Extended => "extended",
             AcSource::Days => "days",
             AcSource::Symbols => "symbols",
+            AcSource::Emojis => "emojis",
             AcSource::DoubleCaps => "doubleCaps",
             AcSource::CapsLock => "capsLock",
             AcSource::SentenceCaps => "sentenceCaps",
@@ -920,6 +925,11 @@ fn resolve_dict_correction(
         if hit.is_none() && s.symbols_enabled {
             if let Some(c) = symbols_autocorrect(lower) {
                 hit = Some((c, AcSource::Symbols));
+            }
+        }
+        if hit.is_none() && s.emojis_enabled {
+            if let Some(c) = emoji_autocorrect(lower) {
+                hit = Some((c, AcSource::Emojis));
             }
         }
         // Superscript/subscript suffix matching: "m^2" → "m²". The whole
@@ -4396,6 +4406,102 @@ fn symbols_autocorrect(word: &str) -> Option<&'static str> {
     symbols_map().get(word).copied()
 }
 
+/// Emoji pack. Trigger convention is (name) — the universal `:name:` is
+/// impossible here because ':' is a word terminator and can never sit inside
+/// a buffered word. Names are lowercase, unambiguous, and never contain a
+/// terminator char. Multi-codepoint emoji (variation selectors, surrogate
+/// pairs) inject fine — push_unicode walks UTF-16 code units.
+const EMOJI_ENTRIES: &[(&str, &str)] = &[
+    // Faces
+    ("(smile)", "😄"),
+    ("(grin)", "😁"),
+    ("(laugh)", "😂"),
+    ("(wink)", "😉"),
+    ("(happy)", "🙂"),
+    ("(sad)", "😢"),
+    ("(cry)", "😭"),
+    ("(angry)", "😠"),
+    ("(love)", "😍"),
+    ("(cool)", "😎"),
+    ("(shocked)", "😲"),
+    ("(thinking)", "🤔"),
+    ("(sweat)", "😅"),
+    ("(neutral)", "😐"),
+    ("(eyeroll)", "🙄"),
+    ("(facepalm)", "🤦"),
+    ("(shrug)", "🤷"),
+    ("(party)", "🥳"),
+    ("(mindblown)", "🤯"),
+    ("(skull)", "💀"),
+    ("(ghost)", "👻"),
+    ("(robot)", "🤖"),
+    // Hands
+    ("(thumbsup)", "👍"),
+    ("(thumbsdown)", "👎"),
+    ("(ok)", "👌"),
+    ("(clap)", "👏"),
+    ("(wave)", "👋"),
+    ("(pray)", "🙏"),
+    ("(muscle)", "💪"),
+    ("(crossed)", "🤞"),
+    ("(fist)", "✊"),
+    ("(handshake)", "🤝"),
+    // Hearts & celebration
+    ("(heart)", "❤️"),
+    ("(brokenheart)", "💔"),
+    ("(tada)", "🎉"),
+    ("(gift)", "🎁"),
+    ("(cake)", "🎂"),
+    ("(trophy)", "🏆"),
+    ("(crown)", "👑"),
+    // Common objects & marks
+    ("(fire)", "🔥"),
+    ("(star)", "⭐"),
+    ("(sparkles)", "✨"),
+    ("(check)", "✅"),
+    ("(cross)", "❌"),
+    ("(warning)", "⚠️"),
+    ("(rocket)", "🚀"),
+    ("(bulb)", "💡"),
+    ("(zap)", "⚡"),
+    ("(boom)", "💥"),
+    ("(eyes)", "👀"),
+    ("(100)", "💯"),
+    ("(money)", "💰"),
+    ("(coffee)", "☕"),
+    ("(beer)", "🍺"),
+    ("(pizza)", "🍕"),
+    ("(sun)", "☀️"),
+    ("(moon)", "🌙"),
+    ("(rainbow)", "🌈"),
+    ("(dog)", "🐶"),
+    ("(cat)", "🐱"),
+    ("(bug)", "🐛"),
+    ("(poop)", "💩"),
+    ("(bell)", "🔔"),
+    ("(lock)", "🔒"),
+    ("(key)", "🔑"),
+    ("(pin)", "📌"),
+    ("(link)", "🔗"),
+    ("(chart)", "📈"),
+    ("(target)", "🎯"),
+    ("(music)", "🎵"),
+    ("(book)", "📚"),
+    ("(email)", "📧"),
+    ("(phone)", "📱"),
+    ("(laptop)", "💻"),
+];
+
+fn emoji_map() -> &'static HashMap<&'static str, &'static str> {
+    static MAP: std::sync::OnceLock<HashMap<&'static str, &'static str>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| EMOJI_ENTRIES.iter().copied().collect())
+}
+
+fn emoji_autocorrect(word: &str) -> Option<&'static str> {
+    emoji_map().get(word).copied()
+}
+
 /// Extended dictionary — ~4k tab-separated (typo, correction) pairs derived
 /// from Wikipedia's machine-readable list of common misspellings (CC BY-SA;
 /// credit in the help guide). Filtered at generation time: unambiguous
@@ -4445,6 +4551,11 @@ pub fn builtin_autocorrect_entries() -> Vec<(String, String, String)> {
         SUPERSUB_ENTRIES
             .iter()
             .map(|(t, c)| (t.to_string(), c.to_string(), "symbols".to_string())),
+    );
+    v.extend(
+        EMOJI_ENTRIES
+            .iter()
+            .map(|(t, c)| (t.to_string(), c.to_string(), "emojis".to_string())),
     );
     v
 }
@@ -4515,6 +4626,7 @@ pub fn set_autocorrect_settings(
     disabled_entries: Vec<String>,
     days: bool,
     symbols: bool,
+    emojis: bool,
 ) {
     let mut s = state().lock().unwrap();
     s.autocorrect_enabled = enabled;
@@ -4522,6 +4634,7 @@ pub fn set_autocorrect_settings(
     s.extended_typos_enabled = extended_typos;
     s.days_enabled = days;
     s.symbols_enabled = symbols;
+    s.emojis_enabled = emojis;
     s.double_caps_enabled = double_caps;
     s.disabled_entries = disabled_entries
         .into_iter()
@@ -4542,8 +4655,8 @@ pub fn set_autocorrect_settings(
     s.sentence_caps_enabled = sentence_caps;
     refresh_pending_flag(&s);
     info!(
-        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} days={} symbols={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps, {} disabled entries)",
-        enabled, builtin_typos, extended_typos, days, symbols, double_caps, caps_lock_fix, sentence_caps,
+        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} days={} symbols={} emojis={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps, {} disabled entries)",
+        enabled, builtin_typos, extended_typos, days, symbols, emojis, double_caps, caps_lock_fix, sentence_caps,
         s.double_caps_exceptions.len(), s.excluded_apps.len(), s.disabled_entries.len()
     );
 }

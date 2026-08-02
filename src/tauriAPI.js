@@ -120,8 +120,8 @@ window.electronAPI = {
 
   // ── Autocorrect ─────────────────────────────────────────────────────────────
   updateAutocorrectEnabled: (enabled) => invoke('update_autocorrect_enabled', { enabled }),
-  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries, days, symbols) =>
-    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries: disabledEntries || [], days: !!days, symbols: !!symbols }),
+  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries, days, symbols, emojis) =>
+    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries: disabledEntries || [], days: !!days, symbols: !!symbols, emojis: !!emojis }),
   getBuiltinAutocorrectEntries: () => invoke('get_builtin_autocorrect_entries'),
   updateExpansionExcludedApps: (apps) => invoke('update_expansion_excluded_apps', { apps }),
 

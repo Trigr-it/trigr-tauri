@@ -2181,6 +2181,7 @@ export default function TextExpansions({
   autocorrectExtendedTypos = false,
   autocorrectDays = false,
   autocorrectSymbols = false,
+  autocorrectEmojis = false,
   autocorrectExcludedApps = [],
   onUpdateAutocorrectSettings,
   autocorrections = [],
@@ -2919,12 +2920,14 @@ export default function TextExpansions({
     extended: { enabled: autocorrectExtendedTypos, patchKey: 'extendedTypos' },
     days:     { enabled: autocorrectDays,          patchKey: 'days' },
     symbols:  { enabled: autocorrectSymbols,       patchKey: 'symbols' },
+    emojis:   { enabled: autocorrectEmojis,        patchKey: 'emojis' },
   };
   const AC_DICT_RENDER_CAP = 150;
   const starterCount = builtinEntries.filter(e => e[2] === 'starter').length;
   const extendedCount = builtinEntries.filter(e => e[2] === 'extended').length;
   const daysCount = builtinEntries.filter(e => e[2] === 'days').length;
   const symbolsCount = builtinEntries.filter(e => e[2] === 'symbols').length;
+  const emojisCount = builtinEntries.filter(e => e[2] === 'emojis').length;
   const dictPack = AC_DICT_SECTIONS[acSection] ? acSection : 'starter';
   const dictQuery = acDictFilter.trim().toLowerCase();
   const dictGroupMap = {};
@@ -3967,6 +3970,14 @@ export default function TextExpansions({
               >
                 <span className="te-cat-row-name">Symbols</span>
                 <span className="te-cat-count">{symbolsCount}</span>
+              </button>
+              <button
+                type="button"
+                className={`te-cat-row${acSection === 'emojis' ? ' te-cat-row-active' : ''}`}
+                onClick={() => { setAcSection('emojis'); setAcDictFilter(''); }}
+              >
+                <span className="te-cat-row-name">Emoji</span>
+                <span className="te-cat-count">{emojisCount}</span>
               </button>
               <button
                 type="button"
