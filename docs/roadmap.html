@@ -332,6 +332,19 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
 .sv-frame[data-active="v0.4"] .sv-screen[data-phase="v0.4"] { opacity:1; pointer-events:auto; }
 .sv-frame[data-active="v0.5"] .sv-screen[data-phase="v0.5"] { opacity:1; pointer-events:auto; }
 .sv-frame[data-active="v0.6"] .sv-screen[data-phase="v0.6"] { opacity:1; pointer-events:auto; }
+.sv-frame[data-active="v0.7"] .sv-screen[data-phase="v0.7"] { opacity:1; pointer-events:auto; }
+
+/* v0.7 — Autocorrect mini-mockup */
+.sv-ac-line { display:flex; align-items:center; gap:8px; padding:12px 14px; background:rgba(13,17,32,0.5); border:1px solid var(--hairline); border-radius:10px; font-family:var(--font-mono); font-size:12px; color:var(--text-muted); }
+[data-theme="light"] .sv-ac-line { background:rgba(0,0,0,0.04); }
+.sv-ac-line .caret { display:inline-block; width:2px; height:14px; background:var(--gold-light); }
+.sv-ac-rows { display:flex; flex-direction:column; gap:8px; }
+.sv-ac-row { display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid var(--hairline); border-radius:9px; font-family:var(--font-mono); font-size:11px; }
+.sv-ac-typo { padding:2px 7px; border:1px solid rgba(100,180,255,0.4); border-radius:5px; color:#64b4ff; }
+.sv-ac-arrow { color:var(--text-muted); }
+.sv-ac-fix { color:var(--text-bright); font-weight:600; }
+.sv-ac-tag { margin-left:auto; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:var(--gold-light); border:1px solid var(--hairline-gold); border-radius:4px; padding:2px 6px; background:var(--gold-glow); }
+[data-theme="light"] .sv-ac-tag { color:var(--gold-dark); }
 .sv-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .sv-title { font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); }
 .sv-version { font-family:var(--font-mono); font-size:10px; font-weight:700; padding:3px 9px; border:1px solid var(--hairline-gold); border-radius:5px; background:var(--gold-glow); color:var(--gold-light); }
@@ -683,6 +696,25 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="shipped-text">
     <div class="timeline">
       <!-- WHATS-NEW:START -->
+      <div class="phase" data-phase="v0.7">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">
+            <span class="phase-version">v0.7</span><span class="phase-subtitle">Autocorrect</span>
+          </span>
+          <span class="phase-date">Aug 2026 · 1 release published</span>
+        </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.7.0</span>
+            <time class="release-date">2 August 2026</time>
+          </header>
+          <div class="release-body">
+            <p class="re-para">Keyfire 0.7.0 adds a full Autocorrect area to Text Expansions. Typos are fixed the instant you finish a word, in any application, without breaking your typing rhythm. Every part of it is opt-in and Pro.</p><h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Autocorrect (Pro). Misspellings are corrected the moment you end a word with Space, Enter, Tab or punctuation. Corrections keep your capitalisation, and the whole replacement lands in one input burst.</li><li>Your Corrections. Build your own list, grouped by correct word with as many misspellings as you like. Your entries always win over the bundled packs.</li><li>Five bundled packs, each with its own switch and all off by default. Common Typos covers around fifty everyday slips. The Extended Dictionary adds over four thousand English misspellings. Days Of The Week capitalises monday to Monday. Symbols converts things like (c), arrows typed as dash and angle bracket, fractions such as 1/2, comparisons like &gt;=, and currency shortcuts such as (eur). Emoji inserts around seventy-five emoji by name, for example (smile) or (thumbsup).</li><li>Superscripts and subscripts. Type m^2 or co\_2 and the trailing number converts in place. Perfect for engineering and chemistry notes.</li><li>Typing fixes with individual toggles: double capitals (HEllo becomes Hello), accidental Caps Lock (tHE becomes The and Caps Lock switches off), and sentence capitalisation after full stops and new lines.</li><li>Undo with Backspace. One press immediately after a correction restores exactly what you typed. Undo the same correction twice and Keyfire offers to stop correcting that word. Nothing is ever changed without your say so.</li><li>Fine control over every entry. Switch off any single bundled correction, or hit Customise to copy it into Your Corrections and change what it produces.</li><li>Import and export your corrections as a CSV file.</li><li>Excluded apps for autocorrect, plus a separate exclusion list for text expansions under Settings, so each can be silenced per app independently.</li><li>Fire on key press (Settings, Performance section). Triggers can now dispatch the moment you press the key instead of on release, for a snappier feel.</li><li>Clipboard privacy: copies that password managers such as 1Password, Bitwarden and KeePass mark as private are never recorded, matching how the Windows clipboard history behaves. No setup needed.</li><li>Analytics now counts typos fixed, with its own row in the activity breakdown.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Macro speed presets now apply correctly, and a new Instant preset removes all keystroke delay. If you had a custom speed slider set in an earlier version, your stored value now takes effect.</li><li>The Compatibility section in Settings is now called Performance.</li><li>Light theme readability overhaul: text, buttons and status colours were darkened to meet accessibility contrast standards, and primary buttons now use dark text on gold in both themes.</li><li>Buttons across the app give press feedback, keyboard focus outlines are consistent everywhere including popups, and long autocorrect lists use multiple columns on larger windows.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Expansion triggers containing shifted characters now fire reliably when Shift is pressed partway through typing the trigger.</li></ul>
+          </div>
+        </article>
+      </div>
+
       <div class="phase" data-phase="v0.6">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
@@ -1383,6 +1415,21 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
                 <div class="sv-vault-game-meta">DirectInput · Raw Input · FPS &amp; CAD engines</div>
               </div>
               <span class="sv-vault-game-tag">Compatible</span>
+            </div>
+          </div>
+
+          <!-- v0.7 — Autocorrect -->
+          <div class="sv-screen" data-phase="v0.7">
+            <div class="sv-head"><span class="sv-title">Autocorrect</span><span class="sv-version">v0.7</span></div>
+
+            <div class="sv-ac-line">Fixed teh instant you finish a word&nbsp;<span class="caret"></span></div>
+
+            <div class="sv-ac-rows">
+              <div class="sv-ac-row"><span class="sv-ac-typo">teh</span><span class="sv-ac-arrow">&rarr;</span><span class="sv-ac-fix">the</span><span class="sv-ac-tag">Common Typos</span></div>
+              <div class="sv-ac-row"><span class="sv-ac-typo">HEllo</span><span class="sv-ac-arrow">&rarr;</span><span class="sv-ac-fix">Hello</span><span class="sv-ac-tag">Typing fixes</span></div>
+              <div class="sv-ac-row"><span class="sv-ac-typo">m^2</span><span class="sv-ac-arrow">&rarr;</span><span class="sv-ac-fix">m&sup2;</span><span class="sv-ac-tag">Symbols</span></div>
+              <div class="sv-ac-row"><span class="sv-ac-typo">(smile)</span><span class="sv-ac-arrow">&rarr;</span><span class="sv-ac-fix">&#128516;</span><span class="sv-ac-tag">Emoji</span></div>
+              <div class="sv-ac-row"><span class="sv-ac-typo">monday</span><span class="sv-ac-arrow">&rarr;</span><span class="sv-ac-fix">Monday</span><span class="sv-ac-tag">Days</span></div>
             </div>
           </div>
 
