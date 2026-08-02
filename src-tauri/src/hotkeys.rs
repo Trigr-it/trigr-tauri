@@ -2301,10 +2301,19 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // Update modifier state
     if is_modifier_vk(vk) {
         update_modifier_state(vk, true);
-        // Clear expansion buffer on any modifier press (ARM64 timing safety).
-        // Also invalidates the one-shot autocorrect undo — a modifier means
-        // the next Backspace isn't the "revert that" gesture.
-        crate::expansions::buffer_clear();
+        // Clear expansion buffer on Ctrl/Alt/Win press (ARM64 timing safety —
+        // those modifiers precede hotkey combos, never text). SHIFT is exempt:
+        // it's a TEXT modifier, and resolve_char_with_shift exists precisely
+        // so shifted chars join the buffer. Clearing on Shift broke every
+        // trigger with a shifted char mid-word — "(eur)" lost its "(eur"
+        // prefix to the Shift pressed for ')', "->" lost its '-' to the
+        // Shift for '>'. Word-start Shift ("HEllo", "^2") only survived
+        // because the buffer was empty when Shift went down.
+        // Undo disarm stays for ALL modifiers — any modifier press means the
+        // next Backspace isn't the "revert that" gesture.
+        if !matches!(vk, 0xA0 | 0xA1) {
+            crate::expansions::buffer_clear();
+        }
         crate::expansions::disarm_undo();
 
         // Track sole modifier for key capture mode
@@ -3908,6 +3917,14 @@ fn fire_macro_on_press(macro_val: Value, trigger_key: Option<String>, app: &AppH
 }
 
 fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>, app: &AppHandle, skip_altgr_erase: bool) {
+    // Any assignment firing breaks the typed-word context — the action may
+    // inject text, paste, or switch windows, so whatever half-word sits in
+    // the expansion buffer no longer reflects what's left of the caret.
+    // (Previously covered incidentally by the buffer clear on every modifier
+    // press; Shift no longer clears — see the Shift exemption in
+    // handle_keydown — so the fire path clears explicitly.)
+    crate::expansions::buffer_clear();
+
     // Re-press cancel — if a loop is already running for this trigger, the user
     // pressing it again is the canonical stop gesture. Set the cancel flag and
     // bail before any thread spawn / clipboard work happens. The running loop
