@@ -1519,6 +1519,18 @@ export default function SettingsPanel({
                 onChange={onUpdateClipboardExcludedApps}
               />
 
+              {/* Info-only row — behaviour is absolute by design, no toggle.
+                  Overriding a password manager's privacy flag is not a
+                  setting we offer. */}
+              <div className="settings-toggle-row">
+                <div className="settings-toggle-info">
+                  <span className="settings-toggle-label">Password managers</span>
+                  <span className="settings-toggle-sub">
+                    Copies that 1Password, Bitwarden, KeePass and similar apps mark as private are never recorded. No setup needed.
+                  </span>
+                </div>
+              </div>
+
               <div className="settings-toggle-row">
                 <div className="settings-toggle-info">
                   <span className="settings-toggle-label">History retention <span className="pro-badge">PRO</span></span>
