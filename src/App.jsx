@@ -93,6 +93,14 @@ function App() {
   const [autocorrectSentenceCaps, setAutocorrectSentenceCaps] = useState(false);
   const [autocorrectExtendedTypos, setAutocorrectExtendedTypos] = useState(false);
   const [autocorrectExcludedApps, setAutocorrectExcludedApps] = useState([]);
+  // Individual bundled-dictionary entries the user switched off (lowercase typo keys).
+  const [autocorrectDisabledEntries, setAutocorrectDisabledEntries] = useState([]);
+  // Backspace-undo tracking: { [originalLower]: { count, replacement, source } }.
+  // At 2 undos of the same word (and not muted) the Autocorrect tab offers
+  // "stop correcting this" — never applied silently.
+  const [autocorrectUndoCounts, setAutocorrectUndoCounts] = useState({});
+  const [autocorrectUndoMuted, setAutocorrectUndoMuted] = useState([]);
+  const [acImportPrompt, setAcImportPrompt] = useState(null);
   const [showSettings, setShowSettings]             = useState(false);
   const [showWelcome, setShowWelcome]               = useState(false);
   const [showOnboarding, setShowOnboarding]         = useState(false);
@@ -321,6 +329,7 @@ function App() {
         const savedAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
         const savedAcExtended = config.autocorrectExtendedTypos ?? false;
         const savedAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
+        const savedAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
         setAutocorrectEnabled(savedAcEnabled);
         setAutocorrectBuiltinTypos(savedAcBuiltin);
         setAutocorrectDoubleCaps(savedAcDoubleCaps);
@@ -329,7 +338,10 @@ function App() {
         setAutocorrectSentenceCaps(savedAcSentenceCaps);
         setAutocorrectExtendedTypos(savedAcExtended);
         setAutocorrectExcludedApps(savedAcExcluded);
-        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded);
+        setAutocorrectDisabledEntries(savedAcDisabled);
+        setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
+        setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
+        window.electronAPI?.updateAutocorrectSettings(savedAcEnabled, savedAcBuiltin, savedAcDoubleCaps, savedAcExceptions, savedAcCapsLockFix, savedAcSentenceCaps, savedAcExtended, savedAcExcluded, savedAcDisabled);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
         // Clipboard privacy controls — defaults preserve existing behaviour.
@@ -650,6 +662,24 @@ function App() {
         setDraftAssignment(null);
         setDraftDoubleAssignment(null);
       });
+      // Backspace-undo of an autocorrect fire — count repeats per word.
+      // Muted/disabled filtering happens at suggestion-derivation time (render)
+      // so this closure never needs fresh state beyond the counts map itself.
+      window.electronAPI.onAutocorrectUndone?.((data) => {
+        if (!data?.original) return;
+        const key = String(data.original).toLowerCase();
+        setAutocorrectUndoCounts(prev => {
+          const cur = prev[key]?.count || 0;
+          const next = {
+            ...prev,
+            [key]: { count: cur + 1, replacement: data.replacement || '', source: data.source || 'builtin' },
+          };
+          // Persist inline: a strict-mode double-call just re-saves the same
+          // value (updater is pure over prev, so the count can't double-bump).
+          window.electronAPI?.saveConfig({ autocorrectUndoCounts: next });
+          return next;
+        });
+      });
       window.electronAPI.onOverlayFired?.((data) => {
         showNotification(`⚡ ${data.label || 'Macro fired'}`);
       });
@@ -702,6 +732,7 @@ function App() {
           const cfgAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
           const cfgAcExtended = config.autocorrectExtendedTypos ?? false;
           const cfgAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
+          const cfgAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
           setAutocorrectEnabled(cfgAcEnabled);
           setAutocorrectBuiltinTypos(cfgAcBuiltin);
           setAutocorrectDoubleCaps(cfgAcDoubleCaps);
@@ -710,7 +741,10 @@ function App() {
           setAutocorrectSentenceCaps(cfgAcSentenceCaps);
           setAutocorrectExtendedTypos(cfgAcExtended);
           setAutocorrectExcludedApps(cfgAcExcluded);
-          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded);
+          setAutocorrectDisabledEntries(cfgAcDisabled);
+          setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
+          setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
+          window.electronAPI?.updateAutocorrectSettings(cfgAcEnabled, cfgAcBuiltin, cfgAcDoubleCaps, cfgAcExceptions, cfgAcCapsLockFix, cfgAcSentenceCaps, cfgAcExtended, cfgAcExcluded, cfgAcDisabled);
         }
         setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
         const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
@@ -2213,7 +2247,15 @@ function App() {
       sentenceCaps: patch.sentenceCaps ?? autocorrectSentenceCaps,
       extendedTypos: patch.extendedTypos ?? autocorrectExtendedTypos,
       excludedApps: patch.excludedApps ?? autocorrectExcludedApps,
+      disabledEntries: patch.disabledEntries ?? autocorrectDisabledEntries,
     };
+    // Normalize disabled entries: lowercase, dedupe, drop empties — mirrors
+    // the Rust-side normalization in expansions::set_autocorrect_settings.
+    next.disabledEntries = Array.from(new Set(
+      (next.disabledEntries || [])
+        .map(w => (w || '').toLowerCase().trim())
+        .filter(Boolean)
+    ));
     // Normalize excluded apps: lowercase, strip .exe, dedupe, drop empties —
     // mirrors the Rust-side normalization in expansions::set_autocorrect_settings.
     next.excludedApps = Array.from(new Set(
@@ -2229,7 +2271,8 @@ function App() {
     setAutocorrectSentenceCaps(next.sentenceCaps);
     setAutocorrectExtendedTypos(next.extendedTypos);
     setAutocorrectExcludedApps(next.excludedApps);
-    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps);
+    setAutocorrectDisabledEntries(next.disabledEntries);
+    window.electronAPI?.updateAutocorrectSettings(next.enabled, next.builtinTypos, next.doubleCaps, next.exceptions, next.capsLockFix, next.sentenceCaps, next.extendedTypos, next.excludedApps, next.disabledEntries);
     window.electronAPI?.saveConfig({
       autocorrectEnabled: next.enabled,
       autocorrectBuiltinTypos: next.builtinTypos,
@@ -2239,8 +2282,9 @@ function App() {
       autocorrectSentenceCaps: next.sentenceCaps,
       autocorrectExtendedTypos: next.extendedTypos,
       autocorrectExcludedApps: next.excludedApps,
+      autocorrectDisabledEntries: next.disabledEntries,
     });
-  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos, autocorrectExcludedApps]);
+  }, [autocorrectEnabled, autocorrectBuiltinTypos, autocorrectDoubleCaps, autocorrectDoubleCapsExceptions, autocorrectCapsLockFix, autocorrectSentenceCaps, autocorrectExtendedTypos, autocorrectExcludedApps, autocorrectDisabledEntries]);
 
   // Save one correct word with its full misspelling list. Storage is flat
   // (one GLOBAL::AUTOCORRECT::<typo> key per misspelling); typos dropped from
@@ -2269,6 +2313,147 @@ function App() {
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Autocorrect "${correction}" deleted`, 'info');
   }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
+
+  // ── Autocorrect: learn-from-undo suggestions ─────────────────────────────
+  // A word undone twice (and not muted or already handled) earns a banner in
+  // the Autocorrect tab. Nothing is ever applied without a click.
+  const acSuggestions = useMemo(() => {
+    return Object.entries(autocorrectUndoCounts)
+      .filter(([key, info]) => {
+        if (!info || info.count < 2) return false;
+        if (info.source === 'sentenceCaps') return false;
+        if (autocorrectUndoMuted.includes(key)) return false;
+        if (info.source === 'custom') return !!assignments[`GLOBAL::AUTOCORRECT::${key}`];
+        if (info.source === 'doubleCaps' || info.source === 'capsLock') {
+          return !autocorrectDoubleCapsExceptions.includes(key);
+        }
+        return !autocorrectDisabledEntries.includes(key);
+      })
+      .map(([key, info]) => ({ key, ...info }));
+  }, [autocorrectUndoCounts, autocorrectUndoMuted, autocorrectDisabledEntries, autocorrectDoubleCapsExceptions, assignments]);
+
+  const handleAcSuggestionResolve = useCallback((key, action) => {
+    const info = autocorrectUndoCounts[key];
+    if (action === 'stop' && info) {
+      if (info.source === 'custom') {
+        const k = `GLOBAL::AUTOCORRECT::${key}`;
+        if (assignments[k]) {
+          const newAssignments = { ...assignments };
+          delete newAssignments[k];
+          setAssignments(newAssignments);
+          saveConfig(newAssignments, profiles, activeProfile);
+        }
+      } else if (info.source === 'doubleCaps' || info.source === 'capsLock') {
+        handleUpdateAutocorrectSettings({ exceptions: [...autocorrectDoubleCapsExceptions, key] });
+      } else {
+        handleUpdateAutocorrectSettings({ disabledEntries: [...autocorrectDisabledEntries, key] });
+      }
+      showNotification(`Autocorrect will leave "${key}" alone`);
+    }
+    const nextCounts = { ...autocorrectUndoCounts };
+    delete nextCounts[key];
+    const nextMuted = autocorrectUndoMuted.includes(key) ? autocorrectUndoMuted : [...autocorrectUndoMuted, key];
+    setAutocorrectUndoCounts(nextCounts);
+    setAutocorrectUndoMuted(nextMuted);
+    window.electronAPI?.saveConfig({ autocorrectUndoCounts: nextCounts, autocorrectUndoMuted: nextMuted });
+  }, [autocorrectUndoCounts, autocorrectUndoMuted, autocorrectDisabledEntries, autocorrectDoubleCapsExceptions, assignments, profiles, activeProfile, saveConfig, showNotification, handleUpdateAutocorrectSettings]);
+
+  // ── Autocorrect: CSV import/export ───────────────────────────────────────
+  const handleExportAutocorrections = useCallback(async () => {
+    const rows = Object.entries(assignments)
+      .filter(([k]) => k.startsWith('GLOBAL::AUTOCORRECT::'))
+      .map(([k, v]) => [k.slice('GLOBAL::AUTOCORRECT::'.length), v?.data?.correction || ''])
+      .filter(([t, c]) => t && c)
+      .sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
+    if (rows.length === 0) {
+      showNotification('No corrections to export', 'info');
+      return;
+    }
+    const content = 'typo,correction\n' + rows.map(([t, c]) => `${t},${c}`).join('\n') + '\n';
+    try {
+      const result = await window.electronAPI?.exportTextFile(
+        'keyfire-corrections.csv', content, 'Export Corrections', 'CSV', ['csv']
+      );
+      if (result?.ok) {
+        showNotification(`Exported ${rows.length} correction${rows.length === 1 ? '' : 's'}`);
+      } else if (result?.error) {
+        showNotification(result.error, 'info');
+      }
+    } catch (e) {
+      console.error('[Keyfire] Export corrections failed:', e);
+    }
+  }, [assignments, showNotification]);
+
+  const applyAcImport = useCallback((rows, choice) => {
+    const newAssignments = { ...assignments };
+    let imported = 0, overwritten = 0, skipped = 0;
+    for (const { typo, correction } of rows) {
+      const k = `GLOBAL::AUTOCORRECT::${typo}`;
+      const existed = !!newAssignments[k];
+      if (existed && choice === 'skip') { skipped++; continue; }
+      if (existed) overwritten++; else imported++;
+      newAssignments[k] = { type: 'autocorrect', label: `Autocorrect: ${typo}`, data: { correction } };
+    }
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    let msg = `Imported ${imported} correction${imported === 1 ? '' : 's'}`;
+    if (overwritten) msg += `, updated ${overwritten}`;
+    if (skipped) msg += `, skipped ${skipped}`;
+    showNotification(msg);
+  }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
+
+  const handleImportAutocorrections = useCallback(async () => {
+    try {
+      const result = await window.electronAPI?.importTextFile('Import Corrections', 'CSV', ['csv', 'txt']);
+      if (!result?.ok) {
+        if (result?.error) showNotification(result.error, 'info');
+        return;
+      }
+      // One pair per line, comma- or tab-separated. Typos are single
+      // lowercase words (mirrors what the engine buffer can ever match);
+      // anything else is skipped rather than imported broken.
+      const rows = [];
+      const seen = new Set();
+      for (const rawLine of String(result.content || '').split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        const sep = line.includes('\t') ? '\t' : ',';
+        const idx = line.indexOf(sep);
+        if (idx <= 0) continue;
+        const typo = line.slice(0, idx).trim().toLowerCase().replace(/^"|"$/g, '');
+        const correction = line.slice(idx + 1).trim().replace(/^"|"$/g, '');
+        if (!typo || !correction || /\s/.test(typo)) continue;
+        if (typo === 'typo' && correction.toLowerCase() === 'correction') continue; // header row
+        if (seen.has(typo)) continue;
+        seen.add(typo);
+        rows.push({ typo, correction });
+      }
+      if (rows.length === 0) {
+        showNotification('No corrections found in that file', 'info');
+        return;
+      }
+      const collisions = rows
+        .filter(r => {
+          const existing = assignments[`GLOBAL::AUTOCORRECT::${r.typo}`];
+          return existing && (existing.data?.correction || '') !== r.correction;
+        })
+        .map(r => r.typo);
+      if (collisions.length > 0) {
+        setAcImportPrompt({ rows, collisions, totalCount: rows.length });
+      } else {
+        applyAcImport(rows, 'overwrite');
+      }
+    } catch (e) {
+      console.error('[Keyfire] Import corrections failed:', e);
+    }
+  }, [assignments, applyAcImport, showNotification]);
+
+  const handleAcImportResolve = useCallback((choice) => {
+    const prompt = acImportPrompt;
+    setAcImportPrompt(null);
+    if (!prompt || choice === 'cancel') return;
+    applyAcImport(prompt.rows, choice);
+  }, [acImportPrompt, applyAcImport]);
 
   // ── Profile settings (app-linking) ───────────────────────
   const handleUpdateProfileSettings = useCallback((profileName, updates) => {
@@ -4394,6 +4579,13 @@ function App() {
               autocorrections={autocorrections}
               onSaveAutocorrectGroup={handleSaveAutocorrectGroup}
               onDeleteAutocorrectGroup={handleDeleteAutocorrectGroup}
+              autocorrectDisabledEntries={autocorrectDisabledEntries}
+              acSuggestions={acSuggestions}
+              onAcSuggestionResolve={handleAcSuggestionResolve}
+              onExportAutocorrections={handleExportAutocorrections}
+              onImportAutocorrections={handleImportAutocorrections}
+              acImportPrompt={acImportPrompt}
+              onAcImportResolve={handleAcImportResolve}
               globalVariables={globalVariables}
               onSaveGlobalVariables={handleSaveGlobalVariables}
               isPro={isPro}

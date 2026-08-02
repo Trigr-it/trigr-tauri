@@ -497,6 +497,81 @@ async fn import_profile(app: tauri::AppHandle) -> Value {
     }
 }
 
+/// Generic save-text-file dialog — export_profile with a caller-chosen filter
+/// (CSV corrections packs and friends) instead of the hardwired JSON one.
+#[tauri::command]
+async fn export_text_file(
+    app: tauri::AppHandle,
+    filename_hint: String,
+    content: String,
+    title: String,
+    filter_name: String,
+    extensions: Vec<String>,
+) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+
+    let desktop = app
+        .path()
+        .desktop_dir()
+        .unwrap_or_default()
+        .join(&filename_hint);
+
+    let exts: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title(&title)
+        .set_file_name(&filename_hint)
+        .add_filter(&filter_name, &exts)
+        .set_directory(desktop.parent().unwrap_or(std::path::Path::new("")))
+        .blocking_save_file();
+
+    let file_path = match file_path {
+        Some(p) => p.into_path().unwrap(),
+        None => return serde_json::json!({ "ok": false }),
+    };
+
+    match std::fs::write(&file_path, &content) {
+        Ok(()) => {
+            log::info!("[Keyfire] Text file exported to: {}", file_path.display());
+            serde_json::json!({ "ok": true })
+        }
+        Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+/// Generic open-text-file dialog — import_profile with a caller-chosen filter.
+#[tauri::command]
+async fn import_text_file(
+    app: tauri::AppHandle,
+    title: String,
+    filter_name: String,
+    extensions: Vec<String>,
+) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+
+    let exts: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title(&title)
+        .add_filter(&filter_name, &exts)
+        .blocking_pick_file();
+
+    let file_path = match file_path {
+        Some(p) => p.into_path().unwrap(),
+        None => return serde_json::json!({ "ok": false }),
+    };
+
+    match std::fs::read_to_string(&file_path) {
+        Ok(raw) => {
+            log::info!("[Keyfire] Text file read from: {}", file_path.display());
+            serde_json::json!({ "ok": true, "content": raw })
+        }
+        Err(e) => serde_json::json!({ "ok": false, "error": format!("Could not read file: {}", e) }),
+    }
+}
+
 // ── File dialogs (Phase 2) ──────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1430,8 +1505,9 @@ fn update_autocorrect_settings(
     sentence_caps: bool,
     extended_typos: bool,
     excluded_apps: Vec<String>,
+    disabled_entries: Vec<String>,
 ) {
-    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos, excluded_apps);
+    expansions::set_autocorrect_settings(enabled, builtin_typos, double_caps, double_caps_exceptions, caps_lock_fix, sentence_caps, extended_typos, excluded_apps, disabled_entries);
 }
 
 #[tauri::command]
@@ -4734,6 +4810,8 @@ pub fn run() {
             update_global_settings,
             update_autocorrect_enabled,
             update_autocorrect_settings,
+            export_text_file,
+            import_text_file,
             get_builtin_autocorrect_entries,
             update_global_variables,
             // Pause

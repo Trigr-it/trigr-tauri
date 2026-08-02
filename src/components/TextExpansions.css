@@ -2381,9 +2381,17 @@ button.te-col-header:hover {
 
 /* ── Autocorrect compact list ────────────────────────────────────────────── */
 
+/* Responsive columns: entries are short, so wide windows get 2-4 columns
+   instead of full-width rows. Falls back to one column at narrow widths. */
 .ac-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  column-gap: 24px;
+  align-content: start;
+}
+
+.ac-list > .te-empty-row {
+  grid-column: 1 / -1;
 }
 
 .ac-item {
@@ -2612,6 +2620,74 @@ button.te-col-header:hover {
 
 .ac-list-dim {
   opacity: 0.45;
+}
+
+/* ── Per-entry disable on bundled dictionary chips ──────────────────────── */
+
+.ac-typo-toggle {
+  display: none;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.ac-item-readonly:hover .ac-typo-toggle {
+  display: inline-block;
+}
+
+.ac-typo-toggle:hover {
+  opacity: 1;
+}
+
+.ac-typo-off {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/* Restore affordance stays visible on disabled chips (no hover needed),
+   and inline-block keeps the strikethrough off the ↺ glyph. */
+.ac-typo-off .ac-typo-toggle {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/* ── Learn-from-undo suggestion banner ──────────────────────────────────── */
+
+.ac-suggest-banner {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.ac-suggest-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ac-suggest-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ac-suggest-text strong {
+  color: var(--text-primary);
 }
 
 /* ── Delete confirmation dialog ─────────────────────────────────────────── */

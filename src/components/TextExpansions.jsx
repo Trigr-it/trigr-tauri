@@ -2184,6 +2184,16 @@ export default function TextExpansions({
   autocorrections = [],
   onSaveAutocorrectGroup,
   onDeleteAutocorrectGroup,
+  // Bundled-dictionary entries switched off individually (lowercase typo keys)
+  autocorrectDisabledEntries = [],
+  // Learn-from-undo: words undone twice awaiting a user decision
+  acSuggestions = [],
+  onAcSuggestionResolve,
+  // Corrections CSV pack export/import
+  onExportAutocorrections,
+  onImportAutocorrections,
+  acImportPrompt,
+  onAcImportResolve,
   // ── Global Variables
   globalVariables = {},
   onSaveGlobalVariables,
@@ -2328,6 +2338,7 @@ export default function TextExpansions({
   // Autocorrect section rail: 'custom' | 'starter' | 'extended' | 'fixes' —
   // mirrors the expansions category sidebar pattern.
   const [acSection, setAcSection] = useState('custom');
+  const [acCustomFilter, setAcCustomFilter] = useState('');
   useEffect(() => {
     if (panelMode !== 'autocorrect' || builtinEntries.length > 0) return;
     window.electronAPI?.getBuiltinAutocorrectEntries?.()
@@ -2857,6 +2868,18 @@ export default function TextExpansions({
     }, {})
   ).sort((a, b) => a.correction.localeCompare(b.correction));
   acGroups.forEach(g => g.typos.sort());
+
+  // Toolbar search over the custom list — matches misspellings and the
+  // correct word. The rail count stays the unfiltered total.
+  const acCustomQuery = acCustomFilter.trim().toLowerCase();
+  const acGroupsFiltered = acCustomQuery
+    ? acGroups.filter(g =>
+        g.correction.toLowerCase().includes(acCustomQuery) ||
+        g.typos.some(t => t.includes(acCustomQuery)))
+    : acGroups;
+
+  // Bundled-dictionary entries switched off individually, for chip state.
+  const acDisabledSet = new Set(autocorrectDisabledEntries);
 
   // Bundled dictionary for the ACTIVE rail section, grouped by correction,
   // filtered by the toolbar search, render-capped for the 4k extended pack.
@@ -3830,6 +3853,36 @@ export default function TextExpansions({
       {panelMode === 'autocorrect' && (
         <div className="ac-view">
 
+          {/* Learn-from-undo: never applied silently, always the user's call */}
+          {acSuggestions.length > 0 && (
+            <div className="ac-suggest-banner">
+              {acSuggestions.slice(0, 3).map(s => (
+                <div key={s.key} className="ac-suggest-row">
+                  <span className="ac-suggest-text">
+                    You've undone <kbd className="te-trigger-badge ac-typo-badge">{s.key}</kbd>
+                    <span className="te-item-arrow">→</span>
+                    <strong>{s.replacement}</strong> {s.count === 2 ? 'twice' : `${s.count} times`}. Stop correcting it?
+                  </span>
+                  <button
+                    className="te-cancel-btn"
+                    onClick={() => onAcSuggestionResolve?.(s.key, 'keep')}
+                    type="button"
+                    title="Keep this correction and stop asking"
+                  >
+                    Keep
+                  </button>
+                  <button
+                    className="te-save-btn"
+                    onClick={() => onAcSuggestionResolve?.(s.key, 'stop')}
+                    type="button"
+                  >
+                    Stop correcting
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="te-content">
 
           {/* ── Section rail — same pattern as the expansions category sidebar ── */}
@@ -3866,6 +3919,22 @@ export default function TextExpansions({
               >
                 <span className="te-cat-row-name">Autocorrect Settings</span>
               </button>
+              <button
+                className="te-cat-new-btn te-cat-pack-btn"
+                onClick={() => onImportAutocorrections?.()}
+                title="Import corrections from a CSV file (one typo,correction pair per line)"
+                type="button"
+              >
+                ↓ Import CSV
+              </button>
+              <button
+                className="te-cat-new-btn te-cat-pack-btn"
+                onClick={() => onExportAutocorrections?.()}
+                title="Export your corrections to a CSV file"
+                type="button"
+              >
+                ↑ Export CSV
+              </button>
             </div>
           </div>
 
@@ -3876,6 +3945,15 @@ export default function TextExpansions({
           {acSection === 'custom' && (<>
           <div className="te-toolbar">
             <span className="te-toolbar-count">Grouped by correct word. Your entries always win over the bundled lists.</span>
+            {acGroups.length > 0 && (
+              <SearchBar
+                className="te-search-bar"
+                placeholder="Search…"
+                value={acCustomFilter}
+                onChange={e => setAcCustomFilter(e.target.value)}
+                onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { setAcCustomFilter(''); e.target.blur(); } }}
+              />
+            )}
             <span className="te-toolbar-count">{acGroups.length} {acGroups.length === 1 ? 'word' : 'words'}</span>
           </div>
 
@@ -3951,7 +4029,10 @@ export default function TextExpansions({
             </div>
           ) : (
             <div className="ac-list ac-col-scroll">
-              {acGroups.map(group => (
+              {acGroupsFiltered.length === 0 && acCustomQuery && (
+                <div className="te-empty-row">No matches for "{acCustomFilter}"</div>
+              )}
+              {acGroupsFiltered.map(group => (
                 <div key={group.correction} className="ac-item">
                   <div className="ac-group-typos">
                     {group.typos.map(t => (
@@ -4005,9 +4086,26 @@ export default function TextExpansions({
             {builtinGroups.map(group => (
               <div key={group.correction} className="ac-item ac-item-readonly">
                 <div className="ac-group-typos">
-                  {group.typos.map(t => (
-                    <kbd key={t} className="te-trigger-badge ac-typo-badge">{t}</kbd>
-                  ))}
+                  {group.typos.map(t => {
+                    const off = acDisabledSet.has(t);
+                    return (
+                      <kbd key={t} className={`te-trigger-badge ac-typo-badge${off ? ' ac-typo-off' : ''}`}>
+                        {t}
+                        <button
+                          className="ac-typo-toggle"
+                          type="button"
+                          title={off ? `Resume correcting "${t}"` : `Stop correcting "${t}"`}
+                          aria-label={off ? `Resume correcting ${t}` : `Stop correcting ${t}`}
+                          onClick={() => {
+                            const next = off
+                              ? autocorrectDisabledEntries.filter(w => w !== t)
+                              : [...autocorrectDisabledEntries, t];
+                            onUpdateAutocorrectSettings?.({ disabledEntries: next });
+                          }}
+                        >{off ? '↺' : '✕'}</button>
+                      </kbd>
+                    );
+                  })}
                 </div>
                 <span className="te-item-arrow">→</span>
                 <span className="ac-correction">{group.correction}</span>
@@ -4331,6 +4429,57 @@ export default function TextExpansions({
                 onClick={() => onExpansionImportResolve?.('overwrite')}
                 type="button"
                 title="Replace your existing expansions with the ones in this pack"
+              >
+                Overwrite All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Corrections CSV import collision dialog */}
+      {acImportPrompt && (
+        <div className="te-delete-overlay">
+          <div className="te-delete-dialog te-import-dialog">
+            <div className="te-delete-title">Import Corrections</div>
+            <p className="te-delete-body">
+              This file contains <strong>{acImportPrompt.totalCount}</strong>{' '}
+              correction{acImportPrompt.totalCount !== 1 ? 's' : ''}.{' '}
+              <strong>{acImportPrompt.collisions.length}</strong> misspelling
+              {acImportPrompt.collisions.length !== 1 ? 's' : ''} already
+              {acImportPrompt.collisions.length === 1 ? ' has' : ' have'} a different correction in your list:
+            </p>
+            <div className="te-import-collisions">
+              {acImportPrompt.collisions.slice(0, 8).map(t => (
+                <kbd key={t} className="te-trigger-badge ac-typo-badge">{t}</kbd>
+              ))}
+              {acImportPrompt.collisions.length > 8 && (
+                <span className="te-import-collisions-more">
+                  + {acImportPrompt.collisions.length - 8} more
+                </span>
+              )}
+            </div>
+            <div className="te-delete-actions te-import-actions">
+              <button
+                className="te-cancel-btn"
+                onClick={() => onAcImportResolve?.('cancel')}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="te-cancel-btn"
+                onClick={() => onAcImportResolve?.('skip')}
+                type="button"
+                title="Keep your existing corrections; only import new ones"
+              >
+                Skip Duplicates
+              </button>
+              <button
+                className="te-delete-confirm-btn"
+                onClick={() => onAcImportResolve?.('overwrite')}
+                type="button"
+                title="Replace your existing corrections with the ones in this file"
               >
                 Overwrite All
               </button>

@@ -236,14 +236,16 @@ export default function AnalyticsPanel({ isPro = false }) {
 
   // ── Shared breakdown renderer ──
   function renderBreakdown() {
-    const tb = typeBreakdown || { total: 0, expansions: 0, hotkeys: 0, macros: 0 };
+    const tb = typeBreakdown || { total: 0, expansions: 0, hotkeys: 0, macros: 0, autocorrects: 0 };
     const tbTotal = tb.total || 0;
     const tbExp = tb.expansions || 0;
     const tbHot = tb.hotkeys || 0;
     const tbMac = tb.macros || 0;
+    const tbAc = tb.autocorrects || 0;
     const pExp = tbTotal > 0 ? Math.round((tbExp / tbTotal) * 100) : 0;
     const pHot = tbTotal > 0 ? Math.round((tbHot / tbTotal) * 100) : 0;
     const pMac = tbTotal > 0 ? Math.round((tbMac / tbTotal) * 100) : 0;
+    const pAc = tbTotal > 0 ? Math.round((tbAc / tbTotal) * 100) : 0;
     if (tbTotal === 0) {
       return <div className="analytics-empty"><div className="analytics-empty-title">No data yet</div>Fire a hotkey, expansion, or macro to start tracking.</div>;
     }
@@ -253,6 +255,8 @@ export default function AnalyticsPanel({ isPro = false }) {
           { cls: 'expansion', label: 'Expansions', count: tbExp, pct: pExp },
           { cls: 'hotkey',    label: 'Hotkeys',    count: tbHot, pct: pHot },
           { cls: 'macro',     label: 'Macros',     count: tbMac, pct: pMac },
+          // Row hidden until the first fire — free-tier users never see it.
+          ...(tbAc > 0 ? [{ cls: 'autocorrect', label: 'Typos fixed', count: tbAc, pct: pAc }] : []),
         ].map(r => (
           <div key={r.cls} className="analytics-breakdown-row">
             <span className={`analytics-breakdown-dot ${r.cls}`} />

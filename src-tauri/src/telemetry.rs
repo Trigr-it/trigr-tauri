@@ -152,6 +152,7 @@ pub struct DayCounts {
     pub url: i64,
     pub folder: i64,
     pub search_template: i64,
+    pub autocorrect: i64,
     // Trigger-mode fires, derived from the storage-key suffix. Adoption
     // signal for the Pro-gated double/hold modes.
     pub double_fires: i64,
@@ -173,6 +174,7 @@ pub fn aggregate_for_date(date: &str) -> DayCounts {
                 COUNT(CASE WHEN action_type = 'url' THEN 1 END) AS url, \
                 COUNT(CASE WHEN action_type = 'folder' THEN 1 END) AS folder, \
                 COUNT(CASE WHEN action_type = 'search_template' THEN 1 END) AS search_template, \
+                COUNT(CASE WHEN action_type = 'autocorrect' THEN 1 END) AS autocorrect, \
                 COUNT(CASE WHEN trigger_key LIKE '%::double' THEN 1 END) AS double_fires, \
                 COUNT(CASE WHEN trigger_key LIKE '%::hold' THEN 1 END) AS hold_fires \
              FROM action_log \
@@ -188,8 +190,9 @@ pub fn aggregate_for_date(date: &str) -> DayCounts {
                     url: r.get(5)?,
                     folder: r.get(6)?,
                     search_template: r.get(7)?,
-                    double_fires: r.get(8)?,
-                    hold_fires: r.get(9)?,
+                    autocorrect: r.get(8)?,
+                    double_fires: r.get(9)?,
+                    hold_fires: r.get(10)?,
                 })
             },
         );
@@ -271,6 +274,7 @@ fn build_extra(c: &DayCounts) -> String {
             "url": c.url,
             "folder": c.folder,
             "search_template": c.search_template,
+            "autocorrect": c.autocorrect,
         },
         "double_fires": c.double_fires,
         "hold_fires": c.hold_fires,

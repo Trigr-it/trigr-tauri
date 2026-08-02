@@ -254,9 +254,10 @@
   flex-shrink: 0;
 }
 
-.analytics-breakdown-dot.expansion { background: var(--accent); }
-.analytics-breakdown-dot.hotkey    { background: #c864ff; }
-.analytics-breakdown-dot.macro     { background: #ff783c; }
+.analytics-breakdown-dot.expansion   { background: var(--accent); }
+.analytics-breakdown-dot.hotkey      { background: #c864ff; }
+.analytics-breakdown-dot.macro       { background: #ff783c; }
+.analytics-breakdown-dot.autocorrect { background: #64b4ff; }
 
 .analytics-breakdown-label {
   font-family: var(--font-body);
@@ -288,9 +289,10 @@
   transition: width 0.3s ease;
 }
 
-.analytics-breakdown-bar.expansion { background: var(--accent); }
-.analytics-breakdown-bar.hotkey    { background: #c864ff; }
-.analytics-breakdown-bar.macro     { background: #ff783c; }
+.analytics-breakdown-bar.expansion   { background: var(--accent); }
+.analytics-breakdown-bar.hotkey      { background: #c864ff; }
+.analytics-breakdown-bar.macro       { background: #ff783c; }
+.analytics-breakdown-bar.autocorrect { background: #64b4ff; }
 
 .analytics-breakdown-pct {
   font-family: var(--font-body);

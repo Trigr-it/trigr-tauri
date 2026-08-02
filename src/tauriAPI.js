@@ -86,6 +86,13 @@ window.electronAPI = {
     listen('reset-editing-on-hide', () => callback()).then(u => { listeners['reset-editing-on-hide'] = u; });
   },
 
+  // Fired when the user Backspace-undoes an autocorrect fire.
+  // Payload: { original, replacement, source }. App.jsx counts repeats and
+  // offers "stop correcting this" in the Autocorrect tab after the second.
+  onAutocorrectUndone: (callback) => {
+    listen('autocorrect-undone', (event) => callback(event.payload)).then(u => { listeners['autocorrect-undone'] = u; });
+  },
+
   // ── Fill-in field dialog ────────────────────────────────────────────────────
   onFillInPrompt: (callback) => {
     listen('fill-in-prompt', (event) => callback(event.payload)).then(u => { listeners['fill-in-prompt'] = u; });
@@ -113,9 +120,15 @@ window.electronAPI = {
 
   // ── Autocorrect ─────────────────────────────────────────────────────────────
   updateAutocorrectEnabled: (enabled) => invoke('update_autocorrect_enabled', { enabled }),
-  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps) =>
-    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps }),
+  updateAutocorrectSettings: (enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries) =>
+    invoke('update_autocorrect_settings', { enabled, builtinTypos, doubleCaps, doubleCapsExceptions, capsLockFix, sentenceCaps, extendedTypos, excludedApps, disabledEntries: disabledEntries || [] }),
   getBuiltinAutocorrectEntries: () => invoke('get_builtin_autocorrect_entries'),
+
+  // ── Generic text-file dialogs (CSV packs etc.) ──────────────────────────────
+  exportTextFile: (filenameHint, content, title, filterName, extensions) =>
+    invoke('export_text_file', { filenameHint, content, title, filterName, extensions }),
+  importTextFile: (title, filterName, extensions) =>
+    invoke('import_text_file', { title, filterName, extensions }),
 
   // ── Global compatibility settings ───────────────────────────────────────────
   updateGlobalSettings: (settings) => invoke('update_global_settings', { settings }),

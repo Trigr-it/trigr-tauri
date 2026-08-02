@@ -379,6 +379,10 @@ struct ExpansionState {
     /// watcher's cached process name (may lag a fast alt-tab by one 1500ms
     /// poll, same tolerance as app-profile switching).
     excluded_apps: HashSet<String>,
+    /// Lowercase typo keys the user has switched off individually in the
+    /// bundled dictionaries. Custom-map entries are never checked against
+    /// this — users delete those outright instead.
+    disabled_entries: HashSet<String>,
     global_variables: HashMap<String, String>,
 }
 
@@ -400,6 +404,7 @@ impl Default for ExpansionState {
             sentence_caps_enabled: false,
             sentence_start_pending: false,
             excluded_apps: HashSet::new(),
+            disabled_entries: HashSet::new(),
             global_variables: HashMap::new(),
         }
     }
@@ -444,6 +449,9 @@ struct AcUndo {
     original: String,
     replacement: String,
     term: AcTerminator,
+    /// Which rule fired — forwarded to the frontend on undo so repeated
+    /// undos of the same correction can suggest the right opt-out.
+    source: AcSource,
 }
 
 static AC_UNDO: Mutex<Option<AcUndo>> = Mutex::new(None);
@@ -469,9 +477,10 @@ fn refresh_pending_flag(s: &ExpansionState) {
     // (is_pro is a cached atomic load — safe per keystroke).
     let ac = s.autocorrect_enabled
         && crate::licence::is_pro()
-        && (s.autocorrect_words.contains(&buf_lower)
-            || (s.builtin_typos_enabled && builtin_autocorrect(&buf_lower).is_some())
-            || (s.extended_typos_enabled && extended_autocorrect(&buf_lower).is_some())
+        // Dictionary check shares resolve_dict_correction with the resolve
+        // path — per-entry disables and identity no-ops (typed "I" matching
+        // i→I) never swallow a terminator.
+        && (resolve_dict_correction(s, &s.buffer, &buf_lower).is_some()
             || (s.double_caps_enabled
                 && double_caps_candidate(&s.buffer)
                 && !s.double_caps_exceptions.contains(&buf_lower))
@@ -687,7 +696,7 @@ pub fn check_space_trigger() -> bool {
         } else {
             AcTerminator::AlreadySentChar(' ')
         };
-        fire_autocorrect(&original_buffer, &fix.text, term, fix.caps_off);
+        fire_autocorrect(&original_buffer, &fix.text, term, fix.caps_off, fix.source);
         return true;
     }
 
@@ -796,11 +805,85 @@ fn double_caps_fix(word: &str) -> String {
         .collect()
 }
 
+/// Which rule produced a correction. Carried through the undo state so the
+/// frontend can offer the right "stop correcting this" action when the user
+/// keeps undoing the same fix.
+#[derive(Clone, Copy, PartialEq)]
+enum AcSource {
+    Custom,
+    Builtin,
+    Extended,
+    DoubleCaps,
+    CapsLock,
+    SentenceCaps,
+}
+
+impl AcSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            AcSource::Custom => "custom",
+            AcSource::Builtin => "builtin",
+            AcSource::Extended => "extended",
+            AcSource::DoubleCaps => "doubleCaps",
+            AcSource::CapsLock => "capsLock",
+            AcSource::SentenceCaps => "sentenceCaps",
+        }
+    }
+}
+
 /// A resolved correction plus its side effects.
 struct AcFix {
     text: String,
     /// Tap Caps Lock off inside the correction batch (Caps Lock fix path).
     caps_off: bool,
+    source: AcSource,
+}
+
+/// Dictionary lookup shared by the pending flag and the resolve path so the
+/// two can never disagree about whether a word will fire. Priority: custom
+/// map → built-in dictionary → extended dictionary. The bundled packs honour
+/// the per-entry disable list; the custom map doesn't. Returns None when the
+/// case-carried correction is identical to what was typed (e.g. "I" typed
+/// correctly matching the i→I entry) — firing would be a visible no-op and
+/// the terminator must not be swallowed for it.
+fn resolve_dict_correction(
+    s: &ExpansionState,
+    original: &str,
+    lower: &str,
+) -> Option<(String, AcSource)> {
+    let mut hit: Option<(&str, AcSource)> = None;
+
+    let ac_key = format!("GLOBAL::AUTOCORRECT::{}", lower);
+    if let Some(entry) = s.assignments.get(&ac_key) {
+        let correction = entry
+            .get("data")
+            .and_then(|d| d.get("correction"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !correction.is_empty() {
+            hit = Some((correction, AcSource::Custom));
+        }
+    }
+
+    if hit.is_none() && !s.disabled_entries.contains(lower) {
+        if s.builtin_typos_enabled {
+            if let Some(c) = builtin_autocorrect(lower) {
+                hit = Some((c, AcSource::Builtin));
+            }
+        }
+        if hit.is_none() && s.extended_typos_enabled {
+            if let Some(c) = extended_autocorrect(lower) {
+                hit = Some((c, AcSource::Extended));
+            }
+        }
+    }
+
+    let (correction, source) = hit?;
+    let text = apply_case(correction, detect_case(original));
+    if text == original {
+        return None;
+    }
+    Some((text, source))
 }
 
 /// Resolve the correction for a completed word, or None. Priority: custom
@@ -823,31 +906,8 @@ fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool)
     }
     let lower = original.to_lowercase();
 
-    let mut base: Option<AcFix> = None;
-
-    let ac_key = format!("GLOBAL::AUTOCORRECT::{}", lower);
-    if let Some(entry) = s.assignments.get(&ac_key) {
-        let correction = entry
-            .get("data")
-            .and_then(|d| d.get("correction"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if !correction.is_empty() {
-            base = Some(AcFix { text: apply_case(correction, detect_case(original)), caps_off: false });
-        }
-    }
-
-    if base.is_none() && s.builtin_typos_enabled {
-        if let Some(c) = builtin_autocorrect(&lower) {
-            base = Some(AcFix { text: apply_case(c, detect_case(original)), caps_off: false });
-        }
-    }
-
-    if base.is_none() && s.extended_typos_enabled {
-        if let Some(c) = extended_autocorrect(&lower) {
-            base = Some(AcFix { text: apply_case(c, detect_case(original)), caps_off: false });
-        }
-    }
+    let mut base: Option<AcFix> = resolve_dict_correction(s, original, &lower)
+        .map(|(text, source)| AcFix { text, caps_off: false, source });
 
     if base.is_none()
         && s.caps_lock_fix_enabled
@@ -855,7 +915,7 @@ fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool)
         && caps_lock_candidate(original)
         && !s.double_caps_exceptions.contains(&lower)
     {
-        base = Some(AcFix { text: caps_lock_fix(original), caps_off: true });
+        base = Some(AcFix { text: caps_lock_fix(original), caps_off: true, source: AcSource::CapsLock });
     }
 
     if base.is_none()
@@ -863,7 +923,7 @@ fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool)
         && double_caps_candidate(original)
         && !s.double_caps_exceptions.contains(&lower)
     {
-        base = Some(AcFix { text: double_caps_fix(original), caps_off: false });
+        base = Some(AcFix { text: double_caps_fix(original), caps_off: false, source: AcSource::DoubleCaps });
     }
 
     // Sentence capitalization — composes over the resolved text or the raw
@@ -876,7 +936,14 @@ fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool)
             && current.chars().all(|c| c.is_alphabetic() || c == '\'')
         {
             let capped = apply_case(current, CasePattern::Capitalized);
-            return Some(AcFix { text: capped, caps_off: base.map_or(false, |f| f.caps_off) });
+            // Keep the base rule's source when composing — undoing "The"
+            // that started as a "teh" dictionary hit should point at the
+            // dictionary entry, not at sentence caps.
+            return Some(AcFix {
+                text: capped,
+                caps_off: base.as_ref().map_or(false, |f| f.caps_off),
+                source: base.map_or(AcSource::SentenceCaps, |f| f.source),
+            });
         }
     }
 
@@ -929,7 +996,7 @@ fn push_unicode(inputs: &mut Vec<INPUT>, text: &str) {
 /// created HERE on the processor thread so there is no window for user
 /// keystrokes to slip between the decision and the buffering.
 /// Also arms the one-shot Backspace undo with everything needed to revert.
-fn fire_autocorrect(original: &str, replacement: &str, term: AcTerminator, caps_off: bool) {
+fn fire_autocorrect(original: &str, replacement: &str, term: AcTerminator, caps_off: bool, source: AcSource) {
     if !fire_rate_ok(replacement) {
         return;
     }
@@ -969,6 +1036,7 @@ fn fire_autocorrect(original: &str, replacement: &str, term: AcTerminator, caps_
         original: original.to_string(),
         replacement: replacement.to_string(),
         term,
+        source,
     });
     AC_UNDO_ARMED.store(true, Ordering::SeqCst);
 
@@ -1065,7 +1133,7 @@ pub fn check_char_terminator(ch: char) -> bool {
             } else {
                 AcTerminator::AlreadySentChar(ch)
             };
-            fire_autocorrect(&original, &fix.text, term, fix.caps_off);
+            fire_autocorrect(&original, &fix.text, term, fix.caps_off, fix.source);
             true
         }
         None => {
@@ -1132,7 +1200,7 @@ pub fn check_key_terminator(vk: u16) -> bool {
                 // changed mid-flight). Erase the newline/tab too, re-tap after.
                 AcTerminator::AlreadySentVk(vk)
             };
-            fire_autocorrect(&original, &fix.text, term, fix.caps_off);
+            fire_autocorrect(&original, &fix.text, term, fix.caps_off, fix.source);
             true
         }
         None => {
@@ -1195,6 +1263,22 @@ pub fn try_undo_autocorrect() -> bool {
     }
 
     info!("[Keyfire] Autocorrect undo: \"{}\" restored over \"{}\"", u.original, u.replacement);
+
+    // Tell the frontend which correction was rejected — the main window
+    // counts repeats and offers "stop correcting this" after the second
+    // undo of the same word. Main window is never webview-suspended, so a
+    // broadcast emit is safe from the processor thread.
+    if let Some(app) = APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit(
+            "autocorrect-undone",
+            serde_json::json!({
+                "original": u.original,
+                "replacement": u.replacement,
+                "source": u.source.as_str(),
+            }),
+        );
+    }
 
     let guard = InjectionGuard::new();
     thread::spawn(move || {
@@ -4126,6 +4210,10 @@ const BUILTIN_TYPOS: &[(&str, &str)] = &[
     ("wouldnt", "wouldn't"),
     ("cant", "can't"),
     ("shouldnt", "shouldn't"),
+    // Word-style capitalization entries. The identity guard in
+    // resolve_dict_correction keeps a correctly typed "I" from firing.
+    ("i", "I"),
+    ("ive", "I've"),
 ];
 
 fn builtin_map() -> &'static HashMap<&'static str, &'static str> {
@@ -4239,12 +4327,18 @@ pub fn set_autocorrect_settings(
     sentence_caps: bool,
     extended_typos: bool,
     excluded_apps: Vec<String>,
+    disabled_entries: Vec<String>,
 ) {
     let mut s = state().lock().unwrap();
     s.autocorrect_enabled = enabled;
     s.builtin_typos_enabled = builtin_typos;
     s.extended_typos_enabled = extended_typos;
     s.double_caps_enabled = double_caps;
+    s.disabled_entries = disabled_entries
+        .into_iter()
+        .map(|w| w.trim().to_lowercase())
+        .filter(|w| !w.is_empty())
+        .collect();
     s.excluded_apps = excluded_apps
         .into_iter()
         .map(|a| a.trim().to_lowercase().trim_end_matches(".exe").to_string())
@@ -4259,9 +4353,9 @@ pub fn set_autocorrect_settings(
     s.sentence_caps_enabled = sentence_caps;
     refresh_pending_flag(&s);
     info!(
-        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps)",
+        "[Keyfire] Autocorrect settings: enabled={} builtin={} extended={} double_caps={} caps_lock_fix={} sentence_caps={} ({} exceptions, {} excluded apps, {} disabled entries)",
         enabled, builtin_typos, extended_typos, double_caps, caps_lock_fix, sentence_caps,
-        s.double_caps_exceptions.len(), s.excluded_apps.len()
+        s.double_caps_exceptions.len(), s.excluded_apps.len(), s.disabled_entries.len()
     );
 }
 

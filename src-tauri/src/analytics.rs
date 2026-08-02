@@ -457,6 +457,8 @@ fn handle_log(conn: &Connection, event: AnalyticsEvent) {
             }
         }
         "hotkey" => 0.0,  // key-for-key remap, no time saved
+        // Fixing a typo by hand ≈ notice it, backspace, retype: ~2 seconds.
+        "autocorrect" => 2.0,
         "text" => 3.0,    // type text action
         "app" => 3.0,     // open app
         "url" => 3.0,     // open URL
@@ -555,6 +557,7 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let mut hotkeys: i64 = 0;
     let mut macros: i64 = 0;
     let mut search_templates: i64 = 0;
+    let mut autocorrects: i64 = 0;
     if let Ok(rows) = stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(0).unwrap_or_default(),
@@ -566,6 +569,7 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
                 "expansion" => expansions = row.1,
                 "macro" => macros = row.1,
                 "search_template" => search_templates = row.1,
+                "autocorrect" => autocorrects = row.1,
                 _ => hotkeys += row.1,
             }
         }
@@ -588,6 +592,7 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
         "hotkeys": hotkeys,
         "macros": macros,
         "search_templates": search_templates,
+        "autocorrects": autocorrects,
     })
 }
 
@@ -646,6 +651,7 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
     let mut expansions: i64 = 0;
     let mut hotkeys: i64 = 0;
     let mut macros: i64 = 0;
+    let mut autocorrects: i64 = 0;
     let mut total: i64 = 0;
     let mut time_saved: f64 = 0.0;
     if let Ok(rows) = stmt.query_map([], |row| {
@@ -661,6 +667,7 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
             match row.0.as_str() {
                 "expansion" => expansions += row.1,
                 "macro" => macros += row.1,
+                "autocorrect" => autocorrects += row.1,
                 _ => hotkeys += row.1,
             }
         }
@@ -671,6 +678,7 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
         "expansions": expansions,
         "hotkeys": hotkeys,
         "macros": macros,
+        "autocorrects": autocorrects,
         "time_saved": time_saved,
     })
 }
@@ -679,12 +687,12 @@ fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Valu
     // days=0 → all time; days=N → today + (N-1) prior local calendar days.
     let (query, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = if days == 0 {
         ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
-          FROM action_log WHERE trigger_key != ''
+          FROM action_log WHERE trigger_key != '' AND action_type != 'autocorrect'
           GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
          vec![])
     } else {
         ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
-          FROM action_log WHERE trigger_key != ''
+          FROM action_log WHERE trigger_key != '' AND action_type != 'autocorrect'
           AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', ?1)
           GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
          vec![Box::new(format!("-{} days", days - 1)) as Box<dyn rusqlite::types::ToSql>])
