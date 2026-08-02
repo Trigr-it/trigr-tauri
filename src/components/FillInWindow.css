@@ -26,14 +26,13 @@
   --bg-elevated: #f5f5fa;
   --bg-surface:  #ffffff;
   --bg-hover:    #ebebf0;
-  /* Light gold + muted lifted for WCAG — mirrors global.css (2026-08-02). */
-  --accent:      #b8790a;
-  --accent-glow: rgba(184, 121, 10, 0.08);
+  --accent:      #e8a020;
+  --accent-glow: rgba(232, 160, 32, 0.08);
   --text-primary:   #1a1a2e;
   --text-secondary: #4a4a6a;
   --text-muted:     #6b6b88;
   --border-bright:  #c8c8dc;
-  --border-accent:  rgba(184, 121, 10, 0.55);
+  --border-accent:  rgba(232, 160, 32, 0.5);
   --shadow-overlay: 0 2px 6px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05);
   --backdrop-blur: blur(20px) saturate(130%);
   --btn-primary-text: #1a1a2e;

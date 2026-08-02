@@ -123,17 +123,10 @@
      Mirror any change into the overlay palettes (they don't import this file). */
   --text-muted:     #6b6b88;
 
-  /* Light-theme gold: #e8a020 as TEXT on white was 2.2:1 — unreadable by any
-     standard. #b8790a keeps the gold identity while reaching WCAG 3:1 (the
-     UI-component level) on every light surface. Small gold BODY text remains
-     below 4.5:1 by design — same trade the status colours make. Dark theme
-     keeps the brighter #e8a020 (8.8:1 there). */
-  --accent: #b8790a;
-  --accent-hover: #c98a12;
-  --accent-dim: #96650a;
-  --accent-rgb: 184, 121, 10;
-  --accent-glow: rgba(184, 121, 10, 0.14);
-  --accent-glow-strong: rgba(184, 121, 10, 0.28);
+  /* Gold inherits from :root (#e8a020) — light theme uses the same gold as
+     dark. --accent-rgb kept explicit so the shared rgba(var(--accent-rgb)…)
+     patterns resolve correctly. */
+  --accent-rgb: 232, 160, 32;
 
   /* Darkened to hold ≥4.5:1 on light surfaces (originals: #e05050 3.9-4.4,
      old values matched the dark palette and were never re-audited). */
@@ -142,15 +135,15 @@
 
   --border:        #dcdce8;
   --border-bright: #c8c8dc;
-  --border-accent: rgba(184, 121, 10, 0.55);
+  --border-accent: rgba(232, 160, 32, 0.5);
 
   --key-bg:              #ffffff;
   --key-bg-hover:        #f0f0fa;
   --key-bg-assigned:     #fffbf0;
   --key-bg-selected:     #fff8e8;
   --key-border:          #d0d0e0;
-  --key-border-assigned: rgba(184, 121, 10, 0.55);
-  --key-border-selected: #b8790a;
+  --key-border-assigned: rgba(232, 160, 32, 0.5);
+  --key-border-selected: #e8a020;
 
   --shadow-key:       0 1px 4px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
   --shadow-key-hover: 0 2px 8px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
@@ -159,12 +152,11 @@
   --shadow-overlay: 0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06);
   --shadow-overlay-lg: 0 16px 48px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08);
   --backdrop-blur: blur(20px) saturate(130%);
-  /* Dark ink on gold in BOTH themes now — white on the light-theme gold fill
-     was 2.2:1 (3.6:1 even on the darkened fill). Dark ink reads ≥4.7:1 and
-     makes primary buttons consistent across themes. */
-  --btn-primary-text: #1a1a2e;
+  /* Light theme: white text on gold for buttons/banners. Dark theme keeps the
+     default dark #0d0d11 from :root (high-contrast dark text on gold). */
+  --btn-primary-text: #ffffff;
   --backdrop-modal: rgba(0, 0, 0, 0.35);
-  --shadow-modal: 0 16px 48px rgba(0,0,0,0.20), 0 0 0 1px rgba(180,120,10,0.20);
+  --shadow-modal: 0 16px 48px rgba(0,0,0,0.20), 0 0 0 1px rgba(232, 160, 32, 0.10);
 
   /* Darkened for ≥4.5:1 as text on light surfaces (were #16a34a / #ca8a04,
      3.3:1 and 2.9:1 on white). */
