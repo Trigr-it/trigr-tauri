@@ -1388,6 +1388,22 @@
   <div class="step-row"><div class="step-num">4</div><div class="step-text">Enter the <strong>Expansion</strong> in the rich-text editor. Type plain text or use the toolbar to insert dynamic tokens, fill-ins, formulas, lists, and headings.</div></div>
   <div class="step-row"><div class="step-num">5</div><div class="step-text">Optionally assign a <strong>Category</strong>. Click <strong>Save</strong>.</div></div>
 
+  <h2>Tables</h2>
+  <p>Insert a table from the editor toolbar: click the table button, hover the grid to pick a size up to 6 by 6, and click to insert. While your cursor is inside a table, a second toolbar row appears with controls to insert rows above or below, insert columns left or right, delete the current row or column, or delete the whole table.</p>
+  <ul>
+    <li><strong>Tab</strong> moves to the next cell, <strong>Shift+Tab</strong> moves back. Tab in the last cell adds a new row.</li>
+    <li>Drag the right edge of any cell to resize that column. Widths are saved with the expansion.</li>
+    <li>When the expansion fires into a rich-text app (Word, Outlook, Gmail, eM Client) the table arrives with borders and your column widths. Plain-text apps receive the cells as tab-separated text, one line per row, which Word and Excel also accept as a table when pasted onwards.</li>
+  </ul>
+
+  <h2>Text colours and highlights</h2>
+  <p>The toolbar palette button sets the text colour. The highlighter button next to it sets a background highlight, with twelve colours plus a None swatch to remove a highlight. Both carry through to rich-text apps when the expansion fires.</p>
+
+  <div class="callout tip">
+    <div class="ct">Colours missing in Word?</div>
+    <p>Word decides how pasted content is styled using its own setting. If highlights or text colours vanish when an expansion fires into Word, open <strong>File &gt; Options &gt; Advanced &gt; Cut, copy and paste</strong> and set <strong>Pasting from other programs</strong> to <strong>Keep Source Formatting</strong>. The same panel's <strong>Use smart cut and paste</strong> option can add a stray space before pasted content, and can be switched off there too. Word also substitutes its own nearest standard highlight colour rather than the exact shade.</p>
+  </div>
+
   <h2>Trigger tips</h2>
   <ul>
     <li>Prefix triggers with <code>/</code> or <code>;</code> to prevent accidental firing mid-word.</li>
@@ -1417,6 +1433,20 @@
     <tr><td>Trigger mode</td><td>Space (type trigger + space) or Immediate (fires as you finish typing).</td></tr>
   </table>
   <p>When the trigger fires, Keyfire writes the image to the clipboard and sends a paste command. Works in Word, Outlook, Google Docs, and any app that accepts pasted images.</p>
+
+  <h2>Import from other tools</h2>
+  <p>Already using another text expander? The <strong>Import From</strong> menu above the expansion list reads export files from four tools and converts their entries into Keyfire expansions. Imported entries land in an <strong>Imported</strong> category so you can review them before mixing them into your own sets.</p>
+  <table>
+    <tr><th>Tool</th><th>File</th><th>What converts</th></tr>
+    <tr><td>Espanso</td><td><code>.yml</code></td><td>Match triggers and replacements, including multi-trigger entries.</td></tr>
+    <tr><td>AutoHotkey</td><td><code>.ahk</code></td><td>Hotstrings (<code>::btw::by the way</code> style). Script logic beyond hotstrings does not convert.</td></tr>
+    <tr><td>TextExpander</td><td><code>.csv</code></td><td>Snippet abbreviations and content from a CSV export.</td></tr>
+    <tr><td>Text Blaze</td><td><code>.json</code></td><td>Snippets including forms (become fill-in fields), formulas, and date commands.</td></tr>
+  </table>
+  <p>Anything that cannot be converted cleanly is flagged during the import, so you know exactly which entries need a manual check.</p>
+
+  <h2>Selecting multiple expansions</h2>
+  <p>Click the check circle on any expansion row to start a selection, or hold <strong>Ctrl</strong> and click rows. Hold <strong>Shift</strong> and click to select a range. A toast shows the selection count with a bulk <strong>Delete</strong> action and a <strong>Select all in view</strong> shortcut that covers the current category or search results.</p>
 
   <h2>Autocorrect <span class="pro-pill">PRO</span></h2>
   <p>The Autocorrect tab fixes typos as you type: your own misspelling list, two bundled dictionaries, and automatic fixes for stray capitals. It has its own page in this guide. See <strong>Autocorrect</strong> in the sidebar.</p>
@@ -1479,7 +1509,7 @@
   <table>
     <tr><th>Fix</th><th>What it does</th></tr>
     <tr><td>Fix double capitals</td><td><code>HEllo</code> becomes <code>Hello</code>. Words like IDs or PCs can be protected via the exceptions list.</td></tr>
-    <tr><td>Fix accidental Caps Lock</td><td><code>tHE</code> becomes <code>The</code> and Caps Lock switches off. Only fires while Caps Lock is actually on.</td></tr>
+    <tr><td>Fix accidental Caps Lock</td><td><code>tHE</code> becomes <code>The</code> and Caps Lock switches off. Only fires while Caps Lock is actually on. Works whether or not you held Shift for the first letter, and dictionary typos typed with Caps Lock on are corrected in the same pass.</td></tr>
     <tr><td>Capitalize sentences</td><td>A lowercase word straight after a full stop, question mark, exclamation mark or new line gets its first letter capitalised.</td></tr>
   </table>
 
