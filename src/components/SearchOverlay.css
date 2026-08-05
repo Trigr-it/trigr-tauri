@@ -183,8 +183,10 @@ html, body {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--accent);
-  padding: 8px 14px 3px;
-  border-bottom: 1px solid var(--border-bright);
+  padding: 6px 14px;
+  background: rgba(var(--accent-rgb), 0.15);
+  border-left: 4px solid var(--accent);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
   margin-bottom: 2px;
 }
 

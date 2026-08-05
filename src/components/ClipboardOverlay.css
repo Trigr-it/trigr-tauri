@@ -245,8 +245,11 @@ html, body {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  padding: 8px 14px 3px;
+  color: var(--accent);
+  padding: 6px 14px;
+  background: rgba(var(--accent-rgb), 0.15);
+  border-left: 4px solid var(--accent);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
 }
 
 .co-left-list .co-timeline-header:first-child {

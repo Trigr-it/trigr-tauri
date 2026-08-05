@@ -69,7 +69,7 @@
   border: none;
   border-left: 2px solid transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   font-family: var(--font-display);
   letter-spacing: 0.04em;
@@ -115,7 +115,7 @@
 .cbg-date-count {
   background: var(--bg-active);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 8px;
@@ -484,8 +484,9 @@
   gap: 6px;
   height: 26px;
   padding: 0 12px;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
+  background: rgba(var(--accent-rgb), 0.15);
+  border-left: 4px solid var(--accent);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -497,7 +498,7 @@
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--text-muted);
+  color: var(--accent);
   white-space: nowrap;
   text-transform: uppercase;
 }
@@ -516,13 +517,13 @@
 .cbg-timeline-rule {
   flex: 1;
   height: 1px;
-  background: var(--border);
+  background: rgba(var(--accent-rgb), 0.30);
   margin-left: 4px;
 }
 
 .cbg-timeline-icon {
   flex-shrink: 0;
-  color: var(--text-muted);
+  color: var(--accent);
   display: inline-flex;
   align-items: center;
 }
