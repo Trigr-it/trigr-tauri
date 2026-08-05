@@ -602,6 +602,16 @@
   gap: 6px;
 }
 
+.settings-demo-row {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle, var(--border));
+}
+
+.settings-demo-row .settings-action-btn {
+  margin-top: 6px;
+}
+
 .settings-help-btn {
   width: 100%;
   justify-content: flex-start;

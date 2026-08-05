@@ -4257,6 +4257,87 @@ async fn reset_trial() -> Value {
     serde_json::to_value(licence::reset_trial().await).unwrap_or(serde_json::json!({}))
 }
 
+// ── Demo mode ────────────────────────────────────────────────────────────────
+//
+// `--demo` launches Keyfire against a throwaway data dir (AppData\...\demo\):
+// blank config (full first-run onboarding fires), fresh clipboard + analytics
+// DBs, no telemetry. The real licence is seeded across so Pro features work
+// on camera. The demo dir is wiped on every demo launch (crash-safe fresh
+// state) AND best-effort on exit. Used for recording marketing videos and
+// clean-profile bug repros. No visible DEMO badge in the main UI by design —
+// a watermark would end up in the footage; the indicator lives in Settings.
+
+static DEMO_MODE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+pub fn is_demo_mode() -> bool {
+    *DEMO_MODE.get_or_init(|| std::env::args().any(|a| a == "--demo"))
+}
+
+/// Copy ONLY the licence object from the real local settings into the demo
+/// dir. Everything else is deliberately dropped — in particular
+/// `shared_config_path`, which would point the demo session at the user's
+/// REAL shared config file.
+fn seed_demo_local_settings(real_dir: &std::path::Path, demo_dir: &std::path::Path) {
+    let src = real_dir.join("trigr-local-settings.json");
+    let Ok(raw) = std::fs::read_to_string(&src) else { return };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else { return };
+    if let Some(lic) = val.get("licence") {
+        let seeded = serde_json::json!({ "licence": lic });
+        if std::fs::write(demo_dir.join("trigr-local-settings.json"), seeded.to_string()).is_ok() {
+            log::info!("[Keyfire] Demo mode: licence seeded from real install");
+        }
+    }
+}
+
+#[tauri::command]
+fn get_demo_mode() -> bool {
+    is_demo_mode()
+}
+
+/// Restart Keyfire into or out of demo mode. Spawns a detached helper that
+/// waits ~2s (the single-instance lock would swallow the new launch if the
+/// old process is still alive — LL hooks, DB writers and the tray need to
+/// tear down first) then starts the current exe, and exits this instance.
+#[tauri::command]
+fn relaunch_demo_mode(enable: bool, app: tauri::AppHandle) {
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(e) => {
+            log::error!("[Keyfire] relaunch_demo_mode: current_exe failed: {}", e);
+            return;
+        }
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        // raw_arg, NOT args: Command's default quoting wraps the whole /C
+        // line in an extra quote layer (it contains spaces) and cmd.exe's
+        // nested-quote stripping mangles the inner start command — the OS
+        // then pops "Windows cannot find '\\\'" (caught in dev 2026-08-05).
+        let launch = format!(
+            "ping -n 3 127.0.0.1 >nul & start \"\" \"{}\"{}",
+            exe.display(),
+            if enable { " --demo" } else { "" }
+        );
+        let _ = std::process::Command::new("cmd")
+            .raw_arg("/C")
+            .raw_arg(launch)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let mut launch = format!("sleep 2; \"{}\"", exe.display());
+        if enable {
+            launch.push_str(" --demo");
+        }
+        let _ = std::process::Command::new("sh").args(["-c", &launch]).spawn();
+    }
+    log::info!("[Keyfire] Relaunching (demo={}) — exiting current instance", enable);
+    app.exit(0);
+}
+
 // ── App builder ──────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -4298,8 +4379,24 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            // Initialize config module with app data dir
-            let app_data = app.path().app_data_dir()?;
+            // Initialize config module with app data dir. In demo mode
+            // (--demo) EVERYTHING (config, backups, local settings, clipboard
+            // + analytics DBs, scratchpad) redirects to a throwaway demo\
+            // subfolder — wiped fresh on every demo launch, licence seeded
+            // across so Pro features work. Real data never opened.
+            let app_data = {
+                let real = app.path().app_data_dir()?;
+                if is_demo_mode() {
+                    let demo = real.join("demo");
+                    let _ = std::fs::remove_dir_all(&demo);
+                    std::fs::create_dir_all(&demo)?;
+                    seed_demo_local_settings(&real, &demo);
+                    log::info!("[Keyfire] DEMO MODE — data dir redirected to {}", demo.display());
+                    demo
+                } else {
+                    real
+                }
+            };
             std::fs::create_dir_all(&app_data)?;
             config::init(app_data.clone());
             licence::init();
@@ -4352,7 +4449,11 @@ pub fn run() {
             // analytics writer's exclusive connection) and routes writes back
             // through the analytics writer thread via channel messages.
             // Honours the trigr-local-settings.json opt-out flag on every tick.
-            {
+            // Demo sessions never report — a demo launch is not real usage and
+            // would inflate the daily-actives dashboard.
+            if is_demo_mode() {
+                log::info!("[Keyfire] Demo mode: telemetry disabled for this session");
+            } else {
                 let app_version = app.package_info().version.to_string();
                 std::thread::Builder::new()
                     .name("trigr-telemetry".into())
@@ -4954,7 +5055,29 @@ pub fn run() {
             reset_trial,
             get_grace_period_state,
             migrate_shared_to_local_now,
+            // Demo mode
+            get_demo_mode,
+            relaunch_demo_mode,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Best-effort demo-data wipe on any exit path (tray Quit, exit-demo
+            // relaunch, app.exit anywhere). The DB writer threads may still
+            // hold the demo .db files open at this point — a partial delete is
+            // fine because every demo LAUNCH wipes the folder first anyway.
+            if let tauri::RunEvent::Exit = event {
+                if is_demo_mode() {
+                    if let Ok(dir) = app_handle.path().app_data_dir() {
+                        match std::fs::remove_dir_all(dir.join("demo")) {
+                            Ok(()) => log::info!("[Keyfire] Demo data wiped on exit"),
+                            Err(e) => log::warn!(
+                                "[Keyfire] Demo cleanup on exit incomplete ({}) — next demo launch wipes it",
+                                e
+                            ),
+                        }
+                    }
+                }
+            }
+        });
 }

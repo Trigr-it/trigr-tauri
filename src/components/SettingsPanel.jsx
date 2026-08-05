@@ -6,6 +6,56 @@ import NumberField from './NumberField';
 import { friendlyKeyName } from './keyboardLayout';
 import { openFeedback } from '../utils/feedback';
 
+/**
+ * Demo mode row (Help & Documentation section). Launch button is dev-build
+ * only; the Exit button renders in ANY build whenever demo mode is active
+ * (the --demo flag also works on installed builds). Deliberately the ONLY
+ * in-app indicator — no titlebar/statusbar badge, so recordings stay clean.
+ */
+function DemoModeRow() {
+  const [demoMode, setDemoMode] = useState(null);
+  useEffect(() => {
+    window.electronAPI?.getDemoMode?.()
+      .then(v => setDemoMode(!!v))
+      .catch(() => setDemoMode(false));
+  }, []);
+  if (demoMode === null) return null;
+  if (!demoMode && !import.meta.env.DEV) return null;
+  return (
+    <div className="settings-demo-row">
+      {demoMode ? (
+        <>
+          <p className="settings-toggle-sub">
+            Demo mode is active. This is a temporary blank setup (your licence carries over) — everything created here is deleted when Keyfire closes. Your real profiles, expansions and history are untouched.
+          </p>
+          <button
+            type="button"
+            className="settings-action-btn"
+            onClick={() => window.electronAPI?.relaunchDemoMode(false)}
+            title="Restarts Keyfire back on your real setup"
+          >
+            Exit Demo Mode (restarts Keyfire)
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="settings-toggle-sub">
+            Demo mode restarts Keyfire on a blank temporary setup for recording videos or clean-profile testing. Your licence carries over; your real data is never touched and everything demo is deleted on close.
+          </p>
+          <button
+            type="button"
+            className="settings-action-btn"
+            onClick={() => window.electronAPI?.relaunchDemoMode(true)}
+            title="Closes Keyfire and relaunches it with a blank temporary setup"
+          >
+            Launch Demo Mode (dev)
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 const GLOBAL_INPUT_METHODS = [
   { id: 'direct',       label: 'Type Each Key',     hint: 'Simulates real key presses. Works in CAD, games, and password fields.' },
   { id: 'shift-insert', label: 'Paste All at Once', hint: 'Fastest for long text. Sends everything in a single paste.' },
@@ -765,6 +815,7 @@ export default function SettingsPanel({
               Send Feedback
             </button>
           </div>
+          <DemoModeRow />
           </>)}
         </section>
 

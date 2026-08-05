@@ -468,6 +468,8 @@ window.electronAPI = {
   resetTrial:                ()    => invoke('reset_trial'),
   getGracePeriodState:       ()    => invoke('get_grace_period_state'),
   migrateSharedToLocalNow:   ()    => invoke('migrate_shared_to_local_now'),
+  getDemoMode:               ()    => invoke('get_demo_mode'),
+  relaunchDemoMode:          (enable) => invoke('relaunch_demo_mode', { enable }),
   markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),
 };
 
