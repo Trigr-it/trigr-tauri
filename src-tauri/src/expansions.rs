@@ -788,7 +788,7 @@ fn double_caps_candidate(word: &str) -> bool {
 }
 
 /// True when Caps Lock is physically toggled on.
-fn caps_lock_on() -> bool {
+pub(crate) fn caps_lock_on() -> bool {
     unsafe {
         windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyState(0x14 /* VK_CAPITAL */) & 1 != 0
     }
@@ -978,6 +978,25 @@ fn resolve_autocorrect(s: &ExpansionState, original: &str, sentence_start: bool)
 
     let mut base: Option<AcFix> = resolve_dict_correction(s, original, &lower)
         .map(|(text, source)| AcFix { text, caps_off: false, source });
+
+    // Dict hit typed with Caps Lock accidentally on: screen "aDN" means the
+    // user really typed "Adn", so the correction carries the INVERTED word's
+    // case ("And", not "and") and the fix also switches Caps Lock off — same
+    // treatment as the dedicated Caps Lock arm below. The candidate shape
+    // (lower first + upper tail) guarantees detect_case(original) was Lower,
+    // so the resolved text is the stored correction verbatim; Capitalized
+    // apply_case only touches the first letter, preserving intrinsic case
+    // in corrections like "I'm".
+    if s.caps_lock_fix_enabled
+        && caps_lock_on()
+        && caps_lock_candidate(original)
+        && !s.double_caps_exceptions.contains(&lower)
+    {
+        if let Some(f) = base.as_mut() {
+            f.text = apply_case(&f.text, detect_case(&caps_lock_fix(original)));
+            f.caps_off = true;
+        }
+    }
 
     if base.is_none()
         && s.caps_lock_fix_enabled
@@ -2823,6 +2842,63 @@ fn write_clipboard(text: &str) -> bool {
     write_clipboard_dual(text, None)
 }
 
+/// Convert CSS `rgb(r, g, b)` colour functions to `#RRGGBB` hex. Chromium's
+/// contenteditable serialises EVERY inline colour in rgb() function notation
+/// (foreColor, hiliteColor, all of them) — and Word's legacy HTML paste
+/// reader silently drops rgb() values while parsing hex fine. Modern engines
+/// (Gmail, eM Client, browsers) accept both, so hex is the universal form.
+fn rgb_functions_to_hex(s: &str) -> String {
+    static RE: OnceLock<regex_lite::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex_lite::Regex::new(r"rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)").unwrap()
+    });
+    re.replace_all(s, |caps: &regex_lite::Captures| {
+        let r: u8 = caps[1].parse().unwrap_or(0);
+        let g: u8 = caps[2].parse().unwrap_or(0);
+        let b: u8 = caps[3].parse().unwrap_or(0);
+        format!("#{:02X}{:02X}{:02X}", r, g, b)
+    })
+    .to_string()
+}
+
+/// Map the RTE highlight-palette hexes to Word's fixed 16-colour highlight
+/// names. Word's HTML paste reader IGNORES css backgrounds on inline spans —
+/// its only channel for character highlight is the `mso-highlight` property,
+/// and that only accepts the classic 16 names (maps to RTF \highlightN).
+/// Nearest-distance mapping doesn't work here (every pastel is nearest to
+/// white), so the palette is mapped by hand. MUST stay in sync with
+/// HIGHLIGHT_COLOURS in TextExpansions.jsx — an unmapped hex just means no
+/// Word highlight (modern apps still render the background).
+fn mso_highlight_name(hex: &str) -> Option<&'static str> {
+    match hex.to_ascii_uppercase().as_str() {
+        "FFF59D" | "FFF176" | "FFCC80" => Some("yellow"), // yellow, amber, orange
+        "C8E6C9" => Some("green"),
+        "B3E5FC" | "80CBC4" => Some("cyan"), // blue, teal
+        "F8BBD0" | "E1BEE7" => Some("magenta"), // pink, lavender
+        "EF9A9A" => Some("red"),
+        "B0BEC5" => Some("lightgray"),
+        "F5F5F5" => Some("white"),
+        _ => None,
+    }
+}
+
+/// Append `mso-highlight` to every inline `background:#hex` declaration so
+/// highlights survive the paste into Word. Modern engines ignore the unknown
+/// mso-* property and keep rendering the background hex.
+fn add_mso_highlight(s: &str) -> String {
+    static RE: OnceLock<regex_lite::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex_lite::Regex::new(r"background:\s*#([0-9A-Fa-f]{6})").unwrap()
+    });
+    re.replace_all(s, |caps: &regex_lite::Captures| {
+        match mso_highlight_name(&caps[1]) {
+            Some(name) => format!("background:#{};mso-highlight:{}", &caps[1], name),
+            None => caps[0].to_string(),
+        }
+    })
+    .to_string()
+}
+
 /// Cached CF_HTML clipboard format ID (registered once with the OS).
 /// pub(crate) so the clipboard listener can read HTML captures using the same
 /// format ID this module writes with — otherwise we'd have two separate
@@ -2839,10 +2915,14 @@ pub(crate) fn cf_html_format_id() -> u32 {
 /// Wrap an HTML fragment in the CF_HTML clipboard format with the required
 /// Version / StartHTML / EndHTML / StartFragment / EndFragment byte offsets.
 fn build_cf_html(fragment: &str) -> Vec<u8> {
-    // Placeholder offsets get patched after we know the actual byte positions
+    // Placeholder offsets get patched after we know the actual byte positions.
+    // NO whitespace between the wrapper tags and the fragment: consumers that
+    // parse the whole body instead of honouring the fragment offsets (Gmail's
+    // paste sanitiser) turn each \r\n before the content into a visible
+    // leading space in the compose window.
     let header = "Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
-    let prefix = "<html>\r\n<body>\r\n<!--StartFragment-->";
-    let suffix = "<!--EndFragment-->\r\n</body>\r\n</html>";
+    let prefix = "<html><body><!--StartFragment-->";
+    let suffix = "<!--EndFragment--></body></html>";
 
     let start_html     = header.len();
     let start_fragment = start_html + prefix.len();
@@ -2891,6 +2971,14 @@ pub(crate) fn write_clipboard_dual(text: &str, html: Option<&str>) -> bool {
         if html.is_some() { ", +html" } else { "" },
         log_preview(text)
     );
+    // TEMP debug (strip after table-paste wild-verify): the exact HTML fragment
+    // handed to CF_HTML — table structure issues in target apps diagnose from
+    // this line. log_preview's 40 chars is too short to show table markup, so
+    // truncate at 600 here.
+    if let Some(h) = html {
+        let preview: String = h.chars().take(600).collect();
+        log::info!("[Keyfire] CF_HTML fragment ({} chars): \"{}\"", h.chars().count(), preview);
+    }
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let text_bytes = wide.len() * 2;
     let html_blob = html.map(build_cf_html);
@@ -3358,11 +3446,41 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
     // the rest of the content so the cursor lands inline at the end.
     let payload_text = format!("{} ", text);
     let payload_html: Option<String> = html.map(|h| {
-        let trimmed = h.trim_end();
+        // Highlight/colour normalisation for target-app compatibility, applied
+        // at fire time so already-saved expansions fix themselves without a
+        // config migration:
+        //  1. background-color → background shorthand (Chromium's hiliteColor
+        //     writes the long form; some readers only take the shorthand).
+        //  2. rgb() colour functions → hex (Word's reader drops rgb() values,
+        //     for text colours as well as backgrounds; hex parses everywhere).
+        //  3. background:#hex gains mso-highlight:<name> — Word IGNORES css
+        //     backgrounds on inline spans entirely; mso-highlight is its only
+        //     character-highlight channel (16 fixed colours). Modern engines
+        //     ignore the mso-* property and render the background hex.
+        let normalised = add_mso_highlight(
+            &rgb_functions_to_hex(&h.replace("background-color:", "background:")),
+        );
+        let trimmed = normalised.trim_end();
         if let Some(idx) = trimmed.rfind("</") {
-            let before = &trimmed[..idx];
             let close_tag = &trimmed[idx..];
-            format!("{}&nbsp;{}", before, close_tag)
+            // Table structural closing tags nest — inserting text between
+            // </tbody> and </table> (or between </td> and </tr>) breaks the
+            // table and downstream parsers rebuild it as a single flattened
+            // cell. Append a fresh paragraph AFTER the fragment instead so
+            // the caret still lands below the table without corrupting rows.
+            let is_table_close = close_tag.starts_with("</table")
+                || close_tag.starts_with("</tbody")
+                || close_tag.starts_with("</thead")
+                || close_tag.starts_with("</tfoot")
+                || close_tag.starts_with("</tr")
+                || close_tag.starts_with("</td")
+                || close_tag.starts_with("</th");
+            if is_table_close {
+                format!("{}<p>&nbsp;</p>", trimmed)
+            } else {
+                let before = &trimmed[..idx];
+                format!("{}&nbsp;{}", before, close_tag)
+            }
         } else {
             format!("{}&nbsp;", trimmed)
         }

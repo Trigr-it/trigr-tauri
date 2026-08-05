@@ -1,0 +1,79 @@
+# Synthetic Espanso match file covering the shapes the importer must handle.
+# Modeled on real-world Espanso base.yml files and Hub packages.
+matches:
+  # Simple trigger/replace, double-quoted
+  - trigger: ":btw"
+    replace: "by the way"
+
+  # Unquoted scalar values
+  - trigger: :omw
+    replace: on my way
+
+  # Single-quoted with an escaped apostrophe
+  - trigger: ":dont"
+    replace: 'don''t worry about it'
+
+  # Multiple triggers for one replacement (inline array)
+  - triggers: [":hi", ":hello"]
+    replace: "hello there"
+
+  # Multiple triggers (block list)
+  - triggers:
+      - ":brb"
+      - ":b rb"
+    replace: "be right back"
+
+  # Multi-line block scalar (literal)
+  - trigger: ":sig"
+    label: Email signature
+    replace: |
+      Best regards,
+      Jane Doe
+      Acme Ltd
+
+  # Multi-line block scalar with strip indicator
+  - trigger: ":addr"
+    replace: |-
+      1 Example Street
+      London
+
+  # Word-bounded trigger (fires on separator, maps to space mode)
+  - trigger: "sig"
+    replace: "signature"
+    word: true
+
+  # Uppercase in trigger (must be lowered on import, with a warning)
+  - trigger: ":GH"
+    replace: "https://github.com"
+
+  # Dynamic: date variable (must be skipped with a warning)
+  - trigger: ":date"
+    replace: "{{mydate}}"
+    vars:
+      - name: mydate
+        type: date
+        params:
+          format: "%d/%m/%Y"
+
+  # Dynamic: shell script (must be skipped)
+  - trigger: ":ip"
+    replace: "{{output}}"
+    vars:
+      - name: output
+        type: shell
+        params:
+          cmd: "curl 'https://api.ipify.org'"
+
+  # Dynamic: form (must be skipped)
+  - trigger: ":greet"
+    form: |
+      Hey {{name}},
+      nice to meet you!
+
+  # Image snippet (must be skipped)
+  - trigger: ":logo"
+    image_path: "$CONFIG/images/logo.png"
+
+  # Duplicate of an earlier trigger after lowercasing (must be skipped)
+  - trigger: ":BTW"
+    replace: "by the way (duplicate)"

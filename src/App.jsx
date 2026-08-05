@@ -28,6 +28,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/iconUtils';
 import { friendlyKeyName } from './components/keyboardLayout';
+import { parseEspansoYaml, parseAhkHotstrings, parseTextExpanderCsv, parseTextBlazeJson } from './importAdapters';
 
 // Bump whenever the onboarding tour changes meaningfully. Existing users whose
 // `onboarding_version_seen` is below this value will see the tour again on
@@ -1800,6 +1801,26 @@ function App() {
     showNotification(`Expansion "${trigger}" deleted`, 'info');
   }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
 
+  // Bulk delete from the multi-select selection bar — one state update, one
+  // config save, one toast, however many rows were selected.
+  const handleDeleteExpansionsBulk = useCallback((triggers) => {
+    if (!Array.isArray(triggers) || triggers.length === 0) return;
+    const newAssignments = { ...assignments };
+    let deleted = 0;
+    for (const trigger of triggers) {
+      const key = `GLOBAL::EXPANSION::${trigger}`;
+      if (newAssignments[key]) {
+        delete newAssignments[key];
+        deleted++;
+      }
+    }
+    if (deleted === 0) return;
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    const noun = deleted === 1 ? 'expansion' : 'expansions';
+    showNotification(`${deleted} ${noun} deleted`, 'info');
+  }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
+
   // ── Expansion pack export / import ────────────────────────
   // Text-only export. Image expansions are skipped (their imagePath is local
   // to the exporter's machine). Shape mirrors profile export but with a
@@ -1893,7 +1914,7 @@ function App() {
   // 'overwrite' and controls how triggers that already exist locally are
   // handled. Categories referenced by the pack are added if missing; existing
   // categories keep their current colour.
-  const applyExpansionImport = useCallback((packExpansions, packCategories, choice) => {
+  const applyExpansionImport = useCallback((packExpansions, packCategories, choice, extraNotes) => {
     const newAssignments = { ...assignments };
     let imported = 0;
     let skipped = 0;
@@ -1960,6 +1981,10 @@ function App() {
         msg += `. ${overwritten} existing ${oNoun} overwritten.`;
       }
     }
+    // Lossy-conversion notes from third-party import adapters.
+    if (Array.isArray(extraNotes) && extraNotes.length > 0) {
+      msg += ` ${extraNotes.join(' ')}`;
+    }
     showNotification(msg);
   }, [assignments, expansionCategories, syncEngine, profiles, activeProfile, activeGlobalProfile, profileSettings, theme, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories, showNotification]);
 
@@ -2015,12 +2040,94 @@ function App() {
     }
   }, [assignments, applyExpansionImport, showNotification]);
 
+  // ── Third-party expansion import (Import From ▾) ────────────────────────
+  // One-way migration from other tools. Adapters in importAdapters.js are
+  // pure parsers; this handler owns the file dialog, stamps every entry into
+  // the "Imported" category (created if missing) so users can recategorise
+  // at their own pace, and reuses the native collision flow + sink.
+  const handleImportExpansionsFrom = useCallback(async (format) => {
+    const FORMATS = {
+      espanso: {
+        label: 'Espanso',
+        title: 'Import from Espanso',
+        filterName: 'Espanso match files',
+        extensions: ['yml', 'yaml'],
+        parse: parseEspansoYaml,
+      },
+      ahk: {
+        label: 'AutoHotkey',
+        title: 'Import from AutoHotkey',
+        filterName: 'AutoHotkey scripts',
+        extensions: ['ahk'],
+        parse: parseAhkHotstrings,
+      },
+      textexpander: {
+        label: 'TextExpander',
+        title: 'Import from TextExpander',
+        filterName: 'TextExpander CSV exports',
+        extensions: ['csv'],
+        parse: parseTextExpanderCsv,
+      },
+      textblaze: {
+        label: 'Text Blaze',
+        title: 'Import from Text Blaze',
+        filterName: 'Text Blaze JSON exports',
+        extensions: ['json'],
+        parse: parseTextBlazeJson,
+      },
+    };
+    const meta = FORMATS[format];
+    if (!meta) return;
+    try {
+      const result = await window.electronAPI?.importTextFile(meta.title, meta.filterName, meta.extensions);
+      if (!result?.ok) {
+        if (result?.error) showNotification(result.error, 'info');
+        return;
+      }
+      const { expansions: parsed, warnings } = meta.parse(result.content);
+      if (parsed.length === 0) {
+        const detail = warnings.length > 0 ? ` ${warnings.join(' ')}` : '';
+        showNotification(`No importable snippets found in that ${meta.label} file.${detail}`, 'info');
+        return;
+      }
+      const packExpansions = parsed.map(e => ({
+        trigger: e.trigger,
+        data: { ...e.data, category: 'Imported' },
+      }));
+      const packCategories = [{ name: 'Imported', colour: '#4080E8' }];
+
+      const existingTriggers = new Set(
+        Object.keys(assignments)
+          .filter(k => k.startsWith('GLOBAL::EXPANSION::'))
+          .map(k => k.slice('GLOBAL::EXPANSION::'.length))
+      );
+      const collisions = packExpansions
+        .map(e => e.trigger)
+        .filter(t => existingTriggers.has(t));
+
+      if (collisions.length === 0) {
+        applyExpansionImport(packExpansions, packCategories, 'overwrite', warnings);
+        return;
+      }
+      setExpansionImportPrompt({
+        expansions: packExpansions,
+        categories: packCategories,
+        collisions,
+        totalCount: packExpansions.length,
+        warnings,
+      });
+    } catch (e) {
+      console.error(`[Keyfire] Import from ${meta.label} failed:`, e);
+      showNotification(`${meta.label} import failed`, 'info');
+    }
+  }, [assignments, applyExpansionImport, showNotification]);
+
   const handleExpansionImportResolve = useCallback((choice) => {
     if (!expansionImportPrompt) return;
-    const { expansions: packExpansions, categories: packCategories } = expansionImportPrompt;
+    const { expansions: packExpansions, categories: packCategories, warnings } = expansionImportPrompt;
     setExpansionImportPrompt(null);
     if (choice === 'cancel') return;
-    applyExpansionImport(packExpansions, packCategories, choice);
+    applyExpansionImport(packExpansions, packCategories, choice, warnings);
   }, [expansionImportPrompt, applyExpansionImport]);
 
   // ── Quick Action pack export/import (mirrors expansion pack flow) ──────
@@ -4644,6 +4751,7 @@ function App() {
               expansions={expansions}
               onAdd={handleAddExpansion}
               onDelete={handleDeleteExpansion}
+              onDeleteMany={handleDeleteExpansionsBulk}
               categories={expansionCategories}
               onAddCategory={handleAddCategory}
               onDeleteCategory={handleDeleteCategory}
@@ -4680,6 +4788,7 @@ function App() {
               onPrefillConsumed={() => setPendingExpansionPrefill(null)}
               onExportExpansions={handleExportExpansions}
               onImportExpansions={handleImportExpansions}
+              onImportExpansionsFrom={handleImportExpansionsFrom}
               expansionImportPrompt={expansionImportPrompt}
               onExpansionImportResolve={handleExpansionImportResolve}
               onEditingChange={setExpansionEditing}

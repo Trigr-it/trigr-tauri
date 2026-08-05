@@ -1,0 +1,13 @@
+"btw","by the way","Shortcuts"
+".sig","Best regards,
+Jane Doe
+Acme Ltd","Email"
+"qq","She said ""hello"", then left","Quotes"
+".addr","1 Example Street, London","Email"
+"disc","Save 50% off today","Sales"
+".date","Today is %Y-%m-%d","Dynamic"
+".fill","Dear %filltext:name=recipient%","Dynamic"
+"CLIP","%clipboard%","Dynamic"
+"UP","uppercase trigger","Shortcuts"
+"","missing abbreviation",""
+"noContent","",""

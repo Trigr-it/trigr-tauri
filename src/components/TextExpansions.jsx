@@ -7,6 +7,12 @@ import {
   Bold as BoldIcon, Italic as ItalicIcon, Underline as UnderlineIcon,
   List as ListIcon,
   Palette as PaletteIcon, Heading as HeadingIcon,
+  Highlighter as HighlighterIcon, Table as TableIcon,
+  ArrowUpFromLine as InsertRowAboveIcon,
+  ArrowDownFromLine as InsertRowBelowIcon,
+  ArrowLeftFromLine as InsertColLeftIcon,
+  ArrowRightFromLine as InsertColRightIcon,
+  Trash2 as TrashIcon,
   CalendarClock as CalendarClockIcon,
   Clipboard as ClipboardIcon, TextCursor as TextCursorIcon,
   Variable as VariableIcon, Keyboard as KeyboardIcon,
@@ -37,6 +43,16 @@ function htmlToPlainText(html) {
     .replace(/<\/p>/gi, '\n')                 // 2. closing </p> → newline
     .replace(/<\/div>/gi, '\n')               //    closing </div> → newline
     .replace(/<\/li>/gi, '\n')                //    closing </li> → newline
+    // Table structure → tab-separated cells, newline-terminated rows so a
+    // plain-text paste round-trips as a Word/Excel-compatible table. The
+    // caret-sentinel <br> inside empty cells must go FIRST or it becomes a
+    // stray newline that splits every row apart in the plain-text output.
+    .replace(/<br\s*\/?>(?=<\/t[dh]>)/gi, '')
+    .replace(/<\/th>/gi, '\t')
+    .replace(/<\/td>/gi, '\t')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/table>/gi, '\n')
+    .replace(/<t(?:able|body|head|foot|r|d|h)[^>]*>/gi, '')
     .replace(/<div[^>]*>/gi, '')              // 3. opening <div> → nothing
     .replace(/<p[^>]*>/gi, '');               //    opening <p> → nothing
   // Replace token chips with their raw token strings before stripping markup
@@ -207,6 +223,41 @@ const TEXT_COLOURS = [
   { hex: '#E840A0', label: 'Pink'    },
 ];
 
+// ── Highlight swatches (for hiliteColor / backColor) ───────────────────────
+// Content colours, deliberately not themed — they render the same on any
+// paste target. First swatch (null) removes any existing highlight.
+const HIGHLIGHT_COLOURS = [
+  { hex: null,      label: 'None'    },
+  { hex: '#FFF59D', label: 'Yellow'  },
+  { hex: '#C8E6C9', label: 'Green'   },
+  { hex: '#B3E5FC', label: 'Blue'    },
+  { hex: '#F8BBD0', label: 'Pink'    },
+  { hex: '#FFCC80', label: 'Orange'  },
+  { hex: '#E1BEE7', label: 'Lavender' },
+  { hex: '#EF9A9A', label: 'Red'     },
+  { hex: '#B0BEC5', label: 'Grey'    },
+  { hex: '#FFF176', label: 'Amber'   },
+  { hex: '#80CBC4', label: 'Teal'    },
+  { hex: '#F5F5F5', label: 'Paper'   },
+];
+
+// ── Table inline styles ─────────────────────────────────────────────────────
+// Tables must carry their styling as inline style="" attributes, NOT CSS
+// classes: the expansion fires by pasting CF_HTML into arbitrary target apps
+// (Word, Gmail, eM Client...) and app-stylesheet classes never travel with
+// the clipboard. Without inline borders the target renders an invisible,
+// collapsed table — which reads as "all my text in one cell". Same rule as
+// HTML email. Hardcoded hexes are fine here: this is document content, not
+// app theme (same exemption as TEXT_COLOURS).
+const TABLE_INLINE_STYLE = 'border-collapse:collapse;table-layout:fixed;';
+// 1pt solid black mirrors what Word itself emits when copying a native table
+// (`border:solid windowtext 1.0pt`) — the most reliably-parsed border form
+// across Word / Outlook / Gmail / eM Client, and it reads as a native table
+// in the target. The editor stylesheet overrides the COLOUR in-app (black is
+// invisible on the dark theme) — see .rte-editor table td in the CSS.
+const CELL_INLINE_STYLE = 'border:1pt solid #000000;padding:4px 8px;vertical-align:top;';
+const CELL_DEFAULT_WIDTH = 96; // px — resizable by dragging the cell's right edge
+
 // ── Heading levels ─────────────────────────────────────────────────────────
 const HEADING_OPTIONS = [
   { block: 'h1', label: 'Heading 1', display: 'H1' },
@@ -303,8 +354,14 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   const savedRangeRef  = useRef(null);
 
   const [showInsert, setShowInsert] = useState(false);
-  const [insertCategory, setInsertCategory] = useState(null); // 'clipboard'|'date'|'time'|'datemath'|'cursor'|'variables'
+  const [insertCategory, setInsertCategory] = useState(null); // 'clipboard'|'date'|'time'|'datemath'|'cursor'|'variables'|'color'|'highlight'|'table'|'headings'|'lists'|'formula'|'fillin'
   const [menuPos, setMenuPos] = useState(null);
+  // Table-size picker hover state — {rows, cols} of the highlighted top-left
+  // rectangle inside the 6×6 grid. null = nothing hovered yet.
+  const [tablePickerHover, setTablePickerHover] = useState(null);
+  // Whether the caret currently sits inside a <td> / <th> of a table living
+  // in this editor. Drives the contextual table-editing toolbar row.
+  const [caretInTable, setCaretInTable] = useState(false);
   const [fillInEntry, setFillInEntry] = useState(false);
   const [fillInLabel, setFillInLabel] = useState('');
   // Kind drives the token suffix at insert time. 'text' = legacy `{fillIn:Label}`.
@@ -539,6 +596,316 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
     format('formatBlock', blockTag.toUpperCase());
     setShowInsert(false);
     setInsertCategory(null);
+  }
+
+  function applyHighlight(hex) {
+    editorRef.current?.focus();
+    restoreSelection();
+    // A null hex clears the highlight — hiliteColor 'transparent' works in
+    // Chromium and produces `<span style="background-color: transparent">`
+    // which the browser collapses when re-parsed.
+    const value = hex || 'transparent';
+    try { document.execCommand('hiliteColor', false, value); } catch {
+      try { document.execCommand('backColor', false, value); } catch {}
+    }
+    notify();
+    setShowInsert(false);
+    setInsertCategory(null);
+  }
+
+  // Insert a fresh <table rows × cols> at the caret. Cells contain a <br> so
+  // the browser gives each one a caret target (empty <td> is uneditable).
+  // All styling is INLINE (see TABLE_INLINE_STYLE) so it survives the CF_HTML
+  // paste into Word / Gmail / eM Client — classes don't travel with the
+  // clipboard.
+  function insertTable(rows, cols) {
+    if (!rows || !cols || rows < 1 || cols < 1) return;
+    editorRef.current?.focus();
+    restoreSelection();
+
+    const table = document.createElement('table');
+    table.className = 'rte-inserted-table';
+    table.setAttribute('style', TABLE_INLINE_STYLE);
+    const tbody = document.createElement('tbody');
+    for (let r = 0; r < rows; r++) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < cols; c++) tr.appendChild(buildEmptyCell());
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(table);
+      // Place the caret in the first cell so the user can start typing.
+      const firstCell = table.querySelector('td');
+      if (firstCell) {
+        const newRange = document.createRange();
+        newRange.selectNodeContents(firstCell);
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+      // Give the table a trailing paragraph so the caret can escape below it.
+      if (!table.nextSibling) {
+        const trail = document.createElement('p');
+        trail.appendChild(document.createElement('br'));
+        table.parentNode.insertBefore(trail, table.nextSibling);
+      }
+    } else {
+      editorRef.current.appendChild(table);
+    }
+
+    notify();
+    setShowInsert(false);
+    setInsertCategory(null);
+    setTablePickerHover(null);
+    savedRangeRef.current = null;
+    // Land the caret inside the freshly-inserted table so the contextual
+    // toolbar appears immediately without an extra click.
+    setCaretInTable(true);
+  }
+
+  // Return the <td>/<th> the caret currently sits inside (or null). Shared
+  // by the Tab-navigation, contextual-toolbar detection, and every table
+  // edit operation below.
+  function getCurrentTableCell() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const node = sel.anchorNode;
+    if (!node) return null;
+    const cell = (node.nodeType === 1 ? node : node.parentElement)?.closest?.('td, th');
+    if (!cell || !editorRef.current?.contains(cell)) return null;
+    return cell;
+  }
+
+  // Refresh the caret-in-table state. Called from every editor event that
+  // could move the caret (keyup / click / focus) so the contextual toolbar
+  // reliably tracks the caret across mouse, keyboard, and post-op landings.
+  function refreshTableContext() {
+    setCaretInTable(!!getCurrentTableCell());
+  }
+
+  // Place the caret at the start of a cell after a structural edit. Keeps
+  // the editing flow moving without the user having to re-click.
+  function focusCell(cell) {
+    if (!cell) return;
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    editorRef.current?.focus();
+  }
+
+  function buildEmptyCell(widthPx) {
+    const td = document.createElement('td');
+    td.setAttribute('style', `${CELL_INLINE_STYLE}width:${widthPx || CELL_DEFAULT_WIDTH}px;`);
+    td.appendChild(document.createElement('br'));
+    return td;
+  }
+
+  // Build a fresh empty row matching an existing row's column count AND
+  // per-column widths, so inserted rows line up with resized columns.
+  function buildRowLike(refRow) {
+    const tr = document.createElement('tr');
+    Array.from(refRow.children).forEach(refCell => {
+      const w = parseInt(refCell.style?.width, 10);
+      tr.appendChild(buildEmptyCell(Number.isFinite(w) && w > 0 ? w : undefined));
+    });
+    return tr;
+  }
+
+  // Move the caret to the neighbouring cell in the current <table>. Called
+  // from the editor's onKeyDown when Tab is pressed inside a cell.
+  // direction: +1 = next cell, -1 = previous cell. Tab from the final cell
+  // appends a new row and lands the caret in its first cell.
+  function moveToAdjacentCell(direction) {
+    const cell = getCurrentTableCell();
+    if (!cell) return false;
+
+    const table = cell.closest('table');
+    if (!table) return false;
+    const cells = Array.from(table.querySelectorAll('td, th'));
+    const idx = cells.indexOf(cell);
+    if (idx === -1) return false;
+
+    let target;
+    if (direction > 0) {
+      if (idx === cells.length - 1) {
+        // Last cell — append a new row and land in its first cell.
+        const tr = buildRowLike(cell.parentElement);
+        (table.querySelector('tbody') || table).appendChild(tr);
+        target = tr.querySelector('td');
+      } else {
+        target = cells[idx + 1];
+      }
+    } else {
+      if (idx === 0) return true; // Shift+Tab in first cell — swallow, no-op.
+      target = cells[idx - 1];
+    }
+
+    if (target) {
+      focusCell(target);
+      notify();
+      refreshTableContext();
+    }
+    return true;
+  }
+
+  // ── Table structure edits — all guarded by "caret is in a cell of a
+  //    table inside this editor". Any op that would leave the table with
+  //    zero rows or zero columns removes the whole table instead.
+
+  function tableInsertRow(direction) {
+    const cell = getCurrentTableCell();
+    if (!cell) return;
+    const row = cell.parentElement;
+    if (!row) return;
+    const tr = buildRowLike(row);
+    row.parentElement.insertBefore(tr, direction === 'above' ? row : row.nextSibling);
+    focusCell(tr.children[0]);
+    notify();
+    refreshTableContext();
+  }
+
+  function tableInsertColumn(direction) {
+    const cell = getCurrentTableCell();
+    if (!cell) return;
+    const row = cell.parentElement;
+    if (!row) return;
+    const colIdx = Array.from(row.children).indexOf(cell);
+    if (colIdx === -1) return;
+    const table = cell.closest('table');
+    if (!table) return;
+    let landingCell = null;
+    table.querySelectorAll('tr').forEach(tr => {
+      const target = tr.children[colIdx];
+      const fresh = buildEmptyCell();
+      if (direction === 'left') {
+        tr.insertBefore(fresh, target || null);
+      } else {
+        tr.insertBefore(fresh, target ? target.nextSibling : null);
+      }
+      if (tr === row) landingCell = fresh;
+    });
+    focusCell(landingCell);
+    notify();
+    refreshTableContext();
+  }
+
+  function tableDeleteRow() {
+    const cell = getCurrentTableCell();
+    if (!cell) return;
+    const row = cell.parentElement;
+    const table = cell.closest('table');
+    if (!row || !table) return;
+    const totalRows = table.querySelectorAll('tr').length;
+    if (totalRows <= 1) { tableDeleteEntire(); return; }
+    // Land the caret in the neighbouring row so editing continues smoothly.
+    const nextRow = row.nextElementSibling || row.previousElementSibling;
+    row.remove();
+    if (nextRow?.children?.[0]) focusCell(nextRow.children[0]);
+    notify();
+    refreshTableContext();
+  }
+
+  function tableDeleteColumn() {
+    const cell = getCurrentTableCell();
+    if (!cell) return;
+    const row = cell.parentElement;
+    const table = cell.closest('table');
+    if (!row || !table) return;
+    const colIdx = Array.from(row.children).indexOf(cell);
+    if (colIdx === -1) return;
+    const colCount = row.children.length;
+    if (colCount <= 1) { tableDeleteEntire(); return; }
+    let landingCell = null;
+    table.querySelectorAll('tr').forEach(tr => {
+      const victim = tr.children[colIdx];
+      if (!victim) return;
+      const neighbour = victim.nextElementSibling || victim.previousElementSibling;
+      victim.remove();
+      if (tr === row) landingCell = neighbour;
+    });
+    focusCell(landingCell);
+    notify();
+    refreshTableContext();
+  }
+
+  function tableDeleteEntire() {
+    const cell = getCurrentTableCell();
+    if (!cell) return;
+    const table = cell.closest('table');
+    if (!table) return;
+    // Leave the caret where the table used to be — insert an empty paragraph
+    // if the table was the only child so contenteditable still has something
+    // to hold the caret.
+    const parent = table.parentElement;
+    const anchor = document.createElement('p');
+    anchor.appendChild(document.createElement('br'));
+    parent.insertBefore(anchor, table);
+    table.remove();
+    focusCell(anchor);
+    notify();
+    refreshTableContext();
+  }
+
+  // ── Column resize — drag a cell's right edge. Widths are written as inline
+  //    styles on EVERY cell in the column so they (a) survive save/reload and
+  //    (b) travel with the CF_HTML paste into the target app.
+
+  const RESIZE_ZONE_PX = 6;
+  const tableResizeRef = useRef(null); // { colCells, startX, startWidth } while dragging
+
+  // Return the cell whose right edge the pointer is within RESIZE_ZONE_PX of.
+  function cellResizeEdgeHit(e) {
+    const cell = e.target.closest?.('td, th');
+    if (!cell || !editorRef.current?.contains(cell)) return null;
+    const rect = cell.getBoundingClientRect();
+    return rect.right - e.clientX <= RESIZE_ZONE_PX ? cell : null;
+  }
+
+  function handleEditorMouseMove(e) {
+    if (tableResizeRef.current) return; // mid-drag — document listeners own the pointer
+    if (!editorRef.current) return;
+    editorRef.current.style.cursor = cellResizeEdgeHit(e) ? 'col-resize' : '';
+  }
+
+  function handleEditorMouseDown(e) {
+    const cell = cellResizeEdgeHit(e);
+    if (!cell) return;
+    e.preventDefault(); // keep the caret where it is — this press is a resize, not a click
+    const row = cell.parentElement;
+    const table = cell.closest('table');
+    if (!row || !table) return;
+    const colIdx = Array.from(row.children).indexOf(cell);
+    const colCells = Array.from(table.querySelectorAll('tr'))
+      .map(tr => tr.children[colIdx])
+      .filter(Boolean);
+    tableResizeRef.current = {
+      colCells,
+      startX: e.clientX,
+      startWidth: cell.getBoundingClientRect().width,
+    };
+    const onMove = ev => {
+      const st = tableResizeRef.current;
+      if (!st) return;
+      const w = Math.max(24, Math.round(st.startWidth + (ev.clientX - st.startX)));
+      st.colCells.forEach(c => { c.style.width = `${w}px`; });
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      tableResizeRef.current = null;
+      if (editorRef.current) editorRef.current.style.cursor = '';
+      notify(); // persist the new widths into the saved HTML
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   function isActive(cmd) {
@@ -1217,6 +1584,12 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
           onMouseDown={e => openCategoryMenu(e, 'color')}
           title="Text colour"
         ><PaletteIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'highlight' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => openCategoryMenu(e, 'highlight')}
+          title="Highlight colour"
+        ><HighlighterIcon size={14} strokeWidth={2} /></button>
         <div className="rte-sep" />
         <button
           type="button"
@@ -1230,6 +1603,15 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
           onMouseDown={e => openCategoryMenu(e, 'lists')}
           title="Bullet or numbered list"
         ><ListIcon size={14} strokeWidth={2} /></button>
+        <button
+          type="button"
+          className={`rte-btn${showInsert && insertCategory === 'table' ? ' rte-btn-on' : ''}`}
+          onMouseDown={e => {
+            setTablePickerHover(null);
+            openCategoryMenu(e, 'table');
+          }}
+          title="Insert table"
+        ><TableIcon size={14} strokeWidth={2} /></button>
 
         <div className="rte-sep" />
 
@@ -1308,12 +1690,80 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         ><KeyboardIcon size={14} strokeWidth={2} /></button>
       </div>
 
+      {/* Contextual table-edit toolbar. Only visible when the caret sits in a
+          <td>/<th> inside this editor. Buttons use onMouseDown w/ preventDefault
+          so the caret stays in the target cell (avoids the click stealing focus
+          and dropping the selection before the handler runs). */}
+      {caretInTable && (
+        <div className="rte-toolbar rte-table-toolbar">
+          <button
+            type="button"
+            className="rte-btn"
+            onMouseDown={e => { e.preventDefault(); tableInsertRow('above'); }}
+            title="Insert row above"
+          ><InsertRowAboveIcon size={14} strokeWidth={2} /></button>
+          <button
+            type="button"
+            className="rte-btn"
+            onMouseDown={e => { e.preventDefault(); tableInsertRow('below'); }}
+            title="Insert row below"
+          ><InsertRowBelowIcon size={14} strokeWidth={2} /></button>
+          <button
+            type="button"
+            className="rte-btn"
+            onMouseDown={e => { e.preventDefault(); tableInsertColumn('left'); }}
+            title="Insert column left"
+          ><InsertColLeftIcon size={14} strokeWidth={2} /></button>
+          <button
+            type="button"
+            className="rte-btn"
+            onMouseDown={e => { e.preventDefault(); tableInsertColumn('right'); }}
+            title="Insert column right"
+          ><InsertColRightIcon size={14} strokeWidth={2} /></button>
+          <div className="rte-sep" />
+          <button
+            type="button"
+            className="rte-btn rte-btn-danger"
+            onMouseDown={e => { e.preventDefault(); tableDeleteRow(); }}
+            title="Delete current row"
+          >− Row</button>
+          <button
+            type="button"
+            className="rte-btn rte-btn-danger"
+            onMouseDown={e => { e.preventDefault(); tableDeleteColumn(); }}
+            title="Delete current column"
+          >− Col</button>
+          <div className="rte-sep" />
+          <button
+            type="button"
+            className="rte-btn rte-btn-danger"
+            onMouseDown={e => { e.preventDefault(); tableDeleteEntire(); }}
+            title="Delete entire table"
+          ><TrashIcon size={14} strokeWidth={2} /></button>
+        </div>
+      )}
+
       <div
         ref={editorRef}
         contentEditable
         className="rte-editor"
-        onInput={notify}
+        onInput={() => { notify(); refreshTableContext(); }}
         onBlur={saveSelection}
+        onFocus={refreshTableContext}
+        onKeyUp={refreshTableContext}
+        onMouseMove={handleEditorMouseMove}
+        onMouseDown={handleEditorMouseDown}
+        onKeyDown={e => {
+          // Tab-in-cell — override contenteditable's default (which either
+          // does nothing or focuses the next form element).
+          if (e.key === 'Tab') {
+            const inCell = getCurrentTableCell();
+            if (inCell) {
+              e.preventDefault();
+              moveToAdjacentCell(e.shiftKey ? -1 : 1);
+            }
+          }
+        }}
         suppressContentEditableWarning
         spellCheck={false}
         data-placeholder="Type replacement text…"
@@ -1923,6 +2373,53 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                   ))}
                 </div>
               </>
+            ) : insertCategory === 'highlight' ? (
+              <>
+                <div className="rte-menu-section-label">Highlight Colour</div>
+                <div className="rte-colour-grid">
+                  {HIGHLIGHT_COLOURS.map(c => (
+                    <button
+                      key={c.label}
+                      type="button"
+                      className={`rte-colour-swatch${c.hex === null ? ' rte-swatch-none' : ''}`}
+                      style={c.hex ? { background: c.hex } : undefined}
+                      title={c.label}
+                      onMouseDown={e => { e.preventDefault(); applyHighlight(c.hex); }}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : insertCategory === 'table' ? (
+              <>
+                <div className="rte-menu-section-label">Insert Table</div>
+                <div
+                  className="rte-table-grid"
+                  onMouseLeave={() => setTablePickerHover(null)}
+                >
+                  {Array.from({ length: 6 }, (_, r) =>
+                    Array.from({ length: 6 }, (_, c) => {
+                      const rr = r + 1, cc = c + 1;
+                      const active = tablePickerHover
+                        && rr <= tablePickerHover.rows
+                        && cc <= tablePickerHover.cols;
+                      return (
+                        <button
+                          key={`${r}-${c}`}
+                          type="button"
+                          className={`rte-table-cell${active ? ' rte-table-cell-active' : ''}`}
+                          onMouseEnter={() => setTablePickerHover({ rows: rr, cols: cc })}
+                          onMouseDown={e => { e.preventDefault(); insertTable(rr, cc); }}
+                        />
+                      );
+                    })
+                  )}
+                </div>
+                <div className="rte-table-readout">
+                  {tablePickerHover
+                    ? `${tablePickerHover.rows} × ${tablePickerHover.cols} table`
+                    : 'Hover to size, click to insert'}
+                </div>
+              </>
             ) : insertCategory === 'headings' ? (
               <>
                 <div className="rte-menu-section-label">Heading Style</div>
@@ -2162,6 +2659,7 @@ export default function TextExpansions({
   expansions,
   onAdd,
   onDelete,
+  onDeleteMany,
   hiddenTips = [],
   onHideTip,
   categories = [],
@@ -2211,6 +2709,7 @@ export default function TextExpansions({
   // Expansion pack export/import
   onExportExpansions,
   onImportExpansions,
+  onImportExpansionsFrom,
   expansionImportPrompt,
   onExpansionImportResolve,
   // Suppress foreground auto-switch while the user is mid-edit
@@ -2292,6 +2791,8 @@ export default function TextExpansions({
   // ── Category colour picker popover ──
   const [catColourPopover, setCatColourPopover] = useState(null); // { forCat, x, y }
   const catColourPopoverRef = useRef(null);
+  const [importFromOpen, setImportFromOpen] = useState(false); // Import From ▾ menu
+  const importFromRef = useRef(null);
   // ── Category context menu ──
   const [catContextMenu, setCatContextMenu] = useState(null); // { catName, x, y }
   const [ctxDeleteConfirm, setCtxDeleteConfirm] = useState(false);
@@ -2311,6 +2812,12 @@ export default function TextExpansions({
   const renameInputRef                  = useRef(null);
   const renameCommitting                = useRef(false);
   const [deleteConfirm, setDeleteConfirm]       = useState(null); // trigger string awaiting confirmation
+  // Multi-select for bulk delete (Ctrl+click toggles, Shift+click ranges).
+  // Set of trigger strings. Anchor = last Ctrl+clicked row, Windows-style:
+  // Shift+click selects from the anchor to the clicked row in visible order.
+  const [selectedTriggers, setSelectedTriggers] = useState(() => new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const selectionAnchor = useRef(null);
 
   // ── Category dnd-kit reorder ──
   const catDndSensors = useSensors(useSensor(LeftClickSensor, { activationConstraint: { distance: 8 } }));
@@ -2381,6 +2888,34 @@ export default function TextExpansions({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [catColourPopover]);
+
+  // Close the Import From menu on outside click
+  useEffect(() => {
+    if (!importFromOpen) return;
+    function onDown(e) {
+      if (!importFromRef.current?.contains(e.target)) setImportFromOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [importFromOpen]);
+
+  // Prune the multi-select when expansions are removed elsewhere (delete,
+  // overwrite import) so the selection never references ghosts.
+  useEffect(() => {
+    setSelectedTriggers(prev => {
+      if (prev.size === 0) return prev;
+      const live = new Set(expansions.map(e => e.trigger));
+      const next = new Set([...prev].filter(t => live.has(t)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [expansions]);
+
+  // A selection spanning a filter change could delete rows the user can no
+  // longer see — clear it whenever the visible pool changes shape.
+  useEffect(() => {
+    selectionAnchor.current = null;
+    setSelectedTriggers(prev => (prev.size === 0 ? prev : new Set()));
+  }, [activeCategory, typeFilter, searchQuery, panelMode]);
 
   // Close category context menu on outside click or Escape
   useEffect(() => {
@@ -3249,6 +3784,44 @@ export default function TextExpansions({
               >
                 ↑ Export All
               </button>
+              <div className="te-import-from-wrap" ref={importFromRef}>
+                <button
+                  className="te-cat-new-btn te-cat-pack-btn"
+                  onClick={() => setImportFromOpen(o => !o)}
+                  title="Migrate snippets from another tool"
+                  type="button"
+                >
+                  ⇄ Import From…
+                </button>
+                {importFromOpen && (
+                  <div className="te-import-from-menu">
+                    <button
+                      type="button"
+                      onClick={() => { setImportFromOpen(false); onImportExpansionsFrom?.('espanso'); }}
+                    >
+                      Espanso <span className="te-import-from-ext">.yml</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setImportFromOpen(false); onImportExpansionsFrom?.('ahk'); }}
+                    >
+                      AutoHotkey <span className="te-import-from-ext">.ahk</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setImportFromOpen(false); onImportExpansionsFrom?.('textexpander'); }}
+                    >
+                      TextExpander <span className="te-import-from-ext">.csv</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setImportFromOpen(false); onImportExpansionsFrom?.('textblaze'); }}
+                    >
+                      Text Blaze <span className="te-import-from-ext">.json</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -3287,8 +3860,48 @@ export default function TextExpansions({
           {/* ── Body: list + edit panel side-by-side ── */}
           <div className="te-body" ref={teBodyRef}>
 
+            {/* Floating selection toast — overlays the list bottom so the
+                rows never shift while the user is mid-selection. */}
+            {selectedTriggers.size > 0 && (
+              <div className="te-selection-toast">
+                <span className="te-selection-count">
+                  {selectedTriggers.size} selected
+                </span>
+                <button
+                  className="te-selbar-btn"
+                  type="button"
+                  onClick={() => {
+                    const visible = filteredListItems
+                      .filter(it => it.type === 'item')
+                      .map(it => it.exp.trigger);
+                    setSelectedTriggers(new Set(visible));
+                  }}
+                  title="Select every expansion currently shown in the list"
+                >
+                  Select all in view ({itemCount})
+                </button>
+                <button
+                  className="te-selbar-btn te-selbar-btn--danger"
+                  type="button"
+                  onClick={() => setBulkDeleteConfirm(true)}
+                >
+                  Delete selected
+                </button>
+                <button
+                  className="te-selbar-btn"
+                  type="button"
+                  onClick={() => {
+                    selectionAnchor.current = null;
+                    setSelectedTriggers(new Set());
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
             {/* Scrollable list */}
-            <div className="te-list">
+            <div className={`te-list${selectedTriggers.size > 0 ? ' te-list--selecting' : ''}`}>
 
               {/* ── Column headers (sticky, clickable sort) ── */}
               <div className="te-col-headers">
@@ -3349,15 +3962,91 @@ export default function TextExpansions({
                   const catObj = exp.category ? normCategories.find(c => c.name === exp.category) : null;
                   const color  = catObj?.colour || null;
                   const isEditingThis = editing && !editing.isNew && editing.originalTrigger === exp.trigger;
+                  const isSelected = selectedTriggers.has(exp.trigger);
                   return (
                     <div
                       key={exp.trigger}
-                      className={`te-item${isEditingThis ? ' te-item-editing' : ''}`}
-                      onClick={() => openEdit(exp)}
+                      className={`te-item${isEditingThis ? ' te-item-editing' : ''}${isSelected ? ' te-item-selected' : ''}`}
+                      onMouseDown={(e) => {
+                        // Stop the browser's text-selection flash on modifier clicks.
+                        if (e.ctrlKey || e.metaKey || e.shiftKey) e.preventDefault();
+                      }}
+                      onClick={(e) => {
+                        // Shift+click selects the range from the anchor to this
+                        // row (Windows semantics: replaces the selection; with
+                        // Ctrl held it adds the range instead).
+                        if (e.shiftKey && (selectionAnchor.current || selectedTriggers.size > 0)) {
+                          e.preventDefault();
+                          const visible = filteredListItems
+                            .filter(it => it.type === 'item')
+                            .map(it => it.exp.trigger);
+                          const anchor = (selectionAnchor.current && visible.includes(selectionAnchor.current))
+                            ? selectionAnchor.current
+                            : visible.find(t => selectedTriggers.has(t));
+                          if (anchor) {
+                            const ai = visible.indexOf(anchor);
+                            const ci = visible.indexOf(exp.trigger);
+                            const [lo, hi] = ai <= ci ? [ai, ci] : [ci, ai];
+                            const range = visible.slice(lo, hi + 1);
+                            setSelectedTriggers(prev => {
+                              const base = (e.ctrlKey || e.metaKey) ? new Set(prev) : new Set();
+                              range.forEach(t => base.add(t));
+                              return base;
+                            });
+                            return;
+                          }
+                        }
+                        // Ctrl/Cmd+click (or a bare Shift+click with nothing
+                        // selected yet) toggles this row and sets the anchor.
+                        // Starting a selection while another row is open in
+                        // the editor pulls that row in too — clicking an item
+                        // first reads as "selecting it" (Windows semantics),
+                        // and its editing highlight looks selected anyway.
+                        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                          e.preventDefault();
+                          selectionAnchor.current = exp.trigger;
+                          setSelectedTriggers(prev => {
+                            const next = new Set(prev);
+                            if (prev.size === 0 && editing && !editing.isNew
+                                && editing.originalTrigger && editing.originalTrigger !== exp.trigger) {
+                              next.add(editing.originalTrigger);
+                            }
+                            if (next.has(exp.trigger)) next.delete(exp.trigger);
+                            else next.add(exp.trigger);
+                            return next;
+                          });
+                          return;
+                        }
+                        if (selectedTriggers.size > 0) {
+                          selectionAnchor.current = null;
+                          setSelectedTriggers(new Set());
+                        }
+                        openEdit(exp);
+                      }}
                       onContextMenu={e => handleItemContextMenu(e, exp.trigger)}
                     >
                       {/* Col 1 — Trigger */}
                       <div className="te-col-trigger">
+                        <button
+                          type="button"
+                          className={`te-item-check${isSelected ? ' checked' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectionAnchor.current = exp.trigger;
+                            setSelectedTriggers(prev => {
+                              const next = new Set(prev);
+                              if (prev.size === 0 && editing && !editing.isNew
+                                  && editing.originalTrigger && editing.originalTrigger !== exp.trigger) {
+                                next.add(editing.originalTrigger);
+                              }
+                              if (next.has(exp.trigger)) next.delete(exp.trigger);
+                              else next.add(exp.trigger);
+                              return next;
+                            });
+                          }}
+                          title={isSelected ? 'Remove from selection' : 'Select for bulk actions'}
+                          aria-pressed={isSelected}
+                        >{isSelected ? '✓' : ''}</button>
                         <kbd className="te-trigger-badge">{exp.trigger}</kbd>
                         {exp.triggerMode === 'immediate' && (
                           <span className="te-immediate-badge" title="Fires instantly (no Space needed)">⚡</span>
@@ -4622,6 +5311,39 @@ export default function TextExpansions({
                 title="Replace your existing corrections with the ones in this file"
               >
                 Overwrite All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation dialog (multi-select) */}
+      {bulkDeleteConfirm && (
+        <div className="te-delete-overlay">
+          <div className="te-delete-dialog">
+            <div className="te-delete-title">Delete {selectedTriggers.size} Expansion{selectedTriggers.size !== 1 ? 's' : ''}</div>
+            <p className="te-delete-body">
+              Delete the {selectedTriggers.size} selected expansion{selectedTriggers.size !== 1 ? 's' : ''}? This cannot be undone.
+            </p>
+            <div className="te-delete-actions">
+              <button className="te-cancel-btn" onClick={() => setBulkDeleteConfirm(false)} type="button">
+                Cancel
+              </button>
+              <button
+                className="te-delete-confirm-btn"
+                onClick={() => {
+                  const triggers = Array.from(selectedTriggers);
+                  onDeleteMany?.(triggers);
+                  if (editing && !editing.isNew && selectedTriggers.has(editing.originalTrigger)) {
+                    setEditing(null);
+                  }
+                  selectionAnchor.current = null;
+                  setSelectedTriggers(new Set());
+                  setBulkDeleteConfirm(false);
+                }}
+                type="button"
+              >
+                Delete
               </button>
             </div>
           </div>

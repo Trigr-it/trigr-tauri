@@ -293,7 +293,7 @@
   border: none;
   border-left: 2px solid transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   font-family: var(--font-display);
   letter-spacing: 0.04em;
@@ -345,7 +345,7 @@
 .te-cat-count {
   background: var(--bg-active);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 8px;
@@ -435,6 +435,188 @@
   border-color: #c8860a;
 }
 
+/* ── Import From ▾ menu (third-party migration) ─────────────────────────── */
+
+/* The wrap takes over the button's rail geometry (width + side margins) so
+   the button inside can be 100% of it — identical footprint to its siblings. */
+.te-import-from-wrap {
+  position: relative;
+  width: calc(100% - 20px);
+  margin: 6px 10px 0;
+}
+
+.te-import-from-wrap .te-cat-pack-btn {
+  width: 100%;
+  margin: 0;
+}
+
+.te-import-from-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-modal);
+  padding: 4px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.te-import-from-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.te-import-from-menu button:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.te-import-from-ext {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.te-import-from-menu button:hover .te-import-from-ext {
+  color: var(--accent);
+}
+
+/* ── Multi-select (Ctrl+click) + selection bar ──────────────────────────── */
+
+.te-item-selected,
+.te-item-selected:hover {
+  background: var(--accent-glow);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.55);
+}
+
+/* Check circle — the explicit selection affordance. Hidden until the row is
+   hovered or a selection is active, so selected state can never be confused
+   with the editing-row highlight (which shares the gold tint). */
+.te-item-check {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-right: 2px;
+  border: 1.5px solid var(--text-muted);
+  border-radius: 50%;
+  background: transparent;
+  color: transparent;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.te-item:hover .te-item-check,
+.te-list--selecting .te-item-check {
+  opacity: 1;
+}
+
+.te-item-check:hover {
+  border-color: var(--accent);
+}
+
+.te-item-check.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--btn-primary-text);
+}
+
+/* While a selection is active the floating toast hovers over the bottom of
+   the list — give the scroller matching bottom padding so the last rows can
+   always scroll clear of it and stay clickable. */
+.te-list--selecting {
+  padding-bottom: 56px;
+}
+
+/* Floating toast pinned to the bottom of the list — overlays content so the
+   rows never reflow while the user is mid-selection. */
+.te-selection-toast {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-modal);
+  font-size: 11.5px;
+  animation: te-selection-toast-in 0.14s ease;
+}
+
+@keyframes te-selection-toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .te-selection-toast { animation: none; }
+}
+
+.te-selection-count {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.te-selbar-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.te-selbar-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.te-selbar-btn--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.te-selbar-btn--danger:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 /* ── Category inline rename ────────────────────────────────────────────── */
 
 .te-cat-rename-wrap {
@@ -453,7 +635,7 @@
   border-bottom: 1.5px solid var(--accent);
   outline: none;
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--text-primary);
@@ -505,7 +687,7 @@
   border: 1px solid var(--border-accent);
   border-radius: 5px;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-body);
   flex: 1;
   min-width: 0;
@@ -637,6 +819,7 @@ button.te-col-header:hover {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  position: relative; /* anchor for the floating selection toast */
 }
 
 /* ── Compact expansion list ─────────────────────────────────────────────── */
@@ -739,8 +922,9 @@ button.te-col-header:hover {
   gap: 6px;
   height: 26px;
   padding: 0 12px;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
+  background: rgba(var(--accent-rgb), 0.15);
+  border-left: 4px solid var(--accent);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -758,7 +942,7 @@ button.te-col-header:hover {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--text-muted);
+  color: var(--accent);
   white-space: nowrap;
 }
 
@@ -776,7 +960,7 @@ button.te-col-header:hover {
 .te-group-rule {
   flex: 1;
   height: 1px;
-  background: var(--border);
+  background: rgba(var(--accent-rgb), 0.30);
   margin-left: 4px;
 }
 
@@ -1566,6 +1750,104 @@ button.te-col-header:hover {
 .rte-colour-swatch:hover {
   transform: scale(1.1);
   border-color: var(--accent);
+}
+/* "None" swatch — diagonal red slash on a paper-white background so it reads
+   as "clear the highlight" rather than "another colour". */
+.rte-colour-swatch.rte-swatch-none {
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 1px),
+      #e84040 calc(50% - 1px),
+      #e84040 calc(50% + 1px),
+      transparent calc(50% + 1px)
+    ),
+    #ffffff;
+}
+
+/* ── Table size picker (6×6 hover grid) ─────────────────────────────────── */
+.rte-table-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  padding: 6px 8px 4px;
+}
+.rte-table-cell {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-bright);
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.08);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.08s, border-color 0.08s;
+}
+.rte-table-cell:hover {
+  border-color: var(--accent);
+}
+.rte-table-cell.rte-table-cell-active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.rte-table-readout {
+  padding: 2px 8px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 14px;
+}
+
+/* ── Contextual table-edit toolbar (appears when caret is in a cell) ────── */
+.rte-table-toolbar {
+  border-top: 1px solid var(--border-bright);
+  padding-top: 4px;
+  gap: 2px;
+}
+/* Compact text-mode buttons for the "− Row" / "− Col" labels. Keeps them the
+   same visual height as the icon buttons alongside. */
+.rte-table-toolbar .rte-btn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 0 6px;
+}
+.rte-btn-danger {
+  color: var(--danger, #e84040);
+}
+.rte-btn-danger:hover {
+  background: rgba(232, 64, 64, 0.12);
+  color: var(--danger, #e84040);
+}
+
+/* ── Table styles inside the editor ─────────────────────────────────────── */
+.rte-editor table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  min-width: 60%;
+  table-layout: fixed;
+}
+.rte-editor table td,
+.rte-editor table th {
+  border: 1px solid var(--border-bright);
+  padding: 4px 6px;
+  min-width: 32px;
+  min-height: 20px;
+  vertical-align: top;
+  /* Cells carry INLINE `border:1pt solid #000000` so the paste looks native
+     in target apps — but black is invisible on the dark theme, so force the
+     theme colour for in-editor display only. Inline width/style survive;
+     only the colour is overridden, and only inside the editor. */
+  border-color: var(--border-bright) !important;
+}
+.rte-editor table th {
+  background: rgba(127, 127, 127, 0.08);
+  font-weight: 600;
+}
+/* Give the caret a target inside an empty cell without any content — the
+   <br> sentinels are removed by contenteditable normalisation as soon as
+   the user types adjacent to them. */
+.rte-editor table td:empty::before,
+.rte-editor table th:empty::before {
+  content: '\200B';
 }
 
 /* Section label inside the insert dropdown */

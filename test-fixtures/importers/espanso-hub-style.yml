@@ -1,0 +1,20 @@
+# Synthetic file in the style of a published Espanso Hub package
+# (package.yml layout: top-level comment header, matches list with
+# word-bounded triggers). Mirrors the shape of typography/symbol packs.
+matches:
+  - trigger: "->"
+    replace: "→"
+  - trigger: "<-"
+    replace: "←"
+  - trigger: "(c)"
+    replace: "©"
+  - trigger: "(tm)"
+    replace: "™"
+  - trigger: ":shrug"
+    replace: '¯\_(ツ)_/¯'
+  - trigger: "teh"
+    replace: "the"
+    word: true
+  - trigger: "adn"
+    replace: "and"
+    word: true

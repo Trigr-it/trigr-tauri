@@ -1323,12 +1323,19 @@ pub(crate) fn resolve_char(vk: u32, scan: u32) -> Option<char> {
 /// uppercase letters, shifted digits) match correctly. Non-US layouts still
 /// produce US/UK characters here; a future fix will use ToUnicodeEx.
 pub(crate) fn resolve_char_with_shift(vk: u32, scan: u32, shift: bool) -> Option<char> {
+    // Letters: the case that lands on screen is Shift XOR Caps Lock. Without
+    // the Caps side, Caps-on typing stores a case-inverted buffer ("tHE" on
+    // screen buffered as "The"), so the Caps Lock autocorrect could never see
+    // the exact shape it exists to fix.
+    if (0x41..=0x5A).contains(&vk) {
+        let upper = shift ^ crate::expansions::caps_lock_on();
+        let base = if upper { b'A' } else { b'a' };
+        return Some((base + (vk - 0x41) as u8) as char);
+    }
     if !shift {
         return resolve_char(vk, scan);
     }
     match vk {
-        // Letters → uppercase
-        0x41..=0x5A => Some((b'A' + (vk - 0x41) as u8) as char),
         // Top-row digits → US/UK shifted symbols
         0x31 => Some('!'),
         0x32 => Some('@'),

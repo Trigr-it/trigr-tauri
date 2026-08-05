@@ -44,3 +44,6 @@ email-signature.html
 # ── Internal planning docs ─────────────────────────────────────────────────
 docs/private/
 docs/windows-smartscreen.mp4
+
+# ── Real competitor-tool exports for importer testing (personal content) ────
+test-fixtures/importers/private/

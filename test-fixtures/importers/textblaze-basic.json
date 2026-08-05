@@ -1,0 +1,95 @@
+{
+ "version": 7,
+ "folders": [
+  {
+   "name": "Sample Snippets",
+   "info": "Synthetic Text Blaze export mirroring the version-7 dashboard export shape.",
+   "app": "TEXT",
+   "snippets": [
+    {
+     "name": "Signature",
+     "shortcut": "/sig",
+     "type": "text",
+     "text": "Jane Doe - jane.doe@example.com\nHead of Widgets\nAcme Ltd",
+     "html": "<p>Jane Doe - jane.doe@example.com</p><p>Head of Widgets</p><p>Acme Ltd</p>"
+    },
+    {
+     "name": "Styled snippet",
+     "shortcut": "/style",
+     "type": "html",
+     "text": "Snippets can contain bold, underline and colors.\n\t1. lists like this one\n\t2. links like example.com",
+     "html": "<p>Snippets can contain <b>bold</b>, <u>underline</u> and <b style=\"color:red;\">colors</b>.</p><ol><li>lists like this one</li><li>links like <a href=\"https://example.com\">example.com</a></li></ol>"
+    },
+    {
+     "name": "Dates",
+     "shortcut": "btw",
+     "type": "html",
+     "text": "Today is {time: MMMM D, YYYY}. In 2 weeks it will be {time: MMMM D, YYYY; shift=2W}.",
+     "html": "<p>Today is {time: MMMM D, YYYY}. In 2 weeks it will be {time: MMMM D, YYYY; shift=2W}.</p>"
+    },
+    {
+     "name": "Cursor",
+     "shortcut": ":cursor",
+     "type": "text",
+     "text": "Place the cursor here -->{cursor}<--",
+     "html": "Place the cursor here --&#x3E;{cursor}&#x3C;--"
+    },
+    {
+     "name": "Form",
+     "shortcut": "/form",
+     "type": "html",
+     "text": "Hi {formtext: name=your name},\n\nA customer bought {formtext: name=quantity; default=25} widgets at ${formmenu: name=price; 12.00; default=24.00; 48.00} each, totalling ${=price * quantity}.",
+     "html": "<p>Hi {formtext: name=your name},</p><p>A customer bought {formtext: name=quantity; default=25} widgets.</p>"
+    },
+    {
+     "name": "Formula",
+     "shortcut": "/calc",
+     "type": "text",
+     "text": "{=12*8; format=,}",
+     "html": "{=12*8; format=,}"
+    },
+    {
+     "name": "Pure form",
+     "shortcut": "/ask",
+     "type": "text",
+     "text": "Hi {formtext: name=recipient},\n\nYour order of {formtext: name=quantity; default=25} widgets at {formmenu: name=price; 12.00; default=24.00; 48.00} is confirmed.\n\nNotes: {formparagraph: name=notes}\n\nThanks {formtext: name=recipient}!",
+     "html": "<p>Hi {formtext: name=recipient},</p>"
+    },
+    {
+     "name": "Anonymous field",
+     "shortcut": "/anon",
+     "type": "text",
+     "text": "Dear {formtext}, welcome aboard.",
+     "html": "Dear {formtext}, welcome aboard."
+    },
+    {
+     "name": "Plain with braces",
+     "shortcut": "/braces",
+     "type": "text",
+     "text": "Literal {curly} braces that are not commands stay as text",
+     "html": "Literal {curly} braces that are not commands stay as text"
+    },
+    {
+     "name": "Uppercase shortcut",
+     "shortcut": "/GH",
+     "type": "text",
+     "text": "https://github.com",
+     "html": "https://github.com"
+    }
+   ]
+  },
+  {
+   "name": "Second Folder",
+   "app": "TEXT",
+   "snippets": [
+    {
+     "name": "Address",
+     "shortcut": "/addr",
+     "type": "text",
+     "text": "1 Example Street\nLondon",
+     "html": "<p>1 Example Street</p><p>London</p>"
+    }
+   ]
+  }
+ ]
+}
