@@ -4,7 +4,7 @@
   "version": "0.7.2",
   "identifier": "com.nodescaffold.trigr",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/dev-server.mjs",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"

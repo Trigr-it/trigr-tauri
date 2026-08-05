@@ -14,13 +14,20 @@ import { openFeedback } from '../utils/feedback';
  */
 function DemoModeRow() {
   const [demoMode, setDemoMode] = useState(null);
+  const [profileMode, setProfileMode] = useState(null);
   useEffect(() => {
-    window.electronAPI?.getDemoMode?.()
-      .then(v => setDemoMode(!!v))
-      .catch(() => setDemoMode(false));
+    Promise.all([
+      window.electronAPI?.getDemoMode?.() ?? false,
+      window.electronAPI?.getProfileMode?.() ?? null,
+    ])
+      .then(([demo, profile]) => {
+        setDemoMode(!!demo);
+        setProfileMode(profile || '');
+      })
+      .catch(() => { setDemoMode(false); setProfileMode(''); });
   }, []);
-  if (demoMode === null) return null;
-  if (!demoMode && !import.meta.env.DEV) return null;
+  if (demoMode === null || profileMode === null) return null;
+  if (!demoMode && !profileMode && !import.meta.env.DEV) return null;
   return (
     <div className="settings-demo-row">
       {demoMode ? (
@@ -37,10 +44,24 @@ function DemoModeRow() {
             Exit Demo Mode (restarts Keyfire)
           </button>
         </>
+      ) : profileMode ? (
+        <>
+          <p className="settings-toggle-sub">
+            Profile "{profileMode}" is active — a separate persistent setup. Everything you create here is kept between launches but stays isolated from your real data.
+          </p>
+          <button
+            type="button"
+            className="settings-action-btn"
+            onClick={() => window.electronAPI?.relaunchDemoMode(false)}
+            title="Restarts Keyfire back on your real setup"
+          >
+            Exit Profile (restarts Keyfire)
+          </button>
+        </>
       ) : (
         <>
           <p className="settings-toggle-sub">
-            Demo mode restarts Keyfire on a blank temporary setup for recording videos or clean-profile testing. Your licence carries over; your real data is never touched and everything demo is deleted on close.
+            Recording or testing? Demo mode is a blank temporary setup, wiped when Keyfire closes. The Studio profile is a persistent staging setup that keeps what you create between launches. Your licence carries over to both; your real data is never touched.
           </p>
           <button
             type="button"
@@ -49,6 +70,14 @@ function DemoModeRow() {
             title="Closes Keyfire and relaunches it with a blank temporary setup"
           >
             Launch Demo Mode (dev)
+          </button>
+          <button
+            type="button"
+            className="settings-action-btn"
+            onClick={() => window.electronAPI?.relaunchProfileMode('studio')}
+            title="Closes Keyfire and relaunches it on the persistent Studio profile"
+          >
+            Launch Studio Profile (dev)
           </button>
         </>
       )}

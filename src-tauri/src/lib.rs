@@ -4273,6 +4273,32 @@ pub fn is_demo_mode() -> bool {
     *DEMO_MODE.get_or_init(|| std::env::args().any(|a| a == "--demo"))
 }
 
+// `--profile <name>` = the PERSISTENT sibling of --demo: same data-dir
+// redirect (AppData\...\profiles\<name>\) but never wiped, so a curated
+// staging setup (e.g. the "studio" profile for feature-showcase videos)
+// survives between launches. Licence seeds on first creation only; after
+// that the profile owns its own state. --demo wins if both flags are passed.
+static PROFILE_MODE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+pub fn profile_mode() -> Option<&'static str> {
+    PROFILE_MODE
+        .get_or_init(|| {
+            let args: Vec<String> = std::env::args().collect();
+            let name = args
+                .iter()
+                .position(|a| a == "--profile")
+                .and_then(|i| args.get(i + 1))?;
+            // Path-safe subset only — the name becomes a folder under profiles\.
+            let clean: String = name
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .take(32)
+                .collect();
+            if clean.is_empty() { None } else { Some(clean) }
+        })
+        .as_deref()
+}
+
 /// Copy ONLY the licence object from the real local settings into the demo
 /// dir. Everything else is deliberately dropped — in particular
 /// `shared_config_path`, which would point the demo session at the user's
@@ -4294,18 +4320,28 @@ fn get_demo_mode() -> bool {
     is_demo_mode()
 }
 
-/// Restart Keyfire into or out of demo mode. Spawns a detached helper that
-/// waits ~2s (the single-instance lock would swallow the new launch if the
-/// old process is still alive — LL hooks, DB writers and the tray need to
-/// tear down first) then starts the current exe, and exits this instance.
 #[tauri::command]
-fn relaunch_demo_mode(enable: bool, app: tauri::AppHandle) {
+fn get_profile_mode() -> Option<String> {
+    profile_mode().map(|s| s.to_string())
+}
+
+/// Restart Keyfire with different launch args (none = normal mode). Spawns a
+/// detached helper that waits ~2s (the single-instance lock would swallow the
+/// new launch if the old process is still alive — LL hooks, DB writers and
+/// the tray need to tear down first) then starts the current exe, and exits
+/// this instance.
+fn spawn_relaunch(extra_args: &str, app: &tauri::AppHandle) {
     let exe = match std::env::current_exe() {
         Ok(e) => e,
         Err(e) => {
-            log::error!("[Keyfire] relaunch_demo_mode: current_exe failed: {}", e);
+            log::error!("[Keyfire] spawn_relaunch: current_exe failed: {}", e);
             return;
         }
+    };
+    let suffix = if extra_args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", extra_args)
     };
     #[cfg(windows)]
     {
@@ -4318,7 +4354,7 @@ fn relaunch_demo_mode(enable: bool, app: tauri::AppHandle) {
         let launch = format!(
             "ping -n 3 127.0.0.1 >nul & start \"\" \"{}\"{}",
             exe.display(),
-            if enable { " --demo" } else { "" }
+            suffix
         );
         let _ = std::process::Command::new("cmd")
             .raw_arg("/C")
@@ -4328,14 +4364,35 @@ fn relaunch_demo_mode(enable: bool, app: tauri::AppHandle) {
     }
     #[cfg(not(windows))]
     {
-        let mut launch = format!("sleep 2; \"{}\"", exe.display());
-        if enable {
-            launch.push_str(" --demo");
-        }
+        let launch = format!("sleep 2; \"{}\"{}", exe.display(), suffix);
         let _ = std::process::Command::new("sh").args(["-c", &launch]).spawn();
     }
-    log::info!("[Keyfire] Relaunching (demo={}) — exiting current instance", enable);
+    log::info!(
+        "[Keyfire] Relaunching with args '{}' — exiting current instance",
+        extra_args
+    );
     app.exit(0);
+}
+
+#[tauri::command]
+fn relaunch_demo_mode(enable: bool, app: tauri::AppHandle) {
+    spawn_relaunch(if enable { "--demo" } else { "" }, &app);
+}
+
+/// Restart into a persistent named profile (see PROFILE_MODE). The name is
+/// sanitised here AND on parse so a bad name can't become a stray folder.
+#[tauri::command]
+fn relaunch_profile_mode(name: String, app: tauri::AppHandle) {
+    let clean: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(32)
+        .collect();
+    if clean.is_empty() {
+        log::error!("[Keyfire] relaunch_profile_mode: invalid profile name {:?}", name);
+        return;
+    }
+    spawn_relaunch(&format!("--profile {}", clean), &app);
 }
 
 // ── App builder ──────────────────────────────────────────────────────────────
@@ -4393,6 +4450,17 @@ pub fn run() {
                     seed_demo_local_settings(&real, &demo);
                     log::info!("[Keyfire] DEMO MODE — data dir redirected to {}", demo.display());
                     demo
+                } else if let Some(name) = profile_mode() {
+                    // Persistent profile — same redirect as demo but NEVER
+                    // wiped. Licence seeds on first creation only; after that
+                    // the profile owns its own local settings.
+                    let dir = real.join("profiles").join(name);
+                    std::fs::create_dir_all(&dir)?;
+                    if !dir.join("trigr-local-settings.json").exists() {
+                        seed_demo_local_settings(&real, &dir);
+                    }
+                    log::info!("[Keyfire] PROFILE '{}' — data dir redirected to {}", name, dir.display());
+                    dir
                 } else {
                     real
                 }
@@ -4449,10 +4517,10 @@ pub fn run() {
             // analytics writer's exclusive connection) and routes writes back
             // through the analytics writer thread via channel messages.
             // Honours the trigr-local-settings.json opt-out flag on every tick.
-            // Demo sessions never report — a demo launch is not real usage and
-            // would inflate the daily-actives dashboard.
-            if is_demo_mode() {
-                log::info!("[Keyfire] Demo mode: telemetry disabled for this session");
+            // Demo/profile sessions never report — a staging launch is not
+            // real usage and would inflate the daily-actives dashboard.
+            if is_demo_mode() || profile_mode().is_some() {
+                log::info!("[Keyfire] Demo/profile mode: telemetry disabled for this session");
             } else {
                 let app_version = app.package_info().version.to_string();
                 std::thread::Builder::new()
@@ -5055,9 +5123,11 @@ pub fn run() {
             reset_trial,
             get_grace_period_state,
             migrate_shared_to_local_now,
-            // Demo mode
+            // Demo mode + persistent profiles
             get_demo_mode,
+            get_profile_mode,
             relaunch_demo_mode,
+            relaunch_profile_mode,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

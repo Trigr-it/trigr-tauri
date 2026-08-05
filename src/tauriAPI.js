@@ -469,7 +469,9 @@ window.electronAPI = {
   getGracePeriodState:       ()    => invoke('get_grace_period_state'),
   migrateSharedToLocalNow:   ()    => invoke('migrate_shared_to_local_now'),
   getDemoMode:               ()    => invoke('get_demo_mode'),
+  getProfileMode:            ()    => invoke('get_profile_mode'),
   relaunchDemoMode:          (enable) => invoke('relaunch_demo_mode', { enable }),
+  relaunchProfileMode:       (name) => invoke('relaunch_profile_mode', { name }),
   markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),
 };
 
