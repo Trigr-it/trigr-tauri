@@ -784,17 +784,39 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     info!("[Keyfire]   Step {}/{}: [{}] \"{}\"", i + 1, steps.len(), step_type, step_value);
 
                     if matches!(step_type, "Type Text" | "Dynamic Text") && uses_clipboard && !step_value.is_empty() {
-                        if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
+                        if clipboard_dirty {
+                            // A previous step's paste may still be unread by an async
+                            // target (Chromium renderer) — sync the target's queue and
+                            // wait out the read before overwriting the clipboard.
+                            // Too early and either (a) the earlier Ctrl+V reads THIS
+                            // step's text (double-paste, earlier text lost), or (b) our
+                            // write COLLIDES with the app's open-clipboard read — but
+                            // (b) is now absorbed by clipboard_paste_core's write
+                            // retries, so this cap only guards (a). 100ms (vs the
+                            // 200ms restore cap) keeps multi-text macros feeling snappy
+                            // when the read is too fast for the poll to observe —
+                            // warmed-up eM Client reads finish in <3ms and would
+                            // otherwise pay the full cap on every step (2026-08-05).
+                            crate::expansions::settle_paste(current_hwnd, settle_ms.max(100));
+                        } else if settle_ms > 0 {
+                            thread::sleep(Duration::from_millis(settle_ms));
+                        }
                         let resolved = resolve_type_text_tokens(step_value);
                         clipboard_paste_core(&resolved, current_hwnd);
                         clipboard_dirty = true;
                     } else {
-                        // Restore clipboard before non-Type-Text steps if we dirtied it.
-                        // Inter-step restore — no seqnum guard because the macro is a
-                        // controlled sequential flow; the user isn't expected to copy
-                        // something mid-macro.
-                        if clipboard_dirty {
-                            thread::sleep(Duration::from_millis(clip_restore_ms));
+                        // Restore the user's clipboard ONLY before steps that actually
+                        // read or write it; everything else defers to the single
+                        // restore after the loop. Restoring before EVERY non-text step
+                        // (pre-v0.7.3) raced async paste handlers: Chromium targets
+                        // (eM Client, Slack, browsers) read the clipboard tens of ms
+                        // after the Ctrl+V keydown, so a 25-50ms restore could win the
+                        // race and the app pasted the user's OLD clipboard content
+                        // instead of the step text (beta report 2026-08-05, eM Client).
+                        // No seqnum guard — the macro is a controlled sequential flow;
+                        // the user isn't expected to copy something mid-macro.
+                        if clipboard_dirty && matches!(step_type, "Copy to Clipboard" | "Paste Clipboard" | "Wait for Input" | "Run AHK Script") {
+                            crate::expansions::settle_paste(current_hwnd, clip_restore_ms.max(crate::expansions::PASTE_RESTORE_SETTLE_MS));
                             crate::expansions::restore_clipboard_snapshot(&saved_snapshot);
                             SUPPRESS_NEXT_CLIPBOARD_WRITE.store(false, Ordering::SeqCst);
                             clipboard_dirty = false;
@@ -836,11 +858,13 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     iter_index += 1;
                 }
 
-                // Final restore after all iterations. Seqnum guard: if the user copied
+                // Final restore after all iterations. Queue-sync + settle floor so
+                // the last paste is consumed before the restore lands (async-read
+                // race — see settle_paste). Seqnum guard: if the user copied
                 // something during the final paste window, leave their content.
                 if clipboard_dirty {
                     let post_seq = crate::expansions::clipboard_sequence_number();
-                    thread::sleep(Duration::from_millis(clip_restore_ms));
+                    crate::expansions::settle_paste(current_hwnd, clip_restore_ms.max(crate::expansions::PASTE_RESTORE_SETTLE_MS));
                     if crate::expansions::clipboard_sequence_number() == post_seq {
                         crate::expansions::restore_clipboard_snapshot(&saved_snapshot);
                     }
@@ -952,7 +976,11 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
     // Capture sequence number AFTER our write so we can detect a third-party
     // (or user) clipboard change during the paste window.
     let post_write_seq = crate::expansions::clipboard_sequence_number();
-    thread::sleep(Duration::from_millis(clip_restore_ms));
+    // Queue-sync + settle floor before restoring — async paste handlers
+    // (Chromium renderers) read the clipboard well after the Ctrl+V keydown;
+    // restoring on the raw preset delay (25-50ms) pasted the user's OLD
+    // clipboard content instead of the step text. See expansions::settle_paste.
+    crate::expansions::settle_paste(target_hwnd, clip_restore_ms.max(crate::expansions::PASTE_RESTORE_SETTLE_MS));
     if crate::expansions::clipboard_sequence_number() == post_write_seq {
         crate::expansions::restore_clipboard_snapshot(&snapshot);
     }
@@ -962,10 +990,25 @@ fn inject_via_clipboard(text: &str, target_hwnd: isize) {
 /// Core clipboard paste: write text to clipboard + send paste keystroke.
 /// Does NOT save/restore the clipboard — caller is responsible for that.
 fn clipboard_paste_core(text: &str, target_hwnd: isize) {
-    let write_ok = write_clipboard(text);
+    let mut write_ok = write_clipboard(text);
+    if !write_ok {
+        // The target app (reading a previous paste) or a clipboard manager may
+        // be holding the clipboard open right now — transient contention, not
+        // a hard failure. Retry briefly before giving up: a skipped Type Text
+        // step (silently missing recipient/text) is far worse than a short
+        // stutter (eM Client multi-recipient skips, 2026-08-05).
+        for attempt in 1..=10u32 {
+            thread::sleep(Duration::from_millis(20));
+            write_ok = write_clipboard(text);
+            if write_ok {
+                info!("[Keyfire] Clipboard write recovered on retry {}", attempt);
+                break;
+            }
+        }
+    }
     info!("[Keyfire] Clipboard write (actions, ok={}): \"{}\"", write_ok, crate::expansions::log_preview(text));
     if !write_ok {
-        warn!("[Keyfire] Skipping paste — clipboard write failed, would paste wrong content");
+        warn!("[Keyfire] Skipping paste — clipboard write failed after retries, would paste wrong content");
         return;
     }
 
@@ -974,11 +1017,34 @@ fn clipboard_paste_core(text: &str, target_hwnd: isize) {
     let _suppress = SuppressionGuard::new();
     let held = release_held_modifiers();
 
+    // Refocus the captured target ONLY if focus has left its process entirely.
+    // If the current foreground is a DIFFERENT window of the SAME process, the
+    // macro itself moved focus there (e.g. Press Key Ctrl+N opened a new
+    // eM Client draft) and the captured HWND is stale — forcing it back to the
+    // old window intermittently stole focus from the draft and the paste (and
+    // following keystrokes) landed in the wrong window, so Type Text steps
+    // appeared to skip (beta report 2026-08-05).
     if target_hwnd != 0 {
-        unsafe {
-            SetForegroundWindow(target_hwnd as _);
+        let fg = unsafe { GetForegroundWindow() as isize };
+        let same_process = if fg == target_hwnd {
+            true
+        } else if fg != 0 {
+            let mut fg_pid: u32 = 0;
+            let mut tgt_pid: u32 = 0;
+            unsafe {
+                GetWindowThreadProcessId(fg as _, &mut fg_pid);
+                GetWindowThreadProcessId(target_hwnd as _, &mut tgt_pid);
+            }
+            fg_pid != 0 && fg_pid == tgt_pid
+        } else {
+            false
+        };
+        if !same_process {
+            unsafe {
+                SetForegroundWindow(target_hwnd as _);
+            }
+            if fg_settle_ms > 0 { thread::sleep(Duration::from_millis(fg_settle_ms)); }
         }
-        if fg_settle_ms > 0 { thread::sleep(Duration::from_millis(fg_settle_ms)); }
     }
 
     // Per-app override: VS Code WSL terminal (xterm.js) needs Shift+Insert with

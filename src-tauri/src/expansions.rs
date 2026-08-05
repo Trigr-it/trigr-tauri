@@ -1824,7 +1824,7 @@ fn fire_expansion(
             }
             crate::actions::restore_modifiers(&held);
             let post_seq = clipboard_sequence_number();
-            thread::sleep(Duration::from_millis(50));
+            settle_paste(target_hwnd, PASTE_RESTORE_SETTLE_MS);
             // Skip restore if user copied something during the paste window.
             if clipboard_sequence_number() == post_seq {
                 restore_clipboard_snapshot(&snapshot);
@@ -2115,7 +2115,7 @@ fn fire_expansion_with_fillin(
         }
         crate::actions::restore_modifiers(&held);
         let post_seq = clipboard_sequence_number();
-        thread::sleep(Duration::from_millis(50));
+        settle_paste(target_hwnd, PASTE_RESTORE_SETTLE_MS);
         if clipboard_sequence_number() == post_seq {
             restore_clipboard_snapshot(&snapshot);
         }
@@ -3162,6 +3162,98 @@ pub(crate) fn snapshot_clipboard() -> Vec<(u32, Vec<u8>)> {
     out
 }
 
+/// Minimum wait between sending a paste keystroke and changing the clipboard
+/// again (restore or next write). Chromium/Electron targets (eM Client, Slack,
+/// browsers) read the clipboard asynchronously in the renderer, tens of ms
+/// after the Ctrl+V keydown is delivered — change the clipboard too early and
+/// the app pastes whatever is there when it finally reads (the user's OLD
+/// content on restore, or the NEXT step's text in multi-step macros). 150ms
+/// was the empirical floor for Excel's message-queue paste; eM Client macro
+/// reports (2026-08-05) showed 25-50ms losing the race, so the shared floor
+/// is 200ms.
+pub(crate) const PASTE_RESTORE_SETTLE_MS: u64 = 200;
+
+/// Sync the target window's message queue, then wait — adaptively — until the
+/// paste has been read, capped at `max_ms`.
+///
+/// Phase 1: WM_NULL round-trip (SendMessageTimeoutW) returns once the target
+/// thread has pumped every message queued before it — i.e. the paste
+/// keystroke has at least been CONSUMED. Synchronous Win32 paste handlers
+/// have fully read the clipboard by the time this returns.
+///
+/// Phase 2: async readers (Chromium/CEF renderers — eM Client, Slack,
+/// browsers) fetch the clipboard on their own schedule after the keydown.
+/// While reading they hold the clipboard open, so we poll
+/// GetOpenClipboardWindow every 3ms: once a foreign open has been observed
+/// AND released (with a short grace re-check for multi-format reads that
+/// open/close several times), the read is done and we exit early — typically
+/// 40-80ms instead of the full cap. If the read is too fast to observe at
+/// 3ms polling we simply wait out `max_ms`, which is never worse than the
+/// fixed sleep this replaces.
+///
+/// Call before every clipboard restore/overwrite that follows a paste
+/// keystroke, passing at least PASTE_RESTORE_SETTLE_MS as the cap.
+pub(crate) fn settle_paste(target_hwnd: isize, max_ms: u64) {
+    if target_hwnd != 0 {
+        unsafe {
+            let mut result: usize = 0;
+            windows_sys::Win32::UI::WindowsAndMessaging::SendMessageTimeoutW(
+                target_hwnd as _,
+                windows_sys::Win32::UI::WindowsAndMessaging::WM_NULL,
+                0,
+                0,
+                windows_sys::Win32::UI::WindowsAndMessaging::SMTO_ABORTIFHUNG,
+                500,
+                &mut result,
+            );
+        }
+    }
+    if max_ms == 0 {
+        return;
+    }
+    const POLL_MS: u64 = 3;
+    // Don't trust an observed read completion before this — the renderer may
+    // read text first and HTML a beat later, and clipboard-history managers
+    // can produce a brief foreign open right after our write.
+    const MIN_WAIT_MS: u64 = 30;
+    // After the reader releases, re-check once past this grace in case the
+    // same read sequence re-opens the clipboard for another format.
+    const POST_READ_GRACE_MS: u64 = 20;
+    let start = std::time::Instant::now();
+    let mut seen_reader = false;
+    loop {
+        let elapsed = start.elapsed().as_millis() as u64;
+        if elapsed >= max_ms {
+            break;
+        }
+        let open_wnd = unsafe {
+            windows_sys::Win32::System::DataExchange::GetOpenClipboardWindow() as isize
+        };
+        if open_wnd != 0 {
+            seen_reader = true;
+        } else if seen_reader && elapsed >= MIN_WAIT_MS {
+            thread::sleep(Duration::from_millis(POST_READ_GRACE_MS));
+            let reopened = unsafe {
+                windows_sys::Win32::System::DataExchange::GetOpenClipboardWindow() as isize
+            };
+            if reopened == 0 {
+                break; // read complete — safe to change the clipboard
+            }
+            continue; // another format read in flight — keep waiting
+        }
+        thread::sleep(Duration::from_millis(POLL_MS));
+    }
+    // TEMP settle diagnostics (strip after wild-verify): observed=true means
+    // the reader was caught in the act and we exited early; false means we
+    // waited out the cap.
+    log::info!(
+        "[Keyfire] settle_paste: observed={} elapsed={}ms cap={}ms",
+        seen_reader,
+        start.elapsed().as_millis(),
+        max_ms
+    );
+}
+
 /// Restore a snapshot by clearing the clipboard and re-writing every captured
 /// format. Sets `SUPPRESS_NEXT_CLIPBOARD_WRITE` true before opening so the
 /// listener ignores the WM_CLIPBOARDUPDATE that fires from EmptyClipboard +
@@ -3525,11 +3617,10 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
     // Re-press modifiers that were physically held
     crate::actions::restore_modifiers(&held);
 
-    // Restore clipboard after paste settles.
-    // 150ms: Excel (and other Office apps) process clipboard paste via their message
-    // queue — slower than most apps. 50ms was not enough, causing Excel to read the
-    // restored-old-content instead of the expansion text.
-    thread::sleep(Duration::from_millis(150));
+    // Restore clipboard after the paste has settled: queue-sync guarantees the
+    // target consumed the Ctrl+V keydown, the floor delay covers async readers
+    // (Chromium renderers, Excel's message-queue paste — see the constant doc).
+    settle_paste(target_hwnd, PASTE_RESTORE_SETTLE_MS);
     // Only restore if the clipboard still holds our content. If the sequence
     // number advanced, the user (or another process) copied something new during
     // the paste window — leave their content alone.
