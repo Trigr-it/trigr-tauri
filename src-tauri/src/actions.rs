@@ -3875,10 +3875,17 @@ pub fn release_held_modifiers() -> Vec<u16> {
     held
 }
 
-/// Re-press modifiers that were held before injection.
+/// Re-press modifiers that were held at release time — but ONLY those the
+/// user is still physically holding. Without this guard, fire-on-press leaves
+/// the modifier stuck-down in the target app: fire dispatches at keydown
+/// while Shift is held, we release it for the injection, and by the time we
+/// reach restore the user has typically lifted their finger — re-pressing
+/// then sends Shift-down to the app with no matching physical release.
 pub fn restore_modifiers(held: &[u16]) {
     for &vk in held {
-        send_vk_key(vk, false);
+        if is_key_down(vk) {
+            send_vk_key(vk, false);
+        }
     }
 }
 
