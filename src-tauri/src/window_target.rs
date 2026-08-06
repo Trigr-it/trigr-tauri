@@ -124,10 +124,12 @@ pub fn launch_with_monitor_target(kind: LaunchKind, target: MonitorTarget) -> Op
     // window, restore + foreground it instead of launching a second instance.
     // Applies only to exe-backed launches (see launch_target_exe_name for the
     // exact rules — documents, .lnk, args-carrying and true-UWP launches all
-    // fall through to a normal launch). Monitor targets are still honoured by
-    // moving the existing window when it sits on a different monitor.
+    // fall through to a normal launch). The window is deliberately NOT moved
+    // to the action's monitor target: an already-running app comes to the
+    // front wherever the user last put it (Rory's call, 2026-08-06). Monitor
+    // targets only place NEW windows.
     if let Some(exe) = launch_target_exe_name(&kind) {
-        if focus_running_instance(&exe, rc) {
+        if focus_running_instance(&exe) {
             if rc.is_some() {
                 // Macro Open App steps recv_timeout on the receiver to
                 // sequence follow-up steps after window placement. Nothing
@@ -453,11 +455,10 @@ unsafe extern "system" fn find_app_window_cb(hwnd: HWND, lparam: LPARAM) -> BOOL
 }
 
 /// Find a visible top-level window belonging to a running `exe_lower` process
-/// and bring it to the foreground (restoring from minimized first). When the
-/// launch has a monitor target and the window sits elsewhere, it's moved to
-/// the target work area. Returns false when no instance is running — caller
-/// falls through to a normal launch.
-fn focus_running_instance(exe_lower: &str, rc: Option<RECT>) -> bool {
+/// and bring it to the foreground in place (restoring from minimized first).
+/// Returns false when no instance is running — caller falls through to a
+/// normal launch.
+fn focus_running_instance(exe_lower: &str) -> bool {
     let mut state = FindAppWindowState {
         exe_lower: exe_lower.to_string(),
         own_pid: unsafe { GetCurrentProcessId() },
@@ -473,20 +474,6 @@ fn focus_running_instance(exe_lower: &str, rc: Option<RECT>) -> bool {
     unsafe {
         if IsIconic(hwnd) != 0 {
             ShowWindow(hwnd, SW_RESTORE);
-        }
-    }
-    if let Some(rc) = rc {
-        // Honour the monitor target — but only move when the window's centre
-        // is off the target work area, so a re-press doesn't re-centre a
-        // window the user has since positioned by hand on that monitor.
-        let mut wrect: RECT = unsafe { mem::zeroed() };
-        if unsafe { GetWindowRect(hwnd, &mut wrect) } != 0 {
-            let cx = (wrect.left + wrect.right) / 2;
-            let cy = (wrect.top + wrect.bottom) / 2;
-            let on_target = cx >= rc.left && cx < rc.right && cy >= rc.top && cy < rc.bottom;
-            if !on_target {
-                move_window_centered(hwnd, rc);
-            }
         }
     }
     crate::actions::set_foreground_robust(state.found);
