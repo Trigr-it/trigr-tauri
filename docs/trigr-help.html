@@ -1142,6 +1142,10 @@
   <h2>Open App</h2>
   <p>Launches an installed application. Click <strong>Browse</strong> to select the .exe, or type the path manually. Keyfire stores only the executable name, not the full path, making profiles portable across machines.</p>
 
+  <h2>Already running? It comes to the front</h2>
+  <p>If the app is already open, firing the action brings its existing window to the front (restoring it if minimised) instead of starting a second copy. The window stays on whichever monitor it is currently on. This applies wherever the launch fires from: a hotkey, the radial menu, Quick Search, or an Open App macro step.</p>
+  <p>Two cases always launch fresh: Open App macro steps that pass launch arguments, and documents opened via their default app. Store apps keep their own single-window behaviour.</p>
+
   <h2>Open URL</h2>
   <p>Opens a URL in your default browser. Include the full URL with <code>https://</code>. Works with websites, app deep links, and internal network addresses.</p>
 
@@ -1832,6 +1836,14 @@
   <h2>Search templates</h2>
   <p>The Quick Search overlay also exposes <strong>search templates</strong>, prefab snippet packs you can import. Templates live in <strong>Settings → Templates</strong>.</p>
 
+  <h2>Moving the search bar</h2>
+  <p>The bar does not have to live in the centre of the screen. Drag the small grip handle at its left edge to put it anywhere you like. Keyfire remembers the spot across restarts, per machine, and keeps it proportional on whichever monitor you open it from.</p>
+  <ul>
+    <li><strong>Move:</strong> hold left click on the grip handle and drag.</li>
+    <li><strong>Reset:</strong> double click the grip handle, or use <strong>Settings → Quick Search → Search bar position → Reset position</strong>.</li>
+  </ul>
+  <p>If you park the bar near the bottom of the screen, the results list opens upwards instead of downwards so it never runs off the monitor.</p>
+
   <div class="callout info">
     <div class="ct">Customise the shortcut</div>
     <p>Change the Quick Search shortcut in <strong>Settings → Quick Search</strong>. Default is <kbd>Ctrl</kbd>+<kbd>Space</kbd>. If your app uses this combination, Keyfire's overlay takes priority while focused.</p>
@@ -2025,7 +2037,8 @@
 
   <h2>Quick paste overlay</h2>
   <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> from any app to open the clipboard overlay, a floating popup with your recent clipboard items. Use arrow keys to navigate, Enter to paste, Escape to close.</p>
-  <p>The overlay has a master-detail layout: the left pane shows compact rows, the right pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit). Only Pinned items get promoted here; Saved items live in the main panel only.</p>
+  <p>The overlay has a master-detail layout: the list pane shows compact rows, the preview pane shows the full content with metadata and action buttons (Pin, Delete, Paste, Edit). Only Pinned items get promoted here; Saved items live in the main panel only. The swap button in the corner of the list pane switches which side each pane appears on, and the choice is remembered.</p>
+  <p>The popup can also be moved. Drag the grip handle next to the search box to put it anywhere on screen, and Keyfire remembers the spot across restarts, per machine. Double click the grip to return to the default position, or use <strong>Settings → Clipboard → Popup position → Reset position</strong>.</p>
   <p>While the overlay is open, your typing goes to its search box, the same way the Windows clipboard viewer (<kbd>Win</kbd>+<kbd>V</kbd>) behaves. You can start typing to search the instant you press the hotkey. The app behind the overlay does not receive those keystrokes, though shortcuts using Ctrl, Alt or Win still pass through to it. Close the overlay with <kbd>Esc</kbd> or a click outside to resume typing in your app.</p>
 
   <h2>Quick paste inside fill-in prompts</h2>
