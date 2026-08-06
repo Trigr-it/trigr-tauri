@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Type, Link2, Mail, Hash, ExternalLink, Pin, GripVertical } from 'lucide-react';
+import { Type, Link2, Mail, Hash, ExternalLink, Pin, GripVertical, ArrowLeftRight } from 'lucide-react';
 import './ClipboardOverlay.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
@@ -88,6 +88,16 @@ const TYPE_ICONS = {
 
 export default function ClipboardOverlay() {
   const { onGripPointerDown, onGripDoubleClick } = useOverlayDrag('clipboard');
+  // List-left / preview-right by default; persisted machine-locally like the
+  // window position.
+  const [swapSides, setSwapSides] = useState(
+    () => localStorage.getItem('trigr_clip_swap_sides') === '1'
+  );
+  const toggleSwapSides = () => setSwapSides(prev => {
+    const next = !prev;
+    localStorage.setItem('trigr_clip_swap_sides', next ? '1' : '0');
+    return next;
+  });
   const [items, setItems] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [theme, setTheme] = useState('dark');
@@ -348,7 +358,7 @@ export default function ClipboardOverlay() {
   return (
     <div className="co-root">
       <div className="co-panel">
-        <div className="co-panes">
+        <div className={`co-panes${swapSides ? ' co-swapped' : ''}`}>
 
         {/* ── LEFT: list pane ── */}
         <div className="co-left">
@@ -369,6 +379,14 @@ export default function ClipboardOverlay() {
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+            <button
+              className="co-swap-btn"
+              type="button"
+              title="Swap list and preview sides"
+              onClick={toggleSwapSides}
+            >
+              <ArrowLeftRight size={13} strokeWidth={1.75} />
+            </button>
             <span className="co-esc-hint">Esc</span>
           </div>
           <div className="co-tag-pills">
