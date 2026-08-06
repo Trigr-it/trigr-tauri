@@ -87,7 +87,7 @@ const TYPE_ICONS = {
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export default function ClipboardOverlay() {
-  const { onGripMouseDown, onGripDoubleClick } = useOverlayDrag('clipboard');
+  const { onGripPointerDown, onGripDoubleClick } = useOverlayDrag('clipboard');
   const [items, setItems] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [theme, setTheme] = useState('dark');
@@ -356,7 +356,7 @@ export default function ClipboardOverlay() {
             <span
               className="co-grip"
               title="Drag to move · Double-click to reset position"
-              onMouseDown={onGripMouseDown}
+              onPointerDown={onGripPointerDown}
               onDoubleClick={onGripDoubleClick}
               aria-hidden="true"
             >

@@ -280,7 +280,7 @@ function findBestVoiceMatch(transcript, phraseMap) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function SearchOverlay() {
-  const { onGripMouseDown, onGripDoubleClick } = useOverlayDrag('search');
+  const { onGripPointerDown, onGripDoubleClick } = useOverlayDrag('search');
   const [query,         setQuery]         = useState('');
   const [allItems,      setAllItems]      = useState([]);
   const [displayItems,  setDisplayItems]  = useState([]);
@@ -965,7 +965,7 @@ export default function SearchOverlay() {
               <span
                 className="search-grip"
                 title="Drag to move · Double-click to reset position"
-                onMouseDown={onGripMouseDown}
+                onPointerDown={onGripPointerDown}
                 onDoubleClick={onGripDoubleClick}
                 aria-hidden="true"
               >

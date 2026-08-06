@@ -4,69 +4,58 @@
 // position. The position is persisted machine-locally by the backend
 // (save_overlay_position) and re-applied on every show.
 //
-// Drag start uses a 3px movement threshold rather than firing startDragging()
-// on mousedown: the native move loop startDragging enters swallows the mouse
-// events a double-click needs, so an immediate start would make the
-// double-click reset unreliable.
+// The drag is a MANUAL move (pointer capture + setPosition), NOT the native
+// window.startDragging(): the clipboard popup is a WS_EX_NOACTIVATE window
+// and the WM_NCLBUTTONDOWN modal move loop startDragging relies on doesn't
+// move no-activate windows. Manual moves also keep DOM pointerup, so the
+// save fires exactly at drag end with no debounce.
 //
-// Drag end has no DOM event (the native loop consumes the mouseup), so the
-// save is driven by the window's onMoved stream: once armed by a drag, the
-// last move event + 350ms of silence triggers the save. The armed flag keeps
-// programmatic set_position calls (show-time placement, resets) from
-// re-saving.
-import { useCallback, useEffect, useRef } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+// Deltas use screenX/screenY (absolute screen coords, unaffected by the
+// window moving underneath the cursor) scaled by devicePixelRatio to match
+// the physical units outerPosition/setPosition speak. A 3px threshold keeps
+// the double-click reset reliable and stops zero-pixel "drags" from saving.
+import { useCallback } from 'react';
+import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
 
 export default function useOverlayDrag(name) {
-  const armed = useRef(false);
-  const timer = useRef(null);
-
-  useEffect(() => {
-    let unlisten = null;
-    let disposed = false;
-    getCurrentWindow().onMoved(() => {
-      if (!armed.current) return;
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        armed.current = false;
-        window.electronAPI?.saveOverlayPosition(name);
-      }, 350);
-    }).then((u) => {
-      if (disposed) u();
-      else unlisten = u;
-    });
-    return () => {
-      disposed = true;
-      if (unlisten) unlisten();
-      clearTimeout(timer.current);
-    };
-  }, [name]);
-
-  const onGripMouseDown = useCallback((e) => {
+  const onGripPointerDown = useCallback((e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const sx = e.screenX;
-    const sy = e.screenY;
+    const grip = e.currentTarget;
+    const win = getCurrentWindow();
+    const startSX = e.screenX;
+    const startSY = e.screenY;
+    const scale = window.devicePixelRatio || 1;
+    let startPos = null;
+    let moved = false;
+    win.outerPosition().then((p) => { startPos = p; }).catch(() => {});
+    try { grip.setPointerCapture(e.pointerId); } catch { /* non-fatal */ }
+
     const onMove = (me) => {
-      if (Math.abs(me.screenX - sx) + Math.abs(me.screenY - sy) < 3) return;
-      cleanup();
-      armed.current = true;
-      getCurrentWindow().startDragging();
+      if (!startPos) return;
+      const dxl = me.screenX - startSX;
+      const dyl = me.screenY - startSY;
+      if (!moved && Math.abs(dxl) + Math.abs(dyl) < 3) return;
+      moved = true;
+      win.setPosition(new PhysicalPosition(
+        Math.round(startPos.x + dxl * scale),
+        Math.round(startPos.y + dyl * scale),
+      )).catch(() => {});
     };
-    const onUp = () => cleanup();
-    const cleanup = () => {
-      window.removeEventListener('mousemove', onMove, true);
-      window.removeEventListener('mouseup', onUp, true);
+    const onUp = () => {
+      grip.removeEventListener('pointermove', onMove);
+      grip.removeEventListener('pointerup', onUp);
+      grip.removeEventListener('pointercancel', onUp);
+      if (moved) window.electronAPI?.saveOverlayPosition(name);
     };
-    window.addEventListener('mousemove', onMove, true);
-    window.addEventListener('mouseup', onUp, true);
-  }, []);
+    grip.addEventListener('pointermove', onMove);
+    grip.addEventListener('pointerup', onUp);
+    grip.addEventListener('pointercancel', onUp);
+  }, [name]);
 
   const onGripDoubleClick = useCallback(() => {
-    armed.current = false;
-    clearTimeout(timer.current);
     window.electronAPI?.resetOverlayPosition(name);
   }, [name]);
 
-  return { onGripMouseDown, onGripDoubleClick };
+  return { onGripPointerDown, onGripDoubleClick };
 }
