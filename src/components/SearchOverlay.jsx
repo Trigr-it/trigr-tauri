@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import {
   Mic, Check, X, AlertTriangle, Search, CornerDownLeft,
-  Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, Edit2,
+  Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, Edit2, GripVertical,
 } from 'lucide-react';
 import './SearchOverlay.css';
 import { friendlyKeyName } from './keyboardLayout';
 import { readVoicePhrases } from '../voicePhrases';
+import useOverlayDrag from './useOverlayDrag';
 
 // ── Type metadata ──────────────────────────────────────────────────────────────
 
@@ -279,6 +280,7 @@ function findBestVoiceMatch(transcript, phraseMap) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function SearchOverlay() {
+  const { onGripMouseDown, onGripDoubleClick } = useOverlayDrag('search');
   const [query,         setQuery]         = useState('');
   const [allItems,      setAllItems]      = useState([]);
   const [displayItems,  setDisplayItems]  = useState([]);
@@ -960,6 +962,15 @@ export default function SearchOverlay() {
         ) : (
           <>
             <div className="search-input-row">
+              <span
+                className="search-grip"
+                title="Drag to move · Double-click to reset position"
+                onMouseDown={onGripMouseDown}
+                onDoubleClick={onGripDoubleClick}
+                aria-hidden="true"
+              >
+                <GripVertical size={14} strokeWidth={1.75} />
+              </span>
               {mode === 'query' ? (
                 <span className="search-back-hint" title="Esc to go back" aria-label="Back">
                   <CornerDownLeft size={16} strokeWidth={1.75} />

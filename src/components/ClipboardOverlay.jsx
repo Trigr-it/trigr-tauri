@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Type, Link2, Mail, Hash, ExternalLink, Pin } from 'lucide-react';
+import { Type, Link2, Mail, Hash, ExternalLink, Pin, GripVertical } from 'lucide-react';
 import './ClipboardOverlay.css';
 import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
 import { SearchBar } from './SearchBar';
+import useOverlayDrag from './useOverlayDrag';
 
 // ── Lazy image thumbnail loader ─────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ const TYPE_ICONS = {
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export default function ClipboardOverlay() {
+  const { onGripMouseDown, onGripDoubleClick } = useOverlayDrag('clipboard');
   const [items, setItems] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [theme, setTheme] = useState('dark');
@@ -351,6 +353,15 @@ export default function ClipboardOverlay() {
         {/* ── LEFT: list pane ── */}
         <div className="co-left">
           <div className="co-input-row">
+            <span
+              className="co-grip"
+              title="Drag to move · Double-click to reset position"
+              onMouseDown={onGripMouseDown}
+              onDoubleClick={onGripDoubleClick}
+              aria-hidden="true"
+            >
+              <GripVertical size={14} strokeWidth={1.75} />
+            </span>
             <SearchBar
               ref={inputRef}
               className="co-search-bar"

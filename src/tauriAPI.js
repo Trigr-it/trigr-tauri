@@ -147,6 +147,10 @@ window.electronAPI = {
   importTextFile: (title, filterName, extensions) =>
     invoke('import_text_file', { title, filterName, extensions }),
 
+  // ── Overlay window positions (search bar + clipboard popup) ────────────────
+  saveOverlayPosition:  (name) => invoke('save_overlay_position', { name }),
+  resetOverlayPosition: (name) => invoke('reset_overlay_position', { name }),
+
   // ── Global compatibility settings ───────────────────────────────────────────
   updateGlobalSettings: (settings) => invoke('update_global_settings', { settings }),
 

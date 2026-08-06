@@ -123,6 +123,32 @@ html, body {
   line-height: 1;
 }
 
+/* Drag grip — left-drag moves the window, double-click resets its position */
+.search-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  flex-shrink: 0;
+  margin-left: -8px;
+  margin-right: -6px;
+  padding: 0 2px;
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: opacity 0.1s;
+}
+
+.search-grip:hover {
+  opacity: 0.9;
+}
+
+.search-grip:active {
+  cursor: grabbing;
+}
+
 .search-input {
   flex: 1;
   background: transparent;

@@ -1459,6 +1459,20 @@ export default function SettingsPanel({
               aria-checked={overlayIncludeAutocorrect}
             />
           </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Search bar position</span>
+              <span className="settings-toggle-sub">Drag the grip handle on the search bar to move it. Reset returns it to the default spot.</span>
+            </div>
+            <button
+              className="settings-action-btn"
+              type="button"
+              onClick={() => window.electronAPI?.resetOverlayPosition('search')}
+            >
+              Reset position
+            </button>
+          </div>
           </>)}
         </section>
 
@@ -1593,6 +1607,20 @@ export default function SettingsPanel({
               {clipPasteConflict && (
                 <div className="settings-conflict-warn">{clipPasteConflict}</div>
               )}
+
+              <div className="settings-toggle-row">
+                <div className="settings-toggle-info">
+                  <span className="settings-toggle-label">Popup position</span>
+                  <span className="settings-toggle-sub">Drag the grip handle in the popup to move it. Reset returns it to the default spot.</span>
+                </div>
+                <button
+                  className="settings-action-btn"
+                  type="button"
+                  onClick={() => window.electronAPI?.resetOverlayPosition('clipboard')}
+                >
+                  Reset position
+                </button>
+              </div>
 
               <ClipboardExcludedAppsEditor
                 apps={clipboardExcludedApps}

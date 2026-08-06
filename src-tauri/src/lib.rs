@@ -2069,6 +2069,29 @@ fn monitor_scale_factor(hmon: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> f6
     dx as f64 / 96.0
 }
 
+/// Map the JS-side overlay name to the Tauri window label.
+fn overlay_position_label(name: &str) -> Option<&'static str> {
+    match name {
+        "search" => Some("overlay"),
+        "clipboard" => Some("clipboardoverlay"),
+        _ => None,
+    }
+}
+
+/// Saved user-dragged position for an overlay window, as fractions of the
+/// active monitor's work area minus the window size (0..1 keeps the window
+/// fully on-screen by construction). Stored in trigr-local-settings.json —
+/// machine-specific by design, monitor layouts don't sync across devices.
+/// Fraction storage means the position maps onto whichever monitor is active
+/// at show time and survives DPI/resolution changes.
+fn saved_overlay_frac(name: &str) -> Option<(f64, f64)> {
+    let val = config::load_local_settings_json();
+    let pos = val.get("overlayPositions")?.get(name)?;
+    let x = pos.get("xFrac")?.as_f64()?;
+    let y = pos.get("yFrac")?.as_f64()?;
+    Some((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)))
+}
+
 #[cfg(not(windows))]
 fn show_overlay(app: &tauri::AppHandle) {
     let _ = app;
@@ -2121,8 +2144,16 @@ fn show_overlay(app: &tauri::AppHandle) {
     let win_h_logical = 103.0_f64;
     let phys_w = (win_w_logical * scale).round() as i32;
     let phys_h = (win_h_logical * scale).round() as i32;
-    let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
-    let phys_y = wa_top + (wa_bottom - wa_top) / 3;
+    let mut phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+    let mut phys_y = wa_top + (wa_bottom - wa_top) / 3;
+    // User-dragged position override (grip drag on the search bar). Voice
+    // mode is untouched — show_voice_overlay keeps its bottom-centre pill.
+    if let Some((fx, fy)) = saved_overlay_frac("search") {
+        let span_x = ((wa_right - wa_left) - phys_w).max(0) as f64;
+        let span_y = ((wa_bottom - wa_top) - phys_h).max(0) as f64;
+        phys_x = wa_left + (fx * span_x).round() as i32;
+        phys_y = wa_top + (fy * span_y).round() as i32;
+    }
     let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
     let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
@@ -2349,9 +2380,19 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
 
     let ideal_y = wa_top + wa_h / 3;
     let max_y = wa_bottom - phys_h - 16;
-    let phys_y = ideal_y.min(max_y).max(wa_top + 16);
+    let mut phys_y = ideal_y.min(max_y).max(wa_top + 16);
 
-    let phys_x = wa_left + (wa_w - phys_w) / 2;
+    let mut phys_x = wa_left + (wa_w - phys_w) / 2;
+
+    // User-dragged position override (grip drag in the popup header). The
+    // fraction spans the work area minus the (already clamped) window size,
+    // so the result is always fully on-screen.
+    if let Some((fx, fy)) = saved_overlay_frac("clipboard") {
+        let span_x = (wa_w - phys_w).max(0) as f64;
+        let span_y = (wa_h - phys_h).max(0) as f64;
+        phys_x = wa_left + (fx * span_x).round() as i32;
+        phys_y = wa_top + (fy * span_y).round() as i32;
+    }
 
     // Fetch history + theme OFF the processor thread. get_history blocks on
     // the clipboard writer thread (up to 500 rows AES-decrypted, possibly
@@ -2774,6 +2815,111 @@ fn overlay_resize(height: f64, app: tauri::AppHandle) {
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.set_size(tauri::LogicalSize::new(620.0, h));
     }
+}
+
+/// Persist an overlay's current position after a user drag. `name` is the
+/// JS-side overlay name ("search" | "clipboard"). Position is stored as a
+/// fraction of the current monitor's work area minus the window size — see
+/// saved_overlay_frac for why.
+#[cfg(windows)]
+#[tauri::command]
+fn save_overlay_position(name: String, app: tauri::AppHandle) {
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    let Some(label) = overlay_position_label(&name) else { return };
+    let Some(win) = app.get_webview_window(label) else { return };
+    let (Ok(pos), Ok(size), Ok(hwnd)) = (win.outer_position(), win.outer_size(), win.hwnd())
+    else {
+        return;
+    };
+    let (wl, wt, wr, wb) = unsafe {
+        let hmon = MonitorFromWindow(hwnd.0 as _, MONITOR_DEFAULTTONEAREST);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+        } else {
+            return;
+        }
+    };
+    let span_x = ((wr - wl) - size.width as i32).max(1) as f64;
+    let span_y = ((wb - wt) - size.height as i32).max(1) as f64;
+    let fx = ((pos.x - wl) as f64 / span_x).clamp(0.0, 1.0);
+    let fy = ((pos.y - wt) as f64 / span_y).clamp(0.0, 1.0);
+    let mut val = config::load_local_settings_json();
+    if let Some(obj) = val.as_object_mut() {
+        let positions = obj
+            .entry("overlayPositions".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(pobj) = positions.as_object_mut() {
+            pobj.insert(name.clone(), serde_json::json!({ "xFrac": fx, "yFrac": fy }));
+        }
+        config::save_local_settings_json(&val);
+        log::info!(
+            "[Keyfire] Overlay position saved: {} xFrac={:.3} yFrac={:.3}",
+            name, fx, fy
+        );
+    }
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn save_overlay_position(name: String, app: tauri::AppHandle) {
+    let _ = (name, app);
+}
+
+/// Clear a saved overlay position — the overlay returns to its default spot
+/// (centred, one-third from the top of the active monitor's work area). If
+/// the overlay is currently visible it snaps back immediately; the next show
+/// recomputes the exact default either way.
+#[tauri::command]
+fn reset_overlay_position(name: String, app: tauri::AppHandle) {
+    let mut val = config::load_local_settings_json();
+    if let Some(positions) = val.get_mut("overlayPositions").and_then(|v| v.as_object_mut()) {
+        if positions.remove(&name).is_some() {
+            config::save_local_settings_json(&val);
+        }
+    }
+    log::info!("[Keyfire] Overlay position reset: {}", name);
+    #[cfg(windows)]
+    {
+        let Some(label) = overlay_position_label(&name) else { return };
+        if let Some(win) = app.get_webview_window(label) {
+            if win.is_visible().unwrap_or(false) {
+                apply_default_overlay_position(&win);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+}
+
+/// Move an overlay window back to the shared default spot (centred, 1/3 from
+/// the top of the work area of whichever monitor it's currently on).
+#[cfg(windows)]
+fn apply_default_overlay_position(win: &tauri::WebviewWindow) {
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    let (Ok(size), Ok(hwnd)) = (win.outer_size(), win.hwnd()) else { return };
+    let (wl, wt, wr, wb) = unsafe {
+        let hmon = MonitorFromWindow(hwnd.0 as _, MONITOR_DEFAULTTONEAREST);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+        } else {
+            return;
+        }
+    };
+    let phys_x = wl + ((wr - wl) - size.width as i32) / 2;
+    let ideal_y = wt + (wb - wt) / 3;
+    let max_y = wb - size.height as i32 - 16;
+    let phys_y = ideal_y.min(max_y).max(wt + 16);
+    let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
 }
 
 /// Expand the voice overlay from its compact 72×72 pill to a wider error banner.
@@ -3755,8 +3901,17 @@ fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
         let phys_h = phys_h_unclamped.min(max_h);
         let ideal_y = wa_top + wa_h / 3;
         let max_y = wa_bottom - phys_h - 16;
-        let phys_y = ideal_y.min(max_y).max(wa_top + 16);
-        let phys_x = wa_left + (wa_w - phys_w) / 2;
+        let mut phys_y = ideal_y.min(max_y).max(wa_top + 16);
+        let mut phys_x = wa_left + (wa_w - phys_w) / 2;
+
+        // Same user-dragged override as show_clipboard_overlay — the popup
+        // lives where the user put it in fill-in mode too.
+        if let Some((fx, fy)) = saved_overlay_frac("clipboard") {
+            let span_x = (wa_w - phys_w).max(0) as f64;
+            let span_y = (wa_h - phys_h).max(0) as f64;
+            phys_x = wa_left + (fx * span_x).round() as i32;
+            phys_y = wa_top + (fy * span_y).round() as i32;
+        }
 
         if let Ok(hwnd) = win.hwnd() {
             unsafe {
@@ -5039,6 +5194,8 @@ pub fn run() {
             // Overlay
             close_overlay,
             overlay_resize,
+            save_overlay_position,
+            reset_overlay_position,
             voice_overlay_error_expand,
             voice_overlay_examples_expand,
             set_voice_continuous,
