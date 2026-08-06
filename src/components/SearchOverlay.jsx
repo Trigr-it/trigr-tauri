@@ -454,6 +454,14 @@ export default function SearchOverlay() {
     });
   }, []);
 
+  // Mid-session flip change — currently only fired by a position reset while
+  // the overlay is open (the bar returns to the default spot, which never
+  // flips). Un-flipping re-runs the measure effect, which resizes the fixed
+  // full-height flip window back down to its content.
+  useEffect(() => {
+    window.electronAPI?.onOverlayFlip?.((v) => setFlipUp(!!v));
+  }, []);
+
   // ── Arrow-key handler on window ──
   useEffect(() => {
     function handleKeyDown(e) {

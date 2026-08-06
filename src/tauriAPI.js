@@ -150,6 +150,9 @@ window.electronAPI = {
   // ── Overlay window positions (search bar + clipboard popup) ────────────────
   saveOverlayPosition:  (name) => invoke('save_overlay_position', { name }),
   resetOverlayPosition: (name) => invoke('reset_overlay_position', { name }),
+  onOverlayFlip: (callback) => {
+    listen('overlay-flip', (event) => callback(event.payload)).then(u => { listeners['overlay-flip'] = u; });
+  },
 
   // ── Global compatibility settings ───────────────────────────────────────────
   updateGlobalSettings: (settings) => invoke('update_global_settings', { settings }),

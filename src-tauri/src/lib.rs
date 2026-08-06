@@ -2959,6 +2959,15 @@ fn reset_overlay_position(name: String, app: tauri::AppHandle) {
         if let Some(win) = app.get_webview_window(label) {
             if win.is_visible().unwrap_or(false) {
                 apply_default_overlay_position(&win);
+                // A flipped search session must also un-flip, or the bar
+                // (pinned to the bottom of the fixed full-height window)
+                // lands ~350px below the default spot until the next open.
+                // Order matters: clear the flag BEFORE the emit so the JS
+                // measure effect's resizeOverlay call isn't ignored.
+                if name == "search" && OVERLAY_FLIP_UP.swap(false, AtomicOrdering::SeqCst) {
+                    use tauri::Emitter;
+                    let _ = win.emit("overlay-flip", false);
+                }
             }
         }
     }
