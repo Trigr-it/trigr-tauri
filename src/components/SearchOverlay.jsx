@@ -882,7 +882,7 @@ export default function SearchOverlay() {
   }
 
   return (
-    <div className={`search-overlay${flipUp ? ' flip-up' : ''}`}>
+    <div className={`search-overlay${flipUp && mode !== 'voice' ? ' flip-up' : ''}`}>
       <div className="search-panel" ref={panelRef}>
         {/* Query mode: template label bar */}
         {mode === 'query' && activeTemplate && (

@@ -189,11 +189,19 @@ html, body {
 
 /* ── Flip mode — bar sits near the bottom of the screen, results open above
    the input instead of running off the monitor. The window itself grows
-   upward (overlay_resize anchors the bottom edge when flipped). ─────────── */
+   upward (overlay_resize keeps the bottom edge on a fixed anchor when
+   flipped). The panel is pinned to the WINDOW BOTTOM so the input row sits a
+   constant 16px above the window's bottom edge regardless of window height —
+   any height mismatch clips the results' top, never the input. ──────────── */
+
+.search-overlay.flip-up {
+  justify-content: flex-end;
+}
 
 .search-overlay.flip-up .search-panel {
   display: flex;
   flex-direction: column;
+  margin: 0 auto 16px;
 }
 
 .search-overlay.flip-up .search-results {

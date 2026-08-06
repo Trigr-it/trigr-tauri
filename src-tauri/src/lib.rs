@@ -2035,6 +2035,19 @@ static OVERLAY_TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
 /// and mirrored to the frontend as `flipUp` in the search-data payload.
 static OVERLAY_FLIP_UP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Flip-mode bottom anchor (physical px): the y the window's bottom edge must
+/// keep through every overlay_resize so the input row never moves. Set at
+/// show time to bar_y + 82 logical (panel shadow room 12 + input row 54 +
+/// bottom margin 16 — mirrors the measure constants in SearchOverlay.jsx),
+/// refreshed after a grip drag or position reset.
+static OVERLAY_FLIP_ANCHOR: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+/// Max height of the search overlay window in logical px. Must exceed the
+/// tallest content the frontend can measure (12 + input 54 + results
+/// max-height 340 + 16 = 422) — a smaller cap clips the window edge, which
+/// in flip mode cuts into the input row.
+const OVERLAY_MAX_H: f64 = 430.0;
+
 /// Timestamp when overlay was last shown — used for blur dismiss guard.
 static OVERLAY_SHOW_TIME: std::sync::OnceLock<StdMutex<Option<StdInstant>>> = std::sync::OnceLock::new();
 
@@ -2165,9 +2178,17 @@ fn show_overlay(app: &tauri::AppHandle) {
     let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
     // Flip the dropdown when the bar sits low enough that a full results
-    // list (overlay_resize cap = 400 logical) would run past the work area.
-    let flip_up = phys_y + (400.0 * scale).round() as i32 > wa_bottom - 16;
+    // list would run past the work area.
+    let flip_up = phys_y + (OVERLAY_MAX_H * scale).round() as i32 > wa_bottom - 16;
     OVERLAY_FLIP_UP.store(flip_up, AtomicOrdering::SeqCst);
+    let anchor = phys_y + (82.0 * scale).round() as i32;
+    OVERLAY_FLIP_ANCHOR.store(anchor, AtomicOrdering::SeqCst);
+    if flip_up {
+        // Bottom-anchor the initial window too (the panel is bottom-pinned in
+        // flip mode) so the input row spawns exactly where it does in normal
+        // mode and the first content-measured resize doesn't hop.
+        let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, anchor - phys_h));
+    }
 
     // Send search data to the overlay — includes ALL assignments (profile + global)
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
@@ -2824,22 +2845,37 @@ fn set_voice_continuous(on: bool, app: tauri::AppHandle) {
 
 #[tauri::command]
 fn overlay_resize(height: f64, app: tauri::AppHandle) {
-    let h = height.max(60.0).min(400.0);
-    if let Some(overlay) = app.get_webview_window("overlay") {
-        // Flip mode: the results render above the input, so the window must
-        // grow upward. Anchor the bottom edge (where the input row lives) by
-        // shifting y up/down by the height delta before resizing.
-        if OVERLAY_FLIP_UP.load(AtomicOrdering::SeqCst) {
-            if let (Ok(pos), Ok(size), Ok(scale)) =
-                (overlay.outer_position(), overlay.outer_size(), overlay.scale_factor())
-            {
-                let new_h_phys = (h * scale).round() as i32;
-                let bottom = pos.y + size.height as i32;
-                let _ = overlay.set_position(tauri::PhysicalPosition::new(pos.x, bottom - new_h_phys));
+    let h = height.max(60.0).min(OVERLAY_MAX_H);
+    let Some(overlay) = app.get_webview_window("overlay") else { return };
+    // Flip mode: results render above the input and the window grows upward
+    // from the stored bottom anchor. Move + resize MUST be one SetWindowPos —
+    // a set_position/set_size pair paints an intermediate frame (new y, old
+    // height) that visibly bounced the bar on every keystroke.
+    #[cfg(windows)]
+    if OVERLAY_FLIP_UP.load(AtomicOrdering::SeqCst) {
+        if let (Ok(pos), Ok(hwnd)) = (overlay.outer_position(), overlay.hwnd()) {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
+            };
+            let scale = overlay.scale_factor().unwrap_or(1.0);
+            let anchor = OVERLAY_FLIP_ANCHOR.load(AtomicOrdering::SeqCst);
+            let w_phys = (620.0 * scale).round() as i32;
+            let h_phys = (h * scale).round() as i32;
+            unsafe {
+                SetWindowPos(
+                    hwnd.0 as _,
+                    std::ptr::null_mut(),
+                    pos.x,
+                    anchor - h_phys,
+                    w_phys,
+                    h_phys,
+                    SWP_NOZORDER | SWP_NOACTIVATE,
+                );
             }
+            return;
         }
-        let _ = overlay.set_size(tauri::LogicalSize::new(620.0, h));
     }
+    let _ = overlay.set_size(tauri::LogicalSize::new(620.0, h));
 }
 
 /// Persist an overlay's current position after a user drag. `name` is the
@@ -2872,6 +2908,11 @@ fn save_overlay_position(name: String, app: tauri::AppHandle) {
     let span_y = ((wb - wt) - size.height as i32).max(1) as f64;
     let fx = ((pos.x - wl) as f64 / span_x).clamp(0.0, 1.0);
     let fy = ((pos.y - wt) as f64 / span_y).clamp(0.0, 1.0);
+    // Keep the flip-mode bottom anchor in step with the dragged position so
+    // the next results resize doesn't snap the bar back to the pre-drag spot.
+    if name == "search" {
+        OVERLAY_FLIP_ANCHOR.store(pos.y + size.height as i32, AtomicOrdering::SeqCst);
+    }
     let mut val = config::load_local_settings_json();
     if let Some(obj) = val.as_object_mut() {
         let positions = obj
@@ -2913,6 +2954,15 @@ fn reset_overlay_position(name: String, app: tauri::AppHandle) {
         if let Some(win) = app.get_webview_window(label) {
             if win.is_visible().unwrap_or(false) {
                 apply_default_overlay_position(&win);
+                // Re-anchor flip-mode resizes to the new spot (see the drag
+                // save above). The flip direction itself is re-decided at the
+                // next show.
+                if name == "search" {
+                    if let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) {
+                        OVERLAY_FLIP_ANCHOR
+                            .store(pos.y + size.height as i32, AtomicOrdering::SeqCst);
+                    }
+                }
             }
         }
     }
