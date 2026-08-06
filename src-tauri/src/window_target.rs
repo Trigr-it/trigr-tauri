@@ -35,7 +35,10 @@ use windows_sys::Win32::Graphics::Gdi::{
 // windows-sys 0.59 omits this constant from Win32::Graphics::Gdi; it's a stable
 // Win32 SDK value so we inline it. dwFlags & this bit == primary monitor.
 const MONITORINFOF_PRIMARY: u32 = 0x00000001;
-use windows_sys::Win32::System::Threading::{GetCurrentProcessId, GetProcessId};
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcessId, GetProcessId, OpenProcess, QueryFullProcessImageNameW,
+    PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows_sys::Win32::UI::Shell::{
     ShellExecuteExW, ShellExecuteW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOCLOSEPROCESS,
@@ -43,11 +46,11 @@ use windows_sys::Win32::UI::Shell::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EnumWindows, GetClassNameW, GetCursorPos, GetParent, GetWindowLongW,
-    GetWindowRect, GetWindowThreadProcessId, IsWindowVisible, PeekMessageW, SendMessageW,
-    SetCursorPos, SetWindowPos, TranslateMessage, EVENT_OBJECT_SHOW, GWL_EXSTYLE, MSG,
-    OBJID_WINDOW, PM_REMOVE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SW_SHOW,
-    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE,
-    WS_EX_TOOLWINDOW,
+    GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    PeekMessageW, SendMessageW, SetCursorPos, SetWindowPos, ShowWindow, TranslateMessage,
+    EVENT_OBJECT_SHOW, GWL_EXSTYLE, MSG, OBJID_WINDOW, PM_REMOVE, SWP_NOACTIVATE, SWP_NOSIZE,
+    SWP_NOZORDER, SW_RESTORE, SW_SHOW, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WS_EX_TOOLWINDOW,
 };
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -116,6 +119,26 @@ pub fn enum_monitors() -> Vec<MonitorInfo> {
 /// no monitor target is set (default launch — nothing to wait on).
 pub fn launch_with_monitor_target(kind: LaunchKind, target: MonitorTarget) -> Option<Receiver<()>> {
     let rc = resolve_target_rect(&target);
+
+    // Launch-or-focus: if the target app already has a visible top-level
+    // window, restore + foreground it instead of launching a second instance.
+    // Applies only to exe-backed launches (see launch_target_exe_name for the
+    // exact rules — documents, .lnk, args-carrying and true-UWP launches all
+    // fall through to a normal launch). Monitor targets are still honoured by
+    // moving the existing window when it sits on a different monitor.
+    if let Some(exe) = launch_target_exe_name(&kind) {
+        if focus_running_instance(&exe, rc) {
+            if rc.is_some() {
+                // Macro Open App steps recv_timeout on the receiver to
+                // sequence follow-up steps after window placement. Nothing
+                // async happens on this path, so signal completion now.
+                let (tx, rx) = channel::<()>();
+                let _ = tx.send(());
+                return Some(rx);
+            }
+            return None;
+        }
+    }
 
     // Fast path: no targeting — preserve historical behaviour exactly.
     if rc.is_none() {
@@ -337,6 +360,141 @@ fn find_new_top_level_excluding_pid(existing: &HashSet<isize>, exclude_pid: u32)
         return Some(hwnd);
     }
     None
+}
+
+// ── Launch-or-focus ─────────────────────────────────────────────────────────
+
+/// Resolve the exe filename (lowercase) a launch would start, or None when
+/// launch-or-focus shouldn't apply:
+/// - kind="path" must point at an .exe. Documents (report.xlsx) and .lnk
+///   shortcuts open via their handler app whose process name we can't know —
+///   they fall through to a normal launch.
+/// - kind="aumid": Get-StartApps returns Win32 apps as folder-GUID-prefixed
+///   exe paths ("{GUID}\Vendor\app.exe") — those match by basename. True UWP
+///   AUMIDs ("Package!App") are skipped: UWP shell activation is
+///   single-instance and foregrounds the running app natively.
+/// - Launches carrying args are skipped — focusing an existing window would
+///   silently swallow the arguments.
+fn launch_target_exe_name(kind: &LaunchKind) -> Option<String> {
+    let LaunchKind::App { kind: lk, path, app_id, args } = kind else {
+        return None;
+    };
+    if !args.is_empty() {
+        return None;
+    }
+    let candidate = if *lk == "aumid" && !app_id.is_empty() { *app_id } else { *path };
+    let name = candidate
+        .rsplit(|c| c == '\\' || c == '/')
+        .next()
+        .unwrap_or(candidate)
+        .trim()
+        .to_lowercase();
+    if name.ends_with(".exe") && name.len() > 4 {
+        Some(name)
+    } else {
+        None
+    }
+}
+
+struct FindAppWindowState {
+    exe_lower: String,
+    own_pid: u32,
+    found: isize,
+}
+
+unsafe extern "system" fn find_app_window_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let state = &mut *(lparam as *mut FindAppWindowState);
+    // Deliberately NOT is_top_level_window(): its 50px size floor rejects
+    // minimized windows (Windows parks them at -32000 with a ~160x28 rect),
+    // and restoring a minimized instance is exactly this feature's job.
+    if IsWindowVisible(hwnd) == 0 {
+        return TRUE;
+    }
+    if !GetParent(hwnd).is_null() {
+        return TRUE;
+    }
+    let exstyle = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+    if (exstyle & WS_EX_TOOLWINDOW) != 0 {
+        return TRUE;
+    }
+    // Require a non-empty title — filters technically-visible helper/host
+    // windows that aren't user-facing.
+    let mut title_buf = [0u16; 2];
+    if GetWindowTextW(hwnd, title_buf.as_mut_ptr(), title_buf.len() as i32) <= 0 {
+        return TRUE;
+    }
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, &mut pid);
+    if pid == 0 || pid == state.own_pid {
+        return TRUE;
+    }
+    let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+    if handle.is_null() {
+        return TRUE;
+    }
+    let mut buf = [0u16; 260];
+    let mut size: u32 = buf.len() as u32;
+    let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
+    CloseHandle(handle);
+    if ok == 0 || size == 0 {
+        return TRUE;
+    }
+    let full = String::from_utf16_lossy(&buf[..size as usize]);
+    let base = full
+        .rsplit(|c| c == '\\' || c == '/')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    if base == state.exe_lower {
+        state.found = hwnd as isize;
+        return 0; // stop enumeration — EnumWindows walks Z-order, first hit is topmost
+    }
+    TRUE
+}
+
+/// Find a visible top-level window belonging to a running `exe_lower` process
+/// and bring it to the foreground (restoring from minimized first). When the
+/// launch has a monitor target and the window sits elsewhere, it's moved to
+/// the target work area. Returns false when no instance is running — caller
+/// falls through to a normal launch.
+fn focus_running_instance(exe_lower: &str, rc: Option<RECT>) -> bool {
+    let mut state = FindAppWindowState {
+        exe_lower: exe_lower.to_string(),
+        own_pid: unsafe { GetCurrentProcessId() },
+        found: 0,
+    };
+    unsafe {
+        EnumWindows(Some(find_app_window_cb), &mut state as *mut _ as LPARAM);
+    }
+    if state.found == 0 {
+        return false;
+    }
+    let hwnd = state.found as HWND;
+    unsafe {
+        if IsIconic(hwnd) != 0 {
+            ShowWindow(hwnd, SW_RESTORE);
+        }
+    }
+    if let Some(rc) = rc {
+        // Honour the monitor target — but only move when the window's centre
+        // is off the target work area, so a re-press doesn't re-centre a
+        // window the user has since positioned by hand on that monitor.
+        let mut wrect: RECT = unsafe { mem::zeroed() };
+        if unsafe { GetWindowRect(hwnd, &mut wrect) } != 0 {
+            let cx = (wrect.left + wrect.right) / 2;
+            let cy = (wrect.top + wrect.bottom) / 2;
+            let on_target = cx >= rc.left && cx < rc.right && cy >= rc.top && cy < rc.bottom;
+            if !on_target {
+                move_window_centered(hwnd, rc);
+            }
+        }
+    }
+    crate::actions::set_foreground_robust(state.found);
+    info!(
+        "[Keyfire] Open App: {} already running — focused existing window (HWND 0x{:X})",
+        exe_lower, state.found
+    );
+    true
 }
 
 // Classic UWP apps (Calculator, Clock, Calendar, Photos, Store, Settings,
