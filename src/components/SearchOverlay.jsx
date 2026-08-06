@@ -288,6 +288,7 @@ export default function SearchOverlay() {
   const [settings,      setSettings]      = useState({
     showAll: false, closeAfterFiring: true, includeAutocorrect: false,
   });
+  const [flipUp, setFlipUp] = useState(false);
   const [ready, setReady] = useState(false);
 
   // ── Search Template state machine ──
@@ -434,6 +435,7 @@ export default function SearchOverlay() {
       document.documentElement.setAttribute('data-theme', data.theme || 'dark');
       const { settings: newSettings } = data;
       setSettings(newSettings || { showAll: false, closeAfterFiring: true, includeAutocorrect: false });
+      setFlipUp(!!data.flipUp);
       const items = buildItems(data);
       setAllItems(items);
       setSearchTemplates(data.searchTemplates || []);
@@ -880,7 +882,7 @@ export default function SearchOverlay() {
   }
 
   return (
-    <div className="search-overlay">
+    <div className={`search-overlay${flipUp ? ' flip-up' : ''}`}>
       <div className="search-panel" ref={panelRef}>
         {/* Query mode: template label bar */}
         {mode === 'query' && activeTemplate && (

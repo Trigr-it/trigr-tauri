@@ -187,6 +187,24 @@ html, body {
   padding: 4px 0 8px;
 }
 
+/* ── Flip mode — bar sits near the bottom of the screen, results open above
+   the input instead of running off the monitor. The window itself grows
+   upward (overlay_resize anchors the bottom edge when flipped). ─────────── */
+
+.search-overlay.flip-up .search-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.search-overlay.flip-up .search-results {
+  order: -1;
+}
+
+.search-overlay.flip-up .search-panel:has(.search-results) .search-input-row {
+  border-bottom-color: transparent;
+  border-top: 1px solid var(--border-bright);
+}
+
 .search-results::-webkit-scrollbar {
   width: 4px;
 }

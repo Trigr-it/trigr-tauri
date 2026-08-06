@@ -2028,6 +2028,13 @@ use std::sync::Mutex as StdMutex;
 /// HWND of the foreground window captured when the overlay was shown.
 static OVERLAY_TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
 
+/// True when the search bar sits low enough that its results dropdown would
+/// run off the bottom of the work area — the results render above the input
+/// and overlay_resize grows the window upward (bottom edge anchored) instead
+/// of downward. Decided per show in show_overlay, consumed by overlay_resize
+/// and mirrored to the frontend as `flipUp` in the search-data payload.
+static OVERLAY_FLIP_UP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Timestamp when overlay was last shown — used for blur dismiss guard.
 static OVERLAY_SHOW_TIME: std::sync::OnceLock<StdMutex<Option<StdInstant>>> = std::sync::OnceLock::new();
 
@@ -2157,6 +2164,11 @@ fn show_overlay(app: &tauri::AppHandle) {
     let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
     let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
 
+    // Flip the dropdown when the bar sits low enough that a full results
+    // list (overlay_resize cap = 400 logical) would run past the work area.
+    let flip_up = phys_y + (400.0 * scale).round() as i32 > wa_bottom - 16;
+    OVERLAY_FLIP_UP.store(flip_up, AtomicOrdering::SeqCst);
+
     // Send search data to the overlay — includes ALL assignments (profile + global)
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     // Pro gate: Free users get the first 5 templates. Anything beyond
@@ -2184,7 +2196,8 @@ fn show_overlay(app: &tauri::AppHandle) {
                 "closeAfterFiring": cfg.get("overlayCloseAfterFiring").and_then(|v| v.as_bool()).unwrap_or(true),
                 "includeAutocorrect": cfg.get("overlayIncludeAutocorrect").and_then(|v| v.as_bool()).unwrap_or(false),
             },
-            "voiceEnabled": cfg.get("voiceCommandsEnabled").and_then(|v| v.as_bool()).unwrap_or(true)
+            "voiceEnabled": cfg.get("voiceCommandsEnabled").and_then(|v| v.as_bool()).unwrap_or(true),
+            "flipUp": flip_up
         })
     };
     let _ = overlay.emit("overlay-search-data", search_data);
@@ -2813,6 +2826,18 @@ fn set_voice_continuous(on: bool, app: tauri::AppHandle) {
 fn overlay_resize(height: f64, app: tauri::AppHandle) {
     let h = height.max(60.0).min(400.0);
     if let Some(overlay) = app.get_webview_window("overlay") {
+        // Flip mode: the results render above the input, so the window must
+        // grow upward. Anchor the bottom edge (where the input row lives) by
+        // shifting y up/down by the height delta before resizing.
+        if OVERLAY_FLIP_UP.load(AtomicOrdering::SeqCst) {
+            if let (Ok(pos), Ok(size), Ok(scale)) =
+                (overlay.outer_position(), overlay.outer_size(), overlay.scale_factor())
+            {
+                let new_h_phys = (h * scale).round() as i32;
+                let bottom = pos.y + size.height as i32;
+                let _ = overlay.set_position(tauri::PhysicalPosition::new(pos.x, bottom - new_h_phys));
+            }
+        }
         let _ = overlay.set_size(tauri::LogicalSize::new(620.0, h));
     }
 }
