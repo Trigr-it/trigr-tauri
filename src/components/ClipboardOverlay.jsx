@@ -358,6 +358,14 @@ export default function ClipboardOverlay() {
   return (
     <div className="co-root">
       <div className="co-panel">
+        <button
+          className="co-swap-btn"
+          type="button"
+          title="Swap list and preview sides"
+          onClick={toggleSwapSides}
+        >
+          <ArrowLeftRight size={13} strokeWidth={1.75} />
+        </button>
         <div className={`co-panes${swapSides ? ' co-swapped' : ''}`}>
 
         {/* ── LEFT: list pane ── */}
@@ -379,15 +387,6 @@ export default function ClipboardOverlay() {
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
-            <button
-              className="co-swap-btn"
-              type="button"
-              title="Swap list and preview sides"
-              onClick={toggleSwapSides}
-            >
-              <ArrowLeftRight size={13} strokeWidth={1.75} />
-            </button>
-            <span className="co-esc-hint">Esc</span>
           </div>
           <div className="co-tag-pills">
             {['All', 'Text', 'Image', 'Number', 'Link', 'Email', 'Colour'].map(tag => (
