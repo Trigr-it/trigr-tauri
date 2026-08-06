@@ -196,6 +196,9 @@ html, body {
 
 .search-overlay.flip-up {
   justify-content: flex-end;
+  /* The fixed-height window leaves transparent backdrop above short lists;
+     it must receive clicks so the root's dismiss handler fires. */
+  pointer-events: auto;
 }
 
 .search-overlay.flip-up .search-panel {

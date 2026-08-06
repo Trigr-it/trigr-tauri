@@ -2035,13 +2035,6 @@ static OVERLAY_TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
 /// and mirrored to the frontend as `flipUp` in the search-data payload.
 static OVERLAY_FLIP_UP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Flip-mode bottom anchor (physical px): the y the window's bottom edge must
-/// keep through every overlay_resize so the input row never moves. Set at
-/// show time to bar_y + 82 logical (panel shadow room 12 + input row 54 +
-/// bottom margin 16 — mirrors the measure constants in SearchOverlay.jsx),
-/// refreshed after a grip drag or position reset.
-static OVERLAY_FLIP_ANCHOR: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
 /// Max height of the search overlay window in logical px. Must exceed the
 /// tallest content the frontend can measure (12 + input 54 + results
 /// max-height 340 + 16 = 422) — a smaller cap clips the window edge, which
@@ -2181,18 +2174,28 @@ fn show_overlay(app: &tauri::AppHandle) {
     // list would run past the work area.
     let flip_up = phys_y + (OVERLAY_MAX_H * scale).round() as i32 > wa_bottom - 16;
     OVERLAY_FLIP_UP.store(flip_up, AtomicOrdering::SeqCst);
-    let anchor = phys_y + (82.0 * scale).round() as i32;
-    OVERLAY_FLIP_ANCHOR.store(anchor, AtomicOrdering::SeqCst);
     if flip_up {
-        // Bottom-anchor the initial window too (the panel is bottom-pinned in
-        // flip mode) so the input row spawns exactly where it does in normal
-        // mode and the first content-measured resize doesn't hop.
-        let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, anchor - phys_h));
+        // Flip sessions use a FIXED full-height window with the panel pinned
+        // to its bottom edge by CSS — the results list grows and shrinks
+        // purely inside the DOM and overlay_resize is a no-op. Per-keystroke
+        // top-edge window resizing cannot be made smooth on Windows (the
+        // stale framebuffer stays anchored top-left during a resize, so
+        // every content change flashed the bar a frame out of place). With
+        // zero window ops after show, nothing can jitter.
+        //
+        // The window bottom sits at bar_y + 82 logical (panel top room 12 +
+        // input row 54 + bottom margin 16 — mirrors the JS measure constants
+        // and SearchOverlay.css) so the input row lands on exactly the same
+        // pixels a normal-mode bar at this position would.
+        let anchor = phys_y + (82.0 * scale).round() as i32;
+        let max_h_phys = (OVERLAY_MAX_H * scale).round() as i32;
+        let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, anchor - max_h_phys));
+        let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, max_h_phys as u32));
     }
     // TEMP [QS-FLIP] diagnostic — strip after the flip-mode wild window closes.
     log::info!(
-        "[Keyfire] [QS-FLIP] show: y={} flip={} anchor={} wa_bottom={} scale={:.2}",
-        phys_y, flip_up, anchor, wa_bottom, scale
+        "[Keyfire] [QS-FLIP] show: y={} flip={} wa_bottom={} scale={:.2}",
+        phys_y, flip_up, wa_bottom, scale
     );
 
     // Send search data to the overlay — includes ALL assignments (profile + global)
@@ -2850,43 +2853,17 @@ fn set_voice_continuous(on: bool, app: tauri::AppHandle) {
 
 #[tauri::command]
 fn overlay_resize(height: f64, app: tauri::AppHandle) {
-    let h = height.max(60.0).min(OVERLAY_MAX_H);
-    let Some(overlay) = app.get_webview_window("overlay") else { return };
-    // Flip mode: results render above the input and the window grows upward
-    // from the stored bottom anchor. Move + resize MUST be one SetWindowPos —
-    // a set_position/set_size pair paints an intermediate frame (new y, old
-    // height) that visibly bounced the bar on every keystroke.
-    #[cfg(windows)]
+    // Flip mode: the window is fixed at full height for the whole session and
+    // the list grows inside the DOM (panel bottom-pinned) — see show_overlay.
+    // Content resizes are ignored; resizing the top edge per keystroke is
+    // what made the bar jitter.
     if OVERLAY_FLIP_UP.load(AtomicOrdering::SeqCst) {
-        if let (Ok(pos), Ok(hwnd)) = (overlay.outer_position(), overlay.hwnd()) {
-            use windows_sys::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
-            use windows_sys::Win32::UI::WindowsAndMessaging::{
-                SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
-            };
-            // Win32 DPI, not overlay.scale_factor() — Tauri's cached scale
-            // can be stale right after a hidden window is shown on a
-            // non-100% monitor (same race the show paths dodge).
-            let scale = unsafe {
-                monitor_scale_factor(MonitorFromWindow(hwnd.0 as _, MONITOR_DEFAULTTONEAREST))
-            };
-            let anchor = OVERLAY_FLIP_ANCHOR.load(AtomicOrdering::SeqCst);
-            let w_phys = (620.0 * scale).round() as i32;
-            let h_phys = (h * scale).round() as i32;
-            unsafe {
-                SetWindowPos(
-                    hwnd.0 as _,
-                    std::ptr::null_mut(),
-                    pos.x,
-                    anchor - h_phys,
-                    w_phys,
-                    h_phys,
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                );
-            }
-            return;
-        }
+        return;
     }
-    let _ = overlay.set_size(tauri::LogicalSize::new(620.0, h));
+    let h = height.max(60.0).min(OVERLAY_MAX_H);
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.set_size(tauri::LogicalSize::new(620.0, h));
+    }
 }
 
 /// Persist an overlay's current position after a user drag. `name` is the
@@ -2941,11 +2918,6 @@ fn save_overlay_position(name: String, app: tauri::AppHandle) {
     let span_y = ((wb - wt) - eff_h).max(1) as f64;
     let fx = ((pos.x - wl) as f64 / span_x).clamp(0.0, 1.0);
     let fy = ((eff_y - wt) as f64 / span_y).clamp(0.0, 1.0);
-    // Keep the flip-mode bottom anchor in step with the dragged position so
-    // the next results resize doesn't snap the bar back to the pre-drag spot.
-    if name == "search" {
-        OVERLAY_FLIP_ANCHOR.store(pos.y + size.height as i32, AtomicOrdering::SeqCst);
-    }
     let mut val = config::load_local_settings_json();
     if let Some(obj) = val.as_object_mut() {
         let positions = obj
@@ -2987,15 +2959,6 @@ fn reset_overlay_position(name: String, app: tauri::AppHandle) {
         if let Some(win) = app.get_webview_window(label) {
             if win.is_visible().unwrap_or(false) {
                 apply_default_overlay_position(&win);
-                // Re-anchor flip-mode resizes to the new spot (see the drag
-                // save above). The flip direction itself is re-decided at the
-                // next show.
-                if name == "search" {
-                    if let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) {
-                        OVERLAY_FLIP_ANCHOR
-                            .store(pos.y + size.height as i32, AtomicOrdering::SeqCst);
-                    }
-                }
             }
         }
     }

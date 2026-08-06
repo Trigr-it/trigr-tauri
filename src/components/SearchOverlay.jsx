@@ -681,6 +681,11 @@ export default function SearchOverlay() {
   useEffect(() => {
     // Voice mode: Rust already set the correct size/position — skip JS resize
     if (mode === 'voice') return;
+    // Flip mode: the window is fixed at full height and the list grows
+    // inside the DOM — resizing the window's top edge per keystroke is what
+    // made the bar jitter. Rust's overlay_resize also ignores calls while
+    // flipped; this guard just avoids the pointless IPC.
+    if (flipUp) return;
 
     // Double-rAF ensures React has committed the DOM update before we measure.
     requestAnimationFrame(() => {
@@ -699,7 +704,7 @@ export default function SearchOverlay() {
         window.electronAPI?.resizeOverlay(windowH);
       });
     });
-  }, [displayItems, mode]);
+  }, [displayItems, mode, flipUp]);
 
   // ── Scroll selected row into view ──
   useLayoutEffect(() => {
@@ -882,7 +887,18 @@ export default function SearchOverlay() {
   }
 
   return (
-    <div className={`search-overlay${flipUp && mode !== 'voice' ? ' flip-up' : ''}`}>
+    <div
+      className={`search-overlay${flipUp && mode !== 'voice' ? ' flip-up' : ''}`}
+      onMouseDown={e => {
+        // Flip mode keeps the window at full height, so there's transparent
+        // backdrop above short lists. A click there reads as click-outside —
+        // dismiss, matching the mouse hook's behaviour for true outside
+        // clicks.
+        if (flipUp && mode !== 'voice' && e.target === e.currentTarget) {
+          window.electronAPI?.closeOverlay();
+        }
+      }}
+    >
       <div className="search-panel" ref={panelRef}>
         {/* Query mode: template label bar */}
         {mode === 'query' && activeTemplate && (
