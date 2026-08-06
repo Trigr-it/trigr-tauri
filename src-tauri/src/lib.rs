@@ -2189,6 +2189,11 @@ fn show_overlay(app: &tauri::AppHandle) {
         // mode and the first content-measured resize doesn't hop.
         let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, anchor - phys_h));
     }
+    // TEMP [QS-FLIP] diagnostic — strip after the flip-mode wild window closes.
+    log::info!(
+        "[Keyfire] [QS-FLIP] show: y={} flip={} anchor={} wa_bottom={} scale={:.2}",
+        phys_y, flip_up, anchor, wa_bottom, scale
+    );
 
     // Send search data to the overlay — includes ALL assignments (profile + global)
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
@@ -2854,10 +2859,16 @@ fn overlay_resize(height: f64, app: tauri::AppHandle) {
     #[cfg(windows)]
     if OVERLAY_FLIP_UP.load(AtomicOrdering::SeqCst) {
         if let (Ok(pos), Ok(hwnd)) = (overlay.outer_position(), overlay.hwnd()) {
+            use windows_sys::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
             use windows_sys::Win32::UI::WindowsAndMessaging::{
                 SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
             };
-            let scale = overlay.scale_factor().unwrap_or(1.0);
+            // Win32 DPI, not overlay.scale_factor() — Tauri's cached scale
+            // can be stale right after a hidden window is shown on a
+            // non-100% monitor (same race the show paths dodge).
+            let scale = unsafe {
+                monitor_scale_factor(MonitorFromWindow(hwnd.0 as _, MONITOR_DEFAULTTONEAREST))
+            };
             let anchor = OVERLAY_FLIP_ANCHOR.load(AtomicOrdering::SeqCst);
             let w_phys = (620.0 * scale).round() as i32;
             let h_phys = (h * scale).round() as i32;
@@ -2894,20 +2905,42 @@ fn save_overlay_position(name: String, app: tauri::AppHandle) {
     else {
         return;
     };
-    let (wl, wt, wr, wb) = unsafe {
+    let (wl, wt, wr, wb, scale) = unsafe {
         let hmon = MonitorFromWindow(hwnd.0 as _, MONITOR_DEFAULTTONEAREST);
         let mut mi: MONITORINFO = std::mem::zeroed();
         mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let s = monitor_scale_factor(hmon);
         if GetMonitorInfoW(hmon, &mut mi) != 0 {
-            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+            (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, s)
         } else {
             return;
         }
     };
+    // The search bar resizes with its results, so raw window geometry is the
+    // WRONG thing to persist: a drag taken while the list is open would save
+    // the expanded window's top-left — in flip mode that's ~340px above the
+    // visible bar — and every restore would spawn the bar somewhere else.
+    // Normalise to the bar's base geometry: the y a fresh 103-logical-tall
+    // normal-mode window would need for the input row to land exactly where
+    // it is now (flipped: input sits at window_bottom - 82 logical, which is
+    // that window's top), and the base height for the span so the fraction
+    // round-trips exactly. The clipboard popup doesn't resize — raw
+    // geometry is already right there.
+    let (eff_y, eff_h) = if name == "search" {
+        let base_h = (103.0 * scale).round() as i32;
+        let y = if OVERLAY_FLIP_UP.load(AtomicOrdering::SeqCst) {
+            pos.y + size.height as i32 - (82.0 * scale).round() as i32
+        } else {
+            pos.y
+        };
+        (y, base_h)
+    } else {
+        (pos.y, size.height as i32)
+    };
     let span_x = ((wr - wl) - size.width as i32).max(1) as f64;
-    let span_y = ((wb - wt) - size.height as i32).max(1) as f64;
+    let span_y = ((wb - wt) - eff_h).max(1) as f64;
     let fx = ((pos.x - wl) as f64 / span_x).clamp(0.0, 1.0);
-    let fy = ((pos.y - wt) as f64 / span_y).clamp(0.0, 1.0);
+    let fy = ((eff_y - wt) as f64 / span_y).clamp(0.0, 1.0);
     // Keep the flip-mode bottom anchor in step with the dragged position so
     // the next results resize doesn't snap the bar back to the pre-drag spot.
     if name == "search" {
