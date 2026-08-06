@@ -164,6 +164,12 @@ html, body {
   cursor: grabbing;
 }
 
+/* Search bar fills everything between the grip and the swap button */
+.co-search-bar {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Swap-sides toggle — top-right corner of the list pane (last item in its
    search row), travels with the list when the sides are swapped */
 .co-swap-btn {
