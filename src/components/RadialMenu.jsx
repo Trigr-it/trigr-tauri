@@ -14,9 +14,25 @@ export default function RadialMenu() {
 
   const itemsRef = useRef([]);
   const expandedFolderRef = useRef(null);
+  // Live mirrors of the hover state so the hold-release handler (registered
+  // once, below) reads the segment under the cursor at the exact moment the
+  // hotkey is released rather than a stale closure value.
+  const hoveredIndexRef = useRef(-1);
+  const hoveredOuterIndexRef = useRef(-1);
+  // One-shot fire guard (see fireItem). Declared here so both the data-reset
+  // effect and fireItem can reach it.
+  const firedRef = useRef(false);
+  // Hold-to-select config, delivered with each open. The overlay holds
+  // keyboard focus, so its own keyup listener (below) detects the launch-key
+  // release — no backend/hook involvement. holdKey is a KeyboardEvent.code
+  // (e.g. "KeyW"), the action segment of the radial hotkey combo.
+  const holdToSelectRef = useRef(false);
+  const holdKeyRef = useRef('');
 
   itemsRef.current = items;
   expandedFolderRef.current = expandedFolder;
+  hoveredIndexRef.current = hoveredIndex;
+  hoveredOuterIndexRef.current = hoveredOuterIndex;
 
   // ── Listen for data from Rust ──────────────────────────────────────────
   useEffect(() => {
@@ -28,6 +44,9 @@ export default function RadialMenu() {
       setExpandedFolder(null);
       setMissingNotice(false);
       setAnimKey(k => k + 1);
+      firedRef.current = false; // fresh wheel — re-arm the one-shot fire guard
+      holdToSelectRef.current = !!data.holdToSelect;
+      holdKeyRef.current = data.holdKey || '';
     });
 
     // Close on window blur (clicking outside the window entirely)
@@ -51,11 +70,49 @@ export default function RadialMenu() {
       missingTimer.current = setTimeout(() => setMissingNotice(false), 2500);
       return;
     }
+    if (firedRef.current) return; // already fired this open — ignore repeats
+    firedRef.current = true;
     const payload = { type: item.type, storageKey: item.storageKey, label: item.label };
     if (item.data?.text != null) payload.text = item.data.text;
     if (item.data?.html != null) payload.html = item.data.html;
     window.electronAPI?.executeRadialMenuItem(payload);
   }, []);
+
+  // ── Hold-to-select: fire on launch-key release ─────────────────────────
+  // The overlay holds keyboard focus while open (Rust set_focus on show —
+  // that's also why the number-key / Esc nav below works), so we detect the
+  // release directly as a DOM keyup here. No hook, no backend event: the hook
+  // suppresses the launch key's KEYDOWN, but its KEYUP is delivered to this
+  // focused window normally. On release we fire whatever the cursor is over —
+  // a folder child, or a non-folder segment — else close (release over a gap,
+  // the centre, or a folder itself is a cancel). Only active while the current
+  // wheel was opened with hold-to-select on.
+  useEffect(() => {
+    const onKeyUp = (e) => {
+      if (!holdToSelectRef.current) return;
+      if (!holdKeyRef.current || e.code !== holdKeyRef.current) return;
+      const expanded = expandedFolderRef.current;
+      const outerIdx = hoveredOuterIndexRef.current;
+      const innerIdx = hoveredIndexRef.current;
+      if (expanded && outerIdx >= 0) {
+        const folder = itemsRef.current.find(i => i?.id === expanded);
+        if (folder?.children && outerIdx < folder.children.length) {
+          fireItem(folder.children[outerIdx]);
+          return;
+        }
+      }
+      if (innerIdx >= 0) {
+        const item = itemsRef.current[innerIdx];
+        if (item && item.type !== 'folder') {
+          fireItem(item);
+          return;
+        }
+      }
+      window.electronAPI?.closeRadialMenu();
+    };
+    window.addEventListener('keyup', onKeyUp);
+    return () => window.removeEventListener('keyup', onKeyUp);
+  }, [fireItem]);
 
   // ── Hover handlers with folder auto-expand/collapse ───────────────────
   const expandTimer = useRef(null);

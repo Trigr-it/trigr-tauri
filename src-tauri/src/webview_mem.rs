@@ -5,9 +5,11 @@
 // every hidden window holding its full renderer process and GPU surfaces.
 // This module reclaims that memory once a window has been hidden for a while:
 //
-//  - Overlay windows (overlay / fillin / clipboardoverlay / radialmenu) get a
-//    full WebView2 TrySuspend. Safe because every Rust show path re-emits a
-//    complete data payload before .show() — a suspended overlay misses nothing
+//  - Overlay windows (overlay / fillin / clipboardoverlay / radialmenu) and
+//    the settings window get a full WebView2 TrySuspend. Safe because every
+//    Rust show path re-emits a complete data payload before .show() (settings:
+//    "settings-shown" → App.jsx re-broadcasts "settings-state") — a suspended
+//    window misses nothing
 //    it can't recover on show. INVARIANT: resume_for_show() MUST be called at
 //    the top of every show path, BEFORE the first emit to that window. All
 //    .show() call sites in src-tauri are covered; the frontend never calls
@@ -46,7 +48,8 @@ const TICK_SECS: u64 = 30;
 /// payloads on show and recover cleanly from suspend; the countdown does
 /// not. Memory cost is ~10MB shared via the WebView2 process — worth it
 /// for reliability.
-const SUSPEND_LABELS: [&str; 4] = ["overlay", "fillin", "clipboardoverlay", "radialmenu"];
+const SUSPEND_LABELS: [&str; 5] =
+    ["overlay", "fillin", "clipboardoverlay", "radialmenu", "settings"];
 /// Cache-trim only — must keep running JS while hidden (see module docs).
 const TRIM_ONLY_LABELS: [&str; 1] = ["main"];
 

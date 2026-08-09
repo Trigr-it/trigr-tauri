@@ -1085,6 +1085,46 @@ fn input_focus_changed(focused: bool) {
     hotkeys::set_input_focused(focused);
 }
 
+// ── Settings window ──────────────────────────────────────────────────────
+// Pre-created hidden at startup (see setup). The main window owns all
+// settings state; showing broadcasts "settings-shown" so App.jsx re-emits a
+// fresh "settings-state" payload before the window paints. `section` deep-
+// links the sidebar (e.g. "licence" from the upgrade modal).
+
+fn show_settings_window_impl(app: &tauri::AppHandle, section: Option<String>) {
+    webview_mem::resume_for_show(app, "settings");
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = app.emit("settings-shown", serde_json::json!({ "section": section }));
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+#[tauri::command]
+fn show_settings_window(app: tauri::AppHandle, section: Option<String>) {
+    show_settings_window_impl(&app, section);
+}
+
+#[tauri::command]
+fn hide_settings_window(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.hide();
+    }
+}
+
+#[tauri::command]
+fn toggle_settings_window(app: tauri::AppHandle, section: Option<String>) {
+    let visible = app
+        .get_webview_window("settings")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    if visible {
+        hide_settings_window(app);
+    } else {
+        show_settings_window_impl(&app, section);
+    }
+}
+
 #[tauri::command]
 fn start_hotkey_recording() {
     log::info!("[CAPTURE] start_hotkey_recording called");
@@ -1832,11 +1872,20 @@ pub fn persist_temp_macro(events: &[crate::recorder::RecordedEvent], captured_at
 
 #[tauri::command]
 fn start_voice_recognition(phrases: Vec<String>, app: tauri::AppHandle) {
+    // Voice commands are Pro. Gate at the start path so neither a forced
+    // `voiceCommandsEnabled` config nor a direct IPC call can run recognition
+    // without entitlement. Enforced via is_pro() so it tracks Paddle later.
+    if !licence::is_pro() {
+        return;
+    }
     voice::start_recognition(phrases, app);
 }
 
 #[tauri::command]
 fn start_voice_continuous(phrases: Vec<String>, app: tauri::AppHandle) {
+    if !licence::is_pro() {
+        return;
+    }
     voice::start_continuous_recognition(phrases, app);
 }
 
@@ -2788,9 +2837,27 @@ fn show_radial_menu(app: &tauri::AppHandle) {
         .collect();
     drop(state);
 
+    // Hold-to-select: the overlay holds keyboard focus (set_focus below), so
+    // its own web layer detects the launch-key release. Pass whether the mode
+    // is on and which key ends the gesture (the action segment of the radial
+    // hotkey combo, in KeyboardEvent.code form, e.g. "KeyW" from
+    // "Ctrl+Alt+KeyW"). This replaces the earlier hook-based detection, which
+    // could never observe the release of a key whose keydown we suppress.
+    let hold_to_select = cfg
+        .get("radialHoldToSelect")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let hold_key = cfg
+        .get("radialMenuHotkey")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.rsplit('+').next())
+        .unwrap_or("")
+        .to_string();
     let payload = serde_json::json!({
         "items": resolved_items,
         "theme": theme,
+        "holdToSelect": hold_to_select,
+        "holdKey": hold_key,
     });
     use tauri::Emitter;
     let _ = win.emit("radial-menu-data", payload);
@@ -2824,6 +2891,15 @@ fn set_radial_menu_hotkey(combo: String) -> Value {
 fn clear_radial_menu_hotkey() {
     hotkeys::clear_radial_menu_hotkey();
 }
+
+/// Hold-to-select is resolved from config at wheel-open time (see
+/// show_radial_menu, which passes `holdToSelect` + `holdKey` to the overlay
+/// and the overlay's own web layer detects the launch-key release while it
+/// holds focus). No engine state to update — this command exists only so the
+/// frontend's existing call site keeps working; the persisted config is the
+/// source of truth.
+#[tauri::command]
+fn set_radial_hold_to_select(_enabled: bool) {}
 
 #[tauri::command]
 fn close_radial_menu(app: tauri::AppHandle) {
@@ -3299,13 +3375,25 @@ fn reset_analytics() -> bool {
     analytics::reset_stats()
 }
 
+// ── Advanced analytics (Pro) ────────────────────────────────────────────────
+// The headline stats (get_analytics), type breakdown and expansion counts stay
+// free. The richer views below are Pro: each returns an empty payload for
+// non-Pro so a direct IPC call yields nothing, while the UI keeps them behind
+// its own isPro display gates. All gate on is_pro() so they follow Paddle.
+
 #[tauri::command]
 fn get_daily_chart(days: u32) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!([]);
+    }
     analytics::get_daily_chart(days)
 }
 
 #[tauri::command]
 fn get_assignment_breakdown(days: Option<u32>) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!([]);
+    }
     analytics::get_assignment_breakdown(days.unwrap_or(0))
 }
 
@@ -3316,16 +3404,25 @@ fn get_type_breakdown(days: Option<u32>) -> Value {
 
 #[tauri::command]
 fn get_hourly_heatmap(days: Option<u32>) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!([]);
+    }
     analytics::get_hourly_heatmap(days.unwrap_or(7))
 }
 
 #[tauri::command]
 fn get_top_apps(days: Option<u32>) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!([]);
+    }
     analytics::get_top_apps(days.unwrap_or(0))
 }
 
 #[tauri::command]
 fn get_expansion_efficiency() -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!([]);
+    }
     analytics::get_expansion_efficiency()
 }
 
@@ -3336,11 +3433,17 @@ fn get_expansion_counts() -> Value {
 
 #[tauri::command]
 fn get_streaks() -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!({});
+    }
     analytics::get_streaks()
 }
 
 #[tauri::command]
 fn export_analytics_csv() -> String {
+    if !licence::is_pro() {
+        return String::new();
+    }
     analytics::export_csv()
 }
 
@@ -4991,6 +5094,23 @@ pub fn run() {
             }
             let _ = &countdown_win;
 
+            // Pre-create the Settings window hidden. Unlike the overlays it is
+            // an ordinary opaque window (no transparency, no NOACTIVATE, has a
+            // taskbar entry) — undecorated so SettingsWindow.jsx can draw the
+            // app-style titlebar with a drag region. Never destroyed: the
+            // CloseRequested handler hides it instead.
+            let settings_url = tauri::WebviewUrl::App("index.html?settings=1".into());
+            let settings_win = tauri::WebviewWindowBuilder::new(app, "settings", settings_url)
+                .title("Keyfire Settings")
+                .inner_size(900.0, 640.0)
+                .min_inner_size(720.0, 520.0)
+                .decorations(false)
+                .resizable(true)
+                .visible(false)
+                .center()
+                .build()?;
+            let _ = &settings_win;
+
             // Store app handle for fill-in IPC from the expansion engine
             expansions::init_app_handle(app.handle().clone());
 
@@ -5152,6 +5272,13 @@ pub fn run() {
                         restore_radial_menu_target();
                     }
                 }
+            } else if label == "settings" {
+                // Never destroy the pre-created settings window — hide it so
+                // the next open is instant and React state survives.
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             } else if label == "fillin" {
                 // Prevent fill-in window from being destroyed — hide and send cancel response
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -5183,6 +5310,9 @@ pub fn run() {
             update_assignments,
             toggle_macros,
             input_focus_changed,
+            show_settings_window,
+            hide_settings_window,
+            toggle_settings_window,
             start_hotkey_recording,
             stop_hotkey_recording,
             start_key_capture,
@@ -5284,6 +5414,7 @@ pub fn run() {
             // Radial Menu
             set_radial_menu_hotkey,
             clear_radial_menu_hotkey,
+            set_radial_hold_to_select,
             close_radial_menu,
             radial_menu_resize,
             execute_radial_menu_item,

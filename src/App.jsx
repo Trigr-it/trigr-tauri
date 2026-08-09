@@ -7,7 +7,6 @@ import Sidebar from './components/Sidebar';
 import KeyboardCanvas, { comboString } from './components/KeyboardCanvas';
 import MouseCanvas from './components/MouseCanvas';
 import MacroPanel from './components/MacroPanel';
-import SettingsPanel from './components/SettingsPanel';
 import StatusBar from './components/StatusBar';
 import Toaster from './components/Toaster';
 import TextExpansions from './components/TextExpansions';
@@ -25,6 +24,7 @@ import SearchTemplatesPanel from './components/SearchTemplatesPanel';
 import RadialEditorView from './components/RadialEditorView';
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen as listenEvent, emit as emitEvent } from '@tauri-apps/api/event';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/iconUtils';
 import { friendlyKeyName } from './components/keyboardLayout';
@@ -107,7 +107,6 @@ function App() {
   const [autocorrectUndoCounts, setAutocorrectUndoCounts] = useState({});
   const [autocorrectUndoMuted, setAutocorrectUndoMuted] = useState([]);
   const [acImportPrompt, setAcImportPrompt] = useState(null);
-  const [showSettings, setShowSettings]             = useState(false);
   const [showWelcome, setShowWelcome]               = useState(false);
   const [showOnboarding, setShowOnboarding]         = useState(false);
   const [macrosEnabledOnStartup, setMacrosEnabledOnStartup] = useState(true);
@@ -177,6 +176,7 @@ function App() {
   const [quickActionCategories, setQuickActionCategories] = useState([]);
   const [radialItemsMap, setRadialItemsMap]                 = useState({}); // { profileName: items[] }
   const [radialMenuHotkey, setRadialMenuHotkey]           = useState(null);
+  const [radialHoldToSelect, setRadialHoldToSelect]       = useState(false);
   const [selectedRadialSegment, setSelectedRadialSegment] = useState(null); // index or null
   const [selectedRadialChild, setSelectedRadialChild] = useState(null);   // { folderId, childIndex } or null
   const [expandedRadialFolder, setExpandedRadialFolder] = useState(null); // folder item id or null
@@ -495,6 +495,12 @@ function App() {
         // mirrors the UI state above so Ctrl+Shift+Space is actually live).
         if (effectiveRadialHotkey) {
           window.electronAPI?.setRadialMenuHotkey(effectiveRadialHotkey);
+        }
+        // Radial hold-to-select mode (opt-in, default off).
+        {
+          const holdToSelect = config.radialHoldToSelect ?? false;
+          setRadialHoldToSelect(holdToSelect);
+          window.electronAPI?.setRadialHoldToSelect(holdToSelect);
         }
         // One-time conflict notice for pre-existing collisions (e.g., voice +
         // radial both bound to Ctrl+Alt+W from before validation was added).
@@ -863,6 +869,9 @@ function App() {
           } else {
             window.electronAPI?.clearRadialMenuHotkey();
           }
+          const holdToSelect = config.radialHoldToSelect ?? false;
+          setRadialHoldToSelect(holdToSelect);
+          window.electronAPI?.setRadialHoldToSelect(holdToSelect);
         }
         // Re-sync engine with updated config
         window.electronAPI?.updateAssignments(raw, globalProfile);
@@ -3231,6 +3240,12 @@ function App() {
     window.electronAPI?.saveConfig({ radialMenuHotkey: combo });
   }, []);
 
+  const handleSetRadialHoldToSelect = useCallback((enabled) => {
+    setRadialHoldToSelect(enabled);
+    window.electronAPI?.setRadialHoldToSelect(enabled);
+    window.electronAPI?.saveConfig({ radialHoldToSelect: enabled });
+  }, []);
+
   const handleClearRadialMenuHotkey = useCallback(() => {
     setRadialMenuHotkey(null);
     window.electronAPI?.clearRadialMenuHotkey();
@@ -3923,7 +3938,7 @@ function App() {
   // Resets the welcome + onboarding flags, snaps to keyboard mapping (so the
   // tour can render its highlights), then re-fires the welcome modal.
   const handleReplayWelcome = useCallback(() => {
-    setShowSettings(false);
+    window.electronAPI?.hideSettingsWindow();
     window.electronAPI?.resetOnboarding();
     setTemplatesNudgeSeen(false);
     setActiveModifiers([]);
@@ -3963,7 +3978,7 @@ function App() {
   }, [licenceStatus]);
 
   const handleRestartOnboarding = useCallback(() => {
-    setShowSettings(false);
+    window.electronAPI?.hideSettingsWindow();
     window.electronAPI?.resetOnboarding();
     // Reset the templates coachmark so it re-fires after the replayed tour
     // (and after any trial offer that follows). Mirrors the new-user flow.
@@ -4170,7 +4185,7 @@ function App() {
     window.electronAPI?.updateAssignments(imported, cfg.activeProfile || 'Default');
     window.electronAPI?.updateProfileSettings(cfg.profileSettings || {});
     showNotification('Config imported successfully');
-    setShowSettings(false);
+    window.electronAPI?.hideSettingsWindow();
   }, [showNotification]);
 
   const handleRestoreBackup = useCallback(async (filename) => {
@@ -4211,7 +4226,7 @@ function App() {
     window.electronAPI?.updateProfileSettings(cfg.profileSettings || {});
     setBackupRestoredFrom(null);
     showNotification('Config restored from backup');
-    setShowSettings(false);
+    window.electronAPI?.hideSettingsWindow();
   }, [showNotification]);
 
   // Whether the active profile has an app linked (enables Bare Keys mode)
@@ -4295,6 +4310,115 @@ function App() {
     return `${mins} min remaining`;
   }
 
+  // ── Settings window bridge ─────────────────────────────────────────────
+  // The standalone Settings window (?settings=1) is a remote control: this
+  // window stays the single owner of settings state + config persistence.
+  // State flows out as "settings-state" broadcasts; the settings window sends
+  // fire-and-forget "settings-action" { action, args } events back, dispatched
+  // to the existing handlers below. Refs are refreshed every render so the
+  // once-registered listeners never see stale closures.
+  const settingsStateRef = useRef(null);
+  const settingsActionsRef = useRef({});
+  useEffect(() => {
+    settingsStateRef.current = {
+      macrosEnabledOnStartup,
+      expansionExcludedApps,
+      globalInputMethod,
+      macroSpeed,
+      keystrokeDelay,
+      macroTriggerDelay,
+      doubleTapWindow,
+      holdThresholdMs,
+      fireOnPress,
+      defaultDateFormat,
+      searchOverlayHotkey,
+      overlayShowAll,
+      overlayCloseAfterFiring,
+      overlayIncludeAutocorrect,
+      globalPauseToggleKey,
+      voiceEnabled,
+      voiceHotkey,
+      hiddenTipsCount: hiddenTips.length + (tipsHidden ? 1 : 0),
+      activeProfile,
+      isPro,
+      licenceStatus,
+      clipboardCaptureEnabled,
+      clipboardExcludedApps,
+      clipboardPasteHotkey,
+      telemetryEnabled,
+      theme: resolvedTheme,
+    };
+    // Modal-opening actions pull the main window forward first — the modal
+    // renders here, and the user is looking at the settings window.
+    const focusMain = () => window.electronAPI?.showMainWindow?.();
+    settingsActionsRef.current = {
+      toggleMacrosOnStartup: handleToggleMacrosOnStartup,
+      exportConfig: handleExportConfig,
+      importConfig: handleImportConfig,
+      restoreBackup: handleRestoreBackup,
+      updateExpansionExcludedApps: handleUpdateExpansionExcludedApps,
+      updateGlobalSettings: handleUpdateGlobalSettings,
+      updateSearchSettings: handleUpdateSearchSettings,
+      setPauseKey: handleSetPauseKey,
+      clearPauseKey: handleClearPauseKey,
+      toggleVoiceEnabled: handleToggleVoiceEnabled,
+      setVoiceKey: handleSetVoiceKey,
+      clearVoiceKey: handleClearVoiceKey,
+      restartOnboarding: () => { focusMain(); handleRestartOnboarding(); },
+      replayWelcome: () => { focusMain(); handleReplayWelcome(); },
+      resetHiddenTips: handleResetHiddenTips,
+      importTemplate: handleImportTemplate,
+      importCadTemplate: handleImportCadTemplate,
+      licenceStatusChange: (s) => setLicenceStatus(s),
+      showUpgrade: (...a) => { focusMain(); showUpgrade(...a); },
+      showProTrial: () => {
+        focusMain();
+        setShowProTrialModal(true);
+        window.electronAPI?.startTrial?.().then((r) => {
+          if (r?.status) setLicenceStatus(r.status);
+        });
+      },
+      resetTrial: () => {
+        window.electronAPI?.resetTrial?.().then((s) => {
+          if (s) setLicenceStatus(s);
+        });
+      },
+      toggleClipboardCapture: handleToggleClipboardCapture,
+      updateClipboardExcludedApps: handleUpdateClipboardExcludedApps,
+      setClipboardPasteKey: handleSetClipboardPasteKey,
+      clearClipboardPasteKey: handleClearClipboardPasteKey,
+      toggleTelemetry: handleToggleTelemetry,
+    };
+  });
+  // Live-sync: broadcast whenever any bridged value changes (the ref-refresh
+  // effect above is declared first, so the payload here is always fresh).
+  useEffect(() => {
+    emitEvent('settings-state', settingsStateRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    macrosEnabledOnStartup, expansionExcludedApps, globalInputMethod,
+    macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow,
+    holdThresholdMs, fireOnPress, defaultDateFormat, searchOverlayHotkey,
+    overlayShowAll, overlayCloseAfterFiring, overlayIncludeAutocorrect,
+    globalPauseToggleKey, voiceEnabled, voiceHotkey, hiddenTips, tipsHidden,
+    activeProfile, isPro, licenceStatus, clipboardCaptureEnabled,
+    clipboardExcludedApps, clipboardPasteHotkey, telemetryEnabled,
+    resolvedTheme,
+  ]);
+  useEffect(() => {
+    const unlisteners = [];
+    const respond = () => emitEvent('settings-state', settingsStateRef.current);
+    listenEvent('settings-request-state', respond).then(u => unlisteners.push(u));
+    listenEvent('settings-shown', respond).then(u => unlisteners.push(u));
+    listenEvent('settings-action', (e) => {
+      const { action, args = [] } = e.payload || {};
+      const fn = settingsActionsRef.current[action];
+      if (fn) fn(...args);
+      else console.warn('[SettingsBridge] unknown action:', action);
+    }).then(u => unlisteners.push(u));
+    return () => unlisteners.forEach(u => { if (typeof u === 'function') u(); });
+  }, []);
+
   return (
     <div className="app">
       {showOnboarding && (
@@ -4317,7 +4441,7 @@ function App() {
         <UpgradeModal
           featureName={upgradePrompt}
           onClose={() => setUpgradePrompt(null)}
-          onOpenSettings={() => setShowSettings(true)}
+          onOpenSettings={() => window.electronAPI?.showSettingsWindow('licence')}
         />
       )}
       {reservedShortcutPending && (
@@ -4476,8 +4600,7 @@ function App() {
         theme={theme}
         resolvedTheme={resolvedTheme}
         onSetTheme={handleSetTheme}
-        onOpenSettings={() => setShowSettings(v => !v)}
-        settingsOpen={showSettings}
+        onOpenSettings={() => window.electronAPI?.toggleSettingsWindow()}
         activeArea={activeArea}
         onAreaChange={handleSetArea}
         listViewActive={listViewActive}
@@ -4668,6 +4791,8 @@ function App() {
               radialMenuHotkey={radialMenuHotkey}
               onSetRadialMenuHotkey={handleSetRadialMenuHotkey}
               onClearRadialMenuHotkey={handleClearRadialMenuHotkey}
+              radialHoldToSelect={radialHoldToSelect}
+              onSetRadialHoldToSelect={handleSetRadialHoldToSelect}
               radialMenuItems={radialMenuItems}
               onAddRadialMenuItem={handleAddRadialMenuItem}
               onRemoveRadialMenuItem={handleRemoveRadialMenuItem}
@@ -4795,72 +4920,8 @@ function App() {
             />
           )}
         </main>
-        {/* Right panel: Settings always accessible; MacroPanel only in Mapping area */}
-        {showSettings ? (
-          <SettingsPanel
-            onResetHiddenTips={handleResetHiddenTips}
-            hiddenTipsCount={hiddenTips.length + (tipsHidden ? 1 : 0)}
-            onClose={() => setShowSettings(false)}
-            macrosEnabledOnStartup={macrosEnabledOnStartup}
-            onToggleMacrosOnStartup={handleToggleMacrosOnStartup}
-            onExportConfig={handleExportConfig}
-            onImportConfig={handleImportConfig}
-            onRestoreBackup={handleRestoreBackup}
-            expansionExcludedApps={expansionExcludedApps}
-            onUpdateExpansionExcludedApps={handleUpdateExpansionExcludedApps}
-            globalInputMethod={globalInputMethod}
-            macroSpeed={macroSpeed}
-            keystrokeDelay={keystrokeDelay}
-            macroTriggerDelay={macroTriggerDelay}
-            doubleTapWindow={doubleTapWindow}
-            holdThresholdMs={holdThresholdMs}
-            fireOnPress={fireOnPress}
-            defaultDateFormat={defaultDateFormat}
-            onUpdateGlobalSettings={handleUpdateGlobalSettings}
-            searchOverlayHotkey={searchOverlayHotkey}
-            overlayShowAll={overlayShowAll}
-            overlayCloseAfterFiring={overlayCloseAfterFiring}
-            overlayIncludeAutocorrect={overlayIncludeAutocorrect}
-            onUpdateSearchSettings={handleUpdateSearchSettings}
-            globalPauseToggleKey={globalPauseToggleKey}
-            onSetPauseKey={handleSetPauseKey}
-            onClearPauseKey={handleClearPauseKey}
-            voiceEnabled={voiceEnabled}
-            onToggleVoiceEnabled={handleToggleVoiceEnabled}
-            voiceHotkey={voiceHotkey}
-            onSetVoiceKey={handleSetVoiceKey}
-            onClearVoiceKey={handleClearVoiceKey}
-            onRestartOnboarding={handleRestartOnboarding}
-            onReplayWelcome={handleReplayWelcome}
-            activeProfile={activeProfile}
-            onImportTemplate={handleImportTemplate}
-            onImportCadTemplate={handleImportCadTemplate}
-            isPro={isPro}
-            licenceStatus={licenceStatus}
-            onLicenceStatusChange={setLicenceStatus}
-            onShowUpgrade={showUpgrade}
-            onShowProTrial={() => {
-              setShowProTrialModal(true);
-              window.electronAPI?.startTrial?.().then((r) => {
-                if (r?.status) setLicenceStatus(r.status);
-              });
-            }}
-            onResetTrial={() => {
-              window.electronAPI?.resetTrial?.().then((s) => {
-                if (s) setLicenceStatus(s);
-              });
-            }}
-            clipboardCaptureEnabled={clipboardCaptureEnabled}
-            onToggleClipboardCapture={handleToggleClipboardCapture}
-            clipboardExcludedApps={clipboardExcludedApps}
-            onUpdateClipboardExcludedApps={handleUpdateClipboardExcludedApps}
-            clipboardPasteHotkey={clipboardPasteHotkey}
-            onSetClipboardPasteKey={handleSetClipboardPasteKey}
-            onClearClipboardPasteKey={handleClearClipboardPasteKey}
-            telemetryEnabled={telemetryEnabled}
-            onToggleTelemetry={handleToggleTelemetry}
-          />
-        ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
+        {/* Right panel: MacroPanel only in Mapping area (Settings lives in its own window) */}
+        {activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
           <MacroPanel
             selectedKey={'Folder Child'}
             activeModifiers={[]}
@@ -4889,6 +4950,8 @@ function App() {
             isPro={isPro}
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
           />
         ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialSegment != null ? (
           <MacroPanel
@@ -4918,6 +4981,8 @@ function App() {
             isPro={isPro}
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
           />
         ) : activeArea === 'mapping' && (!isNarrow || selectedKey != null || draftAssignment != null) ? (
           // Below 1200px the MacroPanel is hidden until the user picks a key or
@@ -4953,6 +5018,8 @@ function App() {
             isPro={isPro}
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
           />
         ) : null}
       </div>

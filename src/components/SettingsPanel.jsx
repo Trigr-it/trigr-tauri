@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { Search, SearchX, ShieldCheck } from 'lucide-react';
+import {
+  Search, SearchX, ShieldCheck, Sliders, Package, HelpCircle, Gauge,
+  CircleDot, Type, Clipboard, Mic, FileCog, Key,
+} from 'lucide-react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
 import NumberField from './NumberField';
@@ -257,6 +260,7 @@ export function ClipboardExcludedAppsEditor({ apps, onChange, label, sub }) {
 
 export default function SettingsPanel({
   onClose,
+  navRequest = null,
   macrosEnabledOnStartup,
   onToggleMacrosOnStartup,
   onExportConfig,
@@ -345,10 +349,19 @@ export default function SettingsPanel({
   const [backupList, setBackupList]           = useState(null);
   const [confirmRestore, setConfirmRestore]   = useState(null);
   const [appVersion, setAppVersion]           = useState('');
-  // Accordion state — keys match the SECTION_IDS list. Empty = all collapsed.
-  // Search query temporarily overrides via isExpanded() so users can find
-  // matches inside collapsed sections.
-  const [expandedSections, setExpandedSections] = useState(() => new Set());
+  // Sidebar navigation — one section visible at a time. Search temporarily
+  // overrides via isExpanded() so users can find matches in any section.
+  // Last-open section persists across window opens and app restarts.
+  const [activeSection, setActiveSection] = useState(() => {
+    const stored = localStorage.getItem('trigr_settings_last_section') || 'general';
+    // Sections merged away or renamed redirect to their new homes.
+    const merged = {
+      'about': 'help-documentation',
+      'global-pause': 'general',
+      'backup-restore': 'config-file',
+    };
+    return merged[stored] || stored;
+  });
   const [clipboardRetention, setClipboardRetention] = useState(7);
   // OCR (Pro) — auto-extract on capture + include image text in search results.
   // Both default true; backend enforces Pro at use-time.
@@ -404,6 +417,13 @@ export default function SettingsPanel({
   // press from accidentally exiting Settings mid-flow.
   useEffect(() => {
     const handler = (e) => {
+      // Ctrl+F focuses the settings search — the pane is search-driven now.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault(); e.stopPropagation();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
       if (e.key !== 'Escape') return;
       if (confirmResetClipboard) {
         e.preventDefault(); e.stopPropagation();
@@ -417,76 +437,128 @@ export default function SettingsPanel({
       } else if (confirmRestore) {
         e.preventDefault(); e.stopPropagation();
         setConfirmRestore(null);
+      } else if (searchQuery) {
+        // Active search absorbs the first Esc — clearing beats closing.
+        e.preventDefault(); e.stopPropagation();
+        setSearchQuery('');
       } else {
-        // No inline confirmation active — close the whole Settings panel.
+        // No inline confirmation active — close the whole Settings window.
         e.preventDefault(); e.stopPropagation();
         onClose?.();
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [confirmResetClipboard, confirmClearShared, sharedExistsPrompt, confirmRestore, onClose]);
+  }, [confirmResetClipboard, confirmClearShared, sharedExistsPrompt, confirmRestore, searchQuery, onClose]);
 
-  // ── Accordion helpers ─────────────────────────────────────────────────
-  // All settings sections, in JSX render order. Used by expand/collapse all.
+  // ── Section navigation helpers ────────────────────────────────────────
+  // All settings sections in JSX render order — the search/visibility DOM
+  // walk maps section elements to ids by index, so this list MUST stay in
+  // sync with the <section> order in the JSX below.
   const SECTION_IDS = [
     'licence',
     'help-documentation',
     'starter-templates',
-    'about',
     'general',
     'privacy-security',
-    'global-pause',
+    'config-file',
     'quick-search',
     'clipboard',
+    'text-expansions',
     'voice-commands',
     'quick-record',
     'compatibility',
-    'backup-restore',
+  ];
+  // Sidebar groups (display order — independent of render order above).
+  const NAV_GROUPS = [
+    { label: 'Account', items: [
+      ['licence', 'Licence', Key],
+    ]},
+    { label: 'General', items: [
+      ['general', 'General', Sliders],
+      ['starter-templates', 'Starter Templates', Package],
+      ['help-documentation', 'Help & About', HelpCircle],
+    ]},
+    { label: 'Triggers', items: [
+      ['compatibility', 'Performance', Gauge],
+      ['quick-record', 'Quick Record Macro', CircleDot],
+    ]},
+    { label: 'Text', items: [
+      ['text-expansions', 'Text Expansions', Type],
+    ]},
+    { label: 'Clipboard', items: [
+      ['clipboard', 'Clipboard', Clipboard],
+    ]},
+    { label: 'Quick Access', items: [
+      ['quick-search', 'Quick Search', Search],
+      ['voice-commands', 'Voice Commands', Mic],
+    ]},
+    { label: 'Privacy & Data', items: [
+      ['privacy-security', 'Privacy & Security', ShieldCheck],
+      ['config-file', 'Configuration File', FileCog],
+    ]},
   ];
   const isSearching = searchQuery.trim().length > 0;
+  // Section ids matching the current search — drives the gold dot indicators
+  // in the nav rail. Filled by the visibility DOM walk below.
+  const [matchedSections, setMatchedSections] = useState([]);
+  const searchInputRef = useRef(null);
+  // While searching, every section body renders so the DOM-walk filter can
+  // match text anywhere; otherwise only the active section's body renders.
   function isExpanded(id) {
-    return isSearching || expandedSections.has(id);
+    return isSearching || activeSection === id;
   }
-  function toggleSection(id) {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  function selectSection(id) {
+    setActiveSection(id);
+    setSearchQuery('');
   }
-  function expandAllSections() {
-    setExpandedSections(new Set(SECTION_IDS));
-  }
-  function collapseAllSections() {
-    setExpandedSections(new Set());
-  }
+  useEffect(() => {
+    localStorage.setItem('trigr_settings_last_section', activeSection);
+    // A different section = a different page — start it from the top.
+    document.querySelector('.settings-panel .settings-body')?.scrollTo(0, 0);
+  }, [activeSection]);
+  // Deep-link requests from the show path (e.g. upgrade modal → 'licence').
+  useEffect(() => {
+    if (navRequest?.section && SECTION_IDS.includes(navRequest.section)) {
+      setActiveSection(navRequest.section);
+      setSearchQuery('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest]);
 
-  // ── Settings search: filter visible sections by title match (DOM walk,
+  // ── Section visibility: nav selection + search filter (DOM walk,
   // post-render). Keeps JSX intact; toggles a class instead of conditional
   // rendering so React's state tree doesn't reset on every keystroke.
-  useEffect(() => {
+  // Sections map to SECTION_IDS by DOM index — keep the two in sync.
+  // useLayoutEffect (not useEffect): the class toggles must land before
+  // paint or section switches flash both sections for a frame.
+  useLayoutEffect(() => {
     const root = document.querySelector('.settings-panel .settings-body');
     if (!root) return;
     const q = searchQuery.trim().toLowerCase();
     const sections = root.querySelectorAll(':scope > .settings-section');
     let visibleCount = 0;
-    sections.forEach(section => {
+    const matched = [];
+    sections.forEach((section, i) => {
       if (!q) {
-        section.classList.remove('settings-section-hidden');
-        visibleCount++;
+        // No search → show only the sidebar-selected section.
+        const active = SECTION_IDS[i] === activeSection;
+        section.classList.toggle('settings-section-hidden', !active);
+        if (active) visibleCount++;
         return;
       }
       const title = section.querySelector('.settings-section-title')?.textContent?.toLowerCase() || '';
       const bodyText = section.textContent?.toLowerCase() || '';
       const match = title.includes(q) || bodyText.includes(q);
       section.classList.toggle('settings-section-hidden', !match);
-      if (match) visibleCount++;
+      if (match) { visibleCount++; matched.push(SECTION_IDS[i]); }
     });
+    // Nav match-dot indicators (guarded set — this effect runs every render).
+    setMatchedSections(prev => (prev.join('|') === matched.join('|') ? prev : matched));
     // Toggle "no results" empty state
     const empty = root.querySelector('.settings-search-empty');
     if (empty) empty.style.display = (q && visibleCount === 0) ? 'flex' : 'none';
-  }, [searchQuery]);
+  });
 
   const stopMicTest = useCallback(() => {
     if (micTestRef.current) {
@@ -553,25 +625,15 @@ export default function SettingsPanel({
 
   return (
     <aside className="settings-panel">
-      <div className="settings-header">
-        <span className="settings-title">Settings</span>
-        <button className="settings-close-btn" onClick={onClose} title="Close settings" aria-label="Close settings" type="button">
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </button>
-      </div>
-
-      <div className="settings-body">
-
-        {/* ── Search + accordion controls ────────────────── */}
+      {/* ── Sidebar: search + grouped section nav ───────── */}
+      <nav className="settings-nav">
         <div className="settings-search-bar">
           <div className="settings-search-row">
             <span className="settings-search-icon" aria-hidden="true">
               <Search size={14} strokeWidth={1.75} />
             </span>
             <input
+              ref={searchInputRef}
               type="text"
               className="settings-search-input"
               placeholder="Search settings…"
@@ -582,19 +644,32 @@ export default function SettingsPanel({
               autoComplete="off"
             />
           </div>
-          <button
-            type="button"
-            className="settings-accordion-btn"
-            onClick={expandAllSections}
-            title="Expand all sections"
-          >Expand all</button>
-          <button
-            type="button"
-            className="settings-accordion-btn"
-            onClick={collapseAllSections}
-            title="Collapse all sections"
-          >Collapse all</button>
         </div>
+        <div className="settings-nav-scroll">
+          {NAV_GROUPS.map(group => (
+            <div className="settings-nav-group" key={group.label}>
+              <div className="settings-nav-group-label">{group.label}</div>
+              {group.items.map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`settings-nav-item${!isSearching && activeSection === id ? ' active' : ''}`}
+                  onClick={() => selectSection(id)}
+                  title={label}
+                >
+                  <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+                  <span className="settings-nav-label">{label}</span>
+                  {isSearching && matchedSections.includes(id) && (
+                    <span className="settings-nav-match-dot" aria-hidden="true" />
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      </nav>
+
+      <div className="settings-body">
 
         <div className="settings-search-empty" style={{ display: 'none' }}>
           <span className="settings-search-empty-icon" aria-hidden="true">
@@ -605,12 +680,8 @@ export default function SettingsPanel({
 
         {/* ── LICENCE ───────────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('licence')}
-          >
+          <div className="settings-section-title">
             LICENCE
-            <span className={`settings-accordion-chevron${isExpanded('licence') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('licence') && (<>
           {licenceStatus.key_entered ? (
@@ -768,12 +839,8 @@ export default function SettingsPanel({
 
         {/* ── HELP & DOCUMENTATION ───────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('help-documentation')}
-          >
-            HELP &amp; DOCUMENTATION
-            <span className={`settings-accordion-chevron${isExpanded('help-documentation') ? ' open' : ''}`}>▾</span>
+          <div className="settings-section-title">
+            HELP &amp; ABOUT
           </div>
           {isExpanded('help-documentation') && (<>
           <div className="settings-help-row">
@@ -845,17 +912,21 @@ export default function SettingsPanel({
             </button>
           </div>
           <DemoModeRow />
+          <div className="settings-about settings-about-inline">
+            <div className="settings-about-header">
+              <span className="settings-about-name">Keyfire</span>
+              <span className="settings-about-version">{appVersion ? `v${appVersion}` : ''}</span>
+            </div>
+            <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect. All data stored locally.</p>
+            <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 + v2 (<a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://github.com/AutoHotkey/AutoHotkey'); }}>GPL v2 source code</a>).</p>
+          </div>
           </>)}
         </section>
 
         {/* ── STARTER TEMPLATES (accordion) ─────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('starter-templates')}
-          >
+          <div className="settings-section-title">
             STARTER TEMPLATES
-            <span className={`settings-accordion-chevron${isExpanded('starter-templates') ? ' open' : ''}`}>▾</span>
           </div>
           {!isExpanded('starter-templates') && (
             <p className="settings-section-sub">Import pre-built hotkey and expansion packs</p>
@@ -871,35 +942,10 @@ export default function SettingsPanel({
           )}
         </section>
 
-        {/* ── ABOUT ──────────────────────────────────────── */}
-        <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('about')}
-          >
-            ABOUT
-            <span className={`settings-accordion-chevron${isExpanded('about') ? ' open' : ''}`}>▾</span>
-          </div>
-          {isExpanded('about') && (<>
-          <div className="settings-about">
-            <div className="settings-about-header">
-              <span className="settings-about-name">Keyfire</span>
-              <span className="settings-about-version">{appVersion ? `v${appVersion}` : ''}</span>
-            </div>
-            <p className="settings-about-desc">Keyboard macro manager with global hotkeys, text expansions and autocorrect. All data stored locally.</p>
-            <p className="settings-about-credits">Includes <a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://www.autohotkey.com'); }}>AutoHotkey</a> v1 + v2 (<a href="#" onClick={e => { e.preventDefault(); window.electronAPI?.openExternal('https://github.com/AutoHotkey/AutoHotkey'); }}>GPL v2 source code</a>).</p>
-          </div>
-          </>)}
-        </section>
-
         {/* ── GENERAL ────────────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('general')}
-          >
+          <div className="settings-section-title">
             GENERAL
-            <span className={`settings-accordion-chevron${isExpanded('general') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('general') && (<>
 
@@ -932,17 +978,115 @@ export default function SettingsPanel({
               title={macrosEnabledOnStartup ? 'Disable macros on startup' : 'Enable macros on startup'}
             />
           </div>
+
+          <div className="settings-pause-stack">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Pause hotkey</span>
+              <span className="settings-toggle-sub">Toggles Keyfire on/off from any app. Modifier required.</span>
+            </div>
+            <div className="settings-qs-hotkey-ctrl">
+              {capturingPauseKey ? (
+                <div
+                  className="settings-qs-capture"
+                  tabIndex={0}
+                  ref={el => el?.focus()}
+                  onBlur={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
+                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onKeyDown={async e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
+                    const mods = [];
+                    if (e.ctrlKey)  mods.push('Ctrl');
+                    if (e.shiftKey) mods.push('Shift');
+                    if (e.altKey)   mods.push('Alt');
+                    if (e.metaKey)  mods.push('Win');
+                    if (mods.length === 0) return;
+                    mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
+                    const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                    const combo = [...mods, e.code].join('+');
+                    const label = [...mods, keyDisplay].join('+');
+                    const result = await window.electronAPI?.checkHotkeyConflict(combo, 'pause');
+                    setPauseConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
+                    setCapturedPauseKey({ combo, label });
+                  }}
+                >
+                  {capturedPauseKey ? (
+                    <span className="settings-qs-captured">{capturedPauseKey.label}</span>
+                  ) : (
+                    <span className="settings-qs-waiting">Press combo…</span>
+                  )}
+                  {capturedPauseKey && !pauseConflict && (
+                    <button
+                      className="settings-qs-save-btn"
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        onSetPauseKey?.(capturedPauseKey.combo);
+                        setCapturingPauseKey(false);
+                        setCapturedPauseKey(null);
+                        setPauseConflict(null);
+                      }}
+                    >
+                      Save
+                    </button>
+                  )}
+                  <button
+                    className="settings-qs-cancel-btn"
+                    type="button"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : globalPauseToggleKey ? (
+                <>
+                  <span className="settings-qs-hotkey-badge">
+                    {globalPauseToggleKey.split('+').map((p, i, arr) => (
+                        <React.Fragment key={i}>
+                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
+                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
+                        </React.Fragment>
+                    ))}
+                  </span>
+                  <button
+                    className="settings-action-btn"
+                    type="button"
+                    onClick={() => setCapturingPauseKey(true)}
+                  >
+                    Change
+                  </button>
+                  <button
+                    className="settings-action-btn settings-danger-btn"
+                    type="button"
+                    onClick={() => onClearPauseKey?.()}
+                    title="Remove pause hotkey"
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="settings-action-btn"
+                  type="button"
+                  onClick={() => setCapturingPauseKey(true)}
+                >
+                  Set hotkey
+                </button>
+              )}
+            </div>
+          </div>
+          {pauseConflict && (
+            <div className="settings-conflict-warn">{pauseConflict}</div>
+          )}
           </>)}
         </section>
 
         {/* ── PRIVACY & SECURITY ─────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('privacy-security')}
-          >
+          <div className="settings-section-title">
             PRIVACY &amp; SECURITY
-            <span className={`settings-accordion-chevron${isExpanded('privacy-security') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('privacy-security') && (<>
 
@@ -951,6 +1095,7 @@ export default function SettingsPanel({
           </div>
 
           {/* ── Clipboard encryption at rest (v0.5) ────────── */}
+          <div className="settings-subheader settings-subsection">Clipboard Encryption</div>
           <div className="settings-privacy-block settings-encryption-block">
             {encStatus?.encrypted ? (
               <p className="settings-encryption-status">
@@ -1028,6 +1173,7 @@ export default function SettingsPanel({
           </div>
 
           {/* ── Telemetry opt-out ──────────────────────────── */}
+          <div className="settings-subheader settings-subsection">Telemetry</div>
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Send anonymous usage stats</span>
@@ -1045,7 +1191,26 @@ export default function SettingsPanel({
             />
           </div>
 
+          <div className="settings-security-notice">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="settings-notice-icon" aria-hidden="true">
+              <path d="M8 2L1.5 14h13L8 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+              <line x1="8" y1="7" x2="8" y2="10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="8" cy="12.5" r="0.7" fill="currentColor"/>
+            </svg>
+            <span>Avoid storing passwords or sensitive credentials as text expansions. Use a password manager like Bitwarden or 1Password instead.</span>
+          </div>
+          </>)}
+        </section>
+
+        {/* ── CONFIGURATION FILE ─────────────────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">
+            CONFIGURATION FILE
+          </div>
+          {isExpanded('config-file') && (<>
+
           {/* ── Config & log files ─────────────────────────── */}
+          <div className="settings-subheader">Configuration File Location</div>
           <div className="settings-privacy-block settings-config-files">
             <p className="settings-config-path-row">
               Config file:
@@ -1068,7 +1233,7 @@ export default function SettingsPanel({
           </div>
 
           {/* ── Shared Config ─────────────────────────────── */}
-          <div className="settings-shared-config">
+          <div className="settings-shared-config settings-subsection">
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Shared config <span className="pro-badge">PRO</span></span>
               <span className="settings-toggle-sub">
@@ -1201,140 +1366,120 @@ export default function SettingsPanel({
             )}
           </div>
 
-          <div className="settings-security-notice">
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="settings-notice-icon" aria-hidden="true">
-              <path d="M8 2L1.5 14h13L8 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-              <line x1="8" y1="7" x2="8" y2="10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <circle cx="8" cy="12.5" r="0.7" fill="currentColor"/>
-            </svg>
-            <span>Avoid storing passwords or sensitive credentials as text expansions. Use a password manager like Bitwarden or 1Password instead.</span>
+          {/* ── Backup & restore ───────────────────────────── */}
+          <div className="settings-subheader settings-subsection">Backup</div>
+          <p className="settings-backup-desc">
+            Export to back up or move your config to another machine. Import to restore. Keyfire also creates automatic backups on every launch and save.
+          </p>
+          <div className="settings-backup-row">
+            <button
+              type="button"
+              className="settings-action-btn settings-export-btn"
+              onClick={onExportConfig}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 12v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              Export Config
+            </button>
+            <button
+              type="button"
+              className="settings-action-btn settings-import-btn"
+              onClick={onImportConfig}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M8 10V2M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 12v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              Import Config
+            </button>
           </div>
-          </>)}
-        </section>
 
-        {/* ── GLOBAL PAUSE ───────────────────────────────── */}
-        <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('global-pause')}
-          >
-            GLOBAL PAUSE
-            <span className={`settings-accordion-chevron${isExpanded('global-pause') ? ' open' : ''}`}>▾</span>
-          </div>
-          {isExpanded('global-pause') && (<>
-
-          <div className="settings-pause-stack">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Pause hotkey</span>
-              <span className="settings-toggle-sub">Toggles Keyfire on/off from any app. Modifier required.</span>
-            </div>
-            <div className="settings-qs-hotkey-ctrl">
-              {capturingPauseKey ? (
-                <div
-                  className="settings-qs-capture"
-                  tabIndex={0}
-                  ref={el => el?.focus()}
-                  onBlur={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
-                  onKeyUp={e => { e.preventDefault(); e.stopPropagation(); }}
-                  onKeyDown={async e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
-                    const mods = [];
-                    if (e.ctrlKey)  mods.push('Ctrl');
-                    if (e.shiftKey) mods.push('Shift');
-                    if (e.altKey)   mods.push('Alt');
-                    if (e.metaKey)  mods.push('Win');
-                    if (mods.length === 0) return;
-                    mods.sort((a, b) => ['Ctrl','Shift','Alt','Win'].indexOf(a) - ['Ctrl','Shift','Alt','Win'].indexOf(b));
-                    const keyDisplay = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-                    const combo = [...mods, e.code].join('+');
-                    const label = [...mods, keyDisplay].join('+');
-                    const result = await window.electronAPI?.checkHotkeyConflict(combo, 'pause');
-                    setPauseConflict(result?.conflict ? `Already used by ${result.conflictWith}. Pick a different one.` : null);
-                    setCapturedPauseKey({ combo, label });
-                  }}
-                >
-                  {capturedPauseKey ? (
-                    <span className="settings-qs-captured">{capturedPauseKey.label}</span>
-                  ) : (
-                    <span className="settings-qs-waiting">Press combo…</span>
-                  )}
-                  {capturedPauseKey && !pauseConflict && (
-                    <button
-                      className="settings-qs-save-btn"
-                      type="button"
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => {
-                        onSetPauseKey?.(capturedPauseKey.combo);
-                        setCapturingPauseKey(false);
-                        setCapturedPauseKey(null);
-                        setPauseConflict(null);
-                      }}
-                    >
-                      Save
-                    </button>
-                  )}
-                  <button
-                    className="settings-qs-cancel-btn"
-                    type="button"
-                    onMouseDown={e => e.preventDefault()}
-                    onClick={() => { setCapturingPauseKey(false); setCapturedPauseKey(null); setPauseConflict(null); }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : globalPauseToggleKey ? (
-                <>
-                  <span className="settings-qs-hotkey-badge">
-                    {globalPauseToggleKey.split('+').map((p, i, arr) => (
-                        <React.Fragment key={i}>
-                          <kbd className="settings-qs-kbd">{friendlyKeyName(p)}</kbd>
-                          {i < arr.length - 1 && <span className="settings-qs-plus">+</span>}
-                        </React.Fragment>
-                    ))}
-                  </span>
-                  <button
-                    className="settings-action-btn"
-                    type="button"
-                    onClick={() => setCapturingPauseKey(true)}
-                  >
-                    Change
-                  </button>
-                  <button
-                    className="settings-action-btn settings-danger-btn"
-                    type="button"
-                    onClick={() => onClearPauseKey?.()}
-                    title="Remove pause hotkey"
-                  >
-                    Remove
-                  </button>
-                </>
-              ) : (
+          {backupList === null ? (
+            <button
+              type="button"
+              className="settings-action-btn settings-restore-toggle-btn"
+              onClick={loadBackups}
+            >
+              Restore from Automatic Backup…
+            </button>
+          ) : (
+            <div className="settings-backup-list-wrap">
+              <div className="settings-backup-list-header">
+                <span className="settings-backup-list-title">Automatic Backups</span>
                 <button
-                  className="settings-action-btn"
                   type="button"
-                  onClick={() => setCapturingPauseKey(true)}
-                >
-                  Set hotkey
-                </button>
+                  className="settings-backup-list-close"
+                  onClick={() => { setBackupList(null); setConfirmRestore(null); }}
+                >✕</button>
+              </div>
+
+              {confirmRestore ? (
+                <div className="settings-backup-confirm">
+                  <p>Restore from <strong>{
+                    confirmRestore === 'keyforge-config-last-known-good.json'
+                      ? 'Last Known Good'
+                      : confirmRestore.replace('keyforge-config-', '').replace('.json', '')
+                  }</strong>?</p>
+                  <p className="settings-backup-confirm-sub">Replaces your current config. Cannot be undone.</p>
+                  <div className="settings-backup-confirm-btns">
+                    <button type="button" className="settings-action-btn" onClick={() => setConfirmRestore(null)}>Cancel</button>
+                    <button type="button" className="settings-action-btn settings-restore-confirm-btn" onClick={() => handleConfirmRestore(confirmRestore)}>Restore</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {backupList.lastKnownGood && (
+                    <div className="settings-backup-item settings-backup-item-lkg">
+                      <div className="settings-backup-item-info">
+                        <span className="settings-backup-item-name">Last Known Good</span>
+                        <span className="settings-backup-item-date">{backupList.lastKnownGood.date}</span>
+                        <span className="settings-backup-item-summary">
+                          {backupList.lastKnownGood.profileCount} profile{backupList.lastKnownGood.profileCount !== 1 ? 's' : ''},
+                          {' '}{backupList.lastKnownGood.assignmentCount} assignment{backupList.lastKnownGood.assignmentCount !== 1 ? 's' : ''},
+                          {' '}{backupList.lastKnownGood.expansionCount} expansion{backupList.lastKnownGood.expansionCount !== 1 ? 's' : ''},
+                          {' '}{backupList.lastKnownGood.radialCount ?? 0} radial
+                        </span>
+                      </div>
+                      <button type="button" className="settings-backup-restore-btn" onClick={() => setConfirmRestore(backupList.lastKnownGood.filename)}>Restore</button>
+                    </div>
+                  )}
+
+                  {backupList.backups.length === 0 && !backupList.lastKnownGood && (
+                    <p className="settings-backup-empty">No automatic backups found yet. Backups are created on each launch and save.</p>
+                  )}
+
+                  {backupList.backups.map(b => (
+                    <div key={b.filename} className={`settings-backup-item${b.invalid ? ' settings-backup-item-invalid' : ''}`}>
+                      <div className="settings-backup-item-info">
+                        <span className="settings-backup-item-date">{b.date}</span>
+                        {!b.invalid && (
+                          <span className="settings-backup-item-summary">
+                            {b.profileCount} profile{b.profileCount !== 1 ? 's' : ''},
+                            {' '}{b.assignmentCount} assignment{b.assignmentCount !== 1 ? 's' : ''},
+                            {' '}{b.expansionCount} expansion{b.expansionCount !== 1 ? 's' : ''},
+                            {' '}{b.radialCount ?? 0} radial
+                          </span>
+                        )}
+                        {b.invalid && <span className="settings-backup-item-invalid-label">Unreadable</span>}
+                      </div>
+                      {!b.invalid && (
+                        <button type="button" className="settings-backup-restore-btn" onClick={() => setConfirmRestore(b.filename)}>Restore</button>
+                      )}
+                    </div>
+                  ))}
+                </>
               )}
             </div>
-          </div>
-          {pauseConflict && (
-            <div className="settings-conflict-warn">{pauseConflict}</div>
           )}
           </>)}
         </section>
 
         {/* ── QUICK SEARCH ───────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('quick-search')}
-          >
+          <div className="settings-section-title">
             QUICK SEARCH
-            <span className={`settings-accordion-chevron${isExpanded('quick-search') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('quick-search') && (<>
 
@@ -1478,12 +1623,8 @@ export default function SettingsPanel({
 
         {/* ── CLIPBOARD ──────────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('clipboard')}
-          >
+          <div className="settings-section-title">
             CLIPBOARD
-            <span className={`settings-accordion-chevron${isExpanded('clipboard') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('clipboard') && (<>
 
@@ -1506,6 +1647,7 @@ export default function SettingsPanel({
 
           {clipboardCaptureEnabled && (
             <>
+              <div className="settings-subheader settings-subsection">Quick Paste Popup</div>
               <div className="settings-pause-stack">
                 <div className="settings-toggle-info">
                   <span className="settings-toggle-label">Quick-paste hotkey</span>
@@ -1622,6 +1764,7 @@ export default function SettingsPanel({
                 </button>
               </div>
 
+              <div className="settings-subheader settings-subsection">Privacy &amp; Exclusions</div>
               <ClipboardExcludedAppsEditor
                 apps={clipboardExcludedApps}
                 onChange={onUpdateClipboardExcludedApps}
@@ -1639,6 +1782,7 @@ export default function SettingsPanel({
                 </div>
               </div>
 
+              <div className="settings-subheader settings-subsection">History</div>
               <div className="settings-toggle-row">
                 <div className="settings-toggle-info">
                   <span className="settings-toggle-label">History retention <span className="pro-badge">PRO</span></span>
@@ -1671,6 +1815,7 @@ export default function SettingsPanel({
                 </div>
               </div>
 
+              <div className="settings-subheader settings-subsection">Text from Images (OCR)</div>
               <div className="settings-toggle-row">
                 <div className="settings-toggle-info">
                   <span className="settings-toggle-label">
@@ -1719,40 +1864,38 @@ export default function SettingsPanel({
             </>
           )}
 
-          <button
-            type="button"
-            className="settings-action-btn"
-            onClick={async () => {
-              if (window.confirm('Clear clipboard history? Pinned and saved items will be kept. This cannot be undone.')) {
-                const ok = await window.electronAPI?.clearClipboardHistory();
-                if (!ok) {
-                  window.alert('Failed to clear clipboard history. Check the log for details.');
+          <div className="settings-subsection">
+            <button
+              type="button"
+              className="settings-action-btn"
+              onClick={async () => {
+                if (window.confirm('Clear clipboard history? Pinned and saved items will be kept. This cannot be undone.')) {
+                  const ok = await window.electronAPI?.clearClipboardHistory();
+                  if (!ok) {
+                    window.alert('Failed to clear clipboard history. Check the log for details.');
+                  }
                 }
-              }
-            }}
-          >
-            Clear Clipboard History
-          </button>
+              }}
+            >
+              Clear Clipboard History
+            </button>
 
-          <button
-            type="button"
-            className="settings-action-btn"
-            onClick={() => window.electronAPI?.openClipboardFolder()}
-            title="Opens the AppData folder containing trigr-clipboard.db so you can manage the files manually."
-          >
-            Open clipboard folder
-          </button>
+            <button
+              type="button"
+              className="settings-action-btn"
+              onClick={() => window.electronAPI?.openClipboardFolder()}
+              title="Opens the AppData folder containing trigr-clipboard.db so you can manage the files manually."
+            >
+              Open clipboard folder
+            </button>
+          </div>
           </>)}
         </section>
 
         {/* ── TEXT EXPANSIONS ────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('text-expansions')}
-          >
+          <div className="settings-section-title">
             TEXT EXPANSIONS
-            <span className={`settings-accordion-chevron${isExpanded('text-expansions') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('text-expansions') && (<>
 
@@ -1767,12 +1910,8 @@ export default function SettingsPanel({
 
         {/* ── VOICE COMMANDS ─────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('voice-commands')}
-          >
+          <div className="settings-section-title">
             <span>VOICE COMMANDS <span className="pro-badge">PRO</span> <span className="experimental-badge">EXPERIMENTAL</span></span>
-            <span className={`settings-accordion-chevron${isExpanded('voice-commands') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('voice-commands') && (<>
 
@@ -1920,12 +2059,8 @@ export default function SettingsPanel({
 
         {/* ── QUICK RECORD ───────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('quick-record')}
-          >
-            QUICK RECORD
-            <span className={`settings-accordion-chevron${isExpanded('quick-record') ? ' open' : ''}`}>▾</span>
+          <div className="settings-section-title">
+            QUICK RECORD MACRO
           </div>
           {isExpanded('quick-record') && (<>
             <p className="settings-section-sub">
@@ -1933,6 +2068,8 @@ export default function SettingsPanel({
               Press it again to save. Replay with the play hotkey. The saved recording stays
               available across restarts; overwrite by recording again, or clear it below.
             </p>
+
+            <div className="settings-subheader settings-subsection">Hotkeys</div>
 
             {/* ── Record hotkey ── */}
             <div className="settings-pause-stack">
@@ -2232,7 +2369,7 @@ export default function SettingsPanel({
             )}
 
             {/* ── Saved recording status ── */}
-            <div className="settings-pause-stack">
+            <div className="settings-pause-stack settings-subsection">
               <div className="settings-toggle-info">
                 <span className="settings-toggle-label">Saved recording</span>
                 <span className="settings-toggle-sub">
@@ -2258,14 +2395,11 @@ export default function SettingsPanel({
 
         {/* ── PERFORMANCE ────────────────────────────────── */}
         <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('compatibility')}
-          >
+          <div className="settings-section-title">
             PERFORMANCE
-            <span className={`settings-accordion-chevron${isExpanded('compatibility') ? ' open' : ''}`}>▾</span>
           </div>
           {isExpanded('compatibility') && (<>
+          <div className="settings-subheader">Text Injection</div>
           <p className="settings-compat-desc">
             How Keyfire injects text into other apps. Use <strong>Type Each Key</strong> for CAD and games.
           </p>
@@ -2290,7 +2424,7 @@ export default function SettingsPanel({
             ))}
           </div>
 
-          <label className="settings-field-label" style={{ marginTop: 12 }}>Macro speed</label>
+          <div className="settings-subheader settings-subsection">Speed &amp; Delays</div>
           <div className="settings-method-grid">
             {MACRO_SPEED_PRESETS.map(m => (
               <label
@@ -2387,6 +2521,7 @@ export default function SettingsPanel({
             </div>
           </div>
 
+          <div className="settings-subheader settings-subsection">Trigger Timing</div>
           <div className="settings-slider-row">
             <div className="settings-slider-info">
               <span className="settings-toggle-label">Double-tap window</span>
@@ -2439,7 +2574,7 @@ export default function SettingsPanel({
             </div>
           </div>
 
-          <label className="settings-field-label">Default date format</label>
+          <label className="settings-field-label settings-subsection">Default date format</label>
           <p className="settings-compat-desc">
             Used by bare <code>{'{date}'}</code> and Date Math tokens. Explicit formats like <code>{'{date:DD/MM/YYYY}'}</code> override this.
           </p>
@@ -2455,123 +2590,6 @@ export default function SettingsPanel({
           </>)}
         </section>
 
-        {/* ── BACKUP & RESTORE ───────────────────────────── */}
-        <section className="settings-section">
-          <div
-            className="settings-section-title settings-accordion-header"
-            onClick={() => toggleSection('backup-restore')}
-          >
-            BACKUP &amp; RESTORE
-            <span className={`settings-accordion-chevron${isExpanded('backup-restore') ? ' open' : ''}`}>▾</span>
-          </div>
-          {isExpanded('backup-restore') && (<>
-          <p className="settings-backup-desc">
-            Export to back up or move your config to another machine. Import to restore. Keyfire also creates automatic backups on every launch and save.
-          </p>
-          <div className="settings-backup-row">
-            <button
-              type="button"
-              className="settings-action-btn settings-export-btn"
-              onClick={onExportConfig}
-            >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 12v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              Export Config
-            </button>
-            <button
-              type="button"
-              className="settings-action-btn settings-import-btn"
-              onClick={onImportConfig}
-            >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M8 10V2M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 12v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              Import Config
-            </button>
-          </div>
-
-          {backupList === null ? (
-            <button
-              type="button"
-              className="settings-action-btn settings-restore-toggle-btn"
-              onClick={loadBackups}
-            >
-              Restore from Automatic Backup…
-            </button>
-          ) : (
-            <div className="settings-backup-list-wrap">
-              <div className="settings-backup-list-header">
-                <span className="settings-backup-list-title">Automatic Backups</span>
-                <button
-                  type="button"
-                  className="settings-backup-list-close"
-                  onClick={() => { setBackupList(null); setConfirmRestore(null); }}
-                >✕</button>
-              </div>
-
-              {confirmRestore ? (
-                <div className="settings-backup-confirm">
-                  <p>Restore from <strong>{
-                    confirmRestore === 'keyforge-config-last-known-good.json'
-                      ? 'Last Known Good'
-                      : confirmRestore.replace('keyforge-config-', '').replace('.json', '')
-                  }</strong>?</p>
-                  <p className="settings-backup-confirm-sub">Replaces your current config. Cannot be undone.</p>
-                  <div className="settings-backup-confirm-btns">
-                    <button type="button" className="settings-action-btn" onClick={() => setConfirmRestore(null)}>Cancel</button>
-                    <button type="button" className="settings-action-btn settings-restore-confirm-btn" onClick={() => handleConfirmRestore(confirmRestore)}>Restore</button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {backupList.lastKnownGood && (
-                    <div className="settings-backup-item settings-backup-item-lkg">
-                      <div className="settings-backup-item-info">
-                        <span className="settings-backup-item-name">Last Known Good</span>
-                        <span className="settings-backup-item-date">{backupList.lastKnownGood.date}</span>
-                        <span className="settings-backup-item-summary">
-                          {backupList.lastKnownGood.profileCount} profile{backupList.lastKnownGood.profileCount !== 1 ? 's' : ''},
-                          {' '}{backupList.lastKnownGood.assignmentCount} assignment{backupList.lastKnownGood.assignmentCount !== 1 ? 's' : ''},
-                          {' '}{backupList.lastKnownGood.expansionCount} expansion{backupList.lastKnownGood.expansionCount !== 1 ? 's' : ''},
-                          {' '}{backupList.lastKnownGood.radialCount ?? 0} radial
-                        </span>
-                      </div>
-                      <button type="button" className="settings-backup-restore-btn" onClick={() => setConfirmRestore(backupList.lastKnownGood.filename)}>Restore</button>
-                    </div>
-                  )}
-
-                  {backupList.backups.length === 0 && !backupList.lastKnownGood && (
-                    <p className="settings-backup-empty">No automatic backups found yet. Backups are created on each launch and save.</p>
-                  )}
-
-                  {backupList.backups.map(b => (
-                    <div key={b.filename} className={`settings-backup-item${b.invalid ? ' settings-backup-item-invalid' : ''}`}>
-                      <div className="settings-backup-item-info">
-                        <span className="settings-backup-item-date">{b.date}</span>
-                        {!b.invalid && (
-                          <span className="settings-backup-item-summary">
-                            {b.profileCount} profile{b.profileCount !== 1 ? 's' : ''},
-                            {' '}{b.assignmentCount} assignment{b.assignmentCount !== 1 ? 's' : ''},
-                            {' '}{b.expansionCount} expansion{b.expansionCount !== 1 ? 's' : ''},
-                            {' '}{b.radialCount ?? 0} radial
-                          </span>
-                        )}
-                        {b.invalid && <span className="settings-backup-item-invalid-label">Unreadable</span>}
-                      </div>
-                      {!b.invalid && (
-                        <button type="button" className="settings-backup-restore-btn" onClick={() => setConfirmRestore(b.filename)}>Restore</button>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-          </>)}
-        </section>
 
       </div>
     </aside>

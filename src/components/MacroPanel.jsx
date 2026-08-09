@@ -5,7 +5,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import {
   Type, Keyboard, AppWindow, Globe, FolderOpen, Layers, FileCode,
-  GripVertical, Copy, Sparkles, Circle, Square, Trash2,
+  GripVertical, Copy, Sparkles, Circle, CircleDot, Square, Trash2,
 } from 'lucide-react';
 import './MacroPanel.css';
 import MonitorPicker from './MonitorPicker';
@@ -14,61 +14,70 @@ import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 
+// `desc` is the copy shown in the dismissible TIP box under the selector —
+// a sentence or two of real explanation, not just a label restatement.
 const ACTION_TYPES = [
+  {
+    id: 'macro',
+    Icon: Layers,
+    label: 'Macro',
+    desc: 'Build a sequence of steps that run in order: type text, press keys, open apps, control windows, manage files and more. Drag steps to reorder them.',
+    color: '#ff783c',
+  },
+  {
+    id: 'recordmacro',
+    Icon: CircleDot,
+    label: 'Record Macro',
+    desc: 'Record your actual keyboard and mouse actions once, then replay them exactly with a single trigger. Press Ctrl+Shift+R to stop recording.',
+    color: '#ff5c5c',
+  },
   {
     id: 'text',
     Icon: Type,
     label: 'Text',
-    desc: 'Types a text snippet when key is pressed',
+    desc: 'Types a text snippet wherever your cursor is, like a signature, address or greeting. Supports multiple lines.',
     color: '#64b4ff',
   },
   {
     id: 'expansion',
     Icon: Sparkles,
     label: 'Expansion',
-    desc: 'Fires an existing text expansion when key is pressed',
+    desc: 'Fires one of your saved text expansions, so a snippet with fill-ins and formatting is one key press away.',
     color: '#a070ff',
   },
   {
     id: 'hotkey',
     Icon: Keyboard,
     label: 'Hotkey',
-    desc: 'Triggers a key combination like Ctrl+C',
+    desc: 'Sends a key combination like Ctrl+C to the app you are using. Handy for remapping awkward shortcuts onto comfortable keys.',
     color: '#c864ff',
   },
   {
     id: 'app',
     Icon: AppWindow,
     label: 'App',
-    desc: 'Launch an application or file',
+    desc: 'Launches an application or file. If the app is already running, its window is brought to the front instead.',
     color: '#50c878',
   },
   {
     id: 'url',
     Icon: Globe,
     label: 'URL',
-    desc: 'Open a website in your browser',
+    desc: 'Opens a website in your default browser. Any address works, including deep links into web apps.',
     color: '#ffc832',
   },
   {
     id: 'folder',
     Icon: FolderOpen,
     label: 'Folder',
-    desc: 'Open a folder in File Explorer',
+    desc: 'Opens a folder in File Explorer. Point it at the folders you dig through every day.',
     color: '#40c8a0',
-  },
-  {
-    id: 'macro',
-    Icon: Layers,
-    label: 'Macro',
-    desc: 'Run a sequence of actions one after another',
-    color: '#ff783c',
   },
   {
     id: 'ahk',
     Icon: FileCode,
     label: 'AHK Script',
-    desc: 'Run an AutoHotkey v1 or v2 script',
+    desc: 'Runs an AutoHotkey v1 or v2 script, so existing AHK scripts can move across without being rebuilt as macros.',
     color: '#4ecdc4',
   },
 ];
@@ -82,6 +91,23 @@ const OPEN_TYPE_IDS = ['app', 'url', 'folder'];
 // Text + Expansion collapse into a single "Text" button under the same
 // sub-pill pattern. Type ids stay distinct; saved assignments unchanged.
 const TEXT_TYPE_IDS = ['text', 'expansion'];
+
+// "Record Macro" is a UI-only pseudo-type: a dedicated recorder view whose
+// saved form is a normal macro assignment with a single "Record Macro" step.
+// The stored type is ALWAYS 'macro' (config schema + Rust untouched) —
+// 'recordmacro' must never be written to an assignment's `type`. A saved
+// macro whose steps are exactly one recording lights this button on load;
+// a recording mixed with other steps still displays as Macro.
+const RECORD_TYPE_ID = 'recordmacro';
+const isPureRecording = (data) => {
+  const steps = data?.steps || [];
+  return steps.length === 1 && steps[0]?.type === 'Record Macro';
+};
+const displayTypeOf = (entry) => {
+  const t = entry?.type || 'text';
+  if (t === 'macro' && isPureRecording(entry.data)) return RECORD_TYPE_ID;
+  return t;
+};
 
 const MODIFIER_KEYS = ['Ctrl', 'Alt', 'Shift', 'Win'];
 const TRIGGER_KEYS = [
@@ -913,6 +939,28 @@ function ReplayRecordingValue({ value, onChange }) {
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+// Standalone form for the Record Macro action type. Wraps the same
+// ReplayRecordingValue recorder UI the macro step uses, but as the whole
+// editor pane — the form value keeps the macro data shape ({ steps: [one
+// Record Macro step] }) so saving/loading needs no conversion beyond the
+// type remap in handleSave / displayTypeOf.
+function RecordMacroForm({ value, onChange }) {
+  const step = (value.steps && value.steps[0]) || { type: 'Record Macro', value: '' };
+  return (
+    <div className="record-macro-form">
+      <label className="form-label">Recording</label>
+      <ReplayRecordingValue
+        value={step.value || ''}
+        onChange={v => onChange({ ...value, steps: [{ type: 'Record Macro', value: v }] })}
+      />
+      <p className="record-macro-hint">
+        Press Record, perform your actions anywhere on screen, then press Ctrl+Shift+R to stop.
+        Playback repeats them exactly, with the same timing.
+      </p>
     </div>
   );
 }
@@ -3427,6 +3475,8 @@ export default function MacroPanel({
   isPro = false,
   voiceEnabled = false,
   onShowUpgrade,
+  hiddenTips = [],
+  onHideTip,
 }) {
   // When the user duplicates an assignment from the sidebar context menu, the
   // cloned action lives in draftAssignment until they pick a destination key.
@@ -3438,7 +3488,9 @@ export default function MacroPanel({
   // No draft variant for hold — duplicate-from-context carries single + double only.
   const effectiveHold       = holdAssignment;
   const isDraftMode         = !selectedKey && !!draftAssignment;
-  const [activeType, setActiveType] = useState('text');
+  // Blank keys open on the Macro editor (Rory call 2026-08-09) — saved
+  // assignments and drafts still open on their own type via the effects below.
+  const [activeType, setActiveType] = useState('macro');
   // Which Open sub-type (app/url/folder) the merged Open selector button
   // targets — clicking Open returns to the last-used sub-type. Tracks
   // activeType so loading a saved url/folder assignment syncs the bar.
@@ -3497,7 +3549,7 @@ export default function MacroPanel({
     // single-entry map of the active type's data (backward-compat for
     // assignments saved before the drafts field existed).
     const seedDrafts = (entry) => {
-      const t = entry.type || 'text';
+      const t = displayTypeOf(entry);
       if (entry.drafts && typeof entry.drafts === 'object') {
         // Ensure the active type's draft mirrors the saved data even if the
         // user edited and reverted — the assignment is the source of truth.
@@ -3506,7 +3558,7 @@ export default function MacroPanel({
       return { [t]: entry.data || {} };
     };
     const seedLabels = (entry) => {
-      const t = entry.type || 'text';
+      const t = displayTypeOf(entry);
       // Top-level `label` always wins for the primary type — covers the
       // Sidebar right-click rename path that updates `label` only.
       if (entry.labels && typeof entry.labels === 'object') {
@@ -3538,14 +3590,14 @@ export default function MacroPanel({
     }
     // Auto-switch to double/hold mode when only that assignment exists
     if (!effectiveAssignment && effectiveDouble) {
-      const t = effectiveDouble.type || 'text';
+      const t = displayTypeOf(effectiveDouble);
       setPressMode('double');
       setActiveType(t);
       setFormValuesByType(seedDrafts(effectiveDouble));
       setLabelByType(seedLabels(effectiveDouble));
       setVoicePhrases(readVoicePhrases(effectiveDouble.data));
     } else if (!effectiveAssignment && effectiveHold) {
-      const t = effectiveHold.type || 'text';
+      const t = displayTypeOf(effectiveHold);
       setPressMode('hold');
       setActiveType(t);
       setFormValuesByType(seedDrafts(effectiveHold));
@@ -3554,13 +3606,13 @@ export default function MacroPanel({
     } else {
       setPressMode('single');
       if (effectiveAssignment) {
-        const t = effectiveAssignment.type || 'text';
+        const t = displayTypeOf(effectiveAssignment);
         setActiveType(t);
         setFormValuesByType(seedDrafts(effectiveAssignment));
         setLabelByType(seedLabels(effectiveAssignment));
         setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
-        setActiveType('text');
+        setActiveType('macro');
         setFormValuesByType({});
         setLabelByType({});
         setVoicePhrases([]);
@@ -3580,14 +3632,14 @@ export default function MacroPanel({
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {
     const seedDrafts = (entry) => {
-      const t = entry.type || 'text';
+      const t = displayTypeOf(entry);
       if (entry.drafts && typeof entry.drafts === 'object') {
         return { ...entry.drafts, [t]: entry.data || entry.drafts[t] || {} };
       }
       return { [t]: entry.data || {} };
     };
     const seedLabels = (entry) => {
-      const t = entry.type || 'text';
+      const t = displayTypeOf(entry);
       // Top-level `label` always wins for the primary type — covers the
       // Sidebar right-click rename path that updates `label` only.
       if (entry.labels && typeof entry.labels === 'object') {
@@ -3601,13 +3653,13 @@ export default function MacroPanel({
       : pressMode === 'hold' ? effectiveHold
       : effectiveAssignment;
     if (record) {
-      const t = record.type || 'text';
+      const t = displayTypeOf(record);
       setActiveType(t);
       setFormValuesByType(seedDrafts(record));
       setLabelByType(seedLabels(record));
       setVoicePhrases(readVoicePhrases(record.data));
     } else {
-      setActiveType('text');
+      setActiveType('macro');
       setFormValuesByType({});
       setLabelByType({});
       setVoicePhrases([]);
@@ -3659,7 +3711,7 @@ export default function MacroPanel({
       if (trimmed) labelsToSave[t] = trimmed;
     }
 
-    if (activeRecord.type === activeType) {
+    if (displayTypeOf(activeRecord) === activeType) {
       // Clearing the saved primary action.
       setLabel('');
       setVoicePhrases([]);
@@ -3670,7 +3722,7 @@ export default function MacroPanel({
         else if (pressMode === 'hold') onClearHold?.(selectedKey);
         else onClear?.(selectedKey);
       } else {
-        const newMacro = { type: activeType, label: '', data: {}, drafts };
+        const newMacro = { type: activeType === RECORD_TYPE_ID ? 'macro' : activeType, label: '', data: {}, drafts };
         if (Object.keys(labelsToSave).length > 0) newMacro.labels = labelsToSave;
         if (pressMode === 'double') onAssignDouble?.(selectedKey, newMacro);
         else if (pressMode === 'hold') onAssignHold?.(selectedKey, newMacro);
@@ -3713,6 +3765,7 @@ export default function MacroPanel({
       case 'folder':    return !!d.path?.trim();
       case 'url':       return !!d.url?.trim();
       case 'macro':     return (d.steps || []).length > 0;
+      case 'recordmacro': return !!d.steps?.[0]?.value;
       case 'ahk':       return !!d.script?.trim();
       default:          return false;
     }
@@ -3749,7 +3802,10 @@ export default function MacroPanel({
     persistedLabels[activeType] = resolvedActiveLabel;
 
     const macro = {
-      type: activeType,
+      // Record Macro is a UI-only view over a one-step macro — the stored
+      // type must stay 'macro' so config, Rust and every other reader are
+      // untouched. displayTypeOf() reverses this on load.
+      type: activeType === RECORD_TYPE_ID ? 'macro' : activeType,
       label: resolvedActiveLabel,
       data,
     };
@@ -3803,6 +3859,10 @@ export default function MacroPanel({
       case 'folder': return formValue.folderName || formValue.path?.split('\\').pop() || 'Folder';
       case 'url':    return formValue.urlName || formValue.url || 'URL';
       case 'macro':  return `Macro (${(formValue.steps || []).length} steps)`;
+      case 'recordmacro': {
+        const summary = summariseRecording(formValue.steps?.[0]?.value);
+        return summary ? `Recorded macro (${summary.duration})` : 'Recorded macro';
+      }
       case 'ahk':    return 'AHK Script';
       default:       return 'Action';
     }
@@ -3818,6 +3878,7 @@ export default function MacroPanel({
       case 'folder':    return !!formValue.path?.trim();
       case 'url':       return !!formValue.url?.trim();
       case 'macro':     return (formValue.steps || []).length > 0;
+      case 'recordmacro': return !!formValue.steps?.[0]?.value;
       case 'ahk':       return !!formValue.script?.trim();
       default:          return false;
     }
@@ -4032,7 +4093,7 @@ export default function MacroPanel({
             return (
               <button
                 key={type.id}
-                className={`type-btn ${activeType === type.id ? 'active' : ''}${(type.id === 'ahk' || type.id === 'macro') ? ' type-btn-half' : ''}`}
+                className={`type-btn ${activeType === type.id ? 'active' : ''}${(type.id === 'macro' || type.id === 'recordmacro') ? ' type-btn-half' : ''}`}
                 onClick={() => setActiveType(type.id)}
                 type="button"
               >
@@ -4106,10 +4167,24 @@ export default function MacroPanel({
           );
         })()}
 
-        {/* Type description */}
-        <div className="type-desc">
-          {ACTION_TYPES.find(t => t.id === activeType)?.desc}
-        </div>
+        {/* Action-type explainer — gold TIP box matching the expansions /
+            radial / templates treatment, dismissible via hiddenTips
+            ('action-type' key, restored from Settings like the others). */}
+        {!hiddenTips.includes('action-type') && (
+          <div className="mp-type-tip">
+            <span className="mp-type-tip-badge">TIP</span>
+            <span className="mp-type-tip-text">
+              {ACTION_TYPES.find(t => t.id === activeType)?.desc}
+            </span>
+            <button
+              type="button"
+              className="mp-type-tip-close"
+              title="Hide this tip (restore in Settings)"
+              aria-label="Hide this tip"
+              onClick={() => onHideTip?.('action-type')}
+            >&#10005;</button>
+          </div>
+        )}
 
         <div className="type-selector-separator" aria-hidden="true" />
 
@@ -4180,6 +4255,7 @@ export default function MacroPanel({
           {activeType === 'folder' && <FolderForm value={formValue} onChange={setFormValue} />}
           {activeType === 'url'    && <UrlForm value={formValue} onChange={setFormValue} />}
           {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} assignments={assignments} profiles={profiles} isPro={isPro} onShowUpgrade={onShowUpgrade} />}
+          {activeType === 'recordmacro' && <RecordMacroForm value={formValue} onChange={setFormValue} />}
           {activeType === 'ahk'   && <AhkForm value={formValue} onChange={setFormValue} />}
         </div>
 

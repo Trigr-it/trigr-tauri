@@ -20,6 +20,8 @@ export default function RadialEditorView({
   radialMenuHotkey      = null,
   onSetRadialMenuHotkey,
   onClearRadialMenuHotkey,
+  radialHoldToSelect    = false,
+  onSetRadialHoldToSelect,
   radialMenuItems       = [],
   onAddRadialMenuItem,
   onRemoveRadialMenuItem,
@@ -455,6 +457,26 @@ export default function RadialEditorView({
                 ? 'Click child to edit \u00b7 Drag child to main ring to remove from folder'
                 : 'Click to edit \u00b7 Drag to reorder \u00b7 Drag onto folder to add \u00b7 Right-click for options'}
           </span>
+        </div>
+      )}
+
+      {/* Hold-to-select toggle */}
+      {radialMenuHotkey && (
+        <div className="rev-holdselect-row">
+          <div className="rev-holdselect-text">
+            <span className="rev-holdselect-label">Hold to select</span>
+            <span className="rev-holdselect-hint">
+              Hold the hotkey, point at a segment, release to fire. When off, the wheel stays open to click.
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!radialHoldToSelect}
+            className={`rev-holdselect-toggle${radialHoldToSelect ? ' on' : ''}`}
+            onClick={() => onSetRadialHoldToSelect?.(!radialHoldToSelect)}
+            title="Toggle hold-to-select mode"
+          />
         </div>
       )}
 

@@ -19,6 +19,7 @@ window.electronAPI = {
   minimize: () => invoke('window_minimize'),
   maximize: () => invoke('window_maximize'),
   close:    () => invoke('window_close'),
+  showMainWindow: () => invoke('show_window'),
 
   // ── Config persistence ──────────────────────────────────────────────────────
   loadConfig:  ()       => invoke('load_config'),
@@ -117,6 +118,13 @@ window.electronAPI = {
 
   // ── Input focus state ───────────────────────────────────────────────────────
   notifyInputFocus: (focused) => invoke('input_focus_changed', { focused }),
+
+  // ── Settings window ─────────────────────────────────────────────────────────
+  // Standalone settings window (pre-created hidden). `section` deep-links the
+  // sidebar, e.g. showSettingsWindow('licence') from the upgrade modal.
+  showSettingsWindow: (section = null) => invoke('show_settings_window', { section }),
+  hideSettingsWindow: () => invoke('hide_settings_window'),
+  toggleSettingsWindow: (section = null) => invoke('toggle_settings_window', { section }),
 
   // ── Autocorrect ─────────────────────────────────────────────────────────────
   updateAutocorrectEnabled: (enabled) => invoke('update_autocorrect_enabled', { enabled }),
@@ -443,6 +451,7 @@ window.electronAPI = {
   getAppIcon:             (path) => invoke('get_app_icon', { path }),
   setRadialMenuHotkey:    (combo) => invoke('set_radial_menu_hotkey', { combo }),
   clearRadialMenuHotkey:  ()      => invoke('clear_radial_menu_hotkey'),
+  setRadialHoldToSelect:  (enabled) => invoke('set_radial_hold_to_select', { enabled }),
   closeRadialMenu:        ()      => invoke('close_radial_menu'),
   resizeRadialMenu:       (width, height) => invoke('radial_menu_resize', { width, height }),
   executeRadialMenuItem:  (result) => invoke('execute_radial_menu_item', { result }),

@@ -2299,50 +2299,59 @@ pub fn resolve_tokens(
         }
     }
 
-    // Single scope shared across {set}, {if}, and {=} passes. `local_vars`
-    // is populated by `{set name = expr}` tokens and read by the later if /
-    // expression scans, so the user can chain intermediate calculations.
-    let mut scope = crate::expression::Scope {
-        fillin_values,
-        global_vars,
-        local_vars: std::collections::HashMap::new(),
-        selection: &selection_text,
-        clipboard: &clipboard_text,
-    };
+    // Expression engine ({set} / {if} / {=}) is Pro-only. Gated here — the one
+    // spot both the plain-text and rich-text (resolve_tokens_html delegates to
+    // this fn) paths pass through, so there is no second ungated route. For
+    // non-Pro users the tokens are left verbatim in the output rather than
+    // evaluated, mirroring how {{global vars}} are left literal above.
+    // Uses is_pro() so it follows the same entitlement source as every other
+    // gate once Paddle online activation lands.
+    if crate::licence::is_pro() {
+        // Single scope shared across {set}, {if}, and {=} passes. `local_vars`
+        // is populated by `{set name = expr}` tokens and read by the later if /
+        // expression scans, so the user can chain intermediate calculations.
+        let mut scope = crate::expression::Scope {
+            fillin_values,
+            global_vars,
+            local_vars: std::collections::HashMap::new(),
+            selection: &selection_text,
+            clipboard: &clipboard_text,
+        };
 
-    // {set name = expr} — intermediate named values. Runs FIRST so {if}/{=}
-    // can reference whatever the user defined. Outputs nothing.
-    //
-    // First pass is NON-FINAL: any {set} whose expression fails (e.g. because
-    // it depends on a value an {ifset} will produce later) is left in the
-    // text verbatim. The second {set} pass below — after {ifset} populates
-    // scope — retries those and finalises.
-    if result.contains("{set ") {
-        result = process_set_tokens(&result, &mut scope, false);
-    }
+        // {set name = expr} — intermediate named values. Runs FIRST so {if}/{=}
+        // can reference whatever the user defined. Outputs nothing.
+        //
+        // First pass is NON-FINAL: any {set} whose expression fails (e.g. because
+        // it depends on a value an {ifset} will produce later) is left in the
+        // text verbatim. The second {set} pass below — after {ifset} populates
+        // scope — retries those and finalises.
+        if result.contains("{set ") {
+            result = process_set_tokens(&result, &mut scope, false);
+        }
 
-    // {if expr}…[{else}…]{endif} — conditional blocks. Runs BEFORE {=expr}
-    // so discarded branches don't waste expression evaluation cycles. Nested
-    // {if} blocks are tracked by depth in process_if_blocks.
-    //
-    // Also handles {ifset NAME cond}…{endif} — same logic as {if} plus the
-    // chosen branch text gets stored in scope.local_vars[NAME] so the user
-    // can reference the conditional's resolved value in later formulas.
-    if result.contains("{if ") || result.contains("{ifset ") {
-        result = process_if_blocks(&result, &mut scope);
-    }
+        // {if expr}…[{else}…]{endif} — conditional blocks. Runs BEFORE {=expr}
+        // so discarded branches don't waste expression evaluation cycles. Nested
+        // {if} blocks are tracked by depth in process_if_blocks.
+        //
+        // Also handles {ifset NAME cond}…{endif} — same logic as {if} plus the
+        // chosen branch text gets stored in scope.local_vars[NAME] so the user
+        // can reference the conditional's resolved value in later formulas.
+        if result.contains("{if ") || result.contains("{ifset ") {
+            result = process_if_blocks(&result, &mut scope);
+        }
 
-    // Second {set} pass — finalises any sets that depended on an {ifset}
-    // value (which is now in scope after the if/ifset pass above). Anything
-    // still unresolved at this point is a genuine error and rendered inline.
-    if result.contains("{set ") {
-        result = process_set_tokens(&result, &mut scope, true);
-    }
+        // Second {set} pass — finalises any sets that depended on an {ifset}
+        // value (which is now in scope after the if/ifset pass above). Anything
+        // still unresolved at this point is a genuine error and rendered inline.
+        if result.contains("{set ") {
+            result = process_set_tokens(&result, &mut scope, true);
+        }
 
-    // {=expr} — expression substitution. Errors render inline as `«error: msg»`
-    // so a single broken formula doesn't kill the whole expansion fire.
-    if result.contains("{=") {
-        result = process_expr_tokens(&result, &scope);
+        // {=expr} — expression substitution. Errors render inline as `«error: msg»`
+        // so a single broken formula doesn't kill the whole expansion fire.
+        if result.contains("{=") {
+            result = process_expr_tokens(&result, &scope);
+        }
     }
 
     // {cursor} — track position, then remove token

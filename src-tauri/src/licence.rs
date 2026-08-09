@@ -81,6 +81,14 @@ pub struct LicenceState {
     /// the user. Prevents the migration popup from firing on every launch.
     #[serde(default)]
     pub trial_offer_shown: bool,
+    /// Highest wall-clock time (unix seconds) this install has ever observed.
+    /// Every expiry and trial check measures against `max(now, time_anchor)`
+    /// (see [`effective_now`]), so winding the system clock backwards cannot
+    /// revive an expired key or stretch a trial. Advisory during the
+    /// offline-key era; once Paddle online validation ships the server-issued
+    /// timestamp is authoritative and this stays as the offline-grace guard.
+    #[serde(default)]
+    pub time_anchor: Option<i64>,
 }
 
 /// Returned to the frontend for UI display.
@@ -140,9 +148,17 @@ const PAYLOAD_V2_LEN: usize = 10;
 // ── Initialization ──────────────────────────────────────────────────────────
 
 pub fn init() {
-    let state = load_from_local_settings();
+    let mut state = load_from_local_settings();
+    // Advance the rollback-proof clock anchor, then resync the cached display
+    // flag from a fresh signature verification. Entitlement is NEVER taken
+    // from the stored `valid` bool — see [`key_grants_pro`].
+    bump_time_anchor(&mut state);
+    state.valid = key_signature_ok(&state);
     let pro = compute_is_pro(&state);
     IS_PRO.store(pro, Ordering::SeqCst);
+    // Persist the bumped anchor + resynced flag so the high-water mark and the
+    // cache survive across launches.
+    save_to_local_settings(&state);
     let _ = LICENCE_STATE.set(Mutex::new(state));
     info!("[Keyfire] Licence module initialized — is_pro: {}", pro);
 }
@@ -154,20 +170,14 @@ pub fn is_pro() -> bool {
 /// True only when the user has a signature-valid, non-expired Pro key.
 /// Unlike [`is_pro`], this does NOT return true for the trial fallback —
 /// used by telemetry to keep beta-key holders on `pro` even while their
-/// 14-day trial is still ticking.
+/// 14-day trial is still ticking. Re-verifies the signature on the spot; the
+/// stored `valid`/`tier` fields are never trusted.
 pub fn has_valid_pro_key() -> bool {
     let state = match LICENCE_STATE.get() {
         Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         None => return false,
     };
-    state.valid
-        && state.tier.as_deref() == Some("pro")
-        && state
-            .expires_at
-            .as_deref()
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|d| d.to_utc() > chrono::Utc::now())
-            .unwrap_or(false)
+    key_grants_pro(&state)
 }
 
 pub fn get_licence_status() -> LicenceStatus {
@@ -189,17 +199,19 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
     let decoded = verify_key(&key)?;
     let cleaned = strip_whitespace(&key);
 
-    // Reject expired keys before saving.
-    let exp_dt = chrono::DateTime::parse_from_rfc3339(&decoded.exp)
-        .map_err(|_| "Key payload has an invalid expiry".to_string())?;
-    if exp_dt.to_utc() < chrono::Utc::now() {
-        return Err("This key has expired. Email admin@keyfire.app for a new one.".to_string());
-    }
-
     let prior = match LICENCE_STATE.get() {
         Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         None => LicenceState::default(),
     };
+
+    // Reject expired keys before saving. Measured against the rollback-proof
+    // clock so a wound-back system clock can't re-activate a dead key.
+    let exp_dt = chrono::DateTime::parse_from_rfc3339(&decoded.exp)
+        .map_err(|_| "Key payload has an invalid expiry".to_string())?;
+    if exp_dt.to_utc() < effective_now(&prior) {
+        return Err("This key has expired. Email admin@keyfire.app for a new one.".to_string());
+    }
+
     let state = LicenceState {
         key: Some(cleaned),
         email: decoded.email.clone(),
@@ -211,6 +223,7 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
         trial_started_at: prior.trial_started_at,
         trial_used: prior.trial_used,
         trial_offer_shown: prior.trial_offer_shown,
+        time_anchor: prior.time_anchor,
     };
     update_state(state.clone());
     info!(
@@ -264,6 +277,13 @@ pub async fn mark_trial_offer_shown() -> LicenceStatus {
 /// the 14-day trial and its post-onboarding announcement can be re-triggered.
 /// Preserves any entered licence key. Exposed only via a dev-build button.
 pub async fn reset_trial() -> LicenceStatus {
+    // Hard no-op outside dev builds. The command stays registered so the
+    // handler list is unchanged, but it can never reset trial state in a
+    // shipped build even if the IPC is driven directly.
+    if !cfg!(debug_assertions) {
+        warn!("[Keyfire] reset_trial ignored (release build)");
+        return get_licence_status();
+    }
     let mut state = match LICENCE_STATE.get() {
         Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         None => LicenceState::default(),
@@ -287,6 +307,9 @@ pub async fn deactivate_licence() -> Result<LicenceStatus, String> {
         trial_started_at: prior.trial_started_at,
         trial_used: prior.trial_used,
         trial_offer_shown: prior.trial_offer_shown,
+        // Preserve the clock anchor across deactivation — dropping it would
+        // hand back a fresh rollback window.
+        time_anchor: prior.time_anchor,
         ..LicenceState::default()
     };
     // ..Default explicitly zeros key_id back to None on deactivation.
@@ -312,7 +335,7 @@ pub async fn check_and_revalidate() -> LicenceStatus {
     match verify_key(&key) {
         Ok(decoded) => {
             let still_valid = chrono::DateTime::parse_from_rfc3339(&decoded.exp)
-                .map(|d| d.to_utc() > chrono::Utc::now())
+                .map(|d| d.to_utc() > effective_now(&state))
                 .unwrap_or(false);
             let new_state = LicenceState {
                 key: Some(key),
@@ -325,6 +348,7 @@ pub async fn check_and_revalidate() -> LicenceStatus {
                 trial_started_at: state.trial_started_at,
                 trial_used: state.trial_used,
                 trial_offer_shown: state.trial_offer_shown,
+                time_anchor: state.time_anchor,
             };
             update_state(new_state.clone());
             build_status(&new_state)
@@ -500,21 +524,81 @@ fn load_public_key() -> Result<VerifyingKey, String> {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+/// THE single source of truth for Pro entitlement. `is_pro()` reads the
+/// cached atomic; that atomic is only ever set from this function (via `init`
+/// and `update_state`). Every Pro gate in the app ultimately flows through
+/// here, so this is the one place to change when entitlement rules change.
 fn compute_is_pro(state: &LicenceState) -> bool {
-    // Real key path: signature verified, not expired, tier=pro.
-    let key_pro = state.valid
-        && state
-            .expires_at
-            .as_deref()
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|d| d.to_utc() > chrono::Utc::now())
-            .unwrap_or(false)
-        && state.tier.as_deref() == Some("pro");
-    if key_pro {
-        return true;
+    key_grants_pro(state) || is_trial_active(state)
+}
+
+/// Whether the stored key CRYPTOGRAPHICALLY grants Pro right now: signature
+/// re-verified on the spot, tier == pro, not past expiry (measured against the
+/// rollback-proof clock). The stored `valid` / `tier` / `expires_at` fields are
+/// NEVER consulted for this decision — hand-editing trigr-local-settings.json
+/// to set `"valid": true` must not unlock Pro. The only field that matters is
+/// the signed `key`, which cannot be forged without the private signing key.
+///
+/// PADDLE EXTENSION POINT: when online activation ships, this is the single
+/// place that also accepts a server-signed entitlement token — verified
+/// against the second embedded public key, bound to the device fingerprint,
+/// honouring the server-issued expiry and the 14-day offline-grace window.
+/// Adding that branch here means no Pro gate site elsewhere needs to change.
+fn key_grants_pro(state: &LicenceState) -> bool {
+    let key = match state.key.as_deref() {
+        Some(k) if !k.is_empty() => k,
+        _ => return false,
+    };
+    match verify_key(key) {
+        Ok(decoded) => decoded.tier == "pro" && !exp_passed(&decoded.exp, state),
+        Err(_) => false,
     }
-    // Trial path: trial started locally and within the 14-day window.
-    is_trial_active(state)
+}
+
+/// True if the stored key's signature verifies, ignoring expiry. Used only to
+/// distinguish a genuine-but-expired key ("expired") from a tampered/fake one
+/// ("invalid") in [`build_status`], and to keep the display-only `valid` cache
+/// honest. Gating decisions use [`key_grants_pro`], never this.
+fn key_signature_ok(state: &LicenceState) -> bool {
+    match state.key.as_deref() {
+        Some(k) if !k.is_empty() => verify_key(k).is_ok(),
+        _ => false,
+    }
+}
+
+/// True if the RFC3339 expiry timestamp is at or before the rollback-proof
+/// clock. An unparseable expiry counts as expired (fail safe).
+fn exp_passed(exp_rfc3339: &str, state: &LicenceState) -> bool {
+    match chrono::DateTime::parse_from_rfc3339(exp_rfc3339) {
+        Ok(d) => d.to_utc() <= effective_now(state),
+        Err(_) => true,
+    }
+}
+
+/// Current time, floored to the highest timestamp this install has ever seen.
+/// Winding the system clock backwards cannot move this backwards, so it can't
+/// revive an expired key or extend a trial. When Paddle online validation
+/// lands, the server-provided timestamp supersedes this beyond the offline
+/// grace window.
+fn effective_now(state: &LicenceState) -> chrono::DateTime<chrono::Utc> {
+    let now = chrono::Utc::now();
+    match state
+        .time_anchor
+        .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
+    {
+        Some(anchor) if anchor > now => anchor,
+        _ => now,
+    }
+}
+
+/// Advance the persisted clock anchor to the current time when the clock has
+/// moved forward. Never moves it backwards. Called on `init` and on every
+/// state write so the high-water mark tracks real elapsed time.
+fn bump_time_anchor(state: &mut LicenceState) {
+    let now = chrono::Utc::now().timestamp();
+    if state.time_anchor.map(|a| now > a).unwrap_or(true) {
+        state.time_anchor = Some(now);
+    }
 }
 
 /// True while the 14-day trial is running. Does not require a key.
@@ -536,7 +620,8 @@ fn trial_days_remaining(state: &LicenceState) -> i64 {
         None => return 0,
     };
     let ends = started + chrono::Duration::days(TRIAL_DURATION_DAYS);
-    let now = chrono::Utc::now();
+    // Rollback-proof clock — a wound-back system clock can't stretch the trial.
+    let now = effective_now(state);
     if ends <= now {
         return 0;
     }
@@ -553,7 +638,10 @@ fn build_status(state: &LicenceState) -> LicenceStatus {
 
     // Key-derived status takes precedence over trial status when both exist —
     // the UI's headline state reflects the real licence, the trial fields
-    // sit alongside for the trial-card display.
+    // sit alongside for the trial-card display. Derived from a fresh signature
+    // check, never the stored `valid` bool.
+    let sig_ok = key_signature_ok(state);
+    let key_pro = key_grants_pro(state);
     let status = if !key_entered {
         if trial_active {
             "active".to_string() // Pro via trial
@@ -562,12 +650,12 @@ fn build_status(state: &LicenceState) -> LicenceStatus {
         } else {
             "no_key".to_string()
         }
-    } else if !state.valid {
-        "invalid".to_string()
-    } else if is_pro {
-        "active".to_string()
+    } else if !sig_ok {
+        "invalid".to_string() // tampered / fake key
+    } else if key_pro {
+        "active".to_string() // genuine key, not expired
     } else {
-        "expired".to_string()
+        "expired".to_string() // genuine key, past expiry
     };
 
     LicenceStatus {
@@ -589,7 +677,11 @@ fn build_status(state: &LicenceState) -> LicenceStatus {
     }
 }
 
-fn update_state(state: LicenceState) {
+fn update_state(mut state: LicenceState) {
+    // Keep the rollback anchor advancing on every write, and keep the
+    // display-only `valid` cache in sync with a real signature check.
+    bump_time_anchor(&mut state);
+    state.valid = key_signature_ok(&state);
     let pro = compute_is_pro(&state);
     IS_PRO.store(pro, Ordering::SeqCst);
 

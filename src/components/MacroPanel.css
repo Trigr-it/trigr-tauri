@@ -384,14 +384,18 @@
 }
 
 /* Type selector */
+/* 12-column grid: default buttons span 3 (four per row), -half spans 6
+   (two per row). MacroPanel row 1 = Macro + Record Macro (half), row 2 =
+   Text / Hotkey / Open / AHK Script (default). SearchTemplatesPanel reuses
+   .type-selector with all-half buttons — keep the span-6 half semantics. */
 .type-selector {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(12, 1fr);
   gap: 6px;
 }
 
 .type-btn {
-  grid-column: span 2;
+  grid-column: span 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -432,7 +436,7 @@
 }
 
 .type-btn.type-btn-half {
-  grid-column: span 3;
+  grid-column: span 6;
 }
 
 .type-btn-icon {
@@ -484,6 +488,8 @@
   color: var(--accent);
 }
 
+/* Still used by SearchTemplatesPanel's Quick Action editor — MacroPanel's
+   own explainer moved to the .mp-type-tip TIP box below. */
 .type-desc {
   font-size: 11px;
   color: var(--text-muted);
@@ -492,6 +498,56 @@
   border-radius: 6px;
   border: 1px solid var(--border-bright);
   line-height: 1.5;
+}
+
+/* Action-type TIP box — same gold treatment as the expansions / radial /
+   templates tips, but multi-line: the explainer copy wraps instead of
+   ellipsising, so it reads as a distinct callout rather than another field. */
+.mp-type-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.mp-type-tip-badge {
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--btn-primary-text);
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.mp-type-tip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mp-type-tip-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+
+.mp-type-tip-close:hover {
+  color: var(--accent);
 }
 
 .type-selector-separator {
@@ -1481,23 +1537,33 @@
   color: var(--danger-hover);
 }
 
+/* Primary call-to-action of the macro editor — gold-highlighted at rest so it
+   stands out from the neutral step fields (0.14 tint matches the brand band
+   density used across the app), with the same hover lift as the Assign button.
+   Deliberately a gold TINT rather than a solid slab so it doesn't outweigh the
+   real Save/Assign primary action in the footer. */
 .add-step-btn {
   height: 32px;
   width: 100%;
-  background: var(--bg-elevated);
-  border: 1px dashed var(--border-bright);
+  background: rgba(var(--accent-rgb), 0.14);
+  border: 1px solid var(--accent);
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--accent);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, transform 0.12s, box-shadow 0.12s;
 }
 
 .add-step-btn:hover {
-  border-color: var(--border-accent);
-  color: var(--accent);
-  background: var(--accent-glow);
+  background: rgba(var(--accent-rgb), 0.22);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.2);
+}
+
+.add-step-btn:active {
+  transform: translateY(0);
 }
 
 /* Key capture field. min-height (not height) so long combos with many chips
@@ -2663,6 +2729,20 @@
   align-items: center;
   gap: 8px;
   min-height: 28px;
+}
+/* Record Macro standalone view — hosts the same .replay-rec recorder row the
+   macro step uses, framed as the whole editor pane instead of a step slot. */
+.record-macro-form .replay-rec {
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.record-macro-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 .replay-rec-label {
   flex: 1 1 auto;

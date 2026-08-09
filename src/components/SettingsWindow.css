@@ -1,0 +1,82 @@
+/* ── Settings Window (standalone, ?settings=1) ─────────────────────────── */
+/* Opaque undecorated window: global.css supplies the theme variables; this
+   file only provides the window chrome (titlebar + drag region). The panel
+   layout itself lives in SettingsPanel.css. */
+
+html, body, #root {
+  height: 100%;
+}
+
+.settings-window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-base);
+  border: 1px solid var(--border-bright);
+  overflow: hidden;
+}
+
+.sw-titlebar {
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-bright);
+  -webkit-app-region: drag;
+}
+
+.sw-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-title-icon {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+.sw-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.sw-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+/* Window-control buttons — identical treatment to the main titlebar's
+   .wc-btn (TitleBar.css): 28px square, 6px radius, soft red close hover. */
+.sw-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.sw-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sw-btn.sw-close:hover {
+  background: rgba(255, 80, 80, 0.15);
+  color: var(--danger-hover);
+}

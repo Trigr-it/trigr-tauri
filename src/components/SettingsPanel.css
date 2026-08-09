@@ -1,26 +1,146 @@
 /* ── Settings Panel ────────────────────────────────────────────────────── */
 
+/* Two-pane layout inside the standalone Settings window: nav rail on the
+   left, scrollable section content on the right. Fills the window below the
+   SettingsWindow titlebar. */
 .settings-panel {
-  width: 450px;
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: var(--bg-surface);
-  border-left: 1px solid var(--border-bright);
   overflow: hidden;
 }
 
-/* ── Search ──────────────────────────────────────────────────────────── */
+/* ── Nav rail ────────────────────────────────────────────────────────── */
+/* Mirrors the Text Expansions category rail (.te-cat-sidebar / .te-cat-row):
+   full-bleed 30px rows, 2px gold left stripe + glow tint when active. */
 
-/* Wrapper that holds the search pill plus the Expand/Collapse all buttons.
-   Horizontal padding matches the sections' content padding (16px) so the
-   pill and buttons line up cleanly with the section content beneath. */
-.settings-search-bar {
+.settings-nav {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.settings-nav-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0 16px;
+  /* Scroll affordance shadows (same local-attachment cover trick as
+     .ac-col-scroll) — cover colour matches the rail's --bg-elevated. */
+  background:
+    linear-gradient(var(--bg-elevated) 30%, transparent) center top,
+    linear-gradient(transparent, var(--bg-elevated) 70%) center bottom,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.28), transparent) center top,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.28), transparent) center bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+  background-attachment: local, local, scroll, scroll;
+}
+
+[data-theme="light"] .settings-nav-scroll {
+  background:
+    linear-gradient(var(--bg-elevated) 30%, transparent) center top,
+    linear-gradient(transparent, var(--bg-elevated) 70%) center bottom,
+    radial-gradient(farthest-side at 50% 0, rgba(26, 26, 46, 0.14), transparent) center top,
+    radial-gradient(farthest-side at 50% 100%, rgba(26, 26, 46, 0.14), transparent) center bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+  background-attachment: local, local, scroll, scroll;
+}
+
+.settings-nav-scroll::-webkit-scrollbar { width: 4px; }
+.settings-nav-scroll::-webkit-scrollbar-track { background: transparent; }
+.settings-nav-scroll::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+.settings-nav-group {
+  margin-top: 14px;
+}
+
+.settings-nav-group:first-child {
+  margin-top: 6px;
+}
+
+.settings-nav-group-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 12px 4px;
+}
+
+.settings-nav-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px 0;
-  margin: 0 0 14px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-align: left;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.settings-nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.settings-nav-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-nav-item:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.settings-nav-item.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-glow, rgba(232, 160, 32, 0.06));
+}
+
+.settings-nav-item.active svg {
+  opacity: 1;
+}
+
+/* Gold dot on nav items whose section matches the active search. */
+.settings-nav-match-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ── Search (top of the nav rail) ────────────────────────────────────── */
+
+.settings-search-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 10px 10px 9px;
+  border-bottom: 1px solid var(--border);
 }
 
 .settings-search-row {
@@ -38,27 +158,6 @@
 
 .settings-search-row:focus-within {
   border-color: var(--accent);
-}
-
-.settings-accordion-btn {
-  flex-shrink: 0;
-  height: 32px;
-  padding: 0 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-bright);
-  border-radius: var(--radius-pill, 6px);
-  color: var(--text-secondary);
-  font-family: var(--font-body);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-}
-
-.settings-accordion-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .settings-search-icon {
@@ -109,50 +208,34 @@
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
-.settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px 0 16px;
-  height: 48px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.settings-title {
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--text-primary);
-  text-transform: uppercase;
-}
-
-.settings-close-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-
-.settings-close-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 /* ── Body ───────────────────────────────────────────────────────────────── */
 
 .settings-body {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding-bottom: 16px;
+  /* Scroll affordance shadows — cover colour matches the pane's
+     --bg-surface (same recipe as the nav rail / .ac-col-scroll). */
+  background:
+    linear-gradient(var(--bg-surface) 30%, transparent) center top,
+    linear-gradient(transparent, var(--bg-surface) 70%) center bottom,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.28), transparent) center top,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.28), transparent) center bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+  background-attachment: local, local, scroll, scroll;
+}
+
+[data-theme="light"] .settings-body {
+  background:
+    linear-gradient(var(--bg-surface) 30%, transparent) center top,
+    linear-gradient(transparent, var(--bg-surface) 70%) center bottom,
+    radial-gradient(farthest-side at 50% 0, rgba(26, 26, 46, 0.14), transparent) center top,
+    radial-gradient(farthest-side at 50% 100%, rgba(26, 26, 46, 0.14), transparent) center bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .settings-body::-webkit-scrollbar { width: 4px; }
@@ -162,8 +245,9 @@
 /* ── Sections ───────────────────────────────────────────────────────────── */
 
 .settings-section {
-  padding: 14px 16px 12px;
+  padding: 18px 24px 16px;
   border-bottom: 1px solid var(--border);
+  max-width: 780px;
 }
 
 
@@ -189,14 +273,19 @@
 }
 
 
+/* Section titles read as page headings now (one section per view) — larger
+   than the old accordion labels, with a gold hairline underline (same 0.35
+   alpha as the list-divider header recipe). */
 .settings-section-title {
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--accent);
   text-transform: uppercase;
-  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
+  margin-bottom: 12px;
 }
 
 .settings-section-sub {
@@ -206,42 +295,34 @@
   line-height: 1.4;
 }
 
-/* ── Accordion header ──────────────────────────────────────────────────── */
-
-/* Header extends to the section's edges so the whole visible bar is clickable.
-   Negative margins pull it up + outwards into the section's padding zone, then
-   the same padding refills the click area. margin-bottom: 0 overrides the
-   title's default 10px, and that spacing now lives inside the header's
-   padding-bottom — keeping the visual gap between header and body identical
-   to the pre-accordion layout. */
-.settings-accordion-header {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  user-select: none;
-  margin: -14px -16px 0;
-  padding: 14px 16px;
-  transition: color 0.12s, background 0.12s;
+/* About block folded into Help & About — soft divider separates it from the
+   help buttons above. */
+.settings-about-inline {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
-.settings-section-title.settings-accordion-header {
-  margin-bottom: 0;
+/* Generic in-section divider: separates stacked sub-topics within one
+   section (e.g. saved recording below the Quick Record hotkeys, shared
+   config / backups inside Configuration File). */
+.settings-subsection {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
-.settings-accordion-header:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.settings-accordion-chevron {
-  font-size: 14px;
-  color: var(--text-muted);
-  transition: transform 0.2s;
-}
-
-.settings-accordion-chevron.open {
-  transform: rotate(180deg);
+/* Sub-header for dense sections — hierarchy level between the gold section
+   title (15px) and the small field labels (10px). Pair with
+   .settings-subsection to get the divider above it. */
+.settings-subheader {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
 }
 
 /* ── Privacy block ──────────────────────────────────────────────────────── */

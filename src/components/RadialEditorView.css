@@ -17,6 +17,11 @@
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  /* Stay above the wheel: .rev-wheel-zone is overflow:visible, so when the
+     panel is short the fixed-size wheel overflows upward over these control
+     rows and would otherwise steal their clicks. */
+  position: relative;
+  z-index: 1;
 }
 
 .rev-title {
@@ -45,6 +50,75 @@
   padding: 6px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* Hold-to-select toggle row — mirrors the MacroPanel hold-mode switch. */
+.rev-holdselect-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  /* Above the wheel's upward overflow so the toggle stays clickable when the
+     window is resized small (was unclickable except near-fullscreen). */
+  position: relative;
+  z-index: 1;
+}
+
+.rev-holdselect-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rev-holdselect-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rev-holdselect-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rev-holdselect-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--bg-active);
+  cursor: pointer;
+  transition: background 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.rev-holdselect-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.rev-holdselect-toggle.on {
+  background: var(--accent);
+}
+
+.rev-holdselect-toggle.on::after {
+  transform: translateX(16px);
+  background: var(--bg-base);
 }
 
 .rev-stat {

@@ -56,6 +56,13 @@ if (params.get('overlay') === '1') {
       <ClipboardOverlay />
     </React.Suspense>
   );
+} else if (params.get('settings') === '1') {
+  const SettingsWindow = React.lazy(() => import('./components/SettingsWindow'));
+  root.render(
+    <React.Suspense fallback={null}>
+      <SettingsWindow />
+    </React.Suspense>
+  );
 } else if (params.get('countdown') === '1') {
   const RecorderCountdown = React.lazy(() => import('./components/RecorderCountdown'));
   root.render(
