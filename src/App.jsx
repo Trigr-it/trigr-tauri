@@ -1291,21 +1291,62 @@ function App() {
   }, []);
 
   // ── Quick Action CRUD (stored in assignments as GLOBAL::QUICKACTION::uuid) ──
+  // Fetch and persist an app icon on a Quick Action assignment. Same priority
+  // as the radial fetcher (iconSource → path → appId). Writes data.appIcon back
+  // through setAssignments + saveConfig so tiles/overlay render immediately.
+  const fetchAndSetQuickActionAppIcon = useCallback(async (qaId, assignmentOverride) => {
+    const key = `GLOBAL::QUICKACTION::${qaId}`;
+    const assignment = assignmentOverride || assignments[key];
+    if (!assignment || assignment.type !== 'app') return;
+    const target = assignment.data?.iconSource || assignment.data?.path || assignment.data?.appId;
+    if (!target) return;
+    try {
+      const dataUrl = await window.electronAPI?.getAppIcon(target);
+      if (!dataUrl) return;
+      setAssignments(prev => {
+        const cur = prev[key];
+        if (!cur || cur.type !== 'app') return prev;
+        if (cur.data?.appIcon === dataUrl) return prev;
+        const next = { ...prev, [key]: { ...cur, data: { ...cur.data, appIcon: dataUrl } } };
+        saveConfig(next, profiles, activeProfile);
+        return next;
+      });
+    } catch (e) {}
+  }, [assignments, profiles, activeProfile, saveConfig]);
+
   const handleAddQuickAction = useCallback((action) => {
     const key = `GLOBAL::QUICKACTION::${action.id}`;
     const newAssignments = { ...assignments, [key]: { type: action.type, label: action.label, data: action.data } };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-  }, [assignments, profiles, activeProfile, saveConfig]);
+    if (action.type === 'app' && (action.data?.iconSource || action.data?.path || action.data?.appId)) {
+      fetchAndSetQuickActionAppIcon(action.id, { type: action.type, label: action.label, data: action.data });
+    }
+  }, [assignments, profiles, activeProfile, saveConfig, fetchAndSetQuickActionAppIcon]);
 
   const handleUpdateQuickAction = useCallback((id, updates) => {
     const key = `GLOBAL::QUICKACTION::${id}`;
     const existing = assignments[key];
     if (!existing) return;
-    const newAssignments = { ...assignments, [key]: { ...existing, ...updates } };
+    const merged = { ...existing, ...updates };
+    const newAssignments = { ...assignments, [key]: merged };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-  }, [assignments, profiles, activeProfile, saveConfig]);
+    // If the app target changed (or was newly set), refetch. When data reference
+    // changes we assume the target changed — drop any stale appIcon so the fetch
+    // has room to write the new one; if fetch fails, we're left with no icon
+    // (better than a wrong one).
+    if (merged.type === 'app' && (merged.data?.iconSource || merged.data?.path || merged.data?.appId)) {
+      const targetChanged = updates.data && (
+        updates.data.iconSource !== existing.data?.iconSource ||
+        updates.data.path !== existing.data?.path ||
+        updates.data.appId !== existing.data?.appId
+      );
+      if (targetChanged || !merged.data?.appIcon) {
+        fetchAndSetQuickActionAppIcon(id, targetChanged ? { ...merged, data: { ...merged.data, appIcon: undefined } } : merged);
+      }
+    }
+  }, [assignments, profiles, activeProfile, saveConfig, fetchAndSetQuickActionAppIcon]);
 
   const handleDeleteQuickAction = useCallback((id) => {
     const key = `GLOBAL::QUICKACTION::${id}`;
@@ -3252,15 +3293,18 @@ function App() {
     window.electronAPI?.saveConfig({ radialMenuHotkey: null });
   }, []);
 
-  // Auto-fetch app icon for Open App assignments and store on the radial item
-  // Optional assignmentOverride: pass the assignment directly when state hasn't flushed yet
+  // Auto-fetch app icon for Open App assignments and store on the radial item.
+  // Optional assignmentOverride: pass the assignment directly when state hasn't flushed yet.
+  // Target priority: iconSource (Start Menu shortcut path — needed for Steam
+  // .url shortcuts whose AppID is a bare steam:// URL) → path (Browse-for-file)
+  // → appId (AUMID resolved via SHParseDisplayName + SHGFI_PIDL).
   const fetchAndSetAppIcon = useCallback(async (itemId, storageKey, assignmentOverride) => {
     const assignment = assignmentOverride || assignments[storageKey];
     if (!assignment || assignment.type !== 'app') return;
-    const appPath = assignment.data?.path;
-    if (!appPath) return;
+    const target = assignment.data?.iconSource || assignment.data?.path || assignment.data?.appId;
+    if (!target) return;
     try {
-      const dataUrl = await window.electronAPI?.getAppIcon(appPath);
+      const dataUrl = await window.electronAPI?.getAppIcon(target);
       if (dataUrl) {
         setRadialMenuItems(prev => prev.map(item => {
           if (!item || item.id !== itemId) return item;
@@ -3276,10 +3320,10 @@ function App() {
   const fetchAndSetChildAppIcon = useCallback(async (folderId, childId, storageKey) => {
     const assignment = assignments[storageKey];
     if (!assignment || assignment.type !== 'app') return;
-    const appPath = assignment.data?.path;
-    if (!appPath) return;
+    const target = assignment.data?.iconSource || assignment.data?.path || assignment.data?.appId;
+    if (!target) return;
     try {
-      const dataUrl = await window.electronAPI?.getAppIcon(appPath);
+      const dataUrl = await window.electronAPI?.getAppIcon(target);
       if (dataUrl) {
         setRadialMenuItems(prev => prev.map(item => {
           if (!item || item.id !== folderId || item.type !== 'folder') return item;
@@ -3288,6 +3332,45 @@ function App() {
       }
     } catch (e) {}
   }, [assignments]);
+
+  // Retroactive backfill: any Open App segment (top-level or folder child) that
+  // has no appIcon gets one on next reconcile. Idempotent — items that already
+  // carry an appIcon skip the fetch. Runs whenever the wheel or assignments
+  // change so a fresh profile switch also converges.
+  useEffect(() => {
+    if (!radialMenuItems.length || !assignments || Object.keys(assignments).length === 0) return;
+    for (const item of radialMenuItems) {
+      if (!item) continue;
+      if (item.type !== 'folder' && !item.appIcon && item.storageKey) {
+        const a = assignments[item.storageKey];
+        if (a?.type === 'app' && (a.data?.iconSource || a.data?.path || a.data?.appId)) fetchAndSetAppIcon(item.id, item.storageKey, a);
+      }
+      if (item.type === 'folder' && Array.isArray(item.children)) {
+        for (const c of item.children) {
+          if (!c || c.appIcon || !c.storageKey) continue;
+          const a = assignments[c.storageKey];
+          if (a?.type === 'app' && (a.data?.iconSource || a.data?.path || a.data?.appId)) fetchAndSetChildAppIcon(item.id, c.id, c.storageKey);
+        }
+      }
+    }
+  }, [radialMenuItems, assignments, fetchAndSetAppIcon, fetchAndSetChildAppIcon]);
+
+  // Retroactive backfill for Quick Actions — same shape as the radial one but
+  // walks assignments directly since QAs store appIcon on data (they don't have
+  // a parallel items list). Convergent: once data.appIcon is set, the entry is
+  // skipped on subsequent runs.
+  useEffect(() => {
+    if (!assignments || Object.keys(assignments).length === 0) return;
+    for (const [key, a] of Object.entries(assignments)) {
+      if (!key.startsWith('GLOBAL::QUICKACTION::')) continue;
+      if (!a || a.type !== 'app') continue;
+      if (a.data?.appIcon) continue;
+      const target = a.data?.iconSource || a.data?.path || a.data?.appId;
+      if (!target) continue;
+      const qaId = key.slice('GLOBAL::QUICKACTION::'.length);
+      fetchAndSetQuickActionAppIcon(qaId, a);
+    }
+  }, [assignments, fetchAndSetQuickActionAppIcon]);
 
   const handleAddRadialMenuItem = useCallback((storageKey, label = null, targetIndex = -1) => {
     const resolvedLabel = label || assignments[storageKey]?.label || storageKey.split('::').pop() || '';
@@ -3490,8 +3573,9 @@ function App() {
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     handleAddRadialMenuItem(storageKey, label, targetIndex);
-    // Fetch app icon immediately — pass assignment directly since state hasn't flushed
-    if (actionType === 'app' && actionData?.path) {
+    // Fetch app icon immediately — pass assignment directly since state hasn't flushed.
+    // Handles filesystem paths, AUMIDs, and Start Menu shortcuts (Steam .url etc).
+    if (actionType === 'app' && (actionData?.iconSource || actionData?.path || actionData?.appId)) {
       // Need to find the item ID that handleAddRadialMenuItem just created
       // Use a microtask to let the state update flush, then find the item
       queueMicrotask(() => {
@@ -3520,7 +3604,7 @@ function App() {
         setRadialMenuItems(prev => prev.map((item, i) => (item && i === idx) ? { ...item, label: macro.label } : item));
       }
       // Re-fetch app icon if type is app — pass macro directly since state hasn't flushed
-      if (macro.type === 'app' && macro.data?.path && existingItem?.id) {
+      if (macro.type === 'app' && (macro.data?.iconSource || macro.data?.path || macro.data?.appId) && existingItem?.id) {
         fetchAndSetAppIcon(existingItem.id, existingKey, macro);
       }
     } else {
@@ -3569,6 +3653,22 @@ function App() {
           if (!item || item.id !== folderId || item.type !== 'folder') return item;
           return { ...item, children: item.children.map((c, ci) => ci === childIndex ? { ...c, label: macro.label } : c) };
         }));
+      }
+      // Re-fetch app icon if type is app — pass macro directly since state hasn't flushed.
+      // Mirrors the top-level reassign branch in handleRadialAssign. Priority
+      // matches fetchAndSetAppIcon: iconSource → path → appId.
+      const iconTarget = macro.data?.iconSource || macro.data?.path || macro.data?.appId;
+      if (macro.type === 'app' && iconTarget && existingChild?.id) {
+        (async () => {
+          try {
+            const dataUrl = await window.electronAPI?.getAppIcon(iconTarget);
+            if (!dataUrl) return;
+            setRadialMenuItems(prev => prev.map(item => {
+              if (!item || item.id !== folderId || item.type !== 'folder') return item;
+              return { ...item, children: item.children.map(c => c.id === existingChild.id ? { ...c, appIcon: dataUrl } : c) };
+            }));
+          } catch (e) {}
+        })();
       }
     } else {
       // New child — create GLOBAL::RADIAL:: assignment and add to folder

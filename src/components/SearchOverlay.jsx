@@ -125,6 +125,7 @@ function buildItems(data) {
         label:      macro.label || '',
         preview:    buildPreview(macro),
         voicePhrases: readVoicePhrases(macro.data),
+        appIcon:    macro.data?.appIcon || null,
       });
     } else if (storageKey.startsWith('GLOBAL::AUTOCORRECT::')) {
       if (!includeAutocorrect) continue;
@@ -862,9 +863,15 @@ export default function SearchOverlay() {
             onClick={() => fireItem(item)}
             ref={el => { rowRefs.current[idx] = el; }}
           >
-            <span className="result-type-icon" style={{ color: meta.color }}>
-              <MetaIcon size={14} strokeWidth={1.75} />
-            </span>
+            {item.appIcon ? (
+              <span className="result-type-icon">
+                <img src={item.appIcon} alt="" width="14" height="14" style={{ display: 'block' }} draggable={false} />
+              </span>
+            ) : (
+              <span className="result-type-icon" style={{ color: meta.color }}>
+                <MetaIcon size={14} strokeWidth={1.75} />
+              </span>
+            )}
             <div className="result-content">
               <div className="result-label">
                 <HighlightMatch text={item.label} query={query} />

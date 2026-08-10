@@ -1650,7 +1650,15 @@ export default function SearchTemplatesPanel({
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); selectQuickAction(a); } }}
                   title={preview}
                 >
-                  {matchedIcon ? (
+                  {a.data?.appIcon ? (
+                    <img
+                      className="stp-tile-icon"
+                      src={a.data.appIcon}
+                      alt=""
+                      draggable={false}
+                      onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                    />
+                  ) : matchedIcon ? (
                     <img
                       className="stp-tile-icon"
                       src={`/preset-icons/${matchedIcon}`}

@@ -664,12 +664,41 @@ fn list_installed_apps() -> Value {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+    // Enrich Get-StartApps output with the source Start Menu shortcut path.
+    // That shortcut is what carries the real icon for classic apps (e.g. Steam
+    // .url shortcuts whose AppID is a bare "steam://" URL that no icon API can
+    // resolve). Correlation is by filename ↔ Name; misses stay null and the
+    // caller falls back to appId (works for UWP AUMIDs via shell namespace).
+    const PS_SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$starts = Get-StartApps
+
+$map = @{}
+$roots = @(
+  [Environment]::GetFolderPath('StartMenu'),
+  (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu')
+)
+foreach ($root in $roots) {
+  if (-not (Test-Path $root)) { continue }
+  Get-ChildItem $root -Recurse -Include *.lnk,*.url -ErrorAction SilentlyContinue | ForEach-Object {
+    $key = [System.IO.Path]::GetFileNameWithoutExtension($_.Name).ToLowerInvariant()
+    if (-not $map.ContainsKey($key)) { $map[$key] = $_.FullName }
+  }
+}
+
+$starts | ForEach-Object {
+  $key = $_.Name.ToLowerInvariant()
+  $src = if ($map.ContainsKey($key)) { $map[$key] } else { $null }
+  [PSCustomObject]@{ Name = $_.Name; AppID = $_.AppID; IconSource = $src }
+} | ConvertTo-Json -Compress
+"#;
+
     let output = Command::new("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            "Get-StartApps | ConvertTo-Json -Compress",
+            PS_SCRIPT,
         ])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
@@ -715,7 +744,16 @@ fn list_installed_apps() -> Value {
             if name.is_empty() || app_id.is_empty() {
                 return None;
             }
-            Some(serde_json::json!({ "name": name, "appId": app_id }))
+            let icon_source = item
+                .get("IconSource")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            Some(serde_json::json!({
+                "name": name,
+                "appId": app_id,
+                "iconSource": icon_source,
+            }))
         })
         .collect();
 
@@ -740,13 +778,14 @@ fn get_app_icon(path: String) -> Value {
 #[cfg(windows)]
 #[tauri::command]
 fn get_app_icon(path: String) -> Value {
+    use std::ffi::c_void;
     use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
     use windows_sys::Win32::Graphics::Gdi::{
         GetDIBits, DeleteObject, CreateCompatibleDC, DeleteDC, GetObjectW,
         BITMAPINFO, BITMAPINFOHEADER, BITMAP, BI_RGB, DIB_RGB_COLORS,
     };
 
-    // SHGetFileInfoW is in Shell — define it manually since the feature may not expose it
+    // Declared manually so we don't depend on windows-sys shell/com features.
     #[link(name = "shell32")]
     extern "system" {
         fn SHGetFileInfoW(
@@ -756,12 +795,25 @@ fn get_app_icon(path: String) -> Value {
             cbFileInfo: u32,
             uFlags: u32,
         ) -> usize;
+
+        fn SHParseDisplayName(
+            pszName: *const u16,
+            pbc: *mut c_void,
+            ppidl: *mut *mut c_void,
+            sfgaoIn: u32,
+            psfgaoOut: *mut u32,
+        ) -> i32;
+    }
+    #[link(name = "ole32")]
+    extern "system" {
+        fn CoInitializeEx(pvReserved: *mut c_void, dwCoInit: u32) -> i32;
+        fn CoTaskMemFree(pv: *mut c_void);
     }
 
     #[repr(C)]
     #[allow(non_snake_case)]
     struct SHFILEINFOW {
-        hIcon: *mut std::ffi::c_void,
+        hIcon: *mut c_void,
         iIcon: i32,
         dwAttributes: u32,
         szDisplayName: [u16; 260],
@@ -770,19 +822,81 @@ fn get_app_icon(path: String) -> Value {
 
     const SHGFI_ICON: u32 = 0x000000100;
     const SHGFI_LARGEICON: u32 = 0x000000000;
+    const SHGFI_PIDL: u32 = 0x000000008;
+    const COINIT_APARTMENTTHREADED: u32 = 0x2;
+    const S_OK: i32 = 0;
 
-    let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    // Route selection:
+    //   • '!' or shell:AppsFolder → AUMID (Store apps, UWP)
+    //   • .url / .lnk file path   → shortcut file; shell namespace resolution
+    //     runs the per-file icon handler (needed for .url's IconFile= line —
+    //     SHGetFileInfoW alone returns the generic internet-shortcut icon)
+    //   • anything else           → plain filesystem path
+    let is_aumid = path.starts_with("shell:AppsFolder") || (path.contains('!') && !path.contains('\\'));
+    let ext_lower = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    let is_shortcut_file = matches!(ext_lower.as_deref(), Some("url") | Some("lnk"));
+    let use_shell_ns = is_aumid || is_shortcut_file;
+    let shell_path = if is_aumid && !path.starts_with("shell:AppsFolder") {
+        format!("shell:AppsFolder\\{}", path)
+    } else {
+        path.clone()
+    };
 
     unsafe {
+        // Shell items need COM. Idempotent per thread; the runtime pool worker
+        // stays initialized after the call — S_FALSE / RPC_E_CHANGED_MODE are
+        // non-fatal ("already initialized in this / another mode").
+        let _ = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
+
         let mut shfi: SHFILEINFOW = std::mem::zeroed();
-        let result = SHGetFileInfoW(
-            wide_path.as_ptr(),
-            0,
-            &mut shfi,
-            std::mem::size_of::<SHFILEINFOW>() as u32,
-            SHGFI_ICON | SHGFI_LARGEICON,
-        );
-        if result == 0 || shfi.hIcon.is_null() {
+        let acquired = if use_shell_ns {
+            let wide: Vec<u16> = shell_path.encode_utf16().chain(std::iter::once(0)).collect();
+            let mut pidl: *mut c_void = std::ptr::null_mut();
+            let hr = SHParseDisplayName(
+                wide.as_ptr(),
+                std::ptr::null_mut(),
+                &mut pidl,
+                0,
+                std::ptr::null_mut(),
+            );
+            if hr != S_OK || pidl.is_null() {
+                log::warn!("[Keyfire] get_app_icon: SHParseDisplayName failed hr=0x{:08x} for '{}'", hr, shell_path);
+                false
+            } else {
+                let r = SHGetFileInfoW(
+                    pidl as *const u16,
+                    0,
+                    &mut shfi,
+                    std::mem::size_of::<SHFILEINFOW>() as u32,
+                    SHGFI_ICON | SHGFI_LARGEICON | SHGFI_PIDL,
+                );
+                CoTaskMemFree(pidl);
+                let ok = r != 0 && !shfi.hIcon.is_null();
+                if !ok {
+                    log::warn!("[Keyfire] get_app_icon: SHGetFileInfoW(PIDL) returned null icon for '{}'", shell_path);
+                }
+                ok
+            }
+        } else {
+            let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+            let r = SHGetFileInfoW(
+                wide.as_ptr(),
+                0,
+                &mut shfi,
+                std::mem::size_of::<SHFILEINFOW>() as u32,
+                SHGFI_ICON | SHGFI_LARGEICON,
+            );
+            let ok = r != 0 && !shfi.hIcon.is_null();
+            if !ok {
+                log::warn!("[Keyfire] get_app_icon: SHGetFileInfoW returned null icon for '{}'", path);
+            }
+            ok
+        };
+
+        if !acquired {
             return Value::Null;
         }
 

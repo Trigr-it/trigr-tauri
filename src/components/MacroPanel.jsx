@@ -597,7 +597,7 @@ function AppPickerModal({ onSelect, onClose }) {
                 key={app.appId}
                 type="button"
                 className="app-picker-item"
-                onClick={() => onSelect({ kind: 'aumid', path: '', appId: app.appId, name: app.name })}
+                onClick={() => onSelect({ kind: 'aumid', path: '', appId: app.appId, name: app.name, iconSource: app.iconSource || '' })}
                 title={app.appId}
               >
                 <span className="app-picker-name">{app.name}</span>
@@ -629,6 +629,7 @@ export function AppForm({ value, onChange }) {
         appId: picked.appId,
         path: '',
         appName: value.appName || picked.name || '',
+        iconSource: picked.iconSource || '',
       });
     } else {
       onChange({
@@ -637,6 +638,7 @@ export function AppForm({ value, onChange }) {
         appId: '',
         path: picked.path,
         appName: value.appName || picked.name || '',
+        iconSource: '',
       });
     }
   }
