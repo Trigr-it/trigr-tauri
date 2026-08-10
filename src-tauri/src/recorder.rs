@@ -19,6 +19,28 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(windows)]
+use std::path::Path;
+#[cfg(windows)]
+use std::sync::atomic::AtomicIsize;
+#[cfg(windows)]
+use std::thread;
+#[cfg(windows)]
+use std::time::Duration;
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, POINT, RECT};
+#[cfg(windows)]
+use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+};
+#[cfg(windows)]
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetClassNameW, GetClientRect, GetForegroundWindow, GetWindowRect, GetWindowTextW,
+    GetWindowThreadProcessId,
+};
+
 /// True while a recording is in progress. Hook procs check this on every
 /// event with a single SeqCst load — when false the cost is one atomic read.
 pub static IS_RECORDING_MACRO: AtomicBool = AtomicBool::new(false);
@@ -45,6 +67,37 @@ pub static TEMP_RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// call so a fresh flow always starts from a clean state.
 pub static COUNTDOWN_CANCEL: AtomicBool = AtomicBool::new(false);
 
+/// True while the Rust-side countdown thread is alive. The countdown timing
+/// is owned ENTIRELY by Rust (spawned in show_recorder_bar): the thread
+/// sleeps 3s in cancellable 100ms polls, then morphs the window to the pill
+/// and calls recorder::start(). The webview's 3-2-1 numeral is display-only
+/// and has no functional role — it can neither start nor miss a recording.
+/// This guard prevents a double Record click spawning two threads.
+pub static COUNTDOWN_THREAD_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Epoch-ms deadline of the in-flight countdown (0 = none). The webview's
+/// numeral polls `countdown_remaining_ms()` via get_recording_status — the
+/// display is derived from RUST's clock, never from a webview-local timer,
+/// so it can't show stale values when Chromium's visibility events lie
+/// (observed: a ghost mount-time countdown left "1" frozen on screen).
+static COUNTDOWN_ENDS_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+pub fn countdown_begin(duration_ms: i64) {
+    COUNTDOWN_ENDS_AT_MS.store(now_ms() + duration_ms, Ordering::SeqCst);
+}
+
+pub fn countdown_clear() {
+    COUNTDOWN_ENDS_AT_MS.store(0, Ordering::SeqCst);
+}
+
+pub fn countdown_remaining_ms() -> u64 {
+    let ends = COUNTDOWN_ENDS_AT_MS.load(Ordering::SeqCst);
+    if ends <= 0 {
+        return 0;
+    }
+    (ends - now_ms()).max(0) as u64
+}
+
 /// Anchor for relative timestamps. Captured at start(), used by relative_t().
 static RECORDING_START_MS: AtomicI64 = AtomicI64::new(0);
 
@@ -66,7 +119,21 @@ fn events() -> &'static Mutex<Vec<RecordedEvent>> {
     EVENTS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// Events dropped because a push_* try_lock failed. The hook pushes use
+/// try_lock (300ms hook watchdog forbids blocking), and since Phase 2 the
+/// fg watcher thread also takes the events lock — so contention is now
+/// possible. A dropped MouseUp breaks drag classification (the pair never
+/// completes); a dropped KeyDown loses a character. Counted here and logged
+/// at stop() so lost events are visible instead of silent.
+static PUSH_DROPS: AtomicU32 = AtomicU32::new(0);
+
 /// A single recorded input event. `t` is milliseconds since recording started.
+///
+/// `ForegroundChanged` is emitted by a dedicated 100ms polling watcher spawned
+/// alongside the recording. Distillation (Phase 2) consumes these to emit
+/// FocusWindow steps and to bind Click events to a target window for
+/// window-relative playback. Backwards-compat: pre-Phase-2 recordings simply
+/// don't contain any ForegroundChanged events.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum RecordedEvent {
@@ -76,6 +143,19 @@ pub enum RecordedEvent {
     MouseUp { button: String, x: i32, y: i32, t: u64 },
     MouseMove { x: i32, y: i32, t: u64 },
     Wheel { delta: i32, x: i32, y: i32, t: u64 },
+    ForegroundChanged {
+        hwnd: isize,
+        title: String,
+        exe: String,
+        class: String,
+        x: i32,        // window rect top-left, screen coords
+        y: i32,
+        client_x: i32, // client area origin in screen coords (offset by frame+titlebar)
+        client_y: i32,
+        client_w: i32,
+        client_h: i32,
+        t: u64,
+    },
 }
 
 fn now_ms() -> i64 {
@@ -122,8 +202,11 @@ pub fn start() {
     RECORDING_START_MS.store(now + GRACE_MS, Ordering::SeqCst);
     RECORDING_GRACE_UNTIL_MS.store(now + GRACE_MS, Ordering::SeqCst);
     LAST_MOUSE_MOVE_MS.store(0, Ordering::SeqCst);
+    PUSH_DROPS.store(0, Ordering::SeqCst);
     IS_RECORDING_MACRO.store(true, Ordering::SeqCst);
     log::info!("[RECORDER] Recording started ({}ms grace window)", GRACE_MS);
+    #[cfg(windows)]
+    spawn_fg_watcher();
 }
 
 /// Stop the recording and return the captured events. Idempotent — if the
@@ -163,6 +246,13 @@ pub fn stop() -> Vec<RecordedEvent> {
             String::new()
         }
     );
+    let drops = PUSH_DROPS.swap(0, Ordering::SeqCst);
+    if drops > 0 {
+        log::warn!(
+            "[RECORDER] {} input event(s) DROPPED during recording (events-lock contention) — a lost MouseUp breaks drag detection, a lost KeyDown loses a character",
+            drops
+        );
+    }
     captured
 }
 
@@ -207,7 +297,8 @@ fn event_t(e: &RecordedEvent) -> u64 {
         | RecordedEvent::MouseDown { t, .. }
         | RecordedEvent::MouseUp { t, .. }
         | RecordedEvent::MouseMove { t, .. }
-        | RecordedEvent::Wheel { t, .. } => *t,
+        | RecordedEvent::Wheel { t, .. }
+        | RecordedEvent::ForegroundChanged { t, .. } => *t,
     }
 }
 
@@ -231,6 +322,8 @@ pub fn push_key(vk: u32, sc: u32, is_down: bool) {
     };
     if let Ok(mut vec) = events().try_lock() {
         vec.push(evt);
+    } else {
+        PUSH_DROPS.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -256,6 +349,8 @@ pub fn push_mouse_button(button: &'static str, x: i32, y: i32, is_down: bool) {
     };
     if let Ok(mut vec) = events().try_lock() {
         vec.push(evt);
+    } else {
+        PUSH_DROPS.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -282,6 +377,210 @@ pub fn push_wheel(delta: i32, x: i32, y: i32) {
     let t = relative_t();
     if let Ok(mut vec) = events().try_lock() {
         vec.push(RecordedEvent::Wheel { delta, x, y, t });
+    } else {
+        PUSH_DROPS.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+// ── Foreground watcher (Phase 2 distillation groundwork, Windows-only) ──────
+//
+// Dedicated 100ms poll spawned on start(), self-terminates when IS_RECORDING_MACRO
+// flips false. Emits a ForegroundChanged event whenever the foreground HWND
+// changes (title-only drift within the same HWND is ignored — distillation can
+// decide what to do with that). Kept self-contained so foreground.rs's
+// profile-switching watcher stays decoupled — different cadence, different job.
+//
+// The first successful capture after start() always pushes ForegroundChanged
+// (LAST_RECORDED_FG_HWND resets to 0), so distillation always has at least one
+// window context for the recording's opening steps.
+
+#[cfg(windows)]
+const FG_POLL_MS: u64 = 100;
+#[cfg(windows)]
+static FG_WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
+#[cfg(windows)]
+static LAST_RECORDED_FG_HWND: AtomicIsize = AtomicIsize::new(0);
+
+#[cfg(windows)]
+fn spawn_fg_watcher() {
+    if FG_WATCHER_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    LAST_RECORDED_FG_HWND.store(0, Ordering::SeqCst);
+    thread::spawn(|| {
+        while IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+            capture_fg_if_changed();
+            thread::sleep(Duration::from_millis(FG_POLL_MS));
+        }
+        FG_WATCHER_RUNNING.store(false, Ordering::SeqCst);
+    });
+}
+
+#[cfg(windows)]
+fn capture_fg_if_changed() {
+    if in_grace_window() {
+        return;
+    }
+    let hwnd = unsafe { GetForegroundWindow() } as isize;
+    if hwnd == 0 {
+        return;
+    }
+    let last = LAST_RECORDED_FG_HWND.load(Ordering::SeqCst);
+    if hwnd == last {
+        return;
+    }
+
+    let title = win_title(hwnd);
+    let exe = process_exe_name(hwnd).unwrap_or_default();
+    let class = win_class(hwnd);
+
+    // Never bind a recording to Keyfire itself. If the user hits Record and
+    // doesn't switch during the countdown (or the fg watcher's first tick
+    // catches Keyfire before they alt-tab), we'd otherwise auto-tag the macro
+    // with keyfire.exe as target_app — which then triggers the "app not
+    // running" modal against Keyfire, which is absurd. Skip the event; the
+    // next real foreground change gets captured normally.
+    //
+    // CRITICAL: update LAST_RECORDED_FG_HWND before returning, otherwise every
+    // subsequent poll tick will re-trigger this branch (hwnd still != last) and
+    // spam the log 10x/second while Keyfire is foreground.
+    if is_self_exe(&exe) {
+        LAST_RECORDED_FG_HWND.store(hwnd, Ordering::SeqCst);
+        log::debug!("[RECORDER] fg watcher skipping self ({}) — waiting for user's app", exe);
+        return;
+    }
+
+    LAST_RECORDED_FG_HWND.store(hwnd, Ordering::SeqCst);
+    let (x, y) = win_position(hwnd);
+    let (client_x, client_y) = win_client_origin(hwnd);
+    let (client_w, client_h) = win_client_size(hwnd);
+    let t = relative_t();
+
+    if let Ok(mut vec) = events().try_lock() {
+        vec.push(RecordedEvent::ForegroundChanged {
+            hwnd,
+            title,
+            exe,
+            class,
+            x,
+            y,
+            client_x,
+            client_y,
+            client_w,
+            client_h,
+            t,
+        });
+    }
+}
+
+/// True if `exe` names Keyfire itself. Uses the running process's own
+/// basename so it stays correct across the trigr → keyfire rebrand and any
+/// future rename. Cached in a OnceLock to avoid a syscall per poll tick.
+#[cfg(windows)]
+fn is_self_exe(exe: &str) -> bool {
+    static SELF_EXE: OnceLock<String> = OnceLock::new();
+    let self_exe = SELF_EXE.get_or_init(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_lowercase()))
+            .unwrap_or_else(|| "keyfire".into())
+    });
+    let lower = exe.to_lowercase();
+    lower == *self_exe
+        || lower == "keyfire"
+        || lower == "trigr"
+}
+
+#[cfg(windows)]
+fn win_client_origin(hwnd: isize) -> (i32, i32) {
+    unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        if ClientToScreen(hwnd as _, &mut pt) == 0 {
+            return (0, 0);
+        }
+        (pt.x, pt.y)
+    }
+}
+
+#[cfg(windows)]
+fn win_title(hwnd: isize) -> String {
+    unsafe {
+        let mut buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd as _, buf.as_mut_ptr(), 512);
+        if len <= 0 {
+            return String::new();
+        }
+        String::from_utf16_lossy(&buf[..len as usize])
+    }
+}
+
+#[cfg(windows)]
+fn win_class(hwnd: isize) -> String {
+    unsafe {
+        let mut buf = [0u16; 256];
+        let len = GetClassNameW(hwnd as _, buf.as_mut_ptr(), 256);
+        if len <= 0 {
+            return String::new();
+        }
+        String::from_utf16_lossy(&buf[..len as usize])
+    }
+}
+
+#[cfg(windows)]
+fn process_exe_name(hwnd: isize) -> Option<String> {
+    unsafe {
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd as _, &mut pid);
+        if pid == 0 {
+            return None;
+        }
+        let h_proc: HANDLE = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h_proc.is_null() {
+            return None;
+        }
+        let mut buf = [0u16; 260];
+        let mut size: u32 = 260;
+        let ok = QueryFullProcessImageNameW(h_proc, 0, buf.as_mut_ptr(), &mut size);
+        CloseHandle(h_proc);
+        if ok == 0 || size == 0 {
+            return None;
+        }
+        let full_path = String::from_utf16_lossy(&buf[..size as usize]);
+        Path::new(&full_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+    }
+}
+
+#[cfg(windows)]
+fn win_position(hwnd: isize) -> (i32, i32) {
+    unsafe {
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if GetWindowRect(hwnd as _, &mut rect) == 0 {
+            return (0, 0);
+        }
+        (rect.left, rect.top)
+    }
+}
+
+#[cfg(windows)]
+fn win_client_size(hwnd: isize) -> (i32, i32) {
+    unsafe {
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if GetClientRect(hwnd as _, &mut rect) == 0 {
+            return (0, 0);
+        }
+        (rect.right - rect.left, rect.bottom - rect.top)
     }
 }
 

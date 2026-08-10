@@ -40,6 +40,11 @@ mod ocr;
 #[path = "stubs/ocr.rs"]
 mod ocr;
 mod recorder;
+#[cfg(windows)]
+mod distill;
+#[cfg(not(windows))]
+#[path = "stubs/distill.rs"]
+mod distill;
 mod telemetry;
 #[cfg(windows)]
 mod tray;
@@ -1283,6 +1288,13 @@ fn js_key_event(code: String, ctrl: bool, shift: bool, alt: bool, meta: bool, ap
 /// event so the main window can unwind UI state.
 #[tauri::command]
 fn show_recorder_countdown(app: tauri::AppHandle) {
+    // This command is the EDITOR flow's entry point (MacroPanel Record
+    // button). Quick Record enters via show_recorder_bar directly after
+    // setting TEMP_RECORDING_ACTIVE=true. Clear any stale Quick Record flag
+    // here so the editor recording's stop routes to the frontend listener,
+    // not the temp-macro slot — the routing branch in the stop handlers
+    // reads this flag.
+    recorder::TEMP_RECORDING_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
     show_recorder_bar(app);
 }
 
@@ -1377,32 +1389,62 @@ pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
         }
     };
 
-    // Fixed bottom-centre — single recording bar. Bar shows "Starts in N"
-    // during the 3-second countdown, then transitions to live "Recording
-    // 0:00" tick-up when the recorder actually starts.
-    let w_logical = 320.0_f64;
-    let h_logical = 50.0_f64;
+    // Big centered countdown box — 400x400 logical. The frontend renders a
+    // 3-2-1 numeral inside, invokes `recorder_countdown_complete` when done,
+    // which then morphs this window to the compact pill for the actual
+    // recording phase.
+    let w_logical = 400.0_f64;
+    let h_logical = 400.0_f64;
     let phys_w = (w_logical * scale).round() as i32;
     let phys_h = (h_logical * scale).round() as i32;
-    let margin = (30.0 * scale).round() as i32;
     let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
-    let phys_y = wa_bottom - phys_h - margin;
+    let phys_y = wa_top + ((wa_bottom - wa_top) - phys_h) / 2;
 
     let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
     let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
+
     let _ = win.show();
     // No set_focus — the user's target app must keep keyboard focus during
     // the 3-2-1 (and during recording itself).
     log::info!("[RECORDER] Countdown overlay shown at {}x{} ({}x{})", phys_x, phys_y, phys_w, phys_h);
 
-    // No countdown — start the recorder the instant the modal appears.
-    // The 200ms grace window inside recorder::start() filters out the
-    // mouse-up from the user's click on the Record button so it doesn't
-    // leak into the captured buffer. Matches the behaviour of
-    // AutoHotkey / Pulover's / most other macro recorders.
-    recorder::COUNTDOWN_CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
-    recorder::start();
-    log::info!("[RECORDER] Recording started (immediate, no countdown)");
+    // The countdown timing is owned by RUST, not the webview. History: two
+    // webview-driven attempts both broke — (a) frontend invoking
+    // recorder_countdown_complete off a visibilityState check ghost-started
+    // recordings at app launch (Chromium briefly reports 'visible' on hidden
+    // windows), and (b) a Rust-set pending flag raced visibilitychange and
+    // the countdown never started at all. A Rust thread has neither problem:
+    // recording starts exactly 3s after show even if the webview renders
+    // nothing. The webview's 3-2-1 numeral is cosmetic — it polls
+    // get_recording_status to switch to the pill phase.
+    use std::sync::atomic::Ordering as O;
+    recorder::COUNTDOWN_CANCEL.store(false, O::SeqCst);
+    if !recorder::COUNTDOWN_THREAD_RUNNING.swap(true, O::SeqCst) {
+        // Publish the deadline BEFORE spawning — the webview numeral derives
+        // from countdown_remaining_ms() via its get_recording_status poll.
+        recorder::countdown_begin(3000);
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            // 3 seconds in 100ms polls per [[feedback_polled_sleep_for_cancel]]
+            // so Esc / Cancel aborts within 100ms.
+            for _ in 0..30 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if recorder::COUNTDOWN_CANCEL.load(O::SeqCst) {
+                    recorder::countdown_clear();
+                    recorder::COUNTDOWN_THREAD_RUNNING.store(false, O::SeqCst);
+                    log::info!("[RECORDER] Countdown cancelled before start");
+                    return;
+                }
+            }
+            recorder::countdown_clear();
+            morph_countdown_to_pill(&app2);
+            recorder::start();
+            recorder::COUNTDOWN_THREAD_RUNNING.store(false, O::SeqCst);
+            log::info!("[RECORDER] Countdown done -> recording started");
+        });
+    } else {
+        log::warn!("[RECORDER] Countdown thread already running — ignoring duplicate show");
+    }
 }
 
 /// Resize + reposition the countdown window into the small top-right pill
@@ -1423,10 +1465,22 @@ fn morph_countdown_to_pill(app: &tauri::AppHandle) {
 
     let Some(win) = app.get_webview_window("countdown") else { return; };
 
-    let (wa_left, wa_top, wa_right, _wa_bottom, scale) = unsafe {
-        let mut pt = POINT { x: 0, y: 0 };
-        GetCursorPos(&mut pt);
-        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+    // Same monitor selection as show_recorder_bar: the main window's monitor
+    // (the user launched the flow from there), cursor's monitor as fallback.
+    // Keeps the countdown box and the pill on the same screen.
+    let (wa_left, _wa_top, wa_right, wa_bottom, scale) = unsafe {
+        let hmon = app
+            .get_webview_window("main")
+            .and_then(|w| w.hwnd().ok())
+            .map(|h| windows_sys::Win32::Graphics::Gdi::MonitorFromWindow(
+                h.0 as _,
+                MONITOR_DEFAULTTONEAREST,
+            ))
+            .unwrap_or_else(|| {
+                let mut pt = POINT { x: 0, y: 0 };
+                GetCursorPos(&mut pt);
+                MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
+            });
         let mut mi: MONITORINFO = std::mem::zeroed();
         mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
         let s = monitor_scale_factor(hmon);
@@ -1437,16 +1491,16 @@ fn morph_countdown_to_pill(app: &tauri::AppHandle) {
         }
     };
 
-    // 420x60 logical, top-right corner with 20px margin from edges. CSS in
-    // RecorderCountdown.css already aligns the pill to top-right inside the
-    // window — we just resize the window itself to match.
-    let w_logical = 420.0_f64;
-    let h_logical = 60.0_f64;
+    // 320x50 logical, bottom-centre with 30px margin — the recording bar's
+    // long-standing home (users look for the timer + Stop there). The old
+    // top-right placement was a leftover from an abandoned design.
+    let w_logical = 320.0_f64;
+    let h_logical = 50.0_f64;
     let phys_w = (w_logical * scale).round() as i32;
     let phys_h = (h_logical * scale).round() as i32;
-    let margin = (20.0 * scale).round() as i32;
-    let phys_x = wa_right - phys_w - margin;
-    let phys_y = wa_top + margin;
+    let margin = (30.0 * scale).round() as i32;
+    let phys_x = wa_left + ((wa_right - wa_left) - phys_w) / 2;
+    let phys_y = wa_bottom - phys_h - margin;
 
     let _ = win.set_size(tauri::PhysicalSize::new(phys_w as u32, phys_h as u32));
     let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
@@ -1472,15 +1526,15 @@ pub(crate) fn hide_recorder_bar(app: tauri::AppHandle) {
 /// crossing webviews. Morphs the window into the recording pill and flips
 /// IS_RECORDING_MACRO to true via recorder::start().
 #[tauri::command]
-fn recorder_countdown_complete(app: tauri::AppHandle) {
-    morph_countdown_to_pill(&app);
-    // Clear TEMP_RECORDING_ACTIVE before start — the editor flow owns this
-    // recording, not the global temp slot. Without this, a stale flag from
-    // a prior global-flow start (e.g. user aborted mid-record) would cause
-    // the next editor-flow stop to misroute events into the temp slot.
-    recorder::TEMP_RECORDING_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
-    recorder::start();
-    log::info!("[RECORDER] Countdown done -> recording started");
+fn recorder_countdown_complete(_app: tauri::AppHandle) {
+    // DELIBERATE NO-OP. The countdown timing is owned by the Rust thread in
+    // show_recorder_bar — recording starts there, morph happens there. This
+    // command is kept registered purely as a tombstone: a stale webview
+    // bundle (dev HMR, cached first-build) may still invoke it, and if it
+    // did anything it could double-start a recording or ghost-start one at
+    // app launch (both shipped as real bugs during 2026-08-10 dev). Do not
+    // put logic back here.
+    log::debug!("[RECORDER] recorder_countdown_complete invoked (no-op — Rust thread owns the countdown)");
 }
 
 /// Called by the countdown component when the user hits Esc or Cancel during
@@ -1488,8 +1542,21 @@ fn recorder_countdown_complete(app: tauri::AppHandle) {
 /// so it can restore itself + clear the recording UI state.
 #[tauri::command]
 fn recorder_countdown_abort(app: tauri::AppHandle) {
-    // Tell the countdown timer thread to bail before it morphs + starts.
+    // Tell the Rust countdown thread to bail before it morphs + starts.
+    // Polled every 100ms, so the thread exits within a tick. Clear the
+    // published deadline immediately so the webview numeral vanishes on the
+    // next poll rather than waiting for the thread to notice.
     recorder::COUNTDOWN_CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
+    recorder::countdown_clear();
+    // Clear the Quick Record routing flag — an aborted flow must never leave
+    // it set, or the NEXT editor-flow stop would misroute events into the
+    // temp-macro slot.
+    recorder::TEMP_RECORDING_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+    // If the recorder already started (Esc arrived after the 3s), discard the
+    // partial buffer — Esc means cancel, not save.
+    if recorder::is_recording() {
+        recorder::discard();
+    }
     if let Some(win) = app.get_webview_window("countdown") {
         let _ = win.hide();
     }
@@ -1589,6 +1656,47 @@ fn discard_macro_recording() {
     recorder::discard();
 }
 
+/// Distil a raw event stream into semantic macro steps. Called from the
+/// MacroPanel when the user clicks the Distil button on a Record Macro step.
+/// Pure function — no I/O beyond the ToUnicodeEx layout lookup per KeyDown.
+///
+/// Returns `{ steps, targetApp }` — the frontend saves both alongside the raw
+/// events. targetApp is auto-extracted from the first ForegroundChanged event
+/// so distilled macros are automatically bound to the app they were recorded
+/// against; replay aborts with a modal if that app isn't running.
+///
+/// Pro-gated: free tier gets an empty steps array + null targetApp. Distillation
+/// + window-relative clicks + target-app binding together give a recorded macro
+/// "runs in this specific app" behaviour that would cannibalise the Pro
+/// app-linking pitch, so it lives behind the same gate as voice / advanced
+/// analytics / expression engine per [[feedback_licence_entitlement_invariants]].
+#[tauri::command]
+fn distill_events(events: Value) -> Value {
+    if !licence::is_pro() {
+        log::info!("[DISTILL] free tier — returning empty step list");
+        return serde_json::json!({ "steps": [], "targetApp": null });
+    }
+    let events_vec: Vec<recorder::RecordedEvent> = match serde_json::from_value(events) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("[DISTILL] Failed to parse events: {}", e);
+            return serde_json::json!({ "steps": [], "targetApp": null });
+        }
+    };
+    let steps = distill::distill(&events_vec);
+    let target_app = distill::extract_target_app(&events_vec);
+    log::info!(
+        "[DISTILL] {} events → {} steps, target_app={:?}",
+        events_vec.len(),
+        steps.len(),
+        target_app.as_ref().map(|t| t.exe.clone())
+    );
+    serde_json::json!({
+        "steps": steps,
+        "targetApp": target_app,
+    })
+}
+
 /// Returns `{ recording: bool, count: usize, durationMs: u64 }`. Polled by the
 /// recording-status indicator. Cheap — atomic reads + a mutex lock on the
 /// events vec for the count.
@@ -1599,6 +1707,10 @@ fn get_recording_status() -> Value {
         "recording": recorder::is_recording(),
         "count": count,
         "durationMs": dur,
+        // Non-zero while the pre-recording 3-2-1 is in flight. The countdown
+        // webview derives its numeral from this — Rust's clock, not a local
+        // JS timer — so the display can never be stale.
+        "countdownRemainingMs": recorder::countdown_remaining_ms(),
     })
 }
 
@@ -5437,6 +5549,7 @@ pub fn run() {
             stop_macro_recording,
             discard_macro_recording,
             get_recording_status,
+            distill_events,
             show_recorder_countdown,
             hide_recorder_countdown,
             recorder_countdown_complete,

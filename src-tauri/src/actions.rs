@@ -26,7 +26,7 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetForegroundWindow, GetSystemMetrics, GetWindowTextW,
-    GetWindowThreadProcessId, IsWindowVisible, MessageBoxW, SetForegroundWindow, SetWindowPos,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, MessageBoxW, SetForegroundWindow, SetWindowPos,
     ShowWindow, IDNO, IDOK, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL,
     MB_SETFOREGROUND, MB_TOPMOST, MB_YESNOCANCEL,
     SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SWP_NOACTIVATE,
@@ -2164,6 +2164,47 @@ fn replay_wheel(delta: i32) {
     unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
 }
 
+// ── Distilled Click-at-Position anchor transform ────────────────────────────
+//
+// Real apps don't uniformly scale their content when the window resizes:
+// sidebars, scrollbars, toolbars stay a fixed pixel size while the content
+// area reflows. Pure proportional scaling misses fixed-position UI in split-
+// screen or half-monitor windows.
+//
+// This heuristic looks at each axis independently. If the recorded click was
+// within `ANCHOR_THRESHOLD_FRAC` of an edge, we anchor to that edge — preserving
+// the distance from the closer edge. Otherwise we scale proportionally.
+//
+// Empirically handles Slack/VS Code/Chrome/Outlook resize much better than pure
+// ratio scaling. Trade-off: a click that happens to be near an edge in a
+// uniform-scaling app will edge-anchor when it should scale — rare, and the
+// per-click override UI (later work) handles the tail cases.
+
+const ANCHOR_THRESHOLD_FRAC: f32 = 0.20;
+
+/// Transform a single-axis click coord from recorded → current window size.
+/// Returns `(new_coord, anchor_label)` where `anchor_label` is one of
+/// "start" (top/left-anchored), "end" (bottom/right-anchored), or "prop".
+fn anchor_transform_axis(rec: i32, rec_size: i32, cur_size: i32, _axis: &str) -> (i32, &'static str) {
+    if rec_size <= 0 || cur_size <= 0 {
+        return (rec, "prop");
+    }
+    let threshold = ((rec_size as f32) * ANCHOR_THRESHOLD_FRAC).max(50.0) as i32;
+    let dist_start = rec;
+    let dist_end = rec_size - rec;
+    if dist_start < threshold && dist_start <= dist_end {
+        // Anchored to the start edge (top or left) — keep same distance from it
+        (dist_start, "start")
+    } else if dist_end < threshold && dist_end < dist_start {
+        // Anchored to the end edge (bottom or right)
+        (cur_size - dist_end, "end")
+    } else {
+        // Middle of the axis — proportional scaling
+        let scaled = (rec as f32 * cur_size as f32 / rec_size as f32).round() as i32;
+        (scaled, "prop")
+    }
+}
+
 // ── Macro sequence step executor ────────────────────────────────────────────
 
 /// Blocking OK/Cancel confirmation dialog for destructive System macro steps
@@ -3236,11 +3277,28 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             match find_window_by_criteria(process, title) {
                 Some(hwnd) => {
                     let (_, _, fg_settle_ms, _) = speed_delays();
-                    unsafe { SetForegroundWindow(hwnd as _); }
-                    // Focus Window needs longer settle than normal foreground restore
-                    thread::sleep(Duration::from_millis(fg_settle_ms.max(10) * 2));
-                    *target_hwnd = hwnd;
-                    info!("[Keyfire] Focus Window: found and focused HWND {} (process='{}' title='{}')", hwnd, process, title);
+                    // Skip the focus dance entirely if this window is already
+                    // foreground. Otherwise SetForegroundWindow + BringWindowToTop
+                    // + AttachThreadInput causes a visible flicker each time —
+                    // and a distilled macro can fire Focus Window many times.
+                    let already_focused = unsafe { GetForegroundWindow() as isize == hwnd };
+                    if already_focused {
+                        *target_hwnd = hwnd;
+                        info!("[Keyfire] Focus Window: HWND {} already foreground — skipping", hwnd);
+                    } else {
+                        // SW_RESTORE ONLY if minimised — otherwise it un-maximises
+                        // maximised windows. IsIconic gates it correctly.
+                        unsafe {
+                            if IsIconic(hwnd as _) != 0 {
+                                ShowWindow(hwnd as _, SW_RESTORE);
+                            }
+                        }
+                        let ok = set_foreground_robust(hwnd);
+                        let settle = fg_settle_ms.max(20) * 3;
+                        thread::sleep(Duration::from_millis(settle));
+                        *target_hwnd = hwnd;
+                        info!("[Keyfire] Focus Window: HWND {} (ok={}, settle={}ms, process='{}' title='{}')", hwnd, ok, settle, process, title);
+                    }
                 }
                 None => {
                     warn!("[Keyfire] Focus Window: no matching window found for process='{}' title='{}'", process, title);
@@ -3341,8 +3399,133 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     let y = parsed.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let button = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
                     let mode = parsed.get("mode").and_then(|v| v.as_str()).unwrap_or("absolute");
+                    // Recorded press duration (distilled recordings). 0/absent
+                    // = plain click. Above the threshold we press-hold-release
+                    // so long-press UI and games replay faithfully.
+                    let hold_ms = parsed.get("holdMs").and_then(|v| v.as_u64()).unwrap_or(0);
+                    // Drag end point (distilled drags). Present = replay as a
+                    // real drag: down at (x,y), interpolated moves, up here.
+                    let drag_to = match (
+                        parsed.get("dragToX").and_then(|v| v.as_i64()),
+                        parsed.get("dragToY").and_then(|v| v.as_i64()),
+                    ) {
+                        (Some(dx), Some(dy)) => Some((dx as i32, dy as i32)),
+                        _ => None,
+                    };
+                    // Modifiers held during the recorded click (Shift+drag to
+                    // constrain to a straight line, Ctrl+click multi-select…).
+                    // Pressed before the button-down, released after the up.
+                    // Name→VK mirrors distill::modifier_vk_names.
+                    let step_mods: Vec<u16> = parsed
+                        .get("modifiers")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|m| match m.as_str() {
+                                    Some("Ctrl") => Some(0xA2u16),  // VK_LCONTROL
+                                    Some("Alt") => Some(0xA4u16),   // VK_LMENU
+                                    Some("Shift") => Some(0xA0u16), // VK_LSHIFT
+                                    Some("Win") => Some(0x5Bu16),   // VK_LWIN
+                                    _ => None,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
 
-                    let (abs_x, abs_y) = if mode == "relative" {
+                    let (abs_x, abs_y) = if mode == "windowClient" {
+                        // Pro-gated: client-relative coords + stored target window
+                        // identity. Free tier falls back to the `fallbackX/Y` absolute
+                        // coords the distiller stored alongside — never the (x,y)
+                        // fields, which are client-rel and would land off-screen.
+                        let fx = parsed.get("fallbackX").and_then(|v| v.as_i64()).unwrap_or(x as i64) as i32;
+                        let fy = parsed.get("fallbackY").and_then(|v| v.as_i64()).unwrap_or(y as i64) as i32;
+                        if !crate::licence::is_pro() {
+                            info!("[Keyfire] Click at Position: windowClient mode requires Pro — using fallback absolute ({}, {})", fx, fy);
+                            (fx, fy)
+                        } else if let Some(tw_json) = parsed.get("targetWindow") {
+                            let target = crate::distill::TargetWindow {
+                                title: tw_json.get("title").and_then(|v| v.as_str()).unwrap_or("").into(),
+                                exe:   tw_json.get("exe").and_then(|v| v.as_str()).unwrap_or("").into(),
+                                class: tw_json.get("class").and_then(|v| v.as_str()).unwrap_or("").into(),
+                                client_w: tw_json.get("clientW").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                                client_h: tw_json.get("clientH").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                            };
+                            match crate::distill::resolve_target_window(&target) {
+                                Some(hwnd) => {
+                                    // Skip focus if this window is already the
+                                    // foreground — avoids a per-click flicker
+                                    // when a macro fires many clicks against the
+                                    // same window.
+                                    let already_focused = unsafe { GetForegroundWindow() as isize == hwnd };
+                                    if !already_focused {
+                                        unsafe {
+                                            if IsIconic(hwnd as _) != 0 {
+                                                ShowWindow(hwnd as _, SW_RESTORE);
+                                            }
+                                        }
+                                        set_foreground_robust(hwnd);
+                                        thread::sleep(Duration::from_millis(80));
+                                    }
+
+                                    // Resize handling: "proportional" (default)
+                                    // now uses anchor-by-closest-edge per axis
+                                    // — sidebars/toolbars/scrollbars anchor to
+                                    // their nearest edge, content-area clicks
+                                    // fall back to proportional. Empirically
+                                    // handles Slack/VSCode/Chrome/Outlook far
+                                    // better than pure ratio scaling. "static"
+                                    // skips the transform entirely (fixed-anchor
+                                    // dialogs opt out).
+                                    let behavior = parsed.get("resizeBehavior")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("proportional");
+                                    let (click_x, click_y) = if behavior == "proportional"
+                                        && target.client_w > 0
+                                        && target.client_h > 0
+                                    {
+                                        let mut cr = windows_sys::Win32::Foundation::RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                        let ok = unsafe {
+                                            windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd as _, &mut cr)
+                                        };
+                                        if ok != 0 {
+                                            let cur_w = (cr.right - cr.left).max(1);
+                                            let cur_h = (cr.bottom - cr.top).max(1);
+                                            let (cx, ax) = anchor_transform_axis(
+                                                x, target.client_w, cur_w, "x",
+                                            );
+                                            let (cy, ay) = anchor_transform_axis(
+                                                y, target.client_h, cur_h, "y",
+                                            );
+                                            info!(
+                                                "[Keyfire] Click at Position: anchor xy=({}/{},{}/{}) ({},{})→({},{}) [rec {}×{}, live {}×{}]",
+                                                ax, x, ay, y, x, y, cx, cy, target.client_w, target.client_h, cur_w, cur_h
+                                            );
+                                            (cx, cy)
+                                        } else {
+                                            (x, y)
+                                        }
+                                    } else {
+                                        (x, y)
+                                    };
+
+                                    match crate::distill::client_to_screen(hwnd, click_x, click_y) {
+                                        Some((sx, sy)) => (sx, sy),
+                                        None => {
+                                            warn!("[Keyfire] Click at Position: ClientToScreen failed, using fallback ({}, {})", fx, fy);
+                                            (fx, fy)
+                                        }
+                                    }
+                                }
+                                None => {
+                                    warn!("[Keyfire] Click at Position: target window '{}' ({}) not found, using fallback ({}, {})", target.title, target.exe, fx, fy);
+                                    (fx, fy)
+                                }
+                            }
+                        } else {
+                            warn!("[Keyfire] Click at Position: windowClient mode without targetWindow — using fallback");
+                            (fx, fy)
+                        }
+                    } else if mode == "relative" {
                         // Relative to target window
                         let mut rect = windows_sys::Win32::Foundation::RECT { left: 0, top: 0, right: 0, bottom: 0 };
                         unsafe {
@@ -3374,10 +3557,94 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         _ => "LButton",
                     };
 
-                    // Click
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                    send_mouse_click(click_button);
-                    crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    // Press recorded modifiers before the button action so
+                    // Shift+drag (straight-line constraint), Ctrl+click etc.
+                    // reach the app with the modifier held. Released after
+                    // the button-up below — ALWAYS, so keys can never stick.
+                    if !step_mods.is_empty() {
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        for &vk in &step_mods {
+                            send_vk_key(vk, false);
+                        }
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                        thread::sleep(Duration::from_millis(15));
+                    }
+
+                    // Click — three shapes, most specific first:
+                    //   drag:  down at (x,y) → interpolated REAL mouse moves
+                    //          (SendInput MOVE, never SetCursorPos — apps
+                    //          detect drags by tracking WM_MOUSEMOVE between
+                    //          down and up, see the v0.6.3 raw-replay fix) →
+                    //          up at the drag end point.
+                    //   hold:  press-hold-release when the recording captured
+                    //          a hold longer than a normal click.
+                    //   plain: everything else.
+                    // 150ms cutoff: everyday clicks are 60-120ms and should
+                    // stay snappy; anything longer was deliberate. Durations
+                    // capped at 10s. Esc / macros-disabled shortens a hold or
+                    // drag but the button-up ALWAYS fires — a stuck mouse
+                    // button is never acceptable.
+                    const HOLD_THRESHOLD_MS: u64 = 150;
+                    if let Some((to_x, to_y)) = drag_to {
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        replay_mouse_move(abs_x, abs_y);
+                        send_mouse_event(click_button, false); // down
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                        let total_ms = hold_ms.clamp(200, 10_000);
+                        const DRAG_STEPS: i64 = 16;
+                        let step_sleep = (total_ms / DRAG_STEPS as u64).max(10);
+                        for i in 1..=DRAG_STEPS {
+                            if ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                                || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+                            {
+                                break;
+                            }
+                            let fx = abs_x + ((to_x - abs_x) as i64 * i / DRAG_STEPS) as i32;
+                            let fy = abs_y + ((to_y - abs_y) as i64 * i / DRAG_STEPS) as i32;
+                            replay_mouse_move(fx, fy);
+                            thread::sleep(Duration::from_millis(step_sleep));
+                        }
+                        // Land exactly on the end point, then release —
+                        // unconditional so the button can never stick.
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        replay_mouse_move(to_x, to_y);
+                        send_mouse_event(click_button, true); // up
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    } else if hold_ms > HOLD_THRESHOLD_MS {
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        send_mouse_event(click_button, false); // down
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                        let total = hold_ms.min(10_000);
+                        let mut waited = 0u64;
+                        while waited < total {
+                            if ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                                || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+                            {
+                                break;
+                            }
+                            let chunk = 50.min(total - waited);
+                            thread::sleep(Duration::from_millis(chunk));
+                            waited += chunk;
+                        }
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        send_mouse_event(click_button, true); // up — unconditional
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    } else {
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        send_mouse_click(click_button);
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    }
+
+                    // Release recorded modifiers (reverse order) — mirror of
+                    // the press above. Unconditional: even if the hold/drag
+                    // was cut short by Esc, held modifiers must not survive.
+                    if !step_mods.is_empty() {
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        for &vk in step_mods.iter().rev() {
+                            send_vk_key(vk, true);
+                        }
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    }
 
                     // Restore cursor to original position
                     thread::sleep(Duration::from_millis(20));
@@ -3447,15 +3714,104 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 warn!("[Keyfire] Record Macro: empty step value, skipping");
                 return true;
             }
-            let events: Vec<crate::recorder::RecordedEvent> =
-                match serde_json::from_str(step_value) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("[Keyfire] Record Macro: invalid JSON ({})", e);
-                        return true;
+            // Phase 2: value can be either a bare Vec<RecordedEvent> (legacy)
+            // or a wrapper object with events + distilled + playbackMode +
+            // targetApp. parse_record_macro_value handles both shapes.
+            let value = match crate::distill::parse_record_macro_value(step_value) {
+                Some(v) => v,
+                None => {
+                    warn!("[Keyfire] Record Macro: invalid step value JSON");
+                    return true;
+                }
+            };
+            let use_distilled = value.playback_mode == "distilled"
+                && value.distilled.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+
+            if !use_distilled {
+                replay_recorded_events(&value.events, "Record Macro");
+                return true;
+            }
+
+            // Distilled playback is Pro-gated. Fall back to raw (absolute-only)
+            // for free tier — cannot bypass by hand-editing playback_mode.
+            if !crate::licence::is_pro() {
+                info!("[Keyfire] Record Macro: distilled playback is Pro — using raw replay");
+                replay_recorded_events(&value.events, "Record Macro (free-tier raw)");
+                return true;
+            }
+
+            // target_app precheck. Prefer the wrapper's stored target_app
+            // (set by the distiller command since Task 6). Fall back to the
+            // first ForegroundChanged event in the raw stream for older
+            // distilled macros made before target_app was auto-populated — so
+            // those still get the "app not running" abort without needing a
+            // Re-distil.
+            let effective_target = value
+                .target_app
+                .clone()
+                .or_else(|| crate::distill::extract_target_app(&value.events));
+
+            match &effective_target {
+                Some(target) => {
+                    let fake_tw = crate::distill::TargetWindow {
+                        title: target.window_title_hint.clone().unwrap_or_default(),
+                        exe: target.exe.clone(),
+                        class: String::new(),
+                        client_w: 0,
+                        client_h: 0,
+                    };
+                    match crate::distill::resolve_target_window(&fake_tw) {
+                        Some(hwnd) => {
+                            info!(
+                                "[Keyfire] Record Macro: target app '{}' found (hwnd=0x{:x}) — proceeding",
+                                target.exe, hwnd
+                            );
+                        }
+                        None => {
+                            warn!(
+                                "[Keyfire] Record Macro: target app '{}' (hint='{}') not found — aborting + emitting record-macro-app-missing",
+                                target.exe,
+                                target.window_title_hint.as_deref().unwrap_or("")
+                            );
+                            let _ = app.emit(
+                                "record-macro-app-missing",
+                                serde_json::json!({
+                                    "exe": target.exe,
+                                    "hint": target.window_title_hint,
+                                }),
+                            );
+                            return true;
+                        }
                     }
-                };
-            replay_recorded_events(&events, "Record Macro");
+                }
+                None => {
+                    info!("[Keyfire] Record Macro: no target_app in wrapper or events — no precheck");
+                }
+            }
+
+            // Option C: distilled steps ARE manual macro steps. Walk the array
+            // and recurse into execute_macro_step so every existing arm
+            // (Type Text, Press Key, Click at Position, Focus Window, Wait,
+            // Mouse Scroll) runs identically to a hand-built sequence.
+            let distilled = value.distilled.as_ref().unwrap();
+            info!(
+                "[Keyfire] Record Macro: replaying {} distilled step(s)",
+                distilled.len()
+            );
+            for (i, dstep) in distilled.iter().enumerate() {
+                if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Record Macro: aborted (macros disabled) at step {}", i);
+                    break;
+                }
+                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Record Macro: aborted (Esc) at step {}", i);
+                    break;
+                }
+                if !execute_macro_step(dstep, target_hwnd, method, app) {
+                    info!("[Keyfire] Record Macro: step {} requested abort", i);
+                    break;
+                }
+            }
         }
 
         // System group: no-config leaves + destructive-with-prompt.
@@ -3679,7 +4035,8 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
             | crate::recorder::RecordedEvent::MouseDown { t, .. }
             | crate::recorder::RecordedEvent::MouseUp { t, .. }
             | crate::recorder::RecordedEvent::MouseMove { t, .. }
-            | crate::recorder::RecordedEvent::Wheel { t, .. } => *t,
+            | crate::recorder::RecordedEvent::Wheel { t, .. }
+            | crate::recorder::RecordedEvent::ForegroundChanged { t, .. } => *t,
         };
         let gap = evt_t.saturating_sub(prev_t).min(MAX_GAP_MS);
         if gap > 0 {
@@ -3718,6 +4075,11 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
                 replay_mouse_move(*x, *y);
                 replay_wheel(*delta);
             }
+            // ForegroundChanged is metadata for Phase 2 distillation, not a
+            // replayable action. Raw-mode replay ignores it — the recording's
+            // input events already land in whatever window is foreground at
+            // replay time.
+            crate::recorder::RecordedEvent::ForegroundChanged { .. } => {}
         }
     }
     // Defensive cleanup: release all modifiers. A buffer that ended mid-

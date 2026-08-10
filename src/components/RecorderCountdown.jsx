@@ -1,72 +1,77 @@
-// Macro-recorder bar. Single pill, fixed bottom-centre. Recording starts
-// the instant the user clicks Record — no countdown. Label reads
-// "Recording 0:00" ticking up; Stop button or Ctrl+Shift+R ends it.
+// Macro-recorder overlay. Two phases:
+//   'countdown' → big 3-2-1 numeral in a centred box (400×400). Gives the
+//   user time to alt-tab to their target app before the fg watcher starts
+//   capturing, so target_app auto-detection binds to the RIGHT window.
+//   'recording' → compact pill at bottom-centre, live duration + Stop.
+//
+// ARCHITECTURE (hard-won 2026-08-10 — do not re-plumb): the countdown TIMING
+// is owned by a Rust thread in show_recorder_bar. Rust morphs the window and
+// calls recorder::start() exactly 3s after show, regardless of anything this
+// component does. This component derives EVERYTHING from one permanent
+// get_recording_status poll:
+//   recording=true            → 'recording' (durationMs drives the timer)
+//   countdownRemainingMs > 0  → 'countdown' (numeral = ceil(remaining/1s))
+//   neither                   → 'idle' (renders nothing)
+// No local timers, no visibility listeners. Rust's clock is the single source
+// of truth. Three earlier designs all failed on Chromium's unreliable
+// visibility events: a mount-time visibilityState check ghost-started
+// recordings at app launch; event-only listening missed the first lazy-build
+// show; a Rust pending-flag raced the synchronous visibilitychange inside
+// win.show(). Deriving display from polled Rust state has none of these
+// failure modes — worst case the numeral appears one poll tick (150ms) late.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './RecorderCountdown.css';
 
 export default function RecorderCountdown() {
-  // 'idle' = render nothing (window hidden). 'recording' = live bar.
-  // Initial state MUST be 'idle' so the pre-created hidden window doesn't
-  // render anything on app launch.
   const [phase, setPhase] = useState('idle');
+  const [countdownN, setCountdownN] = useState(3);
   const [elapsedMs, setElapsedMs] = useState(0);
-  // Configured record hotkey — refreshed on every show so the hint reflects
-  // the current user choice (default Ctrl+Alt+R; Settings → Quick Record can
-  // change it). Same hotkey stops the recording in BOTH the editor and global
-  // flows, so showing it here is accurate regardless of how recording started.
   const [recordHotkey, setRecordHotkey] = useState('Ctrl+Alt+R');
+  const prevPhaseRef = useRef('idle');
 
-  // Visibility-driven phase. Chromium fires visibilitychange synchronously
-  // the moment Rust calls win.show(), so the bar appears in lockstep with
-  // recorder::start() (which runs immediately in the same Rust command).
+  // Single permanent poll — 150ms while visible; Chromium throttles hidden
+  // windows to ~1s, which is fine (a hidden window renders nothing anyway).
   useEffect(() => {
-    function onVisChange() {
-      if (document.visibilityState === 'visible') {
-        setElapsedMs(0);
-        setPhase('recording');
-        // Refresh the record hotkey string in case the user changed it
-        // between the last recording and this one.
-        invoke('get_temp_macro_status').then(s => {
-          if (s?.recordHotkey) setRecordHotkey(s.recordHotkey);
-        }).catch(() => {});
-      } else {
-        setElapsedMs(0);
-        setPhase('idle');
-      }
-    }
-    document.addEventListener('visibilitychange', onVisChange);
-    if (document.visibilityState === 'visible') {
-      setElapsedMs(0);
-      setPhase('recording');
-      invoke('get_temp_macro_status').then(s => {
-        if (s?.recordHotkey) setRecordHotkey(s.recordHotkey);
-      }).catch(() => {});
-    }
-    return () => document.removeEventListener('visibilitychange', onVisChange);
-  }, []);
-
-  // Live elapsed-time poll — only when recording. Sourced directly from
-  // Rust's status_snapshot so it matches what's saved in the macro buffer.
-  useEffect(() => {
-    if (phase !== 'recording') return undefined;
     let cancelled = false;
     const tick = async () => {
       if (cancelled) return;
       try {
         const status = await invoke('get_recording_status');
-        if (cancelled || !status?.recording) return;
-        setElapsedMs(status.durationMs || 0);
-      } catch (_) { /* ignore */ }
+        if (cancelled) return;
+        if (status?.recording) {
+          setPhase('recording');
+          setElapsedMs(status.durationMs || 0);
+        } else if ((status?.countdownRemainingMs || 0) > 0) {
+          setPhase('countdown');
+          setCountdownN(Math.min(3, Math.max(1, Math.ceil(status.countdownRemainingMs / 1000))));
+        } else {
+          setPhase('idle');
+          setElapsedMs(0);
+        }
+      } catch (_) { /* ignore transient errors */ }
     };
-    const interval = setInterval(tick, 250);
+    const interval = setInterval(tick, 150);
     tick();
     return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // Refresh the configured record hotkey whenever a flow begins (idle → any),
+  // so the pill hint reflects the user's current Settings choice.
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (prev === 'idle' && phase !== 'idle') {
+      invoke('get_temp_macro_status').then(s => {
+        if (s?.recordHotkey) setRecordHotkey(s.recordHotkey);
+      }).catch(() => {});
+    }
   }, [phase]);
 
-  // Esc aborts an in-flight recording — same path as the Stop button via
-  // the abort command (which hides the window + emits cancelled).
+  // Esc aborts the countdown / an in-flight recording — the abort command
+  // cancels the Rust countdown thread, discards any partial buffer, hides
+  // the window and emits cancelled so the editor flow can unwind.
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
@@ -89,6 +94,25 @@ export default function RecorderCountdown() {
 
   if (phase === 'idle') {
     return null;
+  }
+
+  if (phase === 'countdown') {
+    return (
+      <div className="rc-root rc-root--countdown">
+        <div className="rc-countdown-box">
+          <div className="rc-countdown-title">Recording starts in</div>
+          <div className="rc-countdown-number" key={countdownN} aria-live="polite">
+            {countdownN}
+          </div>
+          <div className="rc-countdown-hint">
+            Switch to the app you want to record now
+          </div>
+          <div className="rc-countdown-esc">
+            <kbd>Esc</kbd> to cancel
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

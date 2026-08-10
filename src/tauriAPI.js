@@ -252,6 +252,19 @@ window.electronAPI = {
   stopMacroRecording:    () => invoke('stop_macro_recording'),
   discardMacroRecording: () => invoke('discard_macro_recording'),
   getRecordingStatus:    () => invoke('get_recording_status'),
+  // Phase 2 distillation — pure function. Returns `{ steps, targetApp }`.
+  // Empty steps on any parse/distil failure or free-tier caller (backend logs).
+  distillEvents:         (events) => invoke('distill_events', { events }),
+  // Emitted by the Record Macro replay path when a distilled macro is bound
+  // to a target app that isn't running. Payload: { exe, hint }. Frontend
+  // shows a modal + user must launch the app manually per Rory's 2026-08-10
+  // call — no auto-launch (PC startup times vary wildly across machines).
+  onRecordMacroAppMissing: (callback) => {
+    listeners['record-macro-app-missing'] = listen(
+      'record-macro-app-missing',
+      (event) => callback(event.payload),
+    );
+  },
   // Countdown overlay — orchestrates the minimise → 3-2-1 → record → restore
   // flow. Show positions the window centred on the cursor's monitor; the
   // countdown component animates and emits recorder-countdown-recording when

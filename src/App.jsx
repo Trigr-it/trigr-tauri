@@ -13,6 +13,7 @@ import TextExpansions from './components/TextExpansions';
 import WelcomeModal from './components/WelcomeModal';
 import UpgradeModal from './components/UpgradeModal';
 import ReservedShortcutModal from './components/ReservedShortcutModal';
+import AppNotRunningModal from './components/AppNotRunningModal';
 import { findReservedShortcut, formatComboDisplay } from './utils/reservedShortcuts';
 import OnboardingTour from './components/OnboardingTour';
 import ProTrialModal from './components/ProTrialModal';
@@ -57,6 +58,10 @@ function App() {
   // Reserved Windows shortcut hazard modal — deferred-save pattern. Shape:
   // { keyId, macro, comboDisplay, osFunction, profileName } or null.
   const [reservedShortcutPending, setReservedShortcutPending] = useState(null);
+  // { exe, hint } when a distilled Record Macro tried to fire but its bound
+  // target app wasn't running. Backend emits `record-macro-app-missing`;
+  // useEffect below wires the listener once at mount.
+  const [appMissingModal, setAppMissingModal] = useState(null);
   const [engineStatus, setEngineStatus]     = useState({ uiohookAvailable: false, nutjsAvailable: false });
   const [lastFired, setLastFired]           = useState(null);
   // theme: 'auto' | 'light' | 'dark'. 'auto' follows the OS via prefers-color-scheme.
@@ -683,6 +688,12 @@ function App() {
       window.electronAPI.onProfileSwitched(({ profile }) => {
         setActiveProfile(profile);
         setSelectedKey(null);
+      });
+      // Distilled Record Macro fired but its bound target app isn't running.
+      // Show the modal telling the user to launch it manually — no auto-launch
+      // (PC startup times vary too much for a reliable wait-for-window flow).
+      window.electronAPI.onRecordMacroAppMissing?.(({ exe, hint }) => {
+        setAppMissingModal({ exe, hint });
       });
       // Window hidden to tray (X / tray toggle) — clear the open editor so the
       // window reopens to a blank slate. The editing-active effect then re-pushes
@@ -4542,6 +4553,13 @@ function App() {
           featureName={upgradePrompt}
           onClose={() => setUpgradePrompt(null)}
           onOpenSettings={() => window.electronAPI?.showSettingsWindow('licence')}
+        />
+      )}
+      {appMissingModal && (
+        <AppNotRunningModal
+          exe={appMissingModal.exe}
+          hint={appMissingModal.hint}
+          onClose={() => setAppMissingModal(null)}
         />
       )}
       {reservedShortcutPending && (

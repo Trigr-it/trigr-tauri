@@ -790,31 +790,62 @@ function formatRecordingDuration(ms) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function summariseRecording(rawValue) {
+// Phase 2 Record Macro step value can be either:
+//   (a) legacy raw events array: [ {kind:'keydown',...}, ... ]
+//   (b) wrapper object: { events, distilled, playbackMode, targetApp }
+// parseRecordingValue normalises to (b). Save always writes (b).
+function parseRecordingValue(rawValue) {
   if (!rawValue) return null;
   try {
-    const events = JSON.parse(rawValue);
-    if (!Array.isArray(events) || events.length === 0) return null;
-    const lastT = events[events.length - 1]?.t ?? 0;
-    return { duration: formatRecordingDuration(lastT), count: events.length };
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed)) {
+      if (parsed.length === 0) return null;
+      return { events: parsed, distilled: null, playbackMode: 'raw', targetApp: null };
+    }
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.events)) {
+      if (parsed.events.length === 0) return null;
+      return {
+        events: parsed.events,
+        distilled: Array.isArray(parsed.distilled) ? parsed.distilled : null,
+        playbackMode: parsed.playbackMode || 'raw',
+        targetApp: parsed.targetApp || null,
+      };
+    }
+    return null;
   } catch (_) {
     return null;
   }
 }
 
-function ReplayRecordingValue({ value, onChange }) {
+function summariseRecording(parsed) {
+  if (!parsed || !parsed.events?.length) return null;
+  const lastT = parsed.events[parsed.events.length - 1]?.t ?? 0;
+  return { duration: formatRecordingDuration(lastT), count: parsed.events.length };
+}
+
+
+function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, assignments = {}, profiles = [], globalInputMethod = 'global' }) {
   const [isRecording, setIsRecording] = useState(false);
   const [liveStatus, setLiveStatus] = useState({ count: 0, durationMs: 0 });
+  const [isDistilling, setIsDistilling] = useState(false);
 
-  const summary = useMemo(() => summariseRecording(value), [value]);
+  const parsed = useMemo(() => parseRecordingValue(value), [value]);
+  const summary = useMemo(() => summariseRecording(parsed), [parsed]);
+  const hasDistilled = !!(parsed?.distilled && parsed.distilled.length > 0);
+  const mode = parsed?.playbackMode || 'raw';
 
   const finishRecording = useCallback(async () => {
     try {
       const events = await window.electronAPI.stopMacroRecording();
-      // events is the parsed JSON value array from Rust. If it's empty the
-      // user effectively cancelled — keep prior value.
+      // Rust returns the raw event array. Wrap in the Phase 2 shape at save
+      // time so downstream code always sees the object form.
       if (Array.isArray(events) && events.length > 0) {
-        onChange(JSON.stringify(events));
+        onChange(JSON.stringify({
+          events,
+          distilled: null,
+          playbackMode: 'raw',
+          targetApp: null,
+        }));
       }
     } catch (e) {
       console.error('[recorder] stop failed', e);
@@ -921,17 +952,141 @@ function ReplayRecordingValue({ value, onChange }) {
     );
   }
 
+  async function handleDistil() {
+    if (!parsed?.events?.length) return;
+    if (!isPro) {
+      onShowUpgrade?.('Macro distillation — turns raw recordings into editable steps and makes clicks window-aware so the macro survives moves and resizes.');
+      return;
+    }
+    setIsDistilling(true);
+    try {
+      // Backend returns { steps, targetApp }. targetApp is auto-extracted
+      // from the first ForegroundChanged event so the macro is bound to the
+      // app it was recorded against — replay checks the app is running and
+      // aborts via a modal if not.
+      const result = await window.electronAPI.distillEvents(parsed.events);
+      const steps = Array.isArray(result?.steps) ? result.steps : [];
+      const targetApp = result?.targetApp || parsed.targetApp || null;
+      if (steps.length > 0) {
+        onChange(JSON.stringify({
+          ...parsed,
+          distilled: steps,
+          playbackMode: 'distilled',
+          targetApp,
+        }));
+      } else {
+        console.warn('[distill] engine returned empty step list');
+      }
+    } catch (e) {
+      console.error('[distill] failed', e);
+    } finally {
+      setIsDistilling(false);
+    }
+  }
+
+  function handleSetMode(nextMode) {
+    if (!parsed) return;
+    if (nextMode === 'distilled' && !isPro) {
+      onShowUpgrade?.('Macro distillation');
+      return;
+    }
+    onChange(JSON.stringify({ ...parsed, playbackMode: nextMode }));
+  }
+
   return (
-    <div className="macro-step-value replay-rec">
+    <div className="macro-step-value replay-rec replay-rec--column">
       {summary ? (
         <>
-          <span className="replay-rec-label">{summary.duration} · {summary.count} events captured</span>
-          <button type="button" className="replay-rec-btn" onClick={startRecording}>
-            <Circle size={11} fill="currentColor" strokeWidth={0} /> Re-record
-          </button>
-          <button type="button" className="replay-rec-btn replay-rec-btn--ghost" onClick={discardRecording} title="Discard recording">
-            <Trash2 size={12} />
-          </button>
+          <div className="replay-rec-toprow">
+            <span className="replay-rec-label">{summary.duration} · {summary.count} events captured</span>
+            {hasDistilled && (
+              <div className="replay-rec-mode-toggle" role="radiogroup" aria-label="Playback mode">
+                <button
+                  type="button"
+                  className={`replay-rec-mode ${mode === 'raw' ? 'is-active' : ''}`}
+                  onClick={() => handleSetMode('raw')}
+                >Raw</button>
+                <button
+                  type="button"
+                  className={`replay-rec-mode ${mode === 'distilled' ? 'is-active' : ''}`}
+                  onClick={() => handleSetMode('distilled')}
+                >Distilled</button>
+              </div>
+            )}
+            <div className="replay-rec-btnrow">
+              {!hasDistilled && (
+                <button
+                  type="button"
+                  className={`replay-rec-btn ${!isPro ? 'replay-rec-btn--pro' : ''}`}
+                  onClick={handleDistil}
+                  disabled={isDistilling}
+                  title={isPro ? 'Convert raw events into readable steps' : 'Pro feature — turns raw recordings into editable, window-aware steps'}
+                >
+                  {isDistilling ? 'Distilling…' : (<>Distil {!isPro && <span className="pro-badge" style={{ marginLeft: 4 }}>Pro</span>}</>)}
+                </button>
+              )}
+              {hasDistilled && (
+                <button type="button" className="replay-rec-btn replay-rec-btn--ghost" onClick={handleDistil} disabled={isDistilling} title="Re-run distillation from raw events">
+                  {isDistilling ? 'Re-distilling…' : 'Re-distil'}
+                </button>
+              )}
+              <button type="button" className="replay-rec-btn" onClick={startRecording}>
+                <Circle size={11} fill="currentColor" strokeWidth={0} /> Re-record
+              </button>
+              <button type="button" className="replay-rec-btn replay-rec-btn--ghost" onClick={discardRecording} title="Discard recording">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+          {hasDistilled && mode === 'distilled' && (
+            <>
+              {/* Target-app binding — visible so users understand which app
+                  their distilled macro is locked to. ✕ clears the binding so
+                  the macro runs against whatever's foreground (no precheck,
+                  no "app not running" modal). Re-distil re-detects from the
+                  first ForegroundChanged event in the raw stream. */}
+              {parsed.targetApp ? (
+                <div className="distilled-target-app is-set" role="status">
+                  <span className="distilled-target-app-icon" aria-hidden="true">◎</span>
+                  <span className="distilled-target-app-label">
+                    Bound to <strong>{parsed.targetApp.windowTitleHint || parsed.targetApp.exe}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    className="distilled-target-app-clear"
+                    onClick={() => onChange(JSON.stringify({ ...parsed, targetApp: null }))}
+                    title="Clear binding — macro will run against whatever's focused"
+                    aria-label="Clear target app binding"
+                  >
+                    <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true">
+                      <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="distilled-target-app is-unset" role="status">
+                  <span className="distilled-target-app-label">
+                    Not bound to a specific app — runs against whatever's focused
+                  </span>
+                </div>
+              )}
+              <div className="distilled-macro-embed">
+                <MacroSequenceForm
+                  value={{ steps: parsed.distilled }}
+                  onChange={next => onChange(JSON.stringify({
+                    ...parsed,
+                    distilled: (next.steps || []),
+                  }))}
+                  globalInputMethod={globalInputMethod}
+                  assignments={assignments}
+                  profiles={profiles}
+                  isPro={isPro}
+                  onShowUpgrade={onShowUpgrade}
+                />
+              </div>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -950,7 +1105,7 @@ function ReplayRecordingValue({ value, onChange }) {
 // editor pane — the form value keeps the macro data shape ({ steps: [one
 // Record Macro step] }) so saving/loading needs no conversion beyond the
 // type remap in handleSave / displayTypeOf.
-function RecordMacroForm({ value, onChange }) {
+function RecordMacroForm({ value, onChange, isPro = false, onShowUpgrade, assignments = {}, profiles = [], globalInputMethod = 'global' }) {
   const step = (value.steps && value.steps[0]) || { type: 'Record Macro', value: '' };
   return (
     <div className="record-macro-form">
@@ -958,6 +1113,11 @@ function RecordMacroForm({ value, onChange }) {
       <ReplayRecordingValue
         value={step.value || ''}
         onChange={v => onChange({ ...value, steps: [{ type: 'Record Macro', value: v }] })}
+        isPro={isPro}
+        onShowUpgrade={onShowUpgrade}
+        assignments={assignments}
+        profiles={profiles}
+        globalInputMethod={globalInputMethod}
       />
       <p className="record-macro-hint">
         Press Record, perform your actions anywhere on screen, then press Ctrl+Shift+R to stop.
@@ -1043,6 +1203,35 @@ function ClickPositionFields({ step, updateStep }) {
         onCommit={n => update({ y: n })}
         className="form-input click-pos-coord-input"
       />
+      {/* Distilled-recording extras, read-only: held modifiers, press-hold
+          duration and drag end point captured by the recorder. Shown so
+          users can verify what got extracted; cleared via ✕ for a plain
+          click instead. */}
+      {(() => {
+        const mods = Array.isArray(cp.modifiers) && cp.modifiers.length ? cp.modifiers.join('+') : '';
+        const isDrag = cp.dragToX !== undefined;
+        const isHold = (cp.holdMs || 0) > 150;
+        if (!isDrag && !isHold && !mods) return null;
+        const core = isDrag
+          ? `drag → (${cp.dragToX}, ${cp.dragToY})${isHold ? ` · ${(cp.holdMs / 1000).toFixed(1)}s` : ''}`
+          : isHold
+            ? `hold ${(cp.holdMs / 1000).toFixed(1)}s`
+            : 'click';
+        return (
+          <span className="click-pos-extra" title="Captured from the recording">
+            {mods ? `${mods}+${core}` : core}
+            <button
+              type="button"
+              className="click-pos-extra-clear"
+              title="Remove modifiers/hold/drag — make this a plain click"
+              onClick={() => {
+                const { holdMs, dragToX, dragToY, modifiers, ...rest } = cp;
+                updateStep({ ...step, value: JSON.stringify(rest) });
+              }}
+            >×</button>
+          </span>
+        );
+      })()}
     </div>
   );
 }
@@ -2394,6 +2583,10 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
           <ReplayRecordingValue
             value={step.value || ''}
             onChange={v => updateStep({ ...step, value: v })}
+            isPro={isPro}
+            onShowUpgrade={onShowUpgrade}
+            assignments={assignments}
+            profiles={profiles}
           />
         )}
         {(step.type === 'Fire Trigger' || step.type === 'Fire Text Expansion') && (() => {
@@ -4257,7 +4450,7 @@ export default function MacroPanel({
           {activeType === 'folder' && <FolderForm value={formValue} onChange={setFormValue} />}
           {activeType === 'url'    && <UrlForm value={formValue} onChange={setFormValue} />}
           {activeType === 'macro'  && <MacroSequenceForm value={formValue} onChange={setFormValue} globalInputMethod={globalInputMethod} assignments={assignments} profiles={profiles} isPro={isPro} onShowUpgrade={onShowUpgrade} />}
-          {activeType === 'recordmacro' && <RecordMacroForm value={formValue} onChange={setFormValue} />}
+          {activeType === 'recordmacro' && <RecordMacroForm value={formValue} onChange={setFormValue} isPro={isPro} onShowUpgrade={onShowUpgrade} assignments={assignments} profiles={profiles} globalInputMethod={globalInputMethod} />}
           {activeType === 'ahk'   && <AhkForm value={formValue} onChange={setFormValue} />}
         </div>
 

@@ -34,6 +34,86 @@ html, body, #root {
   padding: 0;
 }
 
+/* ── Big centred 3-2-1 countdown ─────────────────────────────────────────── */
+.rc-root--countdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.rc-countdown-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 40px;
+  min-width: 320px;
+  background: linear-gradient(180deg, rgba(24, 24, 28, 0.96), rgba(14, 14, 18, 0.98));
+  border: 2px solid rgba(255, 200, 80, 0.55);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 1px rgba(255, 200, 80, 0.15),
+    0 20px 60px rgba(0, 0, 0, 0.65),
+    0 0 60px rgba(255, 200, 80, 0.25);
+  backdrop-filter: blur(12px);
+  text-align: center;
+}
+.rc-countdown-title {
+  font-family: 'Rajdhani', 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffcf70;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 12px;
+  text-shadow: 0 0 8px rgba(255, 200, 80, 0.4);
+}
+.rc-countdown-number {
+  font-family: 'Rajdhani', 'DM Sans', sans-serif;
+  font-size: 200px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffc850;
+  text-shadow:
+    0 0 20px rgba(255, 200, 80, 0.7),
+    0 0 40px rgba(255, 200, 80, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.5);
+  animation: rc-countdown-pop 0.9s ease-out;
+  margin: 8px 0;
+}
+@keyframes rc-countdown-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  20%  { transform: scale(1.15); opacity: 1; }
+  50%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.85; }
+}
+.rc-countdown-hint {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #d8d8d8;
+  margin-top: 14px;
+  max-width: 260px;
+  line-height: 1.4;
+}
+.rc-countdown-esc {
+  margin-top: 18px;
+  font-size: 11px;
+  color: #888;
+  font-family: 'DM Sans', sans-serif;
+}
+.rc-countdown-esc kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  margin-right: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  font-family: 'Chakra Petch', 'DM Sans', monospace;
+  font-size: 10.5px;
+  color: #ccc;
+}
+
 /* ── Countdown pill (small, appears above main bar during 3-2-1) ────────── */
 .rc-countdown-pill {
   display: inline-flex;
