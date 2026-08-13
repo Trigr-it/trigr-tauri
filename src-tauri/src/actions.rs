@@ -1857,6 +1857,10 @@ struct FindWindowState {
     target_process_lower: String,
     target_title_lower: String,
     found_hwnd: isize,
+    // IVirtualDesktopManager to filter out matches on non-current desktops.
+    // Focusing a window on another virtual desktop would yank the user across
+    // desktops. None = COM failed to init, permissive fallback (no filtering).
+    vdm: Option<windows::Win32::UI::Shell::IVirtualDesktopManager>,
 }
 
 unsafe extern "system" fn find_window_cb(
@@ -1912,7 +1916,12 @@ unsafe extern "system" fn find_window_cb(
         }
     }
 
-    // All criteria matched
+    // All criteria matched — but only accept if this window lives on the
+    // current virtual desktop. Otherwise SetForegroundWindow would drag the
+    // user across desktops. Skip and keep looking for another candidate.
+    if !crate::distill::is_hwnd_on_current_desktop(state.vdm.as_ref(), hwnd as isize) {
+        return 1;
+    }
     state.found_hwnd = hwnd as isize;
     0 // stop enumeration
 }
@@ -1921,6 +1930,7 @@ fn find_window_by_criteria(process_name: &str, title: &str) -> Option<isize> {
     let mut state = FindWindowState {
         target_process_lower: process_name.to_lowercase(),
         target_title_lower: title.to_lowercase(),
+        vdm: crate::distill::make_vdm(),
         found_hwnd: 0,
     };
     unsafe {
@@ -2392,6 +2402,35 @@ fn send_win_chord(vk: u16, with_shift: bool) {
     if with_shift { send_vk_key(VK_LSHIFT, true); }
     send_vk_key(VK_LWIN, true);
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+}
+
+/// Rewrite a distilled Click at Position step from `windowClient` mode to
+/// plain `absolute` mode using its recorded fallback coords. Returns None if
+/// the step is already absolute (no change needed) or the value can't be
+/// parsed. Used when the macro has no target binding: without a binding,
+/// resolving windowClient against whatever live window happens to match the
+/// recorded exe/class produces wildly wrong clicks after anchor scaling.
+fn neutralize_click_to_absolute(step: &Value) -> Option<Value> {
+    let value_str = step.get("value").and_then(|v| v.as_str())?;
+    let mut inner: Value = serde_json::from_str(value_str).ok()?;
+    if inner.get("mode").and_then(|v| v.as_str()) != Some("windowClient") {
+        return None;
+    }
+    let fx = inner.get("fallbackX").and_then(|v| v.as_i64())?;
+    let fy = inner.get("fallbackY").and_then(|v| v.as_i64())?;
+    let obj = inner.as_object_mut()?;
+    obj.insert("x".to_string(), serde_json::json!(fx));
+    obj.insert("y".to_string(), serde_json::json!(fy));
+    obj.insert("mode".to_string(), serde_json::json!("absolute"));
+    obj.remove("targetWindow");
+    obj.remove("resizeBehavior");
+    obj.remove("fallbackX");
+    obj.remove("fallbackY");
+    let mut clone = step.clone();
+    if let Some(step_obj) = clone.as_object_mut() {
+        step_obj.insert("value".to_string(), serde_json::json!(inner.to_string()));
+    }
+    Some(clone)
 }
 
 /// Returns true to continue the macro, false to abort it (caller breaks out of
@@ -3740,16 +3779,20 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 return true;
             }
 
-            // target_app precheck. Prefer the wrapper's stored target_app
-            // (set by the distiller command since Task 6). Fall back to the
-            // first ForegroundChanged event in the raw stream for older
-            // distilled macros made before target_app was auto-populated — so
-            // those still get the "app not running" abort without needing a
-            // Re-distil.
-            let effective_target = value
-                .target_app
-                .clone()
-                .or_else(|| crate::distill::extract_target_app(&value.events));
+            // target_app precheck. Read only from the wrapper's stored target_app.
+            // The distiller populates this at distil time and the Clear button
+            // in the editor sets it to null when the user wants no binding.
+            //
+            // No fallback to event-stream extraction here: that fallback was
+            // broken for macros whose target app is transient (opened BY the
+            // macro's first steps, like Search or a new Explorer window), and
+            // it silently overrode the user's Clear action.
+            let effective_target = if value.disable_target_binding {
+                info!("[Keyfire] Record Macro: target binding cleared by user — no precheck");
+                None
+            } else {
+                value.target_app.clone()
+            };
 
             match &effective_target {
                 Some(target) => {
@@ -3793,10 +3836,20 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             // and recurse into execute_macro_step so every existing arm
             // (Type Text, Press Key, Click at Position, Focus Window, Wait,
             // Mouse Scroll) runs identically to a hand-built sequence.
+            //
+            // When there's no target app (user cleared the binding), we ALSO
+            // neutralize per-step window references: Focus Window steps are
+            // skipped entirely, and Click at Position steps in windowClient
+            // mode are rewritten to plain absolute mode using their fallback
+            // coords. Otherwise a live Explorer window resolved on the current
+            // desktop can be dramatically larger than the recorded one, and
+            // the anchor-by-edge transform then places clicks hundreds of
+            // pixels away from where the user actually meant them to land.
             let distilled = value.distilled.as_ref().unwrap();
+            let strip_window_refs = effective_target.is_none();
             info!(
-                "[Keyfire] Record Macro: replaying {} distilled step(s)",
-                distilled.len()
+                "[Keyfire] Record Macro: replaying {} distilled step(s) (strip_window_refs={})",
+                distilled.len(), strip_window_refs
             );
             for (i, dstep) in distilled.iter().enumerate() {
                 if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
@@ -3807,7 +3860,26 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     info!("[Keyfire] Record Macro: aborted (Esc) at step {}", i);
                     break;
                 }
-                if !execute_macro_step(dstep, target_hwnd, method, app) {
+                // Optionally rewrite the step to strip window-specific behaviour.
+                // Cow so we only clone the step JSON when the rewrite kicks in.
+                let effective_step: std::borrow::Cow<'_, Value> = if strip_window_refs {
+                    let step_type = dstep.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    if step_type == "Focus Window" {
+                        info!("[Keyfire] Record Macro: skipping Focus Window step {} (no target binding)", i);
+                        continue;
+                    }
+                    if step_type == "Click at Position" {
+                        match neutralize_click_to_absolute(dstep) {
+                            Some(v) => std::borrow::Cow::Owned(v),
+                            None => std::borrow::Cow::Borrowed(dstep),
+                        }
+                    } else {
+                        std::borrow::Cow::Borrowed(dstep)
+                    }
+                } else {
+                    std::borrow::Cow::Borrowed(dstep)
+                };
+                if !execute_macro_step(&effective_step, target_hwnd, method, app) {
                     info!("[Keyfire] Record Macro: step {} requested abort", i);
                     break;
                 }
@@ -3945,6 +4017,47 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 }
                 other => {
                     warn!("[Keyfire] Change Volume: unknown mode '{}'", other);
+                }
+            }
+        }
+
+        // Change Audio Output — set the default render endpoint to the pinned
+        // device via IPolicyConfig (see crate::audio_devices). Value is JSON
+        // `{ deviceId: string, deviceName: string }` — deviceId is Windows'
+        // stable endpoint ID; deviceName is display-only for the toast.
+        //
+        // Success: log, let Windows show its own default-device change bubble.
+        // Missing device (unplugged/disabled): toast the user via `system-action-toast`
+        // event — App.jsx listens and pipes it through showNotification. Other
+        // failure modes (COM broken, IPolicyConfig refused) log only; they're
+        // catastrophic and not the user's problem.
+        "Change Audio Output" => {
+            let parsed: Value = match serde_json::from_str(step_value) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[Keyfire] Change Audio Output: bad JSON \"{}\": {}", step_value, e);
+                    return true;
+                }
+            };
+            let device_id = parsed.get("deviceId").and_then(|v| v.as_str()).unwrap_or("");
+            let device_name = parsed.get("deviceName").and_then(|v| v.as_str()).unwrap_or("(unnamed)");
+            if device_id.is_empty() {
+                warn!("[Keyfire] Change Audio Output: no device pinned — step is a no-op");
+                return true;
+            }
+            match crate::audio_devices::set_default_output_device(device_id) {
+                Ok(name) => {
+                    info!("[Keyfire] Change Audio Output: switched to \"{}\"", name);
+                }
+                Err(e) => {
+                    warn!("[Keyfire] Change Audio Output: {}", e);
+                    if matches!(e, crate::audio_devices::SetOutputError::DeviceNotFound(_)) {
+                        use tauri::Emitter;
+                        let _ = app.emit("system-action-toast", serde_json::json!({
+                            "level": "error",
+                            "message": format!("Audio device \"{}\" not connected", device_name),
+                        }));
+                    }
                 }
             }
         }
@@ -4108,7 +4221,8 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
 /// Inter-iteration pause polled in 100ms chunks per
 /// [[feedback_polled_sleep_for_cancel]] so a stop signal mid-pause is honoured
 /// without waiting the full 500ms.
-pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], label: &str) {
+/// Returns the number of iterations that ran (analytics credit at the call site).
+pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], label: &str) -> u64 {
     crate::recorder::TEMP_MACRO_LOOP_ACTIVE.store(true, Ordering::SeqCst);
     info!("[Keyfire] {}: loop started", label);
     let mut iter: u64 = 0;
@@ -4132,6 +4246,7 @@ pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], la
     }
     crate::recorder::TEMP_MACRO_LOOP_ACTIVE.store(false, Ordering::SeqCst);
     info!("[Keyfire] {}: loop stopped after {} iter(s)", label, iter);
+    iter
 }
 
 // ── Wait for Input step ─────────────────────────────────────────────────────

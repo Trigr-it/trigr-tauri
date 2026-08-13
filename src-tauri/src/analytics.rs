@@ -12,8 +12,11 @@ struct AnalyticsEvent {
     char_count: u32,
     trigger: String,
     label: String,
-    /// For macro sequences: JSON array of step types, e.g. ["Type Text","Open App","Press Key"]
-    macro_step_types: Option<Vec<String>>,
+    /// Pre-computed time-saved credit (seconds). Set by log_assignment_fired /
+    /// log_replay_fired, which have access to the assignment's full data
+    /// (step list, text length, recording duration). None → handle_log falls
+    /// back to the flat per-type table.
+    time_saved_override: Option<f64>,
     /// Foreground app when the action fired (e.g. "revit", "chrome")
     target_app: String,
 }
@@ -25,18 +28,70 @@ static ANALYTICS_TX: OnceLock<Mutex<mpsc::Sender<AnalyticsMsg>>> = OnceLock::new
 /// without re-resolving the app data dir. Set once; never overwritten.
 static ANALYTICS_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 
+/// Date window for analytics queries. `Range` dates are local-calendar
+/// YYYY-MM-DD strings, inclusive on both ends, validated at the IPC boundary
+/// (lib.rs) before they reach any SQL. Bank-statement-style custom exports
+/// use Range; the UI dropdowns use Days.
+#[derive(Clone, Debug)]
+pub enum Window {
+    All,
+    /// Today + (n-1) prior local calendar days. Days(1) = today only.
+    Days(u32),
+    Range(String, String),
+}
+
+impl Window {
+    /// SQL predicate fragment (no leading WHERE/AND), or "" for All.
+    /// Range dates MUST be pre-validated \d{4}-\d{2}-\d{2} — they are inlined.
+    fn predicate(&self) -> String {
+        match self {
+            Window::All => String::new(),
+            Window::Days(n) => format!(
+                "DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days')",
+                n.saturating_sub(1)
+            ),
+            Window::Range(from, to) => format!(
+                "DATE(timestamp, 'localtime') BETWEEN '{}' AND '{}'",
+                from, to
+            ),
+        }
+    }
+
+    /// " WHERE <pred>" or "" — for queries with no other conditions.
+    pub(crate) fn where_clause(&self) -> String {
+        let p = self.predicate();
+        if p.is_empty() { String::new() } else { format!(" WHERE {}", p) }
+    }
+
+    /// " AND <pred>" or "" — for queries that already have a WHERE.
+    fn and_clause(&self) -> String {
+        let p = self.predicate();
+        if p.is_empty() { String::new() } else { format!(" AND {}", p) }
+    }
+
+    /// Human label ("All time" / "Today" / "Last 7 days" / "2026-06-01 to 2026-06-30").
+    pub fn label(&self) -> String {
+        match self {
+            Window::All => "All time".to_string(),
+            Window::Days(1) => "Today".to_string(),
+            Window::Days(n) => format!("Last {} days", n),
+            Window::Range(f, t) => format!("{} to {}", f, t),
+        }
+    }
+}
+
 enum AnalyticsMsg {
     Log(AnalyticsEvent),
     GetStats(mpsc::Sender<serde_json::Value>),
-    GetDailyChart(u32, mpsc::Sender<serde_json::Value>),
-    GetAssignmentBreakdown(u32, mpsc::Sender<serde_json::Value>), // days (0 = all time)
-    GetTypeBreakdown(u32, mpsc::Sender<serde_json::Value>),       // days (0 = all time)
-    GetHourlyHeatmap(u32, mpsc::Sender<serde_json::Value>),
-    GetTopApps(u32, mpsc::Sender<serde_json::Value>),              // days (0 = all time)
-    GetExpansionEfficiency(mpsc::Sender<serde_json::Value>),
+    GetDailyChart(Window, mpsc::Sender<serde_json::Value>),
+    GetAssignmentBreakdown(Window, mpsc::Sender<serde_json::Value>),
+    GetTypeBreakdown(Window, mpsc::Sender<serde_json::Value>),
+    GetHourlyHeatmap(Window, mpsc::Sender<serde_json::Value>),
+    GetTopApps(Window, mpsc::Sender<serde_json::Value>),
+    GetExpansionEfficiency(Window, mpsc::Sender<serde_json::Value>),
     GetExpansionCounts(mpsc::Sender<serde_json::Value>),
     GetStreaks(mpsc::Sender<serde_json::Value>),
-    ExportCsv(mpsc::Sender<String>),
+    ExportXlsx(std::path::PathBuf, Window, mpsc::Sender<Result<(), String>>),
     Reset(mpsc::Sender<bool>),
     /// One-time migration: recalculate time_saved for old entries using current assignments.
     MigrateTimeSaved(std::collections::HashMap<String, serde_json::Value>),
@@ -164,28 +219,28 @@ pub fn init(app_data_dir: PathBuf) {
                         let stats = handle_get_stats(&conn);
                         let _ = reply.send(stats);
                     }
-                    AnalyticsMsg::GetDailyChart(days, reply) => {
-                        let data = handle_daily_chart(&conn, days);
+                    AnalyticsMsg::GetDailyChart(win, reply) => {
+                        let data = handle_daily_chart(&conn, &win);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::GetAssignmentBreakdown(days, reply) => {
-                        let data = handle_assignment_breakdown(&conn, days);
+                    AnalyticsMsg::GetAssignmentBreakdown(win, reply) => {
+                        let data = handle_assignment_breakdown(&conn, &win);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::GetTypeBreakdown(days, reply) => {
-                        let data = handle_type_breakdown(&conn, days);
+                    AnalyticsMsg::GetTypeBreakdown(win, reply) => {
+                        let data = handle_type_breakdown(&conn, &win);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::GetHourlyHeatmap(days, reply) => {
-                        let data = handle_hourly_heatmap(&conn, days);
+                    AnalyticsMsg::GetHourlyHeatmap(win, reply) => {
+                        let data = handle_hourly_heatmap(&conn, &win);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::GetTopApps(days, reply) => {
-                        let data = handle_top_apps(&conn, days);
+                    AnalyticsMsg::GetTopApps(win, reply) => {
+                        let data = handle_top_apps(&conn, &win);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::GetExpansionEfficiency(reply) => {
-                        let data = handle_expansion_efficiency(&conn);
+                    AnalyticsMsg::GetExpansionEfficiency(win, reply) => {
+                        let data = handle_expansion_efficiency(&conn, &win);
                         let _ = reply.send(data);
                     }
                     AnalyticsMsg::GetExpansionCounts(reply) => {
@@ -196,9 +251,9 @@ pub fn init(app_data_dir: PathBuf) {
                         let data = handle_streaks(&conn);
                         let _ = reply.send(data);
                     }
-                    AnalyticsMsg::ExportCsv(reply) => {
-                        let csv = handle_export_csv(&conn);
-                        let _ = reply.send(csv);
+                    AnalyticsMsg::ExportXlsx(path, win, reply) => {
+                        let result = crate::analytics_export::export_xlsx(&conn, &path, &win);
+                        let _ = reply.send(result);
                     }
                     AnalyticsMsg::Reset(reply) => {
                         let ok = handle_reset(&conn);
@@ -246,11 +301,10 @@ pub fn init(app_data_dir: PathBuf) {
 
 /// Log an action. Non-blocking — sends to writer thread via channel.
 pub fn log_action(action_type: &str, char_count: u32, trigger: &str, label: &str) {
-    log_action_ext(action_type, char_count, trigger, label, None);
+    log_action_inner(action_type, char_count, trigger, label, None);
 }
 
-/// Log an action with optional macro step types for accurate time calculation.
-pub fn log_action_ext(action_type: &str, char_count: u32, trigger: &str, label: &str, macro_step_types: Option<Vec<String>>) {
+fn log_action_inner(action_type: &str, char_count: u32, trigger: &str, label: &str, time_saved_override: Option<f64>) {
     // Skip simple key-to-key remaps (action_type "hotkey"). They're a passthrough,
     // not a meaningful action — counting them inflates totals and dilutes the
     // signal for macros, expansions, and other real automation.
@@ -265,11 +319,113 @@ pub fn log_action_ext(action_type: &str, char_count: u32, trigger: &str, label: 
                 char_count,
                 trigger: trigger.to_string(),
                 label: label.to_string(),
-                macro_step_types,
+                time_saved_override,
                 target_app,
             }));
         }
     }
+}
+
+/// Log a fired assignment (hotkey processor, search overlay, radial menu,
+/// quick action). Computes the time-saved credit from the assignment's own
+/// data — step list (with repeats and recording durations), text length —
+/// on the caller's background thread, then hands off to the writer.
+pub fn log_assignment_fired(trigger: &str, label: &str, macro_val: &serde_json::Value) {
+    let action_type = macro_val
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("hotkey");
+    if action_type == "hotkey" {
+        return; // passthrough remaps are never logged
+    }
+    let time = compute_assignment_time_saved(action_type, macro_val);
+    log_action_inner(action_type, 0, trigger, label, Some(time));
+}
+
+/// Log a Quick Record replay (single fire or loop session). `duration_secs`
+/// carries the full credit: recording duration, times iterations for loops.
+pub fn log_replay_fired(trigger: &str, label: &str, duration_secs: f64) {
+    log_action_inner("macro", 0, trigger, label, Some(duration_secs));
+}
+
+/// Time-saved credit for a whole assignment, by type.
+fn compute_assignment_time_saved(action_type: &str, macro_val: &serde_json::Value) -> f64 {
+    match action_type {
+        "macro" => macro_val
+            .get("data")
+            .and_then(|d| d.get("steps"))
+            .and_then(|s| s.as_array())
+            .map(|steps| steps.iter().map(step_time_saved_v2).sum())
+            .unwrap_or(3.0),
+        "text" => {
+            // Same per-character rate as expansions, floored at the flat
+            // open-action credit so short snippets don't undercut history.
+            let chars = macro_val
+                .get("data")
+                .and_then(|d| d.get("text"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count())
+                .unwrap_or(0);
+            (chars as f64 * 0.3).max(3.0)
+        }
+        "app" | "url" | "folder" | "search_template" | "ahk" => 3.0,
+        _ => 0.0,
+    }
+}
+
+/// Time-saved credit for a single macro step, including its repeat count.
+fn step_time_saved_v2(step: &serde_json::Value) -> f64 {
+    let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let repeat = step
+        .get("repeat")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1)
+        .clamp(1, 99) as f64;
+    let base = match step_type {
+        "Open App" | "Open URL" | "Open Folder" => 3.0,
+        "Type Text" | "Dynamic Text" => {
+            let chars = step
+                .get("value")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count())
+                .unwrap_or(0);
+            (chars as f64 * 0.3).max(1.0)
+        }
+        // A replayed recording saves the time it took to perform: the last
+        // event's relative timestamp IS the recording duration.
+        "Record Macro" => recording_duration_secs(
+            step.get("value").and_then(|v| v.as_str()).unwrap_or(""),
+        )
+        .max(1.0),
+        // Waits replay in real time — they save nothing.
+        "Wait (ms)" | "Wait for Input" | "Wait for Window" => 0.0,
+        "Run AHK Script" => 3.0,
+        _ => 1.0,
+    };
+    base * repeat
+}
+
+/// Duration (seconds) of a Record Macro step's stored recording. The step
+/// value is either a bare RecordedEvent array (Phase 1) or a wrapper object
+/// with an `events` array (Phase 2). Events are internally tagged, so every
+/// element has a top-level relative-`t` (ms) field.
+fn recording_duration_secs(value: &str) -> f64 {
+    let parsed: serde_json::Value = match serde_json::from_str(value) {
+        Ok(v) => v,
+        Err(_) => return 0.0,
+    };
+    let events = match &parsed {
+        serde_json::Value::Array(_) => Some(&parsed),
+        serde_json::Value::Object(o) => o.get("events"),
+        _ => None,
+    };
+    events
+        .and_then(|e| e.as_array())
+        .and_then(|arr| arr.last())
+        .and_then(|last| last.get("t"))
+        .and_then(|t| t.as_f64())
+        .map(|ms| ms / 1000.0)
+        .unwrap_or(0.0)
 }
 
 // ── Telemetry write API (called from telemetry.rs) ────────────────────────
@@ -334,34 +490,35 @@ pub fn get_stats() -> serde_json::Value {
     send_and_recv(|reply| AnalyticsMsg::GetStats(reply), empty_stats())
 }
 
-/// Get daily chart data for the last N days.
-pub fn get_daily_chart(days: u32) -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetDailyChart(days, reply), serde_json::json!([]))
+/// Get daily chart data for a window.
+pub fn get_daily_chart(win: Window) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetDailyChart(win, reply), serde_json::json!([]))
 }
 
-/// Get type breakdown (expansions/hotkeys/macros) for a time range. days=0 means all time.
-pub fn get_type_breakdown(days: u32) -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetTypeBreakdown(days, reply), serde_json::json!({}))
+/// Get type breakdown (expansions/hotkeys/macros) for a window.
+pub fn get_type_breakdown(win: Window) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetTypeBreakdown(win, reply), serde_json::json!({}))
 }
 
-/// Get per-assignment breakdown (top 50 by usage). days=0 means all time.
-pub fn get_assignment_breakdown(days: u32) -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetAssignmentBreakdown(days, reply), serde_json::json!([]))
+/// Get per-assignment breakdown (top 50 by usage) for a window.
+pub fn get_assignment_breakdown(win: Window) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetAssignmentBreakdown(win, reply), serde_json::json!([]))
 }
 
-/// Get hourly heatmap for the given number of days x 24 hours.
-pub fn get_hourly_heatmap(days: u32) -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetHourlyHeatmap(days, reply), serde_json::json!([]))
+/// Get hourly heatmap (dow x hour) for a window.
+pub fn get_hourly_heatmap(win: Window) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetHourlyHeatmap(win, reply), serde_json::json!([]))
 }
 
-/// Get top apps by action count. days=0 means all time.
-pub fn get_top_apps(days: u32) -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetTopApps(days, reply), serde_json::json!([]))
+/// Get top apps by action count for a window.
+pub fn get_top_apps(win: Window) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetTopApps(win, reply), serde_json::json!([]))
 }
 
 /// Get expansion efficiency stats (chars typed vs chars expanded).
-pub fn get_expansion_efficiency() -> serde_json::Value {
-    send_and_recv(|reply| AnalyticsMsg::GetExpansionEfficiency(reply), serde_json::json!({}))
+/// All → the classic { week, month, all } shape; scoped → { period: {...} }.
+pub fn get_expansion_efficiency(win: Window) -> serde_json::Value {
+    send_and_recv(|reply| AnalyticsMsg::GetExpansionEfficiency(win, reply), serde_json::json!({}))
 }
 
 /// Get per-expansion fire counts (trigger_key → count).
@@ -374,19 +531,22 @@ pub fn get_streaks() -> serde_json::Value {
     send_and_recv(|reply| AnalyticsMsg::GetStreaks(reply), serde_json::json!({"current": 0, "longest": 0}))
 }
 
-/// Export all analytics as CSV string.
-pub fn export_csv() -> String {
+/// Export analytics as a multi-sheet XLSX workbook at `path`, scoped to `win`.
+/// Runs on the writer thread (it owns the SQLite connection); blocks the
+/// caller until the file is written or the timeout hits.
+pub fn export_xlsx(path: std::path::PathBuf, win: Window) -> Result<(), String> {
     if let Some(tx) = ANALYTICS_TX.get() {
         if let Ok(tx) = tx.lock() {
             let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(AnalyticsMsg::ExportCsv(reply_tx)).is_ok() {
-                if let Ok(csv) = reply_rx.recv_timeout(std::time::Duration::from_secs(10)) {
-                    return csv;
+            if tx.send(AnalyticsMsg::ExportXlsx(path, win, reply_tx)).is_ok() {
+                if let Ok(result) = reply_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                    return result;
                 }
+                return Err("Export timed out".to_string());
             }
         }
     }
-    String::new()
+    Err("Analytics engine not running".to_string())
 }
 
 /// Retroactively recalculate time_saved for old entries using current assignments.
@@ -445,17 +605,12 @@ fn step_time_saved(step_type: &str) -> f64 {
 }
 
 fn handle_log(conn: &Connection, event: AnalyticsEvent) {
-    let time_saved = match event.action_type.as_str() {
+    let time_saved = event.time_saved_override.unwrap_or_else(|| match event.action_type.as_str() {
+        // Image expansions log char_count 0 — pasting an image by hand
+        // (find file, copy, paste) is at least an open-action's worth.
+        "expansion" if event.char_count == 0 => 3.0,
         "expansion" => event.char_count as f64 * 0.3,
-        "macro" => {
-            // Sum time for each step in the macro sequence
-            match &event.macro_step_types {
-                Some(steps) if !steps.is_empty() => {
-                    steps.iter().map(|s| step_time_saved(s)).sum()
-                }
-                _ => 3.0, // fallback for legacy entries without step info
-            }
-        }
+        "macro" => 3.0,   // fallback — fire paths pass an override with real step credit
         "hotkey" => 0.0,  // key-for-key remap, no time saved
         // Fixing a typo by hand ≈ notice it, backspace, retype: ~2 seconds.
         "autocorrect" => 2.0,
@@ -464,8 +619,9 @@ fn handle_log(conn: &Connection, event: AnalyticsEvent) {
         "url" => 3.0,     // open URL
         "folder" => 3.0,  // open folder
         "search_template" => 3.0,
+        "ahk" => 3.0,     // run AHK script
         _ => 0.0,
-    };
+    });
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -477,7 +633,7 @@ fn handle_log(conn: &Connection, event: AnalyticsEvent) {
     }
 }
 
-fn handle_get_stats(conn: &Connection) -> serde_json::Value {
+pub(crate) fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     // All windowed queries use SQLite's 'localtime' modifier so "today" and
     // "last N days" are anchored to the user's local calendar day. Stored
     // timestamps remain UTC (see handle_log) — only the comparison is local.
@@ -598,16 +754,17 @@ fn handle_get_stats(conn: &Connection) -> serde_json::Value {
 
 // ── Pro analytics handlers ─────────────────────────────────────────────────
 
-fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
+pub(crate) fn handle_daily_chart(conn: &Connection, win: &Window) -> serde_json::Value {
     // Bucket by local calendar day so bar keys match the frontend's local-date
-    // fill-in loop. Window = today + (days-1) prior local days.
-    let mut stmt = match conn.prepare(
+    // fill-in loop. Window predicate is pre-validated (see Window docs).
+    let query = format!(
         "SELECT DATE(timestamp, 'localtime') AS day, COUNT(*) AS actions, COALESCE(SUM(time_saved), 0.0) AS saved
-         FROM action_log
-         WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', ?1)
+         FROM action_log{}
          GROUP BY day
-         ORDER BY day ASC"
-    ) {
+         ORDER BY day ASC",
+        win.where_clause()
+    );
+    let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
         Err(e) => {
             warn!("[Keyfire] Daily chart query failed: {}", e);
@@ -615,8 +772,7 @@ fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
         }
     };
 
-    let offset = format!("-{} days", days.saturating_sub(1));
-    let rows: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![offset], |row| {
+    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
         Ok(serde_json::json!({
             "date": row.get::<_, String>(0).unwrap_or_default(),
             "actions": row.get::<_, i64>(1).unwrap_or(0),
@@ -630,18 +786,11 @@ fn handle_daily_chart(conn: &Connection, days: u32) -> serde_json::Value {
     serde_json::json!(rows)
 }
 
-fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
-    // days=0 → all time; days=N → today + (N-1) prior local calendar days.
-    let query = if days == 0 {
-        "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log GROUP BY action_type".to_string()
-    } else {
-        format!(
-            "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
-             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days') \
-             GROUP BY action_type",
-            days - 1
-        )
-    };
+pub(crate) fn handle_type_breakdown(conn: &Connection, win: &Window) -> serde_json::Value {
+    let query = format!(
+        "SELECT action_type, COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log{} GROUP BY action_type",
+        win.where_clause()
+    );
 
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
@@ -654,6 +803,10 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
     let mut autocorrects: i64 = 0;
     let mut total: i64 = 0;
     let mut time_saved: f64 = 0.0;
+    let mut expansions_saved: f64 = 0.0;
+    let mut hotkeys_saved: f64 = 0.0;
+    let mut macros_saved: f64 = 0.0;
+    let mut autocorrects_saved: f64 = 0.0;
     if let Ok(rows) = stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(0).unwrap_or_default(),
@@ -665,10 +818,10 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
             total += row.1;
             time_saved += row.2;
             match row.0.as_str() {
-                "expansion" => expansions += row.1,
-                "macro" => macros += row.1,
-                "autocorrect" => autocorrects += row.1,
-                _ => hotkeys += row.1,
+                "expansion" => { expansions += row.1; expansions_saved += row.2; }
+                "macro" => { macros += row.1; macros_saved += row.2; }
+                "autocorrect" => { autocorrects += row.1; autocorrects_saved += row.2; }
+                _ => { hotkeys += row.1; hotkeys_saved += row.2; }
             }
         }
     }
@@ -680,25 +833,22 @@ fn handle_type_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
         "macros": macros,
         "autocorrects": autocorrects,
         "time_saved": time_saved,
+        "expansions_saved": expansions_saved,
+        "hotkeys_saved": hotkeys_saved,
+        "macros_saved": macros_saved,
+        "autocorrects_saved": autocorrects_saved,
     })
 }
 
-fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Value {
-    // days=0 → all time; days=N → today + (N-1) prior local calendar days.
-    let (query, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = if days == 0 {
-        ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
-          FROM action_log WHERE trigger_key != '' AND action_type != 'autocorrect'
-          GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
-         vec![])
-    } else {
-        ("SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
-          FROM action_log WHERE trigger_key != '' AND action_type != 'autocorrect'
-          AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', ?1)
-          GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
-         vec![Box::new(format!("-{} days", days - 1)) as Box<dyn rusqlite::types::ToSql>])
-    };
+pub(crate) fn handle_assignment_breakdown(conn: &Connection, win: &Window) -> serde_json::Value {
+    let query = format!(
+        "SELECT trigger_key, label, action_type, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved, MAX(timestamp) AS last_fired
+         FROM action_log WHERE trigger_key != '' AND action_type != 'autocorrect'{}
+         GROUP BY trigger_key ORDER BY count DESC LIMIT 50",
+        win.and_clause()
+    );
 
-    let mut stmt = match conn.prepare(query) {
+    let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
         Err(e) => {
             warn!("[Keyfire] Assignment breakdown query failed: {}", e);
@@ -706,8 +856,7 @@ fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Valu
         }
     };
 
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    let rows: Vec<serde_json::Value> = match stmt.query_map(param_refs.as_slice(), |row| {
+    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
         Ok(serde_json::json!({
             "trigger": row.get::<_, String>(0).unwrap_or_default(),
             "label": row.get::<_, String>(1).unwrap_or_default(),
@@ -724,20 +873,13 @@ fn handle_assignment_breakdown(conn: &Connection, days: u32) -> serde_json::Valu
     serde_json::json!(rows)
 }
 
-fn handle_top_apps(conn: &Connection, days: u32) -> serde_json::Value {
-    // days=0 → all time; days=N → today + (N-1) prior local calendar days.
-    let query = if days == 0 {
+pub(crate) fn handle_top_apps(conn: &Connection, win: &Window) -> serde_json::Value {
+    let query = format!(
         "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
-         FROM action_log WHERE target_app != '' AND LOWER(target_app) != 'trigr'
-         GROUP BY target_app ORDER BY count DESC LIMIT 20".to_string()
-    } else {
-        format!(
-            "SELECT target_app, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
-             FROM action_log WHERE target_app != '' AND LOWER(target_app) != 'trigr'
-             AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days')
-             GROUP BY target_app ORDER BY count DESC LIMIT 20", days - 1
-        )
-    };
+         FROM action_log WHERE target_app != '' AND LOWER(target_app) != 'trigr'{}
+         GROUP BY target_app ORDER BY count DESC LIMIT 20",
+        win.and_clause()
+    );
 
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
@@ -791,17 +933,20 @@ fn compute_efficiency(conn: &Connection, where_clause: &str) -> serde_json::Valu
     })
 }
 
-fn handle_expansion_efficiency(conn: &Connection) -> serde_json::Value {
-    // Week/month windows are local calendar days: today + 6/29 prior days.
-    let week = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-6 days')");
-    let month = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-29 days')");
-    let all = compute_efficiency(conn, "");
-
-    serde_json::json!({
-        "week": week,
-        "month": month,
-        "all": all,
-    })
+pub(crate) fn handle_expansion_efficiency(conn: &Connection, win: &Window) -> serde_json::Value {
+    if let Window::All = win {
+        // Week/month windows are local calendar days: today + 6/29 prior days.
+        let week = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-6 days')");
+        let month = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-29 days')");
+        let all = compute_efficiency(conn, "");
+        return serde_json::json!({
+            "week": week,
+            "month": month,
+            "all": all,
+        });
+    }
+    // Scoped: one efficiency block for the exact window (period-native report).
+    serde_json::json!({ "period": compute_efficiency(conn, &win.and_clause()) })
 }
 
 fn handle_expansion_counts(conn: &Connection) -> serde_json::Value {
@@ -827,19 +972,18 @@ fn handle_expansion_counts(conn: &Connection) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
-fn handle_hourly_heatmap(conn: &Connection, days: u32) -> serde_json::Value {
+pub(crate) fn handle_hourly_heatmap(conn: &Connection, win: &Window) -> serde_json::Value {
     // Returns array of { dow (0=Sun..6=Sat), hour (0-23), count, time_saved }.
-    // Both day-of-week and hour are in local time, and the date window is
-    // today + (days-1) prior local calendar days.
+    // Both day-of-week and hour are in local time.
     let query = format!(
         "SELECT CAST(strftime('%w', timestamp, 'localtime') AS INTEGER) AS dow,
                 CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) AS hour,
                 COUNT(*) AS count,
                 COALESCE(SUM(time_saved), 0.0) AS saved
-         FROM action_log
-         WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days')
+         FROM action_log{}
          GROUP BY dow, hour
-         ORDER BY dow, hour", days.saturating_sub(1)
+         ORDER BY dow, hour",
+        win.where_clause()
     );
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
@@ -864,7 +1008,7 @@ fn handle_hourly_heatmap(conn: &Connection, days: u32) -> serde_json::Value {
     serde_json::json!(rows)
 }
 
-fn handle_streaks(conn: &Connection) -> serde_json::Value {
+pub(crate) fn handle_streaks(conn: &Connection) -> serde_json::Value {
     // Get all distinct dates with at least one action, sorted ascending
     let mut stmt = match conn.prepare(
         "SELECT DISTINCT DATE(timestamp, 'localtime') AS d FROM action_log ORDER BY d ASC"
@@ -937,48 +1081,6 @@ fn is_yesterday(date_str: &str) -> bool {
         return d == yesterday;
     }
     false
-}
-
-fn handle_export_csv(conn: &Connection) -> String {
-    let mut csv = String::from("timestamp,action_type,trigger,label,char_count,time_saved\n");
-
-    let mut stmt = match conn.prepare(
-        "SELECT timestamp, action_type, trigger_key, label, char_count, time_saved FROM action_log ORDER BY id ASC"
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            warn!("[Keyfire] CSV export query failed: {}", e);
-            return csv;
-        }
-    };
-
-    if let Ok(rows) = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0).unwrap_or_default(),
-            row.get::<_, String>(1).unwrap_or_default(),
-            row.get::<_, String>(2).unwrap_or_default(),
-            row.get::<_, String>(3).unwrap_or_default(),
-            row.get::<_, i64>(4).unwrap_or(0),
-            row.get::<_, f64>(5).unwrap_or(0.0),
-        ))
-    }) {
-        for row in rows.flatten() {
-            // Escape CSV fields that contain commas or quotes
-            let escape = |s: &str| {
-                if s.contains(',') || s.contains('"') || s.contains('\n') {
-                    format!("\"{}\"", s.replace('"', "\"\""))
-                } else {
-                    s.to_string()
-                }
-            };
-            csv.push_str(&format!(
-                "{},{},{},{},{},{:.1}\n",
-                escape(&row.0), escape(&row.1), escape(&row.2), escape(&row.3), row.4, row.5
-            ));
-        }
-    }
-
-    csv
 }
 
 fn handle_reset(conn: &Connection) -> bool {

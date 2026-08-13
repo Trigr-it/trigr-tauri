@@ -67,6 +67,8 @@ pub struct RecordMacroValue {
     pub playback_mode: String,
     #[serde(default)]
     pub target_app: Option<TargetApp>,
+    #[serde(default)]
+    pub disable_target_binding: bool,
 }
 
 fn default_playback_mode() -> String {
@@ -84,6 +86,7 @@ pub fn parse_record_macro_value(json: &str) -> Option<RecordMacroValue> {
             distilled: None,
             playback_mode: "raw".into(),
             target_app: None,
+            disable_target_binding: false,
         })
     } else {
         None

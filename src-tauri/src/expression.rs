@@ -720,6 +720,22 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             }
         }
 
+        // ── Random ──────────────────────────────────────────────────
+        // random("a", "b", "c") — pick one arg uniformly. Nanos-based; no rand
+        // crate. Combine with {set}: `{set greeting = random("hi","hello","hey")}`
+        // then `{greeting}` reuses the same picked value later in the expansion.
+        "random" => {
+            if args.is_empty() {
+                return Err("random: needs at least one argument".to_string());
+            }
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos() as u64 ^ (d.as_secs() as u64))
+                .unwrap_or(0);
+            let idx = (nanos as usize) % args.len();
+            Ok(args[idx].clone())
+        }
+
         _ => Err(format!("unknown function '{}'", name)),
     }
 }

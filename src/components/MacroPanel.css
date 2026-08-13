@@ -1181,6 +1181,28 @@
   font-size: 11px;
 }
 
+/* Compact refresh button — used inline in the Change Audio Output step to
+   re-enumerate devices after the user plugs in a headset mid-edit. Kept small
+   so it doesn't compete visually with the device dropdown next to it. */
+.macro-step-refresh-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.macro-step-refresh-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
 /* Sits in the same slot as .macro-step-value for step types with no inline
    value (Copy to Clipboard, Paste Clipboard, Select All). Muted + italic so
    it reads as a clarifying note rather than something the user should click. */

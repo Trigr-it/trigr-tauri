@@ -728,6 +728,12 @@ function App() {
       window.electronAPI.onOverlayFired?.((data) => {
         showNotification(`⚡ ${data.label || 'Macro fired'}`);
       });
+      // Per-step toasts from Rust action arms (Change Audio Output device-missing,
+      // future arms that need to surface a message). Payload: {level, message}.
+      window.electronAPI.onSystemActionToast?.((data) => {
+        if (!data?.message) return;
+        showNotification(data.message, data.level === 'error' ? 'error' : (data.level || 'info'));
+      });
       window.electronAPI.onHotkeyRecorded?.((data) => {
         setIsRecording(false);
         if (!data) {
@@ -948,6 +954,7 @@ function App() {
       window.electronAPI?.removeAllListeners('engine-status');
       window.electronAPI?.removeAllListeners('profile-switched');
       window.electronAPI?.removeAllListeners('reset-editing-on-hide');
+      window.electronAPI?.removeAllListeners('system-action-toast');
       window.electronAPI?.removeAllListeners('overlay-fired');
       window.electronAPI?.removeAllListeners('hotkey-recorded');
       window.electronAPI?.removeAllListeners('loop-fire-started');
@@ -1794,8 +1801,12 @@ function App() {
   }, [theme]);
 
   // ── Text expansions (global — shared across all profiles) ─
+  // Alias entries (data.isAlias === true) are shadow copies of a primary
+  // expansion so the buffer matcher fires on any alias trigger without needing
+  // per-key lookup logic. They are hidden from this list — the UI only shows
+  // the primary. The primary carries `aliases: string[]` for editing.
   const expansions = Object.entries(assignments)
-    .filter(([k]) => k.startsWith('GLOBAL::EXPANSION::'))
+    .filter(([k, v]) => k.startsWith('GLOBAL::EXPANSION::') && !v?.data?.isAlias)
     .map(([k, v]) => ({
       trigger: k.slice('GLOBAL::EXPANSION::'.length),
       html: v.data?.html || '',
@@ -1807,6 +1818,8 @@ function App() {
       imagePath: v.data?.imagePath || '',
       imageScale: v.data?.imageScale ?? 100,
       options: v.data?.options || [],
+      randomVariant: v.data?.randomVariant === true,
+      aliases: Array.isArray(v.data?.aliases) ? v.data.aliases : [],
       voicePhrases: readVoicePhrases(v.data),
     }))
     .sort((a, b) => a.trigger.localeCompare(b.trigger));
@@ -1814,11 +1827,29 @@ function App() {
   // editorValue is { html, text } from the rich text editor.
   // originalTrigger is provided when editing an existing expansion; if it differs
   // from trigger the old key is removed in the same update (single atomic write).
-  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale, variantOptions, voicePhrases) => {
+  // aliases is an optional string[] of additional triggers that fire the same
+  // expansion — persisted on the primary as data.aliases, and each alias also
+  // gets its own GLOBAL::EXPANSION::<alias> assignment entry marked isAlias:true
+  // so the buffer matcher (which does exact-trigger lookup) picks them up.
+  const handleAddExpansion = useCallback((trigger, editorValue, originalTrigger, category, triggerMode, displayName, expansionType, imagePath, imageScale, variantOptions, voicePhrases, aliases, randomVariant) => {
     const newAssignments = { ...assignments };
+    // Sweep previous alias shadow entries so a rename or alias-list edit doesn't
+    // leave stale keys behind. Applies to both the old-name AND new-name flavour
+    // so we cover the rename case in one loop.
+    const oldTriggerToClean = originalTrigger || trigger;
+    Object.keys(newAssignments).forEach(k => {
+      if (!k.startsWith('GLOBAL::EXPANSION::')) return;
+      const d = newAssignments[k]?.data;
+      if (d?.isAlias && (d.primaryTrigger === oldTriggerToClean || d.primaryTrigger === trigger)) {
+        delete newAssignments[k];
+      }
+    });
     if (originalTrigger && originalTrigger !== trigger) {
       delete newAssignments[`GLOBAL::EXPANSION::${originalTrigger}`];
     }
+    const cleanAliases = Array.isArray(aliases)
+      ? Array.from(new Set(aliases.map(a => (a || '').trim().toLowerCase()).filter(a => a && a !== trigger)))
+      : [];
     const data = { category: category || null, triggerMode: triggerMode || 'space', displayName: displayName || null };
     if (expansionType === 'image') {
       data.expansionType = 'image';
@@ -1830,6 +1861,14 @@ function App() {
     }
     if (variantOptions && variantOptions.length > 0) {
       data.options = variantOptions;
+      // randomVariant only lives alongside options — a variantless expansion
+      // never fires the random path so no need to keep the flag around.
+      if (randomVariant === true) {
+        data.randomVariant = true;
+      }
+    }
+    if (cleanAliases.length > 0) {
+      data.aliases = cleanAliases;
     }
     // Voice phrases: array with read fallback to legacy single string handled
     // by writeVoicePhrases — empty array deletes both fields so no orphan keys.
@@ -1839,6 +1878,15 @@ function App() {
       label: displayName || (expansionType === 'image' ? `Image: ${trigger}` : `Expand: ${trigger}`),
       data,
     };
+    // Write one shadow entry per alias — identical data payload plus isAlias flag
+    // and back-pointer so cleanup + `{{expansion:...}}` lookup work uniformly.
+    for (const alias of cleanAliases) {
+      newAssignments[`GLOBAL::EXPANSION::${alias}`] = {
+        type: 'expansion',
+        label: displayName || (expansionType === 'image' ? `Image: ${alias}` : `Expand: ${alias}`),
+        data: { ...data, isAlias: true, primaryTrigger: trigger, aliases: undefined },
+      };
+    }
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Expansion "${trigger}" saved`);
@@ -1857,23 +1905,43 @@ function App() {
   const handleDeleteExpansion = useCallback((trigger) => {
     const newAssignments = { ...assignments };
     delete newAssignments[`GLOBAL::EXPANSION::${trigger}`];
+    // Sweep shadow alias entries pointing at this primary.
+    Object.keys(newAssignments).forEach(k => {
+      if (!k.startsWith('GLOBAL::EXPANSION::')) return;
+      const d = newAssignments[k]?.data;
+      if (d?.isAlias && d.primaryTrigger === trigger) {
+        delete newAssignments[k];
+      }
+    });
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Expansion "${trigger}" deleted`, 'info');
   }, [assignments, profiles, activeProfile, saveConfig, showNotification]);
 
   // Bulk delete from the multi-select selection bar — one state update, one
-  // config save, one toast, however many rows were selected.
+  // config save, one toast, however many rows were selected. Sweeps alias
+  // shadow entries for each removed primary in the same pass.
   const handleDeleteExpansionsBulk = useCallback((triggers) => {
     if (!Array.isArray(triggers) || triggers.length === 0) return;
     const newAssignments = { ...assignments };
+    const removedSet = new Set();
     let deleted = 0;
     for (const trigger of triggers) {
       const key = `GLOBAL::EXPANSION::${trigger}`;
       if (newAssignments[key]) {
         delete newAssignments[key];
+        removedSet.add(trigger);
         deleted++;
       }
+    }
+    if (removedSet.size > 0) {
+      Object.keys(newAssignments).forEach(k => {
+        if (!k.startsWith('GLOBAL::EXPANSION::')) return;
+        const d = newAssignments[k]?.data;
+        if (d?.isAlias && removedSet.has(d.primaryTrigger)) {
+          delete newAssignments[k];
+        }
+      });
     }
     if (deleted === 0) return;
     setAssignments(newAssignments);

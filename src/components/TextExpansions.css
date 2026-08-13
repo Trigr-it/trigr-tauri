@@ -1414,6 +1414,72 @@ button.te-col-header:hover {
   margin-top: 1px;
 }
 
+/* ── Alias chip input ────────────────────────────────────────────────────── */
+
+.te-alias-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  min-height: 36px;
+}
+
+.te-alias-input-row:focus-within {
+  border-color: var(--border-accent);
+}
+
+.te-alias-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+.te-alias-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.te-alias-chip-remove:hover {
+  background: rgba(var(--accent-rgb), 0.18);
+  color: var(--text-primary);
+}
+
+.te-alias-input {
+  flex: 1 1 120px;
+  min-width: 100px;
+  height: 26px;
+  padding: 0 6px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
 .te-cat-select {
   height: 36px;
   padding: 0 12px;
@@ -1728,7 +1794,15 @@ button.te-col-header:hover {
 .rte-chip-fillin     { background: rgba(200,100,255,0.12); color: #c864ff; border: 1px solid rgba(200,100,255,0.35); }
 .rte-chip-formula    { background: rgba(120,200,255,0.10); color: #5cb8ff; border: 1px solid rgba(120,200,255,0.40); font-family: var(--font-mono, ui-monospace, monospace); font-style: italic; }
 .rte-chip-globalvar  { background: rgba(232,160,32,0.12);  color: #e8a020; border: 1px solid rgba(232,160,32,0.35);  }
+.rte-chip-expansion  { background: rgba(120,90,220,0.14);  color: #a08cff; border: 1px solid rgba(120,90,220,0.40); }
 .rte-chip-key        { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); }
+
+.rte-menu-empty {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
 .rte-chip-heading    { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); min-width: 22px; justify-content: center; }
 
 /* Text colour swatch grid inside the colour dropdown */
@@ -2237,6 +2311,8 @@ button.te-col-header:hover {
 .rte-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 3px;
   gap: 2px;
   padding: 4px 6px;
   border-bottom: 1px solid var(--border);
@@ -2416,6 +2492,35 @@ button.te-col-header:hover {
 .rte-formula-chip--set    { border-color: rgba(100, 220, 160, 0.5); }
 .rte-formula-chip--var    { border-color: rgba(200, 100, 255, 0.5); }
 .rte-formula-chip--reserved { border-color: rgba(var(--accent-rgb), 0.5); }
+.rte-formula-chip--fn { border-color: rgba(255, 200, 100, 0.45); font-family: var(--font-mono, monospace); }
+
+/* Function chip rows: category label + horizontal chip band. Kept compact so
+   the whole popup body still fits under Rory's 500px min viewport. */
+.rte-formula-fn-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.rte-formula-fn-cat {
+  flex-shrink: 0;
+  min-width: 52px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding-top: 4px;
+}
+
+.rte-formula-fn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
 
 .rte-formula-else-toggle {
   display: inline-flex;
@@ -3576,6 +3681,14 @@ button.te-col-header:hover {
   flex-shrink: 0;
 }
 
+/* Random-fire variant badge — same silhouette, brighter fill so users can spot
+   at a glance that this expansion won't show a picker. */
+.te-variant-badge--random {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border: 1px solid var(--border-accent);
+  width: 16px;
+}
+
 /* Variant chip row in preview column. Wraps to a second line if needed —
    the parent .te-col-preview keeps its 2-line clamp via overflow:hidden,
    so a third row of chips silently disappears (rare; most expansions have
@@ -3641,6 +3754,28 @@ button.te-col-header:hover {
   color: var(--text-muted);
   margin-bottom: 10px;
   line-height: 1.4;
+}
+
+/* Random-variant toggle sits inline with the VARIANTS label in the header row.
+   Same visual language as .gd-random-toggle used to have — small inline
+   checkbox with muted secondary label. */
+.te-variant-random-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.te-variant-random-toggle input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+}
+
+.te-variant-random-toggle input[type="checkbox"]:disabled {
+  cursor: not-allowed;
 }
 
 /* Tab row — pill tabs across the top of the editor area. 32px height +

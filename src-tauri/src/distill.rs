@@ -26,16 +26,27 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayout, ToUnico
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
 };
+// `windows` (not `windows-sys`) exposes IVirtualDesktopManager. Used to keep
+// window lookups on the CURRENT virtual desktop so a distilled macro replayed
+// on Desktop 2 doesn't SetForegroundWindow a candidate on Desktop 1 (which
+// would yank the user to that desktop). See is_hwnd_on_current_desktop below.
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+};
+use windows::Win32::UI::Shell::{IVirtualDesktopManager, VirtualDesktopManager};
 
 // ── Tunable thresholds ──────────────────────────────────────────────────────
 //
-// All defaults chosen to keep distilled output readable. WAIT_THRESHOLD_MS is
-// the biggest lever — smaller values fragment typing into more Wait steps,
-// larger values swallow deliberate pauses into typing runs. 500ms feels right
-// for the majority of workflows tested.
+// Two Wait thresholds: a HIGH one used while accumulating a Type Text run
+// (so natural pauses between keystrokes don't fragment typing into many
+// Wait+TypeText+Wait+TypeText fragments), and a LOW one used everywhere else
+// (so UI navigation gaps, "open folder → wait for render → click something",
+// are preserved and replay doesn't outrun the target app). 100ms picks up the
+// gaps a UI needs to settle without capturing every micro-jitter between clicks.
 
 const CLICK_TOLERANCE_PX: i32 = 4;
-const WAIT_THRESHOLD_MS: u64 = 500;
+const WAIT_THRESHOLD_TEXT_MS: u64 = 500;
+const WAIT_THRESHOLD_UI_MS: u64 = 100;
 const WAIT_PRECISION_MS: u64 = 50;
 const MAX_TYPE_TEXT_CHARS: usize = 500;
 
@@ -60,7 +71,7 @@ pub struct RecordMacroValue {
     pub events: Vec<RecordedEvent>,
     /// Distilled steps in the SAME shape as manual macro steps
     /// (`{type: "Type Text", value: "..."}` etc). Replay walks them via
-    /// `execute_macro_step` recursively — Option C architecture, no separate
+    /// `execute_macro_step` recursively. Option C architecture, no separate
     /// distilled executor path. Stored as raw JSON so the frontend can pass
     /// them straight into MacroSequenceForm without conversion.
     #[serde(default)]
@@ -69,6 +80,14 @@ pub struct RecordMacroValue {
     pub playback_mode: String,
     #[serde(default)]
     pub target_app: Option<TargetApp>,
+    /// User-explicit "no binding" flag. Set to true when the user clicks the
+    /// Clear button on the target-app chip in the macro editor. Defaults to
+    /// false so pre-existing wrappers keep the auto-detect-from-events fallback.
+    /// When true, the fire path skips all binding logic and runs the distilled
+    /// steps against whatever window is currently focused. Re-distil resets it
+    /// to false since a fresh distillation provides a fresh binding.
+    #[serde(default)]
+    pub disable_target_binding: bool,
 }
 
 fn default_playback_mode() -> String {
@@ -89,6 +108,7 @@ pub fn parse_record_macro_value(json: &str) -> Option<RecordMacroValue> {
             distilled: None,
             playback_mode: "raw".into(),
             target_app: None,
+            disable_target_binding: false,
         })
     } else {
         None
@@ -205,6 +225,14 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
     let mut first_event_seen = false;
 
     for evt in events {
+        // MouseMove events fire every ~20ms while the cursor is moving, so if
+        // we let them advance `last_t` the gap between consecutive events is
+        // always tiny and no Wait step ever gets emitted between real actions.
+        // Drag detection doesn't need mousemoves either — it uses the mousedown
+        // and mouseup coords directly (line 282+). Skip them entirely.
+        if matches!(evt, RecordedEvent::MouseMove { .. }) {
+            continue;
+        }
         let evt_t = event_t(evt);
         // Wait injection — only after we've seen at least one event (avoid a
         // leading Wait for the natural gap between recorder start and first
@@ -214,7 +242,16 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
         // for a 2s press).
         if first_event_seen && mouse_down.is_none() {
             let gap = evt_t.saturating_sub(last_t);
-            if gap >= WAIT_THRESHOLD_MS {
+            // Threshold depends on whether we're mid-typing. Inside a typing
+            // run (text_buf non-empty), only large gaps break the run. Outside
+            // one (UI navigation), preserve smaller gaps too so the target has
+            // time to respond before the next click fires.
+            let threshold = if text_buf.is_empty() {
+                WAIT_THRESHOLD_UI_MS
+            } else {
+                WAIT_THRESHOLD_TEXT_MS
+            };
+            if gap >= threshold {
                 flush_text_buffer(&mut text_buf, &mut out);
                 let rounded = round_ms(gap);
                 if rounded > 0 {
@@ -290,11 +327,7 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
                     }
                 }
             }
-            RecordedEvent::MouseMove { .. } => {
-                // Discarded — the design absorbs cursor paths. Movement is
-                // still used implicitly for Click-vs-Drag via the MouseDown
-                // and MouseUp positions.
-            }
+            RecordedEvent::MouseMove { .. } => unreachable!("filtered above"),
             RecordedEvent::Wheel { delta, .. } => {
                 flush_text_buffer(&mut text_buf, &mut out);
                 out.push(DistilledStep::Scroll { delta: *delta });
@@ -785,7 +818,9 @@ fn vk_to_char(vk: u32, sc: u32, modifiers: &[u32]) -> Option<String> {
 // "skip this step" (toast + continue).
 
 /// Resolve a stored TargetWindow to a live HWND, or None if no top-level
-/// visible window matches.
+/// visible window matches on the CURRENT virtual desktop. Never falls back to
+/// windows on other desktops. That would otherwise yank the user's foreground
+/// across desktops when a distilled macro re-focuses its target.
 pub fn resolve_target_window(target: &TargetWindow) -> Option<isize> {
     let mut ctx = ResolveCtx {
         wanted_exe: target.exe.to_lowercase(),
@@ -799,16 +834,46 @@ pub fn resolve_target_window(target: &TargetWindow) -> Option<isize> {
             &mut ctx as *mut _ as LPARAM,
         );
     }
+    // Filter to windows on the current virtual desktop only. Permissive fallback
+    // on any COM failure (older Windows, denied access) keeps behaviour unchanged
+    // for users whose VDM interface doesn't work.
+    let vdm = make_vdm();
+    let on_current: Vec<&WindowCandidate> = ctx.matches.iter()
+        .filter(|c| is_hwnd_on_current_desktop(vdm.as_ref(), c.hwnd))
+        .collect();
     // Strict: exe + exact title
-    if let Some(c) = ctx.matches.iter().find(|c| c.exe == ctx.wanted_exe && c.title == ctx.wanted_title) {
+    if let Some(c) = on_current.iter().find(|c| c.exe == ctx.wanted_exe && c.title == ctx.wanted_title) {
         return Some(c.hwnd);
     }
     // Loose: exe + class (handles title drift, e.g. "Doc1 - Word" → "Report.docx - Word")
-    if let Some(c) = ctx.matches.iter().find(|c| c.exe == ctx.wanted_exe && c.class == ctx.wanted_class) {
+    if let Some(c) = on_current.iter().find(|c| c.exe == ctx.wanted_exe && c.class == ctx.wanted_class) {
         return Some(c.hwnd);
     }
-    // Last resort: exe only (first match wins)
-    ctx.matches.iter().find(|c| c.exe == ctx.wanted_exe).map(|c| c.hwnd)
+    // Last resort: exe only (first match wins on current desktop)
+    on_current.iter().find(|c| c.exe == ctx.wanted_exe).map(|c| c.hwnd)
+}
+
+/// Create an IVirtualDesktopManager COM instance, or None on any failure.
+/// Callers treat None as "assume the window IS on the current desktop"
+/// (permissive) so behaviour degrades gracefully on Windows versions or
+/// user configurations where the VDM interface is unavailable.
+pub(crate) fn make_vdm() -> Option<IVirtualDesktopManager> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        CoCreateInstance(&VirtualDesktopManager, None, CLSCTX_INPROC_SERVER).ok()
+    }
+}
+
+/// True if `hwnd` lives on the current virtual desktop. Also true on any COM
+/// failure (missing VDM) so we never over-filter and miss legitimate matches.
+pub(crate) fn is_hwnd_on_current_desktop(vdm: Option<&IVirtualDesktopManager>, hwnd: isize) -> bool {
+    let Some(vdm) = vdm else { return true; };
+    unsafe {
+        match vdm.IsWindowOnCurrentVirtualDesktop(windows::Win32::Foundation::HWND(hwnd as _)) {
+            Ok(b) => b.as_bool(),
+            Err(_) => true,
+        }
+    }
 }
 
 /// Translate client-relative coords back to absolute screen coords using the

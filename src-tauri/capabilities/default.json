@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for Keyfire",
-  "windows": ["main", "overlay", "help", "fillin", "clipboardoverlay", "radialmenu", "settings"],
+  "windows": ["main", "overlay", "help", "fillin", "clipboardoverlay", "radialmenu", "settings", "report"],
   "permissions": [
     "core:default",
     "core:window:allow-set-position",

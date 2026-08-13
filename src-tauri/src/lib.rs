@@ -11,6 +11,7 @@ mod actions;
 #[path = "stubs/actions.rs"]
 mod actions;
 mod analytics;
+mod analytics_export;
 #[cfg(windows)]
 mod clipboard;
 #[cfg(not(windows))]
@@ -76,6 +77,11 @@ mod volume;
 #[cfg(not(windows))]
 #[path = "stubs/volume.rs"]
 mod volume;
+#[cfg(windows)]
+mod audio_devices;
+#[cfg(not(windows))]
+#[path = "stubs/audio_devices.rs"]
+mod audio_devices;
 #[cfg(windows)]
 mod shell_files;
 #[cfg(not(windows))]
@@ -1771,9 +1777,46 @@ fn update_expansion_excluded_apps(apps: Vec<String>) {
     expansions::set_expansion_excluded_apps(apps);
 }
 
+/// Global variables accept two shapes at the IPC boundary:
+///   - string       → static value: `"Rory Brady"`
+///   - array of str → random-pick set: `["hi","hello","hey"]`
+/// Array-shaped values are re-encoded to a JSON `[...]` string here so the
+/// backend HashMap keeps its `String` value type; `resolve_tokens` detects the
+/// array literal at fire time and picks one entry per fire (see the pick-cache
+/// in expansions::resolve_tokens for consistency across multiple occurrences
+/// in the same expansion body).
 #[tauri::command]
-fn update_global_variables(vars: std::collections::HashMap<String, String>) {
-    expansions::update_global_variables(vars);
+fn update_global_variables(vars: std::collections::HashMap<String, Value>) {
+    let mut normalized: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (name, v) in vars {
+        let stored = match v {
+            Value::String(s) => s,
+            Value::Array(_) => v.to_string(), // JSON-encode: ["hi","hello"]
+            other => other.to_string(),        // numbers/bools stringify; nulls become "null"
+        };
+        normalized.insert(name, stored);
+    }
+    expansions::update_global_variables(normalized);
+}
+
+// ── Audio output device switching ──────────────────────────────────────────
+// Feeds the picker in the "Change Audio Output" macro step's config UI and
+// executes the switch at fire time. Both commands are sync — MMDevice
+// enumeration and IPolicyConfig::SetDefaultEndpoint each return within a few
+// ms, so a blocking call is fine (Tauri sync commands run on the main thread —
+// see [[feedback_tauri_sync_commands_main_thread]]).
+
+#[tauri::command]
+fn list_audio_output_devices() -> Vec<audio_devices::AudioOutputDevice> {
+    audio_devices::list_output_devices()
+}
+
+/// Called from the frontend's step preview / test button. The macro-fire path
+/// calls audio_devices::set_default_output_device directly from actions.rs
+/// (no round-trip through Tauri).
+#[tauri::command]
+fn set_audio_output_device(device_id: String) -> Result<String, audio_devices::SetOutputError> {
+    audio_devices::set_default_output_device(&device_id)
 }
 
 // ── Pause (Phase 3) ─────────────────────────────────────────────────────────
@@ -3376,15 +3419,8 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                 if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
                     drop(state);
                     actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), app);
-                    let at = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
                     let label = macro_val.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                    let macro_steps = if at == "macro" {
-                        macro_val.get("data")
-                            .and_then(|d| d.get("steps"))
-                            .and_then(|s| s.as_array())
-                            .map(|arr| arr.iter().filter_map(|s| s.get("type").and_then(|v| v.as_str()).map(String::from)).collect())
-                    } else { None };
-                    analytics::log_action_ext(at, 0, storage_key, label, macro_steps);
+                    analytics::log_assignment_fired(storage_key, label, &macro_val);
                 } else {
                     log::warn!(
                         "[Keyfire] Execute item no-op: storageKey \"{}\" not found in engine state (source renamed/deleted, or assignments not synced)",
@@ -3607,49 +3643,75 @@ fn reset_analytics() -> bool {
 // non-Pro so a direct IPC call yields nothing, while the UI keeps them behind
 // its own isPro display gates. All gate on is_pro() so they follow Paddle.
 
-#[tauri::command]
-fn get_daily_chart(days: u32) -> Value {
-    if !licence::is_pro() {
-        return serde_json::json!([]);
+/// Strict YYYY-MM-DD shape check — window dates are inlined into SQL by
+/// analytics::Window, so nothing else may pass.
+fn is_valid_iso_date(s: &str) -> bool {
+    s.len() == 10
+        && s.bytes().enumerate().all(|(i, b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        })
+        && chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
+}
+
+/// Build a query window from IPC params. A valid custom from/to range wins;
+/// otherwise days (0/None = all time). Reversed ranges are swapped.
+fn window_from_params(days: Option<u32>, from: Option<String>, to: Option<String>) -> analytics::Window {
+    if let (Some(f), Some(t)) = (from.as_deref(), to.as_deref()) {
+        if is_valid_iso_date(f) && is_valid_iso_date(t) {
+            let (f, t) = if f <= t { (f, t) } else { (t, f) };
+            return analytics::Window::Range(f.to_string(), t.to_string());
+        }
     }
-    analytics::get_daily_chart(days)
+    match days.unwrap_or(0) {
+        0 => analytics::Window::All,
+        d => analytics::Window::Days(d),
+    }
 }
 
 #[tauri::command]
-fn get_assignment_breakdown(days: Option<u32>) -> Value {
+fn get_daily_chart(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_assignment_breakdown(days.unwrap_or(0))
+    analytics::get_daily_chart(window_from_params(days, from, to))
 }
 
 #[tauri::command]
-fn get_type_breakdown(days: Option<u32>) -> Value {
-    analytics::get_type_breakdown(days.unwrap_or(0))
-}
-
-#[tauri::command]
-fn get_hourly_heatmap(days: Option<u32>) -> Value {
+fn get_assignment_breakdown(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_hourly_heatmap(days.unwrap_or(7))
+    analytics::get_assignment_breakdown(window_from_params(days, from, to))
 }
 
 #[tauri::command]
-fn get_top_apps(days: Option<u32>) -> Value {
-    if !licence::is_pro() {
-        return serde_json::json!([]);
-    }
-    analytics::get_top_apps(days.unwrap_or(0))
+fn get_type_breakdown(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+    analytics::get_type_breakdown(window_from_params(days, from, to))
 }
 
 #[tauri::command]
-fn get_expansion_efficiency() -> Value {
+fn get_hourly_heatmap(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_expansion_efficiency()
+    analytics::get_hourly_heatmap(window_from_params(Some(days.unwrap_or(7)), from, to))
+}
+
+#[tauri::command]
+fn get_top_apps(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!([]);
+    }
+    analytics::get_top_apps(window_from_params(days, from, to))
+}
+
+#[tauri::command]
+fn get_expansion_efficiency(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!([]);
+    }
+    analytics::get_expansion_efficiency(window_from_params(days, from, to))
 }
 
 #[tauri::command]
@@ -3665,12 +3727,316 @@ fn get_streaks() -> Value {
     analytics::get_streaks()
 }
 
-#[tauri::command]
-fn export_analytics_csv() -> String {
-    if !licence::is_pro() {
-        return String::new();
+/// Sanitize a UI-supplied preset period to the values the dropdown offers.
+fn sanitize_export_days(days: Option<u32>) -> u32 {
+    match days.unwrap_or(0) {
+        d @ (1 | 7 | 14 | 30) => d,
+        _ => 0, // anything else = all time
     }
-    analytics::export_csv()
+}
+
+/// Build an export window: valid custom from/to wins, else preset days.
+fn export_window(days: Option<u32>, from: Option<String>, to: Option<String>) -> analytics::Window {
+    let win = window_from_params(Some(sanitize_export_days(days)), from, to);
+    match win {
+        analytics::Window::Days(d) => match d {
+            1 | 7 | 14 | 30 => analytics::Window::Days(d),
+            _ => analytics::Window::All,
+        },
+        other => other,
+    }
+}
+
+/// Filename fragment for an export window ("" for all time).
+fn export_period_slug(win: &analytics::Window) -> String {
+    match win {
+        analytics::Window::All => String::new(),
+        analytics::Window::Days(1) => "-Today".to_string(),
+        analytics::Window::Days(n) => format!("-{}-Days", n),
+        analytics::Window::Range(f, t) => format!("-{}-to-{}", f, t),
+    }
+}
+
+/// Export the analytics dataset as a multi-sheet XLSX workbook, optionally
+/// scoped to a preset period (days) or a custom from/to date range.
+/// Native Save As dialog; returns { ok, path } / { ok: false, cancelled } /
+/// { ok: false, error }. Async so blocking_save_file runs off the main thread.
+#[tauri::command]
+async fn export_analytics_xlsx(
+    app: tauri::AppHandle,
+    days: Option<u32>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!({ "ok": false, "error": "PRO_REQUIRED" });
+    }
+    use tauri_plugin_dialog::DialogExt;
+
+    let win = export_window(days, from, to);
+    let default_name = format!(
+        "Keyfire-Analytics{}-{}.xlsx",
+        export_period_slug(&win),
+        chrono::Local::now().format("%Y-%m-%d")
+    );
+    let downloads = app.path().download_dir().unwrap_or_default();
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title("Export Analytics Workbook")
+        .set_file_name(&default_name)
+        .add_filter("Excel Workbook", &["xlsx"])
+        .set_directory(&downloads)
+        .blocking_save_file();
+
+    let file_path = match file_path {
+        Some(p) => match p.into_path() {
+            Ok(pb) => pb,
+            Err(_) => return serde_json::json!({ "ok": false, "error": "Invalid path" }),
+        },
+        None => return serde_json::json!({ "ok": false, "cancelled": true }),
+    };
+
+    match analytics::export_xlsx(file_path.clone(), win) {
+        Ok(()) => {
+            log::info!("[Keyfire] Analytics workbook exported to: {}", file_path.display());
+            serde_json::json!({ "ok": true, "path": file_path.to_string_lossy() })
+        }
+        Err(e) => {
+            log::error!("[Keyfire] Analytics XLSX export failed: {}", e);
+            serde_json::json!({ "ok": false, "error": e })
+        }
+    }
+}
+
+// ── Analytics PDF report export ─────────────────────────────────────────────
+// Flow: export_analytics_pdf (Pro gate + Save As dialog) creates a hidden
+// "report" window on ?report=1. The page fetches its data, renders, then
+// invokes analytics_report_ready, which drives WebView2 PrintToPdf against
+// the live DOM (A4, backgrounds on). The completion handler destroys the
+// window and emits analytics-pdf-done to the main window. The window is
+// created fresh per export and destroyed after — never pre-created, never
+// suspended by webview_mem.
+
+/// In-flight PDF export: (generation, output path). Some = a report window is
+/// mid-flight; also consumed as the handshake between the two commands. The
+/// generation counter stops a stale watchdog from killing a newer export.
+static PDF_EXPORT_STATE: std::sync::Mutex<Option<(u64, std::path::PathBuf)>> =
+    std::sync::Mutex::new(None);
+static PDF_EXPORT_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn finish_pdf_export(app: &tauri::AppHandle, ok: bool, path: Option<&str>, error: Option<&str>) {
+    if let Some(w) = app.get_webview_window("report") {
+        let _ = w.destroy();
+    }
+    let _ = app.emit(
+        "analytics-pdf-done",
+        serde_json::json!({ "ok": ok, "path": path, "error": error }),
+    );
+}
+
+#[tauri::command]
+async fn export_analytics_pdf(
+    app: tauri::AppHandle,
+    days: Option<u32>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Value {
+    if !licence::is_pro() {
+        return serde_json::json!({ "ok": false, "error": "PRO_REQUIRED" });
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (&app, days, from, to);
+        serde_json::json!({ "ok": false, "error": "PDF export is not available on this platform yet" })
+    }
+    #[cfg(windows)]
+    {
+        if PDF_EXPORT_STATE.lock().unwrap().is_some() {
+            return serde_json::json!({ "ok": false, "error": "A report export is already in progress" });
+        }
+
+        use tauri_plugin_dialog::DialogExt;
+        let win = export_window(days, from, to);
+        let default_name = format!(
+            "Keyfire-Analytics-Report{}-{}.pdf",
+            export_period_slug(&win),
+            chrono::Local::now().format("%Y-%m-%d")
+        );
+        let downloads = app.path().download_dir().unwrap_or_default();
+        let file_path = app
+            .dialog()
+            .file()
+            .set_title("Export Analytics Report")
+            .set_file_name(&default_name)
+            .add_filter("PDF Report", &["pdf"])
+            .set_directory(&downloads)
+            .blocking_save_file();
+
+        let file_path = match file_path {
+            Some(p) => match p.into_path() {
+                Ok(pb) => pb,
+                Err(_) => return serde_json::json!({ "ok": false, "error": "Invalid path" }),
+            },
+            None => return serde_json::json!({ "ok": false, "cancelled": true }),
+        };
+
+        let gen = PDF_EXPORT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        *PDF_EXPORT_STATE.lock().unwrap() = Some((gen, file_path));
+
+        // Fresh window per export. Destroy any stale one first (e.g. a prior
+        // run whose watchdog fired while the page was still loading).
+        if let Some(w) = app.get_webview_window("report") {
+            let _ = w.destroy();
+        }
+        let url_query = match &win {
+            analytics::Window::All => "days=0".to_string(),
+            analytics::Window::Days(d) => format!("days={}", d),
+            analytics::Window::Range(f, t) => format!("from={}&to={}", f, t),
+        };
+        let url = tauri::WebviewUrl::App(format!("index.html?report=1&{}", url_query).into());
+        let built = tauri::WebviewWindowBuilder::new(&app, "report", url)
+            .title("Keyfire Report")
+            .inner_size(940.0, 1240.0)
+            .visible(false)
+            .skip_taskbar(true)
+            .build();
+        if let Err(e) = built {
+            *PDF_EXPORT_STATE.lock().unwrap() = None;
+            return serde_json::json!({ "ok": false, "error": format!("Could not create report window: {}", e) });
+        }
+
+        // Watchdog: if the page never reports ready (JS error, blank data
+        // path), fail the export instead of leaving the button spinning.
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            let should_fail = {
+                let mut guard = PDF_EXPORT_STATE.lock().unwrap();
+                match guard.as_ref() {
+                    Some((g, _)) if *g == gen => {
+                        *guard = None;
+                        true
+                    }
+                    _ => false,
+                }
+            };
+            if should_fail {
+                log::error!("[Keyfire] PDF export: report window never became ready (30s)");
+                finish_pdf_export(&app2, false, None, Some("The report timed out while rendering"));
+            }
+        });
+
+        serde_json::json!({ "ok": true, "started": true })
+    }
+}
+
+/// Invoked by the report page once its data is fetched, fonts are loaded and
+/// the DOM has painted. Drives PrintToPdf on the report webview.
+#[tauri::command]
+fn analytics_report_ready(app: tauri::AppHandle) {
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+    #[cfg(windows)]
+    {
+        let taken = { PDF_EXPORT_STATE.lock().unwrap().take() };
+        let Some((_gen, path)) = taken else {
+            // Watchdog already failed this export, or a stray ready ping.
+            return;
+        };
+        let Some(report_win) = app.get_webview_window("report") else {
+            finish_pdf_export(&app, false, None, Some("Report window disappeared"));
+            return;
+        };
+
+        let app_for_com = app.clone();
+        let path_str = path.to_string_lossy().to_string();
+        let res = report_win.with_webview(move |webview| {
+            let result = unsafe { print_report_to_pdf(&app_for_com, webview, &path_str) };
+            if let Err(e) = result {
+                log::error!("[Keyfire] PDF export: PrintToPdf setup failed: {}", e);
+                finish_pdf_export(&app_for_com, false, None, Some("PDF printing is not available in this WebView2 runtime"));
+            }
+        });
+        if let Err(e) = res {
+            log::error!("[Keyfire] PDF export: with_webview failed: {}", e);
+            finish_pdf_export(&app, false, None, Some("Could not access the report window"));
+        }
+    }
+}
+
+/// COM body of the PDF print. Runs on the main thread (with_webview closure).
+/// A4 paper, no OS header/footer, zero margins (the page's CSS owns them),
+/// backgrounds on so the dark theme prints as rendered.
+#[cfg(windows)]
+unsafe fn print_report_to_pdf(
+    app: &tauri::AppHandle,
+    webview: tauri::webview::PlatformWebview,
+    path: &str,
+) -> Result<(), String> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2Environment6, ICoreWebView2PrintSettings, ICoreWebView2_2, ICoreWebView2_7,
+    };
+    use webview2_com::PrintToPdfCompletedHandler;
+    use windows_core::Interface;
+
+    let core = webview
+        .controller()
+        .CoreWebView2()
+        .map_err(|e| format!("CoreWebView2: {}", e))?;
+    let core2: ICoreWebView2_2 = core.cast().map_err(|e| format!("ICoreWebView2_2: {}", e))?;
+    let env = core2.Environment().map_err(|e| format!("Environment: {}", e))?;
+    let env6: ICoreWebView2Environment6 = env
+        .cast()
+        .map_err(|e| format!("ICoreWebView2Environment6: {}", e))?;
+    let settings: ICoreWebView2PrintSettings = env6
+        .CreatePrintSettings()
+        .map_err(|e| format!("CreatePrintSettings: {}", e))?;
+    settings
+        .SetShouldPrintBackgrounds(true)
+        .map_err(|e| format!("SetShouldPrintBackgrounds: {}", e))?;
+    settings
+        .SetShouldPrintHeaderAndFooter(false)
+        .map_err(|e| format!("SetShouldPrintHeaderAndFooter: {}", e))?;
+    let _ = settings.SetMarginTop(0.0);
+    let _ = settings.SetMarginBottom(0.0);
+    let _ = settings.SetMarginLeft(0.0);
+    let _ = settings.SetMarginRight(0.0);
+    // A4 in inches — matches the page CSS's @page size.
+    let _ = settings.SetPageWidth(8.27);
+    let _ = settings.SetPageHeight(11.69);
+
+    let core7: ICoreWebView2_7 = core.cast().map_err(|e| format!("ICoreWebView2_7: {}", e))?;
+
+    let app2 = app.clone();
+    let path_owned = path.to_string();
+    let handler = PrintToPdfCompletedHandler::create(Box::new(move |error_code, is_successful| {
+        let ok = error_code.is_ok() && is_successful;
+        if ok {
+            log::info!("[Keyfire] Analytics report exported to: {}", path_owned);
+            finish_pdf_export(&app2, true, Some(&path_owned), None);
+        } else {
+            log::error!(
+                "[Keyfire] PDF export: PrintToPdf completed with error={:?} successful={}",
+                error_code,
+                is_successful
+            );
+            finish_pdf_export(&app2, false, None, Some("Windows could not write the PDF file"));
+        }
+        Ok(())
+    }));
+
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    core7
+        .PrintToPdf(
+            windows_core::PCWSTR(wide.as_ptr()),
+            &settings,
+            &handler,
+        )
+        .map_err(|e| format!("PrintToPdf: {}", e))?;
+    Ok(())
 }
 
 // ── Clipboard Manager ──────────────────────────────────────────────────────
@@ -5571,6 +5937,8 @@ pub fn run() {
             import_text_file,
             get_builtin_autocorrect_entries,
             update_global_variables,
+            list_audio_output_devices,
+            set_audio_output_device,
             // Pause
             set_global_pause_key,
             clear_global_pause_key,
@@ -5658,7 +6026,9 @@ pub fn run() {
             get_expansion_efficiency,
             get_expansion_counts,
             get_streaks,
-            export_analytics_csv,
+            export_analytics_xlsx,
+            export_analytics_pdf,
+            analytics_report_ready,
             // Clipboard
             get_clipboard_history,
             paste_clipboard_item,

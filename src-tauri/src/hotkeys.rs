@@ -1534,7 +1534,18 @@ unsafe extern "system" fn keyboard_hook_proc(
             let is_up = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
             if is_down {
                 let bits = modifier_bits();
-                if crate::recorder::matches_record_hotkey(kb.vkCode, bits) {
+                // Hardcoded stop combo Ctrl+Alt+R (bits=5=Ctrl+Alt, vk=0x52) as
+                // a fallback when the user has NOT configured a Quick Record
+                // hotkey. Only active while recording — outside a recording
+                // Ctrl+Alt+R still passes through normally so it doesn't
+                // hijack macros that use the combo. This exists because the
+                // macro-editor Record button doesn't require Quick Record to
+                // be enabled; a fresh profile would otherwise have no way to
+                // stop-via-hotkey and could only click the pill's Stop.
+                let is_hardcoded_stop = kb.vkCode == 0x52
+                    && bits == 5
+                    && crate::recorder::TEMP_MACRO_RECORD_VK.load(Ordering::SeqCst) == 0;
+                if crate::recorder::matches_record_hotkey(kb.vkCode, bits) || is_hardcoded_stop {
                     // Flip the flag IMMEDIATELY so modifier keyups that
                     // follow don't leak into the buffer. The processor
                     // event routes to the appropriate stop handler based
@@ -2081,7 +2092,13 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                                 serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
                             );
                             std::thread::spawn(move || {
+                                let duration = crate::recorder::events_duration_secs(&events);
                                 crate::actions::replay_recorded_events(&events, "Quick Replay");
+                                crate::analytics::log_replay_fired(
+                                    "GLOBAL::QUICKRECORD::replay",
+                                    "Quick Record Replay",
+                                    duration.max(1.0),
+                                );
                             });
                         }
                         None => {
@@ -2122,7 +2139,16 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                                 serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
                             );
                             std::thread::spawn(move || {
-                                crate::actions::replay_recorded_events_loop(&events, "Quick Loop");
+                                let duration = crate::recorder::events_duration_secs(&events);
+                                let iters = crate::actions::replay_recorded_events_loop(&events, "Quick Loop");
+                                if iters > 0 {
+                                    // One row per loop session; credit = iterations × duration.
+                                    crate::analytics::log_replay_fired(
+                                        "GLOBAL::QUICKRECORD::loop",
+                                        "Quick Record Loop",
+                                        (iters as f64) * duration.max(1.0),
+                                    );
+                                }
                             });
                         }
                         None => {
@@ -3989,17 +4015,11 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
 
         crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, trigger_key.as_deref(), &app_clone);
 
-        // Log analytics — pass actual action type and macro step types for time calculation
-        let action_type = macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
+        // Log analytics — log_assignment_fired computes the time-saved credit
+        // from the assignment's own data (steps, repeats, recording durations).
         let label = macro_clone.get("label").and_then(|v| v.as_str()).unwrap_or("");
         let trigger = trigger_key.as_deref().unwrap_or("");
-        let macro_steps = if action_type == "macro" {
-            macro_clone.get("data")
-                .and_then(|d| d.get("steps"))
-                .and_then(|s| s.as_array())
-                .map(|arr| arr.iter().filter_map(|s| s.get("type").and_then(|v| v.as_str()).map(String::from)).collect())
-        } else { None };
-        crate::analytics::log_action_ext(action_type, 0, trigger, label, macro_steps);
+        crate::analytics::log_assignment_fired(trigger, label, &macro_clone);
 
         // Notify frontend for visual feedback
         let _ = app_clone.emit(

@@ -228,6 +228,16 @@ export default function FillInWindow() {
     if (e.key === 'Escape') cancel();
   }
 
+  // Guard against stray keystrokes reaching the picker in the first moments
+  // after it opens. Windows can deliver a keyup or a buffered keystroke to the
+  // fillin webview a hair after `win.show()` + `set_focus()`, and any digit in
+  // that grace period would fire the wrong variant and close the picker.
+  // Refreshed each time the variant mode is entered.
+  const variantOpenedAtRef = useRef(0);
+  useEffect(() => {
+    if (mode === 'variant') variantOpenedAtRef.current = performance.now();
+  }, [mode]);
+
   const onVariantKeyDown = useCallback((e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -240,6 +250,32 @@ export default function FillInWindow() {
       selectVariant(selectedIdx);
     } else if (e.key === 'Escape') {
       cancel();
+    } else if (
+      !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey &&
+      !e.repeat && e.code &&
+      (performance.now() - variantOpenedAtRef.current) > 200
+    ) {
+      // Number-key direct fire — 1-9 fire options[0..8], 0 fires options[9].
+      // Rules:
+      // - e.code (not e.key) so numpad works regardless of NumLock and layout
+      //   dead keys don't produce phantom digits.
+      // - Modifiers excluded — including Shift so Shift+1 doesn't smash a fire
+      //   through on a US layout ("!" typed intentionally).
+      // - !e.repeat so a held-down number doesn't cascade into the next picker.
+      // - 200ms grace period from mode entry so a stray post-show keystroke
+      //   can't close a just-opened picker.
+      // For >10 variants the tail needs arrow-key nav — no chord fallback.
+      if (e.code.startsWith('Digit') || e.code.startsWith('Numpad')) {
+        const raw = e.code.replace(/^(Digit|Numpad)/, '');
+        const n = parseInt(raw, 10);
+        if (!isNaN(n) && n >= 0 && n <= 9) {
+          const idx = n === 0 ? 9 : n - 1;
+          if (idx < options.length) {
+            e.preventDefault();
+            selectVariant(idx);
+          }
+        }
+      }
     }
   }, [selectedIdx, options.length]);
 
@@ -370,7 +406,7 @@ export default function FillInWindow() {
             ))}
           </div>
           <div className="fillin-variant-hint">
-            <kbd>↑↓</kbd> navigate &nbsp; <kbd>Enter</kbd> select &nbsp; <kbd>Esc</kbd> cancel
+            <kbd>1</kbd>–<kbd>{options.length >= 10 ? '0' : String(options.length)}</kbd> fire &nbsp; <kbd>↑↓</kbd> navigate &nbsp; <kbd>Enter</kbd> select &nbsp; <kbd>Esc</kbd> cancel
           </div>
         </div>
       </div>

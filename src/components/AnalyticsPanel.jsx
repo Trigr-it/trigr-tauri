@@ -154,16 +154,109 @@ export default function AnalyticsPanel({ isPro = false }) {
     }
   }
 
-  async function handleExportCsv() {
-    const csv = await window.electronAPI?.exportAnalyticsCsv();
-    if (!csv) return;
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `trigr-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // ── Export (XLSX workbook / PDF report) ──
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportRange, setExportRange] = useState(0); // 0=all, 1=today, 7, 14, 30, 'custom'
+  const [exportFrom, setExportFrom] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [exportTo, setExportTo] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [exportBusy, setExportBusy] = useState(null); // null | 'xlsx' | 'pdf'
+  const [exportToast, setExportToast] = useState(null); // { kind: 'ok'|'error', text }
+  const exportMenuRef = useRef(null);
+  const toastTimer = useRef(null);
+  const pdfTimeout = useRef(null);
+
+  const showToast = useCallback((kind, text) => {
+    clearTimeout(toastTimer.current);
+    setExportToast({ kind, text });
+    toastTimer.current = setTimeout(() => setExportToast(null), 6000);
+  }, []);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const close = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setExportMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [exportMenuOpen]);
+
+  // PDF completion arrives as an event: the backend renders a hidden report
+  // window, prints it, then emits analytics-pdf-done.
+  useEffect(() => {
+    window.electronAPI?.onAnalyticsPdfDone?.((payload) => {
+      clearTimeout(pdfTimeout.current);
+      setExportBusy(null);
+      if (payload?.ok) {
+        showToast('ok', `Report saved to ${payload.path}`);
+      } else {
+        showToast('error', payload?.error || 'PDF export failed');
+      }
+    });
+    return () => {
+      clearTimeout(toastTimer.current);
+      clearTimeout(pdfTimeout.current);
+    };
+  }, [showToast]);
+
+  // (days, from, to) for the export commands: a custom range passes dates,
+  // presets pass the day count. Returns null when custom dates are incomplete.
+  function exportArgs() {
+    if (exportRange === 'custom') {
+      if (!exportFrom || !exportTo) return null;
+      return [0, exportFrom, exportTo];
+    }
+    return [exportRange, null, null];
+  }
+
+  async function handleExportXlsx() {
+    const args = exportArgs();
+    if (!args) { showToast('error', 'Pick both dates for a custom range'); return; }
+    setExportMenuOpen(false);
+    setExportBusy('xlsx');
+    try {
+      const res = await window.electronAPI?.exportAnalyticsXlsx(...args);
+      if (res?.ok) {
+        showToast('ok', `Workbook saved to ${res.path}`);
+      } else if (!res?.cancelled) {
+        showToast('error', res?.error || 'Export failed');
+      }
+    } catch {
+      showToast('error', 'Export failed');
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function handleExportPdf() {
+    const args = exportArgs();
+    if (!args) { showToast('error', 'Pick both dates for a custom range'); return; }
+    setExportMenuOpen(false);
+    setExportBusy('pdf');
+    try {
+      const res = await window.electronAPI?.exportAnalyticsPdf(...args);
+      if (!res?.ok) {
+        setExportBusy(null);
+        if (!res?.cancelled) showToast('error', res?.error || 'Export failed');
+        return;
+      }
+      // Stay busy until analytics-pdf-done; backstop in case the event is lost.
+      clearTimeout(pdfTimeout.current);
+      pdfTimeout.current = setTimeout(() => {
+        setExportBusy((b) => {
+          if (b === 'pdf') showToast('error', 'PDF export timed out');
+          return b === 'pdf' ? null : b;
+        });
+      }, 45000);
+    } catch {
+      setExportBusy(null);
+      showToast('error', 'Export failed');
+    }
   }
 
   useEffect(() => {
@@ -288,9 +381,73 @@ export default function AnalyticsPanel({ isPro = false }) {
       <div className="analytics-header">
         <span className="analytics-title">Analytics</span>
         {isPro && (
-          <button type="button" className="analytics-export-btn" onClick={handleExportCsv}>
-            Export CSV <span className="pro-badge">PRO</span>
-          </button>
+          <div className="analytics-export-wrap" ref={exportMenuRef}>
+            <button
+              type="button"
+              className="analytics-export-btn"
+              disabled={!!exportBusy}
+              onClick={() => setExportMenuOpen(o => !o)}
+            >
+              {exportBusy === 'xlsx' ? 'Exporting…' : exportBusy === 'pdf' ? 'Generating report…' : 'Export'}
+              {!exportBusy && <span className="analytics-export-caret" />}
+              <span className="pro-badge">PRO</span>
+            </button>
+            {exportMenuOpen && (
+              <div className="analytics-export-menu">
+                <div className="analytics-export-range-label">Period</div>
+                <div className="analytics-export-ranges">
+                  {[
+                    { v: 0, label: 'All time' },
+                    { v: 1, label: 'Today' },
+                    { v: 7, label: '7 days' },
+                    { v: 14, label: '14 days' },
+                    { v: 30, label: '30 days' },
+                    { v: 'custom', label: 'Custom' },
+                  ].map(r => (
+                    <button
+                      key={r.v}
+                      type="button"
+                      className={`analytics-export-range${exportRange === r.v ? ' active' : ''}`}
+                      onClick={() => setExportRange(r.v)}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                {exportRange === 'custom' && (
+                  <div className="analytics-export-dates">
+                    <label className="analytics-export-date-field">
+                      <span>From</span>
+                      <input
+                        type="date"
+                        value={exportFrom}
+                        max={exportTo || undefined}
+                        onChange={e => setExportFrom(e.target.value)}
+                      />
+                    </label>
+                    <label className="analytics-export-date-field">
+                      <span>To</span>
+                      <input
+                        type="date"
+                        value={exportTo}
+                        min={exportFrom || undefined}
+                        onChange={e => setExportTo(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
+                <div className="analytics-export-divider" />
+                <button type="button" className="analytics-export-item" onClick={handleExportXlsx}>
+                  <span className="analytics-export-item-title">Excel workbook</span>
+                  <span className="analytics-export-item-sub">Every section as its own sheet (.xlsx)</span>
+                </button>
+                <button type="button" className="analytics-export-item" onClick={handleExportPdf}>
+                  <span className="analytics-export-item-title">PDF report</span>
+                  <span className="analytics-export-item-sub">Styled summary with charts (.pdf)</span>
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -509,7 +666,7 @@ export default function AnalyticsPanel({ isPro = false }) {
                 <span className="pro-badge">PRO</span>
                 <div className="analytics-pro-gate-title">Detailed Analytics</div>
                 <div className="analytics-pro-gate-desc">
-                  Streaks, activity chart, heatmap, leaderboards, and CSV export.
+                  Streaks, activity chart, heatmap, leaderboards, and Excel or PDF export.
                 </div>
               </div>
             </section>
@@ -726,6 +883,13 @@ export default function AnalyticsPanel({ isPro = false }) {
           </div>
         )}
       </div>
+
+      {/* ── Export result toast ── */}
+      {exportToast && (
+        <div className={`analytics-toast analytics-toast--${exportToast.kind}`}>
+          {exportToast.text}
+        </div>
+      )}
 
       {/* ── Custom tooltip ── */}
       {tooltip && (

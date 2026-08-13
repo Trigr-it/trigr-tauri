@@ -158,6 +158,28 @@ pub enum RecordedEvent {
     },
 }
 
+impl RecordedEvent {
+    /// Relative timestamp (ms since recording start) of this event.
+    pub fn t(&self) -> u64 {
+        match self {
+            RecordedEvent::KeyDown { t, .. }
+            | RecordedEvent::KeyUp { t, .. }
+            | RecordedEvent::MouseDown { t, .. }
+            | RecordedEvent::MouseUp { t, .. }
+            | RecordedEvent::MouseMove { t, .. }
+            | RecordedEvent::Wheel { t, .. }
+            | RecordedEvent::ForegroundChanged { t, .. } => *t,
+        }
+    }
+}
+
+/// Duration of a recording in seconds — the last event's relative timestamp.
+/// Used for analytics time-saved credit (a replay saves the time the actions
+/// originally took to perform).
+pub fn events_duration_secs(events: &[RecordedEvent]) -> f64 {
+    events.last().map(|e| e.t() as f64 / 1000.0).unwrap_or(0.0)
+}
+
 fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

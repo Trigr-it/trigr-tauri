@@ -1,0 +1,388 @@
+/* ── Analytics PDF report (?report=1) ─────────────────────────────────────
+   Self-contained print document. Deliberately does NOT import global.css
+   (standalone window rule) — the report owns its palette so PrintToPdf output
+   is identical regardless of app theme. Light document look (Rory's call
+   2026-08-10): white pages, dark ink, brand gold accents. Colours are
+   hardcoded by design: this is a rendered document, not themed UI. Gold stays
+   the brand #e8a020 even on white (brand over WCAG per light-theme gold rule). */
+
+:root {
+  --rpt-bg: #ffffff;
+  --rpt-card: #f8f7f3;
+  --rpt-elevated: #ecebe4;
+  --rpt-border: #e2e0d8;
+  --rpt-text: #1a1a24;
+  --rpt-muted: #6b6b88;
+  --rpt-gold: #e8a020;
+  --rpt-blue: #2569b8;
+  --rpt-green: #147a3a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--rpt-bg);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.rpt-root {
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  color: var(--rpt-text);
+  background: var(--rpt-bg);
+}
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+.rpt-page {
+  width: 210mm;
+  height: 296.8mm;
+  padding: 13mm 13mm 9mm;
+  background: var(--rpt-bg);
+  overflow: hidden;
+  page-break-after: always;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.rpt-page:last-child { page-break-after: auto; }
+
+/* Screen preview niceties (no effect on print) */
+@media screen {
+  .rpt-root { padding: 20px 0; display: flex; flex-direction: column; align-items: center; gap: 20px; background: #e6e5e0; }
+  .rpt-page { box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25); }
+}
+
+.rpt-sample-banner {
+  position: fixed;
+  top: 6px;
+  right: 10px;
+  z-index: 10;
+  font: 700 11px 'Rajdhani', sans-serif;
+  letter-spacing: 0.12em;
+  color: #1a1a24;
+  background: var(--rpt-gold);
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+@media print { .rpt-sample-banner { display: none; } }
+
+/* ── Header / footer ── */
+
+.rpt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rpt-brand { display: flex; align-items: center; gap: 10px; }
+.rpt-brand-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: block;
+}
+.rpt-brand-sub { align-self: center; }
+.rpt-brand-mark {
+  font: 700 26px 'Rajdhani', sans-serif;
+  letter-spacing: 0.18em;
+  color: var(--rpt-gold);
+}
+.rpt-brand-sub {
+  font: 600 13px 'Rajdhani', sans-serif;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--rpt-text);
+}
+.rpt-header-right {
+  display: flex;
+  gap: 14px;
+  font-size: 10px;
+  color: var(--rpt-muted);
+}
+.rpt-page-no { color: var(--rpt-gold); }
+.rpt-period {
+  font-weight: 700;
+  color: var(--rpt-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.rpt-gold-rule {
+  height: 2px;
+  margin: 6px 0 12px;
+  background: linear-gradient(90deg, var(--rpt-gold), rgba(232, 160, 32, 0.08));
+  border-radius: 1px;
+}
+
+.rpt-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--rpt-border);
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--rpt-muted);
+}
+.rpt-footer-url { color: var(--rpt-gold); }
+
+/* ── Section titles ── */
+
+.rpt-section-title {
+  font: 600 12.5px 'Rajdhani', sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--rpt-gold);
+  margin: 18px 0 9px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(232, 160, 32, 0.35);
+}
+
+/* ── Cards ── */
+
+.rpt-cards-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.rpt-cards-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.rpt-cards-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.rpt-cards-1 { display: grid; grid-template-columns: 1fr; gap: 10px; }
+
+.rpt-card {
+  background: var(--rpt-card);
+  border: 1px solid var(--rpt-border);
+  border-radius: 8px;
+  padding: 14px 15px;
+}
+.rpt-card-title {
+  font: 600 9.5px 'Rajdhani', sans-serif;
+  letter-spacing: 0.16em;
+  color: var(--rpt-muted);
+  margin-bottom: 6px;
+}
+.rpt-card-value {
+  font: 700 23px 'Rajdhani', sans-serif;
+  line-height: 1.15;
+}
+.rpt-card-label {
+  font-size: 9.5px;
+  color: var(--rpt-muted);
+  margin-bottom: 4px;
+}
+.rpt-card-sm { padding: 8px 11px; }
+.rpt-card-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rpt-eff-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 8px;
+  color: var(--rpt-muted);
+  text-align: right;
+}
+
+.rpt-accent { color: var(--rpt-gold); }
+
+/* Gold-highlighted tiles — Value of Time Saved */
+.rpt-card-gold {
+  background: rgba(232, 160, 32, 0.10);
+  border-color: rgba(232, 160, 32, 0.55);
+}
+
+/* ── Previous-period deltas + highlights ── */
+
+.rpt-delta {
+  margin-top: 5px;
+  font-size: 9px;
+  font-weight: 600;
+}
+.rpt-delta-up { color: var(--rpt-green); }
+.rpt-delta-down { color: #c73e3e; }
+.rpt-delta-flat, .rpt-delta-new { color: var(--rpt-muted); }
+
+.rpt-hl-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rpt-hl-sub {
+  font-size: 8.5px;
+  color: var(--rpt-muted);
+  margin-top: 3px;
+}
+
+.rpt-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+
+/* ── Breakdown bars ── */
+
+.rpt-breakdown { display: flex; flex-direction: column; gap: 8px; }
+.rpt-bd-row {
+  display: grid;
+  grid-template-columns: 10px 116px 56px 1fr 36px 56px;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+}
+.rpt-bd-dot { width: 9px; height: 9px; border-radius: 50%; }
+.rpt-bd-label { color: var(--rpt-text); }
+.rpt-bd-count { text-align: right; font-weight: 600; }
+.rpt-bd-bar-wrap {
+  height: 10px;
+  background: var(--rpt-elevated);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.rpt-bd-bar { height: 100%; border-radius: 4px; min-width: 2px; }
+.rpt-bd-pct { color: var(--rpt-muted); text-align: right; }
+.rpt-bd-saved { text-align: right; font-weight: 600; }
+
+.rpt-bd-expansion { background: var(--rpt-gold); }
+.rpt-bd-hotkey { background: var(--rpt-blue); }
+.rpt-bd-macro { background: #7a4fd0; }
+.rpt-bd-autocorrect { background: var(--rpt-green); }
+span.rpt-bd-expansion, span.rpt-bd-hotkey, span.rpt-bd-macro, span.rpt-bd-autocorrect { display: inline-block; }
+
+/* ── Activity chart ── */
+
+.rpt-chart-wrap {
+  background: var(--rpt-card);
+  border: 1px solid var(--rpt-border);
+  border-radius: 8px;
+  padding: 12px 12px 6px;
+}
+.rpt-chart { width: 100%; height: 70mm; display: block; }
+.rpt-chart-grid { stroke: rgba(0, 0, 0, 0.08); stroke-width: 1; }
+.rpt-bar-actions { fill: var(--rpt-gold); }
+.rpt-bar-saved { fill: var(--rpt-blue); }
+.rpt-chart-label { fill: var(--rpt-muted); font-size: 11px; font-family: 'DM Sans', sans-serif; }
+
+.rpt-legend {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  padding: 6px 0 4px;
+  font-size: 9px;
+  color: var(--rpt-muted);
+}
+.rpt-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.rpt-swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.rpt-swatch-actions { background: var(--rpt-gold); }
+.rpt-swatch-saved { background: var(--rpt-blue); }
+
+/* ── Heatmap ── */
+
+.rpt-heatmap {
+  display: grid;
+  grid-template-columns: 34px repeat(24, 1fr);
+  gap: 2px;
+  background: var(--rpt-card);
+  border: 1px solid var(--rpt-border);
+  border-radius: 8px;
+  padding: 10px;
+}
+.rpt-hm-corner { }
+.rpt-hm-hour {
+  font-size: 6.5px;
+  color: var(--rpt-muted);
+  text-align: center;
+  line-height: 1;
+}
+.rpt-hm-dow {
+  font-size: 8px;
+  color: var(--rpt-muted);
+  display: flex;
+  align-items: center;
+}
+.rpt-hm-cell {
+  aspect-ratio: 1.35;
+  border-radius: 2px;
+}
+.rpt-hm-note {
+  font-size: 8.5px;
+  color: var(--rpt-muted);
+  margin-top: 5px;
+}
+
+/* ── Leaderboard tables ── */
+
+.rpt-board { margin-bottom: 4px; }
+.rpt-boards-2 { margin-top: 4px; }
+
+.rpt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.rpt-table th {
+  font: 600 8.5px 'Rajdhani', sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rpt-muted);
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--rpt-border);
+}
+.rpt-th-rank { width: 18px; }
+.rpt-th-num { text-align: right; width: 58px; }
+.rpt-table td {
+  padding: 4.5px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  vertical-align: middle;
+}
+.rpt-table tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.025); }
+.rpt-board .rpt-table td { padding-top: 5.5px; padding-bottom: 5.5px; }
+.rpt-td-rank { color: var(--rpt-gold); font-weight: 700; font-family: 'Rajdhani', sans-serif; }
+.rpt-td-name { max-width: 0; }
+.rpt-td-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rpt-td-trigger {
+  display: block;
+  font-size: 7.5px;
+  color: var(--rpt-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rpt-td-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Sub-period breakdown table (day/week/month rows) ── */
+
+.rpt-subtable { font-size: 10.5px; }
+.rpt-subtable .rpt-th-bar { width: 20%; }
+.rpt-subtable .rpt-th-num { width: 70px; }
+.rpt-subtable td { white-space: nowrap; padding-top: 6.5px; padding-bottom: 6.5px; }
+.rpt-td-label-cell { white-space: nowrap; }
+.rpt-td-bar { padding-right: 10px; }
+.rpt-row-bar-wrap {
+  height: 7px;
+  background: var(--rpt-elevated);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.rpt-row-bar {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--rpt-gold);
+}
+
+.rpt-empty {
+  padding: 14px;
+  text-align: center;
+  color: var(--rpt-muted);
+  font-size: 10px;
+  background: var(--rpt-card);
+  border: 1px solid var(--rpt-border);
+  border-radius: 8px;
+}
+
+.rpt-error {
+  margin: 20mm auto;
+  padding: 16px;
+  color: #e86060;
+  font-size: 12px;
+  text-align: center;
+}

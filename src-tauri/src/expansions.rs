@@ -649,6 +649,11 @@ pub fn check_space_trigger() -> bool {
             .and_then(|d| d.get("options"))
             .and_then(|v| v.as_array())
             .cloned();
+        let random_variant = entry
+            .get("data")
+            .and_then(|d| d.get("randomVariant"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         if let Some(opts) = options {
             if !opts.is_empty() {
@@ -676,12 +681,15 @@ pub fn check_space_trigger() -> bool {
                 s.buffer.clear();
                 drop(s);
 
-                info!("[Keyfire] Variant expansion: \"{}\" with {} options", trigger_str, opts.len());
+                info!(
+                    "[Keyfire] Variant expansion: \"{}\" with {} options (mode: {})",
+                    trigger_str, opts.len(), if random_variant { "random" } else { "picker" }
+                );
                 if crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
                     return true;
                 }
                 thread::spawn(move || {
-                    fire_variant_expansion(&trigger_str, trigger_len, delete_extra, &opts, &global_vars);
+                    fire_variant_expansion(&trigger_str, trigger_len, delete_extra, &opts, &global_vars, random_variant);
                 });
                 return true;
             }
@@ -1455,6 +1463,7 @@ pub fn check_immediate_triggers() -> bool {
         image_path: String,
         image_scale: u32,
         options: Option<Vec<serde_json::Value>>,
+        random_variant: bool,
     }
     let mut immediate_triggers: Vec<ImmTrigger> = s
         .assignments
@@ -1476,6 +1485,7 @@ pub fn check_immediate_triggers() -> bool {
                 image_path: data.and_then(|d| d.get("imagePath")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 image_scale: data.and_then(|d| d.get("imageScale")).and_then(|v| v.as_u64()).unwrap_or(100) as u32,
                 options: data.and_then(|d| d.get("options")).and_then(|v| v.as_array()).cloned(),
+                random_variant: data.and_then(|d| d.get("randomVariant")).and_then(|v| v.as_bool()).unwrap_or(false),
             }
         })
         .collect();
@@ -1491,6 +1501,7 @@ pub fn check_immediate_triggers() -> bool {
                     let opts = opts.clone();
                     let trigger_str = imm.trigger.clone();
                     let global_vars = s.global_variables.clone();
+                    let random_variant = imm.random_variant;
 
                     // Pro gate: Free users silently fire options[0] as a regular
                     // text expansion. Picker returns on upgrade; data preserved.
@@ -1514,10 +1525,13 @@ pub fn check_immediate_triggers() -> bool {
                     s.buffer.clear();
                     drop(s);
 
-                    info!("[Keyfire] Variant expansion (immediate): \"{}\" with {} options", trigger_str, opts.len());
+                    info!(
+                        "[Keyfire] Variant expansion (immediate): \"{}\" with {} options (mode: {})",
+                        trigger_str, opts.len(), if random_variant { "random" } else { "picker" }
+                    );
                     if !crate::hotkeys::FILL_IN_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
                         thread::spawn(move || {
-                            fire_variant_expansion(&trigger_str, trigger_len, false, &opts, &global_vars);
+                            fire_variant_expansion(&trigger_str, trigger_len, false, &opts, &global_vars, random_variant);
                         });
                     }
                     return true;
@@ -1661,6 +1675,11 @@ pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
         .and_then(|d| d.get("options"))
         .and_then(|v| v.as_array())
         .cloned();
+    let random_variant = entry
+        .get("data")
+        .and_then(|d| d.get("randomVariant"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let global_vars = get_global_variables();
 
@@ -1679,10 +1698,13 @@ pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
                 log::info!("[Keyfire] Fire Text Expansion (variant): \"{}\" skipped — fill-in already active", trigger);
                 return;
             }
-            log::info!("[Keyfire] Fire Text Expansion (variant): \"{}\" with {} options", trigger, opts.len());
+            log::info!(
+                "[Keyfire] Fire Text Expansion (variant): \"{}\" with {} options (mode: {})",
+                trigger, opts.len(), if random_variant { "random" } else { "picker" }
+            );
             let trigger_str = trigger.to_string();
             thread::spawn(move || {
-                fire_variant_expansion(&trigger_str, 0, false, &opts, &global_vars);
+                fire_variant_expansion(&trigger_str, 0, false, &opts, &global_vars, random_variant);
             });
             return;
         }
@@ -1963,10 +1985,35 @@ pub(crate) fn run_fill_in_window(
         let _ = ready_rx.recv_timeout(Duration::from_secs(5));
         *fill_in_ready_tx().lock().unwrap() = None;
 
+        // Resolve tokens in each field's `default` and dropdown `options` before
+        // the webview sees them. Without this, `default={{var:my.name}}` (or a
+        // {clipboard} / {date} default) would appear literally in the input box.
+        // Uses the full resolve_tokens pipeline (globals + nested expansions +
+        // clipboard/selection/date tokens); fillin_values is empty because
+        // fill-in tokens don't self-reference at prompt time.
+        let global_vars = get_global_variables();
+        let empty_fillin: HashMap<String, String> = HashMap::new();
+        let resolved_fields: Vec<FillInField> = fill_in_fields
+            .iter()
+            .map(|f| FillInField {
+                label: f.label.clone(),
+                kind: f.kind.clone(),
+                options: f
+                    .options
+                    .iter()
+                    .map(|o| resolve_tokens(o, &global_vars, &empty_fillin).0)
+                    .collect(),
+                default: f
+                    .default
+                    .as_ref()
+                    .map(|d| resolve_tokens(d, &global_vars, &empty_fillin).0),
+            })
+            .collect();
+
         // Renderer is ready — emit typed field data. Each field carries
         // label/kind/options/default so FillInWindow.jsx can render the right input.
         let _ = win.emit("fill-in-show", serde_json::json!({
-            "fields": fill_in_fields,
+            "fields": resolved_fields,
             "theme": theme,
         }));
     }
@@ -2181,13 +2228,30 @@ pub fn resolve_tokens(
         String::new()
     };
 
-    // Substitute {{varName}} global variables — Pro-only.
-    // (Dynamic tokens — date, time, clipboard, cursor — are unlocked for everyone:
-    // too many free competitors offer them for the gate to be defensible.)
-    if crate::licence::is_pro() && result.contains("{{") {
+    // Nested expansions: {{expansion:trigger}} inlines another expansion's text.
+    // Runs BEFORE global-variable substitution so a nested expansion's text can
+    // itself contain {{var:name}} tokens that then resolve in the outer pass.
+    // Cycle detection + 5-deep cap prevent A→B→A loops and runaway depth.
+    if result.contains("{{expansion:") {
+        let mut visited: HashSet<String> = HashSet::new();
+        result = resolve_nested_expansions(&result, 0, &mut visited);
+    }
+
+    // Substitute global variables. Free tier — every credible competitor ships
+    // basic name/email substitution for free, so gating first-name here made no
+    // sense. Two forms supported:
+    //   - {{var:name}}  (preferred, namespaced; won't collide with expansion refs)
+    //   - {{name}}      (legacy bare form; kept forever for backwards compat)
+    // Order: prefixed first so a global literally named "var:something" (unlikely
+    // but possible via the raw config) doesn't get swallowed by the bare pass.
+    if result.contains("{{") {
         for (name, value) in global_vars {
-            let token = format!("{{{{{}}}}}", name); // {{name}}
-            result = result.replace(&token, value);
+            let prefixed = format!("{{{{var:{}}}}}", name);
+            result = result.replace(&prefixed, value);
+        }
+        for (name, value) in global_vars {
+            let bare = format!("{{{{{}}}}}", name);
+            result = result.replace(&bare, value);
         }
     }
 
@@ -2416,6 +2480,81 @@ fn process_expr_tokens(text: &str, scope: &crate::expression::Scope<'_>) -> Stri
             }
             None => {
                 // Unterminated — append everything verbatim and stop scanning.
+                out.push_str(&rest[start..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Look up an expansion's raw text by its trigger. Returns `None` if no such
+/// expansion is registered. Used by `{{expansion:trigger}}` nested resolution.
+///
+/// Note on locking: this takes the engine_state lock. Safe because `resolve_tokens`
+/// (the only caller path) is always invoked with the state lock released — callers
+/// clone `global_vars` out of state and then fire, per the codebase convention.
+pub fn get_expansion_text_by_trigger(trigger: &str) -> Option<String> {
+    let key = format!("GLOBAL::EXPANSION::{}", trigger);
+    let s = crate::hotkeys::engine_state().lock().ok()?;
+    s.assignments
+        .get(&key)
+        .and_then(|v| v.get("data"))
+        .and_then(|d| d.get("text"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+/// Resolve `{{expansion:trigger}}` nested references. Inlines the target
+/// expansion's raw text so downstream token passes (global vars, dates,
+/// clipboard, expressions) run over the combined text.
+///
+/// Cycle detection: `visited` tracks the triggers currently being expanded.
+/// A re-entry is replaced with a literal marker rather than looping.
+/// Depth cap: 5 levels. Beyond that, the token is left as-is (visible to the
+/// user so they see something is wrong instead of getting silent truncation).
+///
+/// Unknown triggers are left literal (mirrors how unknown `{{var:name}}` behaves).
+/// Fill-in tokens inside nested expansions are NOT re-prompted — the outer
+/// expansion's fill-in prompts happen before nested resolution, so nested
+/// `{fillIn:...}` tokens would appear literal. Users nesting fill-in-bearing
+/// expansions should be aware; documented in the help guide.
+fn resolve_nested_expansions(text: &str, depth: u32, visited: &mut HashSet<String>) -> String {
+    if depth >= 5 {
+        return text.to_string();
+    }
+    // Manual scanner — avoids a regex compile per resolve_tokens call. Matches
+    // `{{expansion:<trigger>}}` where <trigger> is anything up to the closing
+    // `}}` (triggers can contain colons but not braces, matching config rules).
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{{expansion:") {
+        out.push_str(&rest[..start]);
+        let body_start = start + "{{expansion:".len();
+        let after = &rest[body_start..];
+        match after.find("}}") {
+            Some(end_rel) => {
+                let trigger = after[..end_rel].trim().to_string();
+                let full_end = body_start + end_rel + 2;
+                if trigger.is_empty() {
+                    out.push_str(&rest[start..full_end]);
+                } else if visited.contains(&trigger) {
+                    out.push_str(&format!("«cycle: {{{{expansion:{}}}}}»", trigger));
+                } else if let Some(child_text) = get_expansion_text_by_trigger(&trigger) {
+                    visited.insert(trigger.clone());
+                    let resolved = resolve_nested_expansions(&child_text, depth + 1, visited);
+                    visited.remove(&trigger);
+                    out.push_str(&resolved);
+                } else {
+                    // Unknown trigger — leave the token literal so the author
+                    // can see they referenced a missing expansion.
+                    out.push_str(&rest[start..full_end]);
+                }
+                rest = &rest[full_end..];
+            }
+            None => {
+                // Unterminated `{{expansion:` — copy the rest verbatim and bail.
                 out.push_str(&rest[start..]);
                 return out;
             }
@@ -3730,33 +3869,35 @@ fn write_clipboard_image(pixels: &[u8], width: u32, height: u32, raw_png_bytes: 
     }
 }
 
-/// Fire a variant expansion: show selection popup, wait for user choice, inject selected text.
+/// Fire a variant expansion. `random_variant = false` shows the variant picker;
+/// `random_variant = true` picks one option at random with no popup (nanos-based,
+/// mirrors `random()` in expression.rs). Either way, the picked variant's text
+/// re-prompts for `{fillIn:...}` tokens if it carries any, then resolves globals
+/// / clipboard / date / expressions, and injects via clipboard.
 fn fire_variant_expansion(
     trigger: &str,
     trigger_len: usize,
     delete_extra: bool,
     options: &[serde_json::Value],
     global_vars: &HashMap<String, String>,
+    random_variant: bool,
 ) {
     if !fire_rate_ok(trigger) {
         return;
     }
-    crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
     let app = match APP_HANDLE.get() {
         Some(a) => a.clone(),
-        None => {
-            crate::hotkeys::FILL_IN_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
-            return;
-        }
+        None => return,
     };
 
-    // Capture target HWND before showing popup
+    // Capture target HWND before showing popup / injecting
     let target_hwnd = unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
     };
 
-    // Erase the trigger text
+    // Erase the trigger text (runs either way — random skips the picker but still
+    // needs the trigger removed from the target buffer).
     {
         let _guard = InjectionGuard::new();
         crate::hotkeys::SUPPRESS_SIMULATED.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -3769,8 +3910,35 @@ fn fire_variant_expansion(
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
-    // Build options list for the popup
-    let option_labels: Vec<String> = options.iter().map(|opt| {
+    // Load theme once for any fill-in window shown by this call (picker OR the
+    // post-pick fill-in re-prompt in the tail — both need it).
+    let theme = crate::config::load_config()
+        .and_then(|c| c.get("theme").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| "dark".to_string());
+
+    // Pick a variant. Random mode short-circuits before the popup path so no
+    // FILL_IN_ACTIVE toggle is taken and no window is shown; picker mode does
+    // the full popup dance. Both branches produce (selected_text, selected_html).
+    let (selected_text, selected_html): (String, Option<String>) = if random_variant {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64 ^ (d.as_secs() as u64))
+            .unwrap_or(0);
+        let idx = (nanos as usize) % options.len();
+        let picked = &options[idx];
+        let label = picked.get("label").and_then(|v| v.as_str()).unwrap_or("Option");
+        log::info!(
+            "[Keyfire] Random variant pick: \"{}\" → \"{}\" (index {} of {})",
+            trigger, label, idx, options.len()
+        );
+        let t = picked.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let h = picked.get("html").and_then(|v| v.as_str()).map(String::from);
+        (t, h)
+    } else {
+        crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        // Build options list for the popup
+        let option_labels: Vec<String> = options.iter().map(|opt| {
         opt.get("label").and_then(|v| v.as_str()).unwrap_or("Option").to_string()
     }).collect();
 
@@ -3790,10 +3958,6 @@ fn fire_variant_expansion(
     // Create response channel — reuse fill_in_tx
     let (tx, rx) = mpsc::channel();
     *fill_in_tx().lock().unwrap() = Some(tx);
-
-    let theme = crate::config::load_config()
-        .and_then(|c| c.get("theme").and_then(|v| v.as_str()).map(|s| s.to_string()))
-        .unwrap_or_else(|| "dark".to_string());
 
     // Show fill-in window in variant selection mode
     if let Some(win) = app.get_webview_window("fillin") {
@@ -3875,7 +4039,7 @@ fn fire_variant_expansion(
 
     // Process selection — pull both text and html (html absent in legacy
     // {label, text} variants; we just paste plain in that case).
-    let (selected_text, selected_html) = match response {
+    match response {
         Ok(Some(values)) => {
             // The fill-in window sends back {"__variant_index": "0"} for variant mode
             if let Some(idx_str) = values.get("__variant_index") {
@@ -3902,7 +4066,8 @@ fn fire_variant_expansion(
             }
         }
         _ => return,
-    };
+    }
+    }; // closes: let (selected_text, selected_html) = if random_variant { ... } else { ... }
 
     if selected_text.is_empty() {
         return;

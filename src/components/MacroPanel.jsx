@@ -142,7 +142,7 @@ const MACRO_STEP_CATEGORIES = [
   { kind: 'group', label: 'Files',            items: ['Create Folder', 'Copy Files', 'Move Files', 'Sort Files'] },
   { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window'] },
   { kind: 'group', label: 'Window',           items: ['Focus Window', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Minimise All', 'Restore All'] },
-  { kind: 'group', label: 'System',           items: ['Change Volume', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
+  { kind: 'group', label: 'System',           items: ['Change Volume', 'Change Audio Output', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
   { kind: 'divider' },
   { kind: 'leaf',  label: 'Run AHK Script' },
 ];
@@ -973,6 +973,10 @@ function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, a
           distilled: steps,
           playbackMode: 'distilled',
           targetApp,
+          // Re-distil provides a fresh binding, so unset the user-cleared flag.
+          // If the user cleared once, distilled again, then wants it clear
+          // again, they click the Clear button after the re-distil.
+          disableTargetBinding: false,
         }));
       } else {
         console.warn('[distill] engine returned empty step list');
@@ -1054,8 +1058,16 @@ function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, a
                   <button
                     type="button"
                     className="distilled-target-app-clear"
-                    onClick={() => onChange(JSON.stringify({ ...parsed, targetApp: null }))}
-                    title="Clear binding — macro will run against whatever's focused"
+                    onClick={() => onChange(JSON.stringify({
+                      ...parsed,
+                      targetApp: null,
+                      // Explicit user intent, so the Rust fire path knows to
+                      // skip the event-stream fallback that would otherwise
+                      // re-derive the binding from the first ForegroundChanged
+                      // event. Reset to false on re-distil.
+                      disableTargetBinding: true,
+                    }))}
+                    title="Clear binding, macro will run against whatever's focused"
                     aria-label="Clear target app binding"
                   >
                     <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true">
@@ -1839,7 +1851,7 @@ function formatCombo(combo, keyId) {
   return [...combo.split('+'), keyLabel].join('+');
 }
 
-function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose, profilesOrder }) {
+export function FireTargetPicker({ mode, assignments, currentValue, onSelect, onClose, profilesOrder }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
   const panelRef = useRef(null);
@@ -2334,6 +2346,21 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   const [winPrompted, setWinPrompted] = useState(false);
   // Fire-target picker — null when closed, 'trigger' or 'expansion' when open.
   const [firePickerMode, setFirePickerMode] = useState(null);
+  // Audio output devices — enumerated once when the step type is Change Audio
+  // Output. Refresh button re-fetches (headphones plugged in mid-edit etc).
+  // Kept on the step component rather than hoisted because most macros have
+  // ≤1 audio-change step, and the enumeration call is <10ms.
+  const [audioDevices, setAudioDevices] = useState(null); // null = loading, [] = enumerated empty
+  const refreshAudioDevices = useCallback(() => {
+    window.electronAPI?.listAudioOutputDevices?.().then(list => {
+      setAudioDevices(Array.isArray(list) ? list : []);
+    }).catch(() => setAudioDevices([]));
+  }, []);
+  useEffect(() => {
+    if (step.type !== 'Change Audio Output') return;
+    if (audioDevices !== null) return; // already loaded
+    refreshAudioDevices();
+  }, [step.type, audioDevices, refreshAudioDevices]);
   const stepValue = step.value || '';
   const stepHasWin = step.type === 'Press Key' && (stepValue === 'Win' || stepValue.startsWith('Win+'));
   const showWinAdvisory = step.type === 'Press Key' && (winPrompted || stepHasWin);
@@ -2449,6 +2476,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             let seed = '';
             if (t === 'Click Mouse')   seed = 'LButton';
             else if (t === 'Change Volume') seed = JSON.stringify({ mode: 'increase', amount: 5 });
+            else if (t === 'Change Audio Output') seed = JSON.stringify({ deviceId: '', deviceName: '' });
             else if (t === 'Mouse Scroll')  seed = JSON.stringify({ direction: 'down', amount: 3 });
             else if (t === 'Minimise Window' || t === 'Maximise Window') seed = JSON.stringify({ process: '', title: '' });
             else if (t === 'Resize Window') seed = JSON.stringify({ process: '', title: '', width: 1200, height: 800, usePosition: false, x: 100, y: 100 });
@@ -2532,6 +2560,54 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
                   <span className="macro-step-hint" style={{ marginLeft: 4 }}>%</span>
                 </>
               )}
+            </>
+          );
+        })()}
+        {step.type === 'Change Audio Output' && (() => {
+          // Value shape: `{ deviceId: string, deviceName: string }`. deviceId
+          // is Windows' endpoint ID (e.g. `{0.0.0.00000000}.{guid}`), stable
+          // across reboots and used at fire time; deviceName is display-only.
+          let cao = { deviceId: '', deviceName: '' };
+          try { if (step.value?.startsWith('{')) cao = { ...cao, ...JSON.parse(step.value) }; } catch (_) {}
+          const write = (next) => updateStep({ ...step, value: JSON.stringify(next) });
+          // If the selected device is no longer in the enumerated list (unplugged,
+          // renamed, disabled), keep it in the dropdown so the user can see what
+          // was pinned — flagged as "(not connected)". Fire-time enforcement lives
+          // in the Rust arm; UI here is descriptive, not prescriptive.
+          const list = audioDevices || [];
+          const selectedIsMissing = cao.deviceId && !list.some(d => d.id === cao.deviceId);
+          return (
+            <>
+              <select
+                className="form-select macro-step-value"
+                style={{ flex: '1 1 200px', minWidth: 140 }}
+                value={cao.deviceId}
+                onChange={e => {
+                  const id = e.target.value;
+                  const found = list.find(d => d.id === id);
+                  write({ deviceId: id, deviceName: found?.friendlyName || cao.deviceName });
+                }}
+                title={selectedIsMissing ? `Pinned device "${cao.deviceName}" is not currently connected` : ''}
+              >
+                {audioDevices === null && <option value="">Loading devices…</option>}
+                {audioDevices !== null && list.length === 0 && <option value="">No output devices found</option>}
+                {audioDevices !== null && list.length > 0 && !cao.deviceId && <option value="">Choose a device…</option>}
+                {selectedIsMissing && (
+                  <option value={cao.deviceId}>{cao.deviceName || cao.deviceId} (not connected)</option>
+                )}
+                {list.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.friendlyName}{d.isDefault ? ' — current default' : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="macro-step-refresh-btn"
+                onClick={refreshAudioDevices}
+                title="Refresh device list"
+                style={{ flex: '0 0 auto' }}
+              >⟳</button>
             </>
           );
         })()}

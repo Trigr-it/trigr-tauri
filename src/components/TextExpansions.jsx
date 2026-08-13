@@ -17,11 +17,13 @@ import {
   Clipboard as ClipboardIcon, TextCursor as TextCursorIcon,
   Variable as VariableIcon, Keyboard as KeyboardIcon,
   FormInput as FillInIcon, FunctionSquare as FormulaIcon, Calendar as CalendarPickIcon,
+  Blocks as NestedExpansionIcon,
 } from 'lucide-react';
 import './TextExpansions.css';
 import { SearchBar } from './SearchBar';
 import { ClipboardExcludedAppsEditor } from './SettingsPanel';
 import NumberField from './NumberField';
+import { FireTargetPicker } from './MacroPanel';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -342,7 +344,7 @@ function ColourPicker({ value, onChange }) {
 
 // ── Rich text editor ───────────────────────────────────────────────────────
 
-function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade, reusableFillInLabels = [], setVarNames = [] }) {
+function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = false, onShowUpgrade, reusableFillInLabels = [], setVarNames = [], expansions = [], excludeTrigger = null }) {
   const editorRef      = useRef(null);
   const menuRef        = useRef(null);
   const keyBtnRef      = useRef(null);
@@ -354,7 +356,10 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
   const savedRangeRef  = useRef(null);
 
   const [showInsert, setShowInsert] = useState(false);
-  const [insertCategory, setInsertCategory] = useState(null); // 'clipboard'|'date'|'time'|'datemath'|'cursor'|'variables'|'color'|'highlight'|'table'|'headings'|'lists'|'formula'|'fillin'
+  const [insertCategory, setInsertCategory] = useState(null); // 'clipboard'|'date'|'time'|'datemath'|'cursor'|'variables'|'expansions'|'color'|'highlight'|'table'|'headings'|'lists'|'formula'|'fillin'
+  // The nested-expansion picker was a plain sorted list; now a searchable
+  // tag-grouped modal reusing FireTargetPicker from MacroPanel (Rory 2026-08-13).
+  const [showExpansionPicker, setShowExpansionPicker] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   // Table-size picker hover state — {rows, cols} of the highlighted top-left
   // rectangle inside the 6×6 grid. null = nothing hovered yet.
@@ -1654,6 +1659,20 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
             title="Insert global variable"
           ><VariableIcon size={14} strokeWidth={2} /></button>
         )}
+        {expansions.filter(e => !excludeTrigger || e.trigger !== excludeTrigger).length > 0 && (
+          <button
+            type="button"
+            className={`rte-btn${showExpansionPicker ? ' rte-btn-on' : ''}`}
+            onMouseDown={e => {
+              e.preventDefault();
+              saveSelection();
+              setShowInsert(false);
+              setInsertCategory(null);
+              setShowExpansionPicker(true);
+            }}
+            title="Insert another expansion"
+          ><NestedExpansionIcon size={14} strokeWidth={2} /></button>
+        )}
 
         <div className="rte-sep" />
 
@@ -2068,16 +2087,69 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                 </div>
 
                 <div className="rte-formula-help-section">
-                  <div className="rte-formula-help-label">Functions</div>
-                  <div className="rte-formula-help-body">
-                    <strong>Text:</strong> <code>upper</code> <code>lower</code> <code>trim</code> <code>len</code> <code>substring</code> <code>replace</code> <code>contains</code> <code>startswith</code> <code>endswith</code> <code>urlencode</code>
-                    <br />
-                    <strong>Math:</strong> <code>round</code> <code>floor</code> <code>ceil</code> <code>abs</code>
-                    <br />
-                    <strong>Date:</strong> <code>today()</code> <code>dateadd(date, days)</code> <code>dateformat(date, pattern)</code> <code>datediff(later, earlier)</code>
-                    <br />
-                    <strong>Logic:</strong> <code>if(cond, a, b)</code>
-                  </div>
+                  <div className="rte-formula-help-label">Functions (click to insert)</div>
+                  {[
+                    {
+                      label: 'Text',
+                      fns: [
+                        { name: 'upper',       template: 'upper()',                signature: 'upper(text)' },
+                        { name: 'lower',       template: 'lower()',                signature: 'lower(text)' },
+                        { name: 'trim',        template: 'trim()',                 signature: 'trim(text)' },
+                        { name: 'len',         template: 'len()',                  signature: 'len(text)' },
+                        { name: 'substring',   template: 'substring(, 0, 3)',      signature: 'substring(text, start, end)' },
+                        { name: 'replace',     template: 'replace(, "", "")',      signature: 'replace(text, from, to)' },
+                        { name: 'contains',    template: 'contains(, "")',         signature: 'contains(text, needle)' },
+                        { name: 'startswith',  template: 'startswith(, "")',       signature: 'startswith(text, prefix)' },
+                        { name: 'endswith',    template: 'endswith(, "")',         signature: 'endswith(text, suffix)' },
+                        { name: 'urlencode',   template: 'urlencode()',            signature: 'urlencode(text)' },
+                      ],
+                    },
+                    {
+                      label: 'Math',
+                      fns: [
+                        { name: 'round', template: 'round()', signature: 'round(number)' },
+                        { name: 'floor', template: 'floor()', signature: 'floor(number)' },
+                        { name: 'ceil',  template: 'ceil()',  signature: 'ceil(number)'  },
+                        { name: 'abs',   template: 'abs()',   signature: 'abs(number)'   },
+                      ],
+                    },
+                    {
+                      label: 'Date',
+                      fns: [
+                        { name: 'today',      template: 'today()',                            signature: 'today()' },
+                        { name: 'dateadd',    template: 'dateadd(today(), 7)',                signature: 'dateadd(date, days)' },
+                        { name: 'dateformat', template: 'dateformat(today(), "DD/MM/YYYY")',  signature: 'dateformat(date, pattern)' },
+                        { name: 'datediff',   template: 'datediff(today(), )',                signature: 'datediff(later, earlier)' },
+                      ],
+                    },
+                    {
+                      label: 'Logic',
+                      fns: [
+                        { name: 'if', template: 'if(, , )', signature: 'if(cond, valueIfTrue, valueIfFalse)' },
+                      ],
+                    },
+                    {
+                      label: 'Random',
+                      fns: [
+                        { name: 'random', template: 'random("", "")', signature: 'random("a", "b", "c") — picks one at random per fire. Give the formula a Name above so the same pick can be reused.' },
+                      ],
+                    },
+                  ].map(cat => (
+                    <div key={`fn-cat-${cat.label}`} className="rte-formula-fn-row">
+                      <span className="rte-formula-fn-cat">{cat.label}:</span>
+                      <div className="rte-formula-fn-chips">
+                        {cat.fns.map(fn => (
+                          <button
+                            key={`fn-${fn.name}`}
+                            type="button"
+                            className="rte-formula-chip rte-formula-chip--fn"
+                            title={fn.signature}
+                            onMouseDown={e => { e.preventDefault(); insertIntoFormula(fn.template); }}
+                          >{fn.name}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="rte-formula-help-section">
@@ -2088,6 +2160,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                       { label: 'Add 20% VAT',             expr: 'qty * price * 1.2' },
                       { label: 'URL-encode clipboard',    expr: 'urlencode(clipboard)' },
                       { label: 'Conditional value',       expr: 'if(formal, "Hi", "Hey")' },
+                      { label: 'Random greeting',         expr: 'random("Hi", "Hello", "Hey")' },
                       { label: 'Joined string',           expr: '"Hello " & name & "!"' },
                       { label: '7 days after a picked date', expr: 'dateformat(dateadd(eventdate, 7), "DD/MM/YYYY")' },
                       { label: 'Days overdue from due date', expr: 'datediff(today(), duedate)' },
@@ -2447,7 +2520,10 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                       className="rte-menu-item"
                       onMouseDown={e => {
                         e.preventDefault();
-                        insertTokenHtml(`{{${key}}}`, keyToTitle(key));
+                        // {{var:key}} is the preferred namespaced form. Legacy
+                        // bare {{key}} still resolves at fire time; existing
+                        // expansions with the bare form keep working.
+                        insertTokenHtml(`{{var:${key}}}`, keyToTitle(key));
                         setShowInsert(false);
                         setInsertCategory(null);
                       }}
@@ -2457,6 +2533,35 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                     </button>
                   ))
                 }
+              </>
+            ) : insertCategory === 'expansions' ? (
+              <>
+                <div className="rte-menu-section-label">Nested Expansions</div>
+                {(() => {
+                  const others = expansions
+                    .filter(e => !excludeTrigger || e.trigger !== excludeTrigger)
+                    .sort((a, b) => a.trigger.localeCompare(b.trigger));
+                  if (others.length === 0) {
+                    return <div className="rte-menu-empty">No other expansions yet.</div>;
+                  }
+                  return others.map(exp => (
+                    <button
+                      key={exp.trigger}
+                      type="button"
+                      className="rte-menu-item"
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        insertTokenHtml(`{{expansion:${exp.trigger}}}`, exp.displayName || exp.trigger);
+                        setShowInsert(false);
+                        setInsertCategory(null);
+                      }}
+                      title={exp.text ? exp.text.slice(0, 80) : ''}
+                    >
+                      <span className="rte-menu-chip rte-chip-expansion">{exp.trigger}</span>
+                      {exp.displayName || exp.trigger}
+                    </button>
+                  ));
+                })()}
               </>
             ) : (
               <>
@@ -2622,6 +2727,32 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
         </div>,
         document.body
       )}
+      {showExpansionPicker && (
+        <FireTargetPicker
+          mode="expansion"
+          currentValue=""
+          assignments={expansions
+            .filter(exp => !excludeTrigger || exp.trigger !== excludeTrigger)
+            .reduce((acc, exp) => {
+              acc[`GLOBAL::EXPANSION::${exp.trigger}`] = {
+                data: {
+                  displayName: exp.displayName,
+                  category: exp.category,
+                  expansionType: exp.expansionType,
+                  imagePath: exp.imagePath,
+                  options: exp.options,
+                  text: exp.text,
+                },
+              };
+              return acc;
+            }, {})}
+          onSelect={(trigger) => {
+            insertTokenHtml(`{{expansion:${trigger}}}`, `:${trigger}`);
+            setShowExpansionPicker(false);
+          }}
+          onClose={() => setShowExpansionPicker(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2736,7 +2867,17 @@ export default function TextExpansions({
   const [renamingVariantIndex, setRenamingVariantIndex] = useState(null);
   const [variantRenameValue, setVariantRenameValue] = useState('');
   const [variantRemoveConfirm, setVariantRemoveConfirm] = useState(null); // index of variant pending "collapse to single" confirm
+  // When true, firing the trigger picks one variant at random (no picker popup).
+  // Persisted on the primary expansion entry as data.randomVariant, plumbed
+  // through to fire_variant_expansion in expansions.rs.
+  const [randomVariant, setRandomVariant] = useState(false);
   const [voicePhrases, setVoicePhrases]   = useState([]);
+  // Additional triggers that fire the same expansion. Stored on the primary as
+  // data.aliases, and expanded into shadow GLOBAL::EXPANSION::<alias> entries
+  // in App.jsx handleAddExpansion so the buffer matcher picks them up unchanged.
+  const [aliases, setAliases]             = useState([]);
+  const [aliasInput, setAliasInput]       = useState('');
+  const [aliasError, setAliasError]       = useState('');
   // Inline create-category state — when user picks "+ Add Category" in the
   // editor dropdown, swap to an inline input that creates and selects in one go.
   const [creatingCatInEditor, setCreatingCatInEditor] = useState(false);
@@ -3015,7 +3156,11 @@ export default function TextExpansions({
     setActiveVariantIndex(0);
     setRenamingVariantIndex(null);
     setVariantRemoveConfirm(null);
+    setRandomVariant(false);
     setVoicePhrases([]);
+    setAliases([]);
+    setAliasInput('');
+    setAliasError('');
     setCreatingCatInEditor(false);
     setEditorNewCatName('');
     setEditing({ isNew: true });
@@ -3054,7 +3199,11 @@ export default function TextExpansions({
     setActiveVariantIndex(0);
     setRenamingVariantIndex(null);
     setVariantRemoveConfirm(null);
+    setRandomVariant(exp.randomVariant === true);
     setVoicePhrases(Array.isArray(exp.voicePhrases) ? exp.voicePhrases : []);
+    setAliases(Array.isArray(exp.aliases) ? exp.aliases : []);
+    setAliasInput('');
+    setAliasError('');
     setCreatingCatInEditor(false);
     setEditorNewCatName('');
     setEditing({ isNew: false, originalTrigger: exp.trigger });
@@ -3071,7 +3220,16 @@ export default function TextExpansions({
     }
     const originalTrigger = editing.isNew ? null : editing.originalTrigger;
     const cleanedVariants = hasVariants ? variantOptions.filter(o => o.text?.trim()) : [];
-    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants, voicePhrases);
+    // Fold a still-uncommitted alias input into the list so a user typing an
+    // alias and hitting Save (without pressing Enter/comma first) doesn't lose it.
+    const trailingAlias = aliasInput.trim().toLowerCase().replace(/\s/g, '');
+    const combinedAliases = trailingAlias && !aliases.includes(trailingAlias) && trailingAlias !== t
+      ? [...aliases, trailingAlias]
+      : aliases;
+    // randomVariant only meaningful when the expansion has variants; strip the
+    // flag otherwise so a saved variant-less expansion never carries stale state.
+    const randomVariantOut = hasVariants ? randomVariant : false;
+    onAdd(t, editorValue, originalTrigger, category, triggerMode, displayName.trim() || null, expansionType, imagePath, imageScale, cleanedVariants, voicePhrases, combinedAliases, randomVariantOut);
     // Keep the editor open after Save. Flip editing.isNew to false (and
     // re-anchor originalTrigger to the just-saved trigger) so the next Save
     // updates the same row instead of trying to create a fresh one.
@@ -3209,6 +3367,8 @@ export default function TextExpansions({
       original.imageScale ?? 100,
       original.options || [],
       original.voicePhrases || [],
+      [], // aliases — never copied; a duplicate can't share trigger keys with its source
+      original.randomVariant === true,
     );
 
     // Open the new copy in the edit panel once the expansions list re-renders.
@@ -3645,17 +3805,16 @@ export default function TextExpansions({
           <button
             className={`te-gv-link${panelMode === 'globalvars' ? ' active' : ''}`}
             onClick={() => {
-              if (!isPro) { onShowUpgrade?.('Global variables'); return; }
               setPanelMode('globalvars'); setGdEditing(null);
             }}
             type="button"
-            title="Global Variables — reusable values inserted into expansions (Pro)"
+            title="Global Variables — reusable values inserted into expansions"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <rect x="1" y="1" width="10" height="10" rx="2"/>
               <path d="M4 4h1M7 4h1M4 6h4M4 8h3"/>
             </svg>
-            Global Variables <span className="pro-badge">PRO</span>
+            Global Variables
           </button>
         </div>
       </div>
@@ -3930,7 +4089,7 @@ export default function TextExpansions({
                   <span className="te-sort-arrow">{sortKey === 'name-asc' ? ' ▲' : sortKey === 'name-desc' ? ' ▼' : ''}</span>
                 </button>
                 <div className="te-col-header te-col-header--static">Preview</div>
-                <div className="te-col-header te-col-header--static">Tag</div>
+                <div className="te-col-header te-col-header--static" style={{ justifyContent: 'flex-end' }}>Tag</div>
                 <div className="te-col-header-spacer" />
               </div>
               {itemCount === 0 ? (
@@ -4052,13 +4211,17 @@ export default function TextExpansions({
                           <span className="te-immediate-badge" title="Fires instantly (no Space needed)">⚡</span>
                         )}
                         {exp.expansionType === 'image' && (
-                          <>
-                            <span className={`te-img-badge${!isPro ? ' locked' : ''}`} title={!isPro ? 'Image expansion (Pro only — does not fire on Free)' : 'Image expansion'}>IMG</span>
-                            {!isPro && <span className="pro-badge te-list-pro-badge" title="Pro feature">PRO</span>}
-                          </>
+                          <span className={`te-img-badge${!isPro ? ' locked' : ''}`} title={!isPro ? 'Image expansion (Pro only — does not fire on Free)' : 'Image expansion'}>IMG</span>
                         )}
                         {exp.options && exp.options.length > 0 && (
-                          <span className="te-variant-badge" title={`${exp.options.length} variants — picker shows on trigger`}>▾</span>
+                          <span
+                            className={`te-variant-badge${exp.randomVariant ? ' te-variant-badge--random' : ''}`}
+                            title={
+                              exp.randomVariant
+                                ? `${exp.options.length} variants, one fires at random`
+                                : `${exp.options.length} variants, picker shows on trigger`
+                            }
+                          >{exp.randomVariant ? '⇄' : '▾'}</span>
                         )}
                       </div>
                       {/* Col 2 — Name */}
@@ -4090,8 +4253,12 @@ export default function TextExpansions({
                           (exp.text || '').replace(/\s+/g, ' ').trim()
                         )}
                       </div>
-                      {/* Col 4 — Tag */}
+                      {/* Col 4 — Tag (also carries the Free-tier PRO chip for image expansions
+                          so the trigger column isn't crowded — see fix 2026-08-13) */}
                       <div className="te-col-tag">
+                        {exp.expansionType === 'image' && !isPro && (
+                          <span className="pro-badge te-list-pro-badge" title="Pro feature">PRO</span>
+                        )}
                         {exp.category && (
                           <span
                             className="te-cat-badge"
@@ -4326,6 +4493,78 @@ export default function TextExpansions({
                       />
                       {triggerError && <span className="te-trigger-error">{triggerError}</span>}
                     </div>
+                    <div className="te-panel-field">
+                      <label className="form-label">ALIASES</label>
+                      <div className="te-alias-input-row">
+                        {aliases.map((a, i) => (
+                          <span key={`${a}-${i}`} className="te-alias-chip">
+                            {a}
+                            <button
+                              type="button"
+                              className="te-alias-chip-remove"
+                              title="Remove alias"
+                              onClick={() => setAliases(aliases.filter((_, idx) => idx !== i))}
+                            >×</button>
+                          </span>
+                        ))}
+                        <input
+                          className={`form-input te-alias-input${aliasError ? ' te-input-error' : ''}`}
+                          placeholder={aliases.length === 0 ? 'brb2, back-soon (Space or Enter to add)' : 'Add another…'}
+                          value={aliasInput}
+                          onChange={e => {
+                            setAliasInput(e.target.value.replace(/\s/g, ''));
+                            if (aliasError) setAliasError('');
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Escape') { e.preventDefault(); handleCancel(); return; }
+                            if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+                              e.preventDefault();
+                              const candidate = aliasInput.trim().toLowerCase().replace(/\s/g, '');
+                              if (!candidate) return;
+                              const primaryNorm = trigger.trim().toLowerCase();
+                              if (candidate === primaryNorm) {
+                                setAliasError('An alias cannot equal the primary trigger.');
+                                return;
+                              }
+                              if (aliases.includes(candidate)) {
+                                setAliasError('Alias already added.');
+                                return;
+                              }
+                              // Clash check covers three cases:
+                              //   1. Alias equals another expansion's primary trigger
+                              //   2. Alias equals another expansion's saved alias (Rory 2026-08-13)
+                              //   3. Same match on the SAME expansion is allowed via edit continuity
+                              //      (compared against originalTrigger, not the currently-typed trigger)
+                              const editingOriginal = editing?.originalTrigger?.toLowerCase() || null;
+                              const clash = expansions.find(exp => {
+                                const primary = exp.trigger.toLowerCase();
+                                if (primary === editingOriginal) return false; // don't clash against self
+                                if (primary === candidate) return true;
+                                const otherAliases = Array.isArray(exp.aliases) ? exp.aliases : [];
+                                return otherAliases.some(a => (a || '').toLowerCase() === candidate);
+                              });
+                              if (clash) {
+                                const clashLabel = clash.displayName || clash.trigger;
+                                const isAliasOfClash = clash.trigger.toLowerCase() !== candidate;
+                                setAliasError(
+                                  isAliasOfClash
+                                    ? `"${candidate}" is already an alias of "${clashLabel}".`
+                                    : `"${candidate}" is already a trigger for "${clashLabel}".`
+                                );
+                                return;
+                              }
+                              setAliases([...aliases, candidate]);
+                              setAliasInput('');
+                            }
+                          }}
+                          spellCheck={false}
+                        />
+                      </div>
+                      {aliasError
+                        ? <span className="te-trigger-error">{aliasError}</span>
+                        : <span className="form-hint" style={{ marginTop: 2 }}>Extra triggers that fire the same expansion. Space, Enter or comma to add. Click × to remove.</span>
+                      }
+                    </div>
                     <div className="te-trigger-mode">
                       <button
                         type="button"
@@ -4375,14 +4614,40 @@ export default function TextExpansions({
                             onShowUpgrade={onShowUpgrade}
                             reusableFillInLabels={reusableFillInLabels}
                             setVarNames={setVarNames}
+                            expansions={expansions}
+                            excludeTrigger={editing.isNew ? (trigger.trim().toLowerCase() || null) : editing.originalTrigger}
                           />
                         </>
                       ) : (
                         <>
                           <div className="te-variant-header">
                             <label className="form-label">VARIANTS</label>
+                            <label
+                              className="te-variant-random-toggle"
+                              title={isPro
+                                ? (randomVariant
+                                    ? 'Firing the trigger picks one variant at random'
+                                    : 'Firing the trigger shows the variant picker so the user chooses')
+                                : 'Random variant firing is a Pro feature'}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={randomVariant}
+                                disabled={!isPro}
+                                onChange={e => {
+                                  if (!isPro) { onShowUpgrade?.('Random variant firing'); return; }
+                                  setRandomVariant(e.target.checked);
+                                }}
+                              />
+                              <span>Fire a random variant</span>
+                              {!isPro && <span className="pro-badge te-variant-tab-pro">PRO</span>}
+                            </label>
                           </div>
-                          <p className="te-variant-hint">When triggered, a popup lets the user pick which variant to insert.</p>
+                          <p className="te-variant-hint">
+                            {randomVariant
+                              ? 'When triggered, one of the variants below fires at random. No picker is shown.'
+                              : 'When triggered, a popup lets the user pick which variant to insert.'}
+                          </p>
                           <div className="te-variant-tabs" role="tablist">
                             {variantOptions.map((opt, i) => {
                               const isActive   = i === activeVariantIndex;
@@ -4490,6 +4755,8 @@ export default function TextExpansions({
                               onShowUpgrade={onShowUpgrade}
                               reusableFillInLabels={reusableFillInLabels}
                               setVarNames={setVarNames}
+                              expansions={expansions}
+                              excludeTrigger={editing.isNew ? (trigger.trim().toLowerCase() || null) : editing.originalTrigger}
                             />
                           )}
 
@@ -5041,8 +5308,10 @@ export default function TextExpansions({
       {panelMode === 'globalvars' && (
         <div className="gd-view">
           <div className="gd-helper">
-            Use <kbd className="te-trigger-badge">{'{{variable.key}}'}</kbd> in any expansion to insert the value automatically.
-            Keys are auto-generated from the display title — use the <strong>Insert</strong> button in the expansion editor to pick variables.
+            Reusable values that resolve anywhere Keyfire outputs text.
+            Insert as <kbd className="te-trigger-badge">{'{{var:key}}'}</kbd> via the <strong>Insert</strong> button in the expansion editor.
+            <br />
+            Works in text expansions, autocorrect, macro Type Text steps, and hotkey Text actions.
           </div>
 
           {/* Add / Edit form */}
@@ -5065,7 +5334,7 @@ export default function TextExpansions({
                   />
                   {gdTitle.trim() && titleToKey(gdTitle.trim()) && (
                     <span className="gd-key-hint">
-                      Will be inserted as <kbd className="te-trigger-badge gd-key-badge">{`{{${titleToKey(gdTitle.trim())}}}`}</kbd>
+                      Will be inserted as <kbd className="te-trigger-badge gd-key-badge">{`{{var:${titleToKey(gdTitle.trim())}}}`}</kbd>
                     </span>
                   )}
                   {gdNameErr && <span className="te-trigger-error">{gdNameErr}</span>}
@@ -5095,7 +5364,7 @@ export default function TextExpansions({
               {sortedGd.map(([key, value]) => (
                 <div key={key} className="gd-item">
                   <span className="gd-item-title">{keyToTitle(key)}</span>
-                  <span className="gd-item-value">{value}</span>
+                  <span className="gd-item-value">{String(value)}</span>
                   <div className="te-item-actions">
                     <button className="te-item-edit" onClick={() => openGdEdit(key)} type="button">Edit</button>
                     <button className="te-item-delete" onClick={() => handleGdDelete(key)} type="button">✕</button>

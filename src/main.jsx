@@ -63,6 +63,13 @@ if (params.get('overlay') === '1') {
       <SettingsWindow />
     </React.Suspense>
   );
+} else if (params.get('report') === '1') {
+  const AnalyticsReport = React.lazy(() => import('./components/AnalyticsReport'));
+  root.render(
+    <React.Suspense fallback={null}>
+      <AnalyticsReport />
+    </React.Suspense>
+  );
 } else if (params.get('countdown') === '1') {
   const RecorderCountdown = React.lazy(() => import('./components/RecorderCountdown'));
   root.render(

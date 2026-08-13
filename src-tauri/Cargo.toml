@@ -51,6 +51,7 @@ base64 = "0.22"
 # client keeps the telemetry thread synchronous (no tokio runtime needed).
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
 uuid = { version = "1", features = ["v4"] }
+rust_xlsxwriter = "0.97.1"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
@@ -73,6 +74,11 @@ windows = { version = "0.61", features = [
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",
     "Win32_System_Com",
+    # Audio device switching (src/audio_devices.rs) — PKEY_Device_FriendlyName
+    # from FunctionDiscovery + PropVariantToStringAlloc from PropertiesSystem.
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_System_Com_StructuredStorage",
     # Shell COM for the Files macro steps (Create Folder / Copy Files /
     # Move Files) — src/shell_files.rs. IShellWindows (foreground Explorer
     # folder + selection) + IFileOperation (native copy/move with progress
@@ -104,3 +110,6 @@ windows-sys = { version = "0.59", features = [
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[dev-dependencies]
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

@@ -74,6 +74,14 @@ window.electronAPI = {
     listen('shared-config-migrated', (event) => callback(event.payload)).then(u => { listeners['shared-config-migrated'] = u; });
   },
 
+  // Generic per-step toast bridge. Rust arms in actions.rs emit
+  // `system-action-toast` with { level: 'error'|'info'|'success', message: string }
+  // when a step needs to surface a user-visible message that isn't the whole
+  // macro's "fired" toast — e.g. Change Audio Output firing on an unplugged device.
+  onSystemActionToast: (callback) => {
+    listen('system-action-toast', (event) => callback(event.payload)).then(u => { listeners['system-action-toast'] = u; });
+  },
+
   // Fired by clipboard.rs when 5+ rows fail decryption in one session
   // (key/data mismatch). One-time per session; points the user at
   // Settings > Privacy & Security > Reset clipboard storage.
@@ -167,6 +175,13 @@ window.electronAPI = {
 
   // ── Global variables (text expansion tokens) ───────────────────────────────
   updateGlobalVariables: (vars) => invoke('update_global_variables', { vars }),
+
+  // ── Audio output devices (Change Audio Output macro step) ──────────────────
+  // list resolves to [{id, friendlyName, isDefault}]; set resolves to the
+  // friendlyName that was activated, or rejects with a typed error object
+  // shaped {kind: 'device_not_found' | 'policy_config_failed' | 'com_error', message: string}.
+  listAudioOutputDevices: () => invoke('list_audio_output_devices'),
+  setAudioOutputDevice:   (deviceId) => invoke('set_audio_output_device', { deviceId }),
 
   // ── Onboarding ──────────────────────────────────────────────────────────────
   resetOnboarding: () => invoke('reset_onboarding'),
@@ -312,15 +327,32 @@ window.electronAPI = {
   // ── Analytics ───────────────────────────────────────────────────────────────
   getAnalytics:  () => invoke('get_analytics'),
   resetAnalytics: () => invoke('reset_analytics'),
-  getDailyChart:          (days) => invoke('get_daily_chart', { days: days || 14 }),
-  getAssignmentBreakdown: (days) => invoke('get_assignment_breakdown', { days: days || null }),
-  getTypeBreakdown:       (days) => invoke('get_type_breakdown', { days: days || null }),
-  getHourlyHeatmap:       (days) => invoke('get_hourly_heatmap', { days: days || null }),
-  getTopApps:             (days) => invoke('get_top_apps', { days: days || null }),
-  getExpansionEfficiency: ()     => invoke('get_expansion_efficiency'),
+  // from/to (YYYY-MM-DD, both required together) select a custom date range;
+  // when present they win over days. Used by the PDF report window.
+  getDailyChart:          (days, from = null, to = null) => invoke('get_daily_chart', { days: days ?? null, from, to }),
+  getAssignmentBreakdown: (days, from = null, to = null) => invoke('get_assignment_breakdown', { days: days || null, from, to }),
+  getTypeBreakdown:       (days, from = null, to = null) => invoke('get_type_breakdown', { days: days || null, from, to }),
+  getHourlyHeatmap:       (days, from = null, to = null) => invoke('get_hourly_heatmap', { days: days || null, from, to }),
+  getTopApps:             (days, from = null, to = null) => invoke('get_top_apps', { days: days || null, from, to }),
+  getExpansionEfficiency: (days = null, from = null, to = null) => invoke('get_expansion_efficiency', { days, from, to }),
   getExpansionCounts:     ()     => invoke('get_expansion_counts'),
   getStreaks:              ()     => invoke('get_streaks'),
-  exportAnalyticsCsv:     ()     => invoke('export_analytics_csv'),
+  // days: 0 = all time, 1 = today, 7/14/30 = last N days. A valid from/to
+  // pair (YYYY-MM-DD) wins over days — bank-statement style custom range.
+  exportAnalyticsXlsx:    (days = 0, from = null, to = null) => invoke('export_analytics_xlsx', { days, from, to }),
+  exportAnalyticsPdf:     (days = 0, from = null, to = null) => invoke('export_analytics_pdf', { days, from, to }),
+  // Report window only (?report=1): tells Rust the report DOM is painted so
+  // it can drive WebView2 PrintToPdf against it.
+  analyticsReportReady:   ()     => invoke('analytics_report_ready'),
+  onAnalyticsPdfDone: (callback) => {
+    // AnalyticsPanel remounts on every tab switch — drop the previous
+    // registration so handlers don't accumulate across mounts.
+    if (listeners['analytics-pdf-done']) {
+      listeners['analytics-pdf-done']();
+      delete listeners['analytics-pdf-done'];
+    }
+    listen('analytics-pdf-done', (event) => callback(event.payload)).then(u => { listeners['analytics-pdf-done'] = u; });
+  },
 
   // ── Clipboard Manager ──────────────────────────────────────────────────────
   getClipboardHistory:    (page, perPage, filters = {}) => invoke('get_clipboard_history', {

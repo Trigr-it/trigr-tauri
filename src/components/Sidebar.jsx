@@ -932,12 +932,15 @@ export default function Sidebar({
 
   function sortEntries(arr) {
     const a = [...arr];
+    // numeric: true = natural sort, so F2 comes before F12 (plain
+    // localeCompare is lexicographic and ordered F1, F12, F2...).
+    const nat = (x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: 'base' });
     switch (assignSort) {
-      case 'key-desc':  return a.sort((x, y) => friendlyKeyName(y.keyId).localeCompare(friendlyKeyName(x.keyId)));
-      case 'name-asc':  return a.sort((x, y) => (x.macro?.label || x.macro?.data?.text || x.macro?.data?.url || x.macro?.data?.path || '').localeCompare(y.macro?.label || y.macro?.data?.text || y.macro?.data?.url || y.macro?.data?.path || ''));
-      case 'name-desc': return a.sort((x, y) => (y.macro?.label || y.macro?.data?.text || y.macro?.data?.url || y.macro?.data?.path || '').localeCompare(x.macro?.label || x.macro?.data?.text || x.macro?.data?.url || x.macro?.data?.path || ''));
+      case 'key-desc':  return a.sort((x, y) => nat(friendlyKeyName(y.keyId), friendlyKeyName(x.keyId)));
+      case 'name-asc':  return a.sort((x, y) => nat(x.macro?.label || x.macro?.data?.text || x.macro?.data?.url || x.macro?.data?.path || '', y.macro?.label || y.macro?.data?.text || y.macro?.data?.url || y.macro?.data?.path || ''));
+      case 'name-desc': return a.sort((x, y) => nat(y.macro?.label || y.macro?.data?.text || y.macro?.data?.url || y.macro?.data?.path || '', x.macro?.label || x.macro?.data?.text || x.macro?.data?.url || x.macro?.data?.path || ''));
       case 'type':      return a.sort((x, y) => (x.macro?.type || '').localeCompare(y.macro?.type || ''));
-      default:          return a.sort((x, y) => friendlyKeyName(x.keyId).localeCompare(friendlyKeyName(y.keyId))); // key-asc
+      default:          return a.sort((x, y) => nat(friendlyKeyName(x.keyId), friendlyKeyName(y.keyId))); // key-asc
     }
   }
 
