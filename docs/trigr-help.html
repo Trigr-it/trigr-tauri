@@ -1268,7 +1268,7 @@
 <div class="section-page" id="page-macro-recorder">
   <div class="section-meta"><span class="section-num">11a</span><span class="section-label">Actions</span></div>
   <div class="section-title">Macro recorder</div>
-  <div class="section-subtitle">Capture a sequence of real keystrokes and mouse actions, then replay them exactly as you performed them.</div>
+  <div class="section-subtitle">Capture a sequence of real keystrokes and mouse actions, then replay them exactly as you performed them, or turn the recording into an editable list of steps.</div>
 
   <p>The Record Macro step inside any macro lets Keyfire capture a literal sequence of your input. Every keystroke, mouse click, drag, scroll, and movement is recorded with its original timing, then replayed later as part of the macro. Useful for any flow you can perform faster by hand than by chaining individual steps in the editor.</p>
 
@@ -1281,24 +1281,48 @@
 
   <h2>Recording a macro</h2>
   <div class="step-row"><div class="step-num">1</div><div class="step-text">In the macro editor, click <strong>+ Add Step</strong> and choose <strong>Record Macro</strong> at the top of the menu.</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>Record</strong>. The bottom-centre recording pill appears.</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-text">Perform whatever you want to capture. Switch apps, type, click, drag, scroll. All input is recorded with the original timing gaps.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click <strong>Record</strong>. A 3-2-1 countdown gives you a moment to switch to the app you want to record in.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">When the countdown finishes the bottom-centre recording pill appears. Perform whatever you want to capture. Switch apps, type, click, drag, scroll. All input is recorded with the original timing gaps.</div></div>
   <div class="step-row"><div class="step-num">4</div><div class="step-text">Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> or click <strong>Stop</strong> on the pill. The captured event count appears in the step.</div></div>
   <div class="step-row"><div class="step-num">5</div><div class="step-text">Save the macro. The recorded sequence now fires whenever the macro runs.</div></div>
 
   <h2>What gets captured</h2>
   <ul>
     <li>All key presses and releases, including modifiers.</li>
-    <li>Mouse clicks, drags, releases, and scroll wheel events.</li>
+    <li>Mouse clicks, drags, releases, and scroll wheel events. Click-and-hold above 150ms is preserved as a hold. Click-and-drag replays as a real drag rather than as a click. Modifier keys held during a click (Shift+drag, Ctrl+click) travel with the click.</li>
     <li>Mouse cursor moves (downsampled to 60Hz for storage efficiency).</li>
     <li>The original timing between each event, replayed at the same cadence.</li>
+    <li>The target app the recording was made in. Replay focuses that app before firing, and clicks are stored relative to the target window so they land correctly even if the window has moved or resized between recording and replay.</li>
   </ul>
 
   <h2>What does NOT get captured</h2>
   <ul>
     <li>Synthetic events from other automation tools. The recorder ignores anything Keyfire itself generates, so a recording cannot loop into itself.</li>
-    <li>Window focus changes. The recording replays into whatever window happens to be focused at the time, at the same absolute screen coordinates.</li>
   </ul>
+
+  <h2>Distillation (Pro)</h2>
+  <p>The raw recording is a stream of low-level events. Distillation turns it into a familiar list of macro steps you can read, edit, and rearrange.</p>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Record a macro as above.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">In the recorded step, click <strong>Distil</strong>. Keyfire converts the raw events into standard macro steps.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">The distilled steps appear inline, editable exactly like hand-built macros. Reorder them, change parameters, or add new steps between them.</div></div>
+
+  <p>The raw recording is kept alongside the distilled version. A toggle on the step lets you flip between <strong>Raw</strong> and <strong>Distilled</strong> playback at any time.</p>
+
+  <h2>Distilled step types</h2>
+  <table>
+    <tr><th>Step</th><th>What it captures</th></tr>
+    <tr><td><strong>Type Text</strong></td><td>Runs of keystrokes that produce readable text. Fires as a single Type Text step at replay.</td></tr>
+    <tr><td><strong>Press Key</strong></td><td>Modifier chords or non-text keys like arrow keys, function keys, Escape.</td></tr>
+    <tr><td><strong>Click at Position</strong></td><td>Mouse clicks with their window-relative position, hold duration, drag path, and any modifier keys held during the click.</td></tr>
+    <tr><td><strong>Focus Window</strong></td><td>Switches to the target app before subsequent steps run.</td></tr>
+    <tr><td><strong>Wait</strong></td><td>Gaps in the original recording are preserved as Wait steps so the distilled macro keeps the same rhythm.</td></tr>
+    <tr><td><strong>Mouse Scroll</strong></td><td>Wheel and horizontal scroll events with the correct direction and notch count.</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <div class="ct">Missing target app on replay</div>
+    <p>If the recording's target app is not running when the distilled macro fires, Keyfire shows a modal telling you to open it first. Keyfire does not auto-launch the target app by design, since a fresh launch usually needs a moment to reach a state where the recorded clicks make sense.</p>
+  </div>
 
   <h2>Stopping a recording</h2>
   <p>Three ways to stop a recording in progress:</p>
@@ -1311,19 +1335,14 @@
   <h2>Cancelling a replay</h2>
   <p>Press <kbd>Esc</kbd> at any point during replay to abort. Replay stops at the current event without firing any of the remaining ones.</p>
 
-  <div class="callout tip">
-    <div class="ct">Drag operations replay correctly</div>
-    <p>Recordings capture real drag motion, so dragging an image in Excel, dragging files between folders in Explorer, drawing freehand strokes in Paint and similar click-and-drag flows all replay as drags rather than as clicks.</p>
-  </div>
+  <h2>Free vs Pro</h2>
+  <p>Recording and Raw playback are free. Distillation and the editable step list are Pro features. Free users can still record and replay macros exactly as captured, and distilled data on existing macros survives a Pro lapse and returns on renewal.</p>
 
-  <h2>Limitations</h2>
-  <p>The macro recorder is currently a literal-replay tool, which means:</p>
+  <h2>Known limits</h2>
   <ul>
-    <li>Mouse clicks replay at the exact screen coordinates you recorded. If you move or resize the target window between recording and replay, the clicks land at the original screen position rather than following the window.</li>
     <li>The radial menu does not fire during replay. It requires a real physical key press, not a synthetic one.</li>
     <li>Text input inside Keyfire's own Quick Search overlay does not replay. The overlay routes input differently from regular apps.</li>
   </ul>
-  <p>A future release will add an option to translate recorded coordinates into window-relative positions so macros survive window moves and resizes.</p>
 
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
 </div>
@@ -1892,7 +1911,7 @@
 
   <div class="callout tip">
     <div class="ct">Custom icons</div>
-    <p>The icon picker includes thousands of lucide icons and Simple Icons brand glyphs (GitHub, Slack, Photoshop, etc.). Search by name. Hit Enter on a result to select it.</p>
+    <p>App-typed segments auto-fetch the target app's own icon by default, including Microsoft Store apps and Steam shortcuts. Existing segments backfill automatically the next time the wheel opens. You can override with any of thousands of lucide icons and Simple Icons brand glyphs (GitHub, Slack, Photoshop, etc.) from the icon picker. Search by name and hit Enter on a result to select it.</p>
   </div>
 
   <h2>Behaviour over fullscreen apps</h2>
