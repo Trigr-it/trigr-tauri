@@ -27,7 +27,7 @@ Download the latest installer for Windows 10 or 11:
 
 Around 10MB installer, 20 to 50MB RAM at runtime. Auto-updates from this repository's Releases.
 
-The app is free during alpha and beta. Paid tiers (Personal £29/yr, Pro £49/yr, Lifetime £99) launch with v1.0. Beta testers receive a minimum of one year free access on the paid tier they end up on.
+The app is free during alpha and beta. Paid tiers launch with v1.0. Beta testers receive free access on the paid tier they end up on for a period.
 
 ## Features
 
@@ -99,16 +99,14 @@ The output installer lives in `src-tauri/target/release/bundle/nsis/`.
 
 ## Reporting bugs
 
-Inside the app: **Settings → Feedback**.
+Inside the app: **Feedback Button**.
 By email: **admin@keyfire.app**.
 
 For security issues, please email directly rather than opening a public issue.
 
 ## Contributing
 
-Pull requests are accepted at the maintainer's discretion. By submitting a contribution you agree to the contribution terms in [LICENSE.md](LICENSE.md#contributions).
-
-Before opening a PR for anything non-trivial, please email admin@keyfire.app first to check it aligns with the roadmap.
+Keyfire is a commercial product. This repository is public for transparency and auditability, not as an invitation to contribute. Pull requests are not accepted. If you have a suggestion, submit it via the in-app feedback flow — that's where roadmap decisions get made.
 
 ## Licence
 
