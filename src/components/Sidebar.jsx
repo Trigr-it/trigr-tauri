@@ -651,7 +651,7 @@ const MODIFIERS = [
 // ── Draggable wrapper for sidebar cards/items in radial mode ────────────────
 
 function DraggableCardWrap({ id, storageKey, isUsed, enabled, kind = 'library-card', data = null, children }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${id}`,
     data: { kind, storageKey, ...(data || {}) },
     disabled: !enabled || isUsed,
@@ -661,7 +661,11 @@ function DraggableCardWrap({ id, storageKey, isUsed, enabled, kind = 'library-ca
     <div
       ref={setNodeRef}
       className={`${isDragging ? 'is-dragging' : ''}${isUsed ? ' is-used' : ''}`}
-      {...(enabled && !isUsed ? { ...listeners, ...attributes } : {})}
+      // listeners only — dnd-kit's `attributes` add role="button" + tabIndex,
+      // which would give every wrapped sidebar row a focusable phantom
+      // "button" tab stop that answers to no keyboard interaction (no
+      // KeyboardSensor is registered; drags are pointer-only).
+      {...(enabled && !isUsed ? listeners : {})}
       // pan-y, NOT none: these wrappers now cover the full scrollable
       // assignment list, and touch-action:none would kill finger-scrolling
       // on touchscreens (the dev machine is a Surface). Vertical panning
@@ -1176,7 +1180,7 @@ export default function Sidebar({
         id={`bind-${combo}::${keyId}`}
         storageKey={storageKey}
         isUsed={false}
-        enabled={!isRenaming(combo, keyId)}
+        enabled={!isRenaming(combo, keyId) && !isRecording}
         kind="bind-action"
         data={{ source: 'bound', combo, keyId, label: displayLabel }}
       >
@@ -1334,7 +1338,9 @@ export default function Sidebar({
         className={`sidebar-item sidebar-item-unassigned type-${macro.type}${isSelected ? ' sidebar-item-active' : ''}`}
         onClick={() => onSelectLibraryEntry?.(id)}
         onContextMenu={e => handleAssignContextMenu(e, 'UNASSIGNED', id, macro)}
-        title="Edit this action. Drag it onto a keyboard key to bind, or right-click for Bind to key"
+        title={listViewActive
+          ? 'Edit this action, or right-click for Bind to key'
+          : 'Edit this action. Drag it onto a keyboard key to bind, or right-click for Bind to key'}
       >
         <div className="sidebar-key-stack">
           <span className="sidebar-key-badge sidebar-key-badge-unassigned">No key</span>
@@ -1376,14 +1382,16 @@ export default function Sidebar({
     );
 
     // Unassigned rows drag onto canvas keys to bind (classic keyboard/mouse
-    // views — the section is hidden in radial mode).
+    // views — the section is hidden in radial mode). Disabled in grid/list
+    // view: no canvas is mounted there, so a drag has zero drop targets and
+    // would always end as a silent no-op.
     return (
       <DraggableCardWrap
         key={id}
         id={`unassigned-${id}`}
         storageKey={`${activeProfile}::UNASSIGNED::${id}`}
         isUsed={false}
-        enabled={!isRenaming('UNASSIGNED', id)}
+        enabled={!isRenaming('UNASSIGNED', id) && !isRecording && !listViewActive}
         kind="bind-action"
         data={{ source: 'unassigned', id, label: displayLabel }}
       >

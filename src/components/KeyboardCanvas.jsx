@@ -361,12 +361,17 @@ export default function KeyboardCanvas({
         </div>
       )}
 
-      {/* Drop hint — a bind drag is in flight but no modifier layer is
-          selected, so every key is a disabled target. Points at the
-          spring-load gesture. */}
+      {/* Drop hint — a bind drag is in flight but drops would silently die:
+          either no modifier layer is selected (all keys disabled), or the
+          bare layer on a static profile disables the character keys. */}
       {bindDragActive && noLayer && (
         <div className="keyboard-drop-hint">
           Hover a modifier above to pick the layer, then drop on a key
+        </div>
+      )}
+      {bindDragActive && !noLayer && bareStaticMode && (
+        <div className="keyboard-drop-hint">
+          Bare layer on a static profile: only F-keys, numpad, and nav keys accept drops
         </div>
       )}
 

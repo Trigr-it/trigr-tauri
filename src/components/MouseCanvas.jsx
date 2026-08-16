@@ -127,6 +127,7 @@ export default function MouseCanvas({
   recordCapture,
   onNewShortcut,
   newTriggerHint = false,
+  bindDragActive = false,
 }) {
   const [firingZoneId, setFiringZoneId]       = useState(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
@@ -213,6 +214,14 @@ export default function MouseCanvas({
         onNewShortcut={onNewShortcut}
         newTriggerHint={newTriggerHint}
       />
+
+      {/* Drop hint — mirror of the keyboard canvas: a bind drag with no
+          layer selected means every zone is a disabled drop target. */}
+      {bindDragActive && noMods && (
+        <div className="keyboard-drop-hint">
+          Hover a modifier above to pick the layer, then drop on a mouse button
+        </div>
+      )}
 
       <div className="mouse-label">
         {noMods ? (

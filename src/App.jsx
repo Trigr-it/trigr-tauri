@@ -15,6 +15,7 @@ import UpgradeModal from './components/UpgradeModal';
 import ReservedShortcutModal from './components/ReservedShortcutModal';
 import AppNotRunningModal from './components/AppNotRunningModal';
 import { findReservedShortcut, formatComboDisplay } from './utils/reservedShortcuts';
+import { useModalKeyboard } from './hooks/useModalKeyboard';
 import OnboardingTour from './components/OnboardingTour';
 import ProTrialModal from './components/ProTrialModal';
 import TemplatesCoachmark from './components/TemplatesCoachmark';
@@ -84,6 +85,47 @@ function variantKeyMap(fromBase, toBase) {
 function triggerLabel(combo, keyId) {
   const keyLabel = friendlyKeyName(keyId);
   return combo === 'BARE' ? keyLabel : `${combo}+${keyLabel}`;
+}
+
+// Confirm dialog for drag-drops onto an occupied and/or reserved trigger.
+// A real component (not inline render JSX) so it can run useModalKeyboard —
+// ESC dismisses THIS modal instead of leaking to the document-level ESC
+// handler, and focus is trapped like every other modal. Styling reuses the
+// reserved-shortcut-* classes (ReservedShortcutModal.css loads via App's
+// static ReservedShortcutModal import).
+function DropConfirmModal({ drop, onConfirm, onCancel }) {
+  const panelRef = useRef(null);
+  useModalKeyboard(panelRef, onCancel);
+  const comboLabel = triggerLabel(drop.targetCombo, drop.targetKeyId);
+  const confirmLabel = drop.conflictLabel ? (drop.mode === 'bind' ? 'Replace' : 'Swap') : 'Bind Anyway';
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" onClick={onCancel}>
+      <div className="modal-panel drop-confirm-modal" ref={panelRef} onClick={e => e.stopPropagation()}>
+        <h1 className="reserved-shortcut-title">
+          {drop.conflictLabel
+            ? `${comboLabel} already fires "${drop.conflictLabel}"`
+            : `${comboLabel} is a reserved Windows shortcut`}
+        </h1>
+        {drop.conflictLabel && (
+          <p className="reserved-shortcut-body">
+            {drop.mode === 'bind'
+              ? 'Replace it? Its current action will move to Unassigned, not be deleted.'
+              : 'Swap the two actions? The action on the target key moves to the key you dragged from.'}
+          </p>
+        )}
+        {drop.reservedOsFunction && (
+          <p className="reserved-shortcut-body">
+            {comboLabel} is the Windows {drop.reservedOsFunction} shortcut. Mapping it will shadow
+            that shortcut while this profile is active.
+          </p>
+        )}
+        <div className="reserved-shortcut-actions">
+          <button className="reserved-shortcut-cancel-btn" type="button" onClick={onCancel}>Cancel</button>
+          <button className="reserved-shortcut-continue-btn" type="button" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -3505,6 +3547,7 @@ function App() {
     if (view) setActiveView(view);
     if (area !== 'mapping') {
       setSelectedKey(null);
+      setSelectedLibraryId(null);
       setDraftAssignment(null);
       setDraftDoubleAssignment(null);
     }
@@ -4255,6 +4298,10 @@ function App() {
     const { active, activatorEvent } = event;
     const data = active.data?.current;
     if (data?.kind === 'bind-action') {
+      // Recording lock: the layer buttons and canvas are disabled while the
+      // hotkey recorder is armed — drags must not mutate layer/selection
+      // state behind it either.
+      if (isRecording) return;
       const payload = { ...data };
       bindDragRef.current = payload;
       setBindActiveDrag(payload);
@@ -4267,26 +4314,43 @@ function App() {
       kind: data?.kind || 'library-card',
       label: data?.folderName || String(active.id).split('::').pop() || '',
     });
-  }, [activeView]);
+  }, [activeView, isRecording]);
+
+  // Spring-load layer selection — ADDITIVE only, unlike the click path's
+  // handleToggleModifier. Dwelling on an already-active button must never
+  // deselect it (the user is en route to a key, not toggling), BARE swaps the
+  // layer to bare, and the 3-modifier cap keeps extra dwells inert. Also
+  // deliberately does NOT touch selectedKey or sidebarComboFilter mid-drag —
+  // rewriting the filter would unmount the dragged sidebar row.
+  const springSelectModifier = useCallback((mod) => {
+    setActiveModifiers(prev => {
+      if (mod === 'BARE') return prev.includes('BARE') ? prev : ['BARE'];
+      if (prev.includes(mod)) return prev;
+      const next = [...prev.filter(m => m !== 'BARE'), mod];
+      return next.length > 3 ? prev : next;
+    });
+  }, []);
 
   // Spring-loaded modifier switch — fires while a bind-action drag hovers a
   // ModifierBar button. Droppable ids: modlayer-<Ctrl|Shift|Alt|Win|BARE>.
+  // Keyed off bindDragRef (not active.data.current, which can vanish if the
+  // dragged row unmounts mid-drag).
   const handleCanvasDragOver = useCallback((event) => {
-    const { active, over } = event;
-    if (active?.data?.current?.kind !== 'bind-action') return;
-    const overData = over?.data?.current;
+    if (!bindDragRef.current) return;
+    if (isRecording) { clearSpringMod(); return; }
+    const overData = event.over?.data?.current;
     if (!overData || overData.dropKind !== 'modlayer') { clearSpringMod(); return; }
-    const overId = String(over.id);
+    const overId = String(event.over.id);
     if (springModRef.current.overId === overId) return; // timer already pending
     clearSpringMod();
     springModRef.current = {
       overId,
       timer: setTimeout(() => {
         springModRef.current = { overId: null, timer: null };
-        handleToggleModifier(overData.mod);
+        springSelectModifier(overData.mod);
       }, 450),
     };
-  }, [clearSpringMod, handleToggleModifier]);
+  }, [clearSpringMod, springSelectModifier, isRecording]);
 
   const handleRadialDragMove = useCallback((event) => {
     if (activeView !== 'radial') return;
@@ -4316,16 +4380,27 @@ function App() {
       if (!targetCombo) return; // no modifier layer — key droppables are disabled anyway
       const targetBase = makeAssignmentKey(activeProfile, targetCombo, targetKeyId);
       const occupied = ASSIGNMENT_VARIANT_SUFFIXES.map(s => assignments[targetBase + s]).find(Boolean);
+      // Same hazard guard as the click path (handleKeySelect) — a drop must
+      // not silently hijack a reserved Windows shortcut.
+      const reserved = findReservedShortcut(targetCombo, targetKeyId);
       if (bindData.source === 'unassigned') {
-        if (occupied) {
-          setPendingCanvasDrop({ mode: 'bind', id: bindData.id, targetCombo, targetKeyId, conflictLabel: occupied.label || 'an action' });
+        if (occupied || reserved) {
+          setPendingCanvasDrop({
+            mode: 'bind', id: bindData.id, targetCombo, targetKeyId,
+            conflictLabel: occupied ? (occupied.label || 'an action') : null,
+            reservedOsFunction: reserved?.osFunction || null,
+          });
         } else {
           handleBindLibrary(bindData.id, targetCombo, targetKeyId);
         }
       } else if (bindData.source === 'bound') {
         if (bindData.combo === targetCombo && bindData.keyId === targetKeyId) return;
-        if (occupied) {
-          setPendingCanvasDrop({ mode: 'move', srcCombo: bindData.combo, srcKeyId: bindData.keyId, targetCombo, targetKeyId, conflictLabel: occupied.label || 'an action' });
+        if (occupied || reserved) {
+          setPendingCanvasDrop({
+            mode: 'move', srcCombo: bindData.combo, srcKeyId: bindData.keyId, targetCombo, targetKeyId,
+            conflictLabel: occupied ? (occupied.label || 'an action') : null,
+            reservedOsFunction: reserved?.osFunction || null,
+          });
         } else {
           moveAssignment(bindData.combo, bindData.keyId, targetCombo, targetKeyId);
         }
@@ -5003,36 +5078,18 @@ function App() {
           onClose={() => setAppMissingModal(null)}
         />
       )}
-      {pendingCanvasDrop && (() => {
-        const p = pendingCanvasDrop;
-        const keyLabel = friendlyKeyName(p.targetKeyId);
-        const comboLabel = p.targetCombo === 'BARE' ? keyLabel : `${p.targetCombo}+${keyLabel}`;
-        const confirm = () => {
-          setPendingCanvasDrop(null);
-          if (p.mode === 'bind') handleBindLibrary(p.id, p.targetCombo, p.targetKeyId);
-          else moveAssignment(p.srcCombo, p.srcKeyId, p.targetCombo, p.targetKeyId);
-        };
-        return (
-          <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setPendingCanvasDrop(null)}>
-            <div className="modal-panel drop-confirm-modal" onClick={e => e.stopPropagation()}>
-              <h1 className="reserved-shortcut-title">
-                {comboLabel} already fires "{p.conflictLabel}"
-              </h1>
-              <p className="reserved-shortcut-body">
-                {p.mode === 'bind'
-                  ? 'Replace it? Its current action will move to Unassigned, not be deleted.'
-                  : 'Swap the two actions? The action on the target key moves to the key you dragged from.'}
-              </p>
-              <div className="reserved-shortcut-actions">
-                <button className="reserved-shortcut-cancel-btn" type="button" onClick={() => setPendingCanvasDrop(null)}>Cancel</button>
-                <button className="reserved-shortcut-continue-btn" type="button" onClick={confirm}>
-                  {p.mode === 'bind' ? 'Replace' : 'Swap'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {pendingCanvasDrop && (
+        <DropConfirmModal
+          drop={pendingCanvasDrop}
+          onCancel={() => setPendingCanvasDrop(null)}
+          onConfirm={() => {
+            const p = pendingCanvasDrop;
+            setPendingCanvasDrop(null);
+            if (p.mode === 'bind') handleBindLibrary(p.id, p.targetCombo, p.targetKeyId);
+            else moveAssignment(p.srcCombo, p.srcKeyId, p.targetCombo, p.targetKeyId);
+          }}
+        />
+      )}
       {reservedShortcutPending && (
         <ReservedShortcutModal
           comboDisplay={reservedShortcutPending.comboDisplay}
@@ -5356,6 +5413,7 @@ function App() {
               recordCapture={recordCapture}
               onNewShortcut={handleNewShortcut}
               newTriggerHint={newTriggerHint}
+              bindDragActive={!!bindActiveDrag}
             />
           )}
           {activeArea === 'analytics' && (
