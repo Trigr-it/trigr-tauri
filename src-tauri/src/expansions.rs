@@ -193,6 +193,24 @@ pub fn fill_in_ready_tx() -> &'static Mutex<Option<mpsc::Sender<()>>> {
     FILL_IN_READY_TX.get_or_init(|| Mutex::new(None))
 }
 
+// ── Fill-in shown signal (renderer → Rust "picker actually rendered") ──────
+//
+// Failure mode this catches: in dev, WebView2 sometimes doesn't fully wake
+// from idle suspension, OR Vite HMR replaces the FillInWindow.jsx listener
+// exactly when Rust emits `fill-in-show`. The JS side never renders the
+// picker, no selection/cancel ever comes back, and Rust would sit blocked on
+// the response recv_timeout for the full duration (previously 60s) with
+// FILL_IN_ACTIVE=true — bricking every subsequent expansion in the meantime.
+//
+// Fix: after emitting `fill-in-show`, wait up to 2s for the JS side to
+// invoke the `fill_in_shown_ack` Tauri command. If it doesn't, the picker
+// didn't render — self-abort cleanly instead of hanging.
+static FILL_IN_SHOWN_TX: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
+
+pub fn fill_in_shown_tx() -> &'static Mutex<Option<mpsc::Sender<()>>> {
+    FILL_IN_SHOWN_TX.get_or_init(|| Mutex::new(None))
+}
+
 /// Typed fill-in field. Parsed from `{fillIn:Label[:type[:options][:default=value]]}`.
 /// Backward-compat: bare `{fillIn:Label}` parses as `FillInField { label, kind: "text", options: [], default: None }`.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1928,6 +1946,12 @@ pub(crate) fn run_fill_in_window(
         .and_then(|c| c.get("theme").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .unwrap_or_else(|| "dark".to_string());
 
+    // Track whether the JS side confirmed the picker rendered. Set true only
+    // when the shown-ACK arrives within 2s of the fill-in-show emit. Governs
+    // whether we bother waiting on the response channel afterwards — no point
+    // blocking 30s for a selection from a picker that never appeared.
+    let mut shown_ok = false;
+
     // Show fill-in window, wait for renderer ready signal, then emit field data
     if let Some(win) = app.get_webview_window("fillin") {
         use tauri::Emitter;
@@ -2016,10 +2040,29 @@ pub(crate) fn run_fill_in_window(
             "fields": resolved_fields,
             "theme": theme,
         }));
+
+        // Wait for JS to confirm the picker actually rendered. Guards against
+        // WebView2/HMR failures in dev where the emit lands nowhere. If the
+        // ACK doesn't arrive in 2s, skip straight to cleanup — no point
+        // waiting for a selection from an invisible picker.
+        let (shown_tx, shown_rx) = mpsc::channel::<()>();
+        *fill_in_shown_tx().lock().unwrap() = Some(shown_tx);
+        shown_ok = shown_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        *fill_in_shown_tx().lock().unwrap() = None;
+        if !shown_ok {
+            log::warn!("[Keyfire] fill-in window did not ACK render within 2s — aborting");
+        }
     }
 
-    // Block on this dedicated thread waiting for user response (60s timeout)
-    let response = rx.recv_timeout(Duration::from_secs(60));
+    // Block on this dedicated thread waiting for user response. Cut from 60s
+    // to 30s so a stuck picker recovers faster (still generous for typing).
+    // If the picker never confirmed render, don't wait at all — treat as an
+    // instant timeout so cleanup runs and expansions unbrick immediately.
+    let response = if shown_ok {
+        rx.recv_timeout(Duration::from_secs(30))
+    } else {
+        Err(mpsc::RecvTimeoutError::Timeout)
+    };
     *fill_in_tx().lock().unwrap() = None;
 
     // Clear fill-in HWND and hide window, restore focus to the original target app
@@ -2305,9 +2348,12 @@ pub fn resolve_tokens(
     // consumed first (otherwise `{date` would prefix-match into them).
     result = result.replace("{date}", &now.format(default_chrono_fmt).to_string());
 
-    // {date:+Nd}, {date:-Nm}, {date:+Ny} — date/time math with optional format suffix
+    // {date:+Nd}, {date:-Nm}, {date:+Ny}, {date:-Nb} — date/time math with
+    // optional format suffix. Unit `b` = business day (Mon-Fri), skips
+    // weekends. So on Monday, {date:-1b} = last Friday. No holiday calendar —
+    // Sat/Sun-only skip covers the common case.
     if result.contains("{date:+") || result.contains("{date:-") {
-        let re = regex_lite::Regex::new(r"\{date:([+-]\d+)([dmy])(?::([^}]+))?\}").unwrap();
+        let re = regex_lite::Regex::new(r"\{date:([+-]\d+)([dmyb])(?::([^}]+))?\}").unwrap();
         // Collect matches first to avoid mutating result during iteration
         let matches: Vec<(String, String)> = re
             .captures_iter(&result.clone())
@@ -2336,6 +2382,26 @@ pub fn resolve_tokens(
                         } else {
                             now.date_naive().checked_sub_months(chrono::Months::new((n.unsigned_abs() as u32) * 12))?
                         }
+                    }
+                    "b" => {
+                        // Business-day walker — steps N weekdays forward or
+                        // back from today, skipping Sat + Sun. n=0 returns
+                        // today unchanged (matches d/m/y zero-step). Uses %w
+                        // format (0=Sun, 6=Sat) to avoid importing Datelike.
+                        let mut date = now.date_naive();
+                        if n != 0 {
+                            let step = if n > 0 { 1i64 } else { -1i64 };
+                            let target: u32 = n.unsigned_abs() as u32;
+                            let mut counted: u32 = 0;
+                            while counted < target {
+                                date = date + chrono::Duration::days(step);
+                                let wd = date.format("%w").to_string();
+                                if wd != "0" && wd != "6" {
+                                    counted += 1;
+                                }
+                            }
+                        }
+                        date
                     }
                     _ => return None,
                 };
@@ -3470,24 +3536,6 @@ pub(crate) fn clipboard_sequence_number() -> u32 {
     unsafe { GetClipboardSequenceNumber() }
 }
 
-/// HTML-escape a string and convert newlines into <br>.
-fn html_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&'  => out.push_str("&amp;"),
-            '<'  => out.push_str("&lt;"),
-            '>'  => out.push_str("&gt;"),
-            '"'  => out.push_str("&quot;"),
-            '\'' => out.push_str("&#x27;"),
-            '\n' => out.push_str("<br>"),
-            '\r' => {}
-            _    => out.push(ch),
-        }
-    }
-    out
-}
-
 /// Resolve token chips inside an HTML expansion. Each
 /// `<span class="rte-token" data-token="{...}">display</span>` is replaced
 /// with the HTML-escaped resolved value of its token.
@@ -3536,14 +3584,6 @@ fn resolve_tokens_html(
 }
 
 // ── Hybrid injection — SendInput for short text, clipboard for long/terminal ─
-
-const TERMINAL_PROCS: &[&str] = &[
-    "cmd", "powershell", "pwsh", "windowsterminal", "wt", "mintty", "conhost",
-];
-
-fn is_terminal_process(proc_name: &str) -> bool {
-    TERMINAL_PROCS.iter().any(|&t| proc_name == t)
-}
 
 fn should_use_clipboard(_resolved_text: &str) -> bool {
     true
@@ -3937,6 +3977,11 @@ fn fire_variant_expansion(
     } else {
         crate::hotkeys::FILL_IN_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
 
+        // Set true only when the JS side ACKs render within 2s. Governs
+        // whether we bother waiting on the response channel — see the
+        // fill_in_shown_tx() comment for the failure mode this catches.
+        let mut shown_ok = false;
+
         // Build options list for the popup
         let option_labels: Vec<String> = options.iter().map(|opt| {
         opt.get("label").and_then(|v| v.as_str()).unwrap_or("Option").to_string()
@@ -4018,10 +4063,26 @@ fn fire_variant_expansion(
             "previews": option_previews,
             "theme": theme,
         }));
+
+        // Wait for JS ACK that the picker rendered. Same rationale as
+        // run_fill_in_window — in dev, WebView2/HMR can drop the emit and we
+        // must not block 60s on a picker that never appeared.
+        let (shown_tx, shown_rx) = mpsc::channel::<()>();
+        *fill_in_shown_tx().lock().unwrap() = Some(shown_tx);
+        shown_ok = shown_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        *fill_in_shown_tx().lock().unwrap() = None;
+        if !shown_ok {
+            log::warn!("[Keyfire] variant picker did not ACK render within 2s — aborting");
+        }
     }
 
-    // Wait for selection (60s timeout)
-    let response = rx.recv_timeout(Duration::from_secs(60));
+    // Wait for selection (30s timeout, previously 60s). If the picker never
+    // rendered, skip the wait entirely so cleanup runs immediately.
+    let response = if shown_ok {
+        rx.recv_timeout(Duration::from_secs(30))
+    } else {
+        Err(mpsc::RecvTimeoutError::Timeout)
+    };
     *fill_in_tx().lock().unwrap() = None;
 
     // Clean up
@@ -4084,6 +4145,10 @@ fn fire_variant_expansion(
 
         let (tx2, rx2) = mpsc::channel();
         *fill_in_tx().lock().unwrap() = Some(tx2);
+        // Set true only when JS acks render within 2s — same shown-ACK guard
+        // as the picker branch. Failure here means the re-prompt window never
+        // appeared, so we short-circuit the response wait.
+        let mut shown_ok = false;
 
         if let Some(win) = app.get_webview_window("fillin") {
             use tauri::Emitter;
@@ -4107,9 +4172,22 @@ fn fire_variant_expansion(
                 "fields": fill_in_fields,
                 "theme": theme,
             }));
+
+            let (shown_tx, shown_rx) = mpsc::channel::<()>();
+            *fill_in_shown_tx().lock().unwrap() = Some(shown_tx);
+            shown_ok = shown_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+            *fill_in_shown_tx().lock().unwrap() = None;
+            if !shown_ok {
+                log::warn!("[Keyfire] variant post-pick fill-in did not ACK render within 2s — aborting");
+            }
         }
 
-        let response2 = rx2.recv_timeout(Duration::from_secs(60));
+        // 30s instead of 60s, plus short-circuit if the picker never rendered.
+        let response2 = if shown_ok {
+            rx2.recv_timeout(Duration::from_secs(30))
+        } else {
+            Err(mpsc::RecvTimeoutError::Timeout)
+        };
         *fill_in_tx().lock().unwrap() = None;
 
         // Clean up window + restore focus before injection

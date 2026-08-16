@@ -352,18 +352,6 @@ fn find_new_top_level_for_pid(existing: &HashSet<isize>, target_pid: u32) -> Opt
     None
 }
 
-fn find_new_top_level_excluding_pid(existing: &HashSet<isize>, exclude_pid: u32) -> Option<HWND> {
-    let current = enum_top_level_hwnds();
-    for hwnd in current {
-        if existing.contains(&(hwnd as isize)) { continue; }
-        let mut pid: u32 = 0;
-        unsafe { GetWindowThreadProcessId(hwnd, &mut pid); }
-        if pid == 0 || pid == exclude_pid { continue; }
-        return Some(hwnd);
-    }
-    None
-}
-
 // ── Launch-or-focus ─────────────────────────────────────────────────────────
 
 /// Resolve the exe filename (lowercase) a launch would start, or None when

@@ -405,12 +405,6 @@ pub fn start_watcher(app: AppHandle) {
         .expect("Failed to spawn foreground watcher thread");
 }
 
-pub fn stop_watcher() {
-    WATCHER_RUNNING.store(false, Ordering::Relaxed);
-    LAST_FG_HWND.store(0, Ordering::Relaxed);
-    *last_fg_title().lock().unwrap() = String::new();
-}
-
 /// Resolve a PID to process base name (lowercase, no .exe).
 /// Returns None if the process no longer exists or access is denied.
 fn get_proc_name_by_pid(pid: u32) -> Option<String> {
@@ -554,7 +548,7 @@ pub fn check_and_switch_if_stale(app: &AppHandle) {
     LAST_FG_HWND.store(hwnd, Ordering::Relaxed);
     let title = get_window_title(hwnd);
     *last_fg_title().lock().unwrap() = title.clone();
-    if let Some(name) = unsafe { get_fg_proc_name(hwnd) } {
+    if let Some(name) = get_fg_proc_name(hwnd) {
         cache_linked_pid_if_match(hwnd, &name);
         handle_foreground_change(&name, &title, app);
     }
@@ -570,7 +564,7 @@ pub fn force_check(app: &AppHandle) {
     LAST_FG_HWND.store(hwnd, Ordering::Relaxed);
     let title = get_window_title(hwnd);
     *last_fg_title().lock().unwrap() = title.clone();
-    if let Some(name) = unsafe { get_fg_proc_name(hwnd) } {
+    if let Some(name) = get_fg_proc_name(hwnd) {
         cache_linked_pid_if_match(hwnd, &name);
         handle_foreground_change(&name, &title, app);
     }

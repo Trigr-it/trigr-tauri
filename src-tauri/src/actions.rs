@@ -428,7 +428,6 @@ pub fn get_repeating_trigger() -> Option<String> {
 
 // ── Timing constants ────────────────────────────────────────────────────────
 
-const MODIFIER_SETTLE_MS: u64 = 30;
 // Per-character typing delay lives in keystroke_delay_ms() — preset-resolved,
 // no longer a constant (the Keystroke delay slider was dead until v0.6.11).
 
@@ -2455,18 +2454,23 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
 
         "Click Mouse" => {
             let value = if step_value.is_empty() { "LButton" } else { step_value };
-            // Strip Down / Up suffix to isolate the button base name. Bare
-            // "LButton" / "RButton" / "MButton" means a full click (down + up)
-            // — that's the pre-v0.6.5 shape and still the default when a new
-            // Click Mouse step is created. The suffixed variants fire just
-            // one phase so users can chain e.g. LButtonDown → mouse move
-            // steps → LButtonUp to script a drag.
+            // Two shapes accepted:
+            //   1. Legacy — phase baked into the value suffix ("LButtonDown"
+            //      / "LButtonUp"). Pre-radio-refactor macros and any external
+            //      importers still emit this. Strip the suffix here.
+            //   2. Modern — value is the bare button ("LButton") + separate
+            //      `phase` field on the step ("full" / "down" / "up"). This
+            //      matches Press Key's shape so both actions share the same
+            //      Full / Hold / Release radio-row UI.
+            // Full click (down + up) is the default when no suffix or phase
+            // is set — matches the pre-v0.6.5 shape for zero-config steps.
             let (button, phase) = if let Some(base) = value.strip_suffix("Down") {
                 (base, "down")
             } else if let Some(base) = value.strip_suffix("Up") {
                 (base, "up")
             } else {
-                (value, "full")
+                let phase_field = step.get("phase").and_then(|v| v.as_str()).unwrap_or("full");
+                (value, phase_field)
             };
             if is_mouse_button(button) {
                 for i in 0..repeat_count {
@@ -2494,10 +2498,33 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     }
                     return true;
                 }
-                // Parse "Ctrl+Shift+N" style strings
+                // Phase: "full" (default, down+up), "down" (hold, down only),
+                // "up" (release, up only). Down/Up split lets macros hold a key
+                // or chord across multiple later steps (e.g. Ctrl held across
+                // five numpad taps). Repeat is meaningless for down/up phases
+                // — the UI hides the repeat counter for those.
+                let phase = step.get("phase").and_then(|v| v.as_str()).unwrap_or("full");
+                let repeat = if matches!(phase, "down" | "up") { 1 } else { repeat_count };
+
+                // Parse "Ctrl+Shift+N" style strings. Last token = target key;
+                // preceding tokens = modifiers wrapping the press. Bare-modifier
+                // values ("Ctrl", "Shift+Ctrl", "Alt") are supported: if the
+                // last token is itself a modifier name, treat the whole chord
+                // as modifier-only (target_vk resolves via modifier lookup).
+                let modifier_vk = |name: &str| -> Option<u16> {
+                    match name.to_lowercase().as_str() {
+                        "ctrl" | "control" | "lctrl" | "lcontrol" => Some(VK_LCONTROL),
+                        "alt"  | "lalt"                              => Some(VK_LALT),
+                        "shift" | "lshift"                           => Some(VK_LSHIFT),
+                        "win"  | "lwin"                              => Some(VK_LWIN),
+                        _ => None,
+                    }
+                };
                 let parts: Vec<&str> = step_value.split('+').map(|s| s.trim()).collect();
                 if let Some((&key_name, mod_parts)) = parts.split_last() {
-                    let target_vk = match display_name_to_vk(key_name) {
+                    let target_vk = match display_name_to_vk(key_name)
+                        .or_else(|| modifier_vk(key_name))
+                    {
                         Some(vk) => vk,
                         None => {
                             warn!("[Keyfire] Unknown macro step key: {}", key_name);
@@ -2507,27 +2534,44 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
 
                     let mod_vks: Vec<u16> = mod_parts
                         .iter()
-                        .filter_map(|m| match m.to_lowercase().as_str() {
-                            "ctrl" => Some(VK_LCONTROL),
-                            "alt" => Some(VK_LALT),
-                            "shift" => Some(VK_LSHIFT),
-                            "win" => Some(VK_LWIN),
-                            _ => None,
-                        })
+                        .filter_map(|m| modifier_vk(m))
                         .collect();
 
-                    for i in 0..repeat_count {
+                    for i in 0..repeat {
                         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                        for &vk in &mod_vks {
-                            send_vk_key(vk, false);
-                        }
-                        send_vk_key(target_vk, false);
-                        send_vk_key(target_vk, true);
-                        for &vk in mod_vks.iter().rev() {
-                            send_vk_key(vk, true);
+                        match phase {
+                            "down" => {
+                                // Hold: modifiers down, then target down.
+                                // Nothing gets released — a later Press Key
+                                // step with phase="up" (or an external release)
+                                // is expected to close it.
+                                for &vk in &mod_vks {
+                                    send_vk_key(vk, false);
+                                }
+                                send_vk_key(target_vk, false);
+                            }
+                            "up" => {
+                                // Release: target up first, then modifiers up
+                                // in reverse press order (matches the full-press
+                                // teardown sequence).
+                                send_vk_key(target_vk, true);
+                                for &vk in mod_vks.iter().rev() {
+                                    send_vk_key(vk, true);
+                                }
+                            }
+                            _ => {
+                                for &vk in &mod_vks {
+                                    send_vk_key(vk, false);
+                                }
+                                send_vk_key(target_vk, false);
+                                send_vk_key(target_vk, true);
+                                for &vk in mod_vks.iter().rev() {
+                                    send_vk_key(vk, true);
+                                }
+                            }
                         }
                         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
-                        if i + 1 < repeat_count && settle_ms > 0 {
+                        if i + 1 < repeat && settle_ms > 0 {
                             thread::sleep(Duration::from_millis(settle_ms));
                         }
                     }
@@ -4372,11 +4416,6 @@ fn send_vk_key(vk: u16, key_up: bool) {
     }
 }
 
-fn send_vk_key_checked(vk: u16, key_up: bool) -> u32 {
-    let input = make_vk_input(vk, key_up);
-    unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32) }
-}
-
 fn send_vk_tap(vk: u16) {
     send_vk_key(vk, false);
     send_vk_key(vk, true);
@@ -4465,13 +4504,6 @@ pub fn set_foreground_robust(hwnd: isize) -> bool {
             );
         }
         ok
-    }
-}
-
-/// Release ALL modifier keys unconditionally (legacy — used in preamble).
-fn release_all_modifiers() {
-    for &(vk, _) in ALL_MODIFIER_VKS {
-        send_vk_key(vk, true);
     }
 }
 

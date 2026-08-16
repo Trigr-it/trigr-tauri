@@ -109,6 +109,7 @@ window.electronAPI = {
   respondFillIn: (value) => emit('fill-in-response', value),
 
   fillInReady:    ()         => invoke('fill_in_ready'),
+  fillInShownAck: ()         => invoke('fill_in_shown_ack'),
   resizeFillin:   (height)   => invoke('fillin_resize', { height }),
   onFillInRequestReady: (callback) => {
     listen('fill-in-request-ready', () => callback()).then(u => { listeners['fill-in-request-ready'] = u; });

@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
-import { GripVertical, Link, Keyboard, Zap, Disc, Plus, Download } from 'lucide-react';
+import { GripVertical, Link, Keyboard, Zap, Disc, Plus, Download, Users } from 'lucide-react';
 import './Sidebar.css';
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName } from './keyboardLayout';
@@ -318,20 +318,44 @@ function ProfileAccordion({
 
   return (
     <div className="profile-accordion">
-      {/* Header — always visible */}
-      <div className="profile-accordion-header" onClick={() => setIsExpanded(v => !v)}>
-        <span className="profile-accordion-label">PROFILES</span>
-        <span className="profile-accordion-active">
-          <span className="profile-fallback-dot" />
-          {activeGlobalProfile}
-          {!isSameProfile && (
-            <>
-              <span className="profile-accordion-sep">|</span>
-              <span className="profile-accordion-editing">{activeProfile}</span>
-            </>
-          )}
-        </span>
-        <span className="profile-accordion-chevron">{isExpanded ? '▴' : '▾'}</span>
+      {/* Header — always visible. Two-line gold-accented header treatment so
+          it reads as a substantive UI area, not a muted category divider.
+          Testers didn't realise profiles existed as a feature under the old
+          all-caps "PROFILES" label — the gold stripe + tinted band + display
+          typography now anchor the concept visually. Line 1: small gold
+          "PROFILE" label + chevron. Line 2: active profile name in the
+          display font, bright gold. Line 3 (conditional): muted "editing: X"
+          note when the user is previewing a different profile. */}
+      <div
+        className={`profile-accordion-header${isExpanded ? ' profile-accordion-header-open' : ''}`}
+        onClick={() => setIsExpanded(v => !v)}
+        title="Switch between profiles, or right-click a profile for options"
+        role="button"
+        aria-expanded={isExpanded}
+      >
+        <div className="profile-accordion-header-top">
+          <Users size={12} strokeWidth={2} className="profile-accordion-icon" />
+          <span className="profile-accordion-label">PROFILE</span>
+          <span className="profile-accordion-switch">
+            {isExpanded ? 'Close' : 'Switch'}
+            <span className="profile-accordion-chevron">{isExpanded ? '▴' : '▾'}</span>
+          </span>
+        </div>
+        {/* activeProfile follows the currently-firing profile — updated by
+            both the foreground watcher's profile-switched event (auto-switch
+            when the user tabs to an app-linked profile) AND manual sidebar
+            clicks. activeGlobalProfile is the USER'S PERSISTED FALLBACK
+            (config setting, changed only via right-click → Set as global),
+            so it's shown as a secondary "fallback:" note when the firing
+            profile is something else. */}
+        <div className="profile-accordion-header-name" title={`Active profile: ${activeProfile}`}>
+          {activeProfile}
+        </div>
+        {!isSameProfile && (
+          <div className="profile-accordion-header-fallback" title={`Global fallback profile: ${activeGlobalProfile}`}>
+            fallback: <span>{activeGlobalProfile}</span>
+          </div>
+        )}
       </div>
 
       {/* Expanded list */}

@@ -168,10 +168,12 @@ const DATETIME_ITEMS = [
   { type: 'item', token: '{isodate}',       label: 'ISO 8601 Date+Time', display: 'ISO Date' },
   { type: 'sep' },
   { type: 'header', label: 'Date Math' },
-  { type: 'item', token: '{date:+1d}', label: 'Tomorrow',   display: '+1 day'    },
-  { type: 'item', token: '{date:-1d}', label: 'Yesterday',  display: '-1 day'    },
-  { type: 'item', token: '{date:+7d}', label: 'Next Week',  display: '+7 days'   },
-  { type: 'item', token: '{date:+1m}', label: 'Next Month', display: '+1 month'  },
+  { type: 'item', token: '{date:+1d}', label: 'Tomorrow',           display: '+1 day'    },
+  { type: 'item', token: '{date:-1d}', label: 'Yesterday',          display: '-1 day'    },
+  { type: 'item', token: '{date:-1b}', label: 'Last Business Day',  display: '-1 wkday'  },
+  { type: 'item', token: '{date:+1b}', label: 'Next Business Day',  display: '+1 wkday'  },
+  { type: 'item', token: '{date:+7d}', label: 'Next Week',          display: '+7 days'   },
+  { type: 'item', token: '{date:+1m}', label: 'Next Month',         display: '+1 month'  },
 ];
 
 const LIST_ITEMS = [

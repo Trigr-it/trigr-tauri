@@ -197,22 +197,35 @@ const MOUSE_CLICK_OPTIONS = [
   { value: 'MButton', label: 'Middle Click' },
 ];
 
-// MOUSE_CLICK_MACRO_OPTIONS drives the Click Mouse macro-step dropdown. Adds
-// Down / Up single-phase variants alongside the full clicks so users can
-// chain e.g. LButtonDown → mouse-move steps → LButtonUp to script a drag.
-// The Rust arm strips the "Down" / "Up" suffix to isolate the button name
-// and dispatches to send_mouse_click (full) or send_mouse_event (single phase).
-const MOUSE_CLICK_MACRO_OPTIONS = [
-  { value: 'LButton',     label: 'Left Click' },
-  { value: 'LButtonDown', label: 'Left Click Down' },
-  { value: 'LButtonUp',   label: 'Left Click Up' },
-  { value: 'RButton',     label: 'Right Click' },
-  { value: 'RButtonDown', label: 'Right Click Down' },
-  { value: 'RButtonUp',   label: 'Right Click Up' },
-  { value: 'MButton',     label: 'Middle Click' },
-  { value: 'MButtonDown', label: 'Middle Click Down' },
-  { value: 'MButtonUp',   label: 'Middle Click Up' },
+// PRESS_KEY_PHASE_OPTIONS drives the Press Key step's phase sub-row.
+// Down = hold the key (or chord) — no release, a later Release step is
+// expected to close it. Up = release only. "full" (default) is the classic
+// down+up pulse.
+const PRESS_KEY_PHASE_OPTIONS = [
+  { value: 'full', label: 'Press'   },
+  { value: 'down', label: 'Hold'    },
+  { value: 'up',   label: 'Release' },
 ];
+
+// MOUSE_CLICK_PHASE_OPTIONS drives the Click Mouse step's phase sub-row.
+// Same shape as Press Key phases but the default is labelled "Click" instead
+// of "Press" because mouse buttons click.
+const MOUSE_CLICK_PHASE_OPTIONS = [
+  { value: 'full', label: 'Click'   },
+  { value: 'down', label: 'Hold'    },
+  { value: 'up',   label: 'Release' },
+];
+
+// Legacy Click Mouse values used to bake the phase into the value string
+// ("LButtonDown"/"LButtonUp"). Kept purely as a decode table so existing
+// saved macros still open correctly; new saves write the clean split shape
+// (value = "LButton", phase = "down") via migrateClickMouseValue.
+function migrateClickMouseValue(rawValue, rawPhase) {
+  const v = rawValue || 'LButton';
+  if (v.endsWith('Down')) return { button: v.slice(0, -4), phase: 'down' };
+  if (v.endsWith('Up'))   return { button: v.slice(0, -2), phase: 'up'   };
+  return { button: v, phase: rawPhase || 'full' };
+}
 
 const VOLUME_MODE_OPTIONS = [
   { value: 'set',      label: 'Set'      },
@@ -260,6 +273,8 @@ const DYNAMIC_TEXT_TOKEN_GROUPS = [
   { label: 'Date Math', items: [
     { token: '{date:+1d}', label: 'Tomorrow (+1 day)' },
     { token: '{date:-1d}', label: 'Yesterday (-1 day)' },
+    { token: '{date:-1b}', label: 'Last Business Day (skips weekend)' },
+    { token: '{date:+1b}', label: 'Next Business Day (skips weekend)' },
     { token: '{date:+7d}', label: 'Next Week (+7 days)' },
     { token: '{date:+1m}', label: 'Next Month (+1 month)' },
   ]},
@@ -2373,7 +2388,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     }
   }
 
-  const hasSubRow = ['Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File', 'Create Folder', 'Copy Files', 'Move Files'].includes(step.type) || showWinAdvisory;
+  const hasSubRow = ['Press Key', 'Click Mouse', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File', 'Create Folder', 'Copy Files', 'Move Files'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
   let appData = { kind: 'path', appId: '', appName: '', path: '', args: '', monitor: 'default' };
@@ -2496,21 +2511,26 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             onWinPressed={() => setWinPrompted(true)}
           />
         )}
-        {step.type === 'Click Mouse' && (
-          <select
-            className="form-select macro-step-value"
-            // Prefer 145px so "Middle Click Down" reads cleanly, but allow the
-            // select to shrink under pressure — Click Mouse rows also carry
-            // the ×repeat wrapper on the right, and the row's 415 cap doesn't
-            // otherwise leave enough space for the duplicate + remove icons.
-            // Shrinks proportionally down to 115px so the buttons stay inside.
-            style={{ flex: '0 1 145px', minWidth: 115 }}
-            value={step.value || 'LButton'}
-            onChange={e => updateStep({ ...step, value: e.target.value })}
-          >
-            {MOUSE_CLICK_MACRO_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        )}
+        {step.type === 'Click Mouse' && (() => {
+          // Split the stored value + phase into a normalised { button, phase }
+          // pair. Handles legacy suffixed values ("LButtonDown") transparently
+          // — see migrateClickMouseValue. On write we always emit the clean
+          // shape (button = "LButton"/"RButton"/"MButton", phase in its own
+          // field), so touching a legacy step auto-migrates it.
+          const { button, phase } = migrateClickMouseValue(step.value, step.phase);
+          return (
+            <select
+              className="form-select macro-step-value"
+              // Only three options now (Left / Right / Middle) so the row has
+              // ample space alongside ×repeat + duplicate + remove.
+              style={{ flex: '0 1 130px', minWidth: 100 }}
+              value={button}
+              onChange={e => updateStep({ ...step, value: e.target.value, phase })}
+            >
+              {MOUSE_CLICK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          );
+        })()}
         {step.type === 'Change Volume' && (() => {
           // Value shape: `{ mode: "set"|"increase"|"decrease"|"mute", amount: 0-100 }`.
           // Amount is 0-100 for Set / Increase / Decrease (Rust clamps).
@@ -2922,6 +2942,59 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         </button>
         <button className="step-remove" onClick={() => removeStep(step._id)} type="button" aria-label="Remove step">✕</button>
       </div>
+
+      {/* Sub-row: Press Key phase — Press / Hold / Release radios. Hold keeps
+          the key or chord down until a later Release step; Press (default) is
+          the classic full down+up pulse. Rust clamps repeat to 1 for Hold /
+          Release so a stored ×N doesn't misbehave. */}
+      {step.type === 'Press Key' && (
+        <div className="step-phase-row">
+          {PRESS_KEY_PHASE_OPTIONS.map(o => {
+            const checked = (step.phase || 'full') === o.value;
+            return (
+              <label key={o.value} className={`step-phase-option${checked ? ' step-phase-option-checked' : ''}`}>
+                <input
+                  type="radio"
+                  name={`phase-${step._id}`}
+                  value={o.value}
+                  checked={checked}
+                  onChange={() => updateStep({ ...step, phase: o.value })}
+                />
+                <span>{o.label}{o.value === 'full' ? ' (default)' : ''}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Sub-row: Click Mouse phase — Click / Hold / Release radios. Mirror
+          of the Press Key sub-row so mouse buttons follow the same mental
+          model (default = full click; Hold + Release build drags or chords
+          across later steps). Legacy suffixed values ("LButtonDown") are
+          decoded on render; the first radio interaction migrates them to
+          the clean split shape. */}
+      {step.type === 'Click Mouse' && (() => {
+        const { button, phase } = migrateClickMouseValue(step.value, step.phase);
+        return (
+          <div className="step-phase-row">
+            {MOUSE_CLICK_PHASE_OPTIONS.map(o => {
+              const checked = phase === o.value;
+              return (
+                <label key={o.value} className={`step-phase-option${checked ? ' step-phase-option-checked' : ''}`}>
+                  <input
+                    type="radio"
+                    name={`phase-${step._id}`}
+                    value={o.value}
+                    checked={checked}
+                    onChange={() => updateStep({ ...step, value: button, phase: o.value })}
+                  />
+                  <span>{o.label}{o.value === 'full' ? ' (default)' : ''}</span>
+                </label>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Sub-row: Press Key Win-advisory — pops out when user presses Win
           during capture, or when Win is already in the stored value. */}

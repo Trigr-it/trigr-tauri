@@ -2593,7 +2593,7 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
         GetCursorPos(&mut pt);
         (pt.x, pt.y)
     };
-    let (wa_left, wa_top, wa_right, wa_bottom, scale) = unsafe {
+    let (wa_left, _wa_top, wa_right, wa_bottom, scale) = unsafe {
         let pt = POINT { x: cx, y: cy };
         let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
         let mut mi: MONITORINFO = std::mem::zeroed();
@@ -4999,6 +4999,20 @@ fn fill_in_ready() {
     }
 }
 
+/// JS confirms the fill-in / picker window actually rendered (fired from the
+/// FillInWindow.jsx `fill-in-show` handler after state is committed). Rust's
+/// wait side has a 2s timeout — if this ACK doesn't arrive, the picker never
+/// appeared (WebView2 hung, HMR replaced the listener mid-fire, etc.) and
+/// Rust aborts the fire cleanly instead of blocking the response wait.
+#[tauri::command]
+fn fill_in_shown_ack() {
+    if let Ok(mut guard) = expansions::fill_in_shown_tx().lock() {
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(());
+        }
+    }
+}
+
 #[cfg(not(windows))]
 #[tauri::command]
 fn fillin_resize(height: f64, app: tauri::AppHandle) {
@@ -6076,6 +6090,7 @@ pub fn run() {
             start_download,
             // Fill-in
             fill_in_ready,
+            fill_in_shown_ack,
             fillin_resize,
             fill_in_submit,
             // Licence

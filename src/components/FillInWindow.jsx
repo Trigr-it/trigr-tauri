@@ -148,6 +148,12 @@ export default function FillInWindow() {
         setSelectedIdx(0);
         setTimeout(() => inputRefs.current[0]?.focus(), 60);
       }
+
+      // Confirm to Rust that the show-event was received and state was
+      // committed. Rust waits 2s for this ACK — without it, the fire aborts
+      // and expansions unbrick immediately. Guards the dev-mode failure mode
+      // where WebView2/HMR swallows the emit and the picker never renders.
+      window.electronAPI?.fillInShownAck?.();
     });
   }, []);
 

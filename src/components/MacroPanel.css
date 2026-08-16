@@ -1711,6 +1711,45 @@
   color: var(--text-primary);
 }
 
+/* Press Key phase sub-row — Press / Hold / Release radios sit beneath the
+   main row. Same 48px left indent as the Win advisory + wfi-config-row so
+   the options align under the KeyCaptureInput column. Uses native radios
+   for accessibility (screen readers + keyboard nav) with pill-style label
+   colouring to fit the app's visual language. */
+.step-phase-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 12px 6px 48px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.step-phase-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  user-select: none;
+  transition: color 0.12s;
+}
+
+.step-phase-option:hover {
+  color: var(--text-primary);
+}
+
+.step-phase-option-checked {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.step-phase-option input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+
 /* +Win toggle pill — lives inside the advisory sub-row. */
 .win-toggle-pill {
   height: 24px;

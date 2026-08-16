@@ -11,7 +11,7 @@
 //! CoCreateInstance / CoInitializeEx functions. The `windows` crate is already
 //! a transitive dep so binary-size cost is essentially zero.
 
-use log::{info, warn};
+use log::warn;
 
 use windows::Win32::Media::Audio::{
     eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator,
@@ -84,53 +84,3 @@ pub fn get_master_volume_scalar() -> Option<f32> {
     }
 }
 
-/// Adjust master volume by `delta_units` on a 0-100 scale. Reads current,
-/// clamps `[current + delta]` to `[0, 100]`, sets exact. Positive delta =
-/// louder, negative = quieter. Used by both Increase and Decrease modes.
-pub fn adjust_master_volume(delta_units: i32) -> bool {
-    let Some(current) = get_master_volume_scalar() else { return false; };
-    let current_units = (current * 100.0).round() as i32;
-    let target_units = (current_units + delta_units).clamp(0, 100);
-    set_master_volume_scalar(target_units as f32 / 100.0)
-}
-
-/// Set the master mute state explicitly.
-pub fn set_master_mute(mute: bool) -> bool {
-    let Some(vol) = endpoint_volume() else { return false; };
-    unsafe {
-        match vol.SetMute(mute, std::ptr::null()) {
-            Ok(()) => true,
-            Err(e) => {
-                warn!("[Keyfire] volume: SetMute failed: {}", e);
-                false
-            }
-        }
-    }
-}
-
-/// Read the current mute state.
-pub fn get_master_mute() -> Option<bool> {
-    let vol = endpoint_volume()?;
-    unsafe {
-        match vol.GetMute() {
-            Ok(muted) => Some(muted.as_bool()),
-            Err(e) => {
-                warn!("[Keyfire] volume: GetMute failed: {}", e);
-                None
-            }
-        }
-    }
-}
-
-/// Toggle mute — reads current, sets inverse. Used by the Change Volume Mute
-/// step so the same step toggles instead of always muting.
-pub fn toggle_master_mute() -> bool {
-    let current = get_master_mute();
-    let target = !current.unwrap_or(false);
-    let ok = set_master_mute(target);
-    info!(
-        "[Keyfire] volume: toggle mute — current={:?} → target={} → ok={}",
-        current, target, ok
-    );
-    ok
-}

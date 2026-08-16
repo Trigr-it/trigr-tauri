@@ -4330,18 +4330,6 @@ pub fn start_hooks(app: AppHandle) {
         .expect("Failed to spawn hook monitor thread");
 }
 
-pub fn stop_hooks() {
-    let tid = HOOK_THREAD_ID.load(Ordering::SeqCst);
-    if tid != 0 && HOOKS_RUNNING.load(Ordering::SeqCst) {
-        unsafe { PostThreadMessageW(tid as u32, WM_QUIT, 0, 0); }
-        HOOK_THREAD_ID.store(0, Ordering::SeqCst);
-    }
-}
-
-pub fn hooks_running() -> bool {
-    HOOKS_RUNNING.load(Ordering::SeqCst)
-}
-
 /// Read the hook thread's Windows thread id. Returns 0 if hooks aren't running
 /// or are mid-teardown. Used by the foreground watcher to post the
 /// fullscreen-pause / resume custom messages via PostThreadMessageW.
@@ -4436,10 +4424,6 @@ pub fn handle_js_key_event(code: &str, ctrl: bool, shift: bool, alt: bool, meta:
 
 pub fn set_macros_enabled(enabled: bool) {
     MACROS_ENABLED.store(enabled, Ordering::SeqCst);
-}
-
-pub fn macros_enabled() -> bool {
-    MACROS_ENABLED.load(Ordering::SeqCst)
 }
 
 pub fn set_recording(recording: bool) {

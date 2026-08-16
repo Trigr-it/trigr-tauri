@@ -26,62 +26,119 @@
   overflow: hidden;
 }
 
+/* Two-line gold header — the sidebar's brand anchor. Communicates the
+   Profile concept as a first-class UI area rather than a muted section
+   divider. 4px solid gold stripe on the left plus a subtle accent-tinted
+   band echoes the list-divider band recipe (see feedback memory) but at
+   larger scale for a top-of-panel header. */
 .profile-accordion-header {
   display: flex;
-  align-items: center;
-  padding: 10px 16px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 12px 16px;
   cursor: pointer;
-  transition: background 0.12s;
-  gap: 6px;
+  transition: background 0.15s;
+  min-width: 0;
+  background: rgba(var(--accent-rgb), 0.10);
+  border-left: 4px solid var(--accent);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
 }
 
-.profile-accordion-header:hover {
-  background: var(--bg-hover);
+.profile-accordion-header:hover,
+.profile-accordion-header-open {
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
+/* Line 1 — small gold label + chevron. Same 10px uppercase-with-letter-
+   spacing typography used across the app's category dividers so the header
+   still visually belongs to the sidebar's rhythm. */
+.profile-accordion-header-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-accordion-icon {
+  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .profile-accordion-label {
   font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.14em;
   flex-shrink: 0;
 }
 
-.profile-accordion-active {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-  display: flex;
+.profile-accordion-switch {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
+  gap: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: color 0.12s;
 }
 
-.profile-accordion-sep {
-  color: var(--text-muted);
-  font-size: 10px;
-  margin: 0 2px;
-}
-
-.profile-accordion-editing {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 400;
+.profile-accordion-header:hover .profile-accordion-switch {
+  color: var(--accent);
 }
 
 .profile-accordion-chevron {
   font-size: 10px;
-  color: var(--text-muted);
+  color: inherit;
   flex-shrink: 0;
-  margin-left: 4px;
+}
+
+/* Line 2 — the active profile name, bright gold, display font, sized so it
+   reads as the header's real title. Overflow ellipsis in case a profile
+   name is long. */
+.profile-accordion-header-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  /* Small right pad so the ellipsis has breathing room from the accordion's
+     right edge, matching feedback_gradient_text_padding-style precautions
+     for any coloured display text. */
+  padding-right: 6px;
+}
+
+/* Line 3 — conditional "fallback: X" note when the currently firing
+   profile isn't the user's persisted fallback (they've been auto-switched
+   to an app-linked profile, or manually clicked a non-fallback row). Tells
+   the user what they'd revert to if they closed the current app. Muted so
+   the gold name stays the focal point. */
+.profile-accordion-header-fallback {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  padding-right: 6px;
+}
+
+.profile-accordion-header-fallback span {
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
 .profile-accordion-list {

@@ -37,8 +37,6 @@ struct Styles {
     num1_alt: Format,
     dur: Format,
     dur_alt: Format,
-    date: Format,
-    date_alt: Format,
     label: Format,
     accent_value: Format,
 }
@@ -74,10 +72,6 @@ fn styles() -> Styles {
     let dur_alt = Format::new()
         .set_num_format("[h]:mm:ss")
         .set_background_color(Color::RGB(ROW_ALT));
-    let date = Format::new().set_num_format("yyyy-mm-dd");
-    let date_alt = Format::new()
-        .set_num_format("yyyy-mm-dd")
-        .set_background_color(Color::RGB(ROW_ALT));
     let label = Format::new().set_font_color(Color::RGB(MUTED));
     let accent_value = Format::new()
         .set_bold()
@@ -96,8 +90,6 @@ fn styles() -> Styles {
         num1_alt,
         dur,
         dur_alt,
-        date,
-        date_alt,
         label,
         accent_value,
     }

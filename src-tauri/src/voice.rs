@@ -151,10 +151,6 @@ pub fn stop_recognition() {
     }
 }
 
-pub fn is_recognizing() -> bool {
-    RECOGNIZING.load(Ordering::SeqCst)
-}
-
 /// Start continuous voice recognition. The cached SpeechRecognizer (shared with
 /// single-shot RecognizeAsync) is reused — no separate compile. ResultGenerated
 /// events fire on a WinRT thread and emit "voice-result" to the overlay window.

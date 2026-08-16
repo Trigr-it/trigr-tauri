@@ -399,10 +399,6 @@ fn toggle_pause(app: &AppHandle) {
     }
 }
 
-pub fn are_macros_enabled() -> bool {
-    crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed)
-}
-
 // ── Start with Windows (registry) ───────────────────────────────────────────
 
 const REG_RUN: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
