@@ -3623,7 +3623,7 @@ function keyIdToLabel(keyId) {
 
 // ── Reassign hotkey overlay ────────────────────────────────────────────────────
 
-function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfile, profileLinked, onConfirm, onCancel, title = 'Reassign Hotkey', titleIcon = '⇄', instruction = 'Press new key, combo, or mouse button…', previewVerb = 'Move to' }) {
+function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfile, profileLinked, onConfirm, onCancel, title = 'Reassign Hotkey', titleIcon = '⇄', instruction = 'Press new key, combo, or mouse button…', previewVerb = 'Move to', hideCurrent = false, conflictNote = null }) {
   const [captured, setCaptured] = useState(null);
   const captureRef = useRef(null);
 
@@ -3720,15 +3720,17 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
           <span className="reassign-title">{title}</span>
         </div>
 
-        <div className="reassign-current">
-          Currently:&nbsp;
-          {currentLabel.map((k, i) => (
-            <React.Fragment key={i}>
-              <kbd className="reassign-kbd">{k}</kbd>
-              {i < currentLabel.length - 1 && <span className="reassign-plus">+</span>}
-            </React.Fragment>
-          ))}
-        </div>
+        {!hideCurrent && (
+          <div className="reassign-current">
+            Currently:&nbsp;
+            {currentLabel.map((k, i) => (
+              <React.Fragment key={i}>
+                <kbd className="reassign-kbd">{k}</kbd>
+                {i < currentLabel.length - 1 && <span className="reassign-plus">+</span>}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
 
         {!captured ? (
           <>
@@ -3757,6 +3759,7 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
             <div className="reassign-conflict">
               <strong>{captured.label}</strong> is already assigned to
               <span className="reassign-conflict-label"> "{captured.conflict.label}"</span>. Replace it?
+              {conflictNote && <span className="reassign-conflict-note">{conflictNote}</span>}
             </div>
             <div className="reassign-actions">
               <button className="reassign-cancel" onClick={onCancel}>Cancel</button>
@@ -3815,7 +3818,13 @@ export default function MacroPanel({
   onCancelDraft,
   onReassign,
   onDuplicate,
+  onUnassign,
   duplicateOverlaySignal = 0,
+  // Unassigned library mode — selectedKey carries the entry's uuid, every
+  // assign/clear callback is routed to the library keys by App, the header
+  // shows an Unassigned badge and Reassign becomes "Bind to Key".
+  libraryMode = false,
+  bindOverlaySignal = 0,
   isPro = false,
   voiceEnabled = false,
   onShowUpgrade,
@@ -3972,6 +3981,14 @@ export default function MacroPanel({
     if (duplicateOverlaySignal > 0 && selectedKey) setDuplicating(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [duplicateOverlaySignal]);
+
+  // Sidebar "Bind to key…" on an unassigned entry: App selects the entry
+  // then bumps this signal to open the bind-capture overlay (the reassign
+  // overlay in bind clothing).
+  useEffect(() => {
+    if (bindOverlaySignal > 0 && libraryMode && selectedKey) setReassigning(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bindOverlaySignal]);
 
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {
@@ -4257,7 +4274,14 @@ export default function MacroPanel({
           assignments={assignments}
           activeProfile={activeProfile}
           profileLinked={profileLinked}
-          title={[assignment, doubleAssignment, holdAssignment].filter(Boolean).length > 1 ? 'Reassign Hotkey (all press modes)' : 'Reassign Hotkey'}
+          title={libraryMode
+            ? 'Bind to Key'
+            : [assignment, doubleAssignment, holdAssignment].filter(Boolean).length > 1 ? 'Reassign Hotkey (all press modes)' : 'Reassign Hotkey'}
+          titleIcon={libraryMode ? '⊕' : '⇄'}
+          instruction={libraryMode ? 'Press the key, combo, or mouse button to bind this action to…' : 'Press new key, combo, or mouse button…'}
+          previewVerb={libraryMode ? 'Bind to' : 'Move to'}
+          hideCurrent={libraryMode}
+          conflictNote={libraryMode ? "The key's current action will move to Unassigned, not be deleted." : null}
           onConfirm={(newCombo, newKeyId) => {
             setReassigning(false);
             onReassign?.(newCombo, newKeyId);
@@ -4276,6 +4300,8 @@ export default function MacroPanel({
           titleIcon="⊕"
           instruction="Press new key, combo, or mouse button for the duplicate…"
           previewVerb="Duplicate to"
+          hideCurrent={libraryMode}
+          conflictNote={libraryMode ? "The key's current action will move to Unassigned, not be deleted." : null}
           onConfirm={(newCombo, newKeyId) => {
             setDuplicating(false);
             onDuplicate?.(newCombo, newKeyId);
@@ -4296,7 +4322,9 @@ export default function MacroPanel({
               <span className="badge-plus">+</span>
             </div>
           )}
-          {selectedKey ? (
+          {libraryMode ? (
+            <kbd className="selected-key-badge selected-key-badge-unassigned">Unassigned</kbd>
+          ) : selectedKey ? (
             <kbd className="selected-key-badge">
               {selectedKey.startsWith('MOUSE_')
                 ? ({ MOUSE_LEFT: 'Left Click', MOUSE_RIGHT: 'Right Click', MOUSE_MIDDLE: 'Middle Click',
@@ -4314,12 +4342,12 @@ export default function MacroPanel({
               the overlay captures mouse destinations too. */}
           {(assignment || doubleAssignment || holdAssignment) && (
             <button
-              className="reassign-btn"
+              className={`reassign-btn${libraryMode ? ' bind-btn' : ''}`}
               onClick={() => setReassigning(true)}
-              title="Move this macro to a different trigger"
+              title={libraryMode ? 'Bind this action to a key, combo, or mouse button' : 'Move this macro to a different trigger'}
               type="button"
             >
-              ⇄ Reassign
+              {libraryMode ? '⊕ Bind to Key' : '⇄ Reassign'}
             </button>
           )}
           <button className="panel-close" onClick={onClose} title="Deselect key">✕</button>
@@ -4655,11 +4683,13 @@ export default function MacroPanel({
                 ? 'Clear the action for the current type? Other type drafts are preserved.'
                 : confirmingAction === 'clear'
                 ? (pressMode === 'double'
-                    ? 'Clear the double-press action on this key?'
+                    ? 'Delete the double-press action on this key? This cannot be undone.'
                     : pressMode === 'hold'
-                    ? 'Clear the hold action on this key?'
-                    : 'Clear the single-press action on this key?')
-                : 'Delete the single, double-press and hold actions on this key?';
+                    ? 'Delete the hold action on this key? This cannot be undone.'
+                    : 'Delete the single-press action on this key? Use Unassign instead to keep it without a key.')
+                : libraryMode
+                ? 'Delete this action from Unassigned? This cannot be undone.'
+                : 'Delete the single, double-press and hold actions on this key? This cannot be undone. Use Unassign instead to keep the action without a key.';
             const handleYes = () => {
               if (confirmingAction === 'clear-action') {
                 handleClearAction();
@@ -4693,24 +4723,34 @@ export default function MacroPanel({
                 type="button"
                 title="Clears the action for the currently-active type only. Other type drafts on this key are preserved. Use Clear Key to wipe all types."
               >Clear Action</button>
-              <button
-                className="btn-clear"
-                onClick={() => setConfirmingAction('clear')}
-                type="button"
-                title={clearKeyTitle}
-              >Clear Key</button>
+              {!libraryMode && (
+                <button
+                  className="btn-clear"
+                  onClick={() => setConfirmingAction('clear')}
+                  type="button"
+                  title={clearKeyTitle}
+                >Clear Key</button>
+              )}
+              {!libraryMode && onUnassign && (
+                <button
+                  className="btn-unassign"
+                  onClick={() => onUnassign(selectedKey)}
+                  type="button"
+                  title="Free this key but keep the action in the Unassigned list, ready to bind again"
+                >Unassign</button>
+              )}
               <button
                 className="btn-duplicate"
                 onClick={() => setDuplicating(true)}
                 type="button"
-                title="Duplicate this macro to a different hotkey"
+                title={libraryMode ? 'Duplicate this action onto a hotkey (keeps the unassigned original)' : 'Duplicate this macro to a different hotkey'}
               >Duplicate</button>
               {onDelete && (
                 <button
                   className="btn-delete"
                   onClick={() => setConfirmingAction('delete')}
                   type="button"
-                  title="Delete the single, double-press and hold actions on this key"
+                  title={libraryMode ? 'Delete this action from Unassigned' : 'Delete the single, double-press and hold actions on this key'}
                 >Delete</button>
               )}
             </div>
@@ -4754,6 +4794,8 @@ export default function MacroPanel({
                 ? (doubleAssignment ? 'Update Double-Tap' : 'Assign Double-Tap')
                 : pressMode === 'hold'
                 ? (holdAssignment ? 'Update Hold' : 'Assign Hold')
+                : libraryMode
+                ? (assignment ? 'Update' : 'Save to Unassigned')
                 : (assignment ? 'Update' : 'Assign to Key')
             }
           </button>

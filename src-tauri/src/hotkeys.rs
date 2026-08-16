@@ -307,6 +307,11 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
         if parts.len() < 3 { continue; }
         let combo_str = parts[1];
         if combo_str == "GLOBAL" { continue; }
+        // Unassigned library entries ("{Profile}::UNASSIGNED::{uuid}") have no
+        // trigger — nothing to suppress. Provably a no-op even without this
+        // (the uuid never resolves to a vk and UNASSIGNED maps to modifier
+        // bits 0), but skip explicitly so nobody has to re-prove it.
+        if combo_str == "UNASSIGNED" { continue; }
         // Skip ::double entries from the suppress set — double-only keys should
         // let the single press pass through to the app. When both single+double
         // exist, the single entry already adds the key to the suppress set.

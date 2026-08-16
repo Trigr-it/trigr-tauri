@@ -54,6 +54,16 @@ function App() {
   // Bumped by the sidebar's right-click → Duplicate to open MacroPanel's
   // duplicate-capture overlay for the freshly-selected source item.
   const [duplicateOverlaySignal, setDuplicateOverlaySignal] = useState(0);
+  // Unassigned library selection — mutually exclusive with selectedKey.
+  // Unassigned entries live in the same assignments map under
+  // "{Profile}::UNASSIGNED::{uuid}" (+ ::double / ::hold variant suffixes).
+  // The UNASSIGNED combo segment can never be constructed by the Rust
+  // matcher's build_modifier_combo(), so these entries are unreachable by
+  // hotkeys by construction — no engine changes needed.
+  const [selectedLibraryId, setSelectedLibraryId] = useState(null);
+  // Bumped by the sidebar's "Bind to key…" context item to open MacroPanel's
+  // bind-capture overlay for the freshly-selected unassigned entry.
+  const [bindOverlaySignal, setBindOverlaySignal] = useState(0);
   const [sidebarComboFilter, setSidebarComboFilter] = useState(null); // null = show all, string = filter by combo
   // Reserved Windows shortcut hazard modal — deferred-save pattern. Shape:
   // { keyId, macro, comboDisplay, osFunction, profileName } or null.
@@ -1459,6 +1469,7 @@ function App() {
   // by the modal's onContinue handler after the user accepts the warning.
   const commitKeySelect = useCallback((keyId) => {
     setSelectedKey(keyId);
+    setSelectedLibraryId(null);
     if (draftAssignment) {
       const key = `${activeProfile}::${currentCombo}::${keyId}`;
       const doubleKey = key + '::double';
@@ -1619,7 +1630,10 @@ function App() {
     saveConfig(newAssignments, profiles, activeProfile);
     syncEngine(newAssignments, activeProfile);
     if (selectedKey === keyId) setSelectedKey(null);
-    showNotification(`Cleared ${combo}+${keyId}`, 'info');
+    // Sidebar Delete on an unassigned entry routes here with combo="UNASSIGNED"
+    // and keyId = the entry's uuid.
+    setSelectedLibraryId(prev => (prev === keyId ? null : prev));
+    showNotification(combo === 'UNASSIGNED' ? 'Deleted from Unassigned' : `Cleared ${combo}+${keyId}`, 'info');
   }, [assignments, activeProfile, profiles, saveConfig, syncEngine, selectedKey, showNotification]);
 
   // ── Duplicate assignment via draft state ──────────────────
@@ -1641,6 +1655,7 @@ function App() {
     const mods = combo === 'BARE' ? ['BARE'] : combo.split('+').filter(Boolean);
     setActiveModifiers(mods);
     setSelectedKey(keyId);
+    setSelectedLibraryId(null);
     setActiveView(keyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
     setDuplicateOverlaySignal(s => s + 1);
   }, []);
@@ -1713,6 +1728,7 @@ function App() {
   const handleProfileChange = useCallback((profile) => {
     setActiveProfile(profile);
     setSelectedKey(null);
+    setSelectedLibraryId(null);
     setDraftAssignment(null);
     setDraftDoubleAssignment(null);
     saveConfig(assignments, profiles, profile);
@@ -3025,6 +3041,7 @@ function App() {
     if (carried === 0) return;
     setAssignments(newAssignments);
     setSelectedKey(null);
+    setSelectedLibraryId(prev => (prev === srcKey ? null : prev));
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Moved to "${targetProfile}" profile`);
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
@@ -3090,6 +3107,204 @@ function App() {
     const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
     showNotification(`Duplicated to ${comboLabel}`);
   }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
+
+  // ── Unassigned library ─────────────────────────────────────
+  // Entries live at "{Profile}::UNASSIGNED::{uuid}" (+ ::double / ::hold),
+  // in the same assignments map as everything else. See the selectedLibraryId
+  // declaration for the engine-reachability invariant. The literal segment
+  // must stay "UNASSIGNED" — never a real combo string and never "BARE".
+  const makeLibraryKey = useCallback((profile, id) => {
+    return `${profile}::UNASSIGNED::${id}`;
+  }, []);
+
+  const getLibraryEntry = useCallback((id, suffix = '') => {
+    if (!id) return null;
+    return assignments[makeLibraryKey(activeProfile, id) + suffix] || null;
+  }, [assignments, activeProfile, makeLibraryKey]);
+
+  // Unassign: free the trigger, keep the action. Moves ALL press-mode
+  // variants under a fresh library uuid, then selects the new entry so the
+  // editor stays open on the action the user just unassigned.
+  const handleUnassignKey = useCallback((combo, keyId) => {
+    const oldKey = makeAssignmentKey(activeProfile, combo, keyId);
+    const id = crypto.randomUUID();
+    const newKey = makeLibraryKey(activeProfile, id);
+    const newAssignments = { ...assignments };
+    let carried = 0;
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      if (newAssignments[oldKey + suffix]) {
+        newAssignments[newKey + suffix] = newAssignments[oldKey + suffix];
+        delete newAssignments[oldKey + suffix];
+        carried++;
+      }
+    }
+    if (carried === 0) return;
+    setAssignments(newAssignments);
+    setSelectedKey(null);
+    setSelectedLibraryId(id);
+    saveConfig(newAssignments, profiles, activeProfile);
+    showNotification('Moved to Unassigned, at the bottom of the sidebar');
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey]);
+
+  // Save / clear one press-mode variant of a library entry. MacroPanel's
+  // onAssign/onAssignDouble/onAssignHold (and clear counterparts) are routed
+  // here with the matching suffix when a library entry is selected.
+  const handleAssignLibraryVariant = useCallback((id, macro, suffix = '') => {
+    const key = makeLibraryKey(activeProfile, id) + suffix;
+    const oldLabel = assignments[key]?.label || '';
+    const newAssignments = { ...assignments, [key]: macro };
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    if (suffix === '') propagateLabelToRadialItems(key, oldLabel, macro?.label || '');
+    showNotification('Saved to Unassigned');
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeLibraryKey, propagateLabelToRadialItems]);
+
+  const handleClearLibraryVariant = useCallback((id, suffix = '') => {
+    const key = makeLibraryKey(activeProfile, id) + suffix;
+    if (!assignments[key]) return;
+    const newAssignments = { ...assignments };
+    delete newAssignments[key];
+    setAssignments(newAssignments);
+    // If nothing is left under this uuid, drop the selection too.
+    if (!ASSIGNMENT_VARIANT_SUFFIXES.some(s => newAssignments[makeLibraryKey(activeProfile, id) + s])) {
+      setSelectedLibraryId(prev => (prev === id ? null : prev));
+    }
+    saveConfig(newAssignments, profiles, activeProfile);
+    showNotification('Cleared', 'info');
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeLibraryKey]);
+
+  const handleDeleteLibraryEntry = useCallback((id) => {
+    const base = makeLibraryKey(activeProfile, id);
+    const newAssignments = { ...assignments };
+    let removed = 0;
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      if (newAssignments[base + suffix]) { delete newAssignments[base + suffix]; removed++; }
+    }
+    if (removed === 0) return;
+    setAssignments(newAssignments);
+    setSelectedLibraryId(prev => (prev === id ? null : prev));
+    saveConfig(newAssignments, profiles, activeProfile);
+    showNotification('Deleted from Unassigned', 'info');
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeLibraryKey]);
+
+  // Bind a library entry to a real trigger. If the target already holds an
+  // action, the displaced action moves INTO Unassigned — this feature never
+  // destroys an action without an explicit confirmed Delete.
+  const handleBindLibrary = useCallback((id, newCombo, newKeyId) => {
+    const libKey = makeLibraryKey(activeProfile, id);
+    const targetKey = makeAssignmentKey(activeProfile, newCombo, newKeyId);
+    const newAssignments = { ...assignments };
+    const displaced = ASSIGNMENT_VARIANT_SUFFIXES.some(s => newAssignments[targetKey + s]);
+    if (displaced) {
+      const displacedKey = makeLibraryKey(activeProfile, crypto.randomUUID());
+      for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+        if (newAssignments[targetKey + suffix]) {
+          newAssignments[displacedKey + suffix] = newAssignments[targetKey + suffix];
+          delete newAssignments[targetKey + suffix];
+        }
+      }
+    }
+    let carried = 0;
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      if (newAssignments[libKey + suffix]) {
+        newAssignments[targetKey + suffix] = newAssignments[libKey + suffix];
+        delete newAssignments[libKey + suffix];
+        carried++;
+      }
+    }
+    if (carried === 0) return;
+    setAssignments(newAssignments);
+    setSelectedLibraryId(null);
+    const newMods = newCombo === 'BARE' ? ['BARE'] : (newCombo ? newCombo.split('+').filter(Boolean) : []);
+    setActiveModifiers(newMods);
+    setSelectedKey(newKeyId);
+    setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+    saveConfig(newAssignments, profiles, activeProfile);
+    const keyLabel = friendlyKeyName(newKeyId);
+    const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
+    showNotification(displaced
+      ? `Bound to ${comboLabel}. The key's previous action moved to Unassigned.`
+      : `Bound to ${comboLabel}`);
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey]);
+
+  // Duplicate a library entry onto a trigger, keeping the library original.
+  // Like handleBindLibrary, a displaced action moves into Unassigned.
+  const handleDuplicateLibraryToKey = useCallback((id, newCombo, newKeyId) => {
+    const libKey = makeLibraryKey(activeProfile, id);
+    if (!ASSIGNMENT_VARIANT_SUFFIXES.some(s => assignments[libKey + s])) return;
+    const targetKey = makeAssignmentKey(activeProfile, newCombo, newKeyId);
+    const newAssignments = { ...assignments };
+    if (ASSIGNMENT_VARIANT_SUFFIXES.some(s => newAssignments[targetKey + s])) {
+      const displacedKey = makeLibraryKey(activeProfile, crypto.randomUUID());
+      for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+        if (newAssignments[targetKey + suffix]) {
+          newAssignments[displacedKey + suffix] = newAssignments[targetKey + suffix];
+          delete newAssignments[targetKey + suffix];
+        }
+      }
+    }
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      const existing = assignments[libKey + suffix];
+      if (!existing) continue;
+      newAssignments[targetKey + suffix] = {
+        ...existing,
+        data: JSON.parse(JSON.stringify(existing.data || {})),
+      };
+    }
+    setAssignments(newAssignments);
+    setSelectedLibraryId(null);
+    const newMods = newCombo === 'BARE' ? ['BARE'] : (newCombo ? newCombo.split('+').filter(Boolean) : []);
+    setActiveModifiers(newMods);
+    setSelectedKey(newKeyId);
+    setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+    saveConfig(newAssignments, profiles, activeProfile);
+    const keyLabel = friendlyKeyName(newKeyId);
+    const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
+    showNotification(`Duplicated to ${comboLabel}`);
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey]);
+
+  // Sidebar context menu → Duplicate on an unassigned entry: copy in place.
+  const handleDuplicateLibraryInPlace = useCallback((id) => {
+    const srcKey = makeLibraryKey(activeProfile, id);
+    if (!ASSIGNMENT_VARIANT_SUFFIXES.some(s => assignments[srcKey + s])) return;
+    const newId = crypto.randomUUID();
+    const dstKey = makeLibraryKey(activeProfile, newId);
+    const newAssignments = { ...assignments };
+    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+      const existing = assignments[srcKey + suffix];
+      if (!existing) continue;
+      newAssignments[dstKey + suffix] = {
+        ...existing,
+        label: (existing.label || '') + ' (copy)',
+        data: JSON.parse(JSON.stringify(existing.data || {})),
+      };
+    }
+    setAssignments(newAssignments);
+    setSelectedLibraryId(newId);
+    setSelectedKey(null);
+    saveConfig(newAssignments, profiles, activeProfile);
+    showNotification('Duplicated in Unassigned');
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeLibraryKey]);
+
+  const handleSelectLibraryEntry = useCallback((id) => {
+    setSelectedLibraryId(id);
+    setSelectedKey(null);
+    setDraftAssignment(null);
+    setDraftDoubleAssignment(null);
+  }, []);
+
+  // "New Action" — select a fresh uuid with no saved entry; the entry is
+  // created on first Save from the editor.
+  const handleNewLibraryAction = useCallback(() => {
+    handleSelectLibraryEntry(crypto.randomUUID());
+  }, [handleSelectLibraryEntry]);
+
+  // Sidebar context menu → "Bind to key…": select the entry, then signal
+  // MacroPanel to open its bind-capture overlay.
+  const handleBindFromContext = useCallback((id) => {
+    handleSelectLibraryEntry(id);
+    setBindOverlaySignal(s => s + 1);
+  }, [handleSelectLibraryEntry]);
 
   // ── View switching (keyboard ↔ mouse, within Mapping area) ─
   const handleSetView = useCallback((view) => {
@@ -3245,6 +3460,7 @@ function App() {
     setDraftAssignment(null);
     setDraftDoubleAssignment(null);
     setSelectedKey(keyId);
+    setSelectedLibraryId(null);
     setSelectedRadialSegment(null);
     setSelectedRadialChild(null);
     // Stay on radial view when in radial mode; otherwise switch to keyboard/mouse
@@ -4468,9 +4684,10 @@ function App() {
     };
   }, []);
 
-  // Count assignments for current profile (all combos, excluding expansions)
+  // Count assignments for current profile (all combos, excluding expansions
+  // and unassigned library entries — those have no trigger to count)
   const profileAssignmentCount = Object.keys(assignments)
-    .filter(k => k.startsWith(activeProfile + '::') && !k.includes('::EXPANSION::')).length;
+    .filter(k => k.startsWith(activeProfile + '::') && !k.includes('::EXPANSION::') && !k.includes('::UNASSIGNED::')).length;
 
   // ── Update banner helpers ─────────────────────────────────
   function fmtBytes(bytes) {
@@ -4846,6 +5063,12 @@ function App() {
             onDuplicateFromContext={handleDuplicateFromContext}
             onCopyToProfile={handleCopyToProfile}
             onMoveToProfile={handleMoveToProfile}
+            selectedLibraryId={selectedLibraryId}
+            onSelectLibraryEntry={handleSelectLibraryEntry}
+            onNewLibraryAction={handleNewLibraryAction}
+            onBindFromContext={handleBindFromContext}
+            onDuplicateLibraryInPlace={handleDuplicateLibraryInPlace}
+            onUnassign={handleUnassignKey}
             activeView={activeView}
             radialMenuItems={radialMenuItems}
             isPro={isPro}
@@ -5170,6 +5393,42 @@ function App() {
             hiddenTips={hiddenTips}
             onHideTip={handleHideTip}
           />
+        ) : activeArea === 'mapping' && selectedLibraryId ? (
+          // Unassigned library editor — same MacroPanel, library mode. The
+          // uuid rides in selectedKey so the save/select plumbing works
+          // unchanged; App routes every assign/clear callback to the
+          // {Profile}::UNASSIGNED::{uuid} storage keys.
+          <MacroPanel
+            libraryMode={true}
+            selectedKey={selectedLibraryId}
+            activeModifiers={[]}
+            currentCombo="UNASSIGNED"
+            assignment={getLibraryEntry(selectedLibraryId)}
+            doubleAssignment={getLibraryEntry(selectedLibraryId, '::double')}
+            holdAssignment={getLibraryEntry(selectedLibraryId, '::hold')}
+            assignments={assignments}
+            activeProfile={activeProfile}
+            profiles={profiles}
+            profileLinked={profileLinked}
+            globalInputMethod={globalInputMethod}
+            onAssign={(id, macro) => handleAssignLibraryVariant(id, macro, '')}
+            onClear={(id) => handleClearLibraryVariant(id, '')}
+            onDelete={handleDeleteLibraryEntry}
+            onAssignDouble={(id, macro) => handleAssignLibraryVariant(id, macro, '::double')}
+            onClearDouble={(id) => handleClearLibraryVariant(id, '::double')}
+            onAssignHold={(id, macro) => handleAssignLibraryVariant(id, macro, '::hold')}
+            onClearHold={(id) => handleClearLibraryVariant(id, '::hold')}
+            onClose={() => setSelectedLibraryId(null)}
+            onCancelDraft={() => {}}
+            onReassign={(combo, keyId) => handleBindLibrary(selectedLibraryId, combo, keyId)}
+            onDuplicate={(combo, keyId) => handleDuplicateLibraryToKey(selectedLibraryId, combo, keyId)}
+            bindOverlaySignal={bindOverlaySignal}
+            isPro={isPro}
+            voiceEnabled={false}
+            onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
+          />
         ) : activeArea === 'mapping' && (!isNarrow || selectedKey != null || draftAssignment != null) ? (
           // Below 1200px the MacroPanel is hidden until the user picks a key or
           // starts a draft. The selection / draft check covers the keyboard +
@@ -5200,6 +5459,7 @@ function App() {
             onCancelDraft={clearDraft}
             onReassign={handleReassign}
             onDuplicate={handleDuplicateAssignment}
+            onUnassign={(keyId) => handleUnassignKey(currentCombo, keyId)}
             duplicateOverlaySignal={duplicateOverlaySignal}
             isPro={isPro}
             voiceEnabled={voiceEnabled}

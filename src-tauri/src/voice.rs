@@ -253,6 +253,11 @@ pub fn collect_voice_phrases_from_state() -> Vec<String> {
         if !include {
             continue;
         }
+        // Unassigned library entries ("{Profile}::UNASSIGNED::{uuid}") have no
+        // trigger and must not fire by voice either — deliberate exclusion.
+        if key.contains("::UNASSIGNED::") {
+            continue;
+        }
 
         let data = value.get("data");
         // voicePhrases array takes precedence

@@ -90,6 +90,25 @@ function buildItems(data) {
       // parts[0] = profile, parts[1] = combo, parts[2] = keyId
       const combo   = parts[1];
       const keyId   = parts[2];
+      // Unassigned library entries ("{Profile}::UNASSIGNED::{uuid}") have no
+      // trigger but fire fine by storage key — list them with a plain
+      // "Unassigned" tag. Variant stubs (::double / ::hold) are represented
+      // by their base entry.
+      if (combo === 'UNASSIGNED') {
+        if (parts.length > 3 || !macro) continue;
+        items.push({
+          type:       'assignment',
+          storageKey,
+          combo,
+          keyId,
+          comboLabel: 'Unassigned',
+          assignType: macro.type,
+          label:      macro.label || '',
+          preview:    buildPreview(macro),
+          voicePhrases: [],
+        });
+        continue;
+      }
       const comboLabel = buildComboLabel(combo, keyId);
       items.push({
         type:       'assignment',

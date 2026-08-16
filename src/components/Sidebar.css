@@ -1620,3 +1620,110 @@
   color: var(--text-primary);
 }
 
+
+/* ══════════════════════════════════════════════════════════════
+   UNASSIGNED LIBRARY — actions kept without a key
+   Header follows the gold band + left-stripe list-divider recipe.
+   ══════════════════════════════════════════════════════════════ */
+.sidebar-unassigned {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Grid view renders the section inside the grid wrap — span full width */
+.sidebar-grid-wrap .sidebar-unassigned {
+  grid-column: 1 / -1;
+}
+
+.sidebar-unassigned-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  background: rgba(var(--accent-rgb), 0.15);
+  border-left: 4px solid var(--accent);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.sidebar-unassigned-chevron {
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.sidebar-unassigned-title {
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sidebar-unassigned-header .sidebar-group-count {
+  margin-left: 4px;
+}
+
+.sidebar-unassigned-new {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sidebar-unassigned-new:hover {
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
+.sidebar-unassigned-empty {
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.sidebar-unassigned-empty strong {
+  color: var(--text-secondary);
+}
+
+/* Dashed "No key" badge — beats the per-type colour rules by specificity */
+.sidebar-item.sidebar-item-unassigned .sidebar-key-badge {
+  border-style: dashed;
+  border-color: var(--border-bright);
+  color: var(--text-muted);
+}
+
+.sidebar-unassigned-bind {
+  flex-shrink: 0;
+  align-self: center;
+  background: transparent;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.12s, background 0.15s;
+}
+
+.sidebar-item-unassigned:hover .sidebar-unassigned-bind {
+  opacity: 1;
+}
+
+.sidebar-unassigned-bind:hover {
+  background: rgba(var(--accent-rgb), 0.18);
+}

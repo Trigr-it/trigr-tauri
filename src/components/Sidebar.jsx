@@ -730,6 +730,13 @@ export default function Sidebar({
   onDuplicateFromContext,
   onCopyToProfile,
   onMoveToProfile,
+  // Unassigned library props
+  selectedLibraryId = null,
+  onSelectLibraryEntry,
+  onNewLibraryAction,
+  onBindFromContext,
+  onDuplicateLibraryInPlace,
+  onUnassign,
   // Radial mode props
   activeView = 'keyboard',
   radialMenuItems = [],
@@ -746,6 +753,7 @@ export default function Sidebar({
       if (!k.startsWith(activeProfile + '::')) continue;
       if (k.includes('::EXPANSION::')) continue;
       const parts = k.split('::');
+      if (parts[1] === 'UNASSIGNED') continue; // library entries render in their own section
       if (parts[parts.length - 1] === 'double') continue;
       if (parts[parts.length - 1] === 'hold') continue;
       const baseKey = k;
@@ -765,6 +773,7 @@ export default function Sidebar({
       if (!k.startsWith(activeProfile + '::')) continue;
       if (k.includes('::EXPANSION::')) continue;
       const parts = k.split('::');
+      if (parts[1] === 'UNASSIGNED') continue;
       if (parts[parts.length - 1] !== 'double') continue;
       const baseKey = parts.slice(0, -1).join('::');
       if (seen.has(baseKey)) continue; // already listed via single entry
@@ -784,6 +793,7 @@ export default function Sidebar({
       if (!k.startsWith(activeProfile + '::')) continue;
       if (k.includes('::EXPANSION::')) continue;
       const parts = k.split('::');
+      if (parts[1] === 'UNASSIGNED') continue;
       if (parts[parts.length - 1] !== 'hold') continue;
       const baseKey = parts.slice(0, -1).join('::');
       if (seen.has(baseKey)) continue; // already listed via single/double entry
@@ -799,6 +809,40 @@ export default function Sidebar({
     }
     return entries;
   })();
+
+  // ── Unassigned library entries ("{Profile}::UNASSIGNED::{uuid}") ──────
+  // Grouped by uuid; the displayed macro prefers the base entry, falling back
+  // to a preserved double/hold variant (an entry unassigned from a
+  // double-only or hold-only key has no base).
+  const unassignedEntries = (() => {
+    const byId = new Map();
+    for (const [k, v] of Object.entries(assignments)) {
+      if (!v) continue;
+      if (!k.startsWith(activeProfile + '::UNASSIGNED::')) continue;
+      const parts = k.split('::');
+      const id = parts[2] || '';
+      if (!id) continue;
+      const suffix = parts[3] || '';
+      const priority = suffix === '' ? 0 : suffix === 'double' ? 1 : 2;
+      const cur = byId.get(id) || { id, macro: null, macroPriority: 9, hasDouble: false, hasHold: false };
+      if (!cur.macro || priority < cur.macroPriority) { cur.macro = v; cur.macroPriority = priority; }
+      if (suffix === 'double') cur.hasDouble = true;
+      if (suffix === 'hold') cur.hasHold = true;
+      byId.set(id, cur);
+    }
+    return [...byId.values()].sort((a, b) =>
+      (a.macro?.label || '').localeCompare(b.macro?.label || '', undefined, { numeric: true, sensitivity: 'base' }));
+  })();
+
+  const [unassignedCollapsed, setUnassignedCollapsed] = useState(() =>
+    localStorage.getItem('trigr.unassignedCollapsed') === '1'
+  );
+  const toggleUnassignedCollapsed = () => {
+    setUnassignedCollapsed(prev => {
+      localStorage.setItem('trigr.unassignedCollapsed', prev ? '0' : '1');
+      return !prev;
+    });
+  };
 
   const otherProfiles = (profiles || []).filter(p => p !== activeProfile);
 
@@ -999,7 +1043,22 @@ export default function Sidebar({
 
   function handleCtxDuplicate() {
     if (!assignCtx) return;
-    onDuplicateFromContext?.(assignCtx.combo, assignCtx.keyId);
+    // Unassigned entries duplicate in place (a new library copy) — the
+    // keyId slot carries the entry's uuid for UNASSIGNED rows.
+    if (assignCtx.combo === 'UNASSIGNED') onDuplicateLibraryInPlace?.(assignCtx.keyId);
+    else onDuplicateFromContext?.(assignCtx.combo, assignCtx.keyId);
+    setAssignCtx(null);
+  }
+
+  function handleCtxBind() {
+    if (!assignCtx) return;
+    onBindFromContext?.(assignCtx.keyId);
+    setAssignCtx(null);
+  }
+
+  function handleCtxUnassign() {
+    if (!assignCtx) return;
+    onUnassign?.(assignCtx.combo, assignCtx.keyId);
     setAssignCtx(null);
   }
 
@@ -1233,6 +1292,112 @@ export default function Sidebar({
     }
 
     return cardEl;
+  }
+
+  // ── Unassigned section (shared by classic list + grid views) ─────────
+  function renderUnassignedItem({ id, macro, hasDouble, hasHold }) {
+    const meta = TYPE_META[macro.type] || { color: 'var(--text-muted)' };
+    const typeName = TYPE_NAMES[macro.type] || macro.type;
+    const displayLabel = macro.label || macro.data?.text || macro.data?.url || macro.data?.path || typeName;
+    const isSelected = selectedLibraryId === id;
+
+    if (isClearing('UNASSIGNED', id)) {
+      return (
+        <div key={id} className="sidebar-item sidebar-item-confirm">
+          <span className="sidebar-confirm-text">Delete this action?</span>
+          <button className="sidebar-confirm-yes" type="button" onClick={confirmClear}>Yes</button>
+          <button className="sidebar-confirm-no" type="button" onClick={() => setClearing(null)}>No</button>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={id}
+        className={`sidebar-item sidebar-item-unassigned type-${macro.type}${isSelected ? ' sidebar-item-active' : ''}`}
+        onClick={() => onSelectLibraryEntry?.(id)}
+        onContextMenu={e => handleAssignContextMenu(e, 'UNASSIGNED', id, macro)}
+        title="Edit this action, or right-click for Bind to key"
+      >
+        <div className="sidebar-key-stack">
+          <span className="sidebar-key-badge sidebar-key-badge-unassigned">No key</span>
+          {(hasDouble || hasHold) && (
+            <span className="sidebar-mode-chip-row">
+              {hasDouble && <span className="sidebar-mode-chip" title="Carries a double-press action (restored on bind)">×2</span>}
+              {hasHold && <span className="sidebar-mode-chip" title="Carries a hold action (restored on bind)">⏱</span>}
+            </span>
+          )}
+        </div>
+        <div className="sidebar-item-info">
+          <div className="sidebar-item-label">
+            {isRenaming('UNASSIGNED', id) ? (
+              <input
+                autoFocus
+                className="sidebar-rename-input"
+                value={renameVal}
+                onChange={e => setRenameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitRenameAssignment(); if (e.key === 'Escape') cancelRename(); }}
+                onBlur={cancelRename}
+                onClick={e => e.stopPropagation()}
+              />
+            ) : (
+              displayLabel
+            )}
+          </div>
+          <div className="sidebar-item-type">
+            <span className="type-dot" style={{ background: meta.color }} />
+            {typeName}
+          </div>
+        </div>
+        <button
+          className="sidebar-unassigned-bind"
+          type="button"
+          onClick={e => { e.stopPropagation(); onBindFromContext?.(id); }}
+          title="Bind this action to a key"
+        >Bind</button>
+      </div>
+    );
+  }
+
+  function renderUnassignedSection() {
+    if (isRadialMode) return null;
+    const q = assignFilter.trim().toLowerCase();
+    const visible = !q ? unassignedEntries : unassignedEntries.filter(({ macro }) => {
+      const label = (macro?.label || macro?.data?.text || macro?.data?.url || macro?.data?.path || '').toLowerCase();
+      const typeName = (TYPE_NAMES[macro?.type] || '').toLowerCase();
+      return label.includes(q) || typeName.includes(q) || 'unassigned'.includes(q);
+    });
+    return (
+      <div className="sidebar-unassigned">
+        <div
+          className="sidebar-unassigned-header"
+          onClick={toggleUnassignedCollapsed}
+          role="button"
+          aria-expanded={!unassignedCollapsed}
+        >
+          <span className="sidebar-unassigned-chevron">{unassignedCollapsed ? '▸' : '▾'}</span>
+          <span className="sidebar-unassigned-title">UNASSIGNED</span>
+          <span className="sidebar-group-count">{unassignedEntries.length}</span>
+          <button
+            className="sidebar-unassigned-new"
+            type="button"
+            onClick={e => { e.stopPropagation(); onNewLibraryAction?.(); }}
+            title="Create a new action without picking a key first"
+          >+ New</button>
+        </div>
+        {!unassignedCollapsed && (
+          visible.length === 0 ? (
+            <div className="sidebar-unassigned-empty">
+              {q
+                ? 'No unassigned actions match your search'
+                : <>Actions without a key are kept here. Use <strong>Unassign</strong> on any key to store its action for later, or <strong>+ New</strong> to build one from scratch.</>}
+            </div>
+          ) : (
+            visible.map(renderUnassignedItem)
+          )
+        )}
+      </div>
+    );
   }
 
   // ── Modifier bar for list view ──────────────────────────────
@@ -1473,6 +1638,7 @@ export default function Sidebar({
                   {gridFiltered.map(renderCard)}
                 </div>
               )}
+              {renderUnassignedSection()}
             </div>
           );
         })()
@@ -1515,6 +1681,7 @@ export default function Sidebar({
                 {filtered.map(renderItem)}
               </>
             )}
+            {renderUnassignedSection()}
           </div>
 
           <div className="sidebar-footer">
@@ -1531,8 +1698,19 @@ export default function Sidebar({
           className="assign-ctx-menu"
           style={{ top: assignCtx.y, left: assignCtx.x }}
         >
+          {assignCtx.combo === 'UNASSIGNED' && (
+            <button className="assign-ctx-item" type="button" onClick={handleCtxBind}>Bind to key…</button>
+          )}
           <button className="assign-ctx-item" type="button" onClick={handleCtxRename}>Rename</button>
           <button className="assign-ctx-item" type="button" onClick={handleCtxDuplicate}>Duplicate</button>
+          {assignCtx.combo !== 'UNASSIGNED' && (
+            <button
+              className="assign-ctx-item"
+              type="button"
+              onClick={handleCtxUnassign}
+              title="Free the key but keep the action in Unassigned"
+            >Unassign</button>
+          )}
           {otherProfiles.length > 0 && (
             <>
               <div className="assign-ctx-divider" />

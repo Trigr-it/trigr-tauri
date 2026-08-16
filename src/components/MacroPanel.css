@@ -3284,3 +3284,52 @@
   color: var(--btn-primary-text);
   font-weight: 600;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   UNASSIGNED LIBRARY MODE
+   ══════════════════════════════════════════════════════════════ */
+/* Header badge for a selected unassigned entry — dashed, gold ink */
+.selected-key-badge-unassigned {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgba(var(--accent-rgb), 0.5);
+  color: var(--accent);
+}
+
+/* "Bind to Key" header button — gold treatment over the reassign base */
+.reassign-btn.bind-btn {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  color: var(--accent);
+}
+
+.reassign-btn.bind-btn:hover {
+  background: rgba(var(--accent-rgb), 0.15);
+}
+
+/* Unassign footer button — same anatomy as its siblings */
+.btn-unassign {
+  height: 36px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-unassign:hover {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  color: var(--accent);
+}
+
+/* Reassurance line under the replace-conflict prompt (bind flows) */
+.reassign-conflict-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
