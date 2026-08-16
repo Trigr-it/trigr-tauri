@@ -662,7 +662,11 @@ function DraggableCardWrap({ id, storageKey, isUsed, enabled, kind = 'library-ca
       ref={setNodeRef}
       className={`${isDragging ? 'is-dragging' : ''}${isUsed ? ' is-used' : ''}`}
       {...(enabled && !isUsed ? { ...listeners, ...attributes } : {})}
-      style={{ touchAction: 'none' }}
+      // pan-y, NOT none: these wrappers now cover the full scrollable
+      // assignment list, and touch-action:none would kill finger-scrolling
+      // on touchscreens (the dev machine is a Surface). Vertical panning
+      // stays native; dnd-kit still gets horizontal/press drags.
+      style={{ touchAction: 'pan-y' }}
     >
       {children}
     </div>

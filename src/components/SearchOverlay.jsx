@@ -93,9 +93,16 @@ function buildItems(data) {
       // Unassigned library entries ("{Profile}::UNASSIGNED::{uuid}") have no
       // trigger but fire fine by storage key — list them with a plain
       // "Unassigned" tag. Variant stubs (::double / ::hold) are represented
-      // by their base entry.
+      // by their base entry when one exists; an entry unassigned from a
+      // double-only or hold-only key has NO base, so its first variant
+      // stands in (full suffixed key still resolves at fire time).
       if (combo === 'UNASSIGNED') {
-        if (parts.length > 3 || !macro) continue;
+        if (!macro) continue;
+        if (parts.length > 3) {
+          const baseKey = parts.slice(0, 3).join('::');
+          if (assignments[baseKey]) continue; // base entry represents it
+          if (parts[3] === 'hold' && assignments[baseKey + '::double']) continue;
+        }
         items.push({
           type:       'assignment',
           storageKey,

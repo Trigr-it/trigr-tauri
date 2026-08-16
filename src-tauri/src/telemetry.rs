@@ -238,6 +238,12 @@ fn build_extra(c: &DayCounts) -> String {
     if let Some(cfg) = crate::config::load_config() {
         if let Some(map) = cfg.get("assignments").and_then(|v| v.as_object()) {
             for k in map.keys() {
+                // Unassigned library entries ("{Profile}::UNASSIGNED::{uuid}")
+                // have no trigger — counting them would inflate the hotkey
+                // stats this endpoint exists to measure.
+                if k.contains("::UNASSIGNED::") {
+                    continue;
+                }
                 if k.contains("::EXPANSION::") {
                     expansion_defs += 1;
                 } else if k.ends_with("::double") {

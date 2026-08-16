@@ -1941,7 +1941,10 @@ export function FireTargetPicker({ mode, assignments, currentValue, onSelect, on
     // here in a future iteration if testers ask, but the picker UX would need
     // a separate group treatment since the storage key has no profile/combo.
     const items = Object.entries(assignments)
-      .filter(([k]) => !k.startsWith('GLOBAL::'))
+      // ::UNASSIGNED:: library entries are excluded too: they have no trigger,
+      // their uuid renders as a garbage key label, and a stored reference
+      // would dangle the moment the entry is bound (the storage key rewrites).
+      .filter(([k]) => !k.startsWith('GLOBAL::') && !k.includes('::UNASSIGNED::'))
       .map(([k, v]) => {
         const parsed = parseAssignmentKey(k);
         if (!parsed) return null;
@@ -3793,6 +3796,11 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
   );
 }
 
+// Last-consumed values for App's duplicate/bind overlay signals. Module
+// scope (not refs) so they survive MacroPanel unmount/remount — see the two
+// signal effects inside the component for the full rationale.
+const consumedSignals = { duplicate: 0, bind: 0 };
+
 export default function MacroPanel({
   selectedKey,
   activeModifiers,
@@ -3977,8 +3985,16 @@ export default function MacroPanel({
   // this signal to open the duplicate-capture overlay. Declared AFTER the
   // selection-reset effect above so its setDuplicating(true) wins over the
   // reset's setDuplicating(false) when both fire in the same commit.
+  // Both overlay signals fire once per App-side bump. A plain "> 0" check
+  // re-fires on remount (tab away and back) and on the library/key
+  // render-branch transitions, auto-opening an overlay the user never asked
+  // for — so each observed signal value is consumed into module-level
+  // trackers (declared above the component) that survive unmounts. A panel
+  // that mounts AFTER the bump (narrow mode) still fires exactly once.
   useEffect(() => {
-    if (duplicateOverlaySignal > 0 && selectedKey) setDuplicating(true);
+    const isNew = duplicateOverlaySignal > consumedSignals.duplicate;
+    consumedSignals.duplicate = Math.max(consumedSignals.duplicate, duplicateOverlaySignal);
+    if (isNew && selectedKey) setDuplicating(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [duplicateOverlaySignal]);
 
@@ -3986,7 +4002,9 @@ export default function MacroPanel({
   // then bumps this signal to open the bind-capture overlay (the reassign
   // overlay in bind clothing).
   useEffect(() => {
-    if (bindOverlaySignal > 0 && libraryMode && selectedKey) setReassigning(true);
+    const isNew = bindOverlaySignal > consumedSignals.bind;
+    consumedSignals.bind = Math.max(consumedSignals.bind, bindOverlaySignal);
+    if (isNew && libraryMode && selectedKey) setReassigning(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bindOverlaySignal]);
 

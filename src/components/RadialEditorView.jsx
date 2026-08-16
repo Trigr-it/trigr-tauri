@@ -663,6 +663,10 @@ export default function RadialEditorView({
                     for (const [key, val] of Object.entries(assignments)) {
                       if (usedKeys.has(key)) continue;
                       if (key.startsWith('GLOBAL::AUTOCORRECT::')) continue;
+                      // Unassigned library entries are hidden here, mirroring
+                      // the sidebar's radial-mode exclusion — a stored
+                      // reference would dangle once the entry is bound.
+                      if (key.includes('::UNASSIGNED::')) continue;
                       const lbl = val.label || key.split('::').pop() || '';
                       if (q && !lbl.toLowerCase().includes(q) && !key.toLowerCase().includes(q)) continue;
                       picks.push({ key, label: lbl });

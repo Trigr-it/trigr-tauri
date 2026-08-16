@@ -37,6 +37,55 @@ import { parseEspansoYaml, parseAhkHotstrings, parseTextExpanderCsv, parseTextBl
 // callouts, app-profile pitch, and trial offer at the end of the tour.
 const ONBOARDING_VERSION = 3;
 
+// ── Storage-key helpers (module scope, shared by the assignment handlers) ──
+// A key can hold up to three independent trigger variants, each under its own
+// storage key: base (single press), base::double, base::hold. Any operation
+// that moves an assignment must carry every variant that exists.
+const ASSIGNMENT_VARIANT_SUFFIXES = ['', '::double', '::hold'];
+
+// Unassigned library entries live at "{Profile}::UNASSIGNED::{uuid}" in the
+// same assignments map. This is THE predicate — don't hand-roll the check.
+const isLibraryKey = (k) => k.includes('::UNASSIGNED::');
+
+// Move every press-mode variant living at fromBase to toBase (mutates map).
+// Returns how many variants were carried.
+function moveVariantsInMap(map, fromBase, toBase) {
+  let carried = 0;
+  for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
+    if (map[fromBase + suffix]) {
+      map[toBase + suffix] = map[fromBase + suffix];
+      delete map[fromBase + suffix];
+      carried++;
+    }
+  }
+  return carried;
+}
+
+// Displace whatever occupies targetBase into a fresh Unassigned entry
+// (mutates map). Returns the new library base key, or null if the target was
+// empty. This carries the feature's core promise: binding or dropping onto an
+// occupied trigger never destroys the displaced action.
+function displaceToLibraryInMap(map, targetBase, profile) {
+  if (!ASSIGNMENT_VARIANT_SUFFIXES.some(s => map[targetBase + s])) return null;
+  const newBase = `${profile}::UNASSIGNED::${crypto.randomUUID()}`;
+  moveVariantsInMap(map, targetBase, newBase);
+  return newBase;
+}
+
+// keyMap of fromBase→toBase across all variant suffixes — feed to
+// remapRadialStorageKeys so radial wedges follow storage-key rewrites.
+function variantKeyMap(fromBase, toBase) {
+  const m = {};
+  for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) m[fromBase + suffix] = toBase + suffix;
+  return m;
+}
+
+// Human-readable trigger label ("Ctrl+Alt+K", bare keys show just the key).
+function triggerLabel(combo, keyId) {
+  const keyLabel = friendlyKeyName(keyId);
+  return combo === 'BARE' ? keyLabel : `${combo}+${keyLabel}`;
+}
+
 function App() {
   const [assignments, setAssignments]       = useState({});
   const [selectedKey, setSelectedKey]       = useState(null);
@@ -757,6 +806,7 @@ function App() {
         const mods = modifiers.length === 0 ? ['BARE'] : modifiers;
         setActiveModifiers(mods);
         setSelectedKey(keyId);
+        setSelectedLibraryId(null);
         if (keyId.startsWith('MOUSE_')) setActiveView('mouse');
         else setActiveView('keyboard');
         const modsLabel = modifiers.length === 0 ? 'Bare' : modifiers.join('+');
@@ -1229,9 +1279,9 @@ function App() {
   // the same whether the main window is visible (side-monitor parking) or
   // hidden — auto-switch runs normally.
   useEffect(() => {
-    const active = !!selectedKey || !!draftAssignment || expansionEditing || quickActionEditing;
+    const active = !!selectedKey || !!selectedLibraryId || !!draftAssignment || expansionEditing || quickActionEditing;
     window.electronAPI?.setEditingActive(active);
-  }, [selectedKey, draftAssignment, expansionEditing, quickActionEditing]);
+  }, [selectedKey, selectedLibraryId, draftAssignment, expansionEditing, quickActionEditing]);
 
   const saveConfig = useCallback((newAssignments, newProfiles, newProfile) => {
     window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories, clipboardCaptureEnabled, clipboardExcludedApps });
@@ -1558,6 +1608,58 @@ function App() {
     });
   }, []);
 
+  // Sweeps every profile's radial items + folder children, re-pointing any
+  // segment whose storageKey appears in keyMap ({oldKey: newKey}). Radial
+  // wedges reference assignments by storage key, so every operation that
+  // rewrites a key (Unassign, Bind, Reassign/swap, displace-to-library) must
+  // remap here or the wedge silently goes dead at fire time.
+  const remapRadialStorageKeys = useCallback((keyMap) => {
+    if (!keyMap || Object.keys(keyMap).length === 0) return;
+    setRadialItemsMap(prev => {
+      let mapChanged = false;
+      const nextMap = {};
+      for (const [profileName, items] of Object.entries(prev)) {
+        if (!Array.isArray(items)) { nextMap[profileName] = items; continue; }
+        let profileChanged = false;
+        const nextItems = items.map(item => {
+          if (!item) return item;
+          if (item.type === 'folder' && Array.isArray(item.children)) {
+            let kidsChanged = false;
+            const nextKids = item.children.map(child => {
+              if (child && child.storageKey && keyMap[child.storageKey]) {
+                kidsChanged = true;
+                return { ...child, storageKey: keyMap[child.storageKey] };
+              }
+              return child;
+            });
+            if (kidsChanged) { profileChanged = true; return { ...item, children: nextKids }; }
+            return item;
+          }
+          if (item.storageKey && keyMap[item.storageKey]) {
+            profileChanged = true;
+            return { ...item, storageKey: keyMap[item.storageKey] };
+          }
+          return item;
+        });
+        if (profileChanged) { mapChanged = true; nextMap[profileName] = nextItems; }
+        else nextMap[profileName] = items;
+      }
+      if (!mapChanged) return prev;
+      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: nextMap });
+      return nextMap;
+    });
+  }, []);
+
+  // Shared post-move selection: activate the target trigger's layer, select
+  // the key, drop any library selection, and land on the right canvas.
+  const selectTrigger = useCallback((combo, keyId) => {
+    const mods = combo === 'BARE' ? ['BARE'] : (combo ? combo.split('+').filter(Boolean) : []);
+    setActiveModifiers(mods);
+    setSelectedKey(keyId);
+    setSelectedLibraryId(null);
+    setActiveView(keyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+  }, []);
+
   const handleAssign = useCallback((keyId, macro) => {
     const key = makeAssignmentKey(activeProfile, currentCombo, keyId);
     const oldLabel = assignments[key]?.label || '';
@@ -1607,9 +1709,13 @@ function App() {
 
   // ── Rename assignment label (sidebar right-click → Rename) ───────────
   const handleRenameAssignment = useCallback((combo, keyId, newLabel) => {
-    const key = `${activeProfile}::${combo}::${keyId}`;
+    const base = `${activeProfile}::${combo}::${keyId}`;
+    // Double-only / hold-only rows (and unassigned entries carrying only a
+    // preserved variant) have no base entry — rename the first variant that
+    // exists so the rename input doesn't silently no-op.
+    const key = ASSIGNMENT_VARIANT_SUFFIXES.map(s => base + s).find(k => assignments[k]);
+    if (!key) return;
     const existing = assignments[key];
-    if (!existing) return;
     const oldLabel = existing.label || '';
     const newAssignments = { ...assignments, [key]: { ...existing, label: newLabel } };
     setAssignments(newAssignments);
@@ -2891,7 +2997,7 @@ function App() {
         if (parts[0] === originalName) parts[0] = importName;
         importedAssignments[parts.join('::')] = v;
       }
-      const assignmentCount = Object.keys(importedAssignments).length;
+      const assignmentCount = Object.keys(importedAssignments).filter(k => !isLibraryKey(k)).length;
       const newAssignments = { ...assignments, ...importedAssignments };
       const newProfiles = [...profiles, importName];
       setAssignments(newAssignments);
@@ -2924,7 +3030,7 @@ function App() {
         if (parts[0] === importName) parts[0] = newName;
         importedAssignments[parts.join('::')] = v;
       }
-      const assignmentCount = Object.keys(importedAssignments).length;
+      const assignmentCount = Object.keys(importedAssignments).filter(k => !isLibraryKey(k)).length;
       const newAssignments = { ...assignments, ...importedAssignments };
       const newProfiles = [...profiles, newName];
       setAssignments(newAssignments);
@@ -2945,7 +3051,7 @@ function App() {
         if (parts[0] === importName) parts[0] = importName; // no-op but consistent
         newAssignments[parts.join('::')] = v;
       }
-      const assignmentCount = Object.keys(importedRaw).length;
+      const assignmentCount = Object.keys(importedRaw).filter(k => !isLibraryKey(k)).length;
       setAssignments(newAssignments);
       setActiveProfile(importName);
       setSelectedKey(null);
@@ -2971,6 +3077,7 @@ function App() {
     setProfiles(newProfiles);
     setActiveProfile(newActive);
     setSelectedKey(null);
+    setSelectedLibraryId(null);
     setProfileSettings(newProfileSettings);
     // If the deleted profile was the active global profile, fall back to Default
     const newGlobal = activeGlobalProfile === name ? 'Default' : activeGlobalProfile;
@@ -3000,11 +3107,8 @@ function App() {
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, syncEngine, showNotification]);
 
   // ── Copy / Move assignment to another profile ─────────────
-  // A key can hold up to three independent trigger variants, each under its
-  // own storage key: base (single press), base::double, base::hold.
-  // Copy/Move must carry every variant that exists, in any combination.
-  const ASSIGNMENT_VARIANT_SUFFIXES = ['', '::double', '::hold'];
-
+  // Copy/Move must carry every variant that exists (see
+  // ASSIGNMENT_VARIANT_SUFFIXES at module scope), in any combination.
   const handleCopyToProfile = useCallback((targetProfile, combo, keyId) => {
     const srcCombo = combo || currentCombo;
     const srcKey   = keyId || selectedKey;
@@ -3074,13 +3178,15 @@ function App() {
     }
 
     setAssignments(newAssignments);
-    const newMods = newCombo ? newCombo.split('+').filter(Boolean) : [];
-    setActiveModifiers(newMods);
-    setSelectedKey(newKeyId);
-    setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+    selectTrigger(newCombo, newKeyId);
     saveConfig(newAssignments, profiles, activeProfile);
+    // Radial wedges referencing either trigger must follow the rewrite —
+    // on a swap both directions move.
+    const radialRemap = variantKeyMap(oldKey, newKey);
+    if (swapped) Object.assign(radialRemap, variantKeyMap(newKey, oldKey));
+    remapRadialStorageKeys(radialRemap);
     showNotification(swapped ? 'Hotkeys swapped' : 'Hotkey reassigned');
-  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey]);
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, selectTrigger, remapRadialStorageKeys]);
 
   const handleReassign = useCallback((newCombo, newKeyId) => {
     moveAssignment(currentCombo, selectedKey, newCombo, newKeyId);
@@ -3136,21 +3242,14 @@ function App() {
     const id = crypto.randomUUID();
     const newKey = makeLibraryKey(activeProfile, id);
     const newAssignments = { ...assignments };
-    let carried = 0;
-    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
-      if (newAssignments[oldKey + suffix]) {
-        newAssignments[newKey + suffix] = newAssignments[oldKey + suffix];
-        delete newAssignments[oldKey + suffix];
-        carried++;
-      }
-    }
-    if (carried === 0) return;
+    if (moveVariantsInMap(newAssignments, oldKey, newKey) === 0) return;
     setAssignments(newAssignments);
     setSelectedKey(null);
     setSelectedLibraryId(id);
     saveConfig(newAssignments, profiles, activeProfile);
+    remapRadialStorageKeys(variantKeyMap(oldKey, newKey));
     showNotification('Moved to Unassigned, at the bottom of the sidebar');
-  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey]);
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey, remapRadialStorageKeys]);
 
   // Save / clear one press-mode variant of a library entry. MacroPanel's
   // onAssign/onAssignDouble/onAssignHold (and clear counterparts) are routed
@@ -3200,38 +3299,19 @@ function App() {
     const libKey = makeLibraryKey(activeProfile, id);
     const targetKey = makeAssignmentKey(activeProfile, newCombo, newKeyId);
     const newAssignments = { ...assignments };
-    const displaced = ASSIGNMENT_VARIANT_SUFFIXES.some(s => newAssignments[targetKey + s]);
-    if (displaced) {
-      const displacedKey = makeLibraryKey(activeProfile, crypto.randomUUID());
-      for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
-        if (newAssignments[targetKey + suffix]) {
-          newAssignments[displacedKey + suffix] = newAssignments[targetKey + suffix];
-          delete newAssignments[targetKey + suffix];
-        }
-      }
-    }
-    let carried = 0;
-    for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
-      if (newAssignments[libKey + suffix]) {
-        newAssignments[targetKey + suffix] = newAssignments[libKey + suffix];
-        delete newAssignments[libKey + suffix];
-        carried++;
-      }
-    }
-    if (carried === 0) return;
+    const displacedKey = displaceToLibraryInMap(newAssignments, targetKey, activeProfile);
+    if (moveVariantsInMap(newAssignments, libKey, targetKey) === 0) return;
     setAssignments(newAssignments);
-    setSelectedLibraryId(null);
-    const newMods = newCombo === 'BARE' ? ['BARE'] : (newCombo ? newCombo.split('+').filter(Boolean) : []);
-    setActiveModifiers(newMods);
-    setSelectedKey(newKeyId);
-    setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+    selectTrigger(newCombo, newKeyId);
     saveConfig(newAssignments, profiles, activeProfile);
-    const keyLabel = friendlyKeyName(newKeyId);
-    const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
-    showNotification(displaced
+    const radialRemap = variantKeyMap(libKey, targetKey);
+    if (displacedKey) Object.assign(radialRemap, variantKeyMap(targetKey, displacedKey));
+    remapRadialStorageKeys(radialRemap);
+    const comboLabel = triggerLabel(newCombo, newKeyId);
+    showNotification(displacedKey
       ? `Bound to ${comboLabel}. The key's previous action moved to Unassigned.`
       : `Bound to ${comboLabel}`);
-  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey]);
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey, selectTrigger, remapRadialStorageKeys]);
 
   // Duplicate a library entry onto a trigger, keeping the library original.
   // Like handleBindLibrary, a displaced action moves into Unassigned.
@@ -3240,17 +3320,9 @@ function App() {
     if (!ASSIGNMENT_VARIANT_SUFFIXES.some(s => assignments[libKey + s])) return;
     const targetKey = makeAssignmentKey(activeProfile, newCombo, newKeyId);
     const newAssignments = { ...assignments };
-    if (ASSIGNMENT_VARIANT_SUFFIXES.some(s => newAssignments[targetKey + s])) {
-      const displacedKey = makeLibraryKey(activeProfile, crypto.randomUUID());
-      for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
-        if (newAssignments[targetKey + suffix]) {
-          newAssignments[displacedKey + suffix] = newAssignments[targetKey + suffix];
-          delete newAssignments[targetKey + suffix];
-        }
-      }
-    }
+    const displacedKey = displaceToLibraryInMap(newAssignments, targetKey, activeProfile);
     for (const suffix of ASSIGNMENT_VARIANT_SUFFIXES) {
-      const existing = assignments[libKey + suffix];
+      const existing = newAssignments[libKey + suffix];
       if (!existing) continue;
       newAssignments[targetKey + suffix] = {
         ...existing,
@@ -3258,16 +3330,11 @@ function App() {
       };
     }
     setAssignments(newAssignments);
-    setSelectedLibraryId(null);
-    const newMods = newCombo === 'BARE' ? ['BARE'] : (newCombo ? newCombo.split('+').filter(Boolean) : []);
-    setActiveModifiers(newMods);
-    setSelectedKey(newKeyId);
-    setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
+    selectTrigger(newCombo, newKeyId);
     saveConfig(newAssignments, profiles, activeProfile);
-    const keyLabel = friendlyKeyName(newKeyId);
-    const comboLabel = newCombo === 'BARE' ? keyLabel : `${newCombo}+${keyLabel}`;
-    showNotification(`Duplicated to ${comboLabel}`);
-  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey]);
+    if (displacedKey) remapRadialStorageKeys(variantKeyMap(targetKey, displacedKey));
+    showNotification(`Duplicated to ${triggerLabel(newCombo, newKeyId)}`);
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey, selectTrigger, remapRadialStorageKeys]);
 
   // Sidebar context menu → Duplicate on an unassigned entry: copy in place.
   const handleDuplicateLibraryInPlace = useCallback((id) => {
@@ -3316,6 +3383,7 @@ function App() {
   const handleSetView = useCallback((view) => {
     setActiveView(view);
     setSelectedKey(null);
+    setSelectedLibraryId(null);
     setSelectedRadialSegment(null);
     setSelectedRadialChild(null);
     setDraftAssignment(null);
@@ -3353,6 +3421,7 @@ function App() {
   const [newTriggerHint, setNewTriggerHint] = useState(false);
   const handleNewShortcut = useCallback(() => {
     setSelectedKey(null);
+    setSelectedLibraryId(null);
     setActiveModifiers([]);
     setSidebarComboFilter(null);
     setDraftAssignment(null);
@@ -4098,6 +4167,11 @@ function App() {
   // the shared handlers branch on active.data.current.kind.
   const [bindActiveDrag, setBindActiveDrag] = useState(null); // { source: 'unassigned'|'bound', id?, combo?, keyId?, label }
   const [pendingCanvasDrop, setPendingCanvasDrop] = useState(null); // occupied-target confirm
+  // Drag payload mirror: spring-toggling a modifier layer mid-drag can
+  // re-filter the sidebar and unmount the dragged row, after which dnd-kit's
+  // active.data.current may be gone at drop time. The ref keeps the payload
+  // alive for the whole drag.
+  const bindDragRef = useRef(null);
   // Spring-loaded modifier switching: hovering a ModifierBar button for 450ms
   // mid-drag toggles that layer, so "pick up macro → hover Ctrl+Alt → drop on
   // K" works in one gesture.
@@ -4181,7 +4255,9 @@ function App() {
     const { active, activatorEvent } = event;
     const data = active.data?.current;
     if (data?.kind === 'bind-action') {
-      setBindActiveDrag({ ...data });
+      const payload = { ...data };
+      bindDragRef.current = payload;
+      setBindActiveDrag(payload);
       return;
     }
     if (activeView !== 'radial') return;
@@ -4225,8 +4301,12 @@ function App() {
   }, [activeView, hitTestWedge]);
 
   const handleRadialDragEnd = useCallback((event) => {
-    const bindData = event.active?.data?.current;
-    if (bindData?.kind === 'bind-action') {
+    // Prefer the ref mirror — active.data.current can vanish if the dragged
+    // row unmounted mid-drag (spring layer switch re-filters the sidebar).
+    const bindData = bindDragRef.current
+      || (event.active?.data?.current?.kind === 'bind-action' ? event.active.data.current : null);
+    if (bindData) {
+      bindDragRef.current = null;
       setBindActiveDrag(null);
       clearSpringMod();
       const target = event.over?.data?.current;
@@ -4300,6 +4380,7 @@ function App() {
     setRadialDropTarget(-1);
     setRadialDropTargetOuter(-1);
     setBindActiveDrag(null);
+    bindDragRef.current = null;
     clearSpringMod();
   }, [clearSpringMod]);
 
@@ -4699,9 +4780,12 @@ function App() {
   // Whether the active profile has an app linked (enables Bare Keys mode)
   const profileLinked = !!(profileSettings[activeProfile]?.linkedApp);
 
-  // True when at least one non-expansion, non-autocorrect assignment exists (any profile/layer)
+  // True when at least one non-expansion, non-autocorrect assignment exists
+  // (any profile/layer). Unassigned library entries don't count — a config
+  // holding only unassigned actions still deserves the first-run hint,
+  // because zero keys can actually fire.
   const hasAnyAssignments = Object.keys(assignments).some(
-    k => !k.includes('::EXPANSION::') && !k.includes('::AUTOCORRECT::')
+    k => !k.includes('::EXPANSION::') && !k.includes('::AUTOCORRECT::') && !isLibraryKey(k)
   );
 
   // Show tips only in keyboard/mapping view, not dismissed, and within first 7 days
@@ -4759,7 +4843,7 @@ function App() {
   // Count assignments for current profile (all combos, excluding expansions
   // and unassigned library entries — those have no trigger to count)
   const profileAssignmentCount = Object.keys(assignments)
-    .filter(k => k.startsWith(activeProfile + '::') && !k.includes('::EXPANSION::') && !k.includes('::UNASSIGNED::')).length;
+    .filter(k => k.startsWith(activeProfile + '::') && !k.includes('::EXPANSION::') && !isLibraryKey(k)).length;
 
   // ── Update banner helpers ─────────────────────────────────
   function fmtBytes(bytes) {
@@ -5528,6 +5612,7 @@ function App() {
             onCancelDraft={() => {}}
             onReassign={(combo, keyId) => handleBindLibrary(selectedLibraryId, combo, keyId)}
             onDuplicate={(combo, keyId) => handleDuplicateLibraryToKey(selectedLibraryId, combo, keyId)}
+            duplicateOverlaySignal={duplicateOverlaySignal}
             bindOverlaySignal={bindOverlaySignal}
             isPro={isPro}
             voiceEnabled={false}
@@ -5567,6 +5652,7 @@ function App() {
             onDuplicate={handleDuplicateAssignment}
             onUnassign={(keyId) => handleUnassignKey(currentCombo, keyId)}
             duplicateOverlaySignal={duplicateOverlaySignal}
+            bindOverlaySignal={bindOverlaySignal}
             isPro={isPro}
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}

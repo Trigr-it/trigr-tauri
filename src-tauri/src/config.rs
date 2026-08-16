@@ -1117,9 +1117,15 @@ pub fn config_summary(cfg: &Value) -> (usize, usize, usize, usize) {
         .unwrap_or_default();
 
     let expansion_count = keys.iter().filter(|k| k.contains("::EXPANSION::")).count();
+    // ::UNASSIGNED:: library entries carry no trigger — excluded so the
+    // backup list's assignment count reflects keys that can actually fire.
     let assignment_count = keys
         .iter()
-        .filter(|k| !k.contains("::EXPANSION::") && !k.contains("::AUTOCORRECT::"))
+        .filter(|k| {
+            !k.contains("::EXPANSION::")
+                && !k.contains("::AUTOCORRECT::")
+                && !k.contains("::UNASSIGNED::")
+        })
         .count();
 
     // Radial layout segment count — surfaced in the backup list so a wiped
