@@ -23,7 +23,7 @@ import AnalyticsPanel from './components/AnalyticsPanel';
 import ClipboardPanel from './components/ClipboardPanel';
 import SearchTemplatesPanel from './components/SearchTemplatesPanel';
 import RadialEditorView from './components/RadialEditorView';
-import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
+import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, pointerWithin } from '@dnd-kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen as listenEvent, emit as emitEvent } from '@tauri-apps/api/event';
 import { MAX_SLOTS } from './components/RadialWheel';
@@ -3050,8 +3050,10 @@ function App() {
   // Moves ALL trigger variants (single + double + hold) to the new trigger.
   // Anything already living at the target swaps back to the old trigger,
   // variant by variant, so nothing is lost or orphaned.
-  const handleReassign = useCallback((newCombo, newKeyId) => {
-    const oldKey = makeAssignmentKey(activeProfile, currentCombo, selectedKey);
+  // moveAssignment is the parameterised core — handleReassign feeds it the
+  // current selection; drag-and-drop feeds it the dragged row's trigger.
+  const moveAssignment = useCallback((srcCombo, srcKeyId, newCombo, newKeyId) => {
+    const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKeyId);
     const newKey = makeAssignmentKey(activeProfile, newCombo, newKeyId);
     const newAssignments = { ...assignments };
     const swapped = ASSIGNMENT_VARIANT_SUFFIXES.some(s => assignments[newKey + s]);
@@ -3078,7 +3080,11 @@ function App() {
     setActiveView(newKeyId.startsWith('MOUSE_') ? 'mouse' : 'keyboard');
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(swapped ? 'Hotkeys swapped' : 'Hotkey reassigned');
-  }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey]);
+
+  const handleReassign = useCallback((newCombo, newKeyId) => {
+    moveAssignment(currentCombo, selectedKey, newCombo, newKeyId);
+  }, [moveAssignment, currentCombo, selectedKey]);
 
   // ── Duplicate assignment to a new hotkey ─────────────────
   // Copies every trigger variant that exists (single / double / hold) —
@@ -4087,6 +4093,20 @@ function App() {
   const wheelRef = useRef(null);
   const radialDragActivatorRef = useRef(null); // stores the pointerdown event from drag start
 
+  // ── Bind/move drag state (sidebar rows → canvas keys) ──
+  // kind 'bind-action' drags ride the same DndContext as the radial drags;
+  // the shared handlers branch on active.data.current.kind.
+  const [bindActiveDrag, setBindActiveDrag] = useState(null); // { source: 'unassigned'|'bound', id?, combo?, keyId?, label }
+  const [pendingCanvasDrop, setPendingCanvasDrop] = useState(null); // occupied-target confirm
+  // Spring-loaded modifier switching: hovering a ModifierBar button for 450ms
+  // mid-drag toggles that layer, so "pick up macro → hover Ctrl+Alt → drop on
+  // K" works in one gesture.
+  const springModRef = useRef({ overId: null, timer: null });
+  const clearSpringMod = useCallback(() => {
+    if (springModRef.current.timer) clearTimeout(springModRef.current.timer);
+    springModRef.current = { overId: null, timer: null };
+  }, []);
+
   const radialSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -4158,9 +4178,13 @@ function App() {
   }, [expandedRadialFolder, radialMenuItems]);
 
   const handleRadialDragStart = useCallback((event) => {
-    if (activeView !== 'radial') return;
     const { active, activatorEvent } = event;
     const data = active.data?.current;
+    if (data?.kind === 'bind-action') {
+      setBindActiveDrag({ ...data });
+      return;
+    }
+    if (activeView !== 'radial') return;
     radialDragActivatorRef.current = activatorEvent || null;
     setRadialActiveDrag({
       id: active.id,
@@ -4168,6 +4192,25 @@ function App() {
       label: data?.folderName || String(active.id).split('::').pop() || '',
     });
   }, [activeView]);
+
+  // Spring-loaded modifier switch — fires while a bind-action drag hovers a
+  // ModifierBar button. Droppable ids: modlayer-<Ctrl|Shift|Alt|Win|BARE>.
+  const handleCanvasDragOver = useCallback((event) => {
+    const { active, over } = event;
+    if (active?.data?.current?.kind !== 'bind-action') return;
+    const overData = over?.data?.current;
+    if (!overData || overData.dropKind !== 'modlayer') { clearSpringMod(); return; }
+    const overId = String(over.id);
+    if (springModRef.current.overId === overId) return; // timer already pending
+    clearSpringMod();
+    springModRef.current = {
+      overId,
+      timer: setTimeout(() => {
+        springModRef.current = { overId: null, timer: null };
+        handleToggleModifier(overData.mod);
+      }, 450),
+    };
+  }, [clearSpringMod, handleToggleModifier]);
 
   const handleRadialDragMove = useCallback((event) => {
     if (activeView !== 'radial') return;
@@ -4182,6 +4225,33 @@ function App() {
   }, [activeView, hitTestWedge]);
 
   const handleRadialDragEnd = useCallback((event) => {
+    const bindData = event.active?.data?.current;
+    if (bindData?.kind === 'bind-action') {
+      setBindActiveDrag(null);
+      clearSpringMod();
+      const target = event.over?.data?.current;
+      if (!target || target.dropKind !== 'canvas-key') return;
+      const targetKeyId = target.keyId;
+      const targetCombo = currentCombo;
+      if (!targetCombo) return; // no modifier layer — key droppables are disabled anyway
+      const targetBase = makeAssignmentKey(activeProfile, targetCombo, targetKeyId);
+      const occupied = ASSIGNMENT_VARIANT_SUFFIXES.map(s => assignments[targetBase + s]).find(Boolean);
+      if (bindData.source === 'unassigned') {
+        if (occupied) {
+          setPendingCanvasDrop({ mode: 'bind', id: bindData.id, targetCombo, targetKeyId, conflictLabel: occupied.label || 'an action' });
+        } else {
+          handleBindLibrary(bindData.id, targetCombo, targetKeyId);
+        }
+      } else if (bindData.source === 'bound') {
+        if (bindData.combo === targetCombo && bindData.keyId === targetKeyId) return;
+        if (occupied) {
+          setPendingCanvasDrop({ mode: 'move', srcCombo: bindData.combo, srcKeyId: bindData.keyId, targetCombo, targetKeyId, conflictLabel: occupied.label || 'an action' });
+        } else {
+          moveAssignment(bindData.combo, bindData.keyId, targetCombo, targetKeyId);
+        }
+      }
+      return;
+    }
     if (activeView !== 'radial') { setRadialActiveDrag(null); setRadialDropTarget(-1); setRadialDropTargetOuter(-1); return; }
     const { active, delta } = event;
     const data = active.data?.current;
@@ -4223,13 +4293,15 @@ function App() {
     } else if ((data?.kind === 'library-card') && data?.storageKey) {
       handleAddRadialMenuItem(data.storageKey, null, idx);
     }
-  }, [activeView, radialMenuItems, expandedRadialFolder, hitTestWedge, handleAddRadialMenuItem, handleAddRadialMenuFolder, handleAddChildToFolder]);
+  }, [activeView, radialMenuItems, expandedRadialFolder, hitTestWedge, handleAddRadialMenuItem, handleAddRadialMenuFolder, handleAddChildToFolder, currentCombo, activeProfile, assignments, makeAssignmentKey, handleBindLibrary, moveAssignment, clearSpringMod]);
 
   const handleRadialDragCancel = useCallback(() => {
     setRadialActiveDrag(null);
     setRadialDropTarget(-1);
     setRadialDropTargetOuter(-1);
-  }, []);
+    setBindActiveDrag(null);
+    clearSpringMod();
+  }, [clearSpringMod]);
 
   // ── Search overlay settings ───────────────────────────────
   const handleUpdateSearchSettings = useCallback((patch) => {
@@ -4847,6 +4919,36 @@ function App() {
           onClose={() => setAppMissingModal(null)}
         />
       )}
+      {pendingCanvasDrop && (() => {
+        const p = pendingCanvasDrop;
+        const keyLabel = friendlyKeyName(p.targetKeyId);
+        const comboLabel = p.targetCombo === 'BARE' ? keyLabel : `${p.targetCombo}+${keyLabel}`;
+        const confirm = () => {
+          setPendingCanvasDrop(null);
+          if (p.mode === 'bind') handleBindLibrary(p.id, p.targetCombo, p.targetKeyId);
+          else moveAssignment(p.srcCombo, p.srcKeyId, p.targetCombo, p.targetKeyId);
+        };
+        return (
+          <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setPendingCanvasDrop(null)}>
+            <div className="modal-panel drop-confirm-modal" onClick={e => e.stopPropagation()}>
+              <h1 className="reserved-shortcut-title">
+                {comboLabel} already fires "{p.conflictLabel}"
+              </h1>
+              <p className="reserved-shortcut-body">
+                {p.mode === 'bind'
+                  ? 'Replace it? Its current action will move to Unassigned, not be deleted.'
+                  : 'Swap the two actions? The action on the target key moves to the key you dragged from.'}
+              </p>
+              <div className="reserved-shortcut-actions">
+                <button className="reserved-shortcut-cancel-btn" type="button" onClick={() => setPendingCanvasDrop(null)}>Cancel</button>
+                <button className="reserved-shortcut-continue-btn" type="button" onClick={confirm}>
+                  {p.mode === 'bind' ? 'Replace' : 'Swap'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {reservedShortcutPending && (
         <ReservedShortcutModal
           comboDisplay={reservedShortcutPending.comboDisplay}
@@ -5018,8 +5120,10 @@ function App() {
       />
       <DndContext
         sensors={radialSensors}
+        collisionDetection={pointerWithin}
         onDragStart={handleRadialDragStart}
         onDragMove={handleRadialDragMove}
+        onDragOver={handleCanvasDragOver}
         onDragEnd={handleRadialDragEnd}
         onDragCancel={handleRadialDragCancel}
       >
@@ -5140,8 +5244,10 @@ function App() {
                 onRenameAssignment={handleRenameAssignment}
                 onClearAssignment={handleClearAssignment}
                 onDuplicateFromContext={handleDuplicateFromContext}
+                onUnassign={handleUnassignKey}
                 onNewShortcut={handleNewShortcut}
                 newTriggerHint={newTriggerHint}
+                bindDragActive={!!bindActiveDrag}
               />
             </div>
           )}
@@ -5473,6 +5579,11 @@ function App() {
         {radialActiveDrag && (
           <div className="rmp-card rmp-card-overlay">
             <span className="rmp-card-label">{radialActiveDrag.label}</span>
+          </div>
+        )}
+        {bindActiveDrag && (
+          <div className="rmp-card rmp-card-overlay">
+            <span className="rmp-card-label">{bindActiveDrag.label || 'Action'}</span>
           </div>
         )}
       </DragOverlay>

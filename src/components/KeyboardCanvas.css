@@ -828,3 +828,28 @@
   gap: 8px;
 }
 
+
+/* ── Drag-and-drop binding (Unassigned library Phase 2) ────────────── */
+.key.drop-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.55), var(--accent-glow, 0 0 8px rgba(var(--accent-rgb), 0.35));
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
+.mod-layer-btn.mod-drop-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.15);
+}
+
+.keyboard-drop-hint {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px dashed rgba(var(--accent-rgb), 0.5);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}

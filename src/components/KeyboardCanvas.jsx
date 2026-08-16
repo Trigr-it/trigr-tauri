@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import { Disc, Keyboard as KeyboardIcon, Plus } from 'lucide-react';
 import './KeyboardCanvas.css';
 import {
@@ -19,6 +20,29 @@ export function comboString(modifiers) {
   if (modifiers.includes('BARE')) return 'BARE';
   const order = ['Ctrl', 'Shift', 'Alt', 'Win'];
   return order.filter(m => modifiers.includes(m)).join('+');
+}
+
+// Modifier layer button — also a drop target so a bind-action drag can hover
+// it to spring-switch layers mid-drag (the 450ms timer lives in App's
+// onDragOver handler; this just registers the droppable + hover highlight).
+function ModLayerButton({ modId, className, style, onClick, disabled, title, children }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `modlayer-${modId}`,
+    data: { dropKind: 'modlayer', mod: modId },
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      className={`${className}${isOver ? ' mod-drop-over' : ''}`}
+      style={style}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      type="button"
+    >
+      {children}
+    </button>
+  );
 }
 
 export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecording, onStartRecord, onStopRecord, recordCapture, selectedKey, onNewShortcut, newTriggerHint = false }) {
@@ -52,20 +76,22 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
           {MODIFIERS.map(mod => {
             const isActive = activeModifiers.includes(mod.id);
             return (
-              <button
+              <ModLayerButton
                 key={mod.id}
+                modId={mod.id}
                 className={`mod-layer-btn ${isActive ? 'active' : ''}`}
                 style={isActive ? { '--mod-color': mod.color } : {}}
                 onClick={isRecording ? undefined : () => onToggle(mod.id)}
                 disabled={isRecording}
               >
                 {mod.label}
-              </button>
+              </ModLayerButton>
             );
           })}
 
           <span className="modifier-bar-sep" />
-          <button
+          <ModLayerButton
+            modId="BARE"
             className={`mod-layer-btn bare-key-btn${isBare ? ' active' : ''}`}
             style={isBare ? { '--mod-color': '#ff9040' } : {}}
             onClick={isRecording ? undefined : () => onToggle('BARE')}
@@ -75,7 +101,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
               : "Bare key assignments — F-keys, numpad, and nav keys only in static profiles"}
           >
             Bare Keys
-          </button>
+          </ModLayerButton>
         </div>
       </div>
 
@@ -158,6 +184,15 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
 function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFiring, noLayer, onClick, onContextMenu }) {
   const width = keyDef.width * KEY_UNIT + (keyDef.width - 1) * KEY_GAP;
 
+  // Drop target for sidebar bind-action drags. The target combo comes from
+  // the active modifier layer at drop time (App reads currentCombo), so keys
+  // are disabled targets while no layer is selected — same rule as clicks.
+  const { setNodeRef, isOver } = useDroppable({
+    id: `canvas-key-${keyDef.id}`,
+    data: { dropKind: 'canvas-key', keyId: keyDef.id },
+    disabled: isSystem || noLayer,
+  });
+
   const classNames = [
     'key',
     isSelected ? 'selected'  : '',
@@ -165,12 +200,14 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFir
     isSystem   ? 'system'    : '',
     isFiring   ? 'firing'    : '',
     noLayer    ? 'no-layer'  : '',
+    isOver     ? 'drop-over' : '',
     keyDef.id === 'Space' ? 'spacebar'  : '',
     keyDef.id === 'Enter' ? 'enter-key' : '',
   ].filter(Boolean).join(' ');
 
   return (
     <div
+      ref={setNodeRef}
       className={classNames}
       style={{ width, height: KEY_HEIGHT, flexShrink: 0 }}
       onClick={isSystem || noLayer ? undefined : onClick}
@@ -210,8 +247,10 @@ export default function KeyboardCanvas({
   onRenameAssignment,
   onClearAssignment,
   onDuplicateFromContext,
+  onUnassign,
   onNewShortcut,
   newTriggerHint = false,
+  bindDragActive = false,
 }) {
   const [firingKeyId, setFiringKeyId] = useState(null);
   const [scale, setScale]             = useState(1);
@@ -319,6 +358,15 @@ export default function KeyboardCanvas({
           <span className="keyboard-empty-heading">No hotkeys assigned yet</span>
           <span className="keyboard-empty-sub">Select a modifier key above, then click any key on the keyboard to assign your first hotkey</span>
           <span className="keyboard-empty-record-hint">Or press <strong>Record →</strong> to capture a key combo instantly</span>
+        </div>
+      )}
+
+      {/* Drop hint — a bind drag is in flight but no modifier layer is
+          selected, so every key is a disabled target. Points at the
+          spring-load gesture. */}
+      {bindDragActive && noLayer && (
+        <div className="keyboard-drop-hint">
+          Hover a modifier above to pick the layer, then drop on a key
         </div>
       )}
 
@@ -440,6 +488,15 @@ export default function KeyboardCanvas({
             onDuplicateFromContext?.(currentCombo, keyCtx.keyId);
             setKeyCtx(null);
           }}>Duplicate</button>
+          <button
+            className="assign-ctx-item"
+            type="button"
+            title="Free the key but keep the action in Unassigned"
+            onClick={() => {
+              onUnassign?.(currentCombo, keyCtx.keyId);
+              setKeyCtx(null);
+            }}
+          >Unassign</button>
           <div className="assign-ctx-divider" />
           <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={() => {
             setPopoverPos({ x: keyCtx.x, y: keyCtx.y });

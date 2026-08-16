@@ -650,10 +650,10 @@ const MODIFIERS = [
 
 // ── Draggable wrapper for sidebar cards/items in radial mode ────────────────
 
-function DraggableCardWrap({ id, storageKey, isUsed, enabled, children }) {
+function DraggableCardWrap({ id, storageKey, isUsed, enabled, kind = 'library-card', data = null, children }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${id}`,
-    data: { kind: 'library-card', storageKey },
+    data: { kind, storageKey, ...(data || {}) },
     disabled: !enabled || isUsed,
   });
 
@@ -1164,7 +1164,21 @@ export default function Sidebar({
       );
     }
 
-    return itemEl;
+    // Keyboard / mouse classic view: rows are draggable onto canvas keys —
+    // dropping moves the trigger (all press-mode variants, swap on conflict).
+    return (
+      <DraggableCardWrap
+        key={`${combo}::${keyId}`}
+        id={`bind-${combo}::${keyId}`}
+        storageKey={storageKey}
+        isUsed={false}
+        enabled={!isRenaming(combo, keyId)}
+        kind="bind-action"
+        data={{ source: 'bound', combo, keyId, label: displayLabel }}
+      >
+        {itemEl}
+      </DraggableCardWrap>
+    );
   }
 
   // ── Card for list view grid ──────────────────────────────────
@@ -1311,13 +1325,12 @@ export default function Sidebar({
       );
     }
 
-    return (
+    const rowEl = (
       <div
-        key={id}
         className={`sidebar-item sidebar-item-unassigned type-${macro.type}${isSelected ? ' sidebar-item-active' : ''}`}
         onClick={() => onSelectLibraryEntry?.(id)}
         onContextMenu={e => handleAssignContextMenu(e, 'UNASSIGNED', id, macro)}
-        title="Edit this action, or right-click for Bind to key"
+        title="Edit this action. Drag it onto a keyboard key to bind, or right-click for Bind to key"
       >
         <div className="sidebar-key-stack">
           <span className="sidebar-key-badge sidebar-key-badge-unassigned">No key</span>
@@ -1356,6 +1369,22 @@ export default function Sidebar({
           title="Bind this action to a key"
         >Bind</button>
       </div>
+    );
+
+    // Unassigned rows drag onto canvas keys to bind (classic keyboard/mouse
+    // views — the section is hidden in radial mode).
+    return (
+      <DraggableCardWrap
+        key={id}
+        id={`unassigned-${id}`}
+        storageKey={`${activeProfile}::UNASSIGNED::${id}`}
+        isUsed={false}
+        enabled={!isRenaming('UNASSIGNED', id)}
+        kind="bind-action"
+        data={{ source: 'unassigned', id, label: displayLabel }}
+      >
+        {rowEl}
+      </DraggableCardWrap>
     );
   }
 

@@ -480,3 +480,9 @@
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.06);
 }
+
+/* ── Drop-confirm modal (drag-and-drop binding onto an occupied key) ── */
+.drop-confirm-modal {
+  max-width: 420px;
+  padding: 22px 24px;
+}

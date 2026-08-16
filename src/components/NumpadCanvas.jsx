@@ -1,6 +1,32 @@
 import React, { useState, useEffect } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import './NumpadCanvas.css';
 import { comboString } from './KeyboardCanvas';
+
+// Numpad/nav key — also a drop target for sidebar bind-action drags (same
+// dropKind + keyId contract as the main keyboard's Key component).
+function NumpadKey({ id, label, col, row, colSpan, rowSpan, className, title, disabled, onClick, children }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `canvas-key-${id}`,
+    data: { dropKind: 'canvas-key', keyId: id },
+    disabled,
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      className={`${className}${isOver ? ' drop-over' : ''}`}
+      style={{
+        gridColumn: colSpan > 1 ? `${col} / span ${colSpan}` : col,
+        gridRow:    rowSpan > 1 ? `${row} / span ${rowSpan}` : row,
+      }}
+      onClick={onClick}
+      title={title}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
 
 // ── Navigation / editing keys (3 cols × 3 rows, mirrors physical keyboard) ──
 const NAV_KEYS = [
@@ -89,20 +115,22 @@ export default function NumpadCanvas({
     const isAssigned = !!getKeyAssignment(id);
     const isSelected = selectedKey === id;
     return (
-      <button
+      <NumpadKey
         key={id}
+        id={id}
+        label={label}
+        col={col}
+        row={row}
+        colSpan={colSpan}
+        rowSpan={rowSpan}
         className={keyClass(id)}
-        style={{
-          gridColumn: colSpan > 1 ? `${col} / span ${colSpan}` : col,
-          gridRow:    rowSpan > 1 ? `${row} / span ${rowSpan}` : row,
-        }}
+        disabled={noLayer}
         onClick={noLayer ? undefined : () => onKeySelect(id)}
         title={keyTitle(id, label)}
-        type="button"
       >
         <span className="np-key-label">{label}</span>
         {isAssigned && !isSelected && <span className="np-key-dot" />}
-      </button>
+      </NumpadKey>
     );
   }
 

@@ -327,3 +327,10 @@
 .mouse-hint-row .assigned-dot { background: rgba(232,160,32,0.15); border-color: rgba(232,160,32,0.5); }
 .mouse-hint-row .selected-dot { background: rgba(232,160,32,0.3);  border-color: var(--accent); }
 .mouse-hint-row .risky-dot    { background: rgba(245,158,11,0.15);  border-color: rgba(245,158,11,0.6); }
+
+/* ── Drag-and-drop binding target highlight ───────────────────────── */
+.mc-zone.drop-over {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  fill: rgba(var(--accent-rgb), 0.25);
+}

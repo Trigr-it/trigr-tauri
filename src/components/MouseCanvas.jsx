@@ -1,6 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import './MouseCanvas.css';
 import { ModifierBar, comboString } from './KeyboardCanvas';
+
+// Clickable mouse zone rect — also a drop target for sidebar bind-action
+// drags. useDroppable measures via getBoundingClientRect, which SVG rects
+// support, so the same dropKind/keyId contract as keyboard keys applies.
+function MouseZoneRect({ id, x, y, w, h, className, blocked, bareBlocked, onClick, title }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `canvas-key-${id}`,
+    data: { dropKind: 'canvas-key', keyId: id },
+    disabled: blocked,
+  });
+  return (
+    <rect
+      ref={setNodeRef}
+      x={x} y={y} width={w} height={h}
+      className={`${className}${isOver ? ' drop-over' : ''}`}
+      onClick={blocked ? undefined : onClick}
+      style={{ cursor: blocked ? (bareBlocked ? 'not-allowed' : 'default') : 'pointer' }}
+    >
+      <title>{title}</title>
+    </rect>
+  );
+}
 
 const MOUSE_ZONES = [
   { id: 'MOUSE_LEFT',         label: 'Left Click',    short: 'Left'   },
@@ -284,15 +307,16 @@ export default function MouseCanvas({
               const z       = zone(id);
               const blocked = z.noLayer || z.bareBlocked;
               return (
-                <rect
+                <MouseZoneRect
                   key={id}
-                  x={x} y={y} width={w} height={h}
+                  id={id}
+                  x={x} y={y} w={w} h={h}
                   className={zoneClass(id)}
-                  onClick={blocked ? undefined : z.onClick}
-                  style={{ cursor: blocked ? (z.bareBlocked ? 'not-allowed' : 'default') : 'pointer' }}
-                >
-                  <title>{zoneTitle(id)}</title>
-                </rect>
+                  blocked={blocked}
+                  bareBlocked={z.bareBlocked}
+                  onClick={z.onClick}
+                  title={zoneTitle(id)}
+                />
               );
             })}
             {/* Palm area — non-interactive visual fill for lower body */}
