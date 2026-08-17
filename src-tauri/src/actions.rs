@@ -3035,7 +3035,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 use tauri::Emitter;
                 let _ = app.emit("system-action-toast", serde_json::json!({
                     "level": "error",
-                    "message": format!("Wait for Pixel timed out after {}s — macro stopped", timeout_secs),
+                    "message": format!("Wait for Pixel timed out after {}s. Macro stopped.", timeout_secs),
                 }));
                 return false;
             }

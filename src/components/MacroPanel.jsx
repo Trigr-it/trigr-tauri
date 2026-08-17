@@ -4915,9 +4915,29 @@ export default function MacroPanel({
               </div>
               {formValue.holdMode && (
                 <>
+                  {/* One-time explainer for the two Release behaviours —
+                      dismissible like the action-type tip, restored via the
+                      same Settings reset ('hold-release' key). */}
+                  {!hiddenTips.includes('hold-release') && (
+                    <div className="mp-type-tip">
+                      <span className="mp-type-tip-badge">TIP</span>
+                      <span className="mp-type-tip-text">
+                        Hold mode keeps the output pressed down instead of tapping it.
+                        With release set to "pressed again", fire the hotkey once to hold and once more to let go.
+                        With "when I release the trigger key", the output follows your finger: held while the trigger is down, released the instant you lift it.
+                      </span>
+                      <button
+                        type="button"
+                        className="mp-type-tip-close"
+                        title="Hide this tip (restore in Settings)"
+                        aria-label="Hide this tip"
+                        onClick={() => onHideTip?.('hold-release')}
+                      >&#10005;</button>
+                    </div>
+                  )}
                   <p className="hold-mode-hint">
                     {formValue.holdUntilRelease
-                      ? 'Held while you hold the trigger — releases the moment you let go'
+                      ? 'Held while you hold the trigger, released the moment you let go'
                       : 'Key stays held until hotkey is pressed again'}
                   </p>
                   <div className="hold-release-row">
