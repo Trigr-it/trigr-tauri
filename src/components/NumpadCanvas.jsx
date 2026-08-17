@@ -1,20 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useDroppable, useDraggable } from '@dnd-kit/core';
 import './NumpadCanvas.css';
 import { comboString } from './KeyboardCanvas';
 
 // Numpad/nav key — also a drop target for sidebar bind-action drags (same
-// dropKind + keyId contract as the main keyboard's Key component).
-function NumpadKey({ id, label, col, row, colSpan, rowSpan, className, title, disabled, onClick, children }) {
+// dropKind + keyId contract as the main keyboard's Key component), and a
+// drag SOURCE when assigned (drop on another key to move or swap — App's
+// shared bind-action handlers do the rest).
+function NumpadKey({ id, label, col, row, colSpan, rowSpan, className, title, disabled, draggable, dragCombo, dragLabel, onClick, children }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `canvas-key-${id}`,
     data: { dropKind: 'canvas-key', keyId: id },
     disabled,
   });
+  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({
+    id: `key-drag-${id}`,
+    data: { kind: 'bind-action', source: 'bound', combo: dragCombo, keyId: id, label: dragLabel },
+    disabled: !draggable,
+  });
   return (
     <button
-      ref={setNodeRef}
-      className={`${className}${isOver ? ' drop-over' : ''}`}
+      ref={node => { setNodeRef(node); setDragRef(node); }}
+      {...listeners}
+      className={`${className}${isOver ? ' drop-over' : ''}${isDragging ? ' dragging' : ''}`}
       style={{
         gridColumn: colSpan > 1 ? `${col} / span ${colSpan}` : col,
         gridRow:    rowSpan > 1 ? `${row} / span ${rowSpan}` : row,
@@ -75,6 +83,7 @@ export default function NumpadCanvas({
   getKeyAssignment,
   lastFired,
   activeModifiers,
+  isRecording = false,
 }) {
   const [firingKeyId, setFiringKeyId] = useState(null);
 
@@ -107,12 +116,14 @@ export default function NumpadCanvas({
   function keyTitle(id, label) {
     const displayLabel = label.replace('\n', ' ');
     if (noLayer) return 'Select a modifier layer above first';
-    if (getKeyAssignment(id)) return `Click to edit: ${displayLabel}`;
+    const a = getKeyAssignment(id);
+    if (a) return `${a.label || 'Assigned action'}\nClick to edit. Drag onto another key to move or swap.`;
     return `Assign macro to: ${combo}+${displayLabel}`;
   }
 
   function renderKey({ id, label, col, row, colSpan, rowSpan }) {
-    const isAssigned = !!getKeyAssignment(id);
+    const assignment = getKeyAssignment(id);
+    const isAssigned = !!assignment;
     const isSelected = selectedKey === id;
     return (
       <NumpadKey
@@ -125,6 +136,9 @@ export default function NumpadCanvas({
         rowSpan={rowSpan}
         className={keyClass(id)}
         disabled={noLayer}
+        draggable={isAssigned && !noLayer && !isRecording}
+        dragCombo={combo}
+        dragLabel={assignment?.label || 'Action'}
         onClick={noLayer ? undefined : () => onKeySelect(id)}
         title={keyTitle(id, label)}
       >

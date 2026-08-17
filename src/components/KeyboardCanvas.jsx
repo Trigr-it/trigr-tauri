@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { Disc, Keyboard as KeyboardIcon, Plus } from 'lucide-react';
 import './KeyboardCanvas.css';
 import {
@@ -181,7 +181,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
   );
 }
 
-function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFiring, noLayer, onClick, onContextMenu }) {
+function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFiring, noLayer, isRecording, currentCombo, actionTitle, dragLabel, onClick, onContextMenu }) {
   const width = keyDef.width * KEY_UNIT + (keyDef.width - 1) * KEY_GAP;
 
   // Drop target for sidebar bind-action drags. The target combo comes from
@@ -193,6 +193,18 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFir
     disabled: isSystem || noLayer,
   });
 
+  // Assigned keys are also drag SOURCES — same bind-action contract as bound
+  // sidebar rows, so App's shared handlers do the rest: move to an empty key,
+  // Swap modal on an occupied one, reserved-shortcut guard, spring-loaded
+  // modifier switching. The source combo is mirrored into bindDragRef at drag
+  // start, so it survives a mid-drag layer switch. Clicks still work — the
+  // PointerSensor's 5px activation distance leaves them untouched.
+  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({
+    id: `key-drag-${keyDef.id}`,
+    data: { kind: 'bind-action', source: 'bound', combo: currentCombo, keyId: keyDef.id, label: dragLabel },
+    disabled: !isAssigned || isSystem || noLayer || isRecording,
+  });
+
   const classNames = [
     'key',
     isSelected ? 'selected'  : '',
@@ -201,13 +213,15 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFir
     isFiring   ? 'firing'    : '',
     noLayer    ? 'no-layer'  : '',
     isOver     ? 'drop-over' : '',
+    isDragging ? 'dragging'  : '',
     keyDef.id === 'Space' ? 'spacebar'  : '',
     keyDef.id === 'Enter' ? 'enter-key' : '',
   ].filter(Boolean).join(' ');
 
   return (
     <div
-      ref={setNodeRef}
+      ref={node => { setNodeRef(node); setDragRef(node); }}
+      {...listeners}
       className={classNames}
       style={{ width, height: KEY_HEIGHT, flexShrink: 0 }}
       onClick={isSystem || noLayer ? undefined : onClick}
@@ -215,7 +229,7 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFir
       title={
         isSystem  ? 'Modifier key — part of combos' :
         noLayer   ? 'Select a modifier layer above first' :
-        isAssigned ? 'Click to edit this assignment' :
+        isAssigned ? `${actionTitle}\nClick to edit. Drag onto another key to move or swap.` :
         'Click to assign a macro here'
       }
     >
@@ -232,8 +246,8 @@ export default function KeyboardCanvas({
   selectedKey,
   onKeySelect,
   getKeyAssignment,
-  hasDoubleAssignment,
-  hasHoldAssignment,
+  getDoubleAssignment,
+  getHoldAssignment,
   lastFired,
   activeModifiers,
   onToggleModifier,
@@ -424,17 +438,23 @@ export default function KeyboardCanvas({
                       return <div key={keyDef.id} style={{ width: keyDef.width * KEY_UNIT, flexShrink: 0 }} />;
                     }
                     const isSelected = selectedKey === keyDef.id;
-                    const hasSingle  = !!getKeyAssignment(keyDef.id);
-                    const isDouble   = hasDoubleAssignment ? hasDoubleAssignment(keyDef.id) : false;
-                    const isHold     = hasHoldAssignment ? hasHoldAssignment(keyDef.id) : false;
+                    const single     = getKeyAssignment(keyDef.id);
+                    const dbl        = getDoubleAssignment ? getDoubleAssignment(keyDef.id) : null;
+                    const hold       = getHoldAssignment ? getHoldAssignment(keyDef.id) : null;
                     // "Assigned" = any of single / double / hold so hold-only
                     // keys still get the highlight + dot. The visual badge
                     // distinguishes which trigger modes are bound.
-                    const isAssigned = hasSingle || isDouble || isHold;
+                    const isAssigned = !!(single || dbl || hold);
                     const isSystem   = SYSTEM_KEYS.has(keyDef.id);
                     const isFiring   = firingKeyId === keyDef.id;
                     // Block character keys in bare mode on static profiles
                     const blocked    = bareStaticMode && !STATIC_BARE_ALLOWED.has(keyDef.id);
+                    // Hover tooltip: the action title per bound trigger mode.
+                    const titleParts = [];
+                    if (single?.label) titleParts.push(single.label);
+                    if (dbl?.label)    titleParts.push(`×2: ${dbl.label}`);
+                    if (hold?.label)   titleParts.push(`Hold: ${hold.label}`);
+                    const actionTitle = titleParts.join('\n') || 'Assigned action';
 
                     return (
                       <Key
@@ -442,11 +462,15 @@ export default function KeyboardCanvas({
                         keyDef={keyDef}
                         isSelected={isSelected}
                         isAssigned={isAssigned}
-                        isDouble={isDouble}
-                        isHold={isHold}
+                        isDouble={!!dbl}
+                        isHold={!!hold}
                         isSystem={isSystem}
                         isFiring={isFiring}
                         noLayer={noLayer || blocked}
+                        isRecording={isRecording}
+                        currentCombo={currentCombo}
+                        actionTitle={actionTitle}
+                        dragLabel={single?.label || dbl?.label || hold?.label || 'Action'}
                         onClick={() => handleKeyClick(keyDef.id)}
                         onContextMenu={e => handleKeyContextMenu(e, keyDef.id)}
                       />
@@ -466,6 +490,7 @@ export default function KeyboardCanvas({
           getKeyAssignment={getKeyAssignment}
           lastFired={lastFired}
           activeModifiers={activeModifiers}
+          isRecording={isRecording}
         />
       </div>
 

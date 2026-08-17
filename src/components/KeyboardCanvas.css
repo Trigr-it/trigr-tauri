@@ -830,6 +830,17 @@
 
 
 /* ── Drag-and-drop binding (Unassigned library Phase 2) ────────────── */
+/* Assigned keys are also drag SOURCES (move/swap onto another key) — kill
+   touch scrolling on them so pointer drags start cleanly, and dim the
+   source key while its ghost rides the DragOverlay. */
+.key.assigned {
+  touch-action: none;
+}
+
+.key.dragging {
+  opacity: 0.35;
+}
+
 .key.drop-over {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.55), var(--accent-glow, 0 0 8px rgba(var(--accent-rgb), 0.35));

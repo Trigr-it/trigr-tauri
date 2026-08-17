@@ -257,3 +257,12 @@
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.55);
   background: rgba(var(--accent-rgb), 0.18);
 }
+
+/* Assigned numpad/nav keys are drag sources too — see .key.assigned */
+.np-key.assigned {
+  touch-action: none;
+}
+
+.np-key.dragging {
+  opacity: 0.35;
+}
