@@ -1297,28 +1297,80 @@ function WaitPixelModeSelect({ step, updateStep }) {
 }
 
 // Wait-for-Pixel sub-rows. Row 1 mirrors Click at Position's pick row (130px
-// button column + x/y inputs, reusing its classes). Pick Pixel counts down 3s
-// then captures the cursor position AND the colour under it in one backend
-// call, so coordinates and colour can never disagree. Row 2 = target colour
-// (native swatch picker) + tolerance; row 3 = timeout + on-timeout behaviour;
-// row 4 = optional click-on-match.
+// button column + x/y inputs, reusing its classes). Pick Pixel is a GLOBAL
+// eyedropper: the main window hides (recorder_hide_main — same flow gate the
+// macro recorder uses, so the foreground watcher can't profile-switch and
+// unmount this editor), the LL mouse hook arms, and the next left click
+// anywhere on screen picks that point (click suppressed so it can't activate
+// what it lands on). Right click or ESC cancels. Because the click happens
+// ON the target, the colour at click time is its HOVER state — so after the
+// click we wait for the cursor to move away, let hover-out transitions
+// settle, and re-sample the rest-state colour (what the macro will actually
+// see at run time) BEFORE restoring the window, which could cover the point.
+// Row 2 = target colour (native swatch picker) + tolerance; row 3 = timeout
+// + on-timeout behaviour; row 4 = optional click-on-match.
 function WaitPixelFields({ step, updateStep }) {
   const wp = parseWaitPixel(step);
   const update = (patch) => updateStep({ ...step, value: JSON.stringify({ ...wp, ...patch }) });
   const [picking, setPicking] = useState(false);
-  const [countdown, setCountdown] = useState(0);
+  const pickingRef = useRef(false);
+  // The bridge holds ONE listener per event name, and the async listeners
+  // below close over `update` — keep a ref to the latest so a stale closure
+  // can't write through an old step object.
+  const updateRef = useRef(update);
+  updateRef.current = update;
+
+  const endPick = () => {
+    pickingRef.current = false;
+    setPicking(false);
+  };
+
+  const finishPick = async (px) => {
+    let color = px.color || '#ffffff'; // hover-state fallback
+    const start = Date.now();
+    while (Date.now() - start < 4000) {
+      const pos = await window.electronAPI?.getCursorPosition();
+      if (pos && (Math.abs(pos.x - px.x) > 50 || Math.abs(pos.y - px.y) > 50)) {
+        // Hover-out fade/transition settle before the rest-state sample.
+        await new Promise(r => setTimeout(r, 400));
+        const sampled = await window.electronAPI?.getPixelColor(px.x, px.y);
+        if (sampled?.color) color = sampled.color;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 150));
+    }
+    await window.electronAPI?.recorderRestoreMain();
+    endPick();
+    updateRef.current({ x: px.x, y: px.y, color });
+  };
 
   const pickPixel = async () => {
+    if (pickingRef.current) return;
+    pickingRef.current = true;
     setPicking(true);
-    for (let i = 3; i > 0; i--) {
-      setCountdown(i);
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    setCountdown(0);
-    const px = await window.electronAPI?.getCursorPixel();
-    setPicking(false);
-    if (px) update({ x: px.x, y: px.y, color: px.color });
+    // Register listeners BEFORE arming — human click speed covers the async
+    // registration window (see listener-registration-race pattern).
+    window.electronAPI?.onPixelPickResult((px) => {
+      if (pickingRef.current && px) finishPick(px);
+    });
+    window.electronAPI?.onPixelPickCancelled(async () => {
+      if (!pickingRef.current) return;
+      endPick();
+      await window.electronAPI?.recorderRestoreMain();
+    });
+    await window.electronAPI?.recorderHideMain();
+    await window.electronAPI?.setPixelPickActive(true);
   };
+
+  // Safety net: component unmounts mid-pick (editor closed some other way)
+  // → disarm the hook and bring the window back.
+  useEffect(() => () => {
+    if (pickingRef.current) {
+      pickingRef.current = false;
+      window.electronAPI?.setPixelPickActive(false);
+      window.electronAPI?.recorderRestoreMain();
+    }
+  }, []);
 
   return (
     <>
@@ -1328,8 +1380,9 @@ function WaitPixelFields({ step, updateStep }) {
           className="browse-btn click-pos-pick-btn"
           onClick={pickPixel}
           disabled={picking}
+          title="Hides Keyfire, then your next left-click anywhere picks that pixel. Right-click or ESC cancels."
         >
-          {picking ? `${countdown}...` : 'Pick Pixel'}
+          {picking ? 'Click a pixel…' : 'Pick Pixel'}
         </button>
         <label className="click-pos-axis-label">x</label>
         <NumberField

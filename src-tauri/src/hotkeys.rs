@@ -48,6 +48,13 @@ pub static HOLD_DETECTION_PAUSED: AtomicBool = AtomicBool::new(false);
 pub(crate) static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
 static IS_RECORDING_HOTKEY: AtomicBool = AtomicBool::new(false);
 static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
+// Wait for Pixel eyedropper: while true, the next left click anywhere picks
+// that screen point (suppressed + emitted to the editor); right click or ESC
+// cancels. Self-clearing — the first L/R click or ESC always resets it, so a
+// lost frontend can cost at most one swallowed click. Three sites must stay
+// in sync: handle_mouse_down branch, mouse_hook_proc suppression mirror,
+// handle_keydown ESC branch + keyboard_hook_proc ESC swallow.
+static PIXEL_PICK_ACTIVE: AtomicBool = AtomicBool::new(false);
 static APP_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
 
 /// When true, hook callbacks pass events through without processing.
@@ -1676,6 +1683,15 @@ unsafe extern "system" fn keyboard_hook_proc(
                     vk_code: kb.vkCode,
                     scan_code: kb.scanCode,
                 });
+                // Pixel-pick eyedropper: swallow ESC so the cancel gesture
+                // doesn't also reach the foreground app. MIRROR of the
+                // PIXEL_PICK ESC branch in handle_keydown — keep in sync.
+                if PIXEL_PICK_ACTIVE.load(Ordering::SeqCst)
+                    && kb.vkCode == 0x1B
+                    && (kb.flags & LLKHF_INJECTED) == 0
+                {
+                    return 1;
+                }
                 // Clipboard popup open (WS_EX_NOACTIVATE — the target app still
                 // owns keyboard focus): the processor routes this keydown to the
                 // popup's search via 'clipboard-overlay-key', so it must be
@@ -1874,6 +1890,24 @@ unsafe extern "system" fn mouse_hook_proc(
                     // handle_mouse_wheel condition). Standalone event, no
                     // down/up pairing needed. Button UPs don't match the
                     // scroll ids and fall through to the paired-bit path.
+                    return 1;
+                }
+            }
+        }
+
+        // ── PIXEL_PICK suppression (Wait for Pixel eyedropper) ─────────────
+        // The picking click must never reach the app under the cursor — it
+        // would activate the very button being sampled. Left = pick, Right =
+        // cancel; the paired-bit path suppresses the matching UP. MIRROR of
+        // the PIXEL_PICK branch in handle_mouse_down — keep in sync.
+        if PIXEL_PICK_ACTIVE.load(Ordering::SeqCst) {
+            if let Some(btn_id) = suppress_id {
+                if is_button_down
+                    && matches!(btn_id, SUPPRESS_MOUSE_LEFT | SUPPRESS_MOUSE_RIGHT)
+                {
+                    if let Some(bit) = suppress_btn_bit(btn_id) {
+                        MOUSE_DOWN_SUPPRESSED.fetch_or(bit, Ordering::SeqCst);
+                    }
                     return 1;
                 }
             }
@@ -2409,6 +2443,15 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         log::debug!("[DEBUG] HELD RELEASE: firing before pause check, key_id={}", key_id);
         crate::actions::release_held_key();
         crate::tray::update_tray_icon_normal(app);
+    }
+
+    // ── Pixel-pick eyedropper: ESC cancels ──────────────────────────────
+    // Mirror of the PIXEL_PICK ESC swallow in keyboard_hook_proc — keep in
+    // sync. Other keys pass through untouched while picking.
+    if PIXEL_PICK_ACTIVE.load(Ordering::SeqCst) && vk == 0x1B {
+        PIXEL_PICK_ACTIVE.store(false, Ordering::SeqCst);
+        let _ = app.emit("pixel-pick-cancelled", serde_json::json!({}));
+        return;
     }
 
     // ── Recording mode: capture combo and send to frontend ──────────────
@@ -3393,6 +3436,39 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // the one-shot undo, and sentence context must all reset.
     crate::expansions::on_caret_moved();
     crate::expansions::buffer_clear();
+
+    // ── Pixel-pick eyedropper (Wait for Pixel editor) ────────────────────
+    // While active the next left click anywhere picks that screen point:
+    // the click is consumed (PIXEL_PICK suppression mirror in
+    // mouse_hook_proc — keep in sync), the pixel colour read, and both
+    // handed to the editor. Right click cancels. Runs BEFORE the recording
+    // and capture branches — the pick is a modal editor flow and nothing
+    // else may see the click. Colour is the HOVER state of whatever was
+    // clicked; the editor re-samples after the cursor moves away.
+    if PIXEL_PICK_ACTIVE.load(Ordering::SeqCst) {
+        match button {
+            MouseButton::Left => {
+                PIXEL_PICK_ACTIVE.store(false, Ordering::SeqCst);
+                let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point);
+                }
+                let color = crate::actions::read_screen_pixel(point.x, point.y)
+                    .map(|(r, g, b)| format!("#{:02x}{:02x}{:02x}", r, g, b));
+                let _ = app.emit(
+                    "pixel-pick-result",
+                    serde_json::json!({ "x": point.x, "y": point.y, "color": color }),
+                );
+                return;
+            }
+            MouseButton::Right => {
+                PIXEL_PICK_ACTIVE.store(false, Ordering::SeqCst);
+                let _ = app.emit("pixel-pick-cancelled", serde_json::json!({}));
+                return;
+            }
+            _ => {}
+        }
+    }
 
     // ── Recording mode: capture mouse trigger and send to frontend ──────
     // Mirror of the keyboard recording branch in handle_keydown, and of the
@@ -4441,6 +4517,10 @@ pub fn set_capturing(capturing: bool) {
         let mut state = engine_state().lock().unwrap();
         state.capture_sole_modifier = None;
     }
+}
+
+pub fn set_pixel_pick_active(active: bool) {
+    PIXEL_PICK_ACTIVE.store(active, Ordering::SeqCst);
 }
 
 pub fn set_input_focused(focused: bool) {

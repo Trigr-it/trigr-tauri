@@ -519,6 +519,16 @@ window.electronAPI = {
   startDownload:      (version)  => invoke('start_download', { version }),
   getCursorPosition:  ()         => invoke('get_cursor_position'),
   getCursorPixel:     ()         => invoke('get_cursor_pixel'),
+  getPixelColor:      (x, y)     => invoke('get_pixel_color', { x, y }),
+  // Global eyedropper for the Wait for Pixel step — arm, then the next left
+  // click anywhere picks (pixel-pick-result); right click / ESC cancels.
+  setPixelPickActive: (active)   => invoke('set_pixel_pick_active', { active }),
+  onPixelPickResult:  (callback) => {
+    listen('pixel-pick-result', (event) => callback(event.payload)).then(u => { listeners['pixel-pick-result'] = u; });
+  },
+  onPixelPickCancelled: (callback) => {
+    listen('pixel-pick-cancelled', () => callback()).then(u => { listeners['pixel-pick-cancelled'] = u; });
+  },
   enumMonitors:       ()         => invoke('enum_monitors'),
   checkForUpdates:    ()         => invoke('check_for_updates'),
 

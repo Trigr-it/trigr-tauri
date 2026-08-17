@@ -1072,6 +1072,44 @@ fn get_cursor_pixel() -> Value {
     serde_json::json!({ "x": point.x, "y": point.y, "color": color })
 }
 
+// Re-sample a fixed point AFTER the eyedropper's cursor has moved away.
+// Buttons and links restyle on hover, so the colour under the cursor at pick
+// time is the hover state — not what the pixel shows when the macro later
+// polls it (cursor elsewhere). The editor captures position first, waits for
+// the mouse to leave, then calls this for the rest-state colour. null = no
+// reading (off-screen / CLR_INVALID); the caller keeps its fallback.
+#[cfg(not(windows))]
+#[tauri::command]
+fn get_pixel_color(x: i32, y: i32) -> Value {
+    let _ = (x, y);
+    serde_json::json!({ "color": null })
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn get_pixel_color(x: i32, y: i32) -> Value {
+    let color = actions::read_screen_pixel(x, y)
+        .map(|(r, g, b)| format!("#{:02x}{:02x}{:02x}", r, g, b));
+    serde_json::json!({ "color": color })
+}
+
+// Arm / disarm the global eyedropper: the next left click anywhere on screen
+// picks that pixel (click suppressed, result emitted as pixel-pick-result);
+// right click or ESC cancels (pixel-pick-cancelled). The editor hides the
+// main window first via recorder_hide_main so the pick happens over the
+// user's real screen, and restores it after sampling.
+#[cfg(not(windows))]
+#[tauri::command]
+fn set_pixel_pick_active(active: bool) {
+    let _ = active;
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn set_pixel_pick_active(active: bool) {
+    hotkeys::set_pixel_pick_active(active);
+}
+
 #[tauri::command]
 fn enum_monitors() -> Vec<window_target::MonitorInfo> {
     window_target::enum_monitors()
@@ -6021,6 +6059,8 @@ pub fn run() {
             list_open_windows,
             get_cursor_position,
             get_cursor_pixel,
+            get_pixel_color,
+            set_pixel_pick_active,
             enum_monitors,
             show_monitor_identify,
             hide_monitor_identify,
