@@ -696,14 +696,51 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
       <div class="shipped-text">
     <div class="timeline">
       <!-- WHATS-NEW:START -->
+      <div class="phase" data-phase="v0.8">
+        <div class="phase-dot shipped"></div>
+        <div class="phase-header">
+          <span class="phase-name">
+            <span class="phase-version">v0.8</span><span class="phase-subtitle">Unassigned Library &amp; Pixel Waits</span>
+          </span>
+          <span class="phase-date">Aug 2026 · 1 release published</span>
+        </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.8.0</span>
+            <time class="release-date">17 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Unassigned Library.</strong> The v0.8.0 headline. Unassign a hotkey without deleting it. Actions live in a dedicated section at the top of the sidebar until you decide what to do with them. Build a new action first and pick a key later. Drag any unassigned entry onto a key to bind it, or drag one bound key onto another to move or swap. Free feature.</li><li><strong>Wait for Pixel macro step.</strong> Point Trigr at a spot on screen and it waits for that pixel to appear, change colour, or reach a match. Includes a global eyedropper so you can pick a pixel from any window. Handy for scripting slow UI, waiting on progress bars, or gating a macro until a game or app is ready.</li><li><strong>Hold chords on the Hotkey action (pen tablet mode).</strong> Select two or three mouse pills together (Left plus Right for example) and Trigr holds them all down for the duration of your hotkey. New &quot;release when I let go of the trigger&quot; mode makes it feel like a pen tablet button. Pen users can hold their side button and get both mouse buttons pressed together in drawing apps.</li><li><strong>Hold and Release phase on Press Key and Click Mouse steps.</strong> Each step now has a radio row: Press default, Hold, or Release. Build proper chorded keystroke sequences without workarounds.</li><li><strong>Business-day date token.</strong> <code>{date:+1b}</code> gives the next business day. <code>{date:-1b}</code> gives the previous business day. Skips weekends automatically. Full format suffix supported.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Unassigned entries now render as proper grid tiles in the grid/list view, matching assigned cards. Chips, bind button, and badges read consistently.</li><li>Sidebar Profile header redesigned. Two-line gold band with the currently firing profile shown large. A small fallback line appears when the active profile differs from the persisted default.</li><li>Keyboard canvas gets right-click parity with the sidebar. Copy to and Move to profile submenus land where you would expect. Clear was renamed to Delete so it matches everywhere.</li><li>Editor footer Clear button is now variant-aware. On a key with several bindings it becomes Clear Single, Clear Double, or Clear Hold depending on the active tab.</li><li>Hover any assigned key to see the bound action names in a tooltip. Drag a key onto another key to move or swap the whole assignment.</li><li>Numpad and nav-cluster keys now respond to right-click the same as the main keyboard keys.</li><li>Cleaner Unassigned section. The header no longer carries a plus-new button. The empty-state New Action is the single entry point.</li><li>Hold-mode TIP box has more breathing room around it in the action editor.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Fill-in fields that occasionally hung invisible for up to a minute now recover in about two seconds. Applies to variant pickers and any expansion that opens a fill-in window.</li></ul>
+          </div>
+        </article>
+      </div>
+
       <div class="phase" data-phase="v0.7">
         <div class="phase-dot shipped"></div>
         <div class="phase-header">
           <span class="phase-name">
             <span class="phase-version">v0.7</span><span class="phase-subtitle">Autocorrect</span>
           </span>
-          <span class="phase-date">Aug 2026 · 5 releases published</span>
+          <span class="phase-date">Aug 2026 · 7 releases published</span>
         </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.7.6</span>
+            <time class="release-date">13 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Random variant firing</strong> on text expansions. Toggle &quot;Fire a random variant&quot; on any expansion with two or more variants and Keyfire picks one at random instead of showing the picker. Perfect for greeting variations, response templates, and anything you want to vary automatically.</li><li><strong>Nested expansions</strong> with <code>{{expansion:trigger}}</code>. Reference another expansion's text inside your snippet. Combine building-block phrases without copying content between them.</li><li><strong>Aliases on expansions</strong>. Give the same expansion multiple triggers. Type <code>brb</code>, <code>back-soon</code>, or <code>bbl</code> and any of them fires the same snippet.</li><li><strong>Change Audio Output</strong> macro step. Bind a hotkey to switch your default audio device instantly. Perfect for one-key toggling between headphones and speakers. F12 to headphones, F11 to speakers, done.</li><li><strong>Random pick function</strong> in the expression engine (Pro): <code>{set greeting = random(&quot;Hi&quot;, &quot;Hello&quot;, &quot;Hey&quot;)}</code> picks one option per fire.</li><li><strong>Function palette</strong> inside the Expression / Set-variable popup. Every built-in function (upper, lower, substring, round, dateadd, if, random, and 13 more) as click-to-insert chips, grouped by category.</li><li><strong>Number-key direct fire</strong> on the variant picker. Press <code>1</code> to <code>9</code> or <code>0</code> on the number row or numpad to fire that variant instantly, no arrow-key navigation.</li><li><strong>Global variables are now free</strong>. Basic name and email substitution no longer requires Pro. <code>{{var:my.name}}</code> in any expansion works out of the box.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Fill-in defaults now resolve tokens</strong>. Setting <code>default={{var:my.name}}</code> on a fill-in field now pre-fills the input with your name instead of showing the token literally. Same for <code>{clipboard}</code>, <code>{date}</code>, and other tokens.</li><li><strong>Distilled macro replay respects the Clear button</strong>. When you clear a macro's target-app binding, the macro now really runs against whatever is focused instead of silently trying to resolve the original recording's app.</li><li><strong>Distilled macros no longer yank across virtual desktops</strong>. If you record a macro on Desktop 1 and fire it on Desktop 2, focus stays on Desktop 2. Window lookups filter to the current desktop.</li><li><strong>Wait timing in distilled macros preserves natural pauses</strong>. Previously, wait steps under 500ms were dropped, which broke UI navigation macros that relied on 200-400ms pauses between clicks. Now UI-navigation gaps down to 100ms are preserved, while typing runs still coalesce cleanly.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li><strong>Stop-recording hotkey now works on fresh profiles</strong>. <code>Ctrl+Alt+R</code> stops an in-progress recording even when Quick Record has not been configured in Settings. Previously, blank profiles could only stop via the Stop button on the pill.</li><li><strong>Global variables no longer have a broken random-pick UI</strong>. That option was removed in favor of the new variant-random toggle and expression-engine <code>random()</code>, which handle the same use case more clearly.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.7.5</span>
+            <time class="release-date">13 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li><strong>Macro distillation (Pro)</strong> turns a recorded macro into an editable list of steps. Distilled steps look and edit like normal macros (Type Text, Press Key, Click, Focus Window, Wait, Mouse Scroll), and the raw recording is kept alongside so you can flip between Raw and Distilled playback on the same macro.</li><li><strong>3-2-1 countdown</strong> before recording starts so you have time to switch to the app you want to record in.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Recorded clicks now travel with the window they were captured in. Recorded macros bind to their target app and click relative to its live window position and size, so replays land in the right spot even after the window has moved or resized.</li><li>Click fidelity in recordings: press-and-hold, click-and-drag, and held modifier keys (Shift+drag, Ctrl+click) are captured and replayed accurately.</li><li>Radial wedges and quick actions now show real app icons for Microsoft Store apps and Steam shortcuts. Existing segments backfill automatically.</li></ul>
+          </div>
+        </article>
         <article class="release-entry">
           <header class="release-head">
             <span class="release-version">v0.7.4</span>
