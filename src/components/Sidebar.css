@@ -1644,7 +1644,9 @@
   align-items: center;
   gap: 6px;
   height: 26px;
-  padding: 0 8px 0 10px;
+  /* 4px stripe + 8px pad = title starts 12px in, same x as the grid slab
+     headers' text (.sidebar-grid-group-header, padding 6px 12px). */
+  padding: 0 8px;
   background: rgba(var(--accent-rgb), 0.15);
   border-left: 4px solid var(--accent);
   border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
@@ -1655,16 +1657,23 @@
 }
 
 .sidebar-unassigned-chevron {
+  /* Right-aligned so the title's start lines up with the other headers'
+     text; the whole bar stays the click target. */
+  margin-left: auto;
   color: var(--accent);
-  font-size: 9px;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .sidebar-unassigned-title {
   color: var(--accent);
   font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  /* Text metrics match .sidebar-grid-group-header (BARE KEYS / CTRL / …) so
+     the two header families read as one system; only the colour treatment
+     differs (gold-on-tint band vs solid gold slab). */
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -1688,6 +1697,29 @@
   border-style: dashed;
   border-color: var(--border-bright);
   color: var(--text-muted);
+}
+
+/* Same dashed treatment on the badge class itself — covers the grid-card
+   tile variant, which isn't inside a .sidebar-item. */
+.sidebar-key-badge.sidebar-key-badge-unassigned {
+  border-style: dashed;
+  border-color: var(--border-bright);
+  color: var(--text-muted);
+}
+
+/* Grid/list view: unassigned entries render as tiles in the same column
+   template as .sidebar-grid so the two areas read as one layout. */
+.sidebar-unassigned-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+/* Tile variant of the Bind affordance — always visible (no hover-reveal;
+   tiles have room) and pushed to the right of the type row. */
+.grid-card-unassigned .sidebar-unassigned-bind {
+  margin-left: auto;
+  opacity: 0.85;
 }
 
 .sidebar-unassigned-bind {

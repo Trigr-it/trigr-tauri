@@ -1323,11 +1323,72 @@ export default function Sidebar({
     const isSelected = selectedLibraryId === id;
 
     if (isClearing('UNASSIGNED', id)) {
-      return (
+      return listViewActive ? (
+        <div key={id} className="grid-card grid-card-confirm">
+          <span className="sidebar-confirm-text">Delete this action?</span>
+          <div className="sidebar-confirm-btns">
+            <button className="sidebar-confirm-yes" type="button" onClick={confirmClear}>Yes</button>
+            <button className="sidebar-confirm-no" type="button" onClick={() => setClearing(null)}>No</button>
+          </div>
+        </div>
+      ) : (
         <div key={id} className="sidebar-item sidebar-item-confirm">
           <span className="sidebar-confirm-text">Delete this action?</span>
           <button className="sidebar-confirm-yes" type="button" onClick={confirmClear}>Yes</button>
           <button className="sidebar-confirm-no" type="button" onClick={() => setClearing(null)}>No</button>
+        </div>
+      );
+    }
+
+    // Grid/list view: tile matching the assigned grid-card anatomy (badge +
+    // chips / label / type row), with the dashed No-key badge and an always-
+    // visible Bind button in place of the preview. Drag-to-bind stays a
+    // classic-view affordance — no canvas is mounted here to drop onto.
+    if (listViewActive) {
+      return (
+        <div
+          key={id}
+          className={`grid-card grid-card-unassigned${isSelected ? ' grid-card--active' : ''}`}
+          onClick={() => onSelectLibraryEntry?.(id)}
+          onContextMenu={e => handleAssignContextMenu(e, 'UNASSIGNED', id, macro)}
+          title="Edit this action, or right-click for Bind to key"
+        >
+          <div className="grid-card-combo">
+            <span className="sidebar-key-badge sidebar-key-badge-unassigned">No key</span>
+            {(hasDouble || hasHold) && (
+              <span className="sidebar-mode-chip-row">
+                {hasDouble && <span className="sidebar-mode-chip" title="Carries a double-press action (restored on bind)">×2</span>}
+                {hasHold && <span className="sidebar-mode-chip" title="Carries a hold action (restored on bind)">⏱</span>}
+              </span>
+            )}
+          </div>
+          <div className="grid-card-label">
+            {isRenaming('UNASSIGNED', id) ? (
+              <input
+                autoFocus
+                className="sidebar-rename-input"
+                value={renameVal}
+                onChange={e => setRenameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitRenameAssignment(); if (e.key === 'Escape') cancelRename(); }}
+                onBlur={cancelRename}
+                onClick={e => e.stopPropagation()}
+              />
+            ) : (
+              displayLabel
+            )}
+          </div>
+          <div className="grid-card-bottom">
+            <span className="sidebar-item-type">
+              <span className="type-dot" style={{ background: meta.color }} />
+              {typeName}
+            </span>
+            <button
+              className="sidebar-unassigned-bind"
+              type="button"
+              onClick={e => { e.stopPropagation(); onBindFromContext?.(id); }}
+              title="Bind this action to a key"
+            >Bind</button>
+          </div>
         </div>
       );
     }
@@ -1415,9 +1476,9 @@ export default function Sidebar({
           role="button"
           aria-expanded={!unassignedCollapsed}
         >
-          <span className="sidebar-unassigned-chevron">{unassignedCollapsed ? '▸' : '▾'}</span>
           <span className="sidebar-unassigned-title">UNASSIGNED</span>
           <span className="sidebar-group-count">{unassignedEntries.length}</span>
+          <span className="sidebar-unassigned-chevron">{unassignedCollapsed ? '▸' : '▾'}</span>
         </div>
         {!unassignedCollapsed && (
           visible.length === 0 ? (
@@ -1425,6 +1486,12 @@ export default function Sidebar({
               {q
                 ? 'No unassigned actions match your search'
                 : <>Actions without a key are kept here. Use <strong>Unassign</strong> on any key to store its action for later, or <strong>New Action</strong> in the editor to build one from scratch.</>}
+            </div>
+          ) : listViewActive ? (
+            // Grid/list view: entries lay out as tiles in the same column
+            // template as the assigned cards below.
+            <div className="sidebar-unassigned-cards">
+              {visible.map(renderUnassignedItem)}
             </div>
           ) : (
             visible.map(renderUnassignedItem)
