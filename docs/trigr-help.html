@@ -707,6 +707,7 @@
 
   <div class="sidebar-section-label">Organisation</div>
   <a class="nav-item" onclick="show(event,'profiles')" href="#">Profiles</a>
+  <a class="nav-item" onclick="show(event,'unassigned')" href="#">Unassigned Library<span class="nav-new">NEW</span></a>
   <a class="nav-item" onclick="show(event,'templates')" href="#">Templates</a>
   <a class="nav-item" onclick="show(event,'shared-config')" href="#">Shared Config</a>
 
@@ -1088,7 +1089,18 @@
   <p>Example: your CAD app uses <kbd>Ctrl</kbd>+<kbd>F</kbd> for a tool, but you have already assigned <kbd>Ctrl</kbd>+<kbd>F</kbd> globally in Keyfire. Bind Keyfire's <kbd>Ctrl</kbd>+<kbd>G</kbd> to Send Hotkey → <kbd>Ctrl</kbd>+<kbd>F</kbd>, and Keyfire sends it directly to the active window.</p>
 
   <h2>Hold Mode</h2>
-  <p>The <strong>Hold Mode</strong> toggle changes Send Hotkey behaviour. The first press sends keydown only (holding the key), and the second press sends keyup (releasing it). Useful for gaming and CAD workflows that need a sustained key press.</p>
+  <p>The <strong>Hold Mode</strong> toggle changes Send Hotkey behaviour. Instead of tapping the output, the key stays down. A <strong>Release</strong> dropdown chooses how the hold ends:</p>
+  <ul>
+    <li><strong>When hotkey is pressed again</strong> (default): first press holds, second press of the same trigger releases. Toggle semantics. Ideal when you want to walk away from the keyboard while a key stays held.</li>
+    <li><strong>When I release the trigger key</strong>: the output stays held only as long as you keep the trigger key pressed. Feels like the trigger IS the output. Ideal for pen tablet side buttons and drawing apps.</li>
+  </ul>
+
+  <h2>Hold Chords (pen tablet mode)</h2>
+  <p>Select multiple mouse pills (Left, Right, Middle) together to hold a chord. The first selected pill becomes the primary output, the rest are chord partners. All buttons are pressed together when the hotkey fires and released together on release. Combine with "release when I let go of the trigger key" and one hotkey holds both mouse buttons for the duration of your finger on the trigger.</p>
+  <div class="callout tip">
+    <div class="ct">Pen tablet setup</div>
+    <p>Bind a pen side button (or F13-F24) to a Hotkey action. Click both <strong>Left Click</strong> and <strong>Right Click</strong> pills. Turn Hold Mode on. Set Release to "When I release the trigger key". Holding the pen button now holds both mouse buttons in your drawing app, released the instant you lift off.</p>
+  </div>
 
   <div class="screenshot-slot">
     <strong>Screenshot slot · Send Hotkey panel with Hold Mode</strong>
@@ -1181,11 +1193,11 @@
     <tr><th>Category</th><th>Step types</th></tr>
     <tr><td><strong>Record Macro</strong></td><td>Records your keyboard and mouse, then replays the sequence as a single step. See the Macro recorder page.</td></tr>
     <tr><td><strong>Existing Action</strong></td><td><strong>Trigger</strong> calls another macro or action (up to 5 nesting levels). <strong>Text Expansion</strong> fires an expansion by its trigger string.</td></tr>
-    <tr><td><strong>Type &amp; Keys</strong></td><td><strong>Type Text</strong> types a string at the cursor, full Unicode support. <strong>Dynamic Text</strong> adds token replacement at fire time (date, time, clipboard, selection and formula tokens). <strong>Press Key</strong> sends a keypress or combo. <strong>Copy to Clipboard</strong>, <strong>Paste Clipboard</strong> and <strong>Select All</strong> send Ctrl+C, Ctrl+V and Ctrl+A.</td></tr>
-    <tr><td><strong>Mouse</strong></td><td><strong>Click Mouse</strong> sends a mouse click, with separate Down and Up variants so you can script drags. <strong>Click at Position</strong> moves the cursor to screen coordinates and clicks. <strong>Mouse Scroll</strong> scrolls up, down, left or right by a set number of notches.</td></tr>
+    <tr><td><strong>Type &amp; Keys</strong></td><td><strong>Type Text</strong> types a string at the cursor, full Unicode support. <strong>Dynamic Text</strong> adds token replacement at fire time (date, time, clipboard, selection and formula tokens). <strong>Press Key</strong> sends a keypress or combo, with a Press / Hold / Release radio for building proper chorded keystroke sequences. <strong>Copy to Clipboard</strong>, <strong>Paste Clipboard</strong> and <strong>Select All</strong> send Ctrl+C, Ctrl+V and Ctrl+A.</td></tr>
+    <tr><td><strong>Mouse</strong></td><td><strong>Click Mouse</strong> sends a mouse click, with a Press / Hold / Release radio so you can script drags cleanly. <strong>Click at Position</strong> moves the cursor to screen coordinates and clicks. <strong>Mouse Scroll</strong> scrolls up, down, left or right by a set number of notches.</td></tr>
     <tr><td><strong>Open &amp; Play</strong></td><td><strong>Open App</strong>, <strong>Open Folder</strong> and <strong>Open URL</strong> launch things mid-macro, with a monitor picker for where the window lands. <strong>Play Audio File</strong> and <strong>Play Video File</strong> open a media file in your default player, also with a monitor picker.</td></tr>
     <tr><td><strong>Files</strong></td><td><strong>Create Folder</strong> makes a new folder, with naming prompts, template contents and automatic numbering. <strong>Copy Files</strong> and <strong>Move Files</strong> send your Explorer selection or a wildcard match to a destination folder. <strong>Sort Files</strong> (Pro) routes files into folders based on a code in the filename. See the Files steps section below.</td></tr>
-    <tr><td><strong>Timing</strong></td><td><strong>Wait (ms)</strong> pauses for a set time. <strong>Wait for Input</strong> pauses until a chosen mouse or key event. <strong>Wait for Window</strong> pauses until a matching window is in the foreground.</td></tr>
+    <tr><td><strong>Timing</strong></td><td><strong>Wait (ms)</strong> pauses for a set time. <strong>Wait for Input</strong> pauses until a chosen mouse or key event. <strong>Wait for Window</strong> pauses until a matching window is in the foreground. <strong>Wait for Pixel</strong> pauses until a screen pixel matches a target colour.</td></tr>
     <tr><td><strong>Window</strong></td><td><strong>Focus Window</strong> brings an app to the foreground. <strong>Minimise Window</strong>, <strong>Maximise Window</strong> and <strong>Resize Window</strong> control a specific window. <strong>Minimise All</strong> and <strong>Restore All</strong> act on every open window.</td></tr>
     <tr><td><strong>System</strong></td><td><strong>Change Volume</strong> sets, nudges or mutes the system volume. <strong>Control Panel</strong> opens the Windows Control Panel. <strong>Sleep Computer</strong>, <strong>Lock Computer</strong>, <strong>Log Off</strong> and <strong>Shut Down Computer</strong> perform the matching Windows action.</td></tr>
     <tr><td><strong>Run AHK Script</strong></td><td>Executes an AutoHotkey v1 or v2 script. Waits for completion before the next step.</td></tr>
@@ -1219,6 +1231,23 @@
 
   <h2>Wait for Input</h2>
   <p>Pauses the macro until a specified mouse or keyboard event. Supported input types include left click press / release, right click, and specific keys. Useful when a macro needs to wait for you to click somewhere before continuing.</p>
+
+  <h2>Wait for Pixel</h2>
+  <p>Pauses the macro until a chosen pixel on screen matches a target colour. Useful for gating a macro on a UI element appearing, waiting for a progress bar to finish, or holding a macro until a game or app is ready.</p>
+  <p>Click <strong>Pick Pixel</strong> to arm a global eyedropper. Keyfire minimises out of the way. Click anywhere on any window to capture that coordinate and the pixel colour. The click itself is suppressed so it never activates whatever you clicked. Right-click or press <kbd>Esc</kbd> to cancel.</p>
+  <table>
+    <tr><th>Field</th><th>What it controls</th></tr>
+    <tr><td>Coordinates</td><td>The pixel to watch. Set by Pick Pixel or entered manually.</td></tr>
+    <tr><td>Colour</td><td>The target colour in hex.</td></tr>
+    <tr><td>Tolerance</td><td>How much the pixel can differ per channel and still count as a match (0 = exact, 30 = generous).</td></tr>
+    <tr><td>Mode</td><td><strong>Appear</strong>: proceed the moment the pixel matches. <strong>Change</strong>: proceed the moment it stops matching.</td></tr>
+    <tr><td>Timeout</td><td>Give up after this many seconds. Choose <strong>Abort</strong> to stop the macro or <strong>Continue</strong> to run the next step anyway.</td></tr>
+    <tr><td>Click on match</td><td>When ticked, Keyfire clicks the watched pixel the moment it matches. Handy for auto-clicking a "Ready" button.</td></tr>
+  </table>
+  <div class="callout tip">
+    <div class="ct">Multi-monitor</div>
+    <p>Wait for Pixel works across every monitor. Negative coordinates on the left-hand secondary monitor are supported.</p>
+  </div>
 
   <h2>System steps</h2>
   <p><strong>Change Volume</strong> can set an exact level from 0 to 100, increase or decrease by an amount, or mute. The native Windows volume display appears so you can see the change land.</p>
@@ -1608,7 +1637,9 @@
   <div class="token-row"><span class="token">{date:-1d}</span><span class="token-desc">Yesterday</span></div>
   <div class="token-row"><span class="token">{date:+7d}</span><span class="token-desc">Next week</span></div>
   <div class="token-row"><span class="token">{date:+1m}</span><span class="token-desc">Next month</span></div>
-  <p>Append <code>:FORMAT</code> to use a specific format. For example <code>{date:+1d:YYYY-MM-DD}</code>.</p>
+  <div class="token-row"><span class="token">{date:+1b}</span><span class="token-desc">Next business day (skips weekends)</span></div>
+  <div class="token-row"><span class="token">{date:-1b}</span><span class="token-desc">Previous business day (skips weekends)</span></div>
+  <p>Append <code>:FORMAT</code> to use a specific format. For example <code>{date:+1d:YYYY-MM-DD}</code> or <code>{date:-1b:DD/MM/YYYY}</code>.</p>
 
   <h2>Clipboard</h2>
   <p>Insert the current clipboard contents into your expansion.</p>
@@ -2161,6 +2192,64 @@
   <h2>Export and import</h2>
   <p>Right-click any profile → <strong>Export Profile</strong>. This saves the profile name and all its assignments as a <code>.json</code> file. The linked app is not exported because it is machine-specific. Re-link after import on a new machine.</p>
   <p>To import, click <strong>↓ Import Profile</strong> at the bottom of the accordion. If the name conflicts with an existing profile, you will be prompted: <strong>Copy</strong> (creates a new profile with a suffix) or <strong>Overwrite</strong> (replaces existing assignments, preserves the linked app).</p>
+
+  <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     UNASSIGNED LIBRARY (v0.8.0)
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-page" id="page-unassigned">
+  <div class="section-meta"><span class="section-num">21a</span><span class="section-label">Organisation</span></div>
+  <div class="section-title">Unassigned Library</div>
+  <div class="section-subtitle">Actions that live on the sidebar until you pick a key for them. Unassign without deleting. Build first, bind later.</div>
+
+  <p>Every profile has an <strong>UNASSIGNED</strong> section at the top of the sidebar. Any action can live there without a hotkey attached. Move an existing binding into it to free the key up without losing the action. Build a new action from scratch before you know which key you want it on. Drag entries onto the keyboard when you are ready to bind. All Free.</p>
+
+  <h2>Unassign a hotkey</h2>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Right-click a bound key on the keyboard canvas (or an entry in the sidebar) and choose <strong>Unassign</strong>.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">The action moves into the UNASSIGNED section. All its variants (single, double, hold) stay together as one entry. The key on the canvas is now empty.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">A toast confirms the move and points at the top of the sidebar.</div></div>
+
+  <h2>Build a new action first, bind later</h2>
+  <p>Click any UNASSIGNED entry or hit <strong>+ New Action</strong> from the editor's empty state. Build the action as normal (Type Text, Macro, Send Hotkey, etc.). The footer offers two save buttons:</p>
+  <ul>
+    <li><strong>Save to Unassigned</strong>: keeps the entry in the library.</li>
+    <li><strong>Save &amp; Bind to Key</strong>: saves the entry, then opens the bind overlay so you can pick a key immediately.</li>
+  </ul>
+
+  <h2>Bind by drag</h2>
+  <p>Drag any UNASSIGNED row onto a key on the keyboard, numpad, nav cluster, or mouse zone. The target key highlights gold as you drag over it. Drop to bind. If the target key already has an action, a modal asks whether to <strong>Replace</strong> (the displaced action lands back in UNASSIGNED, never deleted) or cancel.</p>
+
+  <h2>Bind by button</h2>
+  <p>Click the gold <strong>⊕ Bind to Key</strong> button on any UNASSIGNED entry. A capture overlay opens. Press the key combination you want to bind. Trigr captures it and moves the action from the library onto the key.</p>
+
+  <h2>Move or swap keys</h2>
+  <p>Drag any bound key onto another key on the canvas. If the destination is empty, the action moves. If it is occupied, a modal asks whether to swap the two actions. Radial wedges that reference the moved key follow both directions automatically. This also works between the main keyboard, numpad, nav cluster, and mouse zones.</p>
+
+  <div class="callout">
+    <div class="ct">Layered drops</div>
+    <p>Drop onto a modifier layer (Ctrl / Alt / Shift / Win) as you drag by hovering the modifier pill for around half a second. The layer becomes active and the drop lands on that layer. Hover an already-active modifier to add more; drop lands on the combined layer.</p>
+  </div>
+
+  <h2>Right-click options on an UNASSIGNED entry</h2>
+  <table>
+    <tr><th>Option</th><th>What it does</th></tr>
+    <tr><td>Rename</td><td>Edit the action name inline.</td></tr>
+    <tr><td>Duplicate</td><td>Creates a copy in the library.</td></tr>
+    <tr><td>Copy to profile</td><td>Adds a copy to another profile without moving the original.</td></tr>
+    <tr><td>Move to profile</td><td>Moves the entry to another profile's UNASSIGNED section.</td></tr>
+    <tr><td>Bind to Key</td><td>Opens the capture overlay to bind the entry.</td></tr>
+    <tr><td>Delete</td><td>Removes the entry after confirmation.</td></tr>
+  </table>
+
+  <h2>Fire from Quick Search</h2>
+  <p>UNASSIGNED entries appear in Quick Search results with an "Unassigned" tag. Fire them by clicking or hitting Enter, exactly the same as bound entries. Useful for actions you only need occasionally and don't want to spend a key on.</p>
+
+  <div class="callout">
+    <div class="ct">Per-profile scope</div>
+    <p>UNASSIGNED entries live inside the active profile. Switch profiles and you see that profile's library. Use <strong>Copy to profile</strong> or <strong>Move to profile</strong> to share entries between profiles.</p>
+  </div>
 
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
 </div>
