@@ -4402,16 +4402,6 @@ export default function MacroPanel({
           )}
         </div>
         <div className="macro-panel-header-actions">
-          {onNewLibraryAction && !libraryMode && (
-            <button
-              className="reassign-btn new-action-btn"
-              onClick={onNewLibraryAction}
-              title="Create a new action without picking a key first. It lives in Unassigned until you bind it."
-              type="button"
-            >
-              ⊕ New
-            </button>
-          )}
           {!libraryMode && onUnassign && (assignment || doubleAssignment || holdAssignment) && (
             <button
               className="reassign-btn unassign-btn"
