@@ -4805,21 +4805,28 @@ export default function MacroPanel({
             : pressMode === 'hold'
             ? 'Remove the hold action on this key (keeps any single or double-press action)'
             : 'Remove the single-press action on this key (keeps any double-press or hold action)';
+          // Per-press-mode clear only earns its place when the key holds MORE
+          // than one variant — on a single-variant key it duplicates Delete,
+          // which confused testers when it was labelled "Clear Key".
+          const variantCount = [assignment, doubleAssignment, holdAssignment].filter(Boolean).length;
+          const clearVariantLabel = pressMode === 'double' ? 'Clear Double'
+            : pressMode === 'hold' ? 'Clear Hold'
+            : 'Clear Single';
           return (
             <div className="footer-assignment-actions">
               <button
                 className="btn-clear-action"
                 onClick={() => setConfirmingAction('clear-action')}
                 type="button"
-                title="Clears the action for the currently-active type only. Other type drafts on this key are preserved. Use Clear Key to wipe all types."
+                title="Clears the action for the currently-active type only. Other type drafts on this key are preserved."
               >Clear Action</button>
-              {!libraryMode && (
+              {!libraryMode && variantCount > 1 && (
                 <button
                   className="btn-clear"
                   onClick={() => setConfirmingAction('clear')}
                   type="button"
                   title={clearKeyTitle}
-                >Clear Key</button>
+                >{clearVariantLabel}</button>
               )}
               {/* Unassign lives in the header beside Reassign (Rory, 2026-08-17) */}
               <button
