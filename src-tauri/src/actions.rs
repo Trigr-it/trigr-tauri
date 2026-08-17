@@ -297,11 +297,27 @@ struct HeldKeyManager {
 }
 
 struct HeldKeyState {
-    target_vk: u16,
-    mod_vks: Vec<u16>,
-    mouse_button: Option<String>, // Some("LButton") for mouse hold, None for keyboard
+    target_vk: u16, // 0 = no keyboard key held (bare-modifier or mouse-only hold)
+    mod_vks: Vec<u16>, // only modifiers that were actually pressed by the hold
+    mouse_buttons: Vec<String>, // held mouse buttons — chords hold several at once
     label: String, // e.g. "Ctrl+W" for tray tooltip
     trigger_mouse_id: Option<String>, // e.g. "MOUSE_RIGHT" — when set, release on mouse-up instead of toggle
+}
+
+/// Send the UP events for a held state's outputs, teardown order: mouse
+/// buttons (reverse press order), then main key, then modifiers reversed.
+/// Callers own suppression (SuppressionGuard / SUPPRESS_SIMULATED) — this
+/// only sends.
+fn send_held_key_ups(state: &HeldKeyState) {
+    for button in state.mouse_buttons.iter().rev() {
+        send_mouse_event(button, true);
+    }
+    if state.target_vk != 0 {
+        send_vk_key(state.target_vk, true);
+    }
+    for &vk in state.mod_vks.iter().rev() {
+        send_vk_key(vk, true);
+    }
 }
 
 const CF_UNICODETEXT: u32 = 13;
@@ -313,16 +329,7 @@ pub fn release_held_key() -> Option<String> {
     if let Some(state) = mgr.key.take() {
         mgr.pending_mouse_release = None; // no longer relevant
         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-        if let Some(ref button) = state.mouse_button {
-            // Mouse button release — send the corresponding UP event
-            send_mouse_event(button, true);
-        } else {
-            // Keyboard release
-            send_vk_key(state.target_vk, true);
-            for &vk in state.mod_vks.iter().rev() {
-                send_vk_key(vk, true);
-            }
-        }
+        send_held_key_ups(&state);
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
         info!("[Keyfire] Released held key: {}", state.label);
         Some(state.label)
@@ -360,14 +367,7 @@ pub fn release_held_if_mouse_trigger(mouse_id: &str, allow_pending: bool) -> Opt
         let state = mgr.key.take().unwrap();
         mgr.pending_mouse_release = None;
         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-        if let Some(ref button) = state.mouse_button {
-            send_mouse_event(button, true);
-        } else {
-            send_vk_key(state.target_vk, true);
-            for &vk in state.mod_vks.iter().rev() {
-                send_vk_key(vk, true);
-            }
-        }
+        send_held_key_ups(&state);
         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
         info!("[Keyfire] Released held key on mouse-up: {}", state.label);
         Some(state.label)
@@ -1312,10 +1312,128 @@ fn make_vk_input(vk: u16, key_up: bool) -> INPUT {
     }
 }
 
-/// trigger_vk → (target_vk, mod_vks)
+/// Outputs held on behalf of a trigger key, released when that trigger's
+/// keyup arrives (remap_key_release). Two producers share the map:
+///   - remap_key_press — classic bare-key remap (target_vk + mods, no buttons)
+///   - hold_chord_press — mirror-hold chords (Hold mode + release-on-trigger-
+///     release): any mix of mouse buttons, a key, and modifiers. The pen-
+///     tablet case: hold F10 → LButton+RButton held until F10 comes up.
+struct RemapHoldEntry {
+    target_vk: u16,        // 0 = no keyboard key in this hold
+    mod_vks: Vec<u16>,
+    mouse_buttons: Vec<String>, // "LButton" / "RButton" / "MButton"
+}
+
+/// trigger_vk → held outputs.
 /// Populated on keydown, removed on keyup so hold and OS key-repeat work correctly.
-static ACTIVE_BARE_REMAPS: LazyLock<Mutex<HashMap<u16, (u16, Vec<u16>)>>> =
+static ACTIVE_BARE_REMAPS: LazyLock<Mutex<HashMap<u16, RemapHoldEntry>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Parse the Hold-mode chord button list off a hotkey action's data.
+/// Only L/R/M are valid outputs (matches send_mouse_event coverage).
+fn parse_hold_mouse_buttons(data: &Value) -> Vec<String> {
+    data.get("holdMouseButtons")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .filter(|b| matches!(*b, "LButton" | "RButton" | "MButton"))
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Mirror-hold chord press (called at keydown, BEFORE remap/inline paths).
+///
+/// Handles hotkey actions with holdMode + holdUntilRelease: presses the
+/// configured outputs (modifiers, optional key, mouse buttons) and keeps them
+/// down until the TRIGGER key is released — remap_key_release sends the ups.
+/// Returns `false` → not a mirror-hold action, fall through to the classic
+/// paths. Idempotent on OS key-repeat: repeats of an already-active trigger
+/// are swallowed without re-sending downs (a second LButton-down without an
+/// up in between confuses many apps, unlike keyboard repeat passthrough).
+pub fn hold_chord_press(trigger_vk: u16, data: &Value) -> bool {
+    if !data.get("holdMode").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return false;
+    }
+    if !data.get("holdUntilRelease").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return false;
+    }
+
+    let key_name = data.get("key").and_then(|v| v.as_str()).unwrap_or("");
+    let mut mouse_buttons = parse_hold_mouse_buttons(data);
+    // A mouse button captured as the main key joins the chord.
+    if is_mouse_button(key_name) && !mouse_buttons.iter().any(|b| b == key_name) {
+        mouse_buttons.insert(0, key_name.to_string());
+    }
+    let target_vk = if key_name.is_empty() || is_mouse_button(key_name) {
+        0
+    } else {
+        match display_name_to_vk(key_name) {
+            Some(vk) => vk,
+            None => return false,
+        }
+    };
+
+    let mod_vks: Vec<u16> = data
+        .get("modifiers")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| match v.as_str()?.to_lowercase().as_str() {
+                    "ctrl" => Some(VK_LCONTROL),
+                    "alt" => Some(VK_LALT),
+                    "shift" => Some(VK_LSHIFT),
+                    "win" => Some(VK_LWIN),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if target_vk == 0 && mod_vks.is_empty() && mouse_buttons.is_empty() {
+        return false; // nothing to hold
+    }
+
+    {
+        let mut map = ACTIVE_BARE_REMAPS.lock().unwrap();
+        if map.contains_key(&trigger_vk) {
+            return true; // OS key-repeat of an active chord — swallow
+        }
+        map.insert(trigger_vk, RemapHoldEntry {
+            target_vk,
+            mod_vks: mod_vks.clone(),
+            mouse_buttons: mouse_buttons.clone(),
+        });
+    }
+
+    let _guard = SuppressionGuard::new();
+    if target_vk != 0 || !mod_vks.is_empty() {
+        let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+        for &vk in &mod_vks {
+            inputs.push(make_vk_input(vk, false));
+        }
+        if target_vk != 0 {
+            inputs.push(make_vk_input(target_vk, false));
+        }
+        unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            );
+        }
+    }
+    for button in &mouse_buttons {
+        send_mouse_event(button, false);
+    }
+    info!(
+        "[Keyfire] Hold chord pressed (trigger vk {}): key_vk={} buttons={:?} — held until trigger release",
+        trigger_vk, target_vk, mouse_buttons
+    );
+    true
+}
 
 /// Press phase of a bare-key remap (called on keydown / OS key-repeat events).
 ///
@@ -1357,7 +1475,11 @@ pub fn remap_key_press(trigger_vk: u16, data: &Value) -> bool {
 
     // Record active remap so keyup knows which target VK to release.
     // Overwriting on OS key-repeat is intentional and idempotent.
-    ACTIVE_BARE_REMAPS.lock().unwrap().insert(trigger_vk, (target_vk, mod_vks.clone()));
+    ACTIVE_BARE_REMAPS.lock().unwrap().insert(trigger_vk, RemapHoldEntry {
+        target_vk,
+        mod_vks: mod_vks.clone(),
+        mouse_buttons: Vec::new(),
+    });
 
     // Send mod_downs + target_down (keyup is sent by remap_key_release).
     let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
@@ -1383,19 +1505,28 @@ pub fn remap_key_press(trigger_vk: u16, data: &Value) -> bool {
 /// Returns `true` if a remap was active for this trigger VK (caller should early-return).
 pub fn remap_key_release(trigger_vk: u16) -> bool {
     let entry = ACTIVE_BARE_REMAPS.lock().unwrap().remove(&trigger_vk);
-    if let Some((target_vk, mod_vks)) = entry {
-        let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
-        inputs.push(make_vk_input(target_vk, true));
-        for &vk in mod_vks.iter().rev() {
-            inputs.push(make_vk_input(vk, true));
-        }
+    if let Some(entry) = entry {
         let _guard = SuppressionGuard::new();
-        unsafe {
-            SendInput(
-                inputs.len() as u32,
-                inputs.as_ptr(),
-                std::mem::size_of::<INPUT>() as i32,
-            );
+        // Mouse buttons up first (reverse press order), then key, then mods —
+        // full-press teardown order, mirroring hold_chord_press's downs.
+        for button in entry.mouse_buttons.iter().rev() {
+            send_mouse_event(button, true);
+        }
+        if entry.target_vk != 0 || !entry.mod_vks.is_empty() {
+            let mut inputs: Vec<INPUT> = Vec::with_capacity(entry.mod_vks.len() + 1);
+            if entry.target_vk != 0 {
+                inputs.push(make_vk_input(entry.target_vk, true));
+            }
+            for &vk in entry.mod_vks.iter().rev() {
+                inputs.push(make_vk_input(vk, true));
+            }
+            unsafe {
+                SendInput(
+                    inputs.len() as u32,
+                    inputs.as_ptr(),
+                    std::mem::size_of::<INPUT>() as i32,
+                );
+            }
         }
         true
     } else {
@@ -1487,7 +1618,9 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
     let target_vk: u16 = if is_mouse {
         0
     } else if key_name.is_empty() {
-        if modifiers.is_empty() {
+        // Hold chords may be mouse-buttons-only (key and modifiers both
+        // empty) — those carry their outputs in holdMouseButtons instead.
+        if modifiers.is_empty() && parse_hold_mouse_buttons(data).is_empty() {
             warn!("[Keyfire] Send Hotkey has no key or modifiers — nothing to send");
             return;
         }
@@ -1518,13 +1651,25 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         })
         .collect();
 
-    let combo_label = if key_name.is_empty() {
+    let mut combo_label = if key_name.is_empty() {
         modifiers.join("+")
     } else if modifiers.is_empty() {
         key_name.to_string()
     } else {
         format!("{}+{}", modifiers.join("+"), key_name)
     };
+    // Mouse-buttons-only hold chord: label from the buttons.
+    if combo_label.is_empty() {
+        combo_label = parse_hold_mouse_buttons(data)
+            .iter()
+            .map(|b| match b.as_str() {
+                "LButton" => "Left Click",
+                "RButton" => "Right Click",
+                _ => "Middle Click",
+            })
+            .collect::<Vec<_>>()
+            .join("+");
+    }
 
     // ── Repeat mode ──
     // Brief sleep inside the SuppressionGuard scope after SendInput. SendInput
@@ -1665,15 +1810,27 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
 
     // ── Hold mode ──
     if hold_mode {
+        // Chord buttons: the optional holdMouseButtons list, plus the main
+        // key when it was captured as a mouse button. All pressed together,
+        // all released together.
+        let mut hold_mouse_buttons = parse_hold_mouse_buttons(data);
+        if is_mouse && !hold_mouse_buttons.iter().any(|b| b == key_name) {
+            hold_mouse_buttons.insert(0, key_name.to_string());
+        }
+        // Keyboard part of the hold. For legacy single-mouse-button holds the
+        // modifiers were never pressed by this path — keep that: mods join
+        // the hold only when there's a keyboard component (key or bare-mod).
+        let keyboard_part = !is_mouse;
+        let held_mod_vks: Vec<u16> = if keyboard_part { mod_vks.clone() } else { Vec::new() };
+        let held_target_vk: u16 = if keyboard_part { target_vk } else { 0 };
+
         let mut mgr = HELD_KEY.lock().unwrap();
 
-        // Check if same key already held — toggle release
+        // Check if the same outputs are already held — toggle release
         let same_held = if let Some(ref state) = mgr.key {
-            if is_mouse {
-                state.mouse_button.as_deref() == Some(key_name)
-            } else {
-                state.target_vk == target_vk && state.mod_vks == mod_vks && state.mouse_button.is_none()
-            }
+            state.target_vk == held_target_vk
+                && state.mod_vks == held_mod_vks
+                && state.mouse_buttons == hold_mouse_buttons
         } else {
             false
         };
@@ -1684,17 +1841,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             mgr.pending_mouse_release = None;
             {
                 let _guard = SuppressionGuard::new();
-                if let Some(ref button) = state.mouse_button {
-                    send_mouse_event(button, true);
-                } else {
-                    // Skip main-key release for bare-modifier holds (target_vk == 0).
-                    if state.target_vk != 0 {
-                        send_vk_key(state.target_vk, true);
-                    }
-                    for &vk in state.mod_vks.iter().rev() {
-                        send_vk_key(vk, true);
-                    }
-                }
+                send_held_key_ups(&state);
             }
             info!("[Keyfire] Hold released: {}", combo_label);
             drop(mgr);
@@ -1706,29 +1853,18 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         if let Some(ref state) = mgr.key {
             {
                 let _guard = SuppressionGuard::new();
-                if let Some(ref button) = state.mouse_button {
-                    send_mouse_event(button, true);
-                } else {
-                    if state.target_vk != 0 {
-                        send_vk_key(state.target_vk, true);
-                    }
-                    for &vk in state.mod_vks.iter().rev() {
-                        send_vk_key(vk, true);
-                    }
-                }
+                send_held_key_ups(state);
             }
             info!("[Keyfire] Hold released (switching): {}", state.label);
         }
 
-        // Hold the new key/button
+        // Hold the new outputs
         log::info!("[ACTION] Send Hotkey HOLD: {}", combo_label);
         {
             let _guard = SuppressionGuard::new();
-            if is_mouse {
-                send_mouse_event(key_name, false); // mousedown only
-            } else {
+            if keyboard_part {
                 let physically_held = release_held_modifiers();
-                for &vk in &mod_vks {
+                for &vk in &held_mod_vks {
                     send_vk_key(vk, false);
                 }
                 if has_main_key {
@@ -1736,6 +1872,9 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 }
                 // Do NOT send keyup — key/modifiers stay held
                 restore_modifiers(&physically_held);
+            }
+            for button in &hold_mouse_buttons {
+                send_mouse_event(button, false); // mousedown only
             }
         }
 
@@ -1746,9 +1885,9 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             .map(|s| s.to_string());
 
         mgr.key = Some(HeldKeyState {
-            target_vk,
-            mod_vks: mod_vks.clone(),
-            mouse_button: if is_mouse { Some(key_name.to_string()) } else { None },
+            target_vk: held_target_vk,
+            mod_vks: held_mod_vks,
+            mouse_buttons: hold_mouse_buttons,
             label: combo_label.clone(),
             trigger_mouse_id: trigger_mouse.clone(),
         });
@@ -1766,14 +1905,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             mgr.pending_mouse_release = None;
             {
                 let _guard = SuppressionGuard::new();
-                if let Some(ref button) = state.mouse_button {
-                    send_mouse_event(button, true);
-                } else {
-                    send_vk_key(state.target_vk, true);
-                    for &vk in state.mod_vks.iter().rev() {
-                        send_vk_key(vk, true);
-                    }
-                }
+                send_held_key_ups(&state);
             }
             info!("[Keyfire] Hold immediately released — mouse was already up: {}", combo_label);
             drop(mgr);

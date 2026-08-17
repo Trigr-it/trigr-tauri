@@ -4452,7 +4452,14 @@ export default function MacroPanel({
       case 'hotkey': {
         const mouseOpt = MOUSE_CLICK_OPTIONS.find(o => o.value === formValue.key);
         if (mouseOpt && (!formValue.modifiers || formValue.modifiers.length === 0)) return mouseOpt.label;
-        return [...(formValue.modifiers || []), formValue.key].filter(Boolean).join('+') || 'Key combo';
+        const base = [...(formValue.modifiers || []), formValue.key].filter(Boolean).join('+');
+        if (base) return base;
+        // Mouse-buttons-only hold chord: label from the buttons.
+        const chord = (formValue.holdMouseButtons || [])
+          .map(b => MOUSE_CLICK_OPTIONS.find(o => o.value === b)?.label)
+          .filter(Boolean)
+          .join('+');
+        return chord || 'Key combo';
       }
       case 'app':    return formValue.appName || formValue.path?.split('\\').pop() || (formValue.appId ? 'Installed app' : 'Application');
       case 'folder': return formValue.folderName || formValue.path?.split('\\').pop() || 'Folder';
@@ -4472,7 +4479,9 @@ export default function MacroPanel({
       case 'text':      return !!formValue.text?.trim();
       case 'expansion': return !!formValue.trigger?.trim();
       // Bare modifier (Ctrl / Shift / Alt / Win alone) is valid — see isDraftFilled comment.
-      case 'hotkey':    return !!formValue.key || (formValue.modifiers || []).length > 0;
+      // Hold chords may be mouse-buttons-only (empty capture + holdMouseButtons).
+      case 'hotkey':    return !!formValue.key || (formValue.modifiers || []).length > 0
+        || (!!formValue.holdMode && (formValue.holdMouseButtons || []).length > 0);
       case 'app':       return !!(formValue.path?.trim() || formValue.appId?.trim());
       case 'folder':    return !!formValue.path?.trim();
       case 'url':       return !!formValue.url?.trim();
@@ -4871,7 +4880,55 @@ export default function MacroPanel({
                 />
               </div>
               {formValue.holdMode && (
-                <p className="hold-mode-hint">Key stays held until hotkey is pressed again</p>
+                <>
+                  <p className="hold-mode-hint">
+                    {formValue.holdUntilRelease
+                      ? 'Held while you hold the trigger — releases the moment you let go'
+                      : 'Key stays held until hotkey is pressed again'}
+                  </p>
+                  <div className="hold-release-row">
+                    <label className="repeat-interval-label">Release</label>
+                    <select
+                      className="form-select hold-release-select"
+                      value={formValue.holdUntilRelease ? 'trigger' : 'again'}
+                      onChange={e => setFormValue(prev => ({ ...prev, holdUntilRelease: e.target.value === 'trigger' }))}
+                    >
+                      <option value="again">When the hotkey is pressed again</option>
+                      <option value="trigger">When I release the trigger key</option>
+                    </select>
+                  </div>
+                  {/* Chord buttons — held together with the captured key (or
+                      alone: leave the capture empty for a buttons-only hold).
+                      The drawing-tablet case: pen button held → Left+Right
+                      mouse held in the canvas app until the pen button lifts. */}
+                  <div className="hold-buttons-row">
+                    <span className="repeat-interval-label">Also hold mouse buttons</span>
+                    {MOUSE_CLICK_OPTIONS.map(opt => {
+                      const list = formValue.holdMouseButtons || [];
+                      const on = list.includes(opt.value);
+                      return (
+                        <label key={opt.value} className="hold-button-check">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => setFormValue(prev => ({
+                              ...prev,
+                              holdMouseButtons: on
+                                ? list.filter(b => b !== opt.value)
+                                : [...list, opt.value],
+                            }))}
+                          />
+                          <span>{opt.label.replace(' Click', '')}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {formValue.holdUntilRelease && (
+                    <p className="hold-mode-hint">
+                      Fires the moment the trigger is pressed. Not compatible with a double-press action on the same key.
+                    </p>
+                  )}
+                </>
               )}
               <div className="hold-mode-row">
                 <span className="hold-mode-label">Repeat mode</span>

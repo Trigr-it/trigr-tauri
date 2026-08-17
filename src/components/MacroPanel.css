@@ -2240,6 +2240,37 @@
   padding: 2px 0 4px;
 }
 
+/* Hold mode extras — release-behaviour select + chord button checkboxes */
+.hold-release-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+
+.hold-release-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.hold-buttons-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 4px;
+  flex-wrap: wrap;
+}
+
+.hold-button-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
 .repeat-interval-label {
   font-size: 11px;
   font-weight: 500;

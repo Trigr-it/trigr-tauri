@@ -2845,6 +2845,15 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 // Falls back to fire_macro for mouse, hold, repeat, or unknown key.
                 if action_type == "hotkey" && !has_double {
                     if let Some(data) = macro_val.get("data") {
+                        // Mirror-hold chord (holdMode + holdUntilRelease):
+                        // outputs press here at keydown and release when THIS
+                        // key's keyup reaches remap_key_release. Must run
+                        // before remap_key_press (which rejects holdMode and
+                        // would fall through to the keyup-deferred path).
+                        if crate::actions::hold_chord_press(vk as u16, data) {
+                            drop(state);
+                            return;
+                        }
                         if crate::actions::remap_key_press(vk as u16, data) {
                             drop(state);
                             return;
@@ -3083,6 +3092,14 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
             let action_type = macro_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
             if action_type == "hotkey" {
                 if let Some(data) = macro_val.get("data") {
+                    // Mirror-hold chord for MODIFIED triggers (Ctrl+F10 etc):
+                    // same contract as the bare-key site — press at keydown,
+                    // release on the action key's keyup via remap_key_release.
+                    // Modifier keyups don't end the hold; only the action key.
+                    if crate::actions::hold_chord_press(vk as u16, data) {
+                        drop(state);
+                        return;
+                    }
                     if crate::actions::execute_hotkey_inline(data, app) {
                         drop(state);
                         return;
