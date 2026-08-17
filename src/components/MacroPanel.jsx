@@ -4919,7 +4919,7 @@ export default function MacroPanel({
                       dismissible like the action-type tip, restored via the
                       same Settings reset ('hold-release' key). */}
                   {!hiddenTips.includes('hold-release') && (
-                    <div className="mp-type-tip">
+                    <div className="mp-type-tip mp-type-tip--hold">
                       <span className="mp-type-tip-badge">TIP</span>
                       <span className="mp-type-tip-text">
                         Hold mode keeps the output pressed down instead of tapping it.
