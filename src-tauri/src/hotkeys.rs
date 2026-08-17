@@ -55,6 +55,13 @@ static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
 // in sync: handle_mouse_down branch, mouse_hook_proc suppression mirror,
 // handle_keydown ESC branch + keyboard_hook_proc ESC swallow.
 static PIXEL_PICK_ACTIVE: AtomicBool = AtomicBool::new(false);
+// Post-pick settle window (~450ms): the sampler thread nudges the cursor off
+// the picked point, waits for hover-out transitions, samples the rest-state
+// colour, then emits. L/R clicks stay suppressed for the whole window (hook
+// mirror ORs this with PIXEL_PICK_ACTIVE) so an impatient second click can't
+// leak to the app the instant ACTIVE clears — that exact leak was a dev-test
+// bug (2026-08-17).
+static PIXEL_PICK_SAMPLING: AtomicBool = AtomicBool::new(false);
 static APP_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
 
 /// When true, hook callbacks pass events through without processing.
@@ -1898,9 +1905,11 @@ unsafe extern "system" fn mouse_hook_proc(
         // ── PIXEL_PICK suppression (Wait for Pixel eyedropper) ─────────────
         // The picking click must never reach the app under the cursor — it
         // would activate the very button being sampled. Left = pick, Right =
-        // cancel; the paired-bit path suppresses the matching UP. MIRROR of
-        // the PIXEL_PICK branch in handle_mouse_down — keep in sync.
-        if PIXEL_PICK_ACTIVE.load(Ordering::SeqCst) {
+        // cancel; the paired-bit path suppresses the matching UP. SAMPLING
+        // keeps the shield up through the post-pick settle so a rapid second
+        // click can't leak either. MIRROR of the PIXEL_PICK branches in
+        // handle_mouse_down — keep in sync.
+        if PIXEL_PICK_ACTIVE.load(Ordering::SeqCst) || PIXEL_PICK_SAMPLING.load(Ordering::SeqCst) {
             if let Some(btn_id) = suppress_id {
                 if is_button_down
                     && matches!(btn_id, SUPPRESS_MOUSE_LEFT | SUPPRESS_MOUSE_RIGHT)
@@ -3445,20 +3454,49 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // and capture branches — the pick is a modal editor flow and nothing
     // else may see the click. Colour is the HOVER state of whatever was
     // clicked; the editor re-samples after the cursor moves away.
+    // Post-pick settle window: the sampler thread below is still working.
+    // The hook mirror suppresses these clicks; swallow them here too so a
+    // double-click can't re-arm anything or fall through to dispatch.
+    if PIXEL_PICK_SAMPLING.load(Ordering::SeqCst)
+        && matches!(button, MouseButton::Left | MouseButton::Right)
+    {
+        return;
+    }
+
     if PIXEL_PICK_ACTIVE.load(Ordering::SeqCst) {
         match button {
             MouseButton::Left => {
                 PIXEL_PICK_ACTIVE.store(false, Ordering::SeqCst);
+                PIXEL_PICK_SAMPLING.store(true, Ordering::SeqCst);
                 let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
                 unsafe {
                     windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point);
                 }
-                let color = crate::actions::read_screen_pixel(point.x, point.y)
-                    .map(|(r, g, b)| format!("#{:02x}{:02x}{:02x}", r, g, b));
-                let _ = app.emit(
-                    "pixel-pick-result",
-                    serde_json::json!({ "x": point.x, "y": point.y, "color": color }),
-                );
+                // Colour under the cursor right now is the HOVER state of
+                // whatever was clicked. Sample it as a fallback, then hand
+                // off to a worker: nudge the cursor off the point so hover
+                // styling drops, settle 400ms for fade-out transitions,
+                // sample the rest-state colour, put the cursor back, emit.
+                // MUST NOT sleep on this (processor) thread.
+                let hover = crate::actions::read_screen_pixel(point.x, point.y);
+                let app2 = app.clone();
+                std::thread::spawn(move || {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos;
+                    let dx = if point.x < 400 { 250 } else { -250 };
+                    let dy = if point.y < 400 { 250 } else { -250 };
+                    unsafe { SetCursorPos(point.x + dx, point.y + dy); }
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    let rest = crate::actions::read_screen_pixel(point.x, point.y);
+                    unsafe { SetCursorPos(point.x, point.y); }
+                    let color = rest
+                        .or(hover)
+                        .map(|(r, g, b)| format!("#{:02x}{:02x}{:02x}", r, g, b));
+                    PIXEL_PICK_SAMPLING.store(false, Ordering::SeqCst);
+                    let _ = app2.emit(
+                        "pixel-pick-result",
+                        serde_json::json!({ "x": point.x, "y": point.y, "color": color }),
+                    );
+                });
                 return;
             }
             MouseButton::Right => {

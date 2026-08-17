@@ -1302,11 +1302,13 @@ function WaitPixelModeSelect({ step, updateStep }) {
 // macro recorder uses, so the foreground watcher can't profile-switch and
 // unmount this editor), the LL mouse hook arms, and the next left click
 // anywhere on screen picks that point (click suppressed so it can't activate
-// what it lands on). Right click or ESC cancels. Because the click happens
-// ON the target, the colour at click time is its HOVER state — so after the
-// click we wait for the cursor to move away, let hover-out transitions
-// settle, and re-sample the rest-state colour (what the macro will actually
-// see at run time) BEFORE restoring the window, which could cover the point.
+// what it lands on). Right click or ESC cancels. The hover problem — the
+// click-time colour is the target's HOVER state — is handled Rust-side: the
+// pick handler nudges the cursor off the point, settles 400ms, samples the
+// rest-state colour, restores the cursor and only then emits, with clicks
+// still suppressed throughout (PIXEL_PICK_SAMPLING) so an impatient second
+// click can't leak to the app. pixel-pick-result therefore arrives ~450ms
+// after the click already carrying the run-time colour.
 // Row 2 = target colour (native swatch picker) + tolerance; row 3 = timeout
 // + on-timeout behaviour; row 4 = optional click-on-match.
 function WaitPixelFields({ step, updateStep }) {
@@ -1326,22 +1328,9 @@ function WaitPixelFields({ step, updateStep }) {
   };
 
   const finishPick = async (px) => {
-    let color = px.color || '#ffffff'; // hover-state fallback
-    const start = Date.now();
-    while (Date.now() - start < 4000) {
-      const pos = await window.electronAPI?.getCursorPosition();
-      if (pos && (Math.abs(pos.x - px.x) > 50 || Math.abs(pos.y - px.y) > 50)) {
-        // Hover-out fade/transition settle before the rest-state sample.
-        await new Promise(r => setTimeout(r, 400));
-        const sampled = await window.electronAPI?.getPixelColor(px.x, px.y);
-        if (sampled?.color) color = sampled.color;
-        break;
-      }
-      await new Promise(r => setTimeout(r, 150));
-    }
     await window.electronAPI?.recorderRestoreMain();
     endPick();
-    updateRef.current({ x: px.x, y: px.y, color });
+    updateRef.current({ x: px.x, y: px.y, color: px.color || '#ffffff' });
   };
 
   const pickPixel = async () => {
