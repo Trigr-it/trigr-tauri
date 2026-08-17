@@ -262,6 +262,12 @@ export default function KeyboardCanvas({
   onClearAssignment,
   onDuplicateFromContext,
   onUnassign,
+  // Copy to ▸ / Move to ▸ submenus in the right-click menu — same contract
+  // as the sidebar's assignment context menu (App's handleCopy/MoveToProfile).
+  profiles = [],
+  activeProfile,
+  onCopyToProfile,
+  onMoveToProfile,
   onNewShortcut,
   newTriggerHint = false,
   bindDragActive = false,
@@ -277,6 +283,12 @@ export default function KeyboardCanvas({
   const [keyClearing, setKeyClearing] = useState(null); // keyId
   const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 }); // saved from context menu
   const keyCtxRef = useRef(null);
+  // Which context submenu is hovered ('copy' | 'move' | null) — state-driven
+  // (not CSS :hover) so the layout effect below can flip a submenu that would
+  // clip the viewport. Mirrors the Sidebar assignment menu exactly.
+  const [hoveredKeySub, setHoveredKeySub] = useState(null);
+  const keyCtxSubmenuRef = useRef(null);
+  const otherProfiles = (profiles || []).filter(p => p !== activeProfile);
 
   useEffect(() => {
     if (!keyCtx) return;
@@ -301,6 +313,32 @@ export default function KeyboardCanvas({
       el.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
     }
   }, [keyCtx]);
+
+  // Clamp/flip the Copy to / Move to submenu inside the viewport — shift up
+  // if the bottom would clip, flip to the left side if right would clip.
+  // Mirrors the Sidebar submenu fix exactly.
+  useLayoutEffect(() => {
+    if (!keyCtx || !hoveredKeySub || !keyCtxSubmenuRef.current) return;
+    const sub = keyCtxSubmenuRef.current;
+    sub.style.top = '';
+    sub.style.left = '';
+    sub.style.right = '';
+    sub.style.marginLeft = '';
+    sub.style.marginRight = '';
+    const rect = sub.getBoundingClientRect();
+    const margin = 8;
+    const bottomOverflow = rect.bottom - (window.innerHeight - margin);
+    if (bottomOverflow > 0) {
+      let shift = bottomOverflow;
+      const newTop = rect.top - shift;
+      if (newTop < margin) shift -= (margin - newTop);
+      sub.style.top = `${-4 - shift}px`;
+    }
+    if (rect.right > window.innerWidth - margin) {
+      sub.style.left = 'auto';
+      sub.style.right = '100%';
+    }
+  }, [hoveredKeySub, keyCtx]);
 
   useEffect(() => {
     if (lastFired?.keyId) {
@@ -341,6 +379,7 @@ export default function KeyboardCanvas({
     setKeyCtx({ keyId, x: e.clientX, y: e.clientY });
     setKeyRenaming(null);
     setKeyClearing(null);
+    setHoveredKeySub(null);
   }, []);
 
   const noLayer = activeModifiers.length === 0;
@@ -527,12 +566,65 @@ export default function KeyboardCanvas({
               setKeyCtx(null);
             }}
           >Unassign</button>
+          {otherProfiles.length > 0 && (
+            <>
+              <div className="assign-ctx-divider" />
+              <div
+                className="assign-ctx-sub"
+                onMouseEnter={() => setHoveredKeySub('copy')}
+                onMouseLeave={() => setHoveredKeySub(prev => prev === 'copy' ? null : prev)}
+              >
+                <button className="assign-ctx-item" type="button">Copy to ▸</button>
+                {hoveredKeySub === 'copy' && (
+                  <div className="assign-ctx-submenu" ref={keyCtxSubmenuRef}>
+                    {otherProfiles.map(p => (
+                      <button
+                        key={p}
+                        className="assign-ctx-item"
+                        type="button"
+                        onClick={() => {
+                          onCopyToProfile?.(p, currentCombo, keyCtx.keyId);
+                          setKeyCtx(null);
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div
+                className="assign-ctx-sub"
+                onMouseEnter={() => setHoveredKeySub('move')}
+                onMouseLeave={() => setHoveredKeySub(prev => prev === 'move' ? null : prev)}
+              >
+                <button className="assign-ctx-item" type="button">Move to ▸</button>
+                {hoveredKeySub === 'move' && (
+                  <div className="assign-ctx-submenu" ref={keyCtxSubmenuRef}>
+                    {otherProfiles.map(p => (
+                      <button
+                        key={p}
+                        className="assign-ctx-item"
+                        type="button"
+                        onClick={() => {
+                          onMoveToProfile?.(p, currentCombo, keyCtx.keyId);
+                          setKeyCtx(null);
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           <div className="assign-ctx-divider" />
           <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={() => {
             setPopoverPos({ x: keyCtx.x, y: keyCtx.y });
             setKeyClearing(keyCtx.keyId);
             setKeyCtx(null);
-          }}>Clear</button>
+          }}>Delete</button>
         </div>
       )}
 
@@ -559,7 +651,7 @@ export default function KeyboardCanvas({
       {/* Clear confirmation popover */}
       {keyClearing && (
         <div className="key-popover key-popover-clear">
-          <span className="sidebar-confirm-text">Clear this key?</span>
+          <span className="sidebar-confirm-text">Delete this key's actions?</span>
           <button className="sidebar-confirm-yes" type="button" onClick={() => {
             onClearAssignment?.(currentCombo, keyClearing);
             setKeyClearing(null);

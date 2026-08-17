@@ -5386,6 +5386,10 @@ function App() {
                 onClearAssignment={handleClearAssignment}
                 onDuplicateFromContext={handleDuplicateFromContext}
                 onUnassign={handleUnassignKey}
+                profiles={profiles}
+                activeProfile={activeProfile}
+                onCopyToProfile={handleCopyToProfile}
+                onMoveToProfile={handleMoveToProfile}
                 onNewShortcut={handleNewShortcut}
                 newTriggerHint={newTriggerHint}
                 bindDragActive={!!bindActiveDrag}
