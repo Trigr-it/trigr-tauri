@@ -7,7 +7,7 @@ import { comboString } from './KeyboardCanvas';
 // dropKind + keyId contract as the main keyboard's Key component), and a
 // drag SOURCE when assigned (drop on another key to move or swap — App's
 // shared bind-action handlers do the rest).
-function NumpadKey({ id, label, col, row, colSpan, rowSpan, className, title, disabled, draggable, dragCombo, dragLabel, onClick, children }) {
+function NumpadKey({ id, label, col, row, colSpan, rowSpan, className, title, disabled, draggable, dragCombo, dragLabel, onClick, onContextMenu, children }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `canvas-key-${id}`,
     data: { dropKind: 'canvas-key', keyId: id },
@@ -28,6 +28,7 @@ function NumpadKey({ id, label, col, row, colSpan, rowSpan, className, title, di
         gridRow:    rowSpan > 1 ? `${row} / span ${rowSpan}` : row,
       }}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       title={title}
       type="button"
     >
@@ -84,6 +85,10 @@ export default function NumpadCanvas({
   lastFired,
   activeModifiers,
   isRecording = false,
+  // Routes right-clicks on assigned keys into KeyboardCanvas's shared
+  // assignment context menu (rename / duplicate / unassign / copy-move /
+  // delete) — numpad ids are ordinary key ids, so every handler works as-is.
+  onKeyContextMenu,
 }) {
   const [firingKeyId, setFiringKeyId] = useState(null);
 
@@ -140,6 +145,7 @@ export default function NumpadCanvas({
         dragCombo={combo}
         dragLabel={assignment?.label || 'Action'}
         onClick={noLayer ? undefined : () => onKeySelect(id)}
+        onContextMenu={isAssigned && !noLayer ? (e) => onKeyContextMenu?.(e, id) : undefined}
         title={keyTitle(id, label)}
       >
         <span className="np-key-label">{label}</span>

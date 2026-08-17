@@ -530,6 +530,7 @@ export default function KeyboardCanvas({
           lastFired={lastFired}
           activeModifiers={activeModifiers}
           isRecording={isRecording}
+          onKeyContextMenu={handleKeyContextMenu}
         />
       </div>
 
