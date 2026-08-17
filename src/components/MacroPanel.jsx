@@ -3827,6 +3827,10 @@ export default function MacroPanel({
   onReassign,
   onDuplicate,
   onUnassign,
+  // "New Action" from the editor pane — App starts a fresh Unassigned-library
+  // draft (same flow as the sidebar's + New button). Only passed on the
+  // keyboard/mouse branch, so the button hides itself in radial mode.
+  onNewLibraryAction,
   duplicateOverlaySignal = 0,
   // Unassigned library mode — selectedKey carries the entry's uuid, every
   // assign/clear callback is routed to the library keys by App, the header
@@ -4007,6 +4011,23 @@ export default function MacroPanel({
     if (isNew && libraryMode && selectedKey) setReassigning(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bindOverlaySignal]);
+
+  // "Save & Bind to Key" on a new library entry: the save lands first, then
+  // the bind-capture overlay opens. The intent rides in a ref because the
+  // selection-reset effect above calls setReassigning(false) whenever the
+  // assignment props change (which the save itself triggers) — this effect
+  // is declared AFTER it so its setReassigning(true) wins in the same commit.
+  const pendingBindAfterSaveRef = useRef(false);
+  useEffect(() => {
+    pendingBindAfterSaveRef.current = false; // selection changed — drop stale intent
+  }, [selectedKey]);
+  useEffect(() => {
+    if (!pendingBindAfterSaveRef.current) return;
+    if (assignment || doubleAssignment || holdAssignment) {
+      pendingBindAfterSaveRef.current = false;
+      setReassigning(true);
+    }
+  }, [assignment, doubleAssignment, holdAssignment]);
 
   // When press mode switches, load the appropriate assignment's form values
   useEffect(() => {
@@ -4219,6 +4240,16 @@ export default function MacroPanel({
     setPendingMouseSave(null);
   };
 
+  // Library mode: save the draft, then open the bind-capture overlay once the
+  // saved entry lands (see the pendingBindAfterSaveRef effect above). The
+  // mouse-save confirmation path can't trigger here — library selectedKey is
+  // a uuid, never a MOUSE_ id.
+  const handleSaveAndBind = () => {
+    if (!selectedKey || !isValid()) return;
+    pendingBindAfterSaveRef.current = true;
+    handleSave();
+  };
+
   const getAutoLabel = () => {
     switch (activeType) {
       case 'text':   return formValue.text?.substring(0, 30) || 'Text snippet';
@@ -4278,6 +4309,22 @@ export default function MacroPanel({
           </div>
           <h3>Select a Key</h3>
           <p>Choose a modifier layer (Ctrl, Alt, etc.), then click a keyboard key or mouse button to assign a macro to that combination.</p>
+          {onNewLibraryAction && (
+            <>
+              <div className="macro-panel-empty-divider" aria-hidden="true">or</div>
+              <button
+                className="macro-panel-empty-new"
+                type="button"
+                onClick={onNewLibraryAction}
+                title="Create an action without picking a key first"
+              >
+                ⊕ New Action
+              </button>
+              <p className="macro-panel-empty-hint">
+                Build the action first, then save it to Unassigned or bind it to a key as you go.
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -4355,19 +4402,54 @@ export default function MacroPanel({
           )}
         </div>
         <div className="macro-panel-header-actions">
+          {onNewLibraryAction && !libraryMode && (
+            <button
+              className="reassign-btn new-action-btn"
+              onClick={onNewLibraryAction}
+              title="Create a new action without picking a key first. It lives in Unassigned until you bind it."
+              type="button"
+            >
+              ⊕ New
+            </button>
+          )}
+          {!libraryMode && onUnassign && (assignment || doubleAssignment || holdAssignment) && (
+            <button
+              className="reassign-btn unassign-btn"
+              onClick={() => onUnassign(selectedKey)}
+              title="Free this key but keep the action in the Unassigned list, ready to bind again"
+              type="button"
+            >
+              Unassign
+            </button>
+          )}
           {/* Any saved variant (single / double / hold) can be moved — the
               handler carries all three suffixes. Mouse triggers included:
               the overlay captures mouse destinations too. */}
-          {(assignment || doubleAssignment || holdAssignment) && (
+          {(assignment || doubleAssignment || holdAssignment) ? (
             <button
-              className={`reassign-btn${libraryMode ? ' bind-btn' : ''}`}
+              className={`reassign-btn${libraryMode ? ' bind-btn bind-btn-attention' : ''}`}
               onClick={() => setReassigning(true)}
               title={libraryMode ? 'Bind this action to a key, combo, or mouse button' : 'Move this macro to a different trigger'}
               type="button"
             >
               {libraryMode ? '⊕ Bind to Key' : '⇄ Reassign'}
             </button>
-          )}
+          ) : libraryMode ? (
+            // New unsaved library entry — the trigger CTA stays visible from
+            // the start so the user knows where a key gets attached. Saves
+            // the draft, then opens the bind-capture overlay.
+            <button
+              className="reassign-btn bind-btn bind-btn-attention"
+              onClick={handleSaveAndBind}
+              disabled={!isValid()}
+              title={isValid()
+                ? 'Save this action and bind it to a key, combo, or mouse button'
+                : 'Build your action below first, then bind it to a key here'}
+              type="button"
+            >
+              ⊕ Bind to Key
+            </button>
+          ) : null}
           <button className="panel-close" onClick={onClose} title="Deselect key">✕</button>
         </div>
       </div>
@@ -4749,14 +4831,7 @@ export default function MacroPanel({
                   title={clearKeyTitle}
                 >Clear Key</button>
               )}
-              {!libraryMode && onUnassign && (
-                <button
-                  className="btn-unassign"
-                  onClick={() => onUnassign(selectedKey)}
-                  type="button"
-                  title="Free this key but keep the action in the Unassigned list, ready to bind again"
-                >Unassign</button>
-              )}
+              {/* Unassign lives in the header beside Reassign (Rory, 2026-08-17) */}
               <button
                 className="btn-duplicate"
                 onClick={() => setDuplicating(true)}
@@ -4799,24 +4874,39 @@ export default function MacroPanel({
             </div>
           </div>
         ) : (
-          <button
-            className="btn-save"
-            onClick={handleSave}
-            disabled={!isValid() || !selectedKey}
-            type="button"
-            title={!selectedKey ? 'Pick a key first — click Record or any keyboard key' : undefined}
-          >
-            {!selectedKey
-              ? 'Pick a key to save'
-              : pressMode === 'double'
-                ? (doubleAssignment ? 'Update Double-Tap' : 'Assign Double-Tap')
-                : pressMode === 'hold'
-                ? (holdAssignment ? 'Update Hold' : 'Assign Hold')
-                : libraryMode
-                ? (assignment ? 'Update' : 'Save to Unassigned')
-                : (assignment ? 'Update' : 'Assign to Key')
-            }
-          </button>
+          <div className="save-btn-row">
+            <button
+              className="btn-save"
+              onClick={handleSave}
+              disabled={!isValid() || !selectedKey}
+              type="button"
+              title={!selectedKey ? 'Pick a key first — click Record or any keyboard key' : undefined}
+            >
+              {!selectedKey
+                ? 'Pick a key to save'
+                : pressMode === 'double'
+                  ? (doubleAssignment ? 'Update Double-Tap' : 'Assign Double-Tap')
+                  : pressMode === 'hold'
+                  ? (holdAssignment ? 'Update Hold' : 'Assign Hold')
+                  : libraryMode
+                  ? (assignment ? 'Update' : 'Save to Unassigned')
+                  : (assignment ? 'Update' : 'Assign to Key')
+              }
+            </button>
+            {/* New library entries offer both exits: keep it unassigned, or
+                pick a trigger right away (save lands first either way). */}
+            {libraryMode && !(assignment || doubleAssignment || holdAssignment) && (
+              <button
+                className="btn-save-bind"
+                onClick={handleSaveAndBind}
+                disabled={!isValid() || !selectedKey}
+                type="button"
+                title="Save this action and immediately pick a key, combo, or mouse button for it"
+              >
+                Save & Bind to Key
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

@@ -1649,6 +1649,7 @@ export default function Sidebar({
 
           return (
             <div className="sidebar-grid-wrap">
+              {renderUnassignedSection()}
               {viewEntries.length === 0 ? (
                 <div className="sidebar-empty sidebar-empty--grid">
                   <div className="sidebar-empty-icon" aria-hidden="true"><Keyboard size={28} strokeWidth={1.5} /></div>
@@ -1679,7 +1680,6 @@ export default function Sidebar({
                   {gridFiltered.map(renderCard)}
                 </div>
               )}
-              {renderUnassignedSection()}
             </div>
           );
         })()
@@ -1687,6 +1687,7 @@ export default function Sidebar({
         /* ── Classic list view ──────────────────────────────── */
         <>
           <div className="sidebar-list">
+            {renderUnassignedSection()}
             {viewEntries.length === 0 && activeTab !== 'BARE' ? (
               <div className="sidebar-empty">
                 <div className="sidebar-empty-icon" aria-hidden="true"><Keyboard size={28} strokeWidth={1.5} /></div>
@@ -1722,7 +1723,6 @@ export default function Sidebar({
                 {filtered.map(renderItem)}
               </>
             )}
-            {renderUnassignedSection()}
           </div>
 
           <div className="sidebar-footer">

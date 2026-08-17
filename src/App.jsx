@@ -3290,7 +3290,7 @@ function App() {
     setSelectedLibraryId(id);
     saveConfig(newAssignments, profiles, activeProfile);
     remapRadialStorageKeys(variantKeyMap(oldKey, newKey));
-    showNotification('Moved to Unassigned, at the bottom of the sidebar');
+    showNotification('Moved to Unassigned, at the top of the sidebar');
   }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey, remapRadialStorageKeys]);
 
   // Save / clear one press-mode variant of a library entry. MacroPanel's
@@ -5709,6 +5709,7 @@ function App() {
             onReassign={handleReassign}
             onDuplicate={handleDuplicateAssignment}
             onUnassign={(keyId) => handleUnassignKey(currentCombo, keyId)}
+            onNewLibraryAction={handleNewLibraryAction}
             duplicateOverlaySignal={duplicateOverlaySignal}
             bindOverlaySignal={bindOverlaySignal}
             isPro={isPro}

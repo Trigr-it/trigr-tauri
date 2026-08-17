@@ -1626,7 +1626,9 @@
    Header follows the gold band + left-stripe list-divider recipe.
    ══════════════════════════════════════════════════════════════ */
 .sidebar-unassigned {
-  margin-top: 14px;
+  /* Section sits at the TOP of the list in both views — separate it from
+     the assigned groups below, not above. */
+  margin-bottom: 14px;
   display: flex;
   flex-direction: column;
   gap: 2px;

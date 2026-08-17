@@ -43,6 +43,40 @@
   line-height: 1.6;
 }
 
+/* "or create it first" path — starts an Unassigned-library draft */
+.macro-panel-empty-divider {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.macro-panel-empty-new {
+  height: 32px;
+  padding: 0 18px;
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  border-radius: 6px;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.macro-panel-empty-new:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.8);
+}
+
+.macro-panel-empty-content .macro-panel-empty-hint {
+  font-size: 11px;
+  max-width: 260px;
+}
+
 /* Header */
 .macro-panel-header {
   display: flex;
@@ -163,6 +197,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0; /* long combo badges truncate before the buttons crush */
+}
+
+.macro-panel-header-actions .reassign-btn {
+  white-space: nowrap;
 }
 
 .reassign-btn {
@@ -3306,24 +3345,67 @@
   background: rgba(var(--accent-rgb), 0.15);
 }
 
-/* Unassign footer button — same anatomy as its siblings */
-.btn-unassign {
-  height: 36px;
-  padding: 0 14px;
-  background: transparent;
-  border: 1px solid var(--border-bright);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
+/* Attention treatment while the entry has no trigger — the header CTA is
+   where a key gets attached, so it pulses gently until one is bound. */
+.reassign-btn.bind-btn-attention {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.65);
+  font-weight: 700;
+  animation: bind-attention-pulse 2.2s ease-in-out infinite;
 }
 
-.btn-unassign:hover {
-  border-color: rgba(var(--accent-rgb), 0.45);
+.reassign-btn.bind-btn-attention:disabled {
+  animation: none;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@keyframes bind-attention-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.35); }
+  70%      { box-shadow: 0 0 0 5px rgba(var(--accent-rgb), 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reassign-btn.bind-btn-attention { animation: none; }
+}
+
+/* Footer save row — single Save button normally; new library entries add a
+   second "Save & Bind to Key" exit beside it. */
+.save-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.save-btn-row .btn-save {
+  flex: 1;
+  width: auto;
+}
+
+.btn-save-bind {
+  flex: 1;
+  height: 36px;
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  border-radius: 6px;
   color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-save-bind:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.8);
+}
+
+.btn-save-bind:disabled {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
 /* Reassurance line under the replace-conflict prompt (bind flows) */
