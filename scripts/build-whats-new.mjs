@@ -33,6 +33,7 @@ const repoRoot = join(__dirname, '..');
 // most-recent release, right-column starts on the latest mockup).
 
 const MAJOR_PHASES = [
+  { key: 'v0.8', name: 'v0.8 — Unassigned Library & Pixel Waits', date: 'Aug 2026' },
   { key: 'v0.7', name: 'v0.7 — Autocorrect',                     date: 'Aug 2026' },
   { key: 'v0.6', name: 'v0.6 — Macro Recorder & Polish',         date: 'Jun 2026' },
   { key: 'v0.5', name: 'v0.5 — Encryption', date: 'Jun 2026' },
