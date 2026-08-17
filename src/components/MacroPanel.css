@@ -1476,6 +1476,38 @@
   min-width: 0;
 }
 
+/* Wait for Pixel sub-rows. Single-line rows — controls shrink rather than
+   wrap. The colour input is the native swatch-plus-picker control, sized to
+   the 24px control rhythm. Width overrides sit after the generic
+   .wfi-config-row .form-input { width: 100% } rule so source order makes
+   them deterministic (same treatment as .click-pos-coord-input above). */
+.wfi-config-row.wait-pixel-row {
+  flex-wrap: nowrap;
+}
+.wait-pixel-color-input {
+  width: 36px;
+  height: 24px;
+  padding: 0 2px;
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.wfi-config-row .wait-pixel-num-input {
+  width: 64px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.wait-pixel-click-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
 .wfi-field {
   display: flex;
   align-items: center;

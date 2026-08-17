@@ -140,7 +140,7 @@ const MACRO_STEP_CATEGORIES = [
   { kind: 'group', label: 'Mouse',            items: ['Click Mouse', 'Click at Position', 'Mouse Scroll'] },
   { kind: 'group', label: 'Open & Play',      items: ['Open App', 'Open Folder', 'Open URL', 'Play Audio File', 'Play Video File'] },
   { kind: 'group', label: 'Files',            items: ['Create Folder', 'Copy Files', 'Move Files', 'Sort Files'] },
-  { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window'] },
+  { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Wait for Pixel'] },
   { kind: 'group', label: 'Window',           items: ['Focus Window', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Minimise All', 'Restore All'] },
   { kind: 'group', label: 'System',           items: ['Change Volume', 'Change Audio Output', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
   { kind: 'divider' },
@@ -1260,6 +1260,146 @@ function ClickPositionFields({ step, updateStep }) {
         );
       })()}
     </div>
+  );
+}
+
+// Wait for Pixel — shared defaults so the seed, the inline mode select and
+// the sub-rows never leave a field undefined. Stored as JSON in step.value;
+// the Rust arm reads the same keys (actions.rs "Wait for Pixel").
+const WAIT_PIXEL_DEFAULTS = {
+  x: 0, y: 0, color: '#ffffff', tolerance: 10,
+  timeoutSecs: 30, mode: 'appear', onTimeout: 'abort', clickOnMatch: false,
+};
+
+function parseWaitPixel(step) {
+  let wp = { ...WAIT_PIXEL_DEFAULTS };
+  try { wp = { ...wp, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  return wp;
+}
+
+// Main-row inline value: which way the wait resolves. "Appears" waits until
+// the pixel matches the target colour ("the button turned green"); "changes"
+// waits until it stops matching ("the loading spinner is gone").
+function WaitPixelModeSelect({ step, updateStep }) {
+  const wp = parseWaitPixel(step);
+  return (
+    <select
+      className="form-select macro-step-value"
+      // Shrinkable so duplicate/remove stay inside the 415 cap.
+      style={{ flex: '0 1 160px', minWidth: 110 }}
+      value={wp.mode}
+      onChange={e => updateStep({ ...step, value: JSON.stringify({ ...wp, mode: e.target.value }) })}
+    >
+      <option value="appear">Until colour appears</option>
+      <option value="change">Until colour changes</option>
+    </select>
+  );
+}
+
+// Wait-for-Pixel sub-rows. Row 1 mirrors Click at Position's pick row (130px
+// button column + x/y inputs, reusing its classes). Pick Pixel counts down 3s
+// then captures the cursor position AND the colour under it in one backend
+// call, so coordinates and colour can never disagree. Row 2 = target colour
+// (native swatch picker) + tolerance; row 3 = timeout + on-timeout behaviour;
+// row 4 = optional click-on-match.
+function WaitPixelFields({ step, updateStep }) {
+  const wp = parseWaitPixel(step);
+  const update = (patch) => updateStep({ ...step, value: JSON.stringify({ ...wp, ...patch }) });
+  const [picking, setPicking] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  const pickPixel = async () => {
+    setPicking(true);
+    for (let i = 3; i > 0; i--) {
+      setCountdown(i);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    setCountdown(0);
+    const px = await window.electronAPI?.getCursorPixel();
+    setPicking(false);
+    if (px) update({ x: px.x, y: px.y, color: px.color });
+  };
+
+  return (
+    <>
+      <div className="wfi-config-row wfi-config-row-columns click-pos-row">
+        <button
+          type="button"
+          className="browse-btn click-pos-pick-btn"
+          onClick={pickPixel}
+          disabled={picking}
+        >
+          {picking ? `${countdown}...` : 'Pick Pixel'}
+        </button>
+        <label className="click-pos-axis-label">x</label>
+        <NumberField
+          value={wp.x}
+          min={-32768}
+          max={32767}
+          defaultOnEmpty={0}
+          onCommit={n => update({ x: n })}
+          className="form-input click-pos-coord-input"
+        />
+        <label className="click-pos-axis-label">y</label>
+        <NumberField
+          value={wp.y}
+          min={-32768}
+          max={32767}
+          defaultOnEmpty={0}
+          onCommit={n => update({ y: n })}
+          className="form-input click-pos-coord-input"
+        />
+      </div>
+      <div className="wfi-config-row wait-pixel-row">
+        <input
+          type="color"
+          className="wait-pixel-color-input"
+          value={/^#[0-9a-fA-F]{6}$/.test(wp.color) ? wp.color : '#ffffff'}
+          onChange={e => update({ color: e.target.value })}
+          title="Target colour"
+        />
+        <span className="macro-substep-label">{wp.color}</span>
+        <span className="macro-substep-label">± tolerance</span>
+        <NumberField
+          value={wp.tolerance}
+          min={0}
+          max={255}
+          defaultOnEmpty={10}
+          onCommit={n => update({ tolerance: n })}
+          className="form-input wait-pixel-num-input"
+        />
+      </div>
+      <div className="wfi-config-row wait-pixel-row">
+        <span className="macro-substep-label">Timeout (s)</span>
+        <NumberField
+          value={wp.timeoutSecs}
+          min={1}
+          max={300}
+          defaultOnEmpty={30}
+          onCommit={n => update({ timeoutSecs: n })}
+          className="form-input wait-pixel-num-input"
+        />
+        <select
+          className="form-select"
+          style={{ flex: '0 1 160px', minWidth: 100 }}
+          value={wp.onTimeout}
+          onChange={e => update({ onTimeout: e.target.value })}
+        >
+          <option value="abort">then stop the macro</option>
+          <option value="continue">then continue anyway</option>
+        </select>
+      </div>
+      <div className="wfi-config-row">
+        <label className="wait-pixel-click-label">
+          <input
+            type="checkbox"
+            checked={!!wp.clickOnMatch}
+            onChange={e => update({ clickOnMatch: e.target.checked })}
+          />
+          <span>Click the pixel when matched</span>
+        </label>
+      </div>
+    </>
   );
 }
 
@@ -2391,7 +2531,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     }
   }
 
-  const hasSubRow = ['Press Key', 'Click Mouse', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File', 'Create Folder', 'Copy Files', 'Move Files'].includes(step.type) || showWinAdvisory;
+  const hasSubRow = ['Press Key', 'Click Mouse', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Wait for Pixel', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File', 'Create Folder', 'Copy Files', 'Move Files'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
   let appData = { kind: 'path', appId: '', appName: '', path: '', args: '', monitor: 'default' };
@@ -2502,6 +2642,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             else if (t === 'Create Folder') seed = JSON.stringify({ name: '', promptForName: false, locationMode: 'current', path: '', templateEnabled: false, templatePath: '' });
             else if (t === 'Copy Files' || t === 'Move Files') seed = JSON.stringify({ sourceMode: 'selected', sourcePath: '', pattern: '*', destMode: 'path', destPath: '', destSubfolder: '', createSubfolder: false });
             else if (t === 'Sort Files') seed = JSON.stringify(SORT_FILES_DEFAULTS);
+            else if (t === 'Wait for Pixel') seed = JSON.stringify(WAIT_PIXEL_DEFAULTS);
             updateStep({ ...step, type: t, value: seed });
           }}
         />
@@ -2783,6 +2924,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         })()}
         {step.type === 'Click at Position' && (
           <ClickPositionButtonSelect step={step} updateStep={updateStep} />
+        )}
+        {step.type === 'Wait for Pixel' && (
+          <WaitPixelModeSelect step={step} updateStep={updateStep} />
         )}
         {step.type === 'Wait for Window' && (
           <WindowPicker
@@ -3397,6 +3541,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
       })()}
       {step.type === 'Click at Position' && (
         <ClickPositionFields step={step} updateStep={updateStep} />
+      )}
+      {step.type === 'Wait for Pixel' && (
+        <WaitPixelFields step={step} updateStep={updateStep} />
       )}
 
       {firePickerMode && (

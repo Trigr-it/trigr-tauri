@@ -839,7 +839,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     // may itself contain Focus Window / Open App / Open URL — without
                     // a re-capture, subsequent parent-macro steps would target the
                     // pre-fire window.
-                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Click at Position" | "Open URL" | "Fire Trigger" | "Fire Text Expansion" | "Record Macro") {
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Wait for Pixel" | "Click at Position" | "Open URL" | "Fire Trigger" | "Fire Text Expansion" | "Record Macro") {
                         if step_type == "Open URL" {
                             thread::sleep(Duration::from_millis(OPEN_URL_FOCUS_SETTLE_MS));
                         }
@@ -2437,6 +2437,38 @@ fn neutralize_click_to_absolute(step: &Value) -> Option<Value> {
 /// can request abort, when its target window doesn't appear before the 30s
 /// timeout — letting subsequent steps fire into whatever happens to be focused
 /// is worse than just stopping the macro there.
+// Read one screen pixel in physical coordinates. Used by the Wait for Pixel
+// macro step's poll loop and the editor's eyedropper (lib.rs get_cursor_pixel).
+// None = CLR_INVALID (point off every monitor, secure desktop, DC unavailable)
+// — callers treat it as "no reading this poll", never as a colour match.
+pub fn read_screen_pixel(x: i32, y: i32) -> Option<(u8, u8, u8)> {
+    use windows_sys::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
+    unsafe {
+        let hdc = GetDC(std::ptr::null_mut());
+        if hdc.is_null() {
+            return None;
+        }
+        let c = GetPixel(hdc, x, y);
+        ReleaseDC(std::ptr::null_mut(), hdc);
+        if c == 0xFFFF_FFFF {
+            return None; // CLR_INVALID
+        }
+        // COLORREF is 0x00BBGGRR.
+        Some(((c & 0xFF) as u8, ((c >> 8) & 0xFF) as u8, ((c >> 16) & 0xFF) as u8))
+    }
+}
+
+fn parse_hex_color(s: &str) -> Option<(u8, u8, u8)> {
+    let hex = s.trim().trim_start_matches('#');
+    if hex.len() != 6 || !hex.is_ascii() {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some((r, g, b))
+}
+
 fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: &tauri::AppHandle) -> bool {
     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
@@ -2712,6 +2744,111 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     return false;
                 }
                 thread::sleep(poll_interval);
+            }
+        }
+
+        // Wait until the screen pixel at (x, y) matches — or stops matching —
+        // a target colour. Match = every RGB channel within `tolerance` of the
+        // target. mode "appear" waits for a match ("the button turned green");
+        // mode "change" waits for the pixel to LEAVE the colour ("the spinner
+        // is gone"). The 100ms poll doubles as the cancel check, per the
+        // polled-sleep rule — Esc and the macros pause toggle land within
+        // ~100ms regardless of the configured timeout. On timeout, onTimeout
+        // "continue" proceeds to the next step; "abort" (default) stops the
+        // macro and toasts via system-action-toast. clickOnMatch left-clicks
+        // the watched pixel through the Click at Position arm before
+        // continuing, so suppression + settle behaviour stays identical to a
+        // hand-authored click step.
+        "Wait for Pixel" => {
+            let parsed: Value = match serde_json::from_str(step_value) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[Keyfire] Wait for Pixel step: invalid JSON: {}", e);
+                    return true;
+                }
+            };
+            let x = parsed.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let y = parsed.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let color_str = parsed.get("color").and_then(|v| v.as_str()).unwrap_or("");
+            let target = match parse_hex_color(color_str) {
+                Some(rgb) => rgb,
+                None => {
+                    warn!("[Keyfire] Wait for Pixel step: invalid colour '{}'", color_str);
+                    return true;
+                }
+            };
+            let tolerance = parsed.get("tolerance").and_then(|v| v.as_u64()).unwrap_or(10).min(255) as u16;
+            let timeout_secs = parsed.get("timeoutSecs").and_then(|v| v.as_u64()).unwrap_or(30).clamp(1, 300);
+            let mode = parsed.get("mode").and_then(|v| v.as_str()).unwrap_or("appear");
+            let on_timeout = parsed.get("onTimeout").and_then(|v| v.as_str()).unwrap_or("abort");
+            let click_on_match = parsed.get("clickOnMatch").and_then(|v| v.as_bool()).unwrap_or(false);
+
+            let diff = |a: u8, b: u8| (a as i16 - b as i16).unsigned_abs();
+            let within = |p: (u8, u8, u8)| -> bool {
+                diff(p.0, target.0)
+                    .max(diff(p.1, target.1))
+                    .max(diff(p.2, target.2))
+                    <= tolerance
+            };
+
+            let total = Duration::from_secs(timeout_secs);
+            let start = std::time::Instant::now();
+            let mut matched = false;
+            loop {
+                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Wait for Pixel cancelled (Esc)");
+                    return false;
+                }
+                if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Wait for Pixel aborted (macros disabled)");
+                    return false;
+                }
+                if let Some(px) = read_screen_pixel(x, y) {
+                    let hit = if mode == "change" { !within(px) } else { within(px) };
+                    if hit {
+                        matched = true;
+                        break;
+                    }
+                }
+                if start.elapsed() >= total {
+                    break;
+                }
+                let remaining = total.saturating_sub(start.elapsed());
+                thread::sleep(Duration::from_millis(100).min(remaining));
+            }
+
+            if matched {
+                info!(
+                    "[Keyfire] Wait for Pixel: matched ({}, {}) mode={} after {:?}",
+                    x, y, mode, start.elapsed()
+                );
+                if click_on_match {
+                    let click_step = serde_json::json!({
+                        "type": "Click at Position",
+                        "value": serde_json::json!({
+                            "x": x, "y": y, "button": "left", "mode": "absolute"
+                        }).to_string(),
+                    });
+                    if !execute_macro_step(&click_step, target_hwnd, method, app) {
+                        return false;
+                    }
+                }
+            } else if on_timeout == "continue" {
+                warn!(
+                    "[Keyfire] Wait for Pixel: timeout ({}s) at ({}, {}) — continuing (per step setting)",
+                    timeout_secs, x, y
+                );
+            } else {
+                warn!(
+                    "[Keyfire] Wait for Pixel: timeout ({}s) at ({}, {}) — aborting macro",
+                    timeout_secs, x, y
+                );
+                use tauri::Emitter;
+                let _ = app.emit("system-action-toast", serde_json::json!({
+                    "level": "error",
+                    "message": format!("Wait for Pixel timed out after {}s — macro stopped", timeout_secs),
+                }));
+                return false;
             }
         }
 

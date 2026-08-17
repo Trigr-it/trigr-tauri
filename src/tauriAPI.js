@@ -518,6 +518,7 @@ window.electronAPI = {
   installUpdate:      ()         => invoke('install_update'),
   startDownload:      (version)  => invoke('start_download', { version }),
   getCursorPosition:  ()         => invoke('get_cursor_position'),
+  getCursorPixel:     ()         => invoke('get_cursor_pixel'),
   enumMonitors:       ()         => invoke('enum_monitors'),
   checkForUpdates:    ()         => invoke('check_for_updates'),
 

@@ -1048,6 +1048,30 @@ fn get_cursor_position() -> Value {
     serde_json::json!({ "x": point.x, "y": point.y })
 }
 
+// Eyedropper for the Wait for Pixel macro step: cursor position + the screen
+// pixel colour under it, captured atomically so the coordinates and colour
+// can never disagree. Both use the physical-pixel coordinate space (the
+// process is per-monitor DPI aware), matching what Click at Position feeds
+// to SendInput.
+#[cfg(not(windows))]
+#[tauri::command]
+fn get_cursor_pixel() -> Value {
+    serde_json::json!({ "x": 0, "y": 0, "color": "#ffffff" })
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn get_cursor_pixel() -> Value {
+    let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point);
+    }
+    let color = actions::read_screen_pixel(point.x, point.y)
+        .map(|(r, g, b)| format!("#{:02x}{:02x}{:02x}", r, g, b))
+        .unwrap_or_else(|| "#ffffff".to_string());
+    serde_json::json!({ "x": point.x, "y": point.y, "color": color })
+}
+
 #[tauri::command]
 fn enum_monitors() -> Vec<window_target::MonitorInfo> {
     window_target::enum_monitors()
@@ -5996,6 +6020,7 @@ pub fn run() {
             // Window enumeration
             list_open_windows,
             get_cursor_position,
+            get_cursor_pixel,
             enum_monitors,
             show_monitor_identify,
             hide_monitor_identify,
