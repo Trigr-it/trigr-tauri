@@ -409,7 +409,9 @@ function HotkeyCaptureInput({ value, onChange }) {
       // Preserve a previously-toggled +Win across re-captures.
       const mods = (parsed.modifiers || []).filter(m => m !== 'Win');
       if (hasWinRef.current) mods.unshift('Win');
-      onChangeRef.current({ ...valueRef.current, modifiers: mods, key: parsed.key });
+      // A fresh capture replaces the whole output — clear any pill chord so
+      // stale extra buttons can't ride along with the new key.
+      onChangeRef.current({ ...valueRef.current, modifiers: mods, key: parsed.key, holdMouseButtons: [] });
       setCapturing(false);
     };
     window.electronAPI.onKeyCaptured(handler);
@@ -491,7 +493,17 @@ function HotkeyCaptureInput({ value, onChange }) {
           {capturing ? (
             <span className="key-capture-prompt">Press your hotkey combination…</span>
           ) : isMouseValue ? (
-            <span className="key-capture-value"><kbd>{MOUSE_CLICK_OPTIONS.find(o => o.value === value.key)?.label}</kbd></span>
+            <span className="key-capture-value">
+              {[value.key, ...(value.holdMouseButtons || [])]
+                .map(b => MOUSE_CLICK_OPTIONS.find(o => o.value === b)?.label)
+                .filter(Boolean)
+                .map((lab, i) => (
+                  <Fragment key={lab}>
+                    {i > 0 && <span className="key-capture-plus">+</span>}
+                    <kbd>{lab}</kbd>
+                  </Fragment>
+                ))}
+            </span>
           ) : currentCombo ? (
             <span className="key-capture-value"><KeyChips combo={currentCombo} /></span>
           ) : (
@@ -532,15 +544,39 @@ function HotkeyCaptureInput({ value, onChange }) {
           )}
         </div>
       )}
+      {/* Mouse pills are MULTI-select: the first selected button lives in
+          `key` (legacy shape, fires alone exactly as before), additional
+          buttons in `holdMouseButtons` — pressed/held together as a chord
+          (normal mode clicks them together; Hold mode holds them together). */}
       <div className="mouse-click-pills">
-        {MOUSE_CLICK_OPTIONS.map(opt => (
-          <button
-            key={opt.value}
-            type="button"
-            className={`mouse-click-pill${value.key === opt.value && (!value.modifiers || value.modifiers.length === 0) ? ' active' : ''}`}
-            onClick={() => onChange({ ...value, modifiers: [], key: opt.value })}
-          >{opt.label}</button>
-        ))}
+        {MOUSE_CLICK_OPTIONS.map(opt => {
+          const noMods = !value.modifiers || value.modifiers.length === 0;
+          const keyIsMouse = noMods && MOUSE_CLICK_OPTIONS.some(o => o.value === value.key);
+          const extras = value.holdMouseButtons || [];
+          const isKeyPill = keyIsMouse && value.key === opt.value;
+          const inExtras = extras.includes(opt.value);
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              className={`mouse-click-pill${isKeyPill || inExtras ? ' active' : ''}`}
+              onClick={() => {
+                if (isKeyPill) {
+                  // Deselect the primary — promote the next chord button (if any).
+                  const [next, ...rest] = extras;
+                  onChange({ ...value, key: next || '', holdMouseButtons: rest });
+                } else if (inExtras) {
+                  onChange({ ...value, holdMouseButtons: extras.filter(b => b !== opt.value) });
+                } else if (keyIsMouse) {
+                  onChange({ ...value, holdMouseButtons: [...extras, opt.value] });
+                } else {
+                  // First mouse selection replaces the keyboard capture (legacy semantics).
+                  onChange({ ...value, modifiers: [], key: opt.value, holdMouseButtons: [] });
+                }
+              }}
+            >{opt.label}</button>
+          );
+        })}
       </div>
     </div>
   );
@@ -4451,15 +4487,15 @@ export default function MacroPanel({
       }
       case 'hotkey': {
         const mouseOpt = MOUSE_CLICK_OPTIONS.find(o => o.value === formValue.key);
-        if (mouseOpt && (!formValue.modifiers || formValue.modifiers.length === 0)) return mouseOpt.label;
-        const base = [...(formValue.modifiers || []), formValue.key].filter(Boolean).join('+');
-        if (base) return base;
-        // Mouse-buttons-only hold chord: label from the buttons.
-        const chord = (formValue.holdMouseButtons || [])
-          .map(b => MOUSE_CLICK_OPTIONS.find(o => o.value === b)?.label)
-          .filter(Boolean)
-          .join('+');
-        return chord || 'Key combo';
+        if (mouseOpt && (!formValue.modifiers || formValue.modifiers.length === 0)) {
+          // Multi-pill chord: "Left Click+Right Click"
+          return [mouseOpt.label,
+            ...(formValue.holdMouseButtons || [])
+              .map(b => MOUSE_CLICK_OPTIONS.find(o => o.value === b)?.label)
+              .filter(Boolean),
+          ].join('+');
+        }
+        return [...(formValue.modifiers || []), formValue.key].filter(Boolean).join('+') || 'Key combo';
       }
       case 'app':    return formValue.appName || formValue.path?.split('\\').pop() || (formValue.appId ? 'Installed app' : 'Application');
       case 'folder': return formValue.folderName || formValue.path?.split('\\').pop() || 'Folder';
@@ -4479,9 +4515,7 @@ export default function MacroPanel({
       case 'text':      return !!formValue.text?.trim();
       case 'expansion': return !!formValue.trigger?.trim();
       // Bare modifier (Ctrl / Shift / Alt / Win alone) is valid — see isDraftFilled comment.
-      // Hold chords may be mouse-buttons-only (empty capture + holdMouseButtons).
-      case 'hotkey':    return !!formValue.key || (formValue.modifiers || []).length > 0
-        || (!!formValue.holdMode && (formValue.holdMouseButtons || []).length > 0);
+      case 'hotkey':    return !!formValue.key || (formValue.modifiers || []).length > 0;
       case 'app':       return !!(formValue.path?.trim() || formValue.appId?.trim());
       case 'folder':    return !!formValue.path?.trim();
       case 'url':       return !!formValue.url?.trim();
@@ -4896,32 +4930,6 @@ export default function MacroPanel({
                       <option value="again">When the hotkey is pressed again</option>
                       <option value="trigger">When I release the trigger key</option>
                     </select>
-                  </div>
-                  {/* Chord buttons — held together with the captured key (or
-                      alone: leave the capture empty for a buttons-only hold).
-                      The drawing-tablet case: pen button held → Left+Right
-                      mouse held in the canvas app until the pen button lifts. */}
-                  <div className="hold-buttons-row">
-                    <span className="repeat-interval-label">Also hold mouse buttons</span>
-                    {MOUSE_CLICK_OPTIONS.map(opt => {
-                      const list = formValue.holdMouseButtons || [];
-                      const on = list.includes(opt.value);
-                      return (
-                        <label key={opt.value} className="hold-button-check">
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={() => setFormValue(prev => ({
-                              ...prev,
-                              holdMouseButtons: on
-                                ? list.filter(b => b !== opt.value)
-                                : [...list, opt.value],
-                            }))}
-                          />
-                          <span>{opt.label.replace(' Click', '')}</span>
-                        </label>
-                      );
-                    })}
                   </div>
                   {formValue.holdUntilRelease && (
                     <p className="hold-mode-hint">

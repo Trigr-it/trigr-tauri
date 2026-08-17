@@ -297,7 +297,7 @@ struct HeldKeyManager {
 }
 
 struct HeldKeyState {
-    target_vk: u16, // 0 = no keyboard key held (bare-modifier or mouse-only hold)
+    target_vks: Vec<u16>, // held keys, press order (empty = bare-modifier or mouse-only hold)
     mod_vks: Vec<u16>, // only modifiers that were actually pressed by the hold
     mouse_buttons: Vec<String>, // held mouse buttons — chords hold several at once
     label: String, // e.g. "Ctrl+W" for tray tooltip
@@ -305,15 +305,15 @@ struct HeldKeyState {
 }
 
 /// Send the UP events for a held state's outputs, teardown order: mouse
-/// buttons (reverse press order), then main key, then modifiers reversed.
-/// Callers own suppression (SuppressionGuard / SUPPRESS_SIMULATED) — this
-/// only sends.
+/// buttons (reverse press order), then keys reversed, then modifiers
+/// reversed. Callers own suppression (SuppressionGuard / SUPPRESS_SIMULATED)
+/// — this only sends.
 fn send_held_key_ups(state: &HeldKeyState) {
     for button in state.mouse_buttons.iter().rev() {
         send_mouse_event(button, true);
     }
-    if state.target_vk != 0 {
-        send_vk_key(state.target_vk, true);
+    for &vk in state.target_vks.iter().rev() {
+        send_vk_key(vk, true);
     }
     for &vk in state.mod_vks.iter().rev() {
         send_vk_key(vk, true);
@@ -1319,7 +1319,7 @@ fn make_vk_input(vk: u16, key_up: bool) -> INPUT {
 ///     release): any mix of mouse buttons, a key, and modifiers. The pen-
 ///     tablet case: hold F10 → LButton+RButton held until F10 comes up.
 struct RemapHoldEntry {
-    target_vk: u16,        // 0 = no keyboard key in this hold
+    target_vks: Vec<u16>,  // held keys, press order (empty = no keyboard keys)
     mod_vks: Vec<u16>,
     mouse_buttons: Vec<String>, // "LButton" / "RButton" / "MButton"
 }
@@ -1328,6 +1328,20 @@ struct RemapHoldEntry {
 /// Populated on keydown, removed on keyup so hold and OS key-repeat work correctly.
 static ACTIVE_BARE_REMAPS: LazyLock<Mutex<HashMap<u16, RemapHoldEntry>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Parse the Hold-mode extra-keys list off a hotkey action's data: display
+/// names ("A", "F10", "Space") → VKs. Unknown names are dropped.
+fn parse_hold_extra_vks(data: &Value) -> Vec<u16> {
+    data.get("holdExtraKeys")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .filter_map(display_name_to_vk)
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
 /// Parse the Hold-mode chord button list off a hotkey action's data.
 /// Only L/R/M are valid outputs (matches send_mouse_event coverage).
@@ -1367,14 +1381,20 @@ pub fn hold_chord_press(trigger_vk: u16, data: &Value) -> bool {
     if is_mouse_button(key_name) && !mouse_buttons.iter().any(|b| b == key_name) {
         mouse_buttons.insert(0, key_name.to_string());
     }
-    let target_vk = if key_name.is_empty() || is_mouse_button(key_name) {
-        0
-    } else {
+    // Keyboard part: the captured main key (if any) plus the holdExtraKeys
+    // list — all held down together (F10 → A+B). Dedup preserves press order.
+    let mut target_vks: Vec<u16> = Vec::new();
+    if !key_name.is_empty() && !is_mouse_button(key_name) {
         match display_name_to_vk(key_name) {
-            Some(vk) => vk,
+            Some(vk) => target_vks.push(vk),
             None => return false,
         }
-    };
+    }
+    for vk in parse_hold_extra_vks(data) {
+        if !target_vks.contains(&vk) {
+            target_vks.push(vk);
+        }
+    }
 
     let mod_vks: Vec<u16> = data
         .get("modifiers")
@@ -1392,7 +1412,7 @@ pub fn hold_chord_press(trigger_vk: u16, data: &Value) -> bool {
         })
         .unwrap_or_default();
 
-    if target_vk == 0 && mod_vks.is_empty() && mouse_buttons.is_empty() {
+    if target_vks.is_empty() && mod_vks.is_empty() && mouse_buttons.is_empty() {
         return false; // nothing to hold
     }
 
@@ -1402,20 +1422,20 @@ pub fn hold_chord_press(trigger_vk: u16, data: &Value) -> bool {
             return true; // OS key-repeat of an active chord — swallow
         }
         map.insert(trigger_vk, RemapHoldEntry {
-            target_vk,
+            target_vks: target_vks.clone(),
             mod_vks: mod_vks.clone(),
             mouse_buttons: mouse_buttons.clone(),
         });
     }
 
     let _guard = SuppressionGuard::new();
-    if target_vk != 0 || !mod_vks.is_empty() {
-        let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+    if !target_vks.is_empty() || !mod_vks.is_empty() {
+        let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + target_vks.len());
         for &vk in &mod_vks {
             inputs.push(make_vk_input(vk, false));
         }
-        if target_vk != 0 {
-            inputs.push(make_vk_input(target_vk, false));
+        for &vk in &target_vks {
+            inputs.push(make_vk_input(vk, false));
         }
         unsafe {
             SendInput(
@@ -1429,8 +1449,8 @@ pub fn hold_chord_press(trigger_vk: u16, data: &Value) -> bool {
         send_mouse_event(button, false);
     }
     info!(
-        "[Keyfire] Hold chord pressed (trigger vk {}): key_vk={} buttons={:?} — held until trigger release",
-        trigger_vk, target_vk, mouse_buttons
+        "[Keyfire] Hold chord pressed (trigger vk {}): key_vks={:?} buttons={:?} — held until trigger release",
+        trigger_vk, target_vks, mouse_buttons
     );
     true
 }
@@ -1476,7 +1496,7 @@ pub fn remap_key_press(trigger_vk: u16, data: &Value) -> bool {
     // Record active remap so keyup knows which target VK to release.
     // Overwriting on OS key-repeat is intentional and idempotent.
     ACTIVE_BARE_REMAPS.lock().unwrap().insert(trigger_vk, RemapHoldEntry {
-        target_vk,
+        target_vks: vec![target_vk],
         mod_vks: mod_vks.clone(),
         mouse_buttons: Vec::new(),
     });
@@ -1507,15 +1527,16 @@ pub fn remap_key_release(trigger_vk: u16) -> bool {
     let entry = ACTIVE_BARE_REMAPS.lock().unwrap().remove(&trigger_vk);
     if let Some(entry) = entry {
         let _guard = SuppressionGuard::new();
-        // Mouse buttons up first (reverse press order), then key, then mods —
-        // full-press teardown order, mirroring hold_chord_press's downs.
+        // Mouse buttons up first (reverse press order), then keys reversed,
+        // then mods — full-press teardown order, mirroring the downs.
         for button in entry.mouse_buttons.iter().rev() {
             send_mouse_event(button, true);
         }
-        if entry.target_vk != 0 || !entry.mod_vks.is_empty() {
-            let mut inputs: Vec<INPUT> = Vec::with_capacity(entry.mod_vks.len() + 1);
-            if entry.target_vk != 0 {
-                inputs.push(make_vk_input(entry.target_vk, true));
+        if !entry.target_vks.is_empty() || !entry.mod_vks.is_empty() {
+            let mut inputs: Vec<INPUT> =
+                Vec::with_capacity(entry.mod_vks.len() + entry.target_vks.len());
+            for &vk in entry.target_vks.iter().rev() {
+                inputs.push(make_vk_input(vk, true));
             }
             for &vk in entry.mod_vks.iter().rev() {
                 inputs.push(make_vk_input(vk, true));
@@ -1618,9 +1639,12 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
     let target_vk: u16 = if is_mouse {
         0
     } else if key_name.is_empty() {
-        // Hold chords may be mouse-buttons-only (key and modifiers both
-        // empty) — those carry their outputs in holdMouseButtons instead.
-        if modifiers.is_empty() && parse_hold_mouse_buttons(data).is_empty() {
+        // Hold chords may have an empty capture (key and modifiers both
+        // empty) — outputs live in holdExtraKeys / holdMouseButtons instead.
+        if modifiers.is_empty()
+            && parse_hold_mouse_buttons(data).is_empty()
+            && parse_hold_extra_vks(data).is_empty()
+        {
             warn!("[Keyfire] Send Hotkey has no key or modifiers — nothing to send");
             return;
         }
@@ -1658,17 +1682,21 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
     } else {
         format!("{}+{}", modifiers.join("+"), key_name)
     };
-    // Mouse-buttons-only hold chord: label from the buttons.
+    // Empty-capture hold chord: label from the extra keys + buttons.
     if combo_label.is_empty() {
-        combo_label = parse_hold_mouse_buttons(data)
-            .iter()
-            .map(|b| match b.as_str() {
-                "LButton" => "Left Click",
-                "RButton" => "Right Click",
-                _ => "Middle Click",
-            })
-            .collect::<Vec<_>>()
-            .join("+");
+        let mut parts: Vec<String> = data
+            .get("holdExtraKeys")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+            .unwrap_or_default();
+        parts.extend(parse_hold_mouse_buttons(data).iter().map(|b| {
+            match b.as_str() {
+                "LButton" => "Left Click".to_string(),
+                "RButton" => "Right Click".to_string(),
+                _ => "Middle Click".to_string(),
+            }
+        }));
+        combo_label = parts.join("+");
     }
 
     // ── Repeat mode ──
@@ -1817,18 +1845,27 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         if is_mouse && !hold_mouse_buttons.iter().any(|b| b == key_name) {
             hold_mouse_buttons.insert(0, key_name.to_string());
         }
-        // Keyboard part of the hold. For legacy single-mouse-button holds the
+        // Keyboard part of the hold: the main key plus any holdExtraKeys,
+        // all held together. For legacy single-mouse-button holds the
         // modifiers were never pressed by this path — keep that: mods join
         // the hold only when there's a keyboard component (key or bare-mod).
         let keyboard_part = !is_mouse;
         let held_mod_vks: Vec<u16> = if keyboard_part { mod_vks.clone() } else { Vec::new() };
-        let held_target_vk: u16 = if keyboard_part { target_vk } else { 0 };
+        let mut held_target_vks: Vec<u16> = Vec::new();
+        if keyboard_part && target_vk != 0 {
+            held_target_vks.push(target_vk);
+        }
+        for vk in parse_hold_extra_vks(data) {
+            if !held_target_vks.contains(&vk) {
+                held_target_vks.push(vk);
+            }
+        }
 
         let mut mgr = HELD_KEY.lock().unwrap();
 
         // Check if the same outputs are already held — toggle release
         let same_held = if let Some(ref state) = mgr.key {
-            state.target_vk == held_target_vk
+            state.target_vks == held_target_vks
                 && state.mod_vks == held_mod_vks
                 && state.mouse_buttons == hold_mouse_buttons
         } else {
@@ -1867,10 +1904,10 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 for &vk in &held_mod_vks {
                     send_vk_key(vk, false);
                 }
-                if has_main_key {
-                    send_vk_key(target_vk, false);
+                for &vk in &held_target_vks {
+                    send_vk_key(vk, false);
                 }
-                // Do NOT send keyup — key/modifiers stay held
+                // Do NOT send keyup — keys/modifiers stay held
                 restore_modifiers(&physically_held);
             }
             for button in &hold_mouse_buttons {
@@ -1885,7 +1922,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             .map(|s| s.to_string());
 
         mgr.key = Some(HeldKeyState {
-            target_vk: held_target_vk,
+            target_vks: held_target_vks,
             mod_vks: held_mod_vks,
             mouse_buttons: hold_mouse_buttons,
             label: combo_label.clone(),
@@ -1928,15 +1965,27 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         // per [[feedback_synthetic_key_hold_time]]. Not calling send_mouse_click
         // directly because it toggles SUPPRESS_SIMULATED off before returning,
         // which would unmask the mod_up batch as real input to our own hook.
-        let (down_flag, up_flag) = match key_name {
-            "LButton" => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
-            "RButton" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
-            "MButton" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
-            _ => {
-                warn!("[Keyfire] Unknown mouse button: {}", key_name);
-                return;
+        // Chord support: additional pills land in holdMouseButtons — all
+        // buttons go down together in the down batch and up together in the
+        // up batch (reverse order), so a Left+Right pill selection clicks
+        // both as one gesture. Single-button selections behave as before.
+        let mut buttons: Vec<&str> = vec![key_name];
+        let extra_buttons = parse_hold_mouse_buttons(data);
+        for b in &extra_buttons {
+            if b != key_name {
+                buttons.push(b.as_str());
             }
+        }
+        let button_flags = |name: &str| match name {
+            "LButton" => Some((MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)),
+            "RButton" => Some((MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP)),
+            "MButton" => Some((MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP)),
+            _ => None,
         };
+        if button_flags(key_name).is_none() {
+            warn!("[Keyfire] Unknown mouse button: {}", key_name);
+            return;
+        }
         let make_mouse = |flag: u32| INPUT {
             r#type: INPUT_MOUSE,
             Anonymous: INPUT_0 {
@@ -1948,15 +1997,23 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         let held = release_held_modifiers();
         {
             let _guard = SuppressionGuard::new();
-            let mut down_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+            let mut down_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + buttons.len());
             for &vk in &mod_vks { down_batch.push(make_vk_input(vk, false)); }
-            down_batch.push(make_mouse(down_flag));
+            for b in &buttons {
+                if let Some((down_flag, _)) = button_flags(b) {
+                    down_batch.push(make_mouse(down_flag));
+                }
+            }
             unsafe {
                 SendInput(down_batch.len() as u32, down_batch.as_ptr(), std::mem::size_of::<INPUT>() as i32);
             }
             thread::sleep(Duration::from_millis(15));
-            let mut up_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
-            up_batch.push(make_mouse(up_flag));
+            let mut up_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + buttons.len());
+            for b in buttons.iter().rev() {
+                if let Some((_, up_flag)) = button_flags(b) {
+                    up_batch.push(make_mouse(up_flag));
+                }
+            }
             for &vk in mod_vks.iter().rev() { up_batch.push(make_vk_input(vk, true)); }
             unsafe {
                 SendInput(up_batch.len() as u32, up_batch.as_ptr(), std::mem::size_of::<INPUT>() as i32);
