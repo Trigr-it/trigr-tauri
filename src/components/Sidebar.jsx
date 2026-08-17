@@ -741,7 +741,6 @@ export default function Sidebar({
   // Unassigned library props
   selectedLibraryId = null,
   onSelectLibraryEntry,
-  onNewLibraryAction,
   onBindFromContext,
   onDuplicateLibraryInPlace,
   onUnassign,
@@ -1419,19 +1418,13 @@ export default function Sidebar({
           <span className="sidebar-unassigned-chevron">{unassignedCollapsed ? '▸' : '▾'}</span>
           <span className="sidebar-unassigned-title">UNASSIGNED</span>
           <span className="sidebar-group-count">{unassignedEntries.length}</span>
-          <button
-            className="sidebar-unassigned-new"
-            type="button"
-            onClick={e => { e.stopPropagation(); onNewLibraryAction?.(); }}
-            title="Create a new action without picking a key first"
-          >+ New</button>
         </div>
         {!unassignedCollapsed && (
           visible.length === 0 ? (
             <div className="sidebar-unassigned-empty">
               {q
                 ? 'No unassigned actions match your search'
-                : <>Actions without a key are kept here. Use <strong>Unassign</strong> on any key to store its action for later, or <strong>+ New</strong> to build one from scratch.</>}
+                : <>Actions without a key are kept here. Use <strong>Unassign</strong> on any key to store its action for later, or <strong>New Action</strong> in the editor to build one from scratch.</>}
             </div>
           ) : (
             visible.map(renderUnassignedItem)

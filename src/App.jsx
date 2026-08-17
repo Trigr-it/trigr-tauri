@@ -5310,7 +5310,6 @@ function App() {
             onMoveToProfile={handleMoveToProfile}
             selectedLibraryId={selectedLibraryId}
             onSelectLibraryEntry={handleSelectLibraryEntry}
-            onNewLibraryAction={handleNewLibraryAction}
             onBindFromContext={handleBindFromContext}
             onDuplicateLibraryInPlace={handleDuplicateLibraryInPlace}
             onUnassign={handleUnassignKey}
