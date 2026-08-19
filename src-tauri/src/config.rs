@@ -635,6 +635,39 @@ fn is_valid_config(cfg: &Value) -> bool {
     true
 }
 
+// ── Starter pack (first-install seed) ──────────────────────────────────────
+// Content is authored in `resources/starter-pack.json` (compile-time embedded
+// via `include_str!`, so no bundler config changes and no runtime file lookup).
+// Called from `lib.rs::load_config`'s all-fallbacks-miss branch — a brand-new
+// install lands here with nothing on disk. If the JSON fails to parse (should
+// only ever happen if someone corrupts the source file), log + return an empty
+// factory config so the app still starts.
+//
+// The JSON already contains `assignments` + `radialMenuItemsByProfile` and
+// carries `starterPackVersion` for future migration passes. We layer in the
+// baseline `profiles` + `activeProfile` fields the frontend expects and strip
+// the doc-comment `_` key so it never round-trips to disk.
+pub fn build_starter_config() -> Value {
+    const STARTER_PACK_JSON: &str = include_str!("../resources/starter-pack.json");
+    let mut cfg: Value = match serde_json::from_str(STARTER_PACK_JSON) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("[Keyfire] starter-pack.json parse error ({}); using bare factory defaults", e);
+            serde_json::json!({})
+        }
+    };
+    if let Some(obj) = cfg.as_object_mut() {
+        obj.entry("profiles".to_string())
+            .or_insert_with(|| serde_json::json!(["Default"]));
+        obj.entry("activeProfile".to_string())
+            .or_insert_with(|| serde_json::json!("Default"));
+        obj.entry("assignments".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        obj.remove("_");
+    }
+    cfg
+}
+
 // ── Core load/save ──────────────────────────────────────────────────────────
 
 /// Simple runtime loader — no fallback chain.

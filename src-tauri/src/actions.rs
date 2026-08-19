@@ -4391,6 +4391,33 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             }
         }
 
+        // Media Control — send a media transport VK (Play/Pause, Next, Prev,
+        // Stop) through the same send_media_key helper Change Volume uses. VK
+        // constants: 0xB0=NEXT_TRACK, 0xB1=PREV_TRACK, 0xB2=STOP, 0xB3=PLAY_PAUSE.
+        // Value shape: JSON `{ "mode": "play_pause"|"next_track"|"prev_track"|"stop" }`.
+        // Legacy plain-string values also accepted for symmetry with Change Volume.
+        "Media Control" => {
+            let mode = if step_value.trim_start().starts_with('{') {
+                serde_json::from_str::<Value>(step_value)
+                    .ok()
+                    .and_then(|v| v.get("mode").and_then(|m| m.as_str()).map(String::from))
+                    .unwrap_or_else(|| "play_pause".to_string())
+            } else {
+                step_value.to_string()
+            };
+            let vk: u16 = match mode.as_str() {
+                "play_pause" => 0xB3,
+                "next_track" => 0xB0,
+                "prev_track" => 0xB1,
+                "stop"       => 0xB2,
+                other => {
+                    warn!("[Keyfire] Media Control: unknown mode '{}'", other);
+                    return true;
+                }
+            };
+            send_media_key(vk);
+        }
+
         // Change Audio Output — set the default render endpoint to the pinned
         // device via IPolicyConfig (see crate::audio_devices). Value is JSON
         // `{ deviceId: string, deviceName: string }` — deviceId is Windows'

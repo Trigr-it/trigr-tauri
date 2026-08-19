@@ -142,7 +142,7 @@ const MACRO_STEP_CATEGORIES = [
   { kind: 'group', label: 'Files',            items: ['Create Folder', 'Copy Files', 'Move Files', 'Sort Files'] },
   { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Wait for Pixel'] },
   { kind: 'group', label: 'Window',           items: ['Focus Window', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Minimise All', 'Restore All'] },
-  { kind: 'group', label: 'System',           items: ['Change Volume', 'Change Audio Output', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
+  { kind: 'group', label: 'System',           items: ['Change Volume', 'Media Control', 'Change Audio Output', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
   { kind: 'divider' },
   { kind: 'leaf',  label: 'Run AHK Script' },
 ];
@@ -232,6 +232,16 @@ const VOLUME_MODE_OPTIONS = [
   { value: 'increase', label: 'Increase' },
   { value: 'decrease', label: 'Decrease' },
   { value: 'mute',     label: 'Mute'     },
+];
+
+// Media Control step — transport keys via send_media_key on the Rust side.
+// Mirrors VOLUME_MODE_OPTIONS: the JSX form is a single mode dropdown; the
+// stored value shape is `{ mode: 'play_pause'|'next_track'|'prev_track'|'stop' }`.
+const MEDIA_MODE_OPTIONS = [
+  { value: 'play_pause', label: 'Play / Pause' },
+  { value: 'next_track', label: 'Next track'   },
+  { value: 'prev_track', label: 'Previous track' },
+  { value: 'stop',       label: 'Stop'         },
 ];
 
 const SCROLL_DIRECTION_OPTIONS = [
@@ -2712,6 +2722,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             let seed = '';
             if (t === 'Click Mouse')   seed = 'LButton';
             else if (t === 'Change Volume') seed = JSON.stringify({ mode: 'increase', amount: 5 });
+            else if (t === 'Media Control') seed = JSON.stringify({ mode: 'play_pause' });
             else if (t === 'Change Audio Output') seed = JSON.stringify({ deviceId: '', deviceName: '' });
             else if (t === 'Mouse Scroll')  seed = JSON.stringify({ direction: 'down', amount: 3 });
             else if (t === 'Minimise Window' || t === 'Maximise Window') seed = JSON.stringify({ process: '', title: '' });
@@ -2803,6 +2814,28 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
                 </>
               )}
             </>
+          );
+        })()}
+        {step.type === 'Media Control' && (() => {
+          // Value shape: `{ mode: "play_pause"|"next_track"|"prev_track"|"stop" }`.
+          // Rust arm dispatches to send_media_key with the matching VK (0xB0-0xB3).
+          let mc = { mode: 'play_pause' };
+          try {
+            if (step.value && step.value.trim().startsWith('{')) {
+              mc = { ...mc, ...JSON.parse(step.value) };
+            } else if (step.value) {
+              mc = { mode: step.value };
+            }
+          } catch (_) {}
+          return (
+            <select
+              className="form-select macro-step-value"
+              style={{ flex: '0 1 140px', minWidth: 100 }}
+              value={mc.mode}
+              onChange={e => updateStep({ ...step, value: JSON.stringify({ mode: e.target.value }) })}
+            >
+              {MEDIA_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           );
         })()}
         {step.type === 'Change Audio Output' && (() => {

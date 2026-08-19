@@ -1,0 +1,395 @@
+{
+  "_": "Starter pack seeded into the config on first install (config file absent + no backups). See config::build_starter_config. Every entry carries \"isStarter\": true so a future 'reset starter' or migration pass can identify seeded rows. Unassigned Library section is auto-expanded on first install via Sidebar.jsx's default-false state (no localStorage key yet). Pack C radial segments are INLINE GLOBAL::RADIAL:: assignments (independent copies of the same actions in Pack A) — the radial editor pane doesn't currently render the linked action from a Default::UNASSIGNED::-pointing segment, so inline keeps the editor UX working. Each Pack C segment carries a distinct lucide icon + colour so users can immediately see icons+colours are customisable. Expansion data.html fields carry the exact editor-DOM shape (rte-token spans + <br> line breaks) so RichTextEditor.innerHTML paint isn't blank; date/time tokens must use the whitelisted literal-string grammar in expansions.rs (e.g. `{date:D MMMM YYYY}`, `{time:HH:MM}` — NOT strftime like `{date:%H:%M}`).",
+  "starterPackVersion": 1,
+
+  "expansionCategories": [
+    { "name": "Starter", "colour": "#e8a020" }
+  ],
+
+  "searchTemplateCategories": [
+    { "name": "Starter", "colour": "#e8a020" }
+  ],
+
+  "quickActionCategories": [
+    { "name": "Starter", "colour": "#e8a020" }
+  ],
+
+  "searchTemplates": [
+    {
+      "id": "starter-search-google",
+      "label": "Google",
+      "trigger": "g",
+      "url_template": "https://www.google.com/search?q={query}",
+      "encode_query": true,
+      "source": "starter",
+      "category": "Starter",
+      "icon": null,
+      "description": "Search Google",
+      "isStarter": true
+    },
+    {
+      "id": "starter-search-youtube",
+      "label": "YouTube",
+      "trigger": "yt",
+      "url_template": "https://www.youtube.com/results?search_query={query}",
+      "encode_query": true,
+      "source": "starter",
+      "category": "Starter",
+      "icon": null,
+      "description": "Search YouTube",
+      "isStarter": true
+    }
+  ],
+
+  "assignments": {
+    "Default::UNASSIGNED::starter-snip": {
+      "type": "hotkey",
+      "label": "Snip tool",
+      "data": { "key": "S", "modifiers": ["shift", "win"] },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-show-desktop": {
+      "type": "hotkey",
+      "label": "Show desktop",
+      "data": { "key": "D", "modifiers": ["win"] },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-emoji-picker": {
+      "type": "hotkey",
+      "label": "Emoji picker",
+      "data": { "key": ".", "modifiers": ["win"] },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-reopen-tab": {
+      "type": "hotkey",
+      "label": "Reopen closed tab",
+      "data": { "key": "T", "modifiers": ["ctrl", "shift"] },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-screenshot": {
+      "type": "hotkey",
+      "label": "Screenshot to folder",
+      "data": { "key": "PrintScreen", "modifiers": ["win"] },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-lock-windows": {
+      "type": "hotkey",
+      "label": "Lock Windows",
+      "data": { "key": "L", "modifiers": ["win"] },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-new-tab": {
+      "type": "hotkey",
+      "label": "New browser tab",
+      "data": { "key": "T", "modifiers": ["ctrl"] },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-open-gmail": {
+      "type": "url",
+      "label": "Open Gmail",
+      "data": { "url": "https://mail.google.com" },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-open-calculator": {
+      "type": "app",
+      "label": "Open Calculator",
+      "data": { "path": "calc.exe", "args": "" },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-volume-up": {
+      "type": "macro",
+      "label": "Volume up",
+      "data": {
+        "steps": [
+          { "type": "Change Volume", "value": "{\"mode\":\"increase\",\"amount\":5}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-volume-down": {
+      "type": "macro",
+      "label": "Volume down",
+      "data": {
+        "steps": [
+          { "type": "Change Volume", "value": "{\"mode\":\"decrease\",\"amount\":5}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-mute-toggle": {
+      "type": "macro",
+      "label": "Mute toggle",
+      "data": {
+        "steps": [
+          { "type": "Change Volume", "value": "{\"mode\":\"mute\",\"amount\":0}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-media-play-pause": {
+      "type": "macro",
+      "label": "Play / Pause media",
+      "data": {
+        "steps": [
+          { "type": "Media Control", "value": "{\"mode\":\"play_pause\"}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-media-next": {
+      "type": "macro",
+      "label": "Next track",
+      "data": {
+        "steps": [
+          { "type": "Media Control", "value": "{\"mode\":\"next_track\"}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-media-prev": {
+      "type": "macro",
+      "label": "Previous track",
+      "data": {
+        "steps": [
+          { "type": "Media Control", "value": "{\"mode\":\"prev_track\"}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "Default::UNASSIGNED::starter-media-stop": {
+      "type": "macro",
+      "label": "Stop media",
+      "data": {
+        "steps": [
+          { "type": "Media Control", "value": "{\"mode\":\"stop\"}" }
+        ]
+      },
+      "isStarter": true
+    },
+
+    "GLOBAL::EXPANSION::/sig": {
+      "type": "expansion",
+      "label": "Expand: /sig",
+      "data": {
+        "html": "Kind regards,<br><span class=\"rte-token\" data-token=\"{fillIn:Your Name}\" contenteditable=\"false\">▭ Your Name</span>",
+        "text": "Kind regards,\n{fillIn:Your Name}",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Email signoff"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/td": {
+      "type": "expansion",
+      "label": "Expand: /td",
+      "data": {
+        "html": "<span class=\"rte-token\" data-token=\"{date:D MMMM YYYY}\" contenteditable=\"false\">D MMMM YYYY</span>",
+        "text": "{date:D MMMM YYYY}",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Today's date"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/now": {
+      "type": "expansion",
+      "label": "Expand: /now",
+      "data": {
+        "html": "<span class=\"rte-token\" data-token=\"{time:HH:MM}\" contenteditable=\"false\">HH:MM</span>",
+        "text": "{time:HH:MM}",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Current time"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/email": {
+      "type": "expansion",
+      "label": "Expand: /email",
+      "data": {
+        "html": "<span class=\"rte-token\" data-token=\"{fillIn:Your email address}\" contenteditable=\"false\">▭ Your email address</span>",
+        "text": "{fillIn:Your email address}",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Email address"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/phone": {
+      "type": "expansion",
+      "label": "Expand: /phone",
+      "data": {
+        "html": "<span class=\"rte-token\" data-token=\"{fillIn:Your phone number}\" contenteditable=\"false\">▭ Your phone number</span>",
+        "text": "{fillIn:Your phone number}",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Phone number"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/addr": {
+      "type": "expansion",
+      "label": "Expand: /addr",
+      "data": {
+        "html": "<span class=\"rte-token\" data-token=\"{fillIn:Street}\" contenteditable=\"false\">▭ Street</span><br><span class=\"rte-token\" data-token=\"{fillIn:City}\" contenteditable=\"false\">▭ City</span><br><span class=\"rte-token\" data-token=\"{fillIn:Postcode}\" contenteditable=\"false\">▭ Postcode</span>",
+        "text": "{fillIn:Street}\n{fillIn:City}\n{fillIn:Postcode}",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Address block"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/shrug": {
+      "type": "expansion",
+      "label": "Expand: /shrug",
+      "data": {
+        "html": "¯\\_(ツ)_/¯",
+        "text": "¯\\_(ツ)_/¯",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Shrug"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/tm": {
+      "type": "expansion",
+      "label": "Expand: /tm",
+      "data": {
+        "html": "™",
+        "text": "™",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Trademark"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/arrow": {
+      "type": "expansion",
+      "label": "Expand: /arrow",
+      "data": {
+        "html": "→",
+        "text": "→",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Right arrow"
+      },
+      "isStarter": true
+    },
+    "GLOBAL::EXPANSION::/copy": {
+      "type": "expansion",
+      "label": "Expand: /copy",
+      "data": {
+        "html": "©",
+        "text": "©",
+        "category": "Starter",
+        "triggerMode": "space",
+        "displayName": "Copyright"
+      },
+      "isStarter": true
+    },
+
+    "GLOBAL::QUICKACTION::starter-open-notepad": {
+      "type": "app",
+      "label": "Open Notepad",
+      "data": { "path": "notepad.exe", "args": "", "category": "Starter" },
+      "isStarter": true
+    },
+    "GLOBAL::QUICKACTION::starter-open-downloads": {
+      "type": "folder",
+      "label": "Open Downloads",
+      "data": { "path": "shell:Downloads", "category": "Starter" },
+      "isStarter": true
+    },
+
+    "GLOBAL::RADIAL::starter-c-snip": {
+      "type": "hotkey",
+      "label": "Snip tool",
+      "data": { "key": "S", "modifiers": ["shift", "win"] },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-lock": {
+      "type": "hotkey",
+      "label": "Lock Windows",
+      "data": { "key": "L", "modifiers": ["win"] },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-show-desktop": {
+      "type": "hotkey",
+      "label": "Show desktop",
+      "data": { "key": "D", "modifiers": ["win"] },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-emoji": {
+      "type": "hotkey",
+      "label": "Emoji picker",
+      "data": { "key": ".", "modifiers": ["win"] },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-new-tab": {
+      "type": "hotkey",
+      "label": "New tab",
+      "data": { "key": "T", "modifiers": ["ctrl"] },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-reopen-tab": {
+      "type": "hotkey",
+      "label": "Reopen closed tab",
+      "data": { "key": "T", "modifiers": ["ctrl", "shift"] },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-vol-up": {
+      "type": "macro",
+      "label": "Volume up",
+      "data": {
+        "steps": [
+          { "type": "Change Volume", "value": "{\"mode\":\"increase\",\"amount\":5}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-vol-down": {
+      "type": "macro",
+      "label": "Volume down",
+      "data": {
+        "steps": [
+          { "type": "Change Volume", "value": "{\"mode\":\"decrease\",\"amount\":5}" }
+        ]
+      },
+      "isStarter": true
+    },
+    "GLOBAL::RADIAL::starter-c-mute": {
+      "type": "macro",
+      "label": "Mute toggle",
+      "data": {
+        "steps": [
+          { "type": "Change Volume", "value": "{\"mode\":\"mute\",\"amount\":0}" }
+        ]
+      },
+      "isStarter": true
+    }
+  },
+
+  "radialMenuItemsByProfile": {
+    "Default": [
+      { "id": "starter-seg-snip",       "label": "Snip tool",         "storageKey": "GLOBAL::RADIAL::starter-c-snip",         "icon": "lucide:Scissors",  "iconColor": "#ff783c" },
+      { "id": "starter-seg-lock",       "label": "Lock Windows",      "storageKey": "GLOBAL::RADIAL::starter-c-lock",         "icon": "lucide:Lock",      "iconColor": "#ffc832" },
+      { "id": "starter-seg-desktop",    "label": "Show desktop",      "storageKey": "GLOBAL::RADIAL::starter-c-show-desktop", "icon": "lucide:Monitor",   "iconColor": "#50c878" },
+      { "id": "starter-seg-emoji",      "label": "Emoji picker",      "storageKey": "GLOBAL::RADIAL::starter-c-emoji",        "icon": "lucide:Smile",     "iconColor": "#40c8a0" },
+      null,
+      { "id": "starter-seg-new-tab",    "label": "New tab",           "storageKey": "GLOBAL::RADIAL::starter-c-new-tab",      "icon": "lucide:Plus",      "iconColor": "#64b4ff" },
+      { "id": "starter-seg-reopen-tab", "label": "Reopen closed tab", "storageKey": "GLOBAL::RADIAL::starter-c-reopen-tab",   "icon": "lucide:Undo2",     "iconColor": "#a070ff" },
+      {
+        "id": "starter-seg-volume",
+        "type": "folder",
+        "label": "Volume",
+        "icon": "lucide:Volume2",
+        "iconColor": "#c864ff",
+        "children": [
+          { "id": "starter-child-vol-up",   "label": "Volume up",   "storageKey": "GLOBAL::RADIAL::starter-c-vol-up",   "icon": "lucide:Volume2",  "iconColor": "#c864ff" },
+          { "id": "starter-child-vol-down", "label": "Volume down", "storageKey": "GLOBAL::RADIAL::starter-c-vol-down", "icon": "lucide:Volume1",  "iconColor": "#ff5c5c" },
+          { "id": "starter-child-mute",     "label": "Mute toggle", "storageKey": "GLOBAL::RADIAL::starter-c-mute",     "icon": "lucide:VolumeX",  "iconColor": "#ff8fa3" }
+        ]
+      }
+    ]
+  }
+}

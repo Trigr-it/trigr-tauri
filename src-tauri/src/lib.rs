@@ -119,13 +119,12 @@ fn load_config() -> Value {
             c
         }
         None => {
-            // Total config failure — write factory defaults so the file always exists
-            log::warn!("[Keyfire] All config sources failed — writing factory defaults");
-            let defaults = serde_json::json!({
-                "profiles": ["Default"],
-                "assignments": {},
-                "activeProfile": "Default",
-            });
+            // No config on disk and no backups — a brand-new install (or an
+            // install whose config + every backup source vanished). Seed with
+            // the starter pack so the sidebar, expansions and radial come
+            // pre-populated. See config::build_starter_config.
+            log::info!("[Keyfire] No config sources found — seeding starter pack");
+            let defaults = config::build_starter_config();
             config::save_config(&defaults);
             config::update_last_known_good(&defaults);
             config::snapshot_loaded(&defaults);
