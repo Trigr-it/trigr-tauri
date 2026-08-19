@@ -4,7 +4,11 @@ import { listen } from '@tauri-apps/api/event';
 import { Globe } from 'lucide-react';
 import './OnboardingTour.css';
 
-const TOTAL_STEPS = 13;
+// Displayed step count. The internal state machine uses `step` 1..13 with
+// substeps a/b/c on step 2, but each of Step 2's substeps is its own tooltip
+// so we display them as three consecutive steps. `displayStep` (computed
+// below inside the component) maps internal (step, subStep) → 1..15.
+const TOTAL_STEPS = 15;
 
 // Parse an assignment storage key ("Default::Ctrl::E", "Default::BARE::F1",
 // "AppName::Modifier::KEYCODE", optional "::double" suffix) into a friendly
@@ -35,18 +39,25 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
   const [userHotkey, setUserHotkey] = useState('');
   const tooltipRef = useRef(null);
   const observerRef = useRef(null);
+  const windowResizeRef = useRef(null);
   // Set of assignment keys present when Step 2 was entered. Used both to gate
   // the Step 2 → 3 transition (a new key must appear) and to identify which
   // key the user assigned so we can show it back at Step 3.
   const assignmentKeysAtStep2 = useRef(null);
 
   // Pre-tour gate: if the user already has hotkeys on the keyboard/mouse canvas
-  // (any non-GLOBAL:: assignment), show a brief "Welcome back" modal before
-  // Step 1. Warns them to pick an empty key during Step 2 so the tour can
-  // complete cleanly. Lazy-initialised so it captures the state at tour
-  // start and doesn't re-trigger when assignments change mid-tour.
+  // (any non-GLOBAL:: BOUND assignment), show a brief "Welcome back" modal
+  // before Step 1. Warns them to pick an empty key during Step 2 so the tour
+  // can complete cleanly. Excludes ::UNASSIGNED:: library entries — those
+  // aren't bound to any key, they're just sidebar library items. The starter
+  // pack seeds 16 UNASSIGNED entries on first install; without this exclusion
+  // every brand-new user would incorrectly hit the "you already have hotkeys"
+  // branch. Lazy-initialised so it captures the state at tour start and
+  // doesn't re-trigger when assignments change mid-tour.
   const [showWelcomeBack, setShowWelcomeBack] = useState(() =>
-    Object.keys(assignments).some(k => !k.startsWith('GLOBAL::'))
+    Object.keys(assignments).some(k =>
+      !k.startsWith('GLOBAL::') && !k.includes('::UNASSIGNED::')
+    )
   );
 
   // ── Lock window resize on mount, unlock on unmount ───────────
@@ -105,16 +116,63 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
       ro.observe(el);
       ro.observe(document.documentElement);
       observerRef.current = ro;
+
+      // Belt-and-braces: ResizeObserver on documentElement can miss
+      // WebView2 maximize / restore / DPI shifts. A plain resize listener
+      // catches those. Also stash the update fn + el on a ref so the effect
+      // cleanup can remove the listener without disconnecting the observer.
+      if (windowResizeRef.current) window.removeEventListener('resize', windowResizeRef.current);
+      windowResizeRef.current = update;
+      window.addEventListener('resize', update);
     };
     tryMeasure();
   }, []);
 
-  // Clean up observer on unmount
+  // Clean up observer + resize listener on unmount
   useEffect(() => {
     return () => {
       if (observerRef.current) observerRef.current.disconnect();
+      if (windowResizeRef.current) {
+        window.removeEventListener('resize', windowResizeRef.current);
+        windowResizeRef.current = null;
+      }
     };
   }, []);
+
+  // ── Guard against off-target clicks ─────────────────────────
+  // Steps with a highlighted target rect (2, 5-7, 9-11 etc.) use the SVG
+  // backdrop, which is visually darkened but pointer-events: none — so
+  // clicks pass through everywhere, including the tab bar and sidebar
+  // outside the highlighted rect. That lets a curious user click Analytics
+  // or Text Expansions mid-tour and land in a UI area where Step 2's target
+  // no longer exists. Modal-only steps (1, 3, 4, 8, 12, 13) are already
+  // safe — their .onboarding-backdrop has pointer-events: auto.
+  //
+  // Capture-phase click / mousedown handler: allow interaction with the
+  // target rect (and secondary rect), and with the tooltip itself. Anything
+  // else gets stopPropagation + preventDefault at capture, which prevents
+  // the click reaching any downstream handler.
+  useEffect(() => {
+    if (!targetRect) return; // modal-only step — .onboarding-backdrop handles blocking
+    const isInside = (rect, x, y) => {
+      if (!rect) return false;
+      return x >= rect.left && x <= rect.left + rect.width
+          && y >= rect.top && y <= rect.top + rect.height;
+    };
+    const guard = (e) => {
+      if (tooltipRef.current?.contains(e.target)) return;
+      if (isInside(targetRect, e.clientX, e.clientY)) return;
+      if (isInside(secondaryRect, e.clientX, e.clientY)) return;
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    document.addEventListener('mousedown', guard, true);
+    document.addEventListener('click', guard, true);
+    return () => {
+      document.removeEventListener('mousedown', guard, true);
+      document.removeEventListener('click', guard, true);
+    };
+  }, [targetRect, secondaryRect]);
 
   // ── Step-specific target selectors ──────────────────────────
   useEffect(() => {
@@ -417,10 +475,20 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     <span className="onboarding-skip" onClick={skip}>Skip tour</span>
   );
 
+  // Internal state → displayed step number. Step 2's three substeps (a/b/c)
+  // each surface as their own displayed step (2, 3, 4). Every step after
+  // Step 2 in the internal numbering shifts by 2 for display purposes.
+  const displayStep = step === 2
+    ? (subStep === 'a' ? 2 : subStep === 'b' ? 3 : 4)
+    : step > 2 ? step + 2 : step;
+  const stepLabelJSX = (
+    <div className="onboarding-step-label">Step {displayStep} of {TOTAL_STEPS}</div>
+  );
+
   const stepDots = (
     <div className="onboarding-dots">
       {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-        <span key={i} className={`onboarding-dot${i + 1 === step ? ' active' : ''}${i + 1 < step ? ' done' : ''}`} />
+        <span key={i} className={`onboarding-dot${i + 1 === displayStep ? ' active' : ''}${i + 1 < displayStep ? ' done' : ''}`} />
       ))}
     </div>
   );
@@ -474,6 +542,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
           </span>
           <div className="onboarding-brand">Keyfire</div>
           <p className="onboarding-welcome-text">Welcome to Keyfire — let's take a quick tour of what you can do.</p>
+          <p className="onboarding-welcome-text">We've pre-loaded a few starter actions, snippets and a radial menu (try Ctrl+Shift+Space) so you have things to explore straight away. Keep, edit or delete them any time.</p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={() => setStep(2)}>
             Let's go
@@ -492,7 +561,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
           {renderOverlay()}
           {dragRegion}
           <div className="onboarding-tooltip" style={getTooltipStyle()} ref={tooltipRef}>
-            <div className="onboarding-step-label">Step 2 of {TOTAL_STEPS}</div>
+            {stepLabelJSX}
             <p className="onboarding-tooltip-text">
               First, select a <strong>modifier key layer</strong> — click one of the buttons highlighted above (Ctrl, Alt, Shift or Win).
             </p>
@@ -512,7 +581,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
           {renderOverlay()}
           {dragRegion}
           <div className="onboarding-tooltip" style={getTooltipStyle()} ref={tooltipRef}>
-            <div className="onboarding-step-label">Step 2 of {TOTAL_STEPS}</div>
+            {stepLabelJSX}
             <p className="onboarding-tooltip-text">
               Now click any key on the keyboard to assign an action to it.
             </p>
@@ -531,14 +600,14 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {renderOverlay()}
         {dragRegion}
         <div className="onboarding-tooltip" style={getTooltipStyle()} ref={tooltipRef}>
-          <div className="onboarding-step-label">Step 2 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
-            Choose the{' '}
+            Click the{' '}
             <span className="onboarding-action-badge">
               <Globe size={14} strokeWidth={2} style={{ color: '#ffc832' }} />
-              <strong>Open URL</strong>
+              <strong>Open</strong>
             </span>
-            {' '}action, enter <strong>www.google.com</strong>, name it <strong>Open Google</strong>, then click <strong>Assign to Key</strong>.
+            {' '}action type, then choose <strong>URL</strong> from the row of options that appears underneath. Enter <strong>www.google.com</strong>, name it <strong>Open Google</strong>, then click <strong>Assign to Key</strong>.
           </p>
           {stepDots}
           {skipLink}
@@ -557,7 +626,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-modal onboarding-modal--wide">
           {!actionFired ? (
             <>
-              <div className="onboarding-step-label">Step 3 of {TOTAL_STEPS}</div>
+              {stepLabelJSX}
               <p className="onboarding-tooltip-text">
                 Try your new hotkey now.
               </p>
@@ -622,7 +691,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 4 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
             Hotkeys can do a lot more than type text. Each key can trigger:
           </p>
@@ -630,9 +699,13 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <div className="onboarding-feature-item"><strong>Send Hotkey</strong> — simulate key combos (with hold and repeat modes)</div>
             <div className="onboarding-feature-item"><strong>Open App / URL / Folder</strong> — launch anything instantly</div>
             <div className="onboarding-feature-item"><strong>Macro Sequence</strong> — chain multiple steps (Press Key, Click Mouse, Wait, and more)</div>
+            <div className="onboarding-feature-item"><strong>Record Macro</strong> — record your keys and mouse once, replay them with one trigger</div>
             <div className="onboarding-feature-item"><strong>Run AHK Script</strong> — execute AutoHotkey scripts</div>
             <div className="onboarding-feature-item">
               <strong>Double-tap a key</strong> <span className="onboarding-pro-badge onboarding-pro-badge--inline">Pro</span> — tap once for one action, twice quickly for a second
+            </div>
+            <div className="onboarding-feature-item">
+              <strong>Hold a key</strong> <span className="onboarding-pro-badge onboarding-pro-badge--inline">Pro</span> — press briefly for one action, hold for another
             </div>
           </div>
           <p className="onboarding-hint">
@@ -653,9 +726,9 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {renderOverlay()}
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 5 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
-            <strong>Profiles</strong> group hotkeys, expansions and quick actions together. Switch profiles to load a different set instantly.
+            <strong>Profiles</strong> group your keyboard and mouse hotkeys into named sets. Switch profiles to load a different set of key bindings instantly. Text expansions, quick actions and clipboard history stay shared across every profile.
           </p>
           <p className="onboarding-hint">
             Build one for everyday use, another for coding, another for design — keep your most-used shortcuts at your fingertips.
@@ -681,7 +754,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {renderOverlay()}
         {dragRegion}
         <div className="onboarding-modal onboarding-modal--right">
-          <div className="onboarding-step-label">Step 6 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
             The <strong>Radial Menu</strong> is a wheel of actions that pops up wherever your mouse is when you trigger it. Hover a wedge, release, and the action fires.
           </p>
@@ -706,9 +779,9 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {renderOverlay()}
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 7 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
-            <strong>Text Expansions</strong> replace short triggers with full text — no hotkey needed. Type <strong>;sig</strong> + Space anywhere and your email signature appears.
+            <strong>Text Expansions</strong> replace short triggers with full text — no hotkey needed. Type <strong>/sig</strong> + Space anywhere and your email signature appears (one of the starter snippets we've pre-loaded — try it).
           </p>
           <p className="onboarding-hint">
             Organise with colour-coded categories. Use dynamic fields like dates, clipboard contents, cursor position, and fill-in prompts. Paste images too.
@@ -731,7 +804,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 8 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           {!searchFired ? (
             <>
               <p className="onboarding-tooltip-text">
@@ -774,7 +847,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {renderOverlay()}
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 9 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
             <strong>Quick Actions</strong> let you launch apps, open folders, URLs, or run macros — accessible instantly from Quick Search without assigning a hotkey.
           </p>
@@ -796,7 +869,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {renderOverlay()}
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 10 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
             <strong>Search Templates</strong> let you search any website from Quick Search. Type a trigger + Space, then your query.
           </p>
@@ -818,7 +891,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         {renderOverlay()}
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 11 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
             <strong>Clipboard Manager</strong> saves everything you copy — text and images. Browse, search, pin favourites, and re-paste from any app.
           </p>
@@ -845,7 +918,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal">
-          <div className="onboarding-step-label">Step 12 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
             <strong>Closing Keyfire hides it — it doesn't quit it.</strong>
           </p>
@@ -871,7 +944,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-backdrop" />
         {dragRegion}
         <div className="onboarding-modal onboarding-modal--wide">
-          <div className="onboarding-step-label">Step 13 of {TOTAL_STEPS}</div>
+          {stepLabelJSX}
           <p className="onboarding-tooltip-text">
             You're all set. Here are the global shortcuts you'll use most:
           </p>
@@ -880,6 +953,14 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <span className="onboarding-kbd-plus">+</span>
             <kbd className="onboarding-kbd">Space</kbd>
             <span className="onboarding-shortcut-label">Quick Search — find and fire anything</span>
+          </div>
+          <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
+            <kbd className="onboarding-kbd">Ctrl</kbd>
+            <span className="onboarding-kbd-plus">+</span>
+            <kbd className="onboarding-kbd">Shift</kbd>
+            <span className="onboarding-kbd-plus">+</span>
+            <kbd className="onboarding-kbd">Space</kbd>
+            <span className="onboarding-shortcut-label">Radial Menu — 8-wedge wheel at your cursor</span>
           </div>
           <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
             <kbd className="onboarding-kbd">Ctrl</kbd>
@@ -898,7 +979,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <span className="onboarding-shortcut-label">Global Pause — toggle Keyfire on/off</span>
           </div>
           <p className="onboarding-hint">
-            All three shortcuts are <strong>customisable in Settings</strong>. Check <strong>Analytics</strong> for time saved.
+            All four shortcuts are <strong>customisable in Settings</strong>. Check <strong>Analytics</strong> for time saved.
           </p>
           <p className="onboarding-hint">
             During the beta, Keyfire sends one anonymous daily count (just totals: no content, no identifiers) to help us improve. Toggle off any time in <strong>Settings → Privacy &amp; Security</strong>.

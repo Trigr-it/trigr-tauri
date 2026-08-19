@@ -72,8 +72,18 @@ export default function SettingsWindow() {
 
   // Proxy factory: act('setPauseKey') returns a handler that ships its args
   // to App.jsx's dispatch table.
+  //
+  // Args are filtered before emit — React SyntheticEvents (from raw
+  // onClick={onFoo} handlers) carry DOM refs + nativeEvent that structured
+  // cloning inside Tauri's cross-window emit cannot serialise. Without this
+  // guard the whole emit throws asynchronously and the action silently
+  // vanishes. Symptoms in the wild: Restart Onboarding, Replay Welcome,
+  // Reset Hidden Tips, Export / Import Config all no-op'd after the
+  // dedicated Settings window shipped (v0.7.4). Filter identifies
+  // SyntheticEvents by their .nativeEvent property.
   const act = useCallback((action) => (...args) => {
-    emit('settings-action', { action, args });
+    const clean = args.filter(a => !(a && typeof a === 'object' && a.nativeEvent));
+    emit('settings-action', { action, args: clean });
   }, []);
 
   const close = useCallback(() => {

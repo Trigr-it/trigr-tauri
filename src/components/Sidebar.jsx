@@ -1382,12 +1382,14 @@ export default function Sidebar({
               <span className="type-dot" style={{ background: meta.color }} />
               {typeName}
             </span>
-            <button
-              className="sidebar-unassigned-bind"
-              type="button"
-              onClick={e => { e.stopPropagation(); onBindFromContext?.(id); }}
-              title="Bind this action to a key"
-            >Bind</button>
+            {!isRadialMode && (
+              <button
+                className="sidebar-unassigned-bind"
+                type="button"
+                onClick={e => { e.stopPropagation(); onBindFromContext?.(id); }}
+                title="Bind this action to a key"
+              >Bind</button>
+            )}
           </div>
         </div>
       );
@@ -1432,19 +1434,22 @@ export default function Sidebar({
             {typeName}
           </div>
         </div>
-        <button
-          className="sidebar-unassigned-bind"
-          type="button"
-          onClick={e => { e.stopPropagation(); onBindFromContext?.(id); }}
-          title="Bind this action to a key"
-        >Bind</button>
+        {!isRadialMode && (
+          <button
+            className="sidebar-unassigned-bind"
+            type="button"
+            onClick={e => { e.stopPropagation(); onBindFromContext?.(id); }}
+            title="Bind this action to a key"
+          >Bind</button>
+        )}
       </div>
     );
 
-    // Unassigned rows drag onto canvas keys to bind (classic keyboard/mouse
-    // views — the section is hidden in radial mode). Disabled in grid/list
-    // view: no canvas is mounted there, so a drag has zero drop targets and
-    // would always end as a silent no-op.
+    // Unassigned rows drag onto canvas keys (keyboard/mouse views) OR onto
+    // radial segments (radial view). Kind switches based on the active view
+    // so App.jsx's handleRadialDragEnd (accepts 'library-card') vs
+    // handleCanvasDragOver (accepts 'bind-action') both route correctly.
+    // Disabled in grid/list view: no canvas or wheel is mounted there.
     return (
       <DraggableCardWrap
         key={id}
@@ -1452,7 +1457,7 @@ export default function Sidebar({
         storageKey={`${activeProfile}::UNASSIGNED::${id}`}
         isUsed={false}
         enabled={!isRenaming('UNASSIGNED', id) && !isRecording && !listViewActive}
-        kind="bind-action"
+        kind={isRadialMode ? "library-card" : "bind-action"}
         data={{ source: 'unassigned', id, label: displayLabel }}
       >
         {rowEl}
@@ -1461,7 +1466,6 @@ export default function Sidebar({
   }
 
   function renderUnassignedSection() {
-    if (isRadialMode) return null;
     const q = assignFilter.trim().toLowerCase();
     const visible = !q ? unassignedEntries : unassignedEntries.filter(({ macro }) => {
       const label = (macro?.label || macro?.data?.text || macro?.data?.url || macro?.data?.path || '').toLowerCase();
