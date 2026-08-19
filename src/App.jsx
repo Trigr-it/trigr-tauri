@@ -4020,12 +4020,21 @@ function App() {
       if (macro.type === 'app' && (macro.data?.iconSource || macro.data?.path || macro.data?.appId) && existingItem?.id) {
         fetchAndSetAppIcon(existingItem.id, existingKey, macro);
       }
+    } else if (existingItem && existingKey) {
+      // Segment is bound to a library/sidebar action — the wheel label is a
+      // per-segment display override, the library action stays canonical.
+      // Only update item.label; do NOT create a radial-only copy of the
+      // action, and do NOT rename the underlying library entry.
+      const nextLabel = (macro.label || '').trim();
+      if (nextLabel) {
+        setRadialMenuItems(prev => prev.map((item, i) => (item && i === idx) ? { ...item, label: nextLabel } : item));
+      }
     } else {
-      // New segment or segment with a sidebar key — create a GLOBAL::RADIAL:: assignment
+      // Truly empty slot — create a new GLOBAL::RADIAL:: assignment
       handleCreateRadialAction(macro.type, macro.data, macro.label || '', idx);
     }
     showNotification('Radial segment updated');
-  }, [selectedRadialSegment, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleCreateRadialAction, showNotification]);
+  }, [selectedRadialSegment, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleCreateRadialAction, showNotification, setRadialMenuItems, fetchAndSetAppIcon]);
 
   // Clear radial segment (from MacroPanel clear)
   const handleRadialClear = useCallback((_keyId) => {
@@ -4083,8 +4092,20 @@ function App() {
           } catch (e) {}
         })();
       }
+    } else if (existingChild && existingKey) {
+      // Child is bound to a library/sidebar action — the wheel label is a
+      // per-child display override, the library action stays canonical.
+      // Only update child.label; do NOT create a radial-only copy of the
+      // action, and do NOT rename the underlying library entry.
+      const nextLabel = (macro.label || '').trim();
+      if (nextLabel) {
+        setRadialMenuItems(prev => prev.map(item => {
+          if (!item || item.id !== folderId || item.type !== 'folder') return item;
+          return { ...item, children: item.children.map((c, ci) => ci === childIndex ? { ...c, label: nextLabel } : c) };
+        }));
+      }
     } else {
-      // New child — create GLOBAL::RADIAL:: assignment and add to folder
+      // Truly empty child slot — create GLOBAL::RADIAL:: assignment and add to folder
       const id = crypto.randomUUID();
       const storageKey = `GLOBAL::RADIAL::${id}`;
       const newAssignments = { ...assignments, [storageKey]: macro };
@@ -4093,7 +4114,7 @@ function App() {
       handleAddChildToFolder(folderId, storageKey, macro.label || '');
     }
     showNotification('Folder child updated');
-  }, [selectedRadialChild, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleAddChildToFolder, showNotification]);
+  }, [selectedRadialChild, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleAddChildToFolder, showNotification, setRadialMenuItems]);
 
   // Clear a folder child (from MacroPanel clear)
   const handleRadialChildClear = useCallback((_keyId) => {
@@ -4263,29 +4284,37 @@ function App() {
       return { ring: 'inner', index: Math.floor(slotAngle / step) };
     }
 
-    // Outer ring — only when a folder is expanded
+    // Outer ring — only when a folder is expanded. Geometry MUST match
+    // RadialWheel.jsx outerWedges exactly (drawing centres the assigned run
+    // on the parent bisector at its own wedge width, then appends the "+"
+    // empty slot at the same wedge width — NOT one big equal-slice arc).
     if (dist >= OUTER_INNER && dist <= OUTER_OUTER && expandedRadialFolder) {
       const folderIdx = radialMenuItems.findIndex(i => i?.id === expandedRadialFolder);
       if (folderIdx < 0) return null;
       const folder = radialMenuItems[folderIdx];
       if (folder?.type !== 'folder' || !folder.children) return null;
 
-      // Mirror exact RadialWheel.jsx outerWedges geometry
+      const childCount = folder.children.length;
       const slotStep = 360 / MAX_SLOTS;
       const parentStart = slotStep * folderIdx - 90 - slotStep / 2;
-      const parentEnd = parentStart + slotStep;
-      const parentBisector = (parentStart + parentEnd) / 2;
-      const childCount = folder.children.length;
-      const totalChildren = Math.max(childCount + 1, 1);
-      const minArcPerChild = 22;
-      const desiredArc = Math.max(slotStep, totalChildren * minArcPerChild);
-      const childArc = Math.min(desiredArc, 180);
-      const arcStart = parentBisector - childArc / 2;
+      const parentBisector = parentStart + slotStep / 2;
+      const parentArc = slotStep;
 
-      const relAngle = ((atan2Deg - arcStart) % 360 + 360) % 360;
-      if (relAngle < childArc) {
-        const childIdx = Math.floor(relAngle / (childArc / totalChildren));
-        if (childIdx >= 0 && childIdx < totalChildren) {
+      const minArcPerChild = 22;
+      const hasEmpty = childCount < 8;
+      const assignedCount = Math.max(childCount, 1);
+      const desiredArc = Math.max(parentArc, assignedCount * minArcPerChild);
+      const assignedArc = Math.min(desiredArc, 160);
+      const childWedgeAngle = assignedArc / assignedCount;
+      const assignedStart = parentBisector - assignedArc / 2;
+
+      const assignedFilledArc = childCount * childWedgeAngle;
+      const totalArc = assignedFilledArc + (hasEmpty ? childWedgeAngle : 0);
+      const relAngle = ((atan2Deg - assignedStart) % 360 + 360) % 360;
+      if (relAngle < totalArc) {
+        const childIdx = Math.floor(relAngle / childWedgeAngle);
+        const maxIdx = hasEmpty ? childCount : childCount - 1;
+        if (childIdx >= 0 && childIdx <= maxIdx) {
           return { ring: 'outer', index: childIdx, folderId: expandedRadialFolder };
         }
       }
@@ -5590,7 +5619,12 @@ function App() {
               const folder = radialMenuItems.find(i => i && i.id === selectedRadialChild.folderId);
               const child = folder?.children?.[selectedRadialChild.childIndex];
               if (!child?.storageKey) return null;
-              return assignments[child.storageKey] || null;
+              const base = assignments[child.storageKey];
+              if (!base) return null;
+              // Wheel label is a per-child display override. Merge it in so
+              // reopening the panel shows what's on the wheel, not the
+              // library action's canonical name.
+              return child.label ? { ...base, label: child.label } : base;
             })()}
             doubleAssignment={null}
             assignments={assignments}
@@ -5621,7 +5655,12 @@ function App() {
             assignment={(() => {
               const item = selectedRadialSegment < radialMenuItems.length ? radialMenuItems[selectedRadialSegment] : null;
               if (!item?.storageKey) return null;
-              return assignments[item.storageKey] || null;
+              const base = assignments[item.storageKey];
+              if (!base) return null;
+              // Wheel label is a per-segment display override. Merge it in so
+              // reopening the panel shows what's on the wheel, not the
+              // library action's canonical name.
+              return item.label ? { ...base, label: item.label } : base;
             })()}
             doubleAssignment={null}
             assignments={assignments}

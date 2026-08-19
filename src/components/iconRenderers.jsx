@@ -10,18 +10,28 @@ import * as AllLucide from 'lucide-react';
 import * as SimpleIcons from 'simple-icons';
 
 // ── Build deduplicated Lucide icon map ────────────────────────────────────
-// Lucide exports aliases (e.g. Cog ↔ Settings) — same component, different
-// name.  We keep only one name per unique component reference.
+// Lucide exports every icon three times: plain (`Scissors`), Lucide-prefixed
+// (`LucideScissors`), and Icon-suffixed (`ScissorsIcon`). Iteration order in
+// Object.entries is alphabetical, so a naive first-wins dedup keeps whichever
+// alias sorts first — `Lock` wins because Lo < LockIcon < LucideLock, but
+// `Monitor` LOSES to `LucideMonitor` because Lu < Mo. Prefer the SHORTEST
+// name per component, which always resolves to the plain canonical name
+// across all three variants. The runtime fallback in renderLucideIcon
+// tolerates any of the three names for backwards compat with configs that
+// stored a Lucide-prefixed variant before this fix landed.
 export const ICON_MAP = {};
 export const ALL_ICON_NAMES = [];
-const _seen = new Set();
+const _byComponent = new Map();
 for (const [name, component] of Object.entries(AllLucide)) {
-  if (typeof component === 'object' && component.$$typeof && /^[A-Z]/.test(name)) {
-    if (_seen.has(component)) continue; // skip alias
-    _seen.add(component);
-    ICON_MAP[name] = component;
-    ALL_ICON_NAMES.push(name);
+  if (typeof component !== 'object' || !component.$$typeof || !/^[A-Z]/.test(name)) continue;
+  const existing = _byComponent.get(component);
+  if (!existing || name.length < existing.length) {
+    _byComponent.set(component, name);
   }
+}
+for (const [component, name] of _byComponent.entries()) {
+  ICON_MAP[name] = component;
+  ALL_ICON_NAMES.push(name);
 }
 ALL_ICON_NAMES.sort();
 
@@ -39,7 +49,13 @@ BRAND_ICONS.sort((a, b) => a.name.localeCompare(b.name));
 // ── Rendering helpers ─────────────────────────────────────────────────────
 
 export function renderLucideIcon(name, size = 16, color = 'currentColor', duotone = false) {
-  const Icon = ICON_MAP[name];
+  // Backwards-compat fallback: pre-fix configs may have stored the Lucide-
+  // prefixed or Icon-suffixed alias (e.g. `lucide:LucideMonitor`) because the
+  // old dedup kept whichever variant sorted first. New configs store the plain
+  // name. Accept both so no user's picked icon disappears after the dedup fix.
+  let Icon = ICON_MAP[name];
+  if (!Icon && name.startsWith('Lucide')) Icon = ICON_MAP[name.slice(6)];
+  if (!Icon && name.endsWith('Icon')) Icon = ICON_MAP[name.slice(0, -4)];
   if (!Icon) return null;
   const strokeWidth = size >= 20 ? 2.2 : 2;
   if (duotone) {

@@ -549,9 +549,17 @@ pub fn buffer_push(ch: char) {
 }
 
 /// Remove the last character (Backspace).
+///
+/// Clears the pending sentence-start flag too. A terminator (`.` `!` `?`
+/// Enter) that armed the flag may have just been backspaced away, or the
+/// user may be editing back into a previous word — either way the engine
+/// can't see across the caret, so the safe default is to disarm. The
+/// one-shot autocorrect undo intercepts Backspace before this runs, so a
+/// single-BS "revert that" gesture is unaffected.
 pub fn buffer_pop() {
     let mut s = state().lock().unwrap();
     s.buffer.pop();
+    s.sentence_start_pending = false;
     refresh_pending_flag(&s);
 }
 
@@ -1186,6 +1194,28 @@ fn fire_autocorrect(original: &str, replacement: &str, term: AcTerminator, caps_
     });
 }
 
+/// Common English abbreviations that end in `.` mid-sentence. Kept sorted for
+/// `binary_search`. Case-insensitive whole-word match against the buffer at
+/// the moment a `.` terminator arrives — a hit means the `.` doesn't arm
+/// sentence-caps for the next word.
+///
+/// Titles (`Mr.`, `Mrs.`, `Ms.`, `Dr.`, `Prof.`, `Rev.`, `Hon.`, `Jr.`, `Sr.`,
+/// `St.` as in Saint) are DELIBERATELY EXCLUDED — they precede a proper noun
+/// name that the user expects capitalised. Same for `am`/`pm` where an
+/// end-of-sentence period is common.
+const SENTENCE_END_ABBREVIATIONS: &[&str] = &[
+    "ave", "blvd", "cf", "co", "corp", "eg", "etc", "fig",
+    "gmbh", "ie", "inc", "llc", "ltd", "no", "plc", "rd",
+    "viz", "vol", "vs",
+];
+
+fn is_sentence_end_abbreviation(word: &str) -> bool {
+    let lower = word.to_lowercase();
+    SENTENCE_END_ABBREVIATIONS
+        .binary_search(&lower.as_str())
+        .is_ok()
+}
+
 /// Terminator check for a resolved typed character, called by the processor
 /// BEFORE the char is pushed into the buffer. Returns true when a correction
 /// fired (caller must NOT push the char — the batch already emitted it).
@@ -1211,9 +1241,10 @@ pub fn check_char_terminator(ch: char) -> bool {
     // Sentence-caps context: only a CLEAN word (letters/apostrophes) consumes
     // the pending flag — punctuation-carrying buffers ("end.", "wait..") are
     // tails of the word that set it. '!' and '?' always mark a sentence end;
-    // '.' only after a clean word of 2+ letters (cuts most "e.g." / initials
-    // false positives). Ellipsis dots on a non-clean buffer leave a pending
-    // flag standing rather than killing it.
+    // '.' only after a clean word of 2+ letters that isn't in the common
+    // abbreviation blocklist ("etc.", "Mr.", "Dr." etc. don't end sentences).
+    // Ellipsis dots on a non-clean buffer leave a pending flag standing
+    // rather than killing it.
     let sentence_start = if original.is_empty() {
         false
     } else {
@@ -1225,7 +1256,11 @@ pub fn check_char_terminator(ch: char) -> bool {
         } else {
             false
         };
-        if matches!(ch, '!' | '?') || (ch == '.' && clean && original.chars().count() >= 2) {
+        let period_ends_sentence = ch == '.'
+            && clean
+            && original.chars().count() >= 2
+            && !is_sentence_end_abbreviation(&original);
+        if matches!(ch, '!' | '?') || period_ends_sentence {
             s.sentence_start_pending = true;
         }
         prev
