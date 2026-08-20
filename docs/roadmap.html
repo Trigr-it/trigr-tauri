@@ -703,8 +703,17 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <span class="phase-name">
             <span class="phase-version">v0.8</span><span class="phase-subtitle">Unassigned Library &amp; Pixel Waits</span>
           </span>
-          <span class="phase-date">Aug 2026 · 3 releases published</span>
+          <span class="phase-date">Aug 2026 · 4 releases published</span>
         </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.8.3</span>
+            <time class="release-date">20 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li><strong>Macro Wait timings are exact milliseconds.</strong> Previously rounded to 50ms buckets, gaps between actions now match record time precisely.</li><li><strong>Macros follow window focus.</strong> After a Press Key or click opens a new window, later Type Text steps land in the new window automatically.</li><li><strong>Recorded scrolls replay in the right place.</strong> The wheel event now carries its position, so the scroll fires over the same area it was recorded on.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li><strong>Word and Outlook expansions were pasting the previous clipboard content.</strong> Fixed a paste-settle race specific to Office's ribbon paste path. Every expansion now lands correctly.</li><li><strong>Minimised main window could not be restored from the tray icon.</strong> Clicking the tray icon while the main window was minimised did nothing. Now restores it cleanly.</li><li><strong>Macro recorder was dropping punctuation and numpad chords.</strong> Ctrl+comma, Ctrl+semicolon, Ctrl+slash, numpad keys with modifiers, and similar chords now play back correctly instead of silently failing.</li><li><strong>Radial menu opens at the recorded cursor position when replayed.</strong> Previously it opened wherever the cursor happened to be sitting.</li><li><strong>Occasional missing characters in recorded macros.</strong> A dead-key state issue in the recorder's character conversion has been resolved.</li></ul>
+          </div>
+        </article>
         <article class="release-entry">
           <header class="release-head">
             <span class="release-version">v0.8.2</span>
