@@ -47,3 +47,6 @@ docs/windows-smartscreen.mp4
 
 # ── Real competitor-tool exports for importer testing (personal content) ────
 test-fixtures/importers/private/
+
+# ── Local release-asset stash (for VT scans + local testing) ───────────────
+.local-releases/
