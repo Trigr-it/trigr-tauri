@@ -1880,7 +1880,7 @@ function MacroOpenAppRow({ appData, updateValue, advancedOpen, toggleAdvanced })
 // .assign-ctx-sub pattern in Sidebar. Portal'd to <body> with fixed positioning
 // so the menu and its flyouts don't clip on any ancestor's overflow.
 
-function MacroStepTypeMenu({ value, onChange }) {
+function MacroStepTypeMenu({ value, onChange, isPro = false }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
   const [pos, setPos] = useState({ top: 0, left: 0, btnTop: 0 });
@@ -2052,7 +2052,7 @@ function MacroStepTypeMenu({ value, onChange }) {
                         role="menuitem"
                       >
                         <span>{macroStepLabel(item)}</span>
-                        {PRO_MACRO_STEPS.has(item) && <span className="pro-badge">PRO</span>}
+                        {PRO_MACRO_STEPS.has(item) && !isPro && <span className="pro-badge">PRO</span>}
                       </button>
                     ))}
                   </div>
@@ -2706,6 +2706,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         <div className="macro-step-num">{index + 1}</div>
         <MacroStepTypeMenu
           value={step.type}
+          isPro={isPro}
           onChange={(t) => {
             // Sort Files is Pro-gated — show the upgrade prompt instead of
             // switching the step type. Backend has a belt-and-braces
@@ -4727,7 +4728,7 @@ export default function MacroPanel({
             }}
             type="button"
           >
-            ×2 Double Press <span className="pro-badge">PRO</span>
+            ×2 Double Press {!isPro && <span className="pro-badge">PRO</span>}
             {doubleAssignment && <span className="press-mode-dot" />}
           </button>
           {/* Hold applies to keyboard keys and mouse BUTTONS (engine arms
@@ -4744,7 +4745,7 @@ export default function MacroPanel({
               type="button"
               title="Fires when the key is held past the threshold (set in Settings)"
             >
-              ⏱ Hold <span className="pro-badge">PRO</span>
+              ⏱ Hold {!isPro && <span className="pro-badge">PRO</span>}
               {holdAssignment && <span className="press-mode-dot" />}
             </button>
           )}

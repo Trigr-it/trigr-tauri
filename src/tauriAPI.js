@@ -539,6 +539,10 @@ window.electronAPI = {
   checkLicenceRevalidation:  ()    => invoke('check_licence_revalidation'),
   startTrial:                ()    => invoke('start_trial'),
   resetTrial:                ()    => invoke('reset_trial'),
+  // Dev-only Pro/Free override. `pro` = true|false|null (null clears).
+  devSetProOverride:         (pro) => invoke('dev_set_pro_override', { pro }),
+  // True only in `cargo tauri dev` builds; false for shipped release.
+  isDebugBuild:              ()    => invoke('is_debug_build'),
   getGracePeriodState:       ()    => invoke('get_grace_period_state'),
   migrateSharedToLocalNow:   ()    => invoke('migrate_shared_to_local_now'),
   getDemoMode:               ()    => invoke('get_demo_mode'),

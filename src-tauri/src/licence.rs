@@ -48,6 +48,22 @@ const TRIAL_DURATION_DAYS: i64 = 14;
 static IS_PRO: AtomicBool = AtomicBool::new(false);
 static LICENCE_STATE: OnceLock<Mutex<LicenceState>> = OnceLock::new();
 
+// Runtime-only Pro override for dev builds. Never persists to disk — restart
+// clears it, so the real on-disk licence key stays untouched. In release
+// builds the setter no-ops and the getter always returns None, meaning this
+// override literally cannot engage in a shipped binary even if the IPC is
+// driven directly.
+static DEV_PRO_OVERRIDE: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
+
+fn dev_pro_override() -> Option<bool> {
+    if !cfg!(debug_assertions) { return None; }
+    DEV_PRO_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .map(|g| *g)
+        .unwrap_or(None)
+}
+
 // ── Stored state ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -212,6 +228,13 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
         return Err("This key has expired. Email admin@keyfire.app for a new one.".to_string());
     }
 
+    // Activating a real Pro key CONSUMES the trial permanently. Trial is a
+    // one-time first-install grace period, not a fallback tier — a user who
+    // has entered a key must never drop back into trial when they later
+    // remove that key (per Rory 2026-08-19). Setting trial_started_at=None
+    // strips any remaining trial time; trial_used=true locks out any future
+    // start_trial call; trial_offer_shown=true prevents the trial modal
+    // ever re-firing after a subsequent deactivation.
     let state = LicenceState {
         key: Some(cleaned),
         email: decoded.email.clone(),
@@ -220,14 +243,14 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
         expires_at: Some(decoded.exp.clone()),
         activated_at: Some(chrono::Utc::now().to_rfc3339()),
         valid: true,
-        trial_started_at: prior.trial_started_at,
-        trial_used: prior.trial_used,
-        trial_offer_shown: prior.trial_offer_shown,
+        trial_started_at: None,
+        trial_used: true,
+        trial_offer_shown: true,
         time_anchor: prior.time_anchor,
     };
     update_state(state.clone());
     info!(
-        "[Keyfire] Licence activated (id {}, tier {}, expires {})",
+        "[Keyfire] Licence activated (id {}, tier {}, expires {}) — trial consumed",
         decoded.id.as_deref().unwrap_or("-"), decoded.tier, decoded.exp
     );
     Ok(build_status(&state))
@@ -270,6 +293,29 @@ pub async fn mark_trial_offer_shown() -> LicenceStatus {
         update_state(state.clone());
         info!("[Keyfire] Trial offer marked as shown");
     }
+    build_status(&state)
+}
+
+/// DEV/TEST ONLY: force is_pro to a value regardless of the real licence
+/// state. In-memory only — the on-disk licence key stays untouched, so a
+/// dev restart returns the app to its real state. Pass Some(true) to
+/// simulate Pro, Some(false) to simulate Free, or None to clear the
+/// override and use the real licence state. Release builds no-op.
+pub async fn dev_set_pro_override(pro: Option<bool>) -> LicenceStatus {
+    if !cfg!(debug_assertions) {
+        warn!("[Keyfire] dev_set_pro_override ignored (release build)");
+        return get_licence_status();
+    }
+    let lock = DEV_PRO_OVERRIDE.get_or_init(|| Mutex::new(None));
+    if let Ok(mut g) = lock.lock() { *g = pro; }
+    // Refresh the cached atomic + return a fresh status that reflects the
+    // override. The persisted LicenceState is not touched.
+    let state = match LICENCE_STATE.get() {
+        Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        None => LicenceState::default(),
+    };
+    IS_PRO.store(compute_is_pro(&state), Ordering::SeqCst);
+    info!("[Keyfire] Dev pro override = {:?}", pro);
     build_status(&state)
 }
 
@@ -529,6 +575,9 @@ fn load_public_key() -> Result<VerifyingKey, String> {
 /// and `update_state`). Every Pro gate in the app ultimately flows through
 /// here, so this is the one place to change when entitlement rules change.
 fn compute_is_pro(state: &LicenceState) -> bool {
+    // Dev override wins in debug builds. Returns None in release, so shipped
+    // binaries always fall through to the real signature + trial check.
+    if let Some(o) = dev_pro_override() { return o; }
     key_grants_pro(state) || is_trial_active(state)
 }
 

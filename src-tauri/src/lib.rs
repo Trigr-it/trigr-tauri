@@ -5262,6 +5262,22 @@ async fn reset_trial() -> Value {
     serde_json::to_value(licence::reset_trial().await).unwrap_or(serde_json::json!({}))
 }
 
+// Dev-only Pro tier override. `pro`: Some(true) forces Pro, Some(false)
+// forces Free, None clears the override and returns to real licence state.
+// Release builds ignore the setter — see licence::dev_set_pro_override.
+#[tauri::command]
+async fn dev_set_pro_override(pro: Option<bool>) -> Value {
+    serde_json::to_value(licence::dev_set_pro_override(pro).await).unwrap_or(serde_json::json!({}))
+}
+
+// Runs at frontend startup so the SettingsPanel can decide whether to show
+// the dev-only Pro/Free toggle. Returns true only for cargo tauri dev
+// (debug build), false for shipped release binaries.
+#[tauri::command]
+fn is_debug_build() -> bool {
+    cfg!(debug_assertions)
+}
+
 // ── Demo mode ────────────────────────────────────────────────────────────────
 //
 // `--demo` launches Keyfire against a throwaway data dir (AppData\...\demo\):
@@ -6165,6 +6181,8 @@ pub fn run() {
             start_trial,
             mark_trial_offer_shown,
             reset_trial,
+            dev_set_pro_override,
+            is_debug_build,
             get_grace_period_state,
             migrate_shared_to_local_now,
             // Demo mode + persistent profiles

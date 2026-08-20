@@ -21,7 +21,44 @@ function formatTimeShort(seconds) {
 
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function AnalyticsPanel({ isPro = false }) {
+// ── Free-tier teaser mock data ───────────────────────────────────────────────
+// Shows behind a blur with an upgrade CTA overlaid — Free users see the shape
+// of Detailed Analytics without the real numbers. Values are hand-picked to
+// look plausible for a middle-of-the-road Pro user; they never render sharp so
+// exact accuracy doesn't matter.
+const TEASER_BAR_HEIGHTS = [62, 84, 71, 96, 58, 88, 74];
+const TEASER_HEATMAP = Array.from({ length: 7 }, (_, dow) =>
+  Array.from({ length: 24 }, (_, h) => {
+    const workHours = dow >= 1 && dow <= 5 && h >= 9 && h <= 17;
+    const noise = ((dow * 31 + h * 7) % 11) / 10;
+    return workHours ? 0.45 + noise * 0.55 : noise * 0.32;
+  })
+);
+const TEASER_LEADERBOARDS = {
+  keys: [
+    { label: 'Screenshot to clipboard', trigger: 'Ctrl+Shift+3', count: 412 },
+    { label: 'Toggle mute', trigger: 'F13', count: 358 },
+    { label: 'Paste sig block', trigger: 'Alt+S', count: 289 },
+    { label: 'Open project folder', trigger: 'Ctrl+Alt+P', count: 246 },
+    { label: 'Focus VS Code', trigger: 'Ctrl+Alt+V', count: 194 },
+  ],
+  exp: [
+    { label: 'Email sign-off', trigger: ';sig', count: 512 },
+    { label: 'Date', trigger: '/date', count: 388 },
+    { label: 'Office address', trigger: ';addr', count: 267 },
+    { label: 'Bank details', trigger: ';bank', count: 198 },
+    { label: 'Meeting notes', trigger: '/mtg', count: 154 },
+  ],
+  apps: [
+    { app: 'Google Chrome', count: 1240 },
+    { app: 'VS Code', count: 890 },
+    { app: 'Outlook', count: 612 },
+    { app: 'Slack', count: 428 },
+    { app: 'File Explorer', count: 315 },
+  ],
+};
+
+export default function AnalyticsPanel({ isPro = false, onShowUpgrade }) {
   const [stats, setStats] = useState(null);
   const [dailyChart, setDailyChart] = useState([]);
   const [keysBreakdown, setKeysBreakdown] = useState([]);
@@ -390,7 +427,7 @@ export default function AnalyticsPanel({ isPro = false }) {
             >
               {exportBusy === 'xlsx' ? 'Exporting…' : exportBusy === 'pdf' ? 'Generating report…' : 'Export'}
               {!exportBusy && <span className="analytics-export-caret" />}
-              <span className="pro-badge">PRO</span>
+              {!isPro && <span className="pro-badge">PRO</span>}
             </button>
             {exportMenuOpen && (
               <div className="analytics-export-menu">
@@ -533,7 +570,7 @@ export default function AnalyticsPanel({ isPro = false }) {
               </section>
 
               <section className="analytics-section">
-                <div className="analytics-section-title">STREAKS <span className="pro-badge">PRO</span></div>
+                <div className="analytics-section-title">STREAKS {!isPro && <span className="pro-badge">PRO</span>}</div>
                 <div className="analytics-streaks">
                   <div className="analytics-streak-card">
                     <span className="analytics-streak-value">{streaks.current}</span>
@@ -547,7 +584,7 @@ export default function AnalyticsPanel({ isPro = false }) {
               </section>
 
               <section className="analytics-section">
-                <div className="analytics-section-title">ROI CALCULATOR <span className="pro-badge">PRO</span></div>
+                <div className="analytics-section-title">ROI CALCULATOR {!isPro && <span className="pro-badge">PRO</span>}</div>
                 <div className="analytics-roi-body">
                   <div className="analytics-roi-input-row">
                     <label className="analytics-roi-label">Hourly rate</label>
@@ -590,7 +627,7 @@ export default function AnalyticsPanel({ isPro = false }) {
               </section>
 
               <section className="analytics-section">
-                <div className="analytics-section-title">EXPANSION EFFICIENCY <span className="pro-badge">PRO</span></div>
+                <div className="analytics-section-title">EXPANSION EFFICIENCY {!isPro && <span className="pro-badge">PRO</span>}</div>
                 {expEfficiency && expEfficiency.all?.total_expansions > 0 ? (
                   <div className="analytics-efficiency-body-cols">
                     {[
@@ -660,14 +697,122 @@ export default function AnalyticsPanel({ isPro = false }) {
               </section>
             </div>
 
-            {/* Free: Pro gate banner */}
-            <section className="analytics-section analytics-pro-gate">
-              <div className="analytics-pro-gate-content">
-                <span className="pro-badge">PRO</span>
-                <div className="analytics-pro-gate-title">Detailed Analytics</div>
-                <div className="analytics-pro-gate-desc">
-                  Streaks, activity chart, heatmap, leaderboards, and Excel or PDF export.
+            {/* Free: teaser view of Detailed Analytics — blurred mock of the
+                Pro layout with an upgrade CTA card centered over the top.
+                Values are hardcoded, sections are visual approximations of
+                the real Pro layout. */}
+            <section className="analytics-teaser">
+              <div className="analytics-teaser-mock" aria-hidden="true">
+                <div className="analytics-teaser-row analytics-teaser-cards">
+                  <div className="analytics-teaser-panel">
+                    <div className="analytics-teaser-panel-title">STREAKS</div>
+                    <div className="analytics-teaser-stats">
+                      <div className="analytics-teaser-stat">
+                        <span className="analytics-teaser-stat-value">14</span>
+                        <span className="analytics-teaser-stat-label">current (days)</span>
+                      </div>
+                      <div className="analytics-teaser-stat">
+                        <span className="analytics-teaser-stat-value accent">47</span>
+                        <span className="analytics-teaser-stat-label">longest (days)</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="analytics-teaser-panel">
+                    <div className="analytics-teaser-panel-title">ROI CALCULATOR</div>
+                    <div className="analytics-teaser-input">£45.00 /hr</div>
+                    <div className="analytics-teaser-stats analytics-teaser-stats-3">
+                      <div className="analytics-teaser-stat">
+                        <span className="analytics-teaser-stat-value accent">£68</span>
+                        <span className="analytics-teaser-stat-label">this week</span>
+                      </div>
+                      <div className="analytics-teaser-stat">
+                        <span className="analytics-teaser-stat-value accent">£262</span>
+                        <span className="analytics-teaser-stat-label">this month</span>
+                      </div>
+                      <div className="analytics-teaser-stat">
+                        <span className="analytics-teaser-stat-value accent">£850</span>
+                        <span className="analytics-teaser-stat-label">total</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="analytics-teaser-panel">
+                    <div className="analytics-teaser-panel-title">EXPANSION EFFICIENCY</div>
+                    <div className="analytics-teaser-eff-row">
+                      {[
+                        { label: 'Week',  mult: '6x' },
+                        { label: 'Month', mult: '7x' },
+                        { label: 'All',   mult: '8x' },
+                      ].map(e => (
+                        <div key={e.label} className="analytics-teaser-eff">
+                          <span className="analytics-teaser-eff-mult accent">{e.mult}</span>
+                          <span className="analytics-teaser-eff-label">{e.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+
+                <div className="analytics-teaser-row analytics-teaser-charts">
+                  <div className="analytics-teaser-panel">
+                    <div className="analytics-teaser-panel-title">ACTIVITY</div>
+                    <div className="analytics-teaser-bars">
+                      {TEASER_BAR_HEIGHTS.map((h, i) => (
+                        <div key={i} className="analytics-teaser-bar-col">
+                          <div className="analytics-teaser-bar analytics-teaser-bar-actions" style={{ height: `${h}%` }} />
+                          <div className="analytics-teaser-bar analytics-teaser-bar-saved" style={{ height: `${Math.max(10, h - 20)}%` }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="analytics-teaser-panel">
+                    <div className="analytics-teaser-panel-title">HEATMAP</div>
+                    <div className="analytics-teaser-heatmap">
+                      {TEASER_HEATMAP.flatMap((row, dow) =>
+                        row.map((v, h) => (
+                          <div
+                            key={`${dow}-${h}`}
+                            className="analytics-teaser-cell"
+                            style={{ opacity: v > 0.05 ? 1 : 0.3, background: v > 0.05 ? `rgba(232, 160, 32, ${v})` : 'var(--bg-elevated)' }}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="analytics-teaser-row analytics-teaser-boards">
+                  {[
+                    { title: 'KEY MAPPINGS',    items: TEASER_LEADERBOARDS.keys },
+                    { title: 'TEXT EXPANSIONS', items: TEASER_LEADERBOARDS.exp },
+                    { title: 'TOP APPS',        items: TEASER_LEADERBOARDS.apps },
+                  ].map(board => (
+                    <div key={board.title} className="analytics-teaser-panel">
+                      <div className="analytics-teaser-panel-title">{board.title}</div>
+                      <div className="analytics-teaser-board">
+                        {board.items.map((it, i) => (
+                          <div key={i} className="analytics-teaser-board-row">
+                            <span className="analytics-teaser-board-rank">{i + 1}</span>
+                            <span className="analytics-teaser-board-label">{it.label || it.app}</span>
+                            <span className="analytics-teaser-board-count">{it.count}x</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="analytics-teaser-cta">
+                <span className="pro-badge">PRO</span>
+                <div className="analytics-teaser-cta-title">Detailed Analytics</div>
+                <div className="analytics-teaser-cta-desc">
+                  Streaks, ROI calculator, expansion efficiency, activity chart, heatmap, and per-mapping leaderboards. Plus Excel and PDF export.
+                </div>
+                <button
+                  type="button"
+                  className="analytics-teaser-cta-btn"
+                  onClick={() => onShowUpgrade?.('Detailed Analytics')}
+                >Upgrade to Pro</button>
               </div>
             </section>
           </>
@@ -678,7 +823,7 @@ export default function AnalyticsPanel({ isPro = false }) {
           <div className="analytics-two-col">
             <section className="analytics-section">
               <div className="analytics-section-title">
-                ACTIVITY <span className="pro-badge">PRO</span>
+                ACTIVITY {!isPro && <span className="pro-badge">PRO</span>}
                 <select className="analytics-range-select" value={chartRange} onChange={e => setChartRange(Number(e.target.value))}>
                   <option value={7}>Last 7 days</option>
                   <option value={14}>Last 14 days</option>
@@ -723,7 +868,7 @@ export default function AnalyticsPanel({ isPro = false }) {
 
             <section className="analytics-section">
               <div className="analytics-section-title">
-                HEATMAP <span className="pro-badge">PRO</span>
+                HEATMAP {!isPro && <span className="pro-badge">PRO</span>}
                 <select className="analytics-range-select" value={chartRange} onChange={e => setChartRange(Number(e.target.value))}>
                   <option value={7}>Last 7 days</option>
                   <option value={14}>Last 14 days</option>
@@ -777,7 +922,7 @@ export default function AnalyticsPanel({ isPro = false }) {
           <div className="analytics-three-col">
             <section className="analytics-section">
               <div className="analytics-section-title">
-                KEY MAPPINGS <span className="pro-badge">PRO</span>
+                KEY MAPPINGS {!isPro && <span className="pro-badge">PRO</span>}
                 <select className="analytics-range-select" value={keysRange} onChange={e => setKeysRange(Number(e.target.value))}>
                   <option value={0}>All time</option>
                   <option value={1}>Today</option>
@@ -808,7 +953,7 @@ export default function AnalyticsPanel({ isPro = false }) {
 
             <section className="analytics-section">
               <div className="analytics-section-title">
-                TEXT EXPANSIONS <span className="pro-badge">PRO</span>
+                TEXT EXPANSIONS {!isPro && <span className="pro-badge">PRO</span>}
                 <select className="analytics-range-select" value={expRange} onChange={e => setExpRange(Number(e.target.value))}>
                   <option value={0}>All time</option>
                   <option value={1}>Today</option>
@@ -839,7 +984,7 @@ export default function AnalyticsPanel({ isPro = false }) {
 
             <section className="analytics-section">
               <div className="analytics-section-title">
-                TOP APPS <span className="pro-badge">PRO</span>
+                TOP APPS {!isPro && <span className="pro-badge">PRO</span>}
                 <select className="analytics-range-select" value={appsRange} onChange={e => setAppsRange(Number(e.target.value))}>
                   <option value={0}>All time</option>
                   <option value={1}>Today</option>

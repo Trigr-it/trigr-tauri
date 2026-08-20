@@ -261,7 +261,7 @@
 /* ── Category sidebar (vertical) ─────────────────────────────────────── */
 
 .te-cat-sidebar {
-  width: 170px;
+  width: 190px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -326,8 +326,8 @@
 }
 
 .te-cat-dot {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--text-muted);
   flex-shrink: 0;
@@ -357,6 +357,151 @@
 .te-cat-row-active .te-cat-count {
   background: color-mix(in srgb, var(--cat-color, var(--accent)) 15%, var(--bg-active));
   color: var(--cat-color, var(--accent));
+}
+
+/* ── Sub-folders (Pro, v0.8.2) ────────────────────────────────────────
+   Path-based one-level nesting: category name "Work/Client A". Children
+   render indented under a collapsible parent. Chevron toggles the group. */
+
+.te-cat-chevron,
+.te-cat-chevron-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+  cursor: default;
+}
+.te-cat-chevron {
+  cursor: pointer;
+  transform: rotate(0deg);
+}
+.te-cat-chevron:hover {
+  color: var(--text-secondary);
+}
+.te-cat-chevron-open {
+  transform: rotate(90deg);
+}
+
+.te-cat-row-child {
+  padding-left: 30px; /* aligns child dot with parent label start */
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.te-cat-row-group-child {
+  /* Group wrapper for children — no additional visual, just a hook. */
+}
+
+.te-cat-add-form-child {
+  padding-left: 18px;
+}
+
+/* Free-tier read-only banner shown when nested data exists in a Free config. */
+.te-subfolder-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 8px 4px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+.te-subfolder-banner-text {
+  flex: 1;
+}
+.te-subfolder-banner-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.te-subfolder-banner-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Move-to submenu "no eligible target" row. */
+.profile-ctx-disabled {
+  color: var(--text-muted);
+  cursor: default;
+  padding: 6px 12px;
+  font-style: italic;
+}
+
+/* ── Drag-drop feedback (v0.8.2) ────────────────────────────────────── */
+
+/* Wrapper around each sortable/droppable category row */
+.te-sortable-wrap {
+  position: relative;
+}
+
+/* Highlight styles when a drag is hovering over a category row. Applied to
+   the SortableCatTab wrapper — a bold gold outline + fill for reparent
+   intent (the target parent must be unmissable when moving a child under
+   it), a solid soft gold fill for expansion drops, and a top-edge line
+   for reorder. */
+.te-cat-drop-reparent > .te-cat-row-group > .te-cat-row,
+.te-cat-drop-reparent > .te-cat-row-group-child > .te-cat-row {
+  box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 1px var(--accent-glow-strong, rgba(232, 160, 32, 0.4));
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--accent);
+}
+.te-cat-drop-expansion > .te-cat-row-group > .te-cat-row,
+.te-cat-drop-expansion > .te-cat-row-group-child > .te-cat-row,
+.te-cat-drop-expansion > .te-cat-row {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--cat-color, var(--accent));
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.te-cat-drop-reorder > .te-cat-row-group::before {
+  content: '';
+  position: absolute;
+  left: 4px; right: 4px; top: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* Draggable expansion row — make the whole row grab-cursor when hovering
+   the drag surface (excluding the interactive controls inside). */
+.te-content--drag-expansion .te-cat-row {
+  cursor: copy;
+}
+.te-content--drag-category .te-cat-row {
+  cursor: grabbing;
+}
+
+/* Multi-drag ghost: shown in the DragOverlay when dragging more than one
+   selected expansion. Just a small pill with the count. */
+.te-exp-drag-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: var(--btn-primary-text, #fff);
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Primary action (Add Category) — solid-gold gradient, mirrors
@@ -655,6 +800,18 @@
 }
 
 [data-theme="light"] .te-cat-rename-error {
+  color: #cc2020;
+}
+
+.te-cat-add-error {
+  font-size: 10px;
+  font-family: var(--font-display);
+  color: var(--danger-hover);
+  line-height: 1.2;
+  padding: 2px 12px 4px;
+  white-space: normal;
+}
+[data-theme="light"] .te-cat-add-error {
   color: #cc2020;
 }
 
@@ -3163,6 +3320,34 @@ button.te-col-header:hover {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+
+/* Delete-tree modal uses a stacked, full-width button layout so the
+   longer promote/tree labels don't overflow. */
+.te-delete-dialog--tree {
+  max-width: 380px;
+}
+.te-delete-actions--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.te-delete-tree-btn {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.3;
+}
+.te-delete-tree-btn--cancel {
+  margin-top: 2px;
 }
 
 .te-delete-confirm-btn {

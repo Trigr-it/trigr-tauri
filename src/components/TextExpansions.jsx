@@ -1,8 +1,9 @@
 import React, { useState, useRef, useLayoutEffect, useEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, pointerWithin, rectIntersection, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
+import ColourPicker from './ColourPicker.jsx';
 import {
   Bold as BoldIcon, Italic as ItalicIcon, Underline as UnderlineIcon,
   List as ListIcon,
@@ -309,40 +310,9 @@ const GD_SUGGESTIONS = [
   'My Phone Number', 'My Company', 'My Job Title', 'My Website',
 ];
 
-// ── Category colour preset palette ─────────────────────────────────────────
-const CATEGORY_COLOURS = [
-  { hex: null,      label: 'None'   },
-  { hex: '#E8A020', label: 'Amber'  },
-  { hex: '#E84040', label: 'Red'    },
-  { hex: '#2ECC71', label: 'Green'  },
-  { hex: '#4080E8', label: 'Blue'   },
-  { hex: '#9B59B6', label: 'Purple' },
-  { hex: '#1ABC9C', label: 'Teal'   },
-  { hex: '#E86020', label: 'Orange' },
-  { hex: '#E840A0', label: 'Pink'   },
-  { hex: '#5C6AE8', label: 'Indigo' },
-  { hex: '#80C820', label: 'Lime'   },
-  { hex: '#20B8E8', label: 'Cyan'   },
-  { hex: '#E84060', label: 'Rose'   },
-];
-
-function ColourPicker({ value, onChange }) {
-  return (
-    <div className="cat-colour-picker">
-      {CATEGORY_COLOURS.map((c, i) => (
-        <button
-          key={i}
-          type="button"
-          className={`cat-colour-swatch${value === c.hex ? ' selected' : ''}`}
-          style={c.hex ? { '--swatch-color': c.hex } : {}}
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => onChange(c.hex)}
-          title={c.label}
-        />
-      ))}
-    </div>
-  );
-}
+// Shared colour picker (see ./ColourPicker.jsx) — same swatches + native OS
+// custom-colour dialog are used by the search-template category picker and
+// the radial-wheel icon tint picker, so all three surfaces stay identical.
 
 // ── Rich text editor ───────────────────────────────────────────────────────
 
@@ -2772,15 +2742,80 @@ class LeftClickSensor extends PointerSensor {
 
 // ── Sortable category tab wrapper ──────────────────────────────────────────
 
-function SortableCatTab({ id, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+function SortableCatTab({ id, data, children, dropOverKind }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id, data });
   const style = {
     transform: DndCSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
   };
+  const dropClass = isOver
+    ? (dropOverKind === 'reparent' ? ' te-cat-drop-reparent'
+        : dropOverKind === 'expansion' ? ' te-cat-drop-expansion'
+        : ' te-cat-drop-reorder')
+    : '';
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`te-sortable-wrap${dropClass}`}>
+      {children}
+    </div>
+  );
+}
+
+// Wrapper making an expansion row draggable. Data.type = 'expansion' so the
+// shared DndContext's drop handler can route the drop to a category assignment.
+// When the dragged row is part of the current multi-selection, the drag data
+// carries every selected trigger — the drop handler moves them as a batch.
+function DraggableExpansionRow({ trigger, selectedTriggers, children }) {
+  const inSelection = selectedTriggers.has(trigger);
+  const triggers = inSelection && selectedTriggers.size > 1
+    ? Array.from(selectedTriggers)
+    : [trigger];
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `exp:${trigger}`,
+    data: { type: 'expansion', trigger, triggers, count: triggers.length },
+  });
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    opacity: isDragging ? 0.4 : 1,
+  };
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {children}
+    </div>
+  );
+}
+
+// Droppable wrapping "Uncategorised" and "All" pseudo-rows so expansions can
+// be dragged onto them too. Also enables promoting a child back to top-level
+// by dropping on the "All" row.
+function DroppableSpecialRow({ id, data, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id, data });
+  return (
+    <div ref={setNodeRef} className={isOver ? 'te-cat-drop-expansion' : ''}>
+      {children}
+    </div>
+  );
+}
+
+// Draggable + droppable child-category wrapper. Deliberately NOT sortable —
+// keeping children out of SortableContext prevents dnd-kit from animating
+// the flat parent list to make room for a dragged child (which caused the
+// "parents snap to top/bottom" bug when a sub-category was picked up).
+function DraggableChildRow({ id, data, children, dropOverKind }) {
+  const drag = useDraggable({ id, data });
+  const drop = useDroppable({ id: `child-drop:${id}`, data });
+  const setRef = (node) => { drag.setNodeRef(node); drop.setNodeRef(node); };
+  const style = {
+    transform: drag.transform ? `translate3d(${drag.transform.x}px, ${drag.transform.y}px, 0)` : undefined,
+    opacity: drag.isDragging ? 0.4 : 1,
+  };
+  const dropClass = drop.isOver
+    ? (dropOverKind === 'expansion' ? ' te-cat-drop-expansion'
+        : dropOverKind === 'reparent' ? ' te-cat-drop-reparent'
+        : ' te-cat-drop-reorder')
+    : '';
+  return (
+    <div ref={setRef} style={style} {...drag.attributes} {...drag.listeners} className={`te-sortable-wrap${dropClass}`}>
       {children}
     </div>
   );
@@ -2801,6 +2836,8 @@ export default function TextExpansions({
   onReorderCategories,
   onUpdateCategoryColour,
   onRenameCategory,
+  onMoveCategoryTo,
+  onMoveExpansionToCategory,
   // Autocorrect props (Pro) — settings live in App.jsx state, entries are
   // flat GLOBAL::AUTOCORRECT:: assignments grouped by correct word here.
   autocorrectEnabled = false,
@@ -2966,6 +3003,43 @@ export default function TextExpansions({
   const catDndSensors = useSensors(useSensor(LeftClickSensor, { activationConstraint: { distance: 8 } }));
   const [catDragId, setCatDragId] = useState(null);
 
+  // ── Sub-folder state (v0.8.2, Pro) ──
+  // Path grammar: category name may contain zero or one `/`. Top-level = no
+  // slash; child = "<parent>/<child>". Depth is capped at 1 in every op.
+  const [expandedParents, setExpandedParents] = useState(() => {
+    try {
+      const raw = localStorage.getItem('trigr.te.expandedParents');
+      if (raw) return new Set(JSON.parse(raw));
+    } catch {}
+    return new Set(); // default: all collapsed
+  });
+  useEffect(() => {
+    try { localStorage.setItem('trigr.te.expandedParents', JSON.stringify([...expandedParents])); } catch {}
+  }, [expandedParents]);
+  const toggleParentExpanded = useCallback((parentName) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(parentName)) next.delete(parentName); else next.add(parentName);
+      return next;
+    });
+  }, []);
+  const [subFolderBannerDismissed, setSubFolderBannerDismissed] = useState(() => {
+    try { return localStorage.getItem('trigr.te.subFolderBannerDismissed') === '1'; } catch { return false; }
+  });
+  const dismissSubFolderBanner = useCallback(() => {
+    setSubFolderBannerDismissed(true);
+    try { localStorage.setItem('trigr.te.subFolderBannerDismissed', '1'); } catch {}
+  }, []);
+  // Adding a new child: which parent are we adding under, and its draft state
+  const [addingSubParent, setAddingSubParent] = useState(null); // parent name or null
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubColour, setNewSubColour] = useState(null);
+  // Delete-with-children modal state
+  const [deleteTreeConfirm, setDeleteTreeConfirm] = useState(null); // { name, childCount }
+  // Move-to submenu state
+  const [moveToMenu, setMoveToMenu] = useState(null); // { catName, x, y }
+  const moveToMenuRef = useRef(null);
+
   // ── Expansion type filter ──
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'text' | 'image'
 
@@ -3076,6 +3150,23 @@ export default function TextExpansions({
       document.removeEventListener('keydown', onKey);
     };
   }, [catContextMenu]);
+
+  // Close move-to submenu on outside click or Escape
+  useEffect(() => {
+    if (!moveToMenu) return;
+    function onDown(e) {
+      if (moveToMenuRef.current && !moveToMenuRef.current.contains(e.target)) {
+        setMoveToMenu(null);
+      }
+    }
+    function onKey(e) { if (e.key === 'Escape') setMoveToMenu(null); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [moveToMenu]);
 
   // Close expansion row context menu on outside click or Escape
   useEffect(() => {
@@ -3255,11 +3346,23 @@ export default function TextExpansions({
   function handleAddCategory(e) {
     e.preventDefault();
     const name = newCategoryName.trim();
-    if (name) {
-      onAddCategory(name, newCategoryColour);
+    if (!name) { setAddingCategory(false); setRenameError(''); return; }
+    const err = validateCategoryPath(name);
+    if (err) {
+      // Show inline error only when the user pressed Enter (submit). On blur
+      // (which also fires this handler) silently cancel — no need to trap the
+      // user's stray click.
+      if (e?.type === 'submit') { setRenameError(err); return; }
+      setAddingCategory(false);
       setNewCategoryName('');
       setNewCategoryColour(null);
+      setRenameError('');
+      return;
     }
+    onAddCategory(name, newCategoryColour);
+    setNewCategoryName('');
+    setNewCategoryColour(null);
+    setRenameError('');
     setAddingCategory(false);
   }
 
@@ -3267,7 +3370,11 @@ export default function TextExpansions({
     const name = editorNewCatName.trim();
     if (name) {
       const exists = normCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
-      if (!exists) onAddCategory(name, null);
+      if (!exists) {
+        const err = validateCategoryPath(name);
+        if (err) return; // silently reject invalid paths from editor add
+        onAddCategory(name, null);
+      }
       setCategory(exists ? exists.name : name);
     }
     setCreatingCatInEditor(false);
@@ -3288,6 +3395,8 @@ export default function TextExpansions({
   function handleCatColourSelect(colour) {
     if (catColourPopover?.forCat === '__new__') {
       setNewCategoryColour(colour);
+    } else if (catColourPopover?.forCat === '__new_sub__') {
+      setNewSubColour(colour);
     } else if (catColourPopover?.forCat) {
       onUpdateCategoryColour?.(catColourPopover.forCat, colour);
     }
@@ -3306,8 +3415,17 @@ export default function TextExpansions({
     const name = catContextMenu.catName;
     setCatContextMenu(null);
     setRenamingCat(name);
-    setRenameValue(name);
+    // For a child, show only the leaf name — commitCatRename reconstructs the path.
+    setRenameValue(isChildCat(name) ? leafName(name) : name);
     setRenameError('');
+    // Ensure parent is expanded so the rename input is visible when we rename a child.
+    if (isChildCat(name)) {
+      setExpandedParents(prev => {
+        const next = new Set(prev);
+        next.add(parentOf(name));
+        return next;
+      });
+    }
   }
 
   function ctxChangeColour() {
@@ -3326,13 +3444,55 @@ export default function TextExpansions({
   }
 
   function ctxDelete() {
+    const name = catContextMenu.catName;
+    const children = getChildrenOf(name);
+    if (children.length > 0) {
+      // Parent with children — open the delete-tree-or-promote modal.
+      setDeleteTreeConfirm({ name, childCount: children.length });
+      setCatContextMenu(null);
+      setCtxDeleteConfirm(false);
+      return;
+    }
     if (!ctxDeleteConfirm) {
       setCtxDeleteConfirm(true);
       return;
     }
-    onDeleteCategory(catContextMenu.catName);
+    onDeleteCategory(name);
     setCatContextMenu(null);
     setCtxDeleteConfirm(false);
+  }
+
+  // Pro-gated "Add Sub-category" from the context menu.
+  function ctxAddSubCategory() {
+    const parent = catContextMenu.catName;
+    setCatContextMenu(null);
+    if (!isPro) {
+      onShowUpgrade?.('Expansion sub-folders');
+      return;
+    }
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      next.add(parent);
+      return next;
+    });
+    setAddingSubParent(parent);
+    setNewSubName('');
+    setNewSubColour(null);
+    setRenameError('');
+  }
+
+  // Pro-gated "Move to..." — opens the submenu popup.
+  function ctxMoveTo() {
+    if (!isPro) {
+      onShowUpgrade?.('Expansion sub-folders');
+      setCatContextMenu(null);
+      return;
+    }
+    const rect = catContextMenuRef.current?.getBoundingClientRect();
+    const x = rect ? rect.right + 4 : catContextMenu.x + 180;
+    const y = rect ? rect.top : catContextMenu.y;
+    setMoveToMenu({ catName: catContextMenu.catName, x, y });
+    setCatContextMenu(null);
   }
 
   // ── Expansion row context menu handlers ──
@@ -3397,15 +3557,27 @@ export default function TextExpansions({
 
   // ── Inline rename handlers ──
   function commitCatRename() {
-    const trimmed = renameValue.trim();
+    let trimmed = renameValue.trim();
     if (!trimmed) { setRenameError('Name cannot be empty'); return; }
-    if (trimmed !== renamingCat && normCategories.some(c => c.name === trimmed)) {
-      setRenameError('Already exists'); return;
+    // Renaming a child: the input shows only the leaf; reconstruct the full path.
+    if (isChildCat(renamingCat)) {
+      // Reject slashes typed into a child rename — child stays a child.
+      if (trimmed.includes('/')) { setRenameError('Sub-folder name cannot contain /'); return; }
+      trimmed = `${parentOf(renamingCat)}/${trimmed}`;
     }
+    if (trimmed === renamingCat) {
+      renameCommitting.current = true;
+      setRenamingCat(null); setRenameValue(''); setRenameError('');
+      return;
+    }
+    const err = validateCategoryPath(trimmed, { allowExisting: renamingCat });
+    if (err) { setRenameError(err); return; }
     renameCommitting.current = true;
-    if (trimmed !== renamingCat) {
-      onRenameCategory?.(renamingCat, trimmed);
-      if (activeCategory === renamingCat) setActiveCategory(trimmed);
+    onRenameCategory?.(renamingCat, trimmed);
+    if (activeCategory === renamingCat) setActiveCategory(trimmed);
+    // Also update any child paths in the active filter if we renamed a parent
+    if (!isChildCat(renamingCat) && activeCategory.startsWith(renamingCat + '/')) {
+      setActiveCategory(trimmed + activeCategory.slice(renamingCat.length));
     }
     setRenamingCat(null);
     setRenameValue('');
@@ -3420,14 +3592,142 @@ export default function TextExpansions({
   }
 
   // ── Category drag-and-drop handlers ──
-  function handleCatDragEnd(event) {
-    setCatDragId(null);
+  // Drag intent is set on every drag-move based on cursor position within the
+  // hovered target row: middle third of a parent = reparent; edges = reorder.
+  // Expansion drags are routed separately (whole-row drop = assign to that
+  // category, no intent tracking required).
+  // Drag hover-target + intent are STATE (not refs) so rows re-render when the
+  // pointer moves onto a different row — that's what paints the highlight.
+  const [dragIntent, setDragIntent] = useState(null); // 'reparent' | 'reorder' | null
+  const [dragOverName, setDragOverName] = useState(null); // category name (or special row id) currently being hovered
+  const [dragActiveType, setDragActiveType] = useState(null); // 'category' | 'expansion' | null
+  const [dragCount, setDragCount] = useState(0); // number of items in the current drag payload
+
+  function handleUnifiedDragStart(event) {
+    const active = event.active;
+    const type = active.data.current?.type;
+    setDragActiveType(type || null);
+    if (type === 'category') {
+      setCatDragId(active.id);
+      setDragCount(1);
+    } else if (type === 'expansion') {
+      setDragCount(active.data.current.count || 1);
+    }
+    setDragIntent(null);
+    setDragOverName(null);
+  }
+
+  function handleUnifiedDragMove(event) {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIdx = normCategories.findIndex(c => c.name === active.id);
-    const newIdx = normCategories.findIndex(c => c.name === over.id);
-    if (oldIdx === -1 || newIdx === -1) return;
-    onReorderCategories?.(arrayMove([...normCategories], oldIdx, newIdx));
+    if (!over || !active) { setDragIntent(null); setDragOverName(null); return; }
+    const activeType = active.data.current?.type;
+    const overName = over.data.current?.name || null;
+    // Update the hover-target name immediately so the correct row highlights.
+    setDragOverName(overName);
+    if (activeType !== 'category') { setDragIntent(null); return; }
+    const overType = over.data.current?.type;
+    if (overType !== 'category') { setDragIntent(null); return; }
+    const activeRect = active.rect?.current?.translated;
+    const overRect = over.rect;
+    if (!activeRect || !overRect) { setDragIntent(null); return; }
+    const cursorY = (activeRect.top + activeRect.bottom) / 2;
+    const relY = (cursorY - overRect.top) / overRect.height;
+    const overIsParent = !overName.includes('/');
+    const activeName = active.data.current.name;
+    const activeIsChild = activeName.includes('/');
+    const activeIsChildOfOver = activeIsChild && parentOf(activeName) === overName;
+    const activeHasKids = !activeIsChild && catHasChildren(activeName);
+    const canReparent = overIsParent && !activeHasKids && !activeIsChildOfOver && activeName !== overName;
+    // A child dragged over any parent is always a reparent intent (the
+    // "just reorder within same parent" flow isn't available since children
+    // aren't in SortableContext). For parent-over-parent, only the middle
+    // third of the target is a reparent — edges are reorder.
+    let nextIntent;
+    if (activeIsChild && overIsParent) {
+      nextIntent = 'reparent';
+    } else if (canReparent && relY > 0.30 && relY < 0.70) {
+      nextIntent = 'reparent';
+    } else {
+      nextIntent = 'reorder';
+    }
+    setDragIntent(nextIntent);
+  }
+
+  function handleUnifiedDragEnd(event) {
+    setCatDragId(null);
+    setDragActiveType(null);
+    setDragCount(0);
+    const intent = dragIntent;
+    setDragIntent(null);
+    setDragOverName(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeType = active.data.current?.type;
+
+    if (activeType === 'category') {
+      const activeName = active.data.current.name;
+      const overType = over.data.current?.type;
+      // Dropping on the "All" special row while dragging a child = promote to top-level.
+      if (overType === 'special' && over.data.current.target === 'all' && activeName.includes('/')) {
+        onMoveCategoryTo?.(activeName, 'top');
+        return;
+      }
+      if (overType !== 'category') return;
+      const overName = over.data.current.name;
+      if (activeName === overName) return;
+      const overIsParent = !overName.includes('/');
+      const activeIsChild = activeName.includes('/');
+      const activeHasKids = !activeIsChild && catHasChildren(activeName);
+
+      // REPARENT: only when intent is reparent AND target is a parent AND we
+      // aren't violating the depth cap. Any drag-drop path that RESULTS in a
+      // nested path (slash) is Pro-gated — this closes the "bypass sub-folder
+      // Pro gate via drag-drop" hole.
+      if (intent === 'reparent' && overIsParent && !activeHasKids) {
+        if (!isPro) { onShowUpgrade?.('Expansion sub-folders'); return; }
+        onMoveCategoryTo?.(activeName, overName);
+        return;
+      }
+      // Special case: if the user drops a child into another parent (not its
+      // own), even at the edge, prefer reparent — pure reorder is meaningless
+      // across parents (children are grouped by prefix). Still Pro-gated
+      // because the result stays nested.
+      if (activeIsChild && overIsParent && parentOf(activeName) !== overName) {
+        if (!isPro) { onShowUpgrade?.('Expansion sub-folders'); return; }
+        onMoveCategoryTo?.(activeName, overName);
+        return;
+      }
+      // REORDER: same-level rearrangement in the flat expansionCategories list.
+      const oldIdx = normCategories.findIndex(c => c.name === activeName);
+      const newIdx = normCategories.findIndex(c => c.name === overName);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        onReorderCategories?.(arrayMove([...normCategories], oldIdx, newIdx));
+      }
+    } else if (activeType === 'expansion') {
+      // Bulk-aware payload: `triggers` is always an array (single-drag = [t],
+      // multi-select drag = [...selectedTriggers]).
+      const triggers = active.data.current.triggers || [active.data.current.trigger];
+      const overType = over.data.current?.type;
+      if (overType === 'category') {
+        onMoveExpansionToCategory?.(triggers, over.data.current.name);
+      } else if (overType === 'special') {
+        const target = over.data.current.target;
+        if (target === 'uncategorised') onMoveExpansionToCategory?.(triggers, null);
+        // 'all' as a drop target for expansions = no-op
+      }
+      // Clear multi-selection after a successful drop so the visual selection
+      // doesn't linger past the action.
+      setSelectedTriggers(prev => (prev.size === 0 ? prev : new Set()));
+      selectionAnchor.current = null;
+    }
+  }
+
+  function handleUnifiedDragCancel() {
+    setCatDragId(null);
+    setDragActiveType(null);
+    setDragCount(0);
+    setDragIntent(null);
+    setDragOverName(null);
   }
 
   // ── Autocorrect handlers ──
@@ -3545,6 +3845,50 @@ export default function TextExpansions({
     .map(c => typeof c === 'string' ? { name: c, colour: null } : c)
     .filter(c => c && c.name);
 
+  // ── Sub-folder helpers ──
+  const nestedDataDetected = normCategories.some(c => c.name.includes('/'));
+  // Show the sub-row tree if: Pro, or Free with legacy nesting and banner not dismissed.
+  const showSubFolders = isPro || (nestedDataDetected && !subFolderBannerDismissed);
+  const parentCategories = normCategories.filter(c => !c.name.includes('/'));
+  const getChildrenOf = (parentName) => normCategories.filter(c => c.name.startsWith(parentName + '/'));
+  const catHasChildren = (name) => normCategories.some(c => c.name.startsWith(name + '/'));
+  const isChildCat = (name) => typeof name === 'string' && name.includes('/');
+  const parentOf = (childPath) => childPath.slice(0, childPath.lastIndexOf('/'));
+  const leafName = (path) => path.slice(path.lastIndexOf('/') + 1);
+  // Effective colour resolves a child's colour to its parent's when unset.
+  const effectiveColour = (cat) => {
+    if (cat.colour) return cat.colour;
+    if (isChildCat(cat.name)) {
+      const parent = normCategories.find(c => c.name === parentOf(cat.name));
+      return parent?.colour || null;
+    }
+    return null;
+  };
+  // Count of expansions for a category. For a parent, aggregates children too.
+  const countForCategory = (path) => {
+    const prefix = path + '/';
+    return typeFiltered.filter(e => e.category === path || (typeof e.category === 'string' && e.category.startsWith(prefix))).length;
+  };
+  // Path grammar validator. Returns null on valid, else an error string.
+  // isPro gate is enforced here so import can still smuggle nested data.
+  const validateCategoryPath = (path, { allowExisting = null } = {}) => {
+    const p = (path || '').trim();
+    if (!p) return 'Name cannot be empty';
+    if (p === 'All') return '"All" is reserved';
+    const parts = p.split('/');
+    if (parts.length > 2) return 'Only one sub-level allowed';
+    if (parts.length === 2) {
+      if (!isPro) return 'Sub-folders require Pro';
+      const [par, child] = parts;
+      if (!par) return 'Parent required before /';
+      if (!child) return 'Sub-folder name required after /';
+      if (par === 'All' || child === 'All') return '"All" is reserved';
+      if (!normCategories.some(c => c.name === par || c.name.startsWith(par + '/'))) return `Parent "${par}" does not exist`;
+    }
+    if (allowExisting !== p && normCategories.some(c => c.name === p)) return 'Already exists';
+    return null;
+  };
+
   // Deduped fill-in field labels across the single-mode editor body and every
   // variant. Passed to all RichTextEditor instances so users can re-insert a
   // field they already created without re-typing the label. Same field can
@@ -3586,9 +3930,19 @@ export default function TextExpansions({
     }
 
     if (activeCategory !== 'All') {
-      const pool = activeCategory === '__uncategorised__'
-        ? typeFiltered.filter(e => !e.category)
-        : typeFiltered.filter(e => e.category === activeCategory);
+      let pool;
+      if (activeCategory === '__uncategorised__') {
+        pool = typeFiltered.filter(e => !e.category);
+      } else if (!activeCategory.includes('/') && catHasChildren(activeCategory)) {
+        // Parent tab aggregates its own expansions + all children's expansions.
+        const prefix = activeCategory + '/';
+        pool = typeFiltered.filter(e =>
+          e.category === activeCategory ||
+          (typeof e.category === 'string' && e.category.startsWith(prefix))
+        );
+      } else {
+        pool = typeFiltered.filter(e => e.category === activeCategory);
+      }
       return sortItems(pool).map(exp => ({ type: 'item', exp }));
     }
 
@@ -3602,7 +3956,8 @@ export default function TextExpansions({
     for (const cat of normCategories) {
       const items = sortItems(typeFiltered.filter(e => e.category === cat.name));
       if (items.length === 0) continue;
-      result.push({ type: 'header', label: cat.name, color: cat.colour || null, count: items.length });
+      const label = cat.name.includes('/') ? cat.name.split('/').join(' › ') : cat.name;
+      result.push({ type: 'header', label, color: effectiveColour(cat), count: items.length });
       items.forEach(exp => result.push({ type: 'item', exp }));
     }
     return result;
@@ -3760,7 +4115,7 @@ export default function TextExpansions({
             }}
             type="button"
           >
-            <span className="te-mode-tab-icon" aria-hidden="true">✓</span> Autocorrect <span className="pro-badge">PRO</span>
+            <span className="te-mode-tab-icon" aria-hidden="true">✓</span> Autocorrect {!isPro && <span className="pro-badge">PRO</span>}
           </button>
         </div>
         {/* How-to tip — same gold TIP treatment as the radial editor and
@@ -3825,105 +4180,240 @@ export default function TextExpansions({
       {panelMode === 'expansions' && (
         <>
           {/* ── Content: category sidebar + main ── */}
-          <div className="te-content">
+          <DndContext
+            sensors={catDndSensors}
+            onDragStart={handleUnifiedDragStart}
+            onDragMove={handleUnifiedDragMove}
+            onDragEnd={handleUnifiedDragEnd}
+            onDragCancel={handleUnifiedDragCancel}
+            collisionDetection={closestCenter}
+          >
+          <div className={`te-content${dragActiveType ? ` te-content--drag-${dragActiveType}` : ''}`}>
 
           {/* ── Category sidebar ── */}
           <div className="te-cat-sidebar">
             <div className="te-cat-sidebar-list">
-              <button
-                className={`te-cat-row${activeCategory === 'All' ? ' te-cat-row-active' : ''}`}
-                onClick={() => setActiveCategory('All')}
-              >
-                <span className="te-cat-row-name">All</span>
-                <span className="te-cat-count">{typeFiltered.length}</span>
-              </button>
+              <DroppableSpecialRow id="__special:all" data={{ type: 'special', target: 'all' }}>
+                <button
+                  className={`te-cat-row${activeCategory === 'All' ? ' te-cat-row-active' : ''}`}
+                  onClick={() => setActiveCategory('All')}
+                >
+                  <span className="te-cat-row-name">All</span>
+                  <span className="te-cat-count">{typeFiltered.length}</span>
+                </button>
+              </DroppableSpecialRow>
 
               {expansions.length > 0 && uncategorisedCount > 0 && (
-                <button
-                  className={`te-cat-row te-cat-row-uncategorised${activeCategory === '__uncategorised__' ? ' te-cat-row-active' : ''}`}
-                  onClick={() => setActiveCategory('__uncategorised__')}
-                >
-                  <span className="te-cat-row-name">Uncategorised</span>
-                  <span className="te-cat-count">{uncategorisedCount}</span>
-                </button>
+                <DroppableSpecialRow id="__special:uncategorised" data={{ type: 'special', target: 'uncategorised' }}>
+                  <button
+                    className={`te-cat-row te-cat-row-uncategorised${activeCategory === '__uncategorised__' ? ' te-cat-row-active' : ''}`}
+                    onClick={() => setActiveCategory('__uncategorised__')}
+                  >
+                    <span className="te-cat-row-name">Uncategorised</span>
+                    <span className="te-cat-count">{uncategorisedCount}</span>
+                  </button>
+                </DroppableSpecialRow>
               )}
 
-              <DndContext sensors={catDndSensors} onDragStart={e => setCatDragId(e.active.id)} onDragEnd={handleCatDragEnd}>
-                <SortableContext items={normCategories.map(c => c.name)} strategy={verticalListSortingStrategy}>
-                  {normCategories.map(cat => {
-                    const catColour   = cat.colour || null;
-                    const count       = typeFiltered.filter(e => e.category === cat.name).length;
+              {nestedDataDetected && !isPro && !subFolderBannerDismissed && (
+                <div className="te-subfolder-banner">
+                  <span className="te-subfolder-banner-text">Nested categories detected. Upgrade to Pro to browse them.</span>
+                  <button
+                    type="button"
+                    className="te-subfolder-banner-close"
+                    onClick={dismissSubFolderBanner}
+                    aria-label="Dismiss"
+                  >✕</button>
+                </div>
+              )}
+
+              <SortableContext items={parentCategories.map(c => c.name)} strategy={verticalListSortingStrategy}>
+                  {parentCategories.map(parent => {
+                    const parentColour = parent.colour || null;
+                    const children     = getChildrenOf(parent.name);
+                    const hasKids      = children.length > 0;
+                    const isExpanded   = expandedParents.has(parent.name);
+                    const showTree     = hasKids && showSubFolders && isExpanded;
+                    const count        = countForCategory(parent.name);
+
+                    const renderCatRow = (cat, opts = {}) => {
+                      const catColour = effectiveColour(cat);
+                      const cName = cat.name;
+                      const displayName = opts.leaf ? leafName(cName) : cName;
+                      const rowCount = opts.leaf
+                        ? typeFiltered.filter(e => e.category === cName).length
+                        : countForCategory(cName);
+                      const active = activeCategory === cName;
+                      const rowClasses = [
+                        'te-cat-row',
+                        active ? 'te-cat-row-active' : '',
+                        opts.leaf ? 'te-cat-row-child' : '',
+                      ].filter(Boolean).join(' ');
+                      if (renamingCat === cName) {
+                        return (
+                          <div
+                            className={`${rowClasses} te-cat-rename-wrap`}
+                            style={catColour ? { '--cat-color': catColour } : {}}
+                          >
+                            <input
+                              ref={renameInputRef}
+                              className="te-cat-rename-input"
+                              value={renameValue}
+                              onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
+                                if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
+                                e.stopPropagation();
+                              }}
+                              onBlur={cancelCatRename}
+                            />
+                            {renameError && <span className="te-cat-rename-error">{renameError}</span>}
+                          </div>
+                        );
+                      }
+                      return (
+                        <button
+                          className={rowClasses}
+                          style={catColour ? { '--cat-color': catColour } : {}}
+                          onClick={() => setActiveCategory(cName)}
+                          onDoubleClick={opts.chevronSlot ? (e => { e.preventDefault(); toggleParentExpanded(cName); }) : undefined}
+                        >
+                          <span
+                            className="te-cat-dot te-cat-dot-pick"
+                            style={catColour ? { background: catColour } : {}}
+                            onClick={e => openCatColourPopover(e, cName)}
+                            title="Change colour"
+                          />
+                          <span className="te-cat-row-name">{displayName}</span>
+                          {opts.chevronSlot}
+                          <span className="te-cat-count">{rowCount}</span>
+                        </button>
+                      );
+                    };
+
+                    // Chevron sits on the RIGHT of the row (before the count)
+                    // so the dot + name of every parent stays flush-left with
+                    // the Uncategorised / All rows. Only rendered for parents
+                    // with children when sub-folders are visible.
+                    const chevronSlot = hasKids && showSubFolders ? (
+                      <span
+                        className={`te-cat-chevron${isExpanded ? ' te-cat-chevron-open' : ''}`}
+                        onClick={e => { e.stopPropagation(); toggleParentExpanded(parent.name); }}
+                        title={isExpanded ? 'Collapse' : 'Expand'}
+                      >▸</span>
+                    ) : null;
+
+                    // Highlight this row when it is the current drag hover
+                    // target. Highlight variant depends on drag type and (for
+                    // categories) the current drag intent (reparent vs reorder).
+                    const isHoverTarget = dragOverName === parent.name;
+                    const parentDropKind = !isHoverTarget ? null
+                      : dragActiveType === 'expansion' ? 'expansion'
+                      : dragIntent === 'reparent' ? 'reparent'
+                      : 'reorder';
+
                     return (
-                      <SortableCatTab key={cat.name} id={cat.name}>
-                        <div className="te-cat-row-group" onContextMenu={e => handleCatContextMenu(e, cat.name)}>
-                          {renamingCat === cat.name ? (
-                            <div
-                              className="te-cat-row te-cat-row-active te-cat-rename-wrap"
-                              style={catColour ? { '--cat-color': catColour } : {}}
+                      <React.Fragment key={parent.name}>
+                        <SortableCatTab id={parent.name} data={{ type: 'category', name: parent.name }} dropOverKind={parentDropKind}>
+                          <div className="te-cat-row-group" onContextMenu={e => handleCatContextMenu(e, parent.name)}>
+                            {renderCatRow(parent, { chevronSlot })}
+                          </div>
+                        </SortableCatTab>
+
+                        {addingSubParent === parent.name && showSubFolders && (
+                          <div className="te-cat-row-group te-cat-row-group-child">
+                            <form
+                              className="te-cat-add-form te-cat-add-form-child"
+                              onSubmit={e => {
+                                e.preventDefault();
+                                const trimmed = newSubName.trim();
+                                if (!trimmed) { setAddingSubParent(null); setNewSubName(''); setNewSubColour(null); return; }
+                                const path = `${parent.name}/${trimmed}`;
+                                const err = validateCategoryPath(path);
+                                if (err) { setRenameError(err); return; }
+                                onAddCategory?.(path, newSubColour);
+                                setAddingSubParent(null);
+                                setNewSubName('');
+                                setNewSubColour(null);
+                                setRenameError('');
+                                setExpandedParents(prev => {
+                                  const next = new Set(prev);
+                                  next.add(parent.name);
+                                  return next;
+                                });
+                              }}
                             >
-                              <input
-                                ref={renameInputRef}
-                                className="te-cat-rename-input"
-                                value={renameValue}
-                                onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
-                                  if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
-                                  e.stopPropagation();
-                                }}
-                                onBlur={cancelCatRename}
-                              />
-                              {renameError && <span className="te-cat-rename-error">{renameError}</span>}
-                            </div>
-                          ) : (
-                            <button
-                              className={`te-cat-row${activeCategory === cat.name ? ' te-cat-row-active' : ''}`}
-                              style={catColour ? { '--cat-color': catColour } : {}}
-                              onClick={() => setActiveCategory(cat.name)}
-                            >
+                              <span className="te-cat-chevron-placeholder" />
                               <span
-                                className="te-cat-dot te-cat-dot-pick"
-                                style={catColour ? { background: catColour } : {}}
-                                onClick={e => openCatColourPopover(e, cat.name)}
-                                title="Change colour"
+                                className="te-cat-add-colour-dot"
+                                style={newSubColour ? { background: newSubColour } : {}}
+                                onMouseDown={e => e.preventDefault()}
+                                onClick={e => openCatColourPopover(e, '__new_sub__')}
+                                title="Pick a colour (optional)"
                               />
-                              <span className="te-cat-row-name">{cat.name}</span>
-                              <span className="te-cat-count">{count}</span>
-                            </button>
-                          )}
-                        </div>
-                      </SortableCatTab>
+                              <input
+                                autoFocus
+                                className="te-cat-add-input"
+                                value={newSubName}
+                                onChange={e => { setNewSubName(e.target.value); setRenameError(''); }}
+                                placeholder="Sub-folder name…"
+                                onBlur={() => { if (!newSubName.trim()) { setAddingSubParent(null); setNewSubName(''); setNewSubColour(null); setRenameError(''); } }}
+                                onKeyDown={e => { if (e.key === 'Escape') { setAddingSubParent(null); setNewSubName(''); setNewSubColour(null); setRenameError(''); } }}
+                              />
+                            </form>
+                          </div>
+                        )}
+
+                        {showTree && children.map(child => {
+                          const childHover = dragOverName === child.name;
+                          const childDropKind = !childHover ? null
+                            : dragActiveType === 'expansion' ? 'expansion'
+                            : 'reorder';
+                          return (
+                            <DraggableChildRow
+                              key={child.name}
+                              id={child.name}
+                              data={{ type: 'category', name: child.name }}
+                              dropOverKind={childDropKind}
+                            >
+                              <div
+                                className="te-cat-row-group te-cat-row-group-child"
+                                onContextMenu={e => handleCatContextMenu(e, child.name)}
+                              >
+                                {renderCatRow(child, { leaf: true, chevronSlot: null })}
+                              </div>
+                            </DraggableChildRow>
+                          );
+                        })}
+                      </React.Fragment>
                     );
                   })}
                 </SortableContext>
-                <DragOverlay>
-                  {catDragId ? (
-                    <div className="te-cat-row-group te-cat-row-ghost">
-                      <button className="te-cat-row te-cat-row-active">{catDragId}</button>
-                    </div>
-                  ) : null}
-                </DragOverlay>
-              </DndContext>
 
               {addingCategory ? (
-                <form onSubmit={handleAddCategory} className="te-cat-add-form">
-                  <span
-                    className="te-cat-add-colour-dot"
-                    style={newCategoryColour ? { background: newCategoryColour } : {}}
-                    onMouseDown={e => e.preventDefault()}
-                    onClick={e => openCatColourPopover(e, '__new__')}
-                    title="Pick a colour (optional)"
-                  />
-                  <input
-                    autoFocus
-                    className="te-cat-add-input"
-                    value={newCategoryName}
-                    onChange={e => setNewCategoryName(e.target.value)}
-                    placeholder="Category name…"
-                    onBlur={handleAddCategory}
-                    onKeyDown={e => e.key === 'Escape' && setAddingCategory(false)}
-                  />
-                </form>
+                <>
+                  <form onSubmit={handleAddCategory} className="te-cat-add-form">
+                    <span
+                      className="te-cat-add-colour-dot"
+                      style={newCategoryColour ? { background: newCategoryColour } : {}}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={e => openCatColourPopover(e, '__new__')}
+                      title="Pick a colour (optional)"
+                    />
+                    <input
+                      autoFocus
+                      className="te-cat-add-input"
+                      value={newCategoryName}
+                      onChange={e => { setNewCategoryName(e.target.value); setRenameError(''); }}
+                      placeholder={isPro ? 'Name or Parent/Child…' : 'Category name…'}
+                      onBlur={handleAddCategory}
+                      onKeyDown={e => e.key === 'Escape' && (setAddingCategory(false), setRenameError(''))}
+                    />
+                  </form>
+                  {renameError && !renamingCat && (
+                    <div className="te-cat-add-error">{renameError}</div>
+                  )}
+                </>
               ) : (
                 <button className="te-cat-new-btn" onClick={() => { setAddingCategory(true); setNewCategoryColour(null); }}>
                   + Add Category
@@ -4121,12 +4611,12 @@ export default function TextExpansions({
                   }
                   const { exp } = item;
                   const catObj = exp.category ? normCategories.find(c => c.name === exp.category) : null;
-                  const color  = catObj?.colour || null;
+                  const color  = catObj ? effectiveColour(catObj) : null;
                   const isEditingThis = editing && !editing.isNew && editing.originalTrigger === exp.trigger;
                   const isSelected = selectedTriggers.has(exp.trigger);
                   return (
+                    <DraggableExpansionRow key={exp.trigger} trigger={exp.trigger} selectedTriggers={selectedTriggers}>
                     <div
-                      key={exp.trigger}
                       className={`te-item${isEditingThis ? ' te-item-editing' : ''}${isSelected ? ' te-item-selected' : ''}`}
                       onMouseDown={(e) => {
                         // Stop the browser's text-selection flash on modifier clicks.
@@ -4267,7 +4757,9 @@ export default function TextExpansions({
                             style={color ? { '--cat-color': color } : {}}
                             title={exp.category}
                           >
-                            {exp.category}
+                            {exp.category.includes('/')
+                              ? exp.category.split('/').join(' › ')
+                              : exp.category}
                           </span>
                         )}
                       </div>
@@ -4289,6 +4781,7 @@ export default function TextExpansions({
                         >✕</button>
                       </div>
                     </div>
+                    </DraggableExpansionRow>
                   );
                 })
               )}
@@ -4413,9 +4906,19 @@ export default function TextExpansions({
                           }}
                         >
                           <option value="">Uncategorised</option>
-                          {normCategories.map(cat => (
-                            <option key={cat.name} value={cat.name}>{cat.name}</option>
-                          ))}
+                          {parentCategories.map(parent => {
+                            const kids = getChildrenOf(parent.name);
+                            return (
+                              <React.Fragment key={parent.name}>
+                                <option value={parent.name}>{parent.name}</option>
+                                {kids.map(child => (
+                                  <option key={child.name} value={child.name}>
+                                    {'    '}› {leafName(child.name)}
+                                  </option>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
                           <option disabled value="__divider__">──────────</option>
                           <option value="__create_new__">+ Add Category…</option>
                         </select>
@@ -4434,7 +4937,7 @@ export default function TextExpansions({
                       />
                     </div>
                     <div className="te-panel-field">
-                      <label className="form-label">VOICE COMMANDS <span className="pro-badge">PRO</span></label>
+                      <label className="form-label">VOICE COMMANDS {!isPro && <span className="pro-badge">PRO</span>}</label>
                       <div className="voice-phrase-list">
                         {voicePhrases.map((p, i) => (
                           <div className="voice-phrase-row" key={i}>
@@ -4886,6 +5389,18 @@ export default function TextExpansions({
           </div>
           </div>
           </div>
+          <DragOverlay>
+            {catDragId && dragActiveType === 'category' ? (
+              <div className="te-cat-row-group te-cat-row-ghost">
+                <button className="te-cat-row te-cat-row-active">{catDragId.includes('/') ? leafName(catDragId) : catDragId}</button>
+              </div>
+            ) : dragActiveType === 'expansion' && dragCount > 1 ? (
+              <div className="te-exp-drag-ghost">
+                {dragCount} expansions
+              </div>
+            ) : null}
+          </DragOverlay>
+          </DndContext>
         </>
       )}
 
@@ -5408,6 +5923,16 @@ export default function TextExpansions({
         >
           <button className="profile-ctx-item" onClick={ctxRename}>Rename</button>
           <button className="profile-ctx-item" onClick={ctxChangeColour}>Change Colour</button>
+          {!isChildCat(catContextMenu.catName) && (
+            <button className="profile-ctx-item" onClick={ctxAddSubCategory}>
+              Add Sub-folder
+              {!isPro && <span className="pro-badge">PRO</span>}
+            </button>
+          )}
+          <button className="profile-ctx-item" onClick={ctxMoveTo}>
+            Move to…
+            {!isPro && <span className="pro-badge">PRO</span>}
+          </button>
           <button
             className="profile-ctx-item"
             onClick={() => {
@@ -5422,6 +5947,86 @@ export default function TextExpansions({
           <button className="profile-ctx-item profile-ctx-delete" onClick={ctxDelete}>
             {ctxDeleteConfirm ? 'Confirm Delete?' : 'Delete'}
           </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Move-to submenu popup (Pro) */}
+      {moveToMenu && ReactDOM.createPortal(
+        <div
+          ref={moveToMenuRef}
+          className="profile-ctx-menu"
+          style={{ top: moveToMenu.y, left: moveToMenu.x }}
+        >
+          {(() => {
+            const name = moveToMenu.catName;
+            const isChild = isChildCat(name);
+            const currentParent = isChild ? parentOf(name) : null;
+            const hasKids = catHasChildren(name);
+            const rows = [];
+            if (isChild) {
+              rows.push(
+                <button
+                  key="__top__"
+                  className="profile-ctx-item"
+                  onClick={() => { onMoveCategoryTo?.(name, 'top'); setMoveToMenu(null); }}
+                >Top level</button>
+              );
+            }
+            // Demoting a top-level with children is depth-capped.
+            const eligibleParents = parentCategories.filter(p => p.name !== name && p.name !== currentParent);
+            if (!hasKids && eligibleParents.length > 0) {
+              if (rows.length) rows.push(<div key="__div__" className="profile-ctx-divider" />);
+              eligibleParents.forEach(p => rows.push(
+                <button
+                  key={p.name}
+                  className="profile-ctx-item"
+                  onClick={() => { onMoveCategoryTo?.(name, p.name); setMoveToMenu(null); }}
+                >Under {p.name}</button>
+              ));
+            }
+            if (rows.length === 0) {
+              rows.push(<div key="__none__" className="profile-ctx-item profile-ctx-disabled">Nowhere to move to</div>);
+            }
+            return rows;
+          })()}
+        </div>,
+        document.body
+      )}
+
+      {/* Delete-tree-or-promote modal (parent with children) */}
+      {deleteTreeConfirm && ReactDOM.createPortal(
+        <div className="te-delete-overlay" onClick={() => setDeleteTreeConfirm(null)}>
+          <div className="te-delete-dialog te-delete-dialog--tree" onClick={e => e.stopPropagation()}>
+            <div className="te-delete-title">Delete “{deleteTreeConfirm.name}”</div>
+            <p className="te-delete-body">
+              This category contains <strong>{deleteTreeConfirm.childCount}</strong> sub-folder{deleteTreeConfirm.childCount !== 1 ? 's' : ''}.
+              What would you like to do?
+            </p>
+            <div className="te-delete-actions te-delete-actions--stack">
+              <button
+                type="button"
+                className="btn-secondary te-delete-tree-btn"
+                onClick={() => {
+                  onDeleteCategory?.(deleteTreeConfirm.name, 'promote');
+                  setDeleteTreeConfirm(null);
+                }}
+              >Promote sub-folders (keep them)</button>
+              <button
+                type="button"
+                className="btn-danger te-delete-tree-btn"
+                onClick={() => {
+                  onDeleteCategory?.(deleteTreeConfirm.name, 'tree');
+                  setDeleteTreeConfirm(null);
+                }}
+              >Delete this and all sub-folders</button>
+              <button
+                type="button"
+                className="btn-secondary te-delete-tree-btn te-delete-tree-btn--cancel"
+                onClick={() => setDeleteTreeConfirm(null)}
+              >Cancel</button>
+            </div>
+          </div>
         </div>,
         document.body
       )}

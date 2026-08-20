@@ -693,6 +693,36 @@
   margin-top: 6px;
 }
 
+/* Dev-only Pro/Free override panel — only rendered when import.meta.env.DEV.
+   Distinct look so it's obviously not user-facing. */
+.settings-dev-tools {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.settings-dev-tools-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.settings-dev-tools-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.settings-dev-tools-row .settings-action-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
 .settings-help-btn {
   width: 100%;
   justify-content: flex-start;

@@ -11,41 +11,10 @@ import { Zap } from 'lucide-react';
 import { findPresetIconForUrl } from '../utils/presetIcons';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 import { friendlyKeyName } from './keyboardLayout';
+import ColourPicker from './ColourPicker.jsx';
 
-// ── Colour palette (matches TextExpansions) ────────────────────────────────
-
-const CATEGORY_COLOURS = [
-  { hex: null,      label: 'None' },
-  { hex: '#e84040', label: 'Red' },
-  { hex: '#e87040', label: 'Orange' },
-  { hex: '#e8a020', label: 'Gold' },
-  { hex: '#50c878', label: 'Green' },
-  { hex: '#40b0b0', label: 'Teal' },
-  { hex: '#4a9eff', label: 'Blue' },
-  { hex: '#6a7eff', label: 'Indigo' },
-  { hex: '#9a6eff', label: 'Purple' },
-  { hex: '#c864ff', label: 'Violet' },
-  { hex: '#ff6eb4', label: 'Pink' },
-  { hex: '#8a8799', label: 'Grey' },
-  { hex: '#c0b090', label: 'Sand' },
-];
-
-function ColourPicker({ value, onChange }) {
-  return (
-    <div className="cat-colour-picker">
-      {CATEGORY_COLOURS.map(c => (
-        <button
-          key={c.label}
-          className={`cat-colour-swatch${value === c.hex ? ' selected' : ''}`}
-          style={c.hex ? { '--swatch-color': c.hex, background: c.hex } : undefined}
-          onClick={() => onChange(c.hex)}
-          title={c.label}
-          type="button"
-        />
-      ))}
-    </div>
-  );
-}
+// Shared colour picker (see ./ColourPicker.jsx) — see palette + custom picker
+// there so this panel stays in lockstep with TextExpansions and the radial.
 
 // ── Left-click-only sensor (prevents right-click from starting drag) ───────
 

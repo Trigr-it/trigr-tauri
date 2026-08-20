@@ -684,6 +684,37 @@ export default function SettingsPanel({
             LICENCE
           </div>
           {isExpanded('licence') && (<>
+          {import.meta.env.DEV && (
+            <div className="settings-dev-tools">
+              <div className="settings-dev-tools-label">DEV — Pro/Free override (in-memory, restart clears)</div>
+              <div className="settings-dev-tools-row">
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={async () => {
+                    const s = await window.electronAPI?.devSetProOverride(true);
+                    if (s) onLicenceStatusChange?.(s);
+                  }}
+                >Force Pro</button>
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={async () => {
+                    const s = await window.electronAPI?.devSetProOverride(false);
+                    if (s) onLicenceStatusChange?.(s);
+                  }}
+                >Force Free</button>
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={async () => {
+                    const s = await window.electronAPI?.devSetProOverride(null);
+                    if (s) onLicenceStatusChange?.(s);
+                  }}
+                >Use real state</button>
+              </div>
+            </div>
+          )}
           {licenceStatus.key_entered ? (
             <div className="settings-licence-active">
               <div className="settings-licence-status-row">
@@ -1235,7 +1266,7 @@ export default function SettingsPanel({
           {/* ── Shared Config ─────────────────────────────── */}
           <div className="settings-shared-config settings-subsection">
             <div className="settings-toggle-info">
-              <span className="settings-toggle-label">Shared config <span className="pro-badge">PRO</span></span>
+              <span className="settings-toggle-label">Shared config {!isPro && <span className="pro-badge">PRO</span>}</span>
               <span className="settings-toggle-sub">
                 Sync your config across machines via a cloud folder (OneDrive, Dropbox, Google Drive). Keyfire reads and writes <code>keyforge-config.json</code> there.
               </span>
@@ -1785,7 +1816,7 @@ export default function SettingsPanel({
               <div className="settings-subheader settings-subsection">History</div>
               <div className="settings-toggle-row">
                 <div className="settings-toggle-info">
-                  <span className="settings-toggle-label">History retention <span className="pro-badge">PRO</span></span>
+                  <span className="settings-toggle-label">History retention {!isPro && <span className="pro-badge">PRO</span>}</span>
                   <span className="settings-toggle-sub">
                     Days to keep history. Free: 7. Pro: 30.
                   </span>
@@ -1819,7 +1850,7 @@ export default function SettingsPanel({
               <div className="settings-toggle-row">
                 <div className="settings-toggle-info">
                   <span className="settings-toggle-label">
-                    Auto-extract text from images <span className="pro-badge">PRO</span>
+                    Auto-extract text from images {!isPro && <span className="pro-badge">PRO</span>}
                   </span>
                   <span className="settings-toggle-sub">
                     Runs OCR on every new screenshot or image copy so their text becomes searchable. Stored encrypted alongside the image.
@@ -1842,7 +1873,7 @@ export default function SettingsPanel({
               <div className="settings-toggle-row">
                 <div className="settings-toggle-info">
                   <span className="settings-toggle-label">
-                    Search inside image text <span className="pro-badge">PRO</span>
+                    Search inside image text {!isPro && <span className="pro-badge">PRO</span>}
                   </span>
                   <span className="settings-toggle-sub">
                     Includes text extracted from images when you search the clipboard. Matches show an "in image" chip.
@@ -1911,7 +1942,7 @@ export default function SettingsPanel({
         {/* ── VOICE COMMANDS ─────────────────────────────── */}
         <section className="settings-section">
           <div className="settings-section-title">
-            <span>VOICE COMMANDS <span className="pro-badge">PRO</span> <span className="experimental-badge">EXPERIMENTAL</span></span>
+            <span>VOICE COMMANDS {!isPro && <span className="pro-badge">PRO</span>} <span className="experimental-badge">EXPERIMENTAL</span></span>
           </div>
           {isExpanded('voice-commands') && (<>
 
@@ -2550,7 +2581,7 @@ export default function SettingsPanel({
 
           <div className="settings-slider-row">
             <div className="settings-slider-info">
-              <span className="settings-toggle-label">Hold threshold <span className="pro-badge">PRO</span></span>
+              <span className="settings-toggle-label">Hold threshold {!isPro && <span className="pro-badge">PRO</span>}</span>
               <span className="settings-toggle-sub">How long a key must be held before a Hold trigger fires</span>
             </div>
             <div className="settings-slider-ctrl">

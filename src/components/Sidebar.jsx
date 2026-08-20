@@ -468,7 +468,7 @@ function ProfileAccordion({
                 setLinkWindowTitle('');
                 setContextMenu(null);
               }}>
-                Link to App <span className="pro-badge">PRO</span>
+                Link to App {!isPro && <span className="pro-badge">PRO</span>}
               </button>
             )}
             {!isStatic && (
@@ -677,25 +677,6 @@ function DraggableCardWrap({ id, storageKey, isUsed, enabled, kind = 'library-ca
   );
 }
 
-function DraggableFolderCard({ id, folderName, children }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `folder-${id}`,
-    data: { kind: 'library-folder', folderName },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={isDragging ? 'is-dragging' : ''}
-      {...listeners}
-      {...attributes}
-      style={{ touchAction: 'none' }}
-    >
-      {children}
-    </div>
-  );
-}
-
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 export default function Sidebar({
@@ -876,7 +857,6 @@ export default function Sidebar({
 
   // ── Radial mode state ──
   const isRadialMode = activeView === 'radial';
-  const [newFolderName, setNewFolderName] = useState(null);
 
   const radialUsedKeys = useMemo(() => {
     const s = new Set();
@@ -1631,44 +1611,6 @@ export default function Sidebar({
       </div>
 
       {listViewActive && renderModifierBar()}
-
-      {/* Add folder button — radial mode only */}
-      {isRadialMode && (
-        <div className="sidebar-add-folder-wrap">
-          {newFolderName === null ? (
-            <button
-              className="sidebar-add-folder-btn"
-              type="button"
-              onClick={() => setNewFolderName('')}
-            >
-              + New Folder
-            </button>
-          ) : (
-            <div className="sidebar-new-folder-row">
-              <input
-                className="sidebar-new-folder-input"
-                placeholder="Folder name"
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
-                onKeyDown={e => {
-                  e.stopPropagation();
-                  if (e.key === 'Escape') setNewFolderName(null);
-                }}
-                autoFocus
-              />
-              <DraggableFolderCard
-                id="new-folder-drag"
-                folderName={newFolderName || 'New folder'}
-              >
-                <div className="sidebar-folder-drag-card">
-                  <span className="sidebar-folder-drag-icon">{'\u25c9'}</span>
-                  <span className="sidebar-folder-drag-label">{newFolderName || 'New folder'}</span>
-                </div>
-              </DraggableFolderCard>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Tabs only shown in classic (non-list) view */}
       {!listViewActive && (

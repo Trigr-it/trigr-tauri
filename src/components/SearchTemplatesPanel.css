@@ -198,7 +198,7 @@
 /* ── Category sidebar (mirrors te-cat-sidebar from TextExpansions) ──────── */
 
 .stp-cat-sidebar {
-  width: 170px;
+  width: 190px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -263,8 +263,8 @@
 }
 
 .stp-cat-dot {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--text-muted);
   flex-shrink: 0;

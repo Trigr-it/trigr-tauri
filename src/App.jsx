@@ -2624,6 +2624,10 @@ function App() {
   }, [quickActionImportPrompt, applyQuickActionImport]);
 
   // ── Expansion categories ──────────────────────────────────
+  // Categories support one-level nesting via slash-delimited paths:
+  // "Work" (top) or "Work/Client A" (child). Rename/move cascade to every
+  // assignment whose data.category matches the old path OR starts with
+  // "<old>/". Rust never reads data.category — the field is pure UI metadata.
   const handleAddCategory = useCallback((name, colour = null) => {
     if (!name || expansionCategories.some(c => c.name === name)) return;
     const newCategories = [...expansionCategories, { name, colour: colour || null }];
@@ -2645,14 +2649,21 @@ function App() {
   const handleRenameCategory = useCallback((oldName, newName) => {
     if (!newName || newName === oldName) return;
     if (expansionCategories.some(c => c.name === newName)) return; // duplicate guard
-    const newCategories = expansionCategories.map(c =>
-      c.name === oldName ? { ...c, name: newName } : c
-    );
-    // Rewrite every expansion that belongs to this category
+    const oldSlash = oldName + '/';
+    const newSlash = newName + '/';
+    const newCategories = expansionCategories.map(c => {
+      if (c.name === oldName) return { ...c, name: newName };
+      if (c.name.startsWith(oldSlash)) return { ...c, name: newName + '/' + c.name.slice(oldSlash.length) };
+      return c;
+    });
     const newAssignments = { ...assignments };
     for (const [k, v] of Object.entries(newAssignments)) {
-      if (k.startsWith('GLOBAL::EXPANSION::') && v.data?.category === oldName) {
+      if (!k.startsWith('GLOBAL::EXPANSION::')) continue;
+      const cat = v.data?.category;
+      if (cat === oldName) {
         newAssignments[k] = { ...v, data: { ...v.data, category: newName } };
+      } else if (typeof cat === 'string' && cat.startsWith(oldSlash)) {
+        newAssignments[k] = { ...v, data: { ...v.data, category: newName + '/' + cat.slice(oldSlash.length) } };
       }
     }
     setExpansionCategories(newCategories);
@@ -2661,13 +2672,122 @@ function App() {
     window.electronAPI?.saveConfig({ assignments: newAssignments, profiles, activeProfile, profileSettings, theme, expansionCategories: newCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
   }, [expansionCategories, assignments, profiles, activeProfile, profileSettings, theme, syncEngine, autocorrectEnabled, macrosEnabledOnStartup]);
 
-  const handleDeleteCategory = useCallback((name) => {
-    const newCategories = expansionCategories.filter(c => c.name !== name);
-    // Move all expansions in this category to uncategorised
+  // mode: 'single' (default; leaves any children of a parent orphaned so the
+  // caller must decide first), 'tree' (delete parent + all children), or
+  // 'promote' (delete parent only; children become top-level, auto-suffix on
+  // collision as "<child> (from <parent>)").
+  const handleDeleteCategory = useCallback((name, mode = 'single') => {
+    const slash = name + '/';
+    const children = expansionCategories.filter(c => c.name.startsWith(slash));
+
+    let newCategories;
+    const newAssignments = { ...assignments };
+
+    if (children.length === 0 || mode === 'tree') {
+      const doomed = new Set([name, ...children.map(c => c.name)]);
+      newCategories = expansionCategories.filter(c => !doomed.has(c.name));
+      for (const [k, v] of Object.entries(newAssignments)) {
+        if (!k.startsWith('GLOBAL::EXPANSION::')) continue;
+        const cat = v.data?.category;
+        if (typeof cat === 'string' && doomed.has(cat)) {
+          newAssignments[k] = { ...v, data: { ...v.data, category: null } };
+        }
+      }
+    } else {
+      // Promote children to top-level. Collision map: old child path → new top-level name.
+      const existingTop = new Set(expansionCategories.filter(c => !c.name.includes('/') && c.name !== name).map(c => c.name));
+      const promoteMap = new Map();
+      newCategories = expansionCategories
+        .filter(c => c.name !== name)
+        .map(c => {
+          if (!c.name.startsWith(slash)) return c;
+          const childBase = c.name.slice(slash.length);
+          let promoted = childBase;
+          if (existingTop.has(promoted)) promoted = `${childBase} (from ${name})`;
+          // Rare double-collision: append counter
+          let n = 2;
+          while (existingTop.has(promoted)) promoted = `${childBase} (from ${name}) ${n++}`;
+          existingTop.add(promoted);
+          promoteMap.set(c.name, promoted);
+          return { ...c, name: promoted };
+        });
+      for (const [k, v] of Object.entries(newAssignments)) {
+        if (!k.startsWith('GLOBAL::EXPANSION::')) continue;
+        const cat = v.data?.category;
+        if (cat === name) {
+          newAssignments[k] = { ...v, data: { ...v.data, category: null } };
+        } else if (typeof cat === 'string' && promoteMap.has(cat)) {
+          newAssignments[k] = { ...v, data: { ...v.data, category: promoteMap.get(cat) } };
+        }
+      }
+    }
+    setExpansionCategories(newCategories);
+    setAssignments(newAssignments);
+    syncEngine(newAssignments, activeProfile);
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles, activeProfile, profileSettings, theme, expansionCategories: newCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
+  }, [expansionCategories, assignments, profiles, activeProfile, profileSettings, theme, syncEngine, autocorrectEnabled]);
+
+  // Drop-target for the drag-and-drop "Uncategorised" row and any category
+  // row on the sidebar. newCategory may be null (uncategorised) or a path.
+  // Accepts a single trigger string or an array — a multi-selection drag from
+  // the expansion list arrives here as an array in one save round-trip.
+  const handleMoveExpansionToCategory = useCallback((triggerOrTriggers, newCategory) => {
+    const triggers = Array.isArray(triggerOrTriggers) ? triggerOrTriggers : [triggerOrTriggers];
+    if (triggers.length === 0) return;
+    const next = newCategory || null;
+    const newAssignments = { ...assignments };
+    let changed = false;
+    for (const trigger of triggers) {
+      const key = `GLOBAL::EXPANSION::${trigger}`;
+      const existing = newAssignments[key];
+      if (!existing) continue;
+      const current = existing.data?.category ?? null;
+      if (current === next) continue;
+      newAssignments[key] = { ...existing, data: { ...existing.data, category: next } };
+      changed = true;
+    }
+    if (!changed) return;
+    setAssignments(newAssignments);
+    syncEngine(newAssignments, activeProfile);
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
+  }, [assignments, expansionCategories, profiles, activeProfile, profileSettings, theme, syncEngine, autocorrectEnabled, macrosEnabledOnStartup]);
+
+  // Move a category to a new location in the tree.
+  // destination: 'top' promotes a child to top-level; otherwise a parent name to demote/move under.
+  // Depth is capped at 1 — moving a top-level with children under another parent is rejected.
+  const handleMoveCategoryTo = useCallback((name, destination) => {
+    const isChild = name.includes('/');
+    const baseName = isChild ? name.slice(name.lastIndexOf('/') + 1) : name;
+
+    let newPath;
+    if (destination === 'top') {
+      if (!isChild) return;
+      newPath = baseName;
+      if (expansionCategories.some(c => c.name === newPath)) {
+        const parentName = name.slice(0, name.lastIndexOf('/'));
+        newPath = `${baseName} (from ${parentName})`;
+        let n = 2;
+        while (expansionCategories.some(c => c.name === newPath)) newPath = `${baseName} (from ${parentName}) ${n++}`;
+      }
+    } else {
+      if (destination.includes('/')) return; // can't nest under a child
+      // Guard depth cap: only childless top-levels can be demoted.
+      if (!isChild) {
+        const hasChildren = expansionCategories.some(c => c.name.startsWith(name + '/'));
+        if (hasChildren) return;
+      }
+      if (!expansionCategories.some(c => c.name === destination)) return;
+      newPath = `${destination}/${baseName}`;
+      if (name === newPath) return;
+      if (expansionCategories.some(c => c.name === newPath)) return;
+    }
+
+    const newCategories = expansionCategories.map(c => c.name === name ? { ...c, name: newPath } : c);
     const newAssignments = { ...assignments };
     for (const [k, v] of Object.entries(newAssignments)) {
-      if (k.startsWith('GLOBAL::EXPANSION::') && v.data?.category === name) {
-        newAssignments[k] = { ...v, data: { ...v.data, category: null } };
+      if (!k.startsWith('GLOBAL::EXPANSION::')) continue;
+      if (v.data?.category === name) {
+        newAssignments[k] = { ...v, data: { ...v.data, category: newPath } };
       }
     }
     setExpansionCategories(newCategories);
@@ -4472,12 +4592,10 @@ function App() {
       return;
     }
 
-    if (data?.kind === 'library-folder') {
-      handleAddRadialMenuFolder(data.folderName || 'New folder', idx);
-    } else if ((data?.kind === 'library-card') && data?.storageKey) {
+    if ((data?.kind === 'library-card') && data?.storageKey) {
       handleAddRadialMenuItem(data.storageKey, null, idx);
     }
-  }, [activeView, radialMenuItems, expandedRadialFolder, hitTestWedge, handleAddRadialMenuItem, handleAddRadialMenuFolder, handleAddChildToFolder, currentCombo, activeProfile, assignments, makeAssignmentKey, handleBindLibrary, moveAssignment, clearSpringMod]);
+  }, [activeView, radialMenuItems, expandedRadialFolder, hitTestWedge, handleAddRadialMenuItem, handleAddChildToFolder, currentCombo, activeProfile, assignments, makeAssignmentKey, handleBindLibrary, moveAssignment, clearSpringMod]);
 
   const handleRadialDragCancel = useCallback(() => {
     setRadialActiveDrag(null);
@@ -5449,7 +5567,7 @@ function App() {
             />
           )}
           {activeArea === 'analytics' && (
-            <AnalyticsPanel isPro={isPro} />
+            <AnalyticsPanel isPro={isPro} onShowUpgrade={showUpgrade} />
           )}
           {activeArea === 'clipboard' && (
             <ClipboardPanel
@@ -5572,6 +5690,8 @@ function App() {
               onReorderCategories={handleReorderCategories}
               onUpdateCategoryColour={handleUpdateCategoryColour}
               onRenameCategory={handleRenameCategory}
+              onMoveCategoryTo={handleMoveCategoryTo}
+              onMoveExpansionToCategory={handleMoveExpansionToCategory}
               autocorrectEnabled={autocorrectEnabled}
               autocorrectBuiltinTypos={autocorrectBuiltinTypos}
               autocorrectDoubleCaps={autocorrectDoubleCaps}

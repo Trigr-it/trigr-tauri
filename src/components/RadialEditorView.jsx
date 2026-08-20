@@ -4,6 +4,7 @@ import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
 import { SearchBar } from './SearchBar';
+import ColourPicker from './ColourPicker.jsx';
 
 // Lazy — IconPicker drags in the full lucide-react + simple-icons libraries
 // (~5.9MB of JS). Loading it on first picker open keeps that out of the main
@@ -888,28 +889,24 @@ export default function RadialEditorView({
       {/* ── Icon picker panel (fixed position) ── */}
       {iconPicker && (
         <div ref={iconPickerRef} className="rev-icon-picker-panel" style={{ top: iconPicker.y, left: iconPicker.x }}>
-          {/* Colour picker row */}
+          {/* Colour picker row — uses the shared component so the palette
+              and custom-colour picker stay identical to Text Expansions and
+              Search Templates. Radial uses '' (empty string) as its "default
+              type colour" sentinel, so pass noneHex="" to preserve the wire. */}
           <div className="rev-color-row">
             <span className="rev-color-label">Colour</span>
-            {['', '#64b4ff', '#c864ff', '#50c878', '#ffc832', '#ff783c', '#40c8a0', '#ff6b6b', '#f0ede8', '#e8a020'].map(c => (
-              <button
-                key={c}
-                className={`rev-color-swatch${(iconPicker.currentColor || '') === c ? ' active' : ''}`}
-                style={c ? { background: c } : {}}
-                title={c || 'Default (type colour)'}
-                type="button"
-                onClick={() => {
-                  if (iconPicker.childId) {
-                    onSetRadialChildIcon?.(iconPicker.folderId, iconPicker.childId, undefined, c);
-                  } else {
-                    onSetRadialMenuItemIcon?.(iconPicker.itemId, undefined, c);
-                  }
-                  setIconPicker(p => ({ ...p, currentColor: c }));
-                }}
-              >
-                {!c && <span className="rev-color-swatch-auto">A</span>}
-              </button>
-            ))}
+            <ColourPicker
+              value={iconPicker.currentColor || ''}
+              noneHex=""
+              onChange={(c) => {
+                if (iconPicker.childId) {
+                  onSetRadialChildIcon?.(iconPicker.folderId, iconPicker.childId, undefined, c);
+                } else {
+                  onSetRadialMenuItemIcon?.(iconPicker.itemId, undefined, c);
+                }
+                setIconPicker(p => ({ ...p, currentColor: c }));
+              }}
+            />
           </div>
           {/* Icon grid */}
           <React.Suspense fallback={null}>
