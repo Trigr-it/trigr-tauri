@@ -703,8 +703,17 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <span class="phase-name">
             <span class="phase-version">v0.8</span><span class="phase-subtitle">Unassigned Library &amp; Pixel Waits</span>
           </span>
-          <span class="phase-date">Aug 2026 · 4 releases published</span>
+          <span class="phase-date">Aug 2026 · 5 releases published</span>
         </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.8.4</span>
+            <time class="release-date">20 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Every clipboard clip now shows the real icon of the app it came from, both on the card in the list and in the detail pane.</li><li>The app filter dropdown on the clipboard tab shows a small icon beside each app so you can spot the right one at a glance.</li><li>Search matches inside a clipboard item are highlighted in gold on the detail pane, so you can see exactly where the query hit.</li><li>Every search field across Keyfire now has a small X button that clears the field in one click.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Large performance overhaul on the clipboard tab. Very large text pastes and lots of screenshots no longer stall the tab when you open it. A full history page is between 20 and 500 times lighter on payload depending on what is inside.</li><li>Full-text search inside clipboard items now looks at the entire body of every text row, not just the first 200 characters. If your query only appears deep inside a long paste, that row now surfaces.</li><li>Image tiles in the clipboard tab paint instantly. Small thumbnails are built at copy time and inlined into the list so nothing has to be fetched image by image.</li><li>Legacy clipboard items copied before this update also pick up their app icons automatically. Keyfire resolves them from the Windows registry the first time each app is seen.</li><li>On first launch after updating, a quiet background job builds thumbnails for older screenshots already in your history. A progress line appears in the status bar while it works.</li></ul>
+          </div>
+        </article>
         <article class="release-entry">
           <header class="release-head">
             <span class="release-version">v0.8.3</span>
