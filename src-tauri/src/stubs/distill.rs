@@ -19,7 +19,7 @@ pub struct TargetWindow {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DistilledStep {
     TypeText { text: String },
-    PressKey { vks: Vec<u32> },
+    PressKey { vks: Vec<u32>, #[serde(default)] cursor: Option<(i32, i32)> },
     #[serde(rename_all = "camelCase")]
     ClickAtPosition {
         x_abs: i32,
@@ -44,7 +44,7 @@ pub enum DistilledStep {
         #[serde(default)]
         modifiers: Vec<u32>,
     },
-    Scroll { delta: i32 },
+    Scroll { delta: i32, x: i32, y: i32 },
     FocusWindow { title: String, exe: String },
     Wait { ms: u64 },
 }

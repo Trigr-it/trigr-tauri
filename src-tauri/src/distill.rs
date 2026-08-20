@@ -45,9 +45,20 @@ use windows::Win32::UI::Shell::{IVirtualDesktopManager, VirtualDesktopManager};
 // gaps a UI needs to settle without capturing every micro-jitter between clicks.
 
 const CLICK_TOLERANCE_PX: i32 = 4;
+// Wait thresholds — gaps under these are dropped without emitting a Wait step.
+// TEXT: 500ms preserves the "typing runs into one Type Text step" behaviour.
+// Below 500ms while typing, tiny inter-keystroke pauses would shatter every
+// typed word into a soup of Type Text + Wait + Type Text + …
+// UI: 1ms — capture every real gap between actions verbatim. Only exactly
+// simultaneous events (gap=0) are skipped. Users get their record-time
+// timing back on replay for click/keypress/mouse-button flows.
 const WAIT_THRESHOLD_TEXT_MS: u64 = 500;
-const WAIT_THRESHOLD_UI_MS: u64 = 100;
-const WAIT_PRECISION_MS: u64 = 50;
+const WAIT_THRESHOLD_UI_MS: u64 = 1;
+// Wait durations are emitted at millisecond precision — no rounding. Reason:
+// rounding to 50ms buckets drifted UI-timing macros noticeably on replay
+// (e.g. a 462ms gap became 450ms; a 987ms gap became 1000ms) and users lost
+// their exact record-time timing. Sub-threshold gaps (see WAIT_THRESHOLD_*)
+// are still dropped as noise, but anything above the threshold is exact.
 const MAX_TYPE_TEXT_CHARS: usize = 500;
 
 // ── Record Macro step value ─────────────────────────────────────────────────
@@ -135,6 +146,12 @@ pub enum DistilledStep {
     },
     PressKey {
         vks: Vec<u32>,
+        // Cursor position at record time. Only meaningful when the chord
+        // matches Keyfire's radial-menu hotkey — the executor SetCursorPos
+        // here before opening the wheel so recorded segment-click positions
+        // land on the right segments. None if no Mouse* event preceded this
+        // KeyDown in the recording.
+        cursor: Option<(i32, i32)>,
     },
     #[serde(rename_all = "camelCase")]
     ClickAtPosition {
@@ -170,6 +187,12 @@ pub enum DistilledStep {
     },
     Scroll {
         delta: i32,
+        // Cursor position at scroll time. On replay the executor moves the
+        // cursor here before firing the wheel event — Windows routes wheel
+        // events by cursor location, not focus, so without this the scroll
+        // lands wherever the cursor happens to be sitting at replay time.
+        x: i32,
+        y: i32,
     },
     FocusWindow {
         title: String,
@@ -223,6 +246,19 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
     let mut mouse_down: Option<PendingMouse> = None;
     let mut last_t: u64 = 0;
     let mut first_event_seen = false;
+    // Modifier taps: a modifier pressed and released with no non-modifier key
+    // (or mouse click) between them is a bare "tap" (e.g. Win alone opens the
+    // Start Menu, Alt alone activates the menu bar). Track by canonical vk
+    // (0x11/0x12/0x5B); Shift is deliberately excluded — bare Shift taps are
+    // almost always incidental (Shift held ready for a capital letter) and
+    // emitting a Shift step would clutter every recording.
+    let mut pending_taps: Vec<u32> = Vec::new();
+    // Track cursor position via any position-carrying event. Attached to
+    // every Press Key step so the radial-menu internal dispatch can move the
+    // cursor to the recorded position before the wheel opens — otherwise the
+    // wheel appears at replay-time cursor location and the recorded segment
+    // clicks miss.
+    let mut last_cursor: Option<(i32, i32)> = None;
 
     for evt in events {
         // MouseMove events fire every ~20ms while the cursor is moving, so if
@@ -230,6 +266,17 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
         // always tiny and no Wait step ever gets emitted between real actions.
         // Drag detection doesn't need mousemoves either — it uses the mousedown
         // and mouseup coords directly (line 282+). Skip them entirely.
+        // Track cursor from any position-carrying event BEFORE the MouseMove
+        // skip below — even skipped MouseMoves update last_cursor.
+        match evt {
+            RecordedEvent::MouseMove { x, y, .. }
+            | RecordedEvent::MouseDown { x, y, .. }
+            | RecordedEvent::MouseUp { x, y, .. }
+            | RecordedEvent::Wheel { x, y, .. } => {
+                last_cursor = Some((*x, *y));
+            }
+            _ => {}
+        }
         if matches!(evt, RecordedEvent::MouseMove { .. }) {
             continue;
         }
@@ -253,10 +300,7 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
             };
             if gap >= threshold {
                 flush_text_buffer(&mut text_buf, &mut out);
-                let rounded = round_ms(gap);
-                if rounded > 0 {
-                    out.push(DistilledStep::Wait { ms: rounded });
-                }
+                out.push(DistilledStep::Wait { ms: gap });
             }
         }
         first_event_seen = true;
@@ -264,15 +308,38 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
 
         match evt {
             RecordedEvent::KeyDown { vk, sc, .. } => {
-                handle_keydown(*vk, *sc, &mut modifiers, &mut text_buf, &mut out);
+                handle_keydown(
+                    *vk,
+                    *sc,
+                    &mut modifiers,
+                    &mut text_buf,
+                    &mut out,
+                    &mut pending_taps,
+                    last_cursor,
+                );
             }
             RecordedEvent::KeyUp { vk, .. } => {
                 if is_modifier_vk(*vk) {
                     modifiers.retain(|m| *m != *vk);
+                    // If this modifier is still in pending_taps, no
+                    // non-modifier key or mouse click intervened — it's a
+                    // bare tap (Win → Start Menu, Alt → menu bar, Ctrl → app-
+                    // specific one-shot actions). Emit it as a PressKey step.
+                    let canonical = canonical_modifier_vk(*vk);
+                    if let Some(pos) = pending_taps.iter().position(|m| *m == canonical) {
+                        pending_taps.remove(pos);
+                        flush_text_buffer(&mut text_buf, &mut out);
+                        out.push(DistilledStep::PressKey { vks: vec![canonical], cursor: last_cursor });
+                    }
                 }
             }
             RecordedEvent::MouseDown { button, x, y, t } => {
                 flush_text_buffer(&mut text_buf, &mut out);
+                // A mouse click while a modifier is held is a modifier-click
+                // chord (Ctrl+click, Shift+click), NOT a bare tap of that
+                // modifier. Clear pending taps so the subsequent modifier
+                // keyup doesn't spuriously emit a PressKey step.
+                pending_taps.clear();
                 let target_at_down = current_fg
                     .as_ref()
                     .and_then(|fg| resolve_rel(*x, *y, fg));
@@ -328,9 +395,10 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
                 }
             }
             RecordedEvent::MouseMove { .. } => unreachable!("filtered above"),
-            RecordedEvent::Wheel { delta, .. } => {
+            RecordedEvent::Wheel { delta, x, y, .. } => {
                 flush_text_buffer(&mut text_buf, &mut out);
-                out.push(DistilledStep::Scroll { delta: *delta });
+                out.push(DistilledStep::Scroll { delta: *delta, x: *x, y: *y });
+                log::info!("[DIAG scroll] distill emitted Scroll step (delta={} at ({},{}))", delta, x, y);
             }
             RecordedEvent::ForegroundChanged {
                 title,
@@ -391,10 +459,18 @@ fn distilled_to_macro_step(step: DistilledStep) -> serde_json::Value {
             "type": "Type Text",
             "value": text,
         }),
-        DistilledStep::PressKey { vks } => json!({
-            "type": "Press Key",
-            "value": vks_to_chord(&vks),
-        }),
+        DistilledStep::PressKey { vks, cursor } => {
+            let mut obj = serde_json::Map::new();
+            obj.insert("type".into(), json!("Press Key"));
+            obj.insert("value".into(), json!(vks_to_chord(&vks)));
+            if let Some((x, y)) = cursor {
+                // cursorX/cursorY: consumed only by the radial-menu internal
+                // dispatch at execute time; regular Press Key playback ignores.
+                obj.insert("cursorX".into(), json!(x));
+                obj.insert("cursorY".into(), json!(y));
+            }
+            serde_json::Value::Object(obj)
+        }
         DistilledStep::ClickAtPosition {
             x_abs,
             y_abs,
@@ -465,13 +541,15 @@ fn distilled_to_macro_step(step: DistilledStep) -> serde_json::Value {
                 "value": click_value.to_string(),
             })
         }
-        DistilledStep::Scroll { delta } => {
+        DistilledStep::Scroll { delta, x, y } => {
             const WHEEL_NOTCH: i32 = 120;
             let notches = ((delta.abs() as f32) / (WHEEL_NOTCH as f32)).round().max(1.0) as i32;
             let direction = if delta > 0 { "up" } else { "down" };
             let scroll_value = json!({
                 "direction": direction,
                 "amount": notches,
+                "x": x,
+                "y": y,
             });
             json!({
                 "type": "Mouse Scroll",
@@ -552,6 +630,11 @@ fn vks_to_chord(vks: &[u32]) -> String {
 }
 
 fn vk_display_name(vk: u32) -> String {
+    // Names must round-trip through `actions.rs::display_name_to_vk` on
+    // playback — otherwise the Press Key step logs "Unknown macro step key"
+    // and silently no-ops. The hex fallback `0x{:X}` is a diagnostic-only
+    // path that MUST NOT be reached in production (every playback-relevant VK
+    // needs a symbolic name here).
     match vk {
         0x08 => "Backspace".into(),
         0x09 => "Tab".into(),
@@ -576,6 +659,34 @@ fn vk_display_name(vk: u32) -> String {
         0x30..=0x39 => (vk as u8 as char).to_string(),        // 0-9
         0x41..=0x5A => (vk as u8 as char).to_string(),        // A-Z
         0x70..=0x87 => format!("F{}", vk - 0x6F),             // F1-F24
+        // OEM punctuation (US layout mapping — same VK codes are used on
+        // most Western layouts; the symbolic name round-trips regardless of
+        // physical layout because display_name_to_vk maps by name not glyph).
+        0xBA => ";".into(),
+        0xBB => "=".into(),
+        0xBC => ",".into(),
+        0xBD => "-".into(),
+        0xBE => ".".into(),
+        0xBF => "/".into(),
+        0xC0 => "`".into(),
+        0xDB => "[".into(),
+        0xDC => "\\".into(),
+        0xDD => "]".into(),
+        0xDE => "'".into(),
+        // Numpad
+        0x60..=0x69 => format!("Numpad{}", vk - 0x60),        // Numpad0..Numpad9
+        0x6A => "NumpadMultiply".into(),
+        0x6B => "NumpadAdd".into(),
+        0x6D => "NumpadSubtract".into(),
+        0x6E => "NumpadDecimal".into(),
+        0x6F => "NumpadDivide".into(),
+        // Bare modifier taps — emitted when a modifier is pressed + released
+        // with no chord partner (Win → Start Menu, Alt → menu bar, etc).
+        // canonical_modifier_vk folds side-specific VKs to these generics.
+        0x10 | 0xA0 | 0xA1 => "Shift".into(),
+        0x11 | 0xA2 | 0xA3 => "Ctrl".into(),
+        0x12 | 0xA4 | 0xA5 => "Alt".into(),
+        0x5B | 0x5C => "Win".into(),
         _ => format!("0x{:X}", vk),
     }
 }
@@ -641,11 +752,6 @@ fn event_t(e: &RecordedEvent) -> u64 {
     }
 }
 
-fn round_ms(ms: u64) -> u64 {
-    let step = WAIT_PRECISION_MS;
-    ((ms + step / 2) / step) * step
-}
-
 fn flush_text_buffer(buf: &mut String, out: &mut Vec<DistilledStep>) {
     if buf.is_empty() {
         return;
@@ -660,10 +766,20 @@ fn handle_keydown(
     modifiers: &mut Vec<u32>,
     text_buf: &mut String,
     out: &mut Vec<DistilledStep>,
+    pending_taps: &mut Vec<u32>,
+    last_cursor: Option<(i32, i32)>,
 ) {
     if is_modifier_vk(vk) {
         if !modifiers.contains(&vk) {
             modifiers.push(vk);
+        }
+        // Mark this modifier as a tap-candidate — a subsequent non-modifier
+        // keydown (chord partner) or mouse click will clear it, meaning the
+        // matching keyup won't emit a tap step. Shift is excluded: bare Shift
+        // taps are almost always incidental (Shift held ready for a letter).
+        let canonical = canonical_modifier_vk(vk);
+        if canonical != 0x10 && !pending_taps.contains(&canonical) {
+            pending_taps.push(canonical);
         }
         // Modifier press ends a Type Text run. The next non-modifier keydown
         // decides whether we resume typing (Shift-only + letter → typing) or
@@ -672,12 +788,16 @@ fn handle_keydown(
         return;
     }
 
+    // Any non-modifier keydown consumes all pending modifier taps — the mods
+    // held now are part of a chord, not standalone taps.
+    pending_taps.clear();
+
     // Non-shift modifier held → chord
     if has_non_shift_mod(modifiers) {
         flush_text_buffer(text_buf, out);
         let mut vks = canonicalise_modifiers(modifiers);
         vks.push(vk);
-        out.push(DistilledStep::PressKey { vks });
+        out.push(DistilledStep::PressKey { vks, cursor: last_cursor });
         return;
     }
 
@@ -686,7 +806,7 @@ fn handle_keydown(
         flush_text_buffer(text_buf, out);
         let mut vks = canonicalise_modifiers(modifiers);
         vks.push(vk);
-        out.push(DistilledStep::PressKey { vks });
+        out.push(DistilledStep::PressKey { vks, cursor: last_cursor });
         return;
     }
 
@@ -698,6 +818,19 @@ fn handle_keydown(
         }
     }
     // else: unmapped VK, silently skip (e.g. dead-key state, non-char VKs)
+}
+
+/// Fold side-specific modifier VKs (LCtrl/RCtrl, LAlt/RAlt, LWin/RWin,
+/// LShift/RShift) into their generic canonical form. Used to dedupe
+/// pending_taps so LWin down + RWin up etc. don't emit two taps.
+fn canonical_modifier_vk(vk: u32) -> u32 {
+    match vk {
+        0xA0 | 0xA1 => 0x10, // Shift
+        0xA2 | 0xA3 => 0x11, // Ctrl
+        0xA4 | 0xA5 => 0x12, // Alt
+        0x5C => 0x5B,        // RWin folded to LWin (canonical)
+        _ => vk,
+    }
 }
 
 fn is_modifier_vk(vk: u32) -> bool {
@@ -792,6 +925,33 @@ fn vk_to_char(vk: u32, sc: u32, modifiers: &[u32]) -> Option<String> {
         }
 
         let layout = GetKeyboardLayout(0);
+
+        // Flush any pending dead-key state from a prior ToUnicodeEx call.
+        // Without this, an unresolved dead key (e.g. ^ on a French layout, or
+        // the ` in some Cyrillic transliterations) survives across calls and
+        // makes the NEXT real character return zero — silently dropping that
+        // key from the distilled Type Text buffer. Standard Windows recipe:
+        // call ToUnicodeEx with SPACE and a clean key_state until it returns
+        // <= 0, then proceed with the real call.
+        let clean_state = [0u8; 256];
+        let mut scratch = [0u16; 8];
+        let mut safety = 4;
+        while safety > 0 {
+            let flushed = ToUnicodeEx(
+                0x20, // VK_SPACE — well-defined "commit dead key" behaviour
+                0,
+                clean_state.as_ptr(),
+                scratch.as_mut_ptr(),
+                scratch.len() as i32,
+                0,
+                layout,
+            );
+            if flushed <= 0 {
+                break;
+            }
+            safety -= 1;
+        }
+
         let mut buf = [0u16; 8];
         let n = ToUnicodeEx(
             vk,
@@ -1024,7 +1184,7 @@ mod tests {
             k_up(0xA2, 30),                 // LCtrl up
         ];
         let steps = distill_internal(&events);
-        let is_chord = steps.iter().any(|s| matches!(s, DistilledStep::PressKey { vks } if vks.contains(&0x11) && vks.contains(&0x53)));
+        let is_chord = steps.iter().any(|s| matches!(s, DistilledStep::PressKey { vks, .. } if vks.contains(&0x11) && vks.contains(&0x53)));
         assert!(is_chord, "expected PressKey Ctrl+S, got {:?}", steps);
     }
 

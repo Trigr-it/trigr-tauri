@@ -337,6 +337,28 @@ pub fn push_key(vk: u32, sc: u32, is_down: bool) {
         return;
     }
     let t = relative_t();
+    // Before every KeyDown, stamp a MouseMove event with current cursor
+    // position. This guarantees the distiller's last_cursor tracker has a
+    // fresh position for every KeyDown — critical for the radial-menu
+    // internal dispatch, which SetCursorPos to the recorded position before
+    // opening the wheel so recorded segment clicks land on segments. Without
+    // this stamp, a KeyDown that fires before ANY mouse event in the
+    // recording (e.g. user positions cursor manually then triggers the
+    // radial hotkey without moving further) has no cursor context in the
+    // event stream. MouseMoves are skipped by distill's step loop so this
+    // stamp is invisible to non-radial replay. KeyUp doesn't need it (only
+    // KeyDown drives step emission for Press Key).
+    if is_down {
+        let mut pt = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+        let ok = unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) != 0
+        };
+        if ok {
+            if let Ok(mut vec) = events().try_lock() {
+                vec.push(RecordedEvent::MouseMove { x: pt.x, y: pt.y, t });
+            }
+        }
+    }
     let evt = if is_down {
         RecordedEvent::KeyDown { vk, sc, t }
     } else {
@@ -393,14 +415,21 @@ pub fn push_mouse_move(x: i32, y: i32) {
 }
 
 pub fn push_wheel(delta: i32, x: i32, y: i32) {
-    if !IS_RECORDING_MACRO.load(Ordering::SeqCst) || in_grace_window() {
+    if !IS_RECORDING_MACRO.load(Ordering::SeqCst) {
+        log::info!("[DIAG scroll] push_wheel SKIPPED — not recording (delta={})", delta);
+        return;
+    }
+    if in_grace_window() {
+        log::info!("[DIAG scroll] push_wheel SKIPPED — in grace window (delta={})", delta);
         return;
     }
     let t = relative_t();
     if let Ok(mut vec) = events().try_lock() {
         vec.push(RecordedEvent::Wheel { delta, x, y, t });
+        log::info!("[DIAG scroll] push_wheel captured delta={} at ({},{}) t={}", delta, x, y, t);
     } else {
         PUSH_DROPS.fetch_add(1, Ordering::SeqCst);
+        log::info!("[DIAG scroll] push_wheel DROPPED — events mutex locked");
     }
 }
 

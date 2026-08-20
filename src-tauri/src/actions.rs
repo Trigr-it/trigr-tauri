@@ -839,7 +839,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     // may itself contain Focus Window / Open App / Open URL — without
                     // a re-capture, subsequent parent-macro steps would target the
                     // pre-fire window.
-                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Wait for Pixel" | "Click at Position" | "Open URL" | "Fire Trigger" | "Fire Text Expansion" | "Record Macro") {
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Wait for Pixel" | "Click at Position" | "Click Mouse" | "Press Key" | "Open URL" | "Fire Trigger" | "Fire Text Expansion" | "Record Macro") {
                         if step_type == "Open URL" {
                             thread::sleep(Duration::from_millis(OPEN_URL_FOCUS_SETTLE_MS));
                         }
@@ -2658,6 +2658,94 @@ fn parse_hex_color(s: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
+/// Fold modifier VKs (side-specific or generic) into a bit-set matching the
+/// `(u8, u32)` shape stored in `EngineState` for reserved hotkeys.
+/// bit 0 = Ctrl, bit 1 = Shift, bit 2 = Alt, bit 3 = Win.
+fn mod_vks_to_bits(mod_vks: &[u16]) -> u8 {
+    let mut bits = 0u8;
+    for &v in mod_vks {
+        match v {
+            0xA2 | 0xA3 | 0x11 => bits |= 1, // Ctrl
+            0xA0 | 0xA1 | 0x10 => bits |= 2, // Shift
+            0xA4 | 0xA5 | 0x12 => bits |= 4, // Alt
+            0x5B | 0x5C       => bits |= 8, // Win
+            _ => {}
+        }
+    }
+    bits
+}
+
+/// If a macro's Press Key step matches one of Keyfire's own reserved global
+/// hotkeys (search overlay, radial menu, clipboard overlay), fire the
+/// corresponding action by emitting the same event the LL hook would emit.
+/// Returns true if handled; caller should skip SendInput. Rationale: the LL
+/// hook skips synthetic (LLKHF_INJECTED) keystrokes to avoid feedback loops,
+/// so a macro-sent Ctrl+Space (or the radial / clipboard hotkey) would never
+/// reach the hook path that opens the overlay. Direct dispatch bypasses the
+/// injected-filter. Reads live hotkey values from engine_state so rebinding
+/// is picked up without restart.
+fn try_fire_keyfire_hotkey_from_macro(
+    mod_vks: &[u16],
+    target_vk: u16,
+    step: &Value,
+    app: &tauri::AppHandle,
+) -> bool {
+    let bits = mod_vks_to_bits(mod_vks);
+    let target = target_vk as u32;
+    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let overlay = state.overlay_hotkey;
+    let radial = state.radial_menu_hotkey;
+    let clipboard = state.clipboard_paste_hotkey;
+    drop(state);
+    if let Some((mb, vk)) = overlay {
+        if bits == mb && target == vk {
+            log::info!("[Keyfire] Press Key macro matched search-overlay hotkey — dispatching internally");
+            let _ = app.emit("toggle-overlay", Value::Null);
+            return true;
+        }
+    }
+    if let Some((mb, vk)) = radial {
+        if bits == mb && target == vk {
+            log::info!("[Keyfire] Press Key macro matched radial-menu hotkey — dispatching internally");
+            // Radial menu opens at CURRENT cursor position. During recording
+            // the user positioned the cursor before pressing the hotkey; the
+            // distilled step carries that position as cursorX/cursorY. Move
+            // the cursor there before the wheel opens so recorded segment
+            // clicks land on the right segments. Non-radial Press Keys ignore
+            // these fields even when present.
+            let cx = step.get("cursorX").and_then(|v| v.as_i64()).map(|n| n as i32);
+            let cy = step.get("cursorY").and_then(|v| v.as_i64()).map(|n| n as i32);
+            if let (Some(x), Some(y)) = (cx, cy) {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y);
+                }
+                log::info!("[Keyfire] Radial dispatch: cursor moved to recorded ({}, {})", x, y);
+                // Tiny settle so cursor position is stable before the wheel
+                // reads it on show.
+                thread::sleep(Duration::from_millis(20));
+            }
+            let _ = app.emit("toggle-radial-menu", Value::Null);
+            // Wait for the radial menu window to actually render its wedges +
+            // wire up React onClick handlers before the next macro step's
+            // Click at Position fires. Without this, the click can arrive on
+            // an unmounted/uninitialized DOM and pass through as a no-op.
+            // 200ms is empirically enough for WebView2 to paint + React to
+            // mount on modern hardware; tune here if it feels laggy or if a
+            // slower machine reports segments still not firing.
+            thread::sleep(Duration::from_millis(200));
+            return true;
+        }
+    }
+    if let Some((mb, vk)) = clipboard {
+        if bits == mb && target == vk {
+            log::info!("[Keyfire] Press Key macro matched clipboard-overlay hotkey — dispatching internally");
+            let _ = app.emit("toggle-clipboard-overlay", Value::Null);
+            return true;
+        }
+    }
+    false
+}
+
 fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: &tauri::AppHandle) -> bool {
     let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let step_value = step.get("value").and_then(|v| v.as_str()).unwrap_or("");
@@ -2668,8 +2756,30 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         "Type Text" | "Dynamic Text" => {
             if !step_value.is_empty() {
                 if settle_ms > 0 { thread::sleep(Duration::from_millis(settle_ms)); }
+                // Re-capture the foreground window RIGHT BEFORE pasting. The
+                // outer loop's re-capture (after Press Key / Click Mouse etc.)
+                // can miss async focus shifts — e.g. Ctrl+N in eM Client opens
+                // a new compose window on a background thread, focus lands on
+                // the popup ~50-200ms LATER than the re-capture polled. Cross-
+                // monitor amplifies this because the popup renders on a
+                // different display pipeline. Re-capturing at Type Text time
+                // means any recorded Wait between the focus-shift and the
+                // Type Text has already elapsed, so GetForegroundWindow is
+                // the truth. Falls back to the passed target_hwnd if the
+                // current foreground is somehow null.
+                let fresh_hwnd = unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
+                };
+                let type_hwnd = if fresh_hwnd != 0 { fresh_hwnd } else { *target_hwnd };
+                if fresh_hwnd != 0 && fresh_hwnd != *target_hwnd {
+                    log::info!(
+                        "[Keyfire] Type Text: foreground drifted since last re-capture (was=0x{:x}, now=0x{:x}) — using fresh HWND",
+                        *target_hwnd, fresh_hwnd
+                    );
+                    *target_hwnd = fresh_hwnd;
+                }
                 let resolved = resolve_type_text_tokens(step_value);
-                output_text(&resolved, method, *target_hwnd);
+                output_text(&resolved, method, type_hwnd);
             }
         }
 
@@ -2757,6 +2867,21 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         .iter()
                         .filter_map(|m| modifier_vk(m))
                         .collect();
+
+                    // If the chord matches one of Keyfire's reserved global
+                    // hotkeys (search overlay, radial menu), fire the internal
+                    // action DIRECTLY instead of via SendInput. Reason: the LL
+                    // hook skips events tagged LLKHF_INJECTED (SendInput sets
+                    // that flag) to avoid feedback loops, so a macro-sent
+                    // Ctrl+Space would never reach the hook and open the
+                    // overlay. Direct dispatch bypasses the filter. Only fires
+                    // on the "full" (down+up) phase — held-only chords are
+                    // deliberate held-key macros, not overlay triggers.
+                    if phase == "full"
+                        && try_fire_keyfire_hotkey_from_macro(&mod_vks, target_vk, step, app)
+                    {
+                        return true;
+                    }
 
                     for i in 0..repeat {
                         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
@@ -4475,6 +4600,20 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             };
             let direction = parsed.get("direction").and_then(|v| v.as_str()).unwrap_or("down");
             let amount = parsed.get("amount").and_then(|v| v.as_i64()).unwrap_or(3).max(1).min(999) as i32;
+            // Distilled Scroll steps carry the cursor position from record
+            // time. Windows routes wheel events by cursor location (NOT by
+            // focus), so without moving the cursor first, the scroll fires
+            // over whatever window the cursor happens to be sitting over at
+            // replay time — usually the wrong one. Absent x/y (hand-authored
+            // Mouse Scroll steps with no position) we skip the move and the
+            // scroll fires at the current cursor position, same as before.
+            let scroll_x = parsed.get("x").and_then(|v| v.as_i64()).map(|n| n as i32);
+            let scroll_y = parsed.get("y").and_then(|v| v.as_i64()).map(|n| n as i32);
+            if let (Some(sx), Some(sy)) = (scroll_x, scroll_y) {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(sx, sy);
+                }
+            }
             let (flag, delta) = match direction {
                 "up"    => (MOUSEEVENTF_WHEEL,   WHEEL_DELTA * amount),
                 "down"  => (MOUSEEVENTF_WHEEL,  -WHEEL_DELTA * amount),

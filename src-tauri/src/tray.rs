@@ -353,9 +353,20 @@ pub fn hide_window_to_tray(app: &AppHandle) {
 
 fn toggle_window_visibility(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        if window.is_visible().unwrap_or(false) {
+        // Windows reports a MINIMISED window as visible (IsWindowVisible returns
+        // true for minimised windows — they're technically visible, just as a
+        // taskbar icon). Using is_visible alone would treat "minimised via (-)"
+        // as "shown normally" and hide the window fully on tray click — the
+        // user sees NOTHING happen (both taskbar entry and window vanish) and
+        // thinks the tray is broken. Treat minimised as "needs restore" so a
+        // single tray click surfaces the window regardless of how it was hidden.
+        let visible = window.is_visible().unwrap_or(false);
+        let minimized = window.is_minimized().unwrap_or(false);
+        if visible && !minimized {
+            log::info!("[Keyfire] Tray toggle: hiding (visible={} minimized={})", visible, minimized);
             hide_window_to_tray(app);
         } else {
+            log::info!("[Keyfire] Tray toggle: showing (visible={} minimized={})", visible, minimized);
             show_window(app);
         }
     }

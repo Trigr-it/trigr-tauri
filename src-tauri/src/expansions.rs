@@ -3464,15 +3464,31 @@ pub(crate) fn settle_paste(target_hwnd: isize, max_ms: u64) {
     // Don't trust an observed read completion before this — the renderer may
     // read text first and HTML a beat later, and clipboard-history managers
     // can produce a brief foreign open right after our write.
-    const MIN_WAIT_MS: u64 = 30;
+    const DEFAULT_MIN_WAIT_MS: u64 = 30;
+    // Office (Word, Outlook) dispatches Ctrl+V through the ribbon, so its OS
+    // clipboard read fires ~60-150ms after the keystroke. Cloud Clipboard's
+    // brief ~15ms clipboard-open right after our write can otherwise trip
+    // seen_reader early and cause the restore to race Office's actual paste
+    // read → the user sees the PRE-fire clipboard content pasted. Extending
+    // the min-wait floor and the cap for Office keeps the restore behind
+    // Office's read. Tune here if 800ms feels laggy in real use — 500ms is
+    // probably the empirical floor before Word starts to miss it on slower
+    // hardware, but nothing under 400ms was reliable in initial testing.
+    const OFFICE_MIN_WAIT_MS: u64 = 150;
+    const OFFICE_MAX_MS: u64 = 800;
     // After the reader releases, re-check once past this grace in case the
     // same read sequence re-opens the clipboard for another format.
     const POST_READ_GRACE_MS: u64 = 20;
+
+    let office = target_is_office(target_hwnd);
+    let cap = if office { max_ms.max(OFFICE_MAX_MS) } else { max_ms };
+    let min_wait = if office { OFFICE_MIN_WAIT_MS } else { DEFAULT_MIN_WAIT_MS };
+
     let start = std::time::Instant::now();
     let mut seen_reader = false;
     loop {
         let elapsed = start.elapsed().as_millis() as u64;
-        if elapsed >= max_ms {
+        if elapsed >= cap {
             break;
         }
         let open_wnd = unsafe {
@@ -3480,7 +3496,7 @@ pub(crate) fn settle_paste(target_hwnd: isize, max_ms: u64) {
         };
         if open_wnd != 0 {
             seen_reader = true;
-        } else if seen_reader && elapsed >= MIN_WAIT_MS {
+        } else if seen_reader && elapsed >= min_wait {
             thread::sleep(Duration::from_millis(POST_READ_GRACE_MS));
             let reopened = unsafe {
                 windows_sys::Win32::System::DataExchange::GetOpenClipboardWindow() as isize
@@ -3496,10 +3512,11 @@ pub(crate) fn settle_paste(target_hwnd: isize, max_ms: u64) {
     // the reader was caught in the act and we exited early; false means we
     // waited out the cap.
     log::info!(
-        "[Keyfire] settle_paste: observed={} elapsed={}ms cap={}ms",
+        "[Keyfire] settle_paste: observed={} elapsed={}ms cap={}ms office={}",
         seen_reader,
         start.elapsed().as_millis(),
-        max_ms
+        cap,
+        office,
     );
 }
 
@@ -3635,6 +3652,24 @@ pub(crate) fn target_needs_shift_insert(target_hwnd: isize) -> bool {
     matches!(
         crate::foreground::proc_name_for_hwnd(target_hwnd).as_deref(),
         Some("code"),
+    )
+}
+
+/// True for Office desktop apps whose paste is dispatched through the ribbon
+/// (Word, Outlook confirmed 2026-08-20). The OS clipboard read fires ~60-150ms
+/// after Ctrl+V — well after the fast paths (Notepad, Chromium, eM Client)
+/// have completed. `settle_paste` uses this to extend its min-wait floor and
+/// its cap so the clipboard restore never races Office's delayed paste read.
+///
+/// If a user reports the same stale-paste symptom in PowerPoint or Excel, add
+/// their process name here (`powerpnt`, `excel`).
+pub(crate) fn target_is_office(target_hwnd: isize) -> bool {
+    if target_hwnd == 0 {
+        return false;
+    }
+    matches!(
+        crate::foreground::proc_name_for_hwnd(target_hwnd).as_deref(),
+        Some("winword") | Some("outlook"),
     )
 }
 
