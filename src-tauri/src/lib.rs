@@ -785,9 +785,42 @@ fn get_app_icon(path: String) -> Value {
     Value::Null
 }
 
+#[cfg(not(windows))]
+#[tauri::command]
+fn get_app_icon_by_name(name: String) -> Value {
+    let _ = name;
+    Value::Null
+}
+
 #[cfg(windows)]
 #[tauri::command]
 fn get_app_icon(path: String) -> Value {
+    icon_data_url_from_path(path)
+}
+
+/// v0.8.4 legacy source_app icon resolver. The list payload only carries a
+/// full exe path for rows written after this patch — pre-existing rows have
+/// only a basename ("chrome.exe"). This command lets the frontend resolve
+/// an icon from just the name by walking a chain of Windows lookups:
+///   1. HKLM / HKCU / WOW6432Node `App Paths\<name>` registry (covers most
+///      user-installed apps — Chrome, Slack, VS Code, Discord, Steam …).
+///   2. Currently-running process with a matching exe filename (catches
+///      portable / less-common apps that are open right now).
+///   3. `%SystemRoot%\System32\<name>` and `%SystemRoot%\<name>` (catches
+///      system apps — notepad.exe, explorer.exe, cmd.exe …).
+/// Any hit is fed to the existing icon-data-URL pipeline. None on total miss
+/// so the frontend renders the text-badge fallback.
+#[cfg(windows)]
+#[tauri::command]
+fn get_app_icon_by_name(name: String) -> Value {
+    match resolve_exe_path_for_name(&name) {
+        Some(path) => icon_data_url_from_path(path),
+        None => Value::Null,
+    }
+}
+
+#[cfg(windows)]
+fn icon_data_url_from_path(path: String) -> Value {
     use std::ffi::c_void;
     use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
     use windows_sys::Win32::Graphics::Gdi::{
@@ -975,6 +1008,176 @@ fn get_app_icon(path: String) -> Value {
 
         Value::String(format!("data:image/png;base64,{}", base64_encode(&png_buf)))
     }
+}
+
+/// Locate an executable given only its basename (e.g. "chrome.exe"). Returns
+/// the first hit across a chain of Windows lookups. Case-insensitive on the
+/// basename compare — Windows filesystems are case-insensitive so "Chrome.exe"
+/// and "chrome.exe" resolve to the same registry key and the same process.
+#[cfg(windows)]
+fn resolve_exe_path_for_name(name: &str) -> Option<String> {
+    if name.is_empty() { return None; }
+    // 1. Registry App Paths — HKLM 64-bit, HKCU, and HKLM 32-bit WOW6432.
+    if let Some(p) = read_app_paths_registry(name) { return Some(p); }
+    // 2. Currently-running process match.
+    if let Some(p) = find_running_process_path_by_name(name) { return Some(p); }
+    // 3. System paths — %SystemRoot%\System32\<name> and %SystemRoot%\<name>.
+    if let Ok(sys) = std::env::var("SystemRoot") {
+        for suffix in ["System32", "SysWOW64", ""] {
+            let candidate = if suffix.is_empty() {
+                format!("{}\\{}", sys, name)
+            } else {
+                format!("{}\\{}\\{}", sys, suffix, name)
+            };
+            if std::path::Path::new(&candidate).exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Try the three App Paths registry locations Windows searches. Returns the
+/// first non-empty default value (the exe path). Path is stripped of trailing
+/// nulls / whitespace and quotes.
+#[cfg(windows)]
+fn read_app_paths_registry(name: &str) -> Option<String> {
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
+        KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_EXPAND_SZ, REG_SZ,
+    };
+    // Subkey is always "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<name>".
+    let subkey = format!("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{}", name);
+    let wide: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
+
+    // (root, wow-view). WOW64_64KEY forces the 64-bit view; WOW64_32KEY forces
+    // the 32-bit view (WOW6432Node) — some 32-bit apps only register there.
+    let attempts: [(isize, u32); 3] = [
+        (HKEY_LOCAL_MACHINE as isize, KEY_READ | KEY_WOW64_64KEY),
+        (HKEY_CURRENT_USER as isize, KEY_READ),
+        (HKEY_LOCAL_MACHINE as isize, KEY_READ | KEY_WOW64_32KEY),
+    ];
+
+    for (root, flags) in attempts {
+        unsafe {
+            let mut hkey: windows_sys::Win32::System::Registry::HKEY = std::ptr::null_mut();
+            let status = RegOpenKeyExW(root as _, wide.as_ptr(), 0, flags, &mut hkey);
+            if status != 0 { continue; }
+            // Query the default (unnamed) value, which App Paths keys use to
+            // store the exe full path.
+            let mut data_type: u32 = 0;
+            let mut size: u32 = 0;
+            // First call gets required buffer size.
+            let s1 = RegQueryValueExW(
+                hkey,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                &mut data_type,
+                std::ptr::null_mut(),
+                &mut size,
+            );
+            if s1 != 0 || size == 0 || (data_type != REG_SZ && data_type != REG_EXPAND_SZ) {
+                RegCloseKey(hkey);
+                continue;
+            }
+            let mut buf = vec![0u8; size as usize];
+            let s2 = RegQueryValueExW(
+                hkey,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                &mut data_type,
+                buf.as_mut_ptr(),
+                &mut size,
+            );
+            RegCloseKey(hkey);
+            if s2 != 0 { continue; }
+            // Reinterpret as u16 slice, strip trailing null, expand env vars if needed.
+            let u16_len = (size / 2) as usize;
+            let slice = std::slice::from_raw_parts(buf.as_ptr() as *const u16, u16_len);
+            let trimmed = if slice.last() == Some(&0) { &slice[..u16_len - 1] } else { slice };
+            let raw = String::from_utf16_lossy(trimmed);
+            let cleaned = raw.trim().trim_matches('"').to_string();
+            if cleaned.is_empty() { continue; }
+            let resolved = if data_type == REG_EXPAND_SZ {
+                expand_environment_strings(&cleaned).unwrap_or(cleaned)
+            } else {
+                cleaned
+            };
+            if std::path::Path::new(&resolved).exists() {
+                return Some(resolved);
+            }
+        }
+    }
+    None
+}
+
+/// Expand `%Var%` placeholders using the calling process's environment.
+#[cfg(windows)]
+fn expand_environment_strings(input: &str) -> Option<String> {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn ExpandEnvironmentStringsW(lpSrc: *const u16, lpDst: *mut u16, nSize: u32) -> u32;
+    }
+    let src: Vec<u16> = input.encode_utf16().chain(std::iter::once(0)).collect();
+    // First call with null buffer returns needed length INCLUDING the null.
+    unsafe {
+        let needed = ExpandEnvironmentStringsW(src.as_ptr(), std::ptr::null_mut(), 0);
+        if needed == 0 { return None; }
+        let mut buf = vec![0u16; needed as usize];
+        let written = ExpandEnvironmentStringsW(src.as_ptr(), buf.as_mut_ptr(), needed);
+        if written == 0 { return None; }
+        let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        Some(String::from_utf16_lossy(&buf[..end]))
+    }
+}
+
+/// Enumerate live processes via ToolHelp; return the full image path of the
+/// first process whose exe basename matches `name` case-insensitively. Bounded
+/// by the ToolHelp snapshot size — a running-machine snapshot is typically
+/// 200-500 processes, walk cost is sub-millisecond.
+#[cfg(windows)]
+fn find_running_process_path_by_name(name: &str) -> Option<String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let target = name.to_ascii_lowercase();
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap.is_null() || snap == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+            return None;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        if Process32FirstW(snap, &mut entry) == 0 {
+            CloseHandle(snap);
+            return None;
+        }
+        loop {
+            let exe_len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+            let exe = String::from_utf16_lossy(&entry.szExeFile[..exe_len]);
+            if exe.to_ascii_lowercase() == target {
+                // Match — open the process and query its full path.
+                let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
+                if !handle.is_null() {
+                    let mut buf = [0u16; 32768];
+                    let mut size: u32 = buf.len() as u32;
+                    let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
+                    CloseHandle(handle);
+                    if ok != 0 && size > 0 {
+                        CloseHandle(snap);
+                        return Some(String::from_utf16_lossy(&buf[..size as usize]));
+                    }
+                }
+            }
+            if Process32NextW(snap, &mut entry) == 0 { break; }
+        }
+        CloseHandle(snap);
+    }
+    None
 }
 
 #[tauri::command]
@@ -4986,6 +5189,14 @@ fn backfill_clipboard_ocr() {
     clipboard::run_ocr_backfill();
 }
 
+/// v0.8.4 one-shot thumbnail backfill for legacy image rows. Frontend
+/// guards on localStorage `trigr_thumb_backfilled_v1` so this only runs once
+/// per install. Fires progress + done events on the same pattern as OCR.
+#[tauri::command]
+fn backfill_clipboard_thumbnails() {
+    clipboard::run_thumb_backfill();
+}
+
 /// Fetch just the decrypted OCR text for a row. Used by the auto-OCR
 /// completion listener in ClipboardPanel to merge newly-recognised text
 /// into local state without a full get_item_full round-trip. Returns
@@ -4999,6 +5210,33 @@ async fn get_clipboard_ocr_text(id: i64) -> String {
     })
     .await
     .unwrap_or_default()
+}
+
+/// Lazy-fetch the decrypted text + html for a text row. The history list
+/// SELECT drops text_content and html_content so the payload stays small
+/// even with multi-MB pastes in the timeline; the frontend calls this on
+/// selection / edit to populate the detail pane. Image_blob is intentionally
+/// not returned — image rows use getClipboardImage which handles the
+/// full-res round-trip separately.
+#[tauri::command]
+async fn get_clipboard_item_text_full(id: i64) -> Value {
+    tauri::async_runtime::spawn_blocking(move || {
+        match clipboard::get_item_full(id) {
+            Some(item) => serde_json::json!({
+                "text_content": item.text_content,
+                "html_content": item.html_content,
+            }),
+            None => serde_json::json!({
+                "text_content": Value::Null,
+                "html_content": Value::Null,
+            }),
+        }
+    })
+    .await
+    .unwrap_or_else(|_| serde_json::json!({
+        "text_content": Value::Null,
+        "html_content": Value::Null,
+    }))
 }
 
 #[tauri::command]
@@ -6064,6 +6302,7 @@ pub fn run() {
             browse_for_audio,
             browse_for_video,
             get_app_icon,
+            get_app_icon_by_name,
             list_installed_apps,
             browse_for_folder,
             read_image_base64,
@@ -6151,7 +6390,9 @@ pub fn run() {
             set_clipboard_settings,
             set_clipboard_ocr_settings,
             backfill_clipboard_ocr,
+            backfill_clipboard_thumbnails,
             get_clipboard_ocr_text,
+            get_clipboard_item_text_full,
             set_clipboard_capture_enabled,
             set_clipboard_excluded_apps,
             get_clipboard_storage_size,

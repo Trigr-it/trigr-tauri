@@ -1,5 +1,7 @@
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as B64_STD;
 use log::{debug, error, info, warn};
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -274,6 +276,42 @@ fn encrypt_blob(plaintext: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
             None
         }
     }
+}
+
+/// Encode a raw image blob (any format the `image` crate can decode — PNG or
+/// JPEG in practice for clipboard captures) into a small WebP thumbnail
+/// suitable for inline delivery in the history list payload. Preserves aspect
+/// ratio, fits inside a 200x200 box, WebP-compressed to keep base64 payload
+/// small. Returns None on decode/encode failure or if the input is empty —
+/// callers store None and fall back to full-res lazy load.
+///
+/// The output is INTENTIONALLY not encrypted here — the caller wraps it with
+/// encrypt_blob so thumb_blob lives on-disk with the same protection as
+/// image_blob. Keeping the helper cipher-free lets the backfill worker reuse
+/// it without touching the cipher path more than once per row.
+const THUMB_MAX_DIMENSION: u32 = 200;
+
+fn make_thumb_webp(source_bytes: &[u8]) -> Option<Vec<u8>> {
+    if source_bytes.is_empty() { return None; }
+    let img = match image::load_from_memory(source_bytes) {
+        Ok(i) => i,
+        Err(e) => {
+            debug!("[Keyfire] Clipboard: thumb decode failed: {}", e);
+            return None;
+        }
+    };
+    // `thumbnail` preserves aspect ratio, fitting inside the given box —
+    // exactly what we want for the tile-slot in the card. It uses a fast
+    // nearest-neighbour path for order-of-magnitude downscales which is fine
+    // at this size; the visible tile is ~120x90 in the UI so even Lanczos
+    // wouldn't move the needle perceptibly.
+    let thumb = img.thumbnail(THUMB_MAX_DIMENSION, THUMB_MAX_DIMENSION);
+    let mut buf: Vec<u8> = Vec::new();
+    if let Err(e) = thumb.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::WebP) {
+        debug!("[Keyfire] Clipboard: thumb WebP encode failed: {}", e);
+        return None;
+    }
+    Some(buf)
 }
 
 /// Decrypt ciphertext using the stored IV. None on auth-tag mismatch, wrong
@@ -636,6 +674,11 @@ struct ClipEntry {
     image_height: u32,
     preview: String,
     source_app: String,
+    /// v0.8.4: full exe path for the source process. Empty when Free-tier or
+    /// when the foreground exe couldn't be resolved. Encrypted per row — full
+    /// paths often include %USERPROFILE% so treat as PII, matching the other
+    /// content-column encryption tier.
+    source_app_path: String,
     content_tag: String,
 }
 
@@ -740,6 +783,18 @@ enum ClipboardMsg {
     /// yet. Used by `run_ocr_backfill` after a fresh Pro upgrade to catch up
     /// on the existing clipboard history.
     GetPendingOcrIds {
+        reply: mpsc::Sender<Vec<i64>>,
+    },
+    /// v0.8.4 thumbnail backfill: write a pre-decoded WebP thumbnail into a
+    /// row's thumb_blob column (encrypted alongside image_blob). Only called
+    /// by run_thumb_backfill for legacy image rows.
+    SetThumbBlob {
+        id: i64,
+        thumb: Vec<u8>,
+    },
+    /// Return every image row that has an image_blob but no thumb_blob yet.
+    /// Backfill worker iterates these once on first v0.8.4 launch.
+    GetPendingThumbIds {
         reply: mpsc::Sender<Vec<i64>>,
     },
     IncrementPasteCount {
@@ -987,35 +1042,40 @@ fn auto_tag(content_type: &str, text: Option<&str>) -> String {
 
 // ── Source app capture ────────────────────────────────────────────────────────
 
-fn get_foreground_process_name() -> String {
+/// Returns `(basename, full_path)` for the foreground process. basename is
+/// the exe filename with extension (e.g. "chrome.exe") — matches the historic
+/// source_app column shape and stays the filter key. full_path is the
+/// absolute path used by the frontend to look up an app icon via
+/// SHGetFileInfoW. Either half is String::new() on failure so the caller can
+/// null-check without unwrapping options.
+fn get_foreground_process_info() -> (String, String) {
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() {
-            return String::new();
+            return (String::new(), String::new());
         }
         let mut pid: u32 = 0;
         GetWindowThreadProcessId(hwnd, &mut pid);
         if pid == 0 {
-            return String::new();
+            return (String::new(), String::new());
         }
         let process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
         if process.is_null() {
-            // Try with limited access
             let process2 = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
             if process2.is_null() {
-                return String::new();
+                return (String::new(), String::new());
             }
-            let name = query_process_name(process2);
+            let info = query_process_info(process2);
             windows_sys::Win32::Foundation::CloseHandle(process2);
-            return name;
+            return info;
         }
-        let name = query_process_name(process);
+        let info = query_process_info(process);
         windows_sys::Win32::Foundation::CloseHandle(process);
-        name
+        info
     }
 }
 
-unsafe fn query_process_name(process: *mut std::ffi::c_void) -> String {
+unsafe fn query_process_info(process: *mut std::ffi::c_void) -> (String, String) {
     // Use QueryFullProcessImageNameW which works across sessions
     let mut buf = [0u16; 260];
     let mut size: u32 = 260;
@@ -1026,11 +1086,11 @@ unsafe fn query_process_name(process: *mut std::ffi::c_void) -> String {
         &mut size,
     );
     if ok == 0 || size == 0 {
-        return String::new();
+        return (String::new(), String::new());
     }
     let path = String::from_utf16_lossy(&buf[..size as usize]);
-    // Extract just the filename
-    path.rsplit('\\').next().unwrap_or("").to_string()
+    let name = path.rsplit('\\').next().unwrap_or("").to_string();
+    (name, path)
 }
 
 // ── DB open + schema ─────────────────────────────────────────────────────────
@@ -1097,6 +1157,22 @@ fn open_clipboard_db(db_path: &Path) -> Result<Connection, String> {
     // ciphertext column is a legacy plaintext fallback).
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN html_content BLOB", []);
     let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_html BLOB", []);
+
+    // v0.8.4: pre-decoded WebP thumbnail (~200x200) inlined into the list
+    // payload so image tiles paint without a full-res IPC round-trip. NULL
+    // for legacy rows until the one-shot backfill runs (see run_thumb_backfill).
+    // Encrypted with a fresh IV like image_blob — iv_thumb NULL means the
+    // ciphertext is legacy plaintext (in practice never — the column shipped
+    // after the encryption path). Non-image rows also carry NULL.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN thumb_blob BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_thumb BLOB", []);
+
+    // v0.8.4: full exe path for the source process, used by the frontend to
+    // fetch an app icon via SHGetFileInfoW. Encrypted per row — %USERPROFILE%
+    // often appears in the path. NULL for Free-tier + all pre-v0.8.4 rows,
+    // which fall back to the text badge.
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN source_app_path BLOB", []);
+    let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN iv_source_app_path BLOB", []);
 
     // Saved folders: flat (no nesting) user-created folders that organise the
     // Saved tier (internally still `starred` — the rename is UI-only).
@@ -1378,6 +1454,29 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                     ClipboardMsg::GetPendingOcrIds { reply } => {
                         let ids: Vec<i64> = conn
                             .prepare("SELECT id FROM clipboard_history WHERE content_type = 'image' AND ocr_text IS NULL AND image_blob IS NOT NULL ORDER BY id DESC")
+                            .and_then(|mut stmt| {
+                                let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+                                Ok(rows.filter_map(|r| r.ok()).collect())
+                            })
+                            .unwrap_or_default();
+                        let _ = reply.send(ids);
+                    }
+                    ClipboardMsg::SetThumbBlob { id, thumb } => {
+                        // Encrypt with a fresh IV, then UPDATE both columns.
+                        // On cipher-not-initialised, store plaintext with
+                        // iv_thumb NULL — same graceful degrade as image_blob.
+                        let (thumb_ct, iv_thumb): (Vec<u8>, Option<Vec<u8>>) = match encrypt_blob(&thumb) {
+                            Some((ct, iv)) => (ct, Some(iv)),
+                            None => (thumb, None),
+                        };
+                        let _ = conn.execute(
+                            "UPDATE clipboard_history SET thumb_blob = ?1, iv_thumb = ?2 WHERE id = ?3",
+                            rusqlite::params![thumb_ct, iv_thumb, id],
+                        );
+                    }
+                    ClipboardMsg::GetPendingThumbIds { reply } => {
+                        let ids: Vec<i64> = conn
+                            .prepare("SELECT id FROM clipboard_history WHERE content_type = 'image' AND thumb_blob IS NULL AND image_blob IS NOT NULL ORDER BY id DESC")
                             .and_then(|mut stmt| {
                                 let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
                                 Ok(rows.filter_map(|r| r.ok()).collect())
@@ -1866,6 +1965,90 @@ fn emit_backfill_progress(processed: usize, total: usize) {
     }
 }
 
+pub fn set_thumb_blob(id: i64, thumb: Vec<u8>) {
+    if let Some(tx) = CLIPBOARD_TX.get() {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(ClipboardMsg::SetThumbBlob { id, thumb });
+        }
+    }
+}
+
+/// v0.8.4 one-off thumbnail backfill for existing image rows. Called from
+/// the frontend on first launch after the perf patch lands (guarded by a
+/// localStorage flag so it only runs once per install). Runs on a dedicated
+/// thread so the caller isn't blocked.
+///
+/// For each pending image row: fetch the full-res image_blob, downscale +
+/// WebP-encode via make_thumb_webp, then send the plaintext bytes back to the
+/// writer via SetThumbBlob (which encrypts + UPDATEs). Rows that fail to
+/// decode are skipped silently — a corrupted image_blob still lets the row
+/// live, it just keeps falling back to the getClipboardImage lazy-fetch.
+///
+/// Emits `clipboard-thumb-backfill-progress` with `{processed, total}` after
+/// each item, and `clipboard-thumb-backfill-done` when the queue drains.
+pub fn run_thumb_backfill() {
+    thread::spawn(move || {
+        let ids: Vec<i64> = if let Some(tx) = CLIPBOARD_TX.get() {
+            if let Ok(tx) = tx.lock() {
+                let (reply_tx, reply_rx) = mpsc::channel();
+                if tx.send(ClipboardMsg::GetPendingThumbIds { reply: reply_tx }).is_ok() {
+                    reply_rx
+                        .recv_timeout(std::time::Duration::from_secs(10))
+                        .unwrap_or_default()
+                } else {
+                    return;
+                }
+            } else {
+                return;
+            }
+        } else {
+            return;
+        };
+
+        let total = ids.len();
+        if total == 0 {
+            emit_thumb_backfill_done(0);
+            return;
+        }
+
+        info!("[Keyfire] Clipboard: thumb backfill starting, {} image(s) pending", total);
+        emit_thumb_backfill_progress(0, total);
+
+        for (i, id) in ids.iter().enumerate() {
+            let blob = get_image_blob(*id);
+            if let Some(blob) = blob {
+                if let Some(thumb) = make_thumb_webp(&blob) {
+                    set_thumb_blob(*id, thumb);
+                }
+            }
+            emit_thumb_backfill_progress(i + 1, total);
+        }
+
+        info!("[Keyfire] Clipboard: thumb backfill done ({} row(s))", total);
+        emit_thumb_backfill_done(total);
+    });
+}
+
+fn emit_thumb_backfill_progress(processed: usize, total: usize) {
+    if let Some(app) = APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit(
+            "clipboard-thumb-backfill-progress",
+            serde_json::json!({ "processed": processed, "total": total }),
+        );
+    }
+}
+
+fn emit_thumb_backfill_done(total: usize) {
+    if let Some(app) = APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit(
+            "clipboard-thumb-backfill-done",
+            serde_json::json!({ "total": total }),
+        );
+    }
+}
+
 pub fn set_retention_days(days: u32) {
     let clamped = days.clamp(1, 30);
     if let Some(m) = RETENTION_DAYS.get() {
@@ -2022,10 +2205,38 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
         Some((ct, iv)) => (ct, Some(iv)),
         None => (entry.preview.as_bytes().to_vec(), None),
     };
+    // v0.8.4: encrypt source_app_path — full exe path is PII (username in
+    // %USERPROFILE%). Empty string ⇒ NULL, same handling as text_content.
+    let (path_ct, iv_source_app_path): (Option<Vec<u8>>, Option<Vec<u8>>) = if entry.source_app_path.is_empty() {
+        (None, None)
+    } else {
+        match encrypt_blob(entry.source_app_path.as_bytes()) {
+            Some((ct, iv)) => (Some(ct), Some(iv)),
+            None => (Some(entry.source_app_path.as_bytes().to_vec()), None),
+        }
+    };
+    // v0.8.4: pre-decode a small WebP thumbnail from the plaintext image bytes
+    // so the list payload can inline it. Skipped for non-image rows and for
+    // decode failures (row still saves; list falls back to full-res lazy
+    // load). Encrypted separately with a fresh IV — same tier as image_blob.
+    // The plaintext bytes are also kept in `thumb_plain` so the new-item event
+    // can emit thumb_b64 without a decrypt round-trip.
+    let thumb_plain: Option<Vec<u8>> = if entry.content_type == "image" {
+        entry.image_blob.as_deref().and_then(make_thumb_webp)
+    } else {
+        None
+    };
+    let (thumb_ct, iv_thumb): (Option<Vec<u8>>, Option<Vec<u8>>) = match thumb_plain.as_deref() {
+        Some(bytes) => match encrypt_blob(bytes) {
+            Some((ct, iv)) => (Some(ct), Some(iv)),
+            None => (Some(bytes.to_vec()), None),
+        },
+        None => (None, None),
+    };
 
     let result = conn.execute(
-        "INSERT INTO clipboard_history (timestamp, content_type, text_content, html_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag, iv_text, iv_html, iv_image, iv_preview)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?11, ?12, ?13, ?14)",
+        "INSERT INTO clipboard_history (timestamp, content_type, text_content, html_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag, iv_text, iv_html, iv_image, iv_preview, thumb_blob, iv_thumb, source_app_path, iv_source_app_path)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         rusqlite::params![
             now,
             entry.content_type,
@@ -2041,6 +2252,10 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
             iv_html,
             iv_image,
             iv_preview,
+            thumb_ct,
+            iv_thumb,
+            path_ct,
+            iv_source_app_path,
         ],
     );
 
@@ -2076,7 +2291,12 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 "id": new_id,
                 "timestamp": now,
                 "content_type": entry.content_type,
-                "text_content": entry.text_content,
+                // text_content and html_content are intentionally omitted —
+                // fresh copies of huge text (thousands of lines pasted over
+                // and over) would otherwise pile into React state item by
+                // item. The frontend lazy-fetches full text on selection via
+                // get_clipboard_item_text_full; preview is enough for the
+                // card render.
                 "preview": entry.preview,
                 "image_width": entry.image_width,
                 "image_height": entry.image_height,
@@ -2091,6 +2311,16 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 // paste blobs are ~KBs each) and the UI just needs the boolean
                 // to decide whether to surface "Paste as plain".
                 "has_html": entry.html_content.is_some(),
+                // v0.8.4: inline the plaintext WebP thumbnail so a fresh image
+                // copy's tile paints without a getClipboardImage round-trip.
+                "thumb_b64": thumb_plain.as_deref().map(|b| B64_STD.encode(b)),
+                // v0.8.4: full exe path so the frontend can look up an app
+                // icon via SHGetFileInfoW. Empty string emitted as null.
+                "source_app_path": if entry.source_app_path.is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::String(entry.source_app_path.clone())
+                },
             }),
         );
     }
@@ -2196,47 +2426,64 @@ fn handle_get_history(
 /// html_content can be large (KB per row) and the list view only needs the
 /// has_html boolean to render the "Paste as plain" affordance; the full
 /// fragment is fetched later via handle_get_item_full when the user actually
-/// pastes. `iv_html IS NOT NULL OR html_content IS NOT NULL` would need
-/// html_content read too, but every write path either sets both non-NULL
+/// pastes. Every write path either sets both iv_html + html_content
 /// (cipher available) or both NULL (no html captured), so iv_html alone is
 /// a faithful presence signal.
-const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, text_content, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_text, iv_preview, iv_ocr, starred, pinned_order, starred_order, iv_html, html_content, folder_id";
+///
+/// text_content is likewise dropped from the list SELECT — cards render from
+/// `preview` (truncated at write time, ~200 chars) and the full body is
+/// fetched via get_item_full on selection / edit. Prevents multi-MB pastes
+/// from stalling the list load.
+///
+/// thumb_blob + iv_thumb are appended — decrypted inline in history_row_to_json
+/// and emitted as `thumb_b64`. Small WebP inlined avoids the per-image IPC
+/// round-trip getClipboardImage would otherwise fire for every visible tile.
+/// Legacy rows have thumb_blob NULL and fall back to full-res lazy load until
+/// the one-shot backfill worker fills them in.
+///
+/// source_app_path + iv_source_app_path are appended — decrypted inline and
+/// emitted as `source_app_path`. Frontend uses it to look up the source
+/// process's icon via SHGetFileInfoW. Legacy + Free-tier rows have NULL and
+/// fall back to the text badge.
+const HISTORY_LIST_COLUMNS: &str = "id, timestamp, content_type, image_width, image_height, preview, pinned, source_app, content_tag, paste_count, ocr_text, iv_preview, iv_ocr, starred, pinned_order, starred_order, iv_html, folder_id, thumb_blob, iv_thumb, source_app_path, iv_source_app_path";
 
 /// Shared row → JSON mapping for the history list (normal + search paths).
 /// Reads HISTORY_LIST_COLUMNS by position.
 fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
-    let text_ct = get_optional_bytes(row, 3).unwrap_or(None);
-    let iv_text = row.get::<_, Option<Vec<u8>>>(12).unwrap_or(None);
-    let preview_ct = get_optional_bytes(row, 6).ok().flatten().unwrap_or_default();
-    let iv_preview = row.get::<_, Option<Vec<u8>>>(13).unwrap_or(None);
-    let ocr_ct = get_optional_bytes(row, 11).unwrap_or(None);
-    let iv_ocr = row.get::<_, Option<Vec<u8>>>(14).unwrap_or(None);
-    // iv_html non-NULL OR (legacy fallback) html_content non-empty means the
-    // row has a rich-text fragment. Legacy plaintext rows written before the
-    // encryption path was wired would have iv_html NULL and html_content set;
-    // in practice no released version wrote such rows (html_content shipped
-    // after Phase 3a), but the check costs nothing and future-proofs.
-    let iv_html = row.get::<_, Option<Vec<u8>>>(18).unwrap_or(None);
-    let html_bytes = get_optional_bytes(row, 19).unwrap_or(None);
-    let has_html = iv_html.is_some() || html_bytes.as_ref().map_or(false, |b| !b.is_empty());
+    let preview_ct = get_optional_bytes(row, 5).ok().flatten().unwrap_or_default();
+    let iv_preview = row.get::<_, Option<Vec<u8>>>(11).unwrap_or(None);
+    let ocr_ct = get_optional_bytes(row, 10).unwrap_or(None);
+    let iv_ocr = row.get::<_, Option<Vec<u8>>>(12).unwrap_or(None);
+    let iv_html = row.get::<_, Option<Vec<u8>>>(16).unwrap_or(None);
+    let thumb_ct = get_optional_bytes(row, 18).unwrap_or(None);
+    let iv_thumb = row.get::<_, Option<Vec<u8>>>(19).unwrap_or(None);
+    // Decrypt-and-base64 inline. Rows without a thumbnail (non-image + legacy
+    // pre-backfill) emit thumb_b64 = null; frontend ImageThumb falls back to
+    // getClipboardImage for those.
+    let thumb_b64 = resolve_optional_bytes(thumb_ct, iv_thumb)
+        .map(|bytes| B64_STD.encode(&bytes));
+    let path_ct = get_optional_bytes(row, 20).unwrap_or(None);
+    let iv_source_app_path = row.get::<_, Option<Vec<u8>>>(21).unwrap_or(None);
+    let source_app_path = resolve_optional_text(path_ct, iv_source_app_path);
     Ok(serde_json::json!({
         "id": row.get::<_, i64>(0).unwrap_or(0),
         "timestamp": row.get::<_, String>(1).unwrap_or_default(),
         "content_type": row.get::<_, String>(2).unwrap_or_default(),
-        "text_content": resolve_optional_text(text_ct, iv_text),
-        "image_width": row.get::<_, u32>(4).unwrap_or(0),
-        "image_height": row.get::<_, u32>(5).unwrap_or(0),
+        "image_width": row.get::<_, u32>(3).unwrap_or(0),
+        "image_height": row.get::<_, u32>(4).unwrap_or(0),
         "preview": resolve_required_text(preview_ct, iv_preview),
-        "pinned": row.get::<_, i32>(7).unwrap_or(0) != 0,
-        "source_app": row.get::<_, String>(8).unwrap_or_default(),
-        "content_tag": row.get::<_, String>(9).unwrap_or("Text".to_string()),
-        "paste_count": row.get::<_, i64>(10).unwrap_or(0),
+        "pinned": row.get::<_, i32>(6).unwrap_or(0) != 0,
+        "source_app": row.get::<_, String>(7).unwrap_or_default(),
+        "content_tag": row.get::<_, String>(8).unwrap_or("Text".to_string()),
+        "paste_count": row.get::<_, i64>(9).unwrap_or(0),
         "ocr_text": resolve_optional_text(ocr_ct, iv_ocr),
-        "starred": row.get::<_, i32>(15).unwrap_or(0) != 0,
-        "pinned_order": row.get::<_, Option<i64>>(16).unwrap_or(None),
-        "starred_order": row.get::<_, Option<i64>>(17).unwrap_or(None),
-        "has_html": has_html,
-        "folder_id": row.get::<_, Option<i64>>(20).unwrap_or(None),
+        "starred": row.get::<_, i32>(13).unwrap_or(0) != 0,
+        "pinned_order": row.get::<_, Option<i64>>(14).unwrap_or(None),
+        "starred_order": row.get::<_, Option<i64>>(15).unwrap_or(None),
+        "has_html": iv_html.is_some(),
+        "folder_id": row.get::<_, Option<i64>>(17).unwrap_or(None),
+        "thumb_b64": thumb_b64,
+        "source_app_path": source_app_path,
     }))
 }
 
@@ -2282,8 +2529,16 @@ fn search_history(
     // ocr_text = NULL so pulling those columns is cheap.
     let search_images = crate::licence::is_pro() && search_inside_images_enabled();
 
+    // Full-text scan (added with the clipboard perf patch). Preview is
+    // truncated to 200 chars at write time, so a substring that only appears
+    // past that offset used to be invisible to search. The scan now also
+    // pulls text_content + iv_text; on preview-miss (and ocr-miss for image
+    // rows) we decrypt the full body and retry the match. Preview hits
+    // short-circuit — the extra decrypt only fires when the cheaper checks
+    // failed, so common-word searches still return quickly for rows whose
+    // preview already contains the needle.
     let scan_sql = format!(
-        "SELECT id, preview, iv_preview, ocr_text, iv_ocr FROM clipboard_history WHERE {} ORDER BY {}",
+        "SELECT id, preview, iv_preview, ocr_text, iv_ocr, text_content, iv_text FROM clipboard_history WHERE {} ORDER BY {}",
         where_clause, order_clause
     );
     let bind_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
@@ -2296,6 +2551,7 @@ fn search_history(
     };
     let mut scanned: usize = 0;
     let mut ocr_matches: HashSet<i64> = HashSet::new();
+    let mut text_matches: HashSet<i64> = HashSet::new();
     let matched_ids: Vec<i64> = stmt
         .query_map(rusqlite::params_from_iter(bind_refs.iter()), |row| {
             let id = row.get::<_, i64>(0)?;
@@ -2303,26 +2559,46 @@ fn search_history(
             let iv_preview = row.get::<_, Option<Vec<u8>>>(2)?;
             let ocr_ct = get_optional_bytes(row, 3)?;
             let iv_ocr = row.get::<_, Option<Vec<u8>>>(4)?;
+            let text_ct = get_optional_bytes(row, 5)?;
+            let iv_text = row.get::<_, Option<Vec<u8>>>(6)?;
             Ok((
                 id,
                 resolve_required_text(preview_ct, iv_preview),
                 ocr_ct.and_then(|ct| resolve_optional_text(Some(ct), iv_ocr)),
+                text_ct,
+                iv_text,
             ))
         })
         .map(|iter| {
             iter.filter_map(|r| r.ok())
                 .inspect(|_| scanned += 1)
-                .filter_map(|(id, preview, ocr)| {
+                .filter_map(|(id, preview, ocr, text_ct, iv_text)| {
                     let preview_hit = preview.to_lowercase().contains(needle);
-                    let ocr_hit = search_images
+                    let ocr_hit = !preview_hit
+                        && search_images
                         && ocr
                             .as_deref()
                             .map(|s| s.to_lowercase().contains(needle))
                             .unwrap_or(false);
-                    if preview_hit || ocr_hit {
-                        // Track OCR-only hits so the UI can chip them.
-                        if ocr_hit && !preview_hit {
+                    // Full text_content check on preview + ocr miss. Decrypt
+                    // is skipped when either lighter check already hit and
+                    // when text_content is NULL (image rows / empty rows).
+                    let text_hit = if preview_hit || ocr_hit {
+                        false
+                    } else {
+                        resolve_optional_text(text_ct, iv_text)
+                            .as_deref()
+                            .map(|s| s.to_lowercase().contains(needle))
+                            .unwrap_or(false)
+                    };
+                    if preview_hit || ocr_hit || text_hit {
+                        // Track hits that came from OCR or full text only.
+                        // Preview hits are the default and need no tag —
+                        // the frontend filter will pass them naturally.
+                        if ocr_hit {
                             ocr_matches.insert(id);
+                        } else if text_hit {
+                            text_matches.insert(id);
                         }
                         Some(id)
                     } else {
@@ -2362,24 +2638,34 @@ fn search_history(
         }
     };
 
-    // Tag rows whose match came from OCR text only (preview did not match).
-    // The panel uses this to render a small "in image" chip so the user
-    // understands why a screenshot appeared for a text query.
+    // Tag rows whose match came from OCR text or full text_content only
+    // (preview did not match). The panel uses "ocr" to render a small "in
+    // image" chip; "text" is a signal to the frontend filter that the row
+    // was matched deeper than the 200-char preview so it doesn't get
+    // dropped by the client-side preview substring re-check.
     for item in items.iter_mut() {
         if let Some(id) = item.get("id").and_then(|v| v.as_i64()) {
-            if ocr_matches.contains(&id) {
+            let tag = if ocr_matches.contains(&id) {
+                Some("ocr")
+            } else if text_matches.contains(&id) {
+                Some("text")
+            } else {
+                None
+            };
+            if let Some(t) = tag {
                 if let Some(obj) = item.as_object_mut() {
-                    obj.insert("search_source".to_string(), serde_json::json!("ocr"));
+                    obj.insert("search_source".to_string(), serde_json::json!(t));
                 }
             }
         }
     }
 
     debug!(
-        "[Keyfire] Clipboard: search scanned {} row(s), {} match(es) ({} via OCR) in {}ms",
+        "[Keyfire] Clipboard: search scanned {} row(s), {} match(es) ({} via OCR, {} via text) in {}ms",
         scanned,
         total,
         ocr_matches.len(),
+        text_matches.len(),
         started.elapsed().as_millis()
     );
 
@@ -3099,16 +3385,21 @@ fn handle_clipboard_update() {
     // App exclusion list: skip capture when the user has opted out of recording
     // clipboard from this process. Comparison is case-insensitive and ignores
     // the `.exe` suffix on both sides.
-    let fg_proc = get_foreground_process_name();
-    if !fg_proc.is_empty() && is_app_excluded(&fg_proc) {
+    // Resolve foreground process ONCE — used for both the exclusion filter
+    // and (Pro) the source_app + source_app_path capture below.
+    let (fg_name, fg_path) = get_foreground_process_info();
+    if !fg_name.is_empty() && is_app_excluded(&fg_name) {
         return;
     }
 
     // Capture source app for the row (Pro feature — Free users get empty source).
-    let source_app = if crate::licence::is_pro() {
-        fg_proc
+    // v0.8.4: also capture the full exe path so the frontend can render the
+    // app's real icon in the list. Path is encrypted at write time — see the
+    // source_app_path column comment in open_clipboard_db.
+    let (source_app, source_app_path) = if crate::licence::is_pro() {
+        (fg_name, fg_path)
     } else {
-        String::new()
+        (String::new(), String::new())
     };
 
     unsafe {
@@ -3168,6 +3459,7 @@ fn handle_clipboard_update() {
                     image_height: height,
                     preview: format!("{}×{} image", width, height),
                     source_app: source_app.clone(),
+                    source_app_path: source_app_path.clone(),
                     content_tag: "Image".to_string(),
                 });
                 return;
@@ -3234,6 +3526,7 @@ fn handle_clipboard_update() {
                         image_height: 0,
                         preview,
                         source_app,
+                        source_app_path,
                         content_tag: tag,
                     });
                     return;

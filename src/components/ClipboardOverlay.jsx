@@ -6,19 +6,39 @@ import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
 import { SearchBar } from './SearchBar';
 import useOverlayDrag from './useOverlayDrag';
+import { useAppIcon } from './appIconCache';
+
+// Wraps every case-insensitive occurrence of `needle` in <mark> so search
+// results show WHY they matched. Returns the plain string when no search is
+// active or nothing matches (zero render cost on the common path).
+function highlightMatches(text, needle) {
+  if (!needle) return text;
+  const lower = text.toLowerCase();
+  const n = needle.toLowerCase();
+  if (!lower.includes(n)) return text;
+  const parts = [];
+  let i = 0;
+  for (;;) {
+    const idx = lower.indexOf(n, i);
+    if (idx < 0) { parts.push(text.slice(i)); break; }
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(<mark key={idx} className="co-hl">{text.slice(idx, idx + n.length)}</mark>);
+    i = idx + n.length;
+  }
+  return parts;
+}
 
 // ── Lazy image thumbnail loader ─────────────────────────────────────────────
 
-function ImageThumb({ id, className, fallbackClass, zoomable }) {
-  const [src, setSrc] = useState(null);
+function ImageThumb({ id, thumbB64, className, fallbackClass, zoomable }) {
+  // v0.8.4: inline WebP thumb bypasses the viewport-lazy IntersectionObserver
+  // path entirely — the payload already carries the data, no need to defer.
+  // Legacy rows without a backfilled thumb keep the lazy full-res fetch.
+  const [src, setSrc] = useState(thumbB64 ? `data:image/webp;base64,${thumbB64}` : null);
   const holderRef = useRef(null);
-  // Viewport-lazy: only fetch the image once the placeholder is actually
-  // scrolled into view. With 500 rows the eager version fired every image
-  // fetch at once on open; each fetch decrypts a full-res PNG on the
-  // clipboard writer thread, so the flood starved every other clipboard
-  // request (and, before the commands went async, froze the main thread).
-  // Visible rows are ~8 at a time — that's all we ever request up front.
   useEffect(() => {
+    if (thumbB64) { setSrc(`data:image/webp;base64,${thumbB64}`); return; }
+    setSrc(null);
     let cancelled = false;
     let requested = false;
     const load = () => {
@@ -35,7 +55,7 @@ function ImageThumb({ id, className, fallbackClass, zoomable }) {
     });
     obs.observe(el);
     return () => { cancelled = true; obs.disconnect(); };
-  }, [id]);
+  }, [id, thumbB64]);
   if (!src) {
     return (
       <div ref={holderRef} className={fallbackClass || 'co-thumb-ph'}>
@@ -49,6 +69,21 @@ function ImageThumb({ id, className, fallbackClass, zoomable }) {
   }
   if (zoomable) return <ZoomableImage src={src} className={className} />;
   return <img className={className} src={src} alt="" />;
+}
+
+// Icon-or-text badge — matches the ClipboardPanel pattern. Text fallback
+// keeps the existing co-row-app class so pill styling doesn't drift.
+function SourceAppBadge({ name, path }) {
+  const icon = useAppIcon(name, path);
+  if (!name) return null;
+  if (icon) {
+    return (
+      <span className="co-row-app co-row-app-icon" title={name}>
+        <img src={icon} width="12" height="12" alt="" draggable={false} />
+      </span>
+    );
+  }
+  return <span className="co-row-app">{name}</span>;
 }
 
 // ── Timeline grouping ───────────────────────────────────────────────────────
@@ -150,12 +185,16 @@ export default function ClipboardOverlay() {
     return items.filter(i => {
       if (search.trim()) {
         const needle = search.toLowerCase();
-        const inPreview = (i.preview || i.text_content || '').toLowerCase().includes(needle);
+        const inPreview = (i.preview || '').toLowerCase().includes(needle);
         // Search-inside-images (Pro): image rows with cached OCR text match
         // the popup search too. Backend enforces the Pro + setting gate; if
         // ocr_text is populated it means the row was OCR'd successfully.
         const inOcr = (i.ocr_text || '').toLowerCase().includes(needle);
-        if (!inPreview && !inOcr) return false;
+        // Backend-side full-text match past the 200-char preview boundary
+        // carries `search_source: "text"` (or `"ocr"` for image matches);
+        // honour it so those rows aren't dropped by this local check.
+        const backendTagged = i.search_source === 'text' || i.search_source === 'ocr';
+        if (!inPreview && !inOcr && !backendTagged) return false;
       }
       if (filterTag !== 'All' && i.content_tag !== filterTag) return false;
       return true;
@@ -182,6 +221,27 @@ export default function ClipboardOverlay() {
 
   const selectedEntry = groupedFlat.find(e => e.type === 'item' && e.flatIndex === selectedIndex);
   const selected = selectedEntry?.item || null;
+
+  // Lazy-fetch text_content + html_content on selection for text rows.
+  // The list payload no longer ships text_content (dropped in the clipboard
+  // perf patch); overlay Paste button uses pasteClipboardItem(id) so the
+  // backend handles that path race-free, but the detail pane display and
+  // the "Paste plain" button need the full text.
+  useEffect(() => {
+    if (!selected || selected.content_type !== 'text') return;
+    if (selected.text_content != null) return;
+    const id = selected.id;
+    let cancelled = false;
+    window.electronAPI?.getClipboardItemTextFull?.(id).then(full => {
+      if (cancelled || !full) return;
+      const text = full.text_content ?? '';
+      const html = full.html_content ?? null;
+      setItems(prev => prev.map(it => it.id === id
+        ? { ...it, text_content: text, html_content: html }
+        : it));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selected]);
 
   // ── LL hook keyboard routing (WS_EX_NOACTIVATE path) ─────────────────────
   // When the overlay is open it never steals OS focus (WS_EX_NOACTIVATE).
@@ -318,7 +378,7 @@ export default function ClipboardOverlay() {
   const rowIcon = (item) => {
     const tag = item.content_tag || 'Text';
     if (tag === 'Colour') {
-      const c = parseColour(item.text_content || item.preview);
+      const c = parseColour(item.preview);
       return <span className="co-row-icon"><span className="co-row-icon-dot" style={{ background: c || 'var(--text-muted)' }} /></span>;
     }
     const meta = TYPE_ICONS[tag] || TYPE_ICONS.Text;
@@ -334,9 +394,23 @@ export default function ClipboardOverlay() {
 
   const isTextEditable = selected && selected.content_type === 'text';
 
-  const handleStartEdit = () => {
+  const handleStartEdit = async () => {
     setEditing(true);
-    setEditText(selected.text_content || selected.preview || '');
+    if (selected.text_content != null) {
+      setEditText(selected.text_content);
+      return;
+    }
+    setEditText(selected.preview || '');
+    try {
+      const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
+      const text = full?.text_content;
+      if (text != null) {
+        setEditText(text);
+        setItems(prev => prev.map(it => it.id === selected.id
+          ? { ...it, text_content: text, html_content: full?.html_content ?? null }
+          : it));
+      }
+    } catch (_) {}
   };
 
   const handleSaveEdit = async () => {
@@ -421,11 +495,11 @@ export default function ClipboardOverlay() {
                   >
                     {isImage ? (
                       <>
-                        <ImageThumb id={item.id} className="co-row-thumb" fallbackClass="co-row-thumb-ph" />
+                        <ImageThumb id={item.id} thumbB64={item.thumb_b64} className="co-row-thumb" fallbackClass="co-row-thumb-ph" />
                         <div className="co-row-body">
                           <span className="co-row-text">{item.image_width}×{item.image_height}</span>
                           <span className="co-row-sub">
-                            {item.source_app && <span className="co-row-app">{item.source_app}</span>}
+                            {item.source_app && <SourceAppBadge name={item.source_app} path={item.source_app_path} />}
                             <span className="co-row-time">{formatTime(item.timestamp)}</span>
                           </span>
                         </div>
@@ -434,9 +508,9 @@ export default function ClipboardOverlay() {
                       <>
                         {rowIcon(item)}
                         <div className="co-row-body co-row-body-full">
-                          <span className="co-row-text co-row-text-2">{(item.preview || item.text_content || '').slice(0, 160)}</span>
+                          <span className="co-row-text co-row-text-2">{highlightMatches((item.preview || '').slice(0, 160), search.trim())}</span>
                           <span className="co-row-sub">
-                            {item.source_app && <span className="co-row-app">{item.source_app}</span>}
+                            {item.source_app && <SourceAppBadge name={item.source_app} path={item.source_app_path} />}
                             <span className="co-row-time">{formatTime(item.timestamp)}</span>
                           </span>
                         </div>
@@ -475,7 +549,7 @@ export default function ClipboardOverlay() {
                     spellCheck={false}
                   />
                 ) : (
-                  <pre className="co-detail-text">{selected.text_content || selected.preview || ''}</pre>
+                  <pre className="co-detail-text">{highlightMatches(selected.text_content || selected.preview || '', search.trim())}</pre>
                 )}
               </div>
               <div className="co-detail-meta">
@@ -526,10 +600,19 @@ export default function ClipboardOverlay() {
                       className="co-btn"
                       type="button"
                       title="Paste without formatting"
-                      onClick={e => {
+                      onClick={async e => {
                         e.stopPropagation();
+                        // Race-safe: fetch full text before pasting plain. If
+                        // fetch fails, fall back to preview (better than empty).
+                        let text = selected.text_content;
+                        if (text == null) {
+                          try {
+                            const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
+                            text = full?.text_content ?? selected.preview ?? '';
+                          } catch (_) { text = selected.preview ?? ''; }
+                        }
                         window.electronAPI?.closeClipboardOverlay();
-                        window.electronAPI?.pasteText(selected.text_content || selected.preview || '', selected.id);
+                        window.electronAPI?.pasteText(text, selected.id);
                       }}
                     >Paste plain</button>
                   )}

@@ -413,6 +413,19 @@ html, body {
   max-width: 80px;
 }
 
+.co-row-app-icon {
+  padding: 0;
+  background: transparent;
+  max-width: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.co-row-app-icon img {
+  display: block;
+  border-radius: 2px;
+}
+
 .co-row-time {
   font-size: 11px;
   color: var(--text-muted);
@@ -495,6 +508,13 @@ html, body {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Search-term highlight — matches ClipboardPanel .cbg-hl visual language. */
+.co-hl {
+  background: rgba(var(--accent-rgb), 0.3);
+  color: inherit;
+  border-radius: 2px;
 }
 
 .co-detail-textarea {

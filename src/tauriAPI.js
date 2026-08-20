@@ -416,7 +416,13 @@ window.electronAPI = {
   setClipboardOcrSettings: (autoOcr, searchInsideImages) =>
     invoke('set_clipboard_ocr_settings', { autoOcr, searchInsideImages }),
   backfillClipboardOcr:   ()              => invoke('backfill_clipboard_ocr'),
+  // v0.8.4: one-shot thumbnail backfill for legacy image rows.
+  backfillClipboardThumbnails: ()         => invoke('backfill_clipboard_thumbnails'),
   getClipboardOcrText:    (id)            => invoke('get_clipboard_ocr_text', { id }),
+  // Lazy-fetch full text + html for a text row. History-list payload no longer
+  // ships text_content (large pastes stalled the tab). Frontend calls this on
+  // detail-pane selection / edit-modal open and merges into local state.
+  getClipboardItemTextFull: (id)          => invoke('get_clipboard_item_text_full', { id }),
   setClipboardCaptureEnabled: (enabled)   => invoke('set_clipboard_capture_enabled', { enabled }),
   setClipboardExcludedApps: (apps)        => invoke('set_clipboard_excluded_apps', { apps }),
   getClipboardStorageSize: ()             => invoke('get_clipboard_storage_size'),
@@ -453,6 +459,13 @@ window.electronAPI = {
   },
   onClipboardOcrBackfillDone: (callback) => {
     listeners['clipboard-ocr-backfill-done'] = listen('clipboard-ocr-backfill-done', (event) => callback(event.payload));
+  },
+  // v0.8.4 thumb backfill — same StatusBar pattern as OCR backfill.
+  onClipboardThumbBackfillProgress: (callback) => {
+    listeners['clipboard-thumb-backfill-progress'] = listen('clipboard-thumb-backfill-progress', (event) => callback(event.payload));
+  },
+  onClipboardThumbBackfillDone: (callback) => {
+    listeners['clipboard-thumb-backfill-done'] = listen('clipboard-thumb-backfill-done', (event) => callback(event.payload));
   },
   onClipboardOverlayData: (callback) => {
     listen('clipboard-overlay-data', (event) => callback(event.payload)).then(u => { listeners['clipboard-overlay-data'] = u; });
@@ -495,6 +508,10 @@ window.electronAPI = {
 
   // ── Radial Menu ────────────────────────────────────────────────────────────
   getAppIcon:             (path) => invoke('get_app_icon', { path }),
+  // v0.8.4: legacy source_app rows carry only a basename (e.g. "chrome.exe").
+  // This resolves the exe path via App Paths registry → running process →
+  // System32, then returns the icon data URL. Null if unresolvable.
+  getAppIconByName:       (name) => invoke('get_app_icon_by_name', { name }),
   setRadialMenuHotkey:    (combo) => invoke('set_radial_menu_hotkey', { combo }),
   clearRadialMenuHotkey:  ()      => invoke('clear_radial_menu_hotkey'),
   setRadialHoldToSelect:  (enabled) => invoke('set_radial_hold_to_select', { enabled }),

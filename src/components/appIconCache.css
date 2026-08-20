@@ -1,0 +1,25 @@
+/* Shared inline icon badge used by the clipboard list + filter dropdown.
+   Icon variant: transparent chip with the app icon. Fallback variant:
+   inherits the caller's compact text-pill styling (cbg-source-badge etc.). */
+
+.app-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.app-icon-badge img {
+  display: block;
+  image-rendering: -webkit-optimize-contrast;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.app-icon-badge-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  white-space: nowrap;
+}

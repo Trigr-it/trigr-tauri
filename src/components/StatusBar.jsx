@@ -9,6 +9,7 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
   // Self-contained inside StatusBar so App.jsx doesn't need to route these
   // events through props. Auto-clears on the done event.
   const [ocrBackfill, setOcrBackfill] = useState(null);
+  const [thumbBackfill, setThumbBackfill] = useState(null);
   useEffect(() => {
     window.electronAPI?.onClipboardOcrBackfillProgress?.(({ processed, total }) => {
       setOcrBackfill({ processed, total });
@@ -18,9 +19,25 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
       setOcrBackfill({ processed: -1, total: -1 });
       setTimeout(() => setOcrBackfill(null), 2500);
     });
+    // v0.8.4 thumbnail backfill — same silent-progress pattern.
+    window.electronAPI?.onClipboardThumbBackfillProgress?.(({ processed, total }) => {
+      // Zero-total "done immediately" case: skip the row entirely.
+      if (total <= 0) return;
+      setThumbBackfill({ processed, total });
+    });
+    window.electronAPI?.onClipboardThumbBackfillDone?.(({ total }) => {
+      if (total > 0) {
+        setThumbBackfill({ processed: -1, total: -1 });
+        setTimeout(() => setThumbBackfill(null), 2500);
+      } else {
+        setThumbBackfill(null);
+      }
+    });
     return () => {
       window.electronAPI?.removeAllListeners?.('clipboard-ocr-backfill-progress');
       window.electronAPI?.removeAllListeners?.('clipboard-ocr-backfill-done');
+      window.electronAPI?.removeAllListeners?.('clipboard-thumb-backfill-progress');
+      window.electronAPI?.removeAllListeners?.('clipboard-thumb-backfill-done');
     };
   }, []);
 
@@ -73,6 +90,17 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
               {ocrBackfill.total < 0
                 ? '✓ Image text extraction complete'
                 : `Extracting text from images… ${ocrBackfill.processed}/${ocrBackfill.total}`}
+            </span>
+          </>
+        )}
+
+        {thumbBackfill && (
+          <>
+            <span className="status-sep">·</span>
+            <span className="status-info" style={{ opacity: 0.85 }}>
+              {thumbBackfill.total < 0
+                ? '✓ Clipboard thumbnails ready'
+                : `Building clipboard thumbnails… ${thumbBackfill.processed}/${thumbBackfill.total}`}
             </span>
           </>
         )}

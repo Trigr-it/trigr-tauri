@@ -10,18 +10,27 @@ import ZoomableImage from './ZoomableImage';
 import './ZoomableImage.css';
 import { SearchBar } from './SearchBar';
 import { findPresetIconForUrl } from '../utils/presetIcons';
+import { useAppIcon } from './appIconCache';
+import './appIconCache.css';
 
 // ── Lazy image thumbnail ────────────────────────────────────────────────────
 
-function ImageThumb({ id, className, zoomable }) {
-  const [src, setSrc] = useState(null);
+function ImageThumb({ id, thumbB64, className, zoomable }) {
+  // v0.8.4 perf patch: when the history list payload inlines a WebP thumb,
+  // render it immediately from the data URI — no IPC round-trip. Legacy
+  // rows without a backfilled thumb (and the detail-pane path, which
+  // deliberately omits thumbB64 to force full-res) fall back to the
+  // existing getClipboardImage lazy fetch.
+  const [src, setSrc] = useState(thumbB64 ? `data:image/webp;base64,${thumbB64}` : null);
   useEffect(() => {
+    if (thumbB64) { setSrc(`data:image/webp;base64,${thumbB64}`); return; }
+    setSrc(null);
     let cancelled = false;
     window.electronAPI?.getClipboardImage(id).then(b64 => {
       if (!cancelled && b64) setSrc(`data:image/png;base64,${b64}`);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, thumbB64]);
   if (!src) {
     return (
       <div className="cbg-img-ph">
@@ -38,6 +47,116 @@ function ImageThumb({ id, className, zoomable }) {
 }
 
 const ALL_TAGS = ['All', 'Text', 'Image', 'Number', 'Link', 'Email', 'Colour'];
+
+// Compact source-app badge: real app icon when we have a path to look up,
+// falls back to the legacy text pill for Free-tier / pre-v0.8.4 rows.
+function SourceAppBadge({ name, path, showLabel = false }) {
+  const icon = useAppIcon(name, path);
+  if (!name) return null;
+  if (icon) {
+    return (
+      <span className="cbg-source-badge cbg-source-badge-icon" title={name}>
+        <img src={icon} width="14" height="14" alt="" draggable={false} />
+        {showLabel && <span className="cbg-source-badge-label">{name}</span>}
+      </span>
+    );
+  }
+  return <span className="cbg-source-badge">{name}</span>;
+}
+
+// Custom app-filter picker — native <select> can't render icons in its
+// options, so we roll a button + popup panel. Icons come from the same
+// shared cache SourceAppBadge uses. Paths are derived on the fly from the
+// items[] array (first row with a matching source_app supplies the path).
+function AppFilterOption({ name, path, selected, onSelect }) {
+  const icon = useAppIcon(name, path);
+  return (
+    <button
+      type="button"
+      className={`cbg-app-filter-opt${selected ? ' cbg-app-filter-opt-sel' : ''}`}
+      onClick={onSelect}
+    >
+      {icon
+        ? <img className="cbg-app-filter-opt-icon" src={icon} width="16" height="16" alt="" draggable={false} />
+        : <span className="cbg-app-filter-opt-icon cbg-app-filter-opt-icon-blank" aria-hidden="true" />}
+      <span className="cbg-app-filter-opt-name">{name}</span>
+    </button>
+  );
+}
+
+function AppFilterPicker({ value, onChange, sourceApps, items }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  // Map source_app name → source_app_path from the visible history. First hit
+  // wins; the same app always yields the same path so this is stable.
+  const pathForApp = React.useMemo(() => {
+    const m = new Map();
+    for (const it of items) {
+      if (it.source_app && it.source_app_path && !m.has(it.source_app)) {
+        m.set(it.source_app, it.source_app_path);
+      }
+    }
+    return m;
+  }, [items]);
+
+  const currentPath = value ? pathForApp.get(value) : null;
+  const currentIcon = useAppIcon(value, currentPath);
+
+  return (
+    <div className="cbg-app-filter-picker" ref={wrapRef}>
+      <button
+        type="button"
+        className="cbg-app-filter"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {value ? (
+          <>
+            {currentIcon && <img src={currentIcon} width="14" height="14" alt="" draggable={false} />}
+            <span className="cbg-app-filter-label">{value}</span>
+          </>
+        ) : <span className="cbg-app-filter-label">All Apps</span>}
+        <ChevronDown size={12} className="cbg-app-filter-chev" />
+      </button>
+      {open && (
+        <div className="cbg-app-filter-menu" role="listbox">
+          <button
+            type="button"
+            className={`cbg-app-filter-opt${value === '' ? ' cbg-app-filter-opt-sel' : ''}`}
+            onClick={() => { onChange(''); setOpen(false); }}
+          >
+            <span className="cbg-app-filter-opt-icon cbg-app-filter-opt-icon-blank" aria-hidden="true" />
+            <span className="cbg-app-filter-opt-name">All Apps</span>
+          </button>
+          {sourceApps.map(app => (
+            <AppFilterOption
+              key={app}
+              name={app}
+              path={pathForApp.get(app)}
+              selected={value === app}
+              onSelect={() => { onChange(app); setOpen(false); }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Local-date helpers (used by the date-bucket sidebar) ──────────────────
 // SQLite returns `DATE(timestamp, 'localtime')` as 'YYYY-MM-DD'. We mirror
@@ -606,6 +725,28 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     setEditText('');
   }, [selectedId]);
 
+  // Lazy-fetch full text_content + html_content for the selected text row.
+  // The list payload no longer ships text_content (dropped in the clipboard
+  // perf patch — multi-MB pastes stalled the tab). The detail pane, edit
+  // modal, and Copy-selected all need the full body, so we fetch on select
+  // and merge into local state. Only fires when needed (text row + missing).
+  useEffect(() => {
+    if (selectedId == null) return;
+    const sel = items.find(i => i.id === selectedId);
+    if (!sel || sel.content_type !== 'text') return;
+    if (sel.text_content != null) return;
+    let cancelled = false;
+    window.electronAPI?.getClipboardItemTextFull?.(selectedId).then(full => {
+      if (cancelled || !full) return;
+      const text = full.text_content ?? '';
+      const html = full.html_content ?? null;
+      setItems(prev => prev.map(i => i.id === selectedId
+        ? { ...i, text_content: text, html_content: html }
+        : i));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedId, items]);
+
   // Escape key: close lightbox first if open, then cancel edit, then deselect.
   useEffect(() => {
     function handleKeyDown(e) {
@@ -1161,9 +1302,26 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
     }
   };
 
-  const handleStartEdit = (item) => {
+  const handleStartEdit = async (item) => {
     setEditing(true);
-    setEditText(item.text_content || item.preview || '');
+    // Prefer already-hydrated text_content; otherwise fetch. Fall back to
+    // preview if the fetch fails (offline/decrypt-error) so the editor is
+    // never blank when there's SOMETHING to show.
+    if (item.text_content != null) {
+      setEditText(item.text_content);
+      return;
+    }
+    setEditText(item.preview || '');
+    try {
+      const full = await window.electronAPI?.getClipboardItemTextFull?.(item.id);
+      const text = full?.text_content;
+      if (text != null) {
+        setEditText(text);
+        setItems(prev => prev.map(i => i.id === item.id
+          ? { ...i, text_content: text, html_content: full?.html_content ?? null }
+          : i));
+      }
+    } catch (_) {}
   };
 
   const handleSaveEdit = async () => {
@@ -1219,7 +1377,12 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
       // JS layer just needs to not filter OCR hits back out. Legacy rows
       // (before auto-OCR) simply have ocr_text = null and won't match.
       const inOcr = (i.ocr_text || '').toLowerCase().includes(needle);
-      if (!inPreview && !inOcr) return false;
+      // Full-text matches past the 200-char preview boundary carry a
+      // backend `search_source: "text"` tag — trust it, else the row
+      // would be dropped here purely because its preview didn't contain
+      // the needle. Same treatment as OCR-only hits.
+      const backendTagged = i.search_source === 'text' || i.search_source === 'ocr';
+      if (!inPreview && !inOcr && !backendTagged) return false;
     }
     return true;
   });
@@ -1328,10 +1491,12 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
 
       {/* ── Filter toolbar — app filter, tag pills, search ── */}
       <div className="cbg-toolbar">
-        <select className="cbg-app-filter" value={filterApp} onChange={e => setFilterApp(e.target.value)}>
-          <option value="">All Apps</option>
-          {sourceApps.map(app => <option key={app} value={app}>{app}</option>)}
-        </select>
+        <AppFilterPicker
+          value={filterApp}
+          onChange={setFilterApp}
+          sourceApps={sourceApps}
+          items={items}
+        />
         <div className="cbg-tag-pills">
           {ALL_TAGS.map(tag => (
             <button key={tag} className={`cbg-tag-pill${filterTag === tag ? ' cbg-tag-active' : ''}`}
@@ -1511,7 +1676,7 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                 const renderCard = (item) => {
                   const isImage = item.content_type === 'image';
                   const tag = item.content_tag || 'Text';
-                  const colourVal = tag === 'Colour' ? parseColour(item.text_content || item.preview) : null;
+                  const colourVal = tag === 'Colour' ? parseColour(item.preview) : null;
                   const isLink = tag === 'Link';
                   const isSel = item.id === selectedId;
                   const isMulti = multiSel.has(item.id);
@@ -1574,23 +1739,23 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
 
                       {isImage ? (
                         <>
-                          <ImageThumb id={item.id} className="cbg-card-image" />
+                          <ImageThumb id={item.id} thumbB64={item.thumb_b64} className="cbg-card-image" />
                           {isOcrMatch && (
                             <span className="cbg-ocr-match-chip" aria-label="Match found in image text">
                               in image
                             </span>
                           )}
                           <div className="cbg-card-img-overlay">
-                            {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                            {item.source_app && <SourceAppBadge name={item.source_app} path={item.source_app_path} />}
                             <span className="cbg-overlay-right">{item.image_width}×{item.image_height} · {formatTime(item.timestamp)}</span>
                           </div>
                         </>
                       ) : colourVal ? (
                         <>
                           <div className="cbg-colour-swatch" style={{ background: colourVal }} />
-                          <div className="cbg-card-body cbg-colour-value">{item.text_content || item.preview || ''}</div>
+                          <div className="cbg-card-body cbg-colour-value">{item.preview || ''}</div>
                           <div className="cbg-card-meta">
-                            {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                            {item.source_app && <SourceAppBadge name={item.source_app} path={item.source_app_path} />}
                             <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
                           </div>
                         </>
@@ -1602,10 +1767,10 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                                 <Link2 size={12} strokeWidth={1.75} style={{ verticalAlign: -2, marginRight: 4 }} />
                               </span>
                             )}
-                            {highlightMatches((item.text_content || item.preview || '').slice(0, 1000), search.trim())}
+                            {highlightMatches(item.preview || '', search.trim())}
                           </div>
                           <div className="cbg-card-meta">
-                            {item.source_app && <span className="cbg-source-badge">{item.source_app}</span>}
+                            {item.source_app && <SourceAppBadge name={item.source_app} path={item.source_app_path} />}
                             <span className="cbg-card-time">{formatTime(item.timestamp)}</span>
                           </div>
                         </>
@@ -1894,7 +2059,7 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                   if (len < 60) return '1.6rem';
                   if (len < 200) return '1.25rem';
                   return '1.0rem';
-                })() }}>{selected.text_content || selected.preview || ''}</pre>
+                })() }}>{highlightMatches(selected.text_content || selected.preview || '', search.trim())}</pre>
               )}
             </div>
 
@@ -2025,7 +2190,9 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
               {selected.source_app && (
                 <>
                   <span className="cbg-meta-label">Source</span>
-                  <span className="cbg-meta-value">{selected.source_app}</span>
+                  <span className="cbg-meta-value">
+                    <SourceAppBadge name={selected.source_app} path={selected.source_app_path} showLabel />
+                  </span>
                 </>
               )}
               {/* "Last copied", not "Captured" — promote-on-use rewrites this
@@ -2064,7 +2231,16 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                 {isTextOnly && !editing && onCreateExpansion && (
                   <button
                     className="cbg-dbtn cbg-dbtn-create-expansion"
-                    onClick={() => onCreateExpansion(selected.text_content || selected.preview || '')}
+                    onClick={async () => {
+                      let text = selected.text_content;
+                      if (text == null) {
+                        try {
+                          const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
+                          text = full?.text_content ?? selected.preview ?? '';
+                        } catch (_) { text = selected.preview ?? ''; }
+                      }
+                      onCreateExpansion(text);
+                    }}
                     type="button"
                     title="Save this clip as a text expansion"
                   >Create Expansion</button>
@@ -2091,7 +2267,14 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                       type="button"
                       title="Copy without formatting"
                       onClick={async () => {
-                        await window.electronAPI?.copyText(selected.text_content || selected.preview || '');
+                        let text = selected.text_content;
+                        if (text == null) {
+                          try {
+                            const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
+                            text = full?.text_content ?? selected.preview ?? '';
+                          } catch (_) { text = selected.preview ?? ''; }
+                        }
+                        await window.electronAPI?.copyText(text);
                         showActionToast('Copied as plain text');
                       }}
                     >Copy plain</button>

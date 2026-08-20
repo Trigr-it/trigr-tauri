@@ -1090,6 +1090,18 @@ function App() {
     }).catch(() => {});
   }, [licenceChecked, isPro]);
 
+  // v0.8.4 one-shot thumbnail backfill for legacy image rows. Not gated on
+  // licence (thumbs benefit Free and Pro users alike). Fire-and-forget —
+  // backend handles the actual work on its own thread and emits progress
+  // events the StatusBar listens for.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('trigr_thumb_backfilled_v1')) return;
+    } catch { return; }
+    window.electronAPI?.backfillClipboardThumbnails?.();
+    try { localStorage.setItem('trigr_thumb_backfilled_v1', String(Date.now())); } catch {}
+  }, []);
+
   // ── Licence re-validation on window focus ──
   useEffect(() => {
     const handleFocus = () => {

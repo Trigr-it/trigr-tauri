@@ -63,6 +63,37 @@
   outline: none;
 }
 
+/* Clear-X button — appears at the right edge when the field has a value.
+   `onMouseDown preventDefault` on the button keeps focus in the input so
+   the ring/glow doesn't blink on click. */
+.app-search-bar-clear {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.app-search-bar-clear:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.app-search-bar-clear:focus-visible {
+  outline: 1px solid var(--border-accent);
+  outline-offset: 1px;
+}
+
 /* Compact variant — for tight popovers (e.g. inline comboboxes) */
 .app-search-bar.compact {
   height: 34px;
