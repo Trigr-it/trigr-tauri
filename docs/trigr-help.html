@@ -2653,6 +2653,21 @@
     </div>
   </div>
 
+  <div class="accordion" id="acc-ts-game-input">
+    <div class="accordion-header" onclick="toggleAcc('acc-ts-game-input')"><span>My hotkeys work everywhere except one game</span><span class="accordion-arrow">▼</span></div>
+    <div class="accordion-body">
+      <p>Most games accept Keyfire input, including many online games with anti-cheat. Keyfire sends keystrokes in scancode mode, the lowest level available to software, so engines that read DirectInput or Raw Input see them as normal keypresses.</p>
+      <p><strong>Some games ignore software input by design.</strong> A small number of anti-cheat systems only accept keystrokes that come from a physical device. NetEase titles (Once Human, Marvel Rivals), Tencent titles (Delta Force) and Riot titles (Valorant) are known examples. No software tool can work around this, and that includes AutoHotkey. If you need macros in one of these games, use the software that came with your mouse or keyboard (Logitech G HUB, Razer Synapse, etc). Those tools remap buttons inside the device driver, so the game receives what looks like a real keypress.</p>
+      <p><strong>Games running as administrator.</strong> If a game runs elevated and Keyfire does not, Windows silently discards Keyfire's input into it. Quit Keyfire from the tray, then right-click Keyfire and choose <strong>Run as administrator</strong> before launching the game.</p>
+      <p><strong>Exclusive fullscreen.</strong> If the game offers a display mode setting, borderless windowed is the most reliable mode for hotkeys and overlays.</p>
+      <p><strong>Quick test:</strong> fire the same hotkey with Notepad focused. If it types there but not in the game, Keyfire is working and the game is filtering the input. If it fails in Notepad too, something else is wrong: check <strong>Settings → Open Logs Folder</strong> and send us <code>trigr.log</code>.</p>
+      <div class="callout warn">
+        <div class="ct">Competitive online games</div>
+        <p>Keyfire is a desktop productivity tool. We do not recommend or endorse using it in competitive online games. Doing so may breach the game's terms of service and can result in an account ban, whether or not the input actually registers. Nothing on this page should be read as a way to get automation past an anti-cheat.</p>
+      </div>
+    </div>
+  </div>
+
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
 </div>
 
