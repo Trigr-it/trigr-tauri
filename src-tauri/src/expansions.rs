@@ -1841,19 +1841,19 @@ fn fire_expansion(
         windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
     };
 
-    // Wait for any prior injection to finish (handles sequential autocorrects)
-    while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
-        thread::sleep(Duration::from_millis(5));
-    }
-
-    // Set flag immediately on the processor thread — no race window for keystrokes to slip through
-    let guard = InjectionGuard::new();
-
-    // Spawn on a separate thread to avoid blocking the event processor
+    // Spawn on a separate thread — the busy-wait for a prior injection to
+    // finish (sequential autocorrects) and the guard creation both happen
+    // inside the closure so the processor thread never stalls. Matches the
+    // pattern in fire_expansion_with_fillin.
     let trigger_len = trigger_len;
     thread::spawn(move || {
-        // Move guard into closure — Drop fires at end of injection
-        let _guard = guard;
+        // Wait for any prior injection to finish (handles sequential autocorrects)
+        while crate::hotkeys::INJECTION_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(5));
+        }
+        // Guard sets INJECTION_IN_PROGRESS + stamps INJECTION_STARTED_MS.
+        // Drop fires at end of injection.
+        let _guard = InjectionGuard::new();
 
         // Delay to let the Space/character keystroke be processed by the target app
         thread::sleep(Duration::from_millis(30));

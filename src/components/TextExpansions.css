@@ -486,22 +486,74 @@
   cursor: grabbing;
 }
 
-/* Multi-drag ghost: shown in the DragOverlay when dragging more than one
-   selected expansion. Just a small pill with the count. */
-.te-exp-drag-ghost {
+/* Cursor-following drag chip. Single-item drags render a compact accent
+   pill with the expansion's display name (or trigger). Multi-drags stack
+   two ghost cards behind the pill and append a "+N" badge. Mirrors the
+   Search Templates chip so both panels feel the same during drag. */
+.te-drag-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  padding: 6px 12px;
-  background: var(--accent);
-  color: var(--btn-primary-text, #fff);
-  border-radius: 14px;
-  font-size: 12px;
-  font-weight: 700;
-  font-family: var(--font-display);
-  letter-spacing: 0.04em;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   pointer-events: none;
+  transform: translate(8px, -4px);
+}
+
+.te-drag-chip-inner {
+  position: relative;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 10px;
+  max-width: 240px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35),
+              0 0 0 2px rgba(var(--accent-rgb), 0.15);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.te-drag-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 180px;
+}
+
+.te-drag-chip-badge {
+  padding: 1px 6px;
+  background: var(--accent);
+  color: var(--bg-base);
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.te-drag-chip-stack-back,
+.te-drag-chip-stack-mid {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  opacity: 0.55;
+}
+.te-drag-chip-stack-back {
+  transform: translate(6px, 6px);
+  z-index: 1;
+}
+.te-drag-chip-stack-mid {
+  transform: translate(3px, 3px);
+  z-index: 2;
+  opacity: 0.75;
 }
 
 /* Primary action (Add Category) — solid-gold gradient, mirrors
@@ -1086,6 +1138,20 @@ button.te-col-header:hover {
   position: sticky;
   top: 0;
   z-index: 1;
+}
+
+/* Sub-folder group header — indented so children read as nested under
+   their parent's header. Slightly muted so the parent header still leads
+   the eye. */
+.te-group-header-indent {
+  padding-left: 30px;
+  height: 22px;
+  background: rgba(var(--accent-rgb), 0.10);
+  border-left-width: 3px;
+}
+.te-group-header-indent .te-group-name {
+  font-size: 8.5px;
+  opacity: 0.85;
 }
 
 .te-group-dot {

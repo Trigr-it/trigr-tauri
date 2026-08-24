@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { Type, Link2, Mail, Hash, ExternalLink, Pin, GripVertical, ArrowLeftRight } from 'lucide-react';
 import './ClipboardOverlay.css';
@@ -135,7 +135,12 @@ export default function ClipboardOverlay() {
   });
   const [items, setItems] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [theme, setTheme] = useState('dark');
+  // Seeded from the last session's theme so a fresh boot paints the right
+  // palette immediately instead of flashing the dark default until the first
+  // data payload (or self-heal pull) lands.
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem('trigr_overlay_theme') || 'dark'
+  );
   const [search, setSearch] = useState('');
   const [filterTag, setFilterTag] = useState('All');
   const [editing, setEditing] = useState(false);
@@ -159,6 +164,54 @@ export default function ClipboardOverlay() {
     return () => window.electronAPI?.removeAllListeners('clipboard-overlay-data');
   }, []);
 
+  // ── Self-heal pull ────────────────────────────────────────────────────────
+  // The pushed clipboard-overlay-data event is fire-and-forget with two known
+  // loss windows: (1) cold start — this lazy chunk may not have registered
+  // its listener when the first show emits; (2) resume from webview_mem
+  // TrySuspend — the resume/IPC-reconnect race can drop events emitted right
+  // after Resume() (the same race that exempted the countdown window from
+  // suspension). Either loss left the popup blank + default-dark until closed
+  // and reopened. So the overlay pulls its own data whenever the push may
+  // have been missed: at mount, on a reset event that finds no items, and on
+  // the visibilitychange fired by resume_for_show's SetIsVisible(true) after
+  // a suspend. A non-forced pull never clobbers a fresher push (items only
+  // fill in while the list is empty); the wake pull is forced — same DB, and
+  // the pushed payload for that show may be the thing that got lost.
+  const itemsLenRef = useRef(0);
+  useEffect(() => { itemsLenRef.current = items.length; }, [items]);
+  const selfHealPull = useCallback((force) => {
+    window.electronAPI?.getClipboardHistory?.(1, 500)
+      .then((data) => {
+        const list = data?.items || [];
+        setItems(prev => (force || prev.length === 0 ? list : prev));
+      })
+      .catch(() => {});
+    window.electronAPI?.getTheme?.()
+      .then((t) => { if (t) setTheme(t); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { selfHealPull(false); }, [selfHealPull]);
+
+  // Suspend-wake recovery. Normal shows never toggle the WebView2 controller's
+  // visibility, so a hidden→visible transition here means the webview was just
+  // resumed from TrySuspend ahead of a show — exactly the window where the
+  // show path's reset + data emits can be lost. Redo both locally.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      selfHealPull(true);
+      setSelectedIndex(0);
+      setSearch('');
+      setFilterTag('All');
+      setEditing(false);
+      setEditText('');
+      setTimeout(() => inputRef.current?.focus(), 50);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selfHealPull]);
+
   // Show-time reset — emitted by Rust at the top of BOTH show paths (normal
   // + fill-in mode), before any routed keystrokes, so every open starts with
   // a clean search box and selection regardless of when the data payload
@@ -171,12 +224,17 @@ export default function ClipboardOverlay() {
       setEditing(false);
       setEditText('');
       setTimeout(() => inputRef.current?.focus(), 50);
+      // Reset arrived but the popup holds nothing — the data payload for a
+      // previous show (or this one) was likely dropped. Pull instead of
+      // waiting on a push that may never come.
+      if (itemsLenRef.current === 0) selfHealPull(false);
     });
     return () => { unlistenPromise.then(fn => fn()); };
-  }, []);
+  }, [selfHealPull]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('trigr_overlay_theme', theme);
   }, [theme]);
 
   // ── Filtering ─────────────────────────────────────────────────────────────

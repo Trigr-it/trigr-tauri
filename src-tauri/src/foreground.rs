@@ -355,7 +355,7 @@ pub fn start_watcher(app: AppHandle) {
                     let hwnd_val = hwnd as isize;
 
                     if hwnd_val != 0 {
-                        let hwnd_changed = hwnd_val != LAST_FG_HWND.load(Ordering::Relaxed);
+                        let hwnd_changed = hwnd_val != LAST_FG_HWND.load(Ordering::SeqCst);
                         let title = get_window_title(hwnd_val);
                         let title_changed = {
                             let last = last_fg_title().lock().unwrap();
@@ -363,7 +363,7 @@ pub fn start_watcher(app: AppHandle) {
                         };
 
                         if hwnd_changed || title_changed {
-                            LAST_FG_HWND.store(hwnd_val, Ordering::Relaxed);
+                            LAST_FG_HWND.store(hwnd_val, Ordering::SeqCst);
                             *last_fg_title().lock().unwrap() = title.clone();
                             if let Some(name) = get_fg_proc_name(hwnd_val) {
                                 // Cache PID for linked-app detection from the hook
@@ -510,7 +510,7 @@ pub fn proc_name_for_hwnd(hwnd: isize) -> Option<String> {
 /// Used by the hook to verify the linked app is still focused before
 /// suppressing bare mouse buttons (avoids the 1500ms poll lag).
 pub fn last_fg_hwnd() -> isize {
-    LAST_FG_HWND.load(Ordering::Relaxed)
+    LAST_FG_HWND.load(Ordering::SeqCst)
 }
 
 /// Check if a PID belongs to a known linked app.  Returns the profile name.
@@ -543,9 +543,9 @@ pub fn linked_profile_for_pid(pid: u32) -> Option<String> {
 pub fn check_and_switch_if_stale(app: &AppHandle) {
     let hwnd = unsafe { GetForegroundWindow() as isize };
     if hwnd == 0 { return; }
-    if hwnd == LAST_FG_HWND.load(Ordering::Relaxed) { return; }
+    if hwnd == LAST_FG_HWND.load(Ordering::SeqCst) { return; }
     // Foreground changed since the watcher's last sync — re-evaluate now.
-    LAST_FG_HWND.store(hwnd, Ordering::Relaxed);
+    LAST_FG_HWND.store(hwnd, Ordering::SeqCst);
     let title = get_window_title(hwnd);
     *last_fg_title().lock().unwrap() = title.clone();
     if let Some(name) = get_fg_proc_name(hwnd) {
@@ -561,7 +561,7 @@ pub fn force_check(app: &AppHandle) {
         windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
     };
     if hwnd == 0 { return; }
-    LAST_FG_HWND.store(hwnd, Ordering::Relaxed);
+    LAST_FG_HWND.store(hwnd, Ordering::SeqCst);
     let title = get_window_title(hwnd);
     *last_fg_title().lock().unwrap() = title.clone();
     if let Some(name) = get_fg_proc_name(hwnd) {

@@ -415,21 +415,13 @@ pub fn push_mouse_move(x: i32, y: i32) {
 }
 
 pub fn push_wheel(delta: i32, x: i32, y: i32) {
-    if !IS_RECORDING_MACRO.load(Ordering::SeqCst) {
-        log::info!("[DIAG scroll] push_wheel SKIPPED — not recording (delta={})", delta);
-        return;
-    }
-    if in_grace_window() {
-        log::info!("[DIAG scroll] push_wheel SKIPPED — in grace window (delta={})", delta);
-        return;
-    }
+    if !IS_RECORDING_MACRO.load(Ordering::SeqCst) { return; }
+    if in_grace_window() { return; }
     let t = relative_t();
     if let Ok(mut vec) = events().try_lock() {
         vec.push(RecordedEvent::Wheel { delta, x, y, t });
-        log::info!("[DIAG scroll] push_wheel captured delta={} at ({},{}) t={}", delta, x, y, t);
     } else {
         PUSH_DROPS.fetch_add(1, Ordering::SeqCst);
-        log::info!("[DIAG scroll] push_wheel DROPPED — events mutex locked");
     }
 }
 

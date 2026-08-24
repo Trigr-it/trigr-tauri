@@ -23,6 +23,10 @@ window.electronAPI = {
 
   // ── Config persistence ──────────────────────────────────────────────────────
   loadConfig:  ()       => invoke('load_config'),
+  // Side-effect-free theme read for overlay windows (loadConfig runs the main
+  // window's boot side effects — backups, LKG, revision snapshot — never call
+  // it from an overlay).
+  getTheme:    ()       => invoke('get_theme'),
   saveConfig:  (config) => invoke('save_config', { config }),
 
   // ── Hotkey engine ───────────────────────────────────────────────────────────
@@ -466,6 +470,12 @@ window.electronAPI = {
   },
   onClipboardThumbBackfillDone: (callback) => {
     listeners['clipboard-thumb-backfill-done'] = listen('clipboard-thumb-backfill-done', (event) => callback(event.payload));
+  },
+  // v0.8.5: fresh image capture — thumb worker moved off the writer thread, so
+  // this arrives shortly after clipboard-new-item with { id, thumb_b64 } once
+  // the WebP encode finishes. Panel + overlay swap the thumb into their row.
+  onClipboardThumbReady: (callback) => {
+    listeners['clipboard-thumb-ready'] = listen('clipboard-thumb-ready', (event) => callback(event.payload));
   },
   onClipboardOverlayData: (callback) => {
     listen('clipboard-overlay-data', (event) => callback(event.payload)).then(u => { listeners['clipboard-overlay-data'] = u; });

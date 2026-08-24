@@ -134,81 +134,95 @@ fn load_config() -> Value {
 }
 
 #[tauri::command]
-fn save_config(app: tauri::AppHandle, config: Value) -> bool {
-    // Re-read from disk RIGHT NOW so we catch any cross-device sync that landed
-    // between the frontend's last load and this save. Without this, we'd merge
-    // against the file's state at app launch and silently overwrite another
-    // machine's edits.
-    let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+async fn save_config(app: tauri::AppHandle, config: Value) -> bool {
+    // Save can touch a shared/OneDrive path where fs::read_to_string blocks
+    // on the sync agent; keep the entire disk-IO chain off the main event
+    // loop so unrelated UI + tray + emit traffic stays responsive.
+    let (ok, remote_preserved) = tauri::async_runtime::spawn_blocking(move || {
+        // Re-read from disk RIGHT NOW so we catch any cross-device sync that landed
+        // between the frontend's last load and this save. Without this, we'd merge
+        // against the file's state at app launch and silently overwrite another
+        // machine's edits.
+        let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
 
-    // Phase 2 conflict detection: disk revision ahead of what the frontend's
-    // view started from means another machine wrote since we loaded.
-    let existing_rev = config::config_revision(&existing);
-    let last_loaded_rev = config::last_loaded_revision();
-    let base = config::last_loaded_base();
-    let has_conflict = base.is_some() && existing_rev > last_loaded_rev;
+        // Phase 2 conflict detection: disk revision ahead of what the frontend's
+        // view started from means another machine wrote since we loaded.
+        let existing_rev = config::config_revision(&existing);
+        let last_loaded_rev = config::last_loaded_revision();
+        let base = config::last_loaded_base();
+        let has_conflict = base.is_some() && existing_rev > last_loaded_rev;
 
-    let (mut merged, remote_preserved) = if has_conflict {
-        let outcome = config::merge_with_remote(base.as_ref().unwrap(), &config, &existing);
-        if !outcome.remote_preserved.is_empty() {
+        let (mut merged, remote_preserved) = if has_conflict {
+            let outcome = config::merge_with_remote(base.as_ref().unwrap(), &config, &existing);
+            if !outcome.remote_preserved.is_empty() {
+                log::warn!(
+                    "[Keyfire] save_config: sync conflict — disk rev {} > loaded rev {}; preserved remote edits to {:?}",
+                    existing_rev,
+                    last_loaded_rev,
+                    outcome.remote_preserved
+                );
+            }
+            (outcome.merged, outcome.remote_preserved)
+        } else {
+            (config::shallow_merge(&config, &existing), Vec::new())
+        };
+
+        // Stamp the new revision + UTC timestamp. We bump above max(existing, loaded)
+        // so two machines writing concurrently can't issue the same revision number.
+        if let Some(obj) = merged.as_object_mut() {
+            let new_rev = existing_rev.max(last_loaded_rev).saturating_add(1);
+            obj.insert(
+                "configRevision".to_string(),
+                Value::Number(serde_json::Number::from(new_rev)),
+            );
+            obj.insert(
+                "lastModifiedUtc".to_string(),
+                Value::String(chrono::Utc::now().to_rfc3339()),
+            );
+            // `_restoredFrom` is a transient load-time marker — never persist it.
+            obj.remove("_restoredFrom");
+        }
+
+        // Back up the existing config first if this is a significant change OR a
+        // destructive regression (radial/assignments going from populated to empty).
+        // The latter is the cross-device clobber signature — we always want a
+        // recoverable snapshot of the good state before it lands.
+        let destructive = config::is_destructive_regression(&merged, &existing);
+        if config::is_significant_change(&config, &existing) || destructive {
+            config::create_timestamped_backup(&existing);
+        }
+        if destructive {
             log::warn!(
-                "[Keyfire] save_config: sync conflict — disk rev {} > loaded rev {}; preserved remote edits to {:?}",
-                existing_rev,
-                last_loaded_rev,
-                outcome.remote_preserved
+                "[Keyfire] save_config: incoming change zeroes-out a previously-populated radial layout or assignment set. Backed up prior state; leaving last-known-good untouched so it stays recoverable."
             );
         }
-        (outcome.merged, outcome.remote_preserved)
-    } else {
-        (config::shallow_merge(&config, &existing), Vec::new())
-    };
 
-    // Stamp the new revision + UTC timestamp. We bump above max(existing, loaded)
-    // so two machines writing concurrently can't issue the same revision number.
-    if let Some(obj) = merged.as_object_mut() {
-        let new_rev = existing_rev.max(last_loaded_rev).saturating_add(1);
-        obj.insert(
-            "configRevision".to_string(),
-            Value::Number(serde_json::Number::from(new_rev)),
-        );
-        obj.insert(
-            "lastModifiedUtc".to_string(),
-            Value::String(chrono::Utc::now().to_rfc3339()),
-        );
-        // `_restoredFrom` is a transient load-time marker — never persist it.
-        obj.remove("_restoredFrom");
-    }
-
-    // Back up the existing config first if this is a significant change OR a
-    // destructive regression (radial/assignments going from populated to empty).
-    // The latter is the cross-device clobber signature — we always want a
-    // recoverable snapshot of the good state before it lands.
-    let destructive = config::is_destructive_regression(&merged, &existing);
-    if config::is_significant_change(&config, &existing) || destructive {
-        config::create_timestamped_backup(&existing);
-    }
-    if destructive {
-        log::warn!(
-            "[Keyfire] save_config: incoming change zeroes-out a previously-populated radial layout or assignment set. Backed up prior state; leaving last-known-good untouched so it stays recoverable."
-        );
-    }
-
-    let ok = config::save_config(&merged);
-    if ok {
-        // Don't poison last-known-good with a destructive regression — otherwise
-        // the one "known good" snapshot becomes the wiped state (which is exactly
-        // how the radial-wipe bug defeated recovery).
-        if !destructive {
-            config::update_last_known_good(&merged);
+        let ok = config::save_config(&merged);
+        if ok {
+            // Don't poison last-known-good with a destructive regression — otherwise
+            // the one "known good" snapshot becomes the wiped state (which is exactly
+            // how the radial-wipe bug defeated recovery).
+            if !destructive {
+                config::update_last_known_good(&merged);
+            }
+            // Snapshot the just-written state as the new base for the next save —
+            // otherwise a follow-up save would still see disk ahead of base and
+            // run the 3-way merge needlessly.
+            config::snapshot_loaded(&merged);
         }
-        // Snapshot the just-written state as the new base for the next save —
-        // otherwise a follow-up save would still see disk ahead of base and
-        // run the 3-way merge needlessly.
-        config::snapshot_loaded(&merged);
-        // Voice phrases live inside the assignments blob, which is part of every save.
-        // Pre-warm asynchronously so the next recognition is cache-hit fast.
+        (ok, remote_preserved)
+    })
+    .await
+    .unwrap_or_else(|e| {
+        log::error!("[Keyfire] save_config: spawn_blocking join failed: {}", e);
+        (false, Vec::new())
+    });
+
+    if ok {
+        // Voice pre-warm reads shared engine state, but the phrase set changes
+        // rarely enough that a stray warm-up is cheap; keep it on the main
+        // thread where the voice module was designed to live.
         voice::prewarm_from_state();
-        // Surface a sync-conflict toast when remote edits were preserved.
         if !remote_preserved.is_empty() {
             if let Err(e) = app.emit(
                 "sync-conflict-resolved",
@@ -812,11 +826,48 @@ fn get_app_icon(path: String) -> Value {
 /// so the frontend renders the text-badge fallback.
 #[cfg(windows)]
 #[tauri::command]
-fn get_app_icon_by_name(name: String) -> Value {
-    match resolve_exe_path_for_name(&name) {
-        Some(path) => icon_data_url_from_path(path),
-        None => Value::Null,
+async fn get_app_icon_by_name(name: String) -> Value {
+    // Server-side session cache — identical names hit repeatedly on panel
+    // open (one call per unique legacy source_app per session pre-cache).
+    // Both a hit (Some(url)) and a miss (None) are memoised so we never
+    // re-walk App Paths / running processes / System32 for a name that
+    // has no icon on this machine.
+    {
+        let cache = app_icon_by_name_cache().lock().unwrap();
+        if let Some(entry) = cache.get(&name) {
+            return match entry {
+                Some(url) => Value::String(url.clone()),
+                None => Value::Null,
+            };
+        }
     }
+
+    // spawn_blocking: SHGetFileInfoW + registry walks + ToolHelp snapshot are
+    // all synchronous Win32 calls. Running sync on the main IPC thread means
+    // a first-load panel open with 15 legacy apps serialises 15 registry
+    // walks + icon extractions on the event loop.
+    let name_for_task = name.clone();
+    let icon = tauri::async_runtime::spawn_blocking(move || {
+        resolve_exe_path_for_name(&name_for_task).map(icon_data_url_from_path)
+    })
+    .await
+    .ok()
+    .flatten();
+
+    let (result, cached_val): (Value, Option<String>) = match icon {
+        Some(Value::String(url)) => (Value::String(url.clone()), Some(url)),
+        _ => (Value::Null, None),
+    };
+    let mut cache = app_icon_by_name_cache().lock().unwrap();
+    cache.insert(name, cached_val);
+    result
+}
+
+#[cfg(windows)]
+static APP_ICON_BY_NAME_CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<String>>>> = std::sync::OnceLock::new();
+#[cfg(windows)]
+fn app_icon_by_name_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<String>>> {
+    APP_ICON_BY_NAME_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
 #[cfg(windows)]
@@ -1941,29 +1992,39 @@ fn discard_macro_recording() {
 /// app-linking pitch, so it lives behind the same gate as voice / advanced
 /// analytics / expression engine per [[feedback_licence_entitlement_invariants]].
 #[tauri::command]
-fn distill_events(events: Value) -> Value {
+async fn distill_events(events: Value) -> Value {
     if !licence::is_pro() {
         log::info!("[DISTILL] free tier — returning empty step list");
         return serde_json::json!({ "steps": [], "targetApp": null });
     }
-    let events_vec: Vec<recorder::RecordedEvent> = match serde_json::from_value(events) {
-        Ok(v) => v,
-        Err(e) => {
-            log::warn!("[DISTILL] Failed to parse events: {}", e);
-            return serde_json::json!({ "steps": [], "targetApp": null });
-        }
-    };
-    let steps = distill::distill(&events_vec);
-    let target_app = distill::extract_target_app(&events_vec);
-    log::info!(
-        "[DISTILL] {} events → {} steps, target_app={:?}",
-        events_vec.len(),
-        steps.len(),
-        target_app.as_ref().map(|t| t.exe.clone())
-    );
-    serde_json::json!({
-        "steps": steps,
-        "targetApp": target_app,
+    // Long recordings can produce 20K+ events; the full-walk distillation is
+    // CPU-bound and would block the main thread if run sync. spawn_blocking
+    // moves parse + distill onto a worker thread so the UI stays responsive.
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let events_vec: Vec<recorder::RecordedEvent> = match serde_json::from_value(events) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("[DISTILL] Failed to parse events: {}", e);
+                return serde_json::json!({ "steps": [], "targetApp": null });
+            }
+        };
+        let steps = distill::distill(&events_vec);
+        let target_app = distill::extract_target_app(&events_vec);
+        log::info!(
+            "[DISTILL] {} events → {} steps, target_app={:?}",
+            events_vec.len(),
+            steps.len(),
+            target_app.as_ref().map(|t| t.exe.clone())
+        );
+        serde_json::json!({
+            "steps": steps,
+            "targetApp": target_app,
+        })
+    })
+    .await;
+    result.unwrap_or_else(|e| {
+        log::warn!("[DISTILL] spawn_blocking join failed: {}", e);
+        serde_json::json!({ "steps": [], "targetApp": null })
     })
 }
 
@@ -2939,7 +3000,6 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
 
     let target = unsafe { GetForegroundWindow() as isize };
     CLIPBOARD_OVERLAY_TARGET.store(target, std::sync::atomic::Ordering::SeqCst);
-    log::info!("[CLIP-FOCUS] show_overlay: captured target_hwnd=0x{:X}", target);
 
     let win = match app.get_webview_window("clipboardoverlay") {
         Some(w) => w,
@@ -3097,14 +3157,6 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
         }
     }
 
-    // Diagnostic: did focus actually stay on the target? If foreground_after !=
-    // target_hwnd we've lost focus despite WS_EX_NOACTIVATE + SWP_NOACTIVATE
-    // and need to investigate further (probably Chromium SetFocus on webview).
-    let foreground_after = unsafe { GetForegroundWindow() as isize };
-    log::info!(
-        "[CLIP-FOCUS] show_overlay: foreground_after=0x{:X} (target=0x{:X}, match={})",
-        foreground_after, target, foreground_after == target
-    );
 }
 
 #[cfg(not(windows))]
@@ -3142,7 +3194,6 @@ fn hide_clipboard_overlay(app: &tauri::AppHandle) {
             let _ = win.hide();
         }
     }
-    log::info!("[CLIP-FOCUS] hide_overlay: hidden");
     // Fill-in mode restore: hand focus back to the fill-in window so the user
     // can keep typing after the popup closes. Normal mode uses NOACTIVATE, so
     // there's nothing to restore — the target never lost foreground.
@@ -4306,7 +4357,7 @@ unsafe fn print_report_to_pdf(
 // ── Clipboard Manager ──────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_clipboard_history(
+async fn get_clipboard_history(
     page: u32,
     per_page: u32,
     date_filter: Option<String>,
@@ -4317,10 +4368,33 @@ fn get_clipboard_history(
     // passes false so only pinned promote (starred items stay in the timeline).
     promote_starred: Option<bool>,
 ) -> Value {
-    clipboard::get_history(
-        page, per_page, date_filter, app_filter, tag_filter, search,
-        promote_starred.unwrap_or(false),
-    )
+    // get_history blocks on the clipboard writer thread (up to 500 rows
+    // AES-decrypted, possibly queued behind a large capture write) — keep
+    // that roundtrip off the main event loop.
+    tauri::async_runtime::spawn_blocking(move || {
+        clipboard::get_history(
+            page, per_page, date_filter, app_filter, tag_filter, search,
+            promote_starred.unwrap_or(false),
+        )
+    })
+    .await
+    .unwrap_or_else(|_| serde_json::json!({ "items": [] }))
+}
+
+#[tauri::command]
+async fn get_theme() -> String {
+    // Plain config read only. The load_config command is NOT a substitute
+    // here: it carries boot-sequence side effects (timestamped backup, LKG
+    // rewrite, snapshot_loaded for cross-device save-conflict detection)
+    // that must stay exclusive to the main window's load path. Used by the
+    // clipboard popup's self-heal pull.
+    tauri::async_runtime::spawn_blocking(|| {
+        config::load_config()
+            .and_then(|c| c.get("theme").and_then(|v| v.as_str()).map(String::from))
+            .unwrap_or_else(|| "dark".to_string())
+    })
+    .await
+    .unwrap_or_else(|_| "dark".to_string())
 }
 
 #[tauri::command]
@@ -4369,20 +4443,6 @@ fn paste_clipboard_item(id: i64, app: tauri::AppHandle) {
                 return;
             }
         };
-
-        // Diagnostic: snapshot foreground at paste-thread entry. If this isn't
-        // the captured target_hwnd, focus drifted during the popup's lifetime
-        // (likely Chromium SetFocus on the overlay webview racing our
-        // SWP_NOACTIVATE show, or the target app reacted to some other event).
-        #[cfg(windows)]
-        unsafe {
-            use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-            let fg_now = GetForegroundWindow() as isize;
-            log::info!(
-                "[CLIP-FOCUS] paste_thread: foreground=0x{:X} (target_capture=0x{:X}, match={})",
-                fg_now, target_hwnd, fg_now == target_hwnd
-            );
-        }
 
         // Counter is incremented after the paste path succeeds (set inside the match below).
         let mut pasted_ok = false;
@@ -6364,6 +6424,7 @@ pub fn run() {
             analytics_report_ready,
             // Clipboard
             get_clipboard_history,
+            get_theme,
             paste_clipboard_item,
             paste_text,
             copy_clipboard_item,

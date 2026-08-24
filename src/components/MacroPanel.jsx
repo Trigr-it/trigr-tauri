@@ -200,18 +200,19 @@ const MOUSE_CLICK_OPTIONS = [
 // PRESS_KEY_PHASE_OPTIONS drives the Press Key step's phase sub-row.
 // Down = hold the key (or chord) — no release, a later Release step is
 // expected to close it. Up = release only. "full" (default) is the classic
-// down+up pulse.
+// down+up pulse — labelled "Press & Release" so it's explicit that the
+// default does both halves (bare "Press" read as down-only to some users).
 const PRESS_KEY_PHASE_OPTIONS = [
-  { value: 'full', label: 'Press'   },
+  { value: 'full', label: 'Press & Release' },
   { value: 'down', label: 'Hold'    },
   { value: 'up',   label: 'Release' },
 ];
 
 // MOUSE_CLICK_PHASE_OPTIONS drives the Click Mouse step's phase sub-row.
-// Same shape as Press Key phases but the default is labelled "Click" instead
-// of "Press" because mouse buttons click.
+// Same shape as Press Key phases but the default is labelled "Click &
+// Release" instead of "Press & Release" because mouse buttons click.
 const MOUSE_CLICK_PHASE_OPTIONS = [
-  { value: 'full', label: 'Click'   },
+  { value: 'full', label: 'Click & Release' },
   { value: 'down', label: 'Hold'    },
   { value: 'up',   label: 'Release' },
 ];
@@ -3202,10 +3203,10 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
         <button className="step-remove" onClick={() => removeStep(step._id)} type="button" aria-label="Remove step">✕</button>
       </div>
 
-      {/* Sub-row: Press Key phase — Press / Hold / Release radios. Hold keeps
-          the key or chord down until a later Release step; Press (default) is
-          the classic full down+up pulse. Rust clamps repeat to 1 for Hold /
-          Release so a stored ×N doesn't misbehave. */}
+      {/* Sub-row: Press Key phase — Press & Release / Hold / Release radios.
+          Hold keeps the key or chord down until a later Release step; Press &
+          Release (default) is the classic full down+up pulse. Rust clamps
+          repeat to 1 for Hold / Release so a stored ×N doesn't misbehave. */}
       {step.type === 'Press Key' && (
         <div className="step-phase-row">
           {PRESS_KEY_PHASE_OPTIONS.map(o => {

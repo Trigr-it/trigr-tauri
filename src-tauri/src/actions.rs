@@ -1612,6 +1612,36 @@ pub fn execute_hotkey_inline(data: &Value, _app: &tauri::AppHandle) -> bool {
 
 // ── Send Hotkey: VK-based key simulation ────────────────────────────────────
 
+// Hold duration between synthetic KEYDOWN and KEYUP batches for ONE-SHOT
+// presses. Games poll key state per-frame (GetAsyncKeyState / DirectInput
+// device state); a fused down+up in one SendInput batch finishes in
+// microseconds — the polling loop never sees the key as "down" on any frame
+// and the press silently never registers. The hold must span at least one
+// frame interval: 50ms covers games down to ~20fps. Beta-validated in
+// Helldivers 2 (2026-08): fused Press Key batches never registered; manual
+// splits at 50ms worked flawlessly. Still imperceptible — real physical key
+// taps hold 60-150ms, so 50ms reads as natural input. Used by paths running
+// on spawned action/macro threads: Press Key macro step full phase, Send
+// Hotkey non-repeat (keyboard + mouse chord), Copy/Paste/Select All steps,
+// one-shot send_mouse_click callers.
+const KEY_HOLD_MS: u64 = 50;
+// Shorter hold for two classes of path that CANNOT afford the full 50ms:
+// 1. The repeat-mode loop — at the 50ms interval floor a 50ms hold leaves a
+//    ~0ms RELEASE window, and per-frame pollers would read the stream as one
+//    continuous hold instead of N discrete presses. The release needs frame
+//    coverage exactly like the press: 25/25 covers both edges at 40fps+.
+// 2. Processor-thread tap passthroughs (send_passthrough_click here,
+//    send_synthetic_tap in hotkeys.rs) — these sleep on the input-processing
+//    thread itself, so every held millisecond delays all queued keystrokes.
+pub(crate) const PIPELINE_KEY_HOLD_MS: u64 = 25;
+// Brief sleep inside the suppression scope after the final SendInput.
+// SendInput returns when events are inserted into the system queue, not when
+// the LL hook processes them — without this drain window suppression drops
+// before the hook finishes, and our synthetic events get treated as real
+// input (buffer push, modifier atomic churn, and suppress_keys swallow for
+// any synthetic that matches a Keyfire binding). 5ms covers typical dispatch.
+const SUPPRESS_DRAIN_MS: u64 = 5;
+
 fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::AppHandle) {
     let key_name = match data.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
@@ -1700,20 +1730,8 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
     }
 
     // ── Repeat mode ──
-    // Brief sleep inside the SuppressionGuard scope after SendInput. SendInput
-    // returns when events are inserted into the system queue, not when the LL
-    // hook processes them — without this drain window, the guard drops before
-    // the hook finishes, and our synthetic events get treated as real input
-    // (buffer push, modifier atomic churn, and suppress_keys swallow for any
-    // synthetic that matches a Keyfire binding). 5ms covers typical dispatch.
-    const SUPPRESS_DRAIN_MS: u64 = 5;
-    // Hold duration between synthetic KEYDOWN and KEYUP. Games poll key state
-    // per-frame (60fps = ~16.67ms, 144fps = ~6.94ms). A back-to-back keydown
-    // and keyup sent in a single SendInput batch finishes in microseconds —
-    // the game's polling loop never sees the key as "down" on any frame, so
-    // the press doesn't register. 15ms covers 1+ frame at 60fps and 2+ at
-    // 144fps. Matches the ballpark of AHK's SetKeyDelay default (~10-20ms).
-    const KEY_HOLD_MS: u64 = 15;
+    // Hold + drain constants (KEY_HOLD_MS / SUPPRESS_DRAIN_MS) are module-level
+    // — shared with the non-repeat path below and the Press Key macro step.
     if repeat_mode {
         let trigger_storage_key = trigger_key.unwrap_or("").to_string();
 
@@ -1775,7 +1793,9 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) { break; }
 
                 if is_mouse_copy {
-                    send_mouse_click(&key_name_owned);
+                    // Repeat needs the shorter hold — see PIPELINE_KEY_HOLD_MS
+                    // (release window must also span a frame).
+                    send_mouse_click_with_hold(&key_name_owned, PIPELINE_KEY_HOLD_MS);
                 } else {
                     // Split into separate KEYDOWN and KEYUP batches with a hold
                     // window between them. Games / DirectInput-style apps poll
@@ -1803,7 +1823,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                     // key is bound elsewhere) the suppress_keys swallow path.
                     let _guard = SuppressionGuard::new();
                     unsafe { SendInput(down_inputs.len() as u32, down_inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
-                    thread::sleep(Duration::from_millis(KEY_HOLD_MS));
+                    thread::sleep(Duration::from_millis(PIPELINE_KEY_HOLD_MS));
                     unsafe { SendInput(up_inputs.len() as u32, up_inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
                     thread::sleep(Duration::from_millis(SUPPRESS_DRAIN_MS));
                 }
@@ -1812,10 +1832,10 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 // iteration matches the configured interval. saturating_sub
                 // covers any case where the in-guard window exceeds the
                 // configured interval (impossible at the .max(50) floor with
-                // current constants: 15 + 5 = 20 < 50).
+                // current constants: 25 + 5 = 30 < 50).
                 thread::sleep(Duration::from_millis(
                     repeat_interval
-                        .saturating_sub(KEY_HOLD_MS)
+                        .saturating_sub(PIPELINE_KEY_HOLD_MS)
                         .saturating_sub(SUPPRESS_DRAIN_MS),
                 ));
             }
@@ -2007,7 +2027,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             unsafe {
                 SendInput(down_batch.len() as u32, down_batch.as_ptr(), std::mem::size_of::<INPUT>() as i32);
             }
-            thread::sleep(Duration::from_millis(15));
+            thread::sleep(Duration::from_millis(KEY_HOLD_MS));
             let mut up_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + buttons.len());
             for b in buttons.iter().rev() {
                 if let Some((_, up_flag)) = button_flags(b) {
@@ -2022,18 +2042,27 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         restore_modifiers(&held);
     } else {
         let held = release_held_modifiers();
-        let mut inputs: Vec<INPUT> = Vec::with_capacity(mod_vks.len() * 2 + 2);
-        for &vk in &mod_vks { inputs.push(make_vk_input(vk, false)); }
+        // Split down and up into separate batches with a hold window between
+        // them — a fused batch is invisible to per-frame game polling (see
+        // KEY_HOLD_MS at module scope). Mirrors the repeat-mode loop above.
+        let mut down_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+        for &vk in &mod_vks { down_batch.push(make_vk_input(vk, false)); }
         // Skip main-key tap when in bare-modifier mode — the modifier chord
         // itself is the full hotkey (down all, up all in reverse).
         if has_main_key {
-            inputs.push(make_vk_input(target_vk, false));
-            inputs.push(make_vk_input(target_vk, true));
+            down_batch.push(make_vk_input(target_vk, false));
         }
-        for &vk in mod_vks.iter().rev() { inputs.push(make_vk_input(vk, true)); }
+        let mut up_batch: Vec<INPUT> = Vec::with_capacity(mod_vks.len() + 1);
+        if has_main_key {
+            up_batch.push(make_vk_input(target_vk, true));
+        }
+        for &vk in mod_vks.iter().rev() { up_batch.push(make_vk_input(vk, true)); }
         {
             let _guard = SuppressionGuard::new();
-            unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+            unsafe { SendInput(down_batch.len() as u32, down_batch.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+            thread::sleep(Duration::from_millis(KEY_HOLD_MS));
+            unsafe { SendInput(up_batch.len() as u32, up_batch.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+            thread::sleep(Duration::from_millis(SUPPRESS_DRAIN_MS));
         }
         restore_modifiers(&held);
     }
@@ -2189,7 +2218,13 @@ fn send_mouse_event(button: &str, is_up: bool) {
 
 /// Send a mouse click (down + up) at the current cursor position.
 /// `button` must be "LButton", "RButton", or "MButton".
+/// One-shot callers get the full KEY_HOLD_MS; the repeat-mode loop passes
+/// PIPELINE_KEY_HOLD_MS so the release window stays frame-visible.
 fn send_mouse_click(button: &str) {
+    send_mouse_click_with_hold(button, KEY_HOLD_MS);
+}
+
+fn send_mouse_click_with_hold(button: &str, hold_ms: u64) {
     let (down_flag, up_flag) = match button {
         "LButton" => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
         "RButton" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
@@ -2231,11 +2266,12 @@ fn send_mouse_click(button: &str) {
 
     unsafe {
         SendInput(1, &input_down, std::mem::size_of::<INPUT>() as i32);
-        // Small hold between down and up — fused back-to-back SendInputs are
-        // invisible to some Chromium-based targets (Arc browser's right-click
-        // context menu, observed 2026-06-18). Mirrors the keyboard hold-time
-        // pattern per [[feedback_synthetic_key_hold_time]].
-        thread::sleep(Duration::from_millis(15));
+        // Hold between down and up — fused back-to-back SendInputs are
+        // invisible to per-frame game polling and some Chromium-based targets
+        // (Arc browser's right-click context menu, observed 2026-06-18).
+        // Mirrors the keyboard hold-time pattern per
+        // [[feedback_synthetic_key_hold_time]].
+        thread::sleep(Duration::from_millis(hold_ms));
         SendInput(1, &input_up, std::mem::size_of::<INPUT>() as i32);
     }
 
@@ -2246,14 +2282,15 @@ fn send_mouse_click(button: &str) {
 /// Synthesize a full click at the current cursor position — used by the mouse
 /// ::hold trigger's early-release passthrough (the hook suppressed the user's
 /// physical button-down, so on a quick tap the app still needs its native
-/// click). 15ms down-up split per the synthetic hold-time rule; button names
-/// are the replay_mouse_button set ("Left".."Side2").
+/// click). PIPELINE_KEY_HOLD_MS down-up split — one call site runs on the
+/// processor thread, so the full 50ms one-shot hold would stall input
+/// processing. Button names are the replay_mouse_button set ("Left".."Side2").
 pub fn send_passthrough_click(button: &str) {
     crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
     replay_mouse_button(button, true);
-    thread::sleep(Duration::from_millis(15));
+    thread::sleep(Duration::from_millis(PIPELINE_KEY_HOLD_MS));
     replay_mouse_button(button, false);
-    thread::sleep(Duration::from_millis(5));
+    thread::sleep(Duration::from_millis(SUPPRESS_DRAIN_MS));
     crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
     info!("[Keyfire] [HOLD] mouse passthrough click: {}", button);
 }
@@ -2699,14 +2736,12 @@ fn try_fire_keyfire_hotkey_from_macro(
     drop(state);
     if let Some((mb, vk)) = overlay {
         if bits == mb && target == vk {
-            log::info!("[Keyfire] Press Key macro matched search-overlay hotkey — dispatching internally");
             let _ = app.emit("toggle-overlay", Value::Null);
             return true;
         }
     }
     if let Some((mb, vk)) = radial {
         if bits == mb && target == vk {
-            log::info!("[Keyfire] Press Key macro matched radial-menu hotkey — dispatching internally");
             // Radial menu opens at CURRENT cursor position. During recording
             // the user positioned the cursor before pressing the hotkey; the
             // distilled step carries that position as cursorX/cursorY. Move
@@ -2719,7 +2754,6 @@ fn try_fire_keyfire_hotkey_from_macro(
                 unsafe {
                     windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y);
                 }
-                log::info!("[Keyfire] Radial dispatch: cursor moved to recorded ({}, {})", x, y);
                 // Tiny settle so cursor position is stable before the wheel
                 // reads it on show.
                 thread::sleep(Duration::from_millis(20));
@@ -2738,7 +2772,6 @@ fn try_fire_keyfire_hotkey_from_macro(
     }
     if let Some((mb, vk)) = clipboard {
         if bits == mb && target == vk {
-            log::info!("[Keyfire] Press Key macro matched clipboard-overlay hotkey — dispatching internally");
             let _ = app.emit("toggle-clipboard-overlay", Value::Null);
             return true;
         }
@@ -2772,10 +2805,6 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 };
                 let type_hwnd = if fresh_hwnd != 0 { fresh_hwnd } else { *target_hwnd };
                 if fresh_hwnd != 0 && fresh_hwnd != *target_hwnd {
-                    log::info!(
-                        "[Keyfire] Type Text: foreground drifted since last re-capture (was=0x{:x}, now=0x{:x}) — using fresh HWND",
-                        *target_hwnd, fresh_hwnd
-                    );
                     *target_hwnd = fresh_hwnd;
                 }
                 let resolved = resolve_type_text_tokens(step_value);
@@ -2910,10 +2939,23 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                                     send_vk_key(vk, false);
                                 }
                                 send_vk_key(target_vk, false);
+                                // Hold window between down and up. Games poll
+                                // key state per-frame — a microsecond pulse
+                                // never lands on any frame and the press
+                                // silently doesn't register (beta report:
+                                // Press Key steps invisible to Helldivers 2;
+                                // manual Hold + Release with a delay worked).
+                                // See KEY_HOLD_MS at module scope.
+                                thread::sleep(Duration::from_millis(KEY_HOLD_MS));
                                 send_vk_key(target_vk, true);
                                 for &vk in mod_vks.iter().rev() {
                                     send_vk_key(vk, true);
                                 }
+                                // Drain: let the LL hook process the queued
+                                // synthetic events before SUPPRESS_SIMULATED
+                                // clears below (SendInput returns at queue-
+                                // insert, not hook-dispatch).
+                                thread::sleep(Duration::from_millis(SUPPRESS_DRAIN_MS));
                             }
                         }
                         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
@@ -2966,8 +3008,12 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
                 send_vk_key(VK_LCONTROL, false);
                 send_vk_key(target_vk, false);
+                // Hold + drain per the synthetic hold-time rule (see
+                // KEY_HOLD_MS at module scope) — consistency with Press Key.
+                thread::sleep(Duration::from_millis(KEY_HOLD_MS));
                 send_vk_key(target_vk, true);
                 send_vk_key(VK_LCONTROL, true);
+                thread::sleep(Duration::from_millis(SUPPRESS_DRAIN_MS));
                 crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                 if i + 1 < repeat_count && settle_ms > 0 {
                     thread::sleep(Duration::from_millis(settle_ms));

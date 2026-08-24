@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, closestCenter, pointerWithin, rectIntersection } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import './SearchTemplatesPanel.css';
@@ -27,17 +27,95 @@ class LeftClickSensor extends PointerSensor {
   ];
 }
 
-// ── Sortable category row wrapper ──────────────────────────────────────────
+// ── Sortable category tab wrapper ──────────────────────────────────────────
+// v0.8.5 sub-folders: parents-only in SortableContext (children use
+// DraggableChildRow instead — see [[feedback_expansion_dnd_invariants]] rule 1).
 
-function SortableCatRow({ id, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+function SortableCatTab({ id, data, children, dropOverKind }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id, data });
   const style = {
     transform: DndCSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
   };
+  const dropClass = isOver
+    ? (dropOverKind === 'reparent' ? ' stp-cat-drop-reparent'
+        : dropOverKind === 'expansion' ? ' stp-cat-drop-expansion'
+        : ' stp-cat-drop-reorder')
+    : '';
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`stp-sortable-wrap${dropClass}`}>
+      {children}
+    </div>
+  );
+}
+
+// Wrapper making a template/quick-action row draggable. Payload carries a
+// bulk-aware ids array (matches the TextExpansions pattern for multi-select).
+function DraggableItemRow({ id, selectedIds, children }) {
+  const inSelection = selectedIds && selectedIds.has(id);
+  const ids = inSelection && selectedIds.size > 1 ? Array.from(selectedIds) : [id];
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `item:${id}`,
+    data: { type: 'item', id, ids, count: ids.length },
+  });
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  return (
+    <div ref={setNodeRef} className="stp-tile-drag-wrap" style={style} {...attributes} {...listeners}>
+      {children}
+    </div>
+  );
+}
+
+// Droppable "All" / "Uncategorised" special rows — accept item drops AND, for
+// "All" specifically, a child-category drop = promote to top-level.
+function DroppableSpecialRow({ id, data, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id, data });
+  return (
+    <div ref={setNodeRef} className={isOver ? 'stp-cat-drop-expansion' : ''}>
+      {children}
+    </div>
+  );
+}
+
+// Custom collision detection: item drags use pointerWithin ONLY (cursor
+// position drives the drop target — no fallback). Without the "only" bit,
+// when the cursor sits over the tile grid (nowhere near the sidebar), a
+// fallback like closestCenter would pick the sidebar row nearest the
+// dragged tile's centre, making it look like sidebar rows "snap-follow"
+// the cursor at the same y-level. Returning empty is correct: mid-air
+// release = no drop, no highlight until the cursor is directly over a row.
+// Category drags keep closestCenter so the middle-third reparent-vs-
+// reorder heuristic in handleUnifiedDragMove still works.
+function customCollisionDetection(args) {
+  const activeType = args.active?.data?.current?.type;
+  if (activeType === 'item') {
+    return pointerWithin(args);
+  }
+  return closestCenter(args);
+}
+
+// Draggable + droppable child-category wrapper. Deliberately NOT sortable —
+// keeps children out of SortableContext so dnd-kit doesn't snap-animate the
+// parent list when a sub-category is picked up.
+function DraggableChildRow({ id, data, children, dropOverKind }) {
+  const drag = useDraggable({ id, data });
+  const drop = useDroppable({ id: `child-drop:${id}`, data });
+  const setRef = (node) => { drag.setNodeRef(node); drop.setNodeRef(node); };
+  const style = {
+    transform: drag.transform ? `translate3d(${drag.transform.x}px, ${drag.transform.y}px, 0)` : undefined,
+    opacity: drag.isDragging ? 0.4 : 1,
+  };
+  const dropClass = drop.isOver
+    ? (dropOverKind === 'expansion' ? ' stp-cat-drop-expansion'
+        : dropOverKind === 'reparent' ? ' stp-cat-drop-reparent'
+        : ' stp-cat-drop-reorder')
+    : '';
+  return (
+    <div ref={setRef} style={style} {...drag.attributes} {...drag.listeners} className={`stp-sortable-wrap${dropClass}`}>
       {children}
     </div>
   );
@@ -518,6 +596,8 @@ export default function SearchTemplatesPanel({
   onDeleteCategory,
   onUpdateCategoryColour,
   onReorderCategories,
+  onMoveCategoryTo,
+  onMoveTemplateToCategory,
   quickActions = [],
   onAddQuickAction,
   onUpdateQuickAction,
@@ -528,6 +608,8 @@ export default function SearchTemplatesPanel({
   onDeleteQaCategory,
   onUpdateQaCategoryColour,
   onReorderQaCategories,
+  onMoveQaCategoryTo,
+  onMoveQuickActionToCategory,
   onExportQuickActions,
   onImportQuickActions,
   quickActionImportPrompt,
@@ -610,11 +692,108 @@ export default function SearchTemplatesPanel({
   const catDndSensors = useSensors(useSensor(LeftClickSensor, { activationConstraint: { distance: 8 } }));
   const [catDragId, setCatDragId] = useState(null);
 
+  // ── Sub-folder state (v0.8.5, Pro) ───────────────────────────────────────
+  // Path grammar: category name may contain zero or one `/`. Top-level = no
+  // slash; child = "<parent>/<child>". Depth capped at 1 in every op.
+  // Separate expanded-parents Sets per mode so switching modes preserves each.
+  const [expandedTemplateParents, setExpandedTemplateParents] = useState(() => {
+    try { const raw = localStorage.getItem('trigr.stp.tpl.expandedParents'); if (raw) return new Set(JSON.parse(raw)); } catch {}
+    return new Set();
+  });
+  const [expandedQaParents, setExpandedQaParents] = useState(() => {
+    try { const raw = localStorage.getItem('trigr.stp.qa.expandedParents'); if (raw) return new Set(JSON.parse(raw)); } catch {}
+    return new Set();
+  });
+  useEffect(() => {
+    try { localStorage.setItem('trigr.stp.tpl.expandedParents', JSON.stringify([...expandedTemplateParents])); } catch {}
+  }, [expandedTemplateParents]);
+  useEffect(() => {
+    try { localStorage.setItem('trigr.stp.qa.expandedParents', JSON.stringify([...expandedQaParents])); } catch {}
+  }, [expandedQaParents]);
+  const expandedParents = panelMode === 'quickactions' ? expandedQaParents : expandedTemplateParents;
+  const setExpandedParents = panelMode === 'quickactions' ? setExpandedQaParents : setExpandedTemplateParents;
+  const toggleParentExpanded = useCallback((parentName) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(parentName)) next.delete(parentName); else next.add(parentName);
+      return next;
+    });
+  }, [setExpandedParents]);
+
+  // Free-tier "Nested categories detected" banner dismissal — shared across
+  // modes so a Free user with nested imports on both sides sees it once.
+  const [subFolderBannerDismissed, setSubFolderBannerDismissed] = useState(() => {
+    try { return localStorage.getItem('trigr.stp.subFolderBannerDismissed') === '1'; } catch { return false; }
+  });
+  const dismissSubFolderBanner = useCallback(() => {
+    setSubFolderBannerDismissed(true);
+    try { localStorage.setItem('trigr.stp.subFolderBannerDismissed', '1'); } catch {}
+  }, []);
+  // Adding a new child under a parent
+  const [addingSubParent, setAddingSubParent] = useState(null); // parent name or null
+  const [newSubName, setNewSubName]         = useState('');
+  const [newSubColour, setNewSubColour]     = useState(null);
+  // Delete-with-children modal + move-to submenu
+  const [deleteTreeConfirm, setDeleteTreeConfirm] = useState(null); // { name, childCount }
+  const [moveToMenu, setMoveToMenu] = useState(null); // { catName, x, y }
+  const moveToMenuRef = useRef(null);
+
   // ── Active categories depend on mode (must be before effects/functions) ──
   const activeCats = panelMode === 'quickactions' ? qaCategories : categories;
   const activeCatHandlers = panelMode === 'quickactions'
-    ? { onAdd: onAddQaCategory, onRename: onRenameQaCategory, onDelete: onDeleteQaCategory, onColour: onUpdateQaCategoryColour, onReorder: onReorderQaCategories }
-    : { onAdd: onAddCategory, onRename: onRenameCategory, onDelete: onDeleteCategory, onColour: onUpdateCategoryColour, onReorder: onReorderCategories };
+    ? { onAdd: onAddQaCategory, onRename: onRenameQaCategory, onDelete: onDeleteQaCategory, onColour: onUpdateQaCategoryColour, onReorder: onReorderQaCategories, onMoveTo: onMoveQaCategoryTo, onMoveItem: onMoveQuickActionToCategory }
+    : { onAdd: onAddCategory, onRename: onRenameCategory, onDelete: onDeleteCategory, onColour: onUpdateCategoryColour, onReorder: onReorderCategories, onMoveTo: onMoveCategoryTo, onMoveItem: onMoveTemplateToCategory };
+
+  // ── Sub-folder helpers ────────────────────────────────────────────────────
+  const normCategories = useMemo(() => activeCats
+    .map(c => typeof c === 'string' ? { name: c, colour: null } : c)
+    .filter(c => c && c.name), [activeCats]);
+  const nestedDataDetected = normCategories.some(c => c.name.includes('/'));
+  const showSubFolders = isPro || (nestedDataDetected && !subFolderBannerDismissed);
+  const parentCategories = normCategories.filter(c => !c.name.includes('/'));
+  const getChildrenOf = (parentName) => normCategories.filter(c => c.name.startsWith(parentName + '/'));
+  const catHasChildren = (name) => normCategories.some(c => c.name.startsWith(name + '/'));
+  const isChildCat = (name) => typeof name === 'string' && name.includes('/');
+  const parentOf = (childPath) => childPath.slice(0, childPath.lastIndexOf('/'));
+  const leafName = (path) => path.slice(path.lastIndexOf('/') + 1);
+  const effectiveColour = (cat) => {
+    if (cat.colour) return cat.colour;
+    if (isChildCat(cat.name)) {
+      const parent = normCategories.find(c => c.name === parentOf(cat.name));
+      return parent?.colour || null;
+    }
+    return null;
+  };
+  // Path grammar validator: null on valid, else error string.
+  const validateCategoryPath = (path, { allowExisting = null } = {}) => {
+    const p = (path || '').trim();
+    if (!p) return 'Name cannot be empty';
+    if (p === 'All') return '"All" is reserved';
+    const parts = p.split('/');
+    if (parts.length > 2) return 'Only one sub-level allowed';
+    if (parts.length === 2) {
+      if (!isPro) return 'Sub-folders require Pro';
+      const [par, child] = parts;
+      if (!par) return 'Parent required before /';
+      if (!child) return 'Sub-folder name required after /';
+      if (par === 'All' || child === 'All') return '"All" is reserved';
+      if (!normCategories.some(c => c.name === par || c.name.startsWith(par + '/'))) return `Parent "${par}" does not exist`;
+    }
+    if (allowExisting !== p && normCategories.some(c => c.name === p)) return 'Already exists';
+    return null;
+  };
+
+  // Close move-to submenu on outside click or Escape
+  useEffect(() => {
+    if (!moveToMenu) return;
+    function onDown(e) {
+      if (moveToMenuRef.current && !moveToMenuRef.current.contains(e.target)) setMoveToMenu(null);
+    }
+    function onKey(e) { if (e.key === 'Escape') setMoveToMenu(null); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [moveToMenu]);
 
   // Close help popover on outside click
   useEffect(() => {
@@ -989,21 +1168,33 @@ export default function SearchTemplatesPanel({
   function handleAddCategory(e) {
     e?.preventDefault?.();
     const name = newCategoryName.trim();
-    if (name && !activeCats.some(c => c.name === name)) {
-      activeCatHandlers.onAdd?.(name, newCategoryColour);
+    if (!name) {
+      setNewCategoryName('');
+      setNewCategoryColour(null);
+      setAddingCategory(false);
+      return;
     }
+    const err = validateCategoryPath(name);
+    if (err) { setRenameError(err); return; }
+    activeCatHandlers.onAdd?.(name, newCategoryColour);
     setNewCategoryName('');
     setNewCategoryColour(null);
     setAddingCategory(false);
+    setRenameError('');
   }
 
   function commitEditorNewCategory() {
     const name = editorNewCatName.trim();
-    if (name) {
-      const exists = qaCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
-      if (!exists) onAddQaCategory?.(name, null);
-      setQaCategory(exists ? exists.name : name);
+    if (!name) { setCreatingCatInEditor(false); setEditorNewCatName(''); return; }
+    // Free tier can't create sub-folder paths via the editor — same rule as
+    // right-click Add Sub-folder, closes the bypass hole.
+    if (name.includes('/') && !isPro) {
+      onShowUpgrade?.('Quick Action sub-folders');
+      return;
     }
+    const exists = qaCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (!exists) onAddQaCategory?.(name, null);
+    setQaCategory(exists ? exists.name : name);
     setCreatingCatInEditor(false);
     setEditorNewCatName('');
   }
@@ -1022,6 +1213,8 @@ export default function SearchTemplatesPanel({
   function handleCatColourSelect(colour) {
     if (catColourPopover?.forCat === '__new__') {
       setNewCategoryColour(colour);
+    } else if (catColourPopover?.forCat === '__new_sub__') {
+      setNewSubColour(colour);
     } else if (catColourPopover?.forCat) {
       activeCatHandlers.onColour?.(catColourPopover.forCat, colour);
     }
@@ -1039,8 +1232,50 @@ export default function SearchTemplatesPanel({
     const name = catContextMenu.catName;
     setCatContextMenu(null);
     setRenamingCat(name);
-    setRenameValue(name);
+    // For a child, show only the leaf — commitCatRename reconstructs the path.
+    setRenameValue(isChildCat(name) ? leafName(name) : name);
     setRenameError('');
+    // Expand parent when renaming a child so the input is visible.
+    if (isChildCat(name)) {
+      setExpandedParents(prev => {
+        const next = new Set(prev);
+        next.add(parentOf(name));
+        return next;
+      });
+    }
+  }
+
+  // Pro-gated "Add Sub-folder" from the context menu.
+  function ctxAddSubCategory() {
+    const parent = catContextMenu.catName;
+    setCatContextMenu(null);
+    if (!isPro) {
+      onShowUpgrade?.(panelMode === 'quickactions' ? 'Quick Action sub-folders' : 'Search Template sub-folders');
+      return;
+    }
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      next.add(parent);
+      return next;
+    });
+    setAddingSubParent(parent);
+    setNewSubName('');
+    setNewSubColour(null);
+    setRenameError('');
+  }
+
+  // Pro-gated "Move to…" — opens the submenu popup.
+  function ctxMoveTo() {
+    if (!isPro) {
+      onShowUpgrade?.(panelMode === 'quickactions' ? 'Quick Action sub-folders' : 'Search Template sub-folders');
+      setCatContextMenu(null);
+      return;
+    }
+    const rect = catContextMenuRef.current?.getBoundingClientRect();
+    const x = rect ? rect.right + 4 : catContextMenu.x + 180;
+    const y = rect ? rect.top : catContextMenu.y;
+    setMoveToMenu({ catName: catContextMenu.catName, x, y });
+    setCatContextMenu(null);
   }
 
   function ctxChangeColour() {
@@ -1057,26 +1292,46 @@ export default function SearchTemplatesPanel({
   }
 
   function ctxDelete() {
+    const name = catContextMenu.catName;
+    const children = getChildrenOf(name);
+    if (children.length > 0) {
+      // Parent with children — open the delete-tree-or-promote modal.
+      setDeleteTreeConfirm({ name, childCount: children.length });
+      setCatContextMenu(null);
+      setCtxDeleteConfirm(false);
+      return;
+    }
     if (!ctxDeleteConfirm) {
       setCtxDeleteConfirm(true);
       return;
     }
-    activeCatHandlers.onDelete?.(catContextMenu.catName);
-    if (activeCategory === catContextMenu.catName) setActiveCategory('All');
+    activeCatHandlers.onDelete?.(name);
+    if (activeCategory === name) setActiveCategory('All');
     setCatContextMenu(null);
     setCtxDeleteConfirm(false);
   }
 
   function commitCatRename() {
-    const trimmed = renameValue.trim();
+    let trimmed = renameValue.trim();
     if (!trimmed) { setRenameError('Name cannot be empty'); return; }
-    if (trimmed !== renamingCat && activeCats.some(c => c.name === trimmed)) {
-      setRenameError('Already exists'); return;
+    // Renaming a child: input shows leaf only; reconstruct the full path.
+    if (isChildCat(renamingCat)) {
+      if (trimmed.includes('/')) { setRenameError('Sub-folder name cannot contain /'); return; }
+      trimmed = `${parentOf(renamingCat)}/${trimmed}`;
     }
+    if (trimmed === renamingCat) {
+      renameCommitting.current = true;
+      setRenamingCat(null); setRenameValue(''); setRenameError('');
+      return;
+    }
+    const err = validateCategoryPath(trimmed, { allowExisting: renamingCat });
+    if (err) { setRenameError(err); return; }
     renameCommitting.current = true;
-    if (trimmed !== renamingCat) {
-      activeCatHandlers.onRename?.(renamingCat, trimmed);
-      if (activeCategory === renamingCat) setActiveCategory(trimmed);
+    activeCatHandlers.onRename?.(renamingCat, trimmed);
+    if (activeCategory === renamingCat) setActiveCategory(trimmed);
+    // Also update the active filter if we renamed a parent whose path we're browsing.
+    if (!isChildCat(renamingCat) && activeCategory.startsWith(renamingCat + '/')) {
+      setActiveCategory(trimmed + activeCategory.slice(renamingCat.length));
     }
     setRenamingCat(null);
     setRenameValue('');
@@ -1090,14 +1345,132 @@ export default function SearchTemplatesPanel({
     setRenameError('');
   }
 
-  function handleCatDragEnd(event) {
-    setCatDragId(null);
+  // ── Unified DnD handlers (v0.8.5 sub-folders) ─────────────────────────────
+  // Drag intent is set on every drag-move based on cursor position within the
+  // hovered target row: middle third of a parent = reparent, edges = reorder.
+  // Item drags are routed separately (whole-row drop = assign to that
+  // category). Highlight uses `dragIntent` + `dragOverName` React state.
+  const [dragIntent, setDragIntent]         = useState(null); // 'reparent' | 'reorder' | null
+  const [dragOverName, setDragOverName]     = useState(null);
+  const [dragActiveType, setDragActiveType] = useState(null); // 'category' | 'item' | null
+  const [dragActiveId, setDragActiveId]     = useState(null); // item id for single-item drags
+  const [dragCount, setDragCount]           = useState(0);
+
+  function handleUnifiedDragStart(event) {
+    const active = event.active;
+    const type = active.data.current?.type;
+    setDragActiveType(type || null);
+    if (type === 'category') {
+      setCatDragId(active.id);
+      setDragCount(1);
+      setDragActiveId(null);
+    } else if (type === 'item') {
+      setDragCount(active.data.current.count || 1);
+      setDragActiveId(active.data.current.id || null);
+    }
+    setDragIntent(null);
+    setDragOverName(null);
+  }
+
+  function handleUnifiedDragMove(event) {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIdx = activeCats.findIndex(c => c.name === active.id);
-    const newIdx = activeCats.findIndex(c => c.name === over.id);
-    if (oldIdx === -1 || newIdx === -1) return;
-    activeCatHandlers.onReorder?.(arrayMove([...activeCats], oldIdx, newIdx));
+    if (!over || !active) { setDragIntent(null); setDragOverName(null); return; }
+    const activeType = active.data.current?.type;
+    const overName = over.data.current?.name || null;
+    setDragOverName(overName);
+    if (activeType !== 'category') { setDragIntent(null); return; }
+    const overType = over.data.current?.type;
+    if (overType !== 'category') { setDragIntent(null); return; }
+    const activeRect = active.rect?.current?.translated;
+    const overRect = over.rect;
+    if (!activeRect || !overRect) { setDragIntent(null); return; }
+    const cursorY = (activeRect.top + activeRect.bottom) / 2;
+    const relY = (cursorY - overRect.top) / overRect.height;
+    const overIsParent = !overName.includes('/');
+    const activeName = active.data.current.name;
+    const activeIsChild = activeName.includes('/');
+    const activeIsChildOfOver = activeIsChild && parentOf(activeName) === overName;
+    const activeHasKids = !activeIsChild && catHasChildren(activeName);
+    const canReparent = overIsParent && !activeHasKids && !activeIsChildOfOver && activeName !== overName;
+    let nextIntent;
+    if (activeIsChild && overIsParent) {
+      nextIntent = 'reparent';
+    } else if (canReparent && relY > 0.30 && relY < 0.70) {
+      nextIntent = 'reparent';
+    } else {
+      nextIntent = 'reorder';
+    }
+    setDragIntent(nextIntent);
+  }
+
+  function handleUnifiedDragEnd(event) {
+    setCatDragId(null);
+    setDragActiveType(null);
+    setDragActiveId(null);
+    setDragCount(0);
+    const intent = dragIntent;
+    setDragIntent(null);
+    setDragOverName(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeType = active.data.current?.type;
+
+    if (activeType === 'category') {
+      const activeName = active.data.current.name;
+      const overType = over.data.current?.type;
+      // Drop child on "All" = promote to top-level.
+      if (overType === 'special' && over.data.current.target === 'all' && activeName.includes('/')) {
+        if (!isPro) { onShowUpgrade?.(panelMode === 'quickactions' ? 'Quick Action sub-folders' : 'Search Template sub-folders'); return; }
+        activeCatHandlers.onMoveTo?.(activeName, 'top');
+        return;
+      }
+      if (overType !== 'category') return;
+      const overName = over.data.current.name;
+      if (activeName === overName) return;
+      const overIsParent = !overName.includes('/');
+      const activeIsChild = activeName.includes('/');
+      const activeHasKids = !activeIsChild && catHasChildren(activeName);
+
+      // REPARENT: only when intent is reparent AND target is a parent AND
+      // depth cap isn't violated. All paths that result in a nested path are
+      // Pro-gated — closes the "bypass sub-folder Pro gate via drag" hole.
+      if (intent === 'reparent' && overIsParent && !activeHasKids) {
+        if (!isPro) { onShowUpgrade?.(panelMode === 'quickactions' ? 'Quick Action sub-folders' : 'Search Template sub-folders'); return; }
+        activeCatHandlers.onMoveTo?.(activeName, overName);
+        return;
+      }
+      // Child dropped into different parent (even at edge) = reparent.
+      if (activeIsChild && overIsParent && parentOf(activeName) !== overName) {
+        if (!isPro) { onShowUpgrade?.(panelMode === 'quickactions' ? 'Quick Action sub-folders' : 'Search Template sub-folders'); return; }
+        activeCatHandlers.onMoveTo?.(activeName, overName);
+        return;
+      }
+      // REORDER: same-level rearrangement.
+      const oldIdx = normCategories.findIndex(c => c.name === activeName);
+      const newIdx = normCategories.findIndex(c => c.name === overName);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        activeCatHandlers.onReorder?.(arrayMove([...normCategories], oldIdx, newIdx));
+      }
+    } else if (activeType === 'item') {
+      // Bulk-aware payload: `ids` is always an array.
+      const ids = active.data.current.ids || [active.data.current.id];
+      const overType = over.data.current?.type;
+      if (overType === 'category') {
+        activeCatHandlers.onMoveItem?.(ids, over.data.current.name);
+      } else if (overType === 'special') {
+        const target = over.data.current.target;
+        if (target === 'uncategorised') activeCatHandlers.onMoveItem?.(ids, null);
+      }
+    }
+  }
+
+  function handleUnifiedDragCancel() {
+    setCatDragId(null);
+    setDragActiveType(null);
+    setDragActiveId(null);
+    setDragCount(0);
+    setDragIntent(null);
+    setDragOverName(null);
   }
 
   // ── Filtered + grouped template list ──────────────────────────────────
@@ -1107,8 +1480,16 @@ export default function SearchTemplatesPanel({
   const filteredTemplates = useMemo(() => {
     if (activeCategory === 'All') return searchTemplates;
     if (activeCategory === '__uncategorised__') return searchTemplates.filter(t => !t.category);
+    // Parent tab (top-level with children) aggregates the parent AND all its children.
+    if (panelMode === 'templates' && !activeCategory.includes('/') && catHasChildren(activeCategory)) {
+      const prefix = activeCategory + '/';
+      return searchTemplates.filter(t =>
+        t.category === activeCategory ||
+        (typeof t.category === 'string' && t.category.startsWith(prefix))
+      );
+    }
     return searchTemplates.filter(t => t.category === activeCategory);
-  }, [searchTemplates, activeCategory]);
+  }, [searchTemplates, activeCategory, panelMode, categories]);
 
   const groupedList = useMemo(() => {
     if (activeCategory !== 'All') {
@@ -1120,10 +1501,24 @@ export default function SearchTemplatesPanel({
       result.push({ type: 'header', label: 'Uncategorised', count: uncat.length });
       uncat.forEach(t => result.push({ type: 'item', template: t }));
     }
-    for (const cat of categories) {
-      const items = searchTemplates.filter(t => t.category === cat.name);
-      if (items.length > 0) {
-        result.push({ type: 'header', label: cat.name, count: items.length, colour: cat.colour });
+    // Walk parents in user-defined order; for each parent, emit its own
+    // items header + rows, then walk THAT parent's children (also in order)
+    // and emit each child's header (indented) + rows. Keeps sub-folders
+    // grouped visually beneath their parent instead of scattered by array
+    // position.
+    const parents = categories.filter(c => !c.name.includes('/'));
+    for (const parent of parents) {
+      const own = searchTemplates.filter(t => t.category === parent.name);
+      if (own.length > 0) {
+        result.push({ type: 'header', label: parent.name, fullPath: parent.name, count: own.length, colour: parent.colour });
+        own.forEach(t => result.push({ type: 'item', template: t }));
+      }
+      const kids = categories.filter(c => c.name.startsWith(parent.name + '/'));
+      for (const child of kids) {
+        const items = searchTemplates.filter(t => t.category === child.name);
+        if (items.length === 0) continue;
+        const leafLabel = child.name.slice(parent.name.length + 1);
+        result.push({ type: 'header', label: leafLabel, fullPath: child.name, count: items.length, colour: child.colour || parent.colour, indent: true });
         items.forEach(t => result.push({ type: 'item', template: t }));
       }
     }
@@ -1154,8 +1549,16 @@ export default function SearchTemplatesPanel({
   const qaFilteredList = useMemo(() => {
     if (activeCategory === 'All') return quickActions;
     if (activeCategory === '__uncategorised__') return quickActions.filter(a => !a.data?.category);
+    // Parent tab aggregates parent + all children (mirrors templates path).
+    if (panelMode === 'quickactions' && !activeCategory.includes('/') && catHasChildren(activeCategory)) {
+      const prefix = activeCategory + '/';
+      return quickActions.filter(a =>
+        a.data?.category === activeCategory ||
+        (typeof a.data?.category === 'string' && a.data.category.startsWith(prefix))
+      );
+    }
     return quickActions.filter(a => a.data?.category === activeCategory);
-  }, [quickActions, activeCategory]);
+  }, [quickActions, activeCategory, panelMode, qaCategories]);
 
   const qaGroupedList = useMemo(() => {
     if (activeCategory !== 'All') {
@@ -1167,10 +1570,19 @@ export default function SearchTemplatesPanel({
       result.push({ type: 'header', label: 'Uncategorised', count: uncat.length });
       uncat.forEach(a => result.push({ type: 'item', action: a }));
     }
-    for (const cat of qaCategories) {
-      const items = quickActions.filter(a => a.data?.category === cat.name);
-      if (items.length > 0) {
-        result.push({ type: 'header', label: cat.name, count: items.length, colour: cat.colour });
+    const parents = qaCategories.filter(c => !c.name.includes('/'));
+    for (const parent of parents) {
+      const own = quickActions.filter(a => a.data?.category === parent.name);
+      if (own.length > 0) {
+        result.push({ type: 'header', label: parent.name, fullPath: parent.name, count: own.length, colour: parent.colour });
+        own.forEach(a => result.push({ type: 'item', action: a }));
+      }
+      const kids = qaCategories.filter(c => c.name.startsWith(parent.name + '/'));
+      for (const child of kids) {
+        const items = quickActions.filter(a => a.data?.category === child.name);
+        if (items.length === 0) continue;
+        const leafLabel = child.name.slice(parent.name.length + 1);
+        result.push({ type: 'header', label: leafLabel, fullPath: child.name, count: items.length, colour: child.colour || parent.colour, indent: true });
         items.forEach(a => result.push({ type: 'item', action: a }));
       }
     }
@@ -1305,110 +1717,251 @@ export default function SearchTemplatesPanel({
         </div>
       )}
 
-      {/* Body: sidebar + list + edit panel */}
-      <div className="stp-body">
+      {/* Body: sidebar + list + edit panel — wrapped in a shared DndContext so
+          item drags from the list can drop onto the sidebar's category rows. */}
+      <DndContext
+        sensors={catDndSensors}
+        onDragStart={handleUnifiedDragStart}
+        onDragMove={handleUnifiedDragMove}
+        onDragEnd={handleUnifiedDragEnd}
+        onDragCancel={handleUnifiedDragCancel}
+        collisionDetection={customCollisionDetection}
+      >
+      <div className={`stp-body${dragActiveType ? ` stp-body--drag-${dragActiveType}` : ''}`}>
         {/* Category sidebar — switches between template and quick action categories based on mode */}
         <div className="stp-cat-sidebar">
           <div className="stp-cat-sidebar-list">
-            <button
-              className={`stp-cat-row${activeCategory === 'All' ? ' stp-cat-row-active' : ''}`}
-              onClick={() => setActiveCategory('All')}
-              type="button"
-            >
-              <span className="stp-cat-row-name">All</span>
-              <span className="stp-cat-count">{panelMode === 'quickactions' ? quickActions.length : searchTemplates.length}</span>
-            </button>
-
-            {((panelMode === 'quickactions' ? qaUncategorisedCount : uncategorisedCount) > 0) && (
+            <DroppableSpecialRow id="__special:all" data={{ type: 'special', target: 'all' }}>
               <button
-                className={`stp-cat-row stp-cat-row-uncategorised${activeCategory === '__uncategorised__' ? ' stp-cat-row-active' : ''}`}
-                onClick={() => setActiveCategory('__uncategorised__')}
+                className={`stp-cat-row${activeCategory === 'All' ? ' stp-cat-row-active' : ''}`}
+                onClick={() => setActiveCategory('All')}
                 type="button"
               >
-                <span className="stp-cat-row-name">Uncategorised</span>
-                <span className="stp-cat-count">{panelMode === 'quickactions' ? qaUncategorisedCount : uncategorisedCount}</span>
+                <span className="stp-cat-row-name">All</span>
+                <span className="stp-cat-count">{panelMode === 'quickactions' ? quickActions.length : searchTemplates.length}</span>
               </button>
+            </DroppableSpecialRow>
+
+            {((panelMode === 'quickactions' ? qaUncategorisedCount : uncategorisedCount) > 0) && (
+              <DroppableSpecialRow id="__special:uncategorised" data={{ type: 'special', target: 'uncategorised' }}>
+                <button
+                  className={`stp-cat-row stp-cat-row-uncategorised${activeCategory === '__uncategorised__' ? ' stp-cat-row-active' : ''}`}
+                  onClick={() => setActiveCategory('__uncategorised__')}
+                  type="button"
+                >
+                  <span className="stp-cat-row-name">Uncategorised</span>
+                  <span className="stp-cat-count">{panelMode === 'quickactions' ? qaUncategorisedCount : uncategorisedCount}</span>
+                </button>
+              </DroppableSpecialRow>
             )}
 
-            <DndContext sensors={catDndSensors} onDragStart={e => setCatDragId(e.active.id)} onDragEnd={handleCatDragEnd}>
-              <SortableContext items={activeCats.map(c => c.name)} strategy={verticalListSortingStrategy}>
-                {activeCats.map(cat => {
-                  const catColour = cat.colour || null;
-                  const count = panelMode === 'quickactions'
-                    ? quickActions.filter(a => a.data?.category === cat.name).length
-                    : searchTemplates.filter(t => t.category === cat.name).length;
-                  return (
-                    <SortableCatRow key={cat.name} id={cat.name}>
-                      <div className="stp-cat-row-group" onContextMenu={e => handleCatContextMenu(e, cat.name)}>
-                        {renamingCat === cat.name ? (
-                          <div
-                            className="stp-cat-row stp-cat-row-active stp-cat-rename-wrap"
-                            style={catColour ? { '--cat-color': catColour } : {}}
-                          >
-                            <input
-                              ref={renameInputRef}
-                              className="stp-cat-rename-input"
-                              value={renameValue}
-                              onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
-                                if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
-                                e.stopPropagation();
-                              }}
-                              onBlur={cancelCatRename}
-                            />
-                            {renameError && <span className="stp-cat-rename-error">{renameError}</span>}
-                          </div>
-                        ) : (
-                          <button
-                            className={`stp-cat-row${activeCategory === cat.name ? ' stp-cat-row-active' : ''}`}
-                            style={catColour ? { '--cat-color': catColour } : {}}
-                            onClick={() => setActiveCategory(cat.name)}
-                            type="button"
-                          >
-                            <span
-                              className="stp-cat-dot stp-cat-dot-pick"
-                              style={catColour ? { background: catColour } : {}}
-                              onClick={e => openCatColourPopover(e, cat.name)}
-                              title="Change colour"
-                            />
-                            <span className="stp-cat-row-name">{cat.name}</span>
-                            <span className="stp-cat-count">{count}</span>
-                          </button>
-                        )}
+            {nestedDataDetected && !isPro && !subFolderBannerDismissed && (
+              <div className="stp-subfolder-banner">
+                <span className="stp-subfolder-banner-text">Nested categories detected. Upgrade to Pro to browse them.</span>
+                <button
+                  type="button"
+                  className="stp-subfolder-banner-close"
+                  onClick={dismissSubFolderBanner}
+                  aria-label="Dismiss"
+                >✕</button>
+              </div>
+            )}
+
+            <SortableContext items={parentCategories.map(c => c.name)} strategy={verticalListSortingStrategy}>
+              {parentCategories.map(parent => {
+                const children   = getChildrenOf(parent.name);
+                const hasKids    = children.length > 0;
+                const isExpanded = expandedParents.has(parent.name);
+                const showTree   = hasKids && showSubFolders && isExpanded;
+
+                // Count for a row: parent aggregates children; leaf = own items.
+                const itemsForCat = (name) => panelMode === 'quickactions'
+                  ? quickActions.filter(a => a.data?.category === name).length
+                  : searchTemplates.filter(t => t.category === name).length;
+                const countForRow = (cat, leaf) => {
+                  if (leaf) return itemsForCat(cat.name);
+                  if (!hasKids) return itemsForCat(cat.name);
+                  const prefix = cat.name + '/';
+                  const own = itemsForCat(cat.name);
+                  const childItems = normCategories
+                    .filter(c => c.name.startsWith(prefix))
+                    .reduce((sum, c) => sum + itemsForCat(c.name), 0);
+                  return own + childItems;
+                };
+
+                const renderCatRow = (cat, opts = {}) => {
+                  const catColour = effectiveColour(cat);
+                  const cName = cat.name;
+                  const displayName = opts.leaf ? leafName(cName) : cName;
+                  const rowCount = countForRow(cat, opts.leaf);
+                  const active = activeCategory === cName;
+                  const rowClasses = [
+                    'stp-cat-row',
+                    active ? 'stp-cat-row-active' : '',
+                    opts.leaf ? 'stp-cat-row-child' : '',
+                  ].filter(Boolean).join(' ');
+                  if (renamingCat === cName) {
+                    return (
+                      <div
+                        className={`${rowClasses} stp-cat-rename-wrap`}
+                        style={catColour ? { '--cat-color': catColour } : {}}
+                      >
+                        <input
+                          ref={renameInputRef}
+                          className="stp-cat-rename-input"
+                          value={renameValue}
+                          onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter')  { e.preventDefault(); commitCatRename(); }
+                            if (e.key === 'Escape') { e.preventDefault(); cancelCatRename(); }
+                            e.stopPropagation();
+                          }}
+                          onBlur={cancelCatRename}
+                        />
+                        {renameError && <span className="stp-cat-rename-error">{renameError}</span>}
                       </div>
-                    </SortableCatRow>
+                    );
+                  }
+                  return (
+                    <button
+                      className={rowClasses}
+                      style={catColour ? { '--cat-color': catColour } : {}}
+                      onClick={() => setActiveCategory(cName)}
+                      onDoubleClick={opts.chevronSlot ? (e => { e.preventDefault(); toggleParentExpanded(cName); }) : undefined}
+                      type="button"
+                    >
+                      <span
+                        className="stp-cat-dot stp-cat-dot-pick"
+                        style={catColour ? { background: catColour } : {}}
+                        onClick={e => openCatColourPopover(e, cName)}
+                        title="Change colour"
+                      />
+                      <span className="stp-cat-row-name">{displayName}</span>
+                      {opts.chevronSlot}
+                      <span className="stp-cat-count">{rowCount}</span>
+                    </button>
                   );
-                })}
-              </SortableContext>
-              <DragOverlay>
-                {catDragId ? (
-                  <div className="stp-cat-row-group stp-cat-row-ghost">
-                    <button className="stp-cat-row stp-cat-row-active" type="button">{catDragId}</button>
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
+                };
+
+                // Chevron on RIGHT of the row (before the count) — keeps parent
+                // dot+name flush-left with Uncategorised/All. Only for parents
+                // that have children AND showSubFolders is true.
+                const chevronSlot = hasKids && showSubFolders ? (
+                  <span
+                    className={`stp-cat-chevron${isExpanded ? ' stp-cat-chevron-open' : ''}`}
+                    onClick={e => { e.stopPropagation(); toggleParentExpanded(parent.name); }}
+                    title={isExpanded ? 'Collapse' : 'Expand'}
+                  >▸</span>
+                ) : null;
+
+                const isHoverTarget = dragOverName === parent.name;
+                const parentDropKind = !isHoverTarget ? null
+                  : dragActiveType === 'item' ? 'expansion'
+                  : dragIntent === 'reparent' ? 'reparent'
+                  : 'reorder';
+
+                return (
+                  <React.Fragment key={parent.name}>
+                    <SortableCatTab id={parent.name} data={{ type: 'category', name: parent.name }} dropOverKind={parentDropKind}>
+                      <div className="stp-cat-row-group" onContextMenu={e => handleCatContextMenu(e, parent.name)}>
+                        {renderCatRow(parent, { chevronSlot })}
+                      </div>
+                    </SortableCatTab>
+
+                    {addingSubParent === parent.name && showSubFolders && (
+                      <div className="stp-cat-row-group stp-cat-row-group-child">
+                        <form
+                          className="stp-cat-add-form stp-cat-add-form-child"
+                          onSubmit={e => {
+                            e.preventDefault();
+                            const trimmed = newSubName.trim();
+                            if (!trimmed) { setAddingSubParent(null); setNewSubName(''); setNewSubColour(null); return; }
+                            const path = `${parent.name}/${trimmed}`;
+                            const err = validateCategoryPath(path);
+                            if (err) { setRenameError(err); return; }
+                            activeCatHandlers.onAdd?.(path, newSubColour);
+                            setAddingSubParent(null);
+                            setNewSubName('');
+                            setNewSubColour(null);
+                            setRenameError('');
+                            setExpandedParents(prev => {
+                              const next = new Set(prev);
+                              next.add(parent.name);
+                              return next;
+                            });
+                          }}
+                        >
+                          <span className="stp-cat-chevron-placeholder" />
+                          <span
+                            className="stp-cat-add-colour-dot"
+                            style={newSubColour ? { background: newSubColour } : {}}
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={e => openCatColourPopover(e, '__new_sub__')}
+                            title="Pick a colour (optional)"
+                          />
+                          <input
+                            autoFocus
+                            className="stp-cat-add-input"
+                            value={newSubName}
+                            onChange={e => { setNewSubName(e.target.value); setRenameError(''); }}
+                            placeholder="Sub-folder name…"
+                            onBlur={() => { if (!newSubName.trim()) { setAddingSubParent(null); setNewSubName(''); setNewSubColour(null); setRenameError(''); } }}
+                            onKeyDown={e => { if (e.key === 'Escape') { setAddingSubParent(null); setNewSubName(''); setNewSubColour(null); setRenameError(''); } }}
+                          />
+                        </form>
+                      </div>
+                    )}
+
+                    {showTree && children.map(child => {
+                      const childHover = dragOverName === child.name;
+                      const childDropKind = !childHover ? null
+                        : dragActiveType === 'item' ? 'expansion'
+                        : 'reorder';
+                      return (
+                        <DraggableChildRow
+                          key={child.name}
+                          id={child.name}
+                          data={{ type: 'category', name: child.name }}
+                          dropOverKind={childDropKind}
+                        >
+                          <div
+                            className="stp-cat-row-group stp-cat-row-group-child"
+                            onContextMenu={e => handleCatContextMenu(e, child.name)}
+                          >
+                            {renderCatRow(child, { leaf: true, chevronSlot: null })}
+                          </div>
+                        </DraggableChildRow>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </SortableContext>
 
             {addingCategory ? (
-              <form onSubmit={handleAddCategory} className="stp-cat-add-form">
-                <span
-                  className="stp-cat-add-colour-dot"
-                  style={newCategoryColour ? { background: newCategoryColour } : {}}
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={e => openCatColourPopover(e, '__new__')}
-                  title="Pick a colour (optional)"
-                />
-                <input
-                  autoFocus
-                  className="stp-cat-add-input"
-                  value={newCategoryName}
-                  onChange={e => setNewCategoryName(e.target.value)}
-                  placeholder="Category name…"
-                  onBlur={handleAddCategory}
-                  onKeyDown={e => e.key === 'Escape' && setAddingCategory(false)}
-                />
-              </form>
+              <>
+                <form onSubmit={handleAddCategory} className="stp-cat-add-form">
+                  <span
+                    className="stp-cat-add-colour-dot"
+                    style={newCategoryColour ? { background: newCategoryColour } : {}}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={e => openCatColourPopover(e, '__new__')}
+                    title="Pick a colour (optional)"
+                  />
+                  <input
+                    autoFocus
+                    className="stp-cat-add-input"
+                    value={newCategoryName}
+                    onChange={e => { setNewCategoryName(e.target.value); setRenameError(''); }}
+                    placeholder={isPro ? 'Name or Parent/Child…' : 'Category name…'}
+                    onBlur={handleAddCategory}
+                    onKeyDown={e => e.key === 'Escape' && (setAddingCategory(false), setRenameError(''))}
+                  />
+                </form>
+                {renameError && !renamingCat && (
+                  <div className="stp-cat-add-error">{renameError}</div>
+                )}
+              </>
             ) : (
               <button className="stp-cat-new-btn" onClick={() => { setAddingCategory(true); setNewCategoryColour(null); }} type="button">
                 + Add Category
@@ -1453,7 +2006,7 @@ export default function SearchTemplatesPanel({
             groupedList.map((entry) => {
               if (entry.type === 'header') {
                 return (
-                  <div key={`gh-${entry.label}`} className="stp-group-header">
+                  <div key={`gh-${entry.fullPath || entry.label}`} className={`stp-group-header${entry.indent ? ' stp-group-header-indent' : ''}`}>
                     {entry.colour && <span className="stp-cat-dot" style={{ background: entry.colour }} />}
                     <span className="stp-group-name">{entry.label.toUpperCase()}</span>
                     <span className="stp-group-count">{entry.count}</span>
@@ -1465,39 +2018,40 @@ export default function SearchTemplatesPanel({
               const locked = lockedIds.has(t.id);
               const handleLockedClick = () => onShowUpgrade?.('More than 5 search templates');
               return (
-                <div
-                  key={t.id}
-                  className={`stp-tile${selectedId === t.id ? ' active' : ''}${locked ? ' locked' : ''}`}
-                  onClick={() => locked ? handleLockedClick() : selectTemplate(t)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); locked ? handleLockedClick() : selectTemplate(t); } }}
-                  title={locked ? 'Upgrade to Pro to enable this template' : t.url_template}
-                >
-                  <span className="stp-tile-trigger">{t.trigger}</span>
-                  {locked && <span className="stp-tile-lock-badge">Pro</span>}
-                  {t.icon ? (
-                    <img
-                      className="stp-tile-icon"
-                      src={`/preset-icons/${t.icon}`}
-                      alt=""
-                      draggable={false}
-                      onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
-                    />
-                  ) : (
-                    <span className="stp-tile-icon stp-tile-letter">{(t.label || '?').charAt(0).toUpperCase()}</span>
-                  )}
-                  <div className="stp-tile-body">
-                    <div className="stp-tile-label">{t.label}</div>
-                    <div className="stp-tile-desc">{t.description || extractHost(t.url_template)}</div>
+                <DraggableItemRow key={t.id} id={t.id} selectedIds={null}>
+                  <div
+                    className={`stp-tile${selectedId === t.id ? ' active' : ''}${locked ? ' locked' : ''}`}
+                    onClick={() => locked ? handleLockedClick() : selectTemplate(t)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); locked ? handleLockedClick() : selectTemplate(t); } }}
+                    title={locked ? 'Upgrade to Pro to enable this template' : t.url_template}
+                  >
+                    <span className="stp-tile-trigger">{t.trigger}</span>
+                    {locked && <span className="stp-tile-lock-badge">Pro</span>}
+                    {t.icon ? (
+                      <img
+                        className="stp-tile-icon"
+                        src={`/preset-icons/${t.icon}`}
+                        alt=""
+                        draggable={false}
+                        onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                      />
+                    ) : (
+                      <span className="stp-tile-icon stp-tile-letter">{(t.label || '?').charAt(0).toUpperCase()}</span>
+                    )}
+                    <div className="stp-tile-body">
+                      <div className="stp-tile-label">{t.label}</div>
+                      <div className="stp-tile-desc">{t.description || extractHost(t.url_template)}</div>
+                    </div>
+                    <button
+                      className="stp-tile-del"
+                      onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
+                      title="Delete"
+                      type="button"
+                    >✕</button>
                   </div>
-                  <button
-                    className="stp-tile-del"
-                    onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
-                    title="Delete"
-                    type="button"
-                  >✕</button>
-                </div>
+                </DraggableItemRow>
               );
             })
           )}
@@ -1593,7 +2147,7 @@ export default function SearchTemplatesPanel({
             qaGroupedList.map((entry) => {
               if (entry.type === 'header') {
                 return (
-                  <div key={`qh-${entry.label}`} className="stp-group-header">
+                  <div key={`qh-${entry.fullPath || entry.label}`} className={`stp-group-header${entry.indent ? ' stp-group-header-indent' : ''}`}>
                     {entry.colour && <span className="stp-cat-dot" style={{ background: entry.colour }} />}
                     <span className="stp-group-name">{entry.label.toUpperCase()}</span>
                     <span className="stp-group-count">{entry.count}</span>
@@ -1609,55 +2163,56 @@ export default function SearchTemplatesPanel({
                 : (a.data?.url || a.data?.path || a.data?.folderPath || a.data?.urlName || a.data?.appName || '');
               const matchedIcon = a.type === 'url' ? findPresetIconForUrl(a.data?.url) : null;
               return (
-                <div
-                  key={a.id}
-                  className={`stp-tile${qaSelectedId === a.id ? ' active' : ''}`}
-                  onClick={() => selectQuickAction(a)}
-                  onContextMenu={e => handleQaItemContextMenu(e, a.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); selectQuickAction(a); } }}
-                  title={preview}
-                >
-                  {a.data?.appIcon ? (
-                    <img
-                      className="stp-tile-icon"
-                      src={a.data.appIcon}
-                      alt=""
-                      draggable={false}
-                      onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
-                    />
-                  ) : matchedIcon ? (
-                    <img
-                      className="stp-tile-icon"
-                      src={`/preset-icons/${matchedIcon}`}
-                      alt=""
-                      draggable={false}
-                      onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
-                    />
-                  ) : (
-                    <span
-                      className="stp-tile-icon stp-tile-glyph"
-                      style={{ '--glyph-color': typeColors[a.type] || '#8a8799' }}
-                    >{typeIcons[a.type] || '◈'}</span>
-                  )}
-                  <div className="stp-tile-body">
-                    <div className="stp-tile-label">{a.label}</div>
-                    <div className="stp-tile-desc">{truncateUrl(preview, 60)}</div>
+                <DraggableItemRow key={a.id} id={a.id} selectedIds={null}>
+                  <div
+                    className={`stp-tile${qaSelectedId === a.id ? ' active' : ''}`}
+                    onClick={() => selectQuickAction(a)}
+                    onContextMenu={e => handleQaItemContextMenu(e, a.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); selectQuickAction(a); } }}
+                    title={preview}
+                  >
+                    {a.data?.appIcon ? (
+                      <img
+                        className="stp-tile-icon"
+                        src={a.data.appIcon}
+                        alt=""
+                        draggable={false}
+                        onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                      />
+                    ) : matchedIcon ? (
+                      <img
+                        className="stp-tile-icon"
+                        src={`/preset-icons/${matchedIcon}`}
+                        alt=""
+                        draggable={false}
+                        onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                      />
+                    ) : (
+                      <span
+                        className="stp-tile-icon stp-tile-glyph"
+                        style={{ '--glyph-color': typeColors[a.type] || '#8a8799' }}
+                      >{typeIcons[a.type] || '◈'}</span>
+                    )}
+                    <div className="stp-tile-body">
+                      <div className="stp-tile-label">{a.label}</div>
+                      <div className="stp-tile-desc">{truncateUrl(preview, 60)}</div>
+                    </div>
+                    <button
+                      className="stp-tile-export"
+                      onClick={e => { e.stopPropagation(); onExportQuickActions?.('single', a.id); }}
+                      title="Export quick action"
+                      type="button"
+                    >↑</button>
+                    <button
+                      className="stp-tile-del"
+                      onClick={e => { e.stopPropagation(); handleQaDelete(a.id); }}
+                      title="Delete"
+                      type="button"
+                    >✕</button>
                   </div>
-                  <button
-                    className="stp-tile-export"
-                    onClick={e => { e.stopPropagation(); onExportQuickActions?.('single', a.id); }}
-                    title="Export quick action"
-                    type="button"
-                  >↑</button>
-                  <button
-                    className="stp-tile-del"
-                    onClick={e => { e.stopPropagation(); handleQaDelete(a.id); }}
-                    title="Delete"
-                    type="button"
-                  >✕</button>
-                </div>
+                </DraggableItemRow>
               );
             })
           )}
@@ -1939,6 +2494,42 @@ export default function SearchTemplatesPanel({
         )}
         </>)}
       </div>
+      <DragOverlay dropAnimation={null}>
+        {catDragId ? (
+          <div className="stp-cat-row-group stp-cat-row-ghost">
+            <button className="stp-cat-row stp-cat-row-active" type="button">
+              {isChildCat(catDragId) ? leafName(catDragId) : catDragId}
+            </button>
+          </div>
+        ) : dragActiveType === 'item' ? (() => {
+          // Look up the label of the primary dragged item. Multi-select shows
+          // a stacked chip with a count badge; single shows a plain chip.
+          const item = panelMode === 'quickactions'
+            ? quickActions.find(a => a.id === dragActiveId)
+            : searchTemplates.find(t => t.id === dragActiveId);
+          const label = item?.label || item?.trigger || 'Item';
+          if (dragCount > 1) {
+            return (
+              <div className="stp-drag-chip stp-drag-chip-stack">
+                <span className="stp-drag-chip-stack-back" aria-hidden="true" />
+                <span className="stp-drag-chip-stack-mid"  aria-hidden="true" />
+                <span className="stp-drag-chip-inner">
+                  <span className="stp-drag-chip-label">{label}</span>
+                  <span className="stp-drag-chip-badge">+{dragCount - 1}</span>
+                </span>
+              </div>
+            );
+          }
+          return (
+            <div className="stp-drag-chip">
+              <span className="stp-drag-chip-inner">
+                <span className="stp-drag-chip-label">{label}</span>
+              </span>
+            </div>
+          );
+        })() : null}
+      </DragOverlay>
+      </DndContext>
 
       {/* Category right-click context menu (portal) */}
       {catContextMenu && ReactDOM.createPortal(
@@ -1949,6 +2540,17 @@ export default function SearchTemplatesPanel({
         >
           <button className="profile-ctx-item" onClick={ctxRename}>Rename</button>
           <button className="profile-ctx-item" onClick={ctxChangeColour}>Change Colour</button>
+          {/* Add Sub-folder only offered on top-level categories (depth cap = 1). */}
+          {!isChildCat(catContextMenu.catName) && (
+            <button className="profile-ctx-item" onClick={ctxAddSubCategory}>
+              Add Sub-folder
+              {!isPro && <span className="pro-badge" style={{ marginLeft: 6 }}>PRO</span>}
+            </button>
+          )}
+          <button className="profile-ctx-item" onClick={ctxMoveTo}>
+            Move to…
+            {!isPro && <span className="pro-badge" style={{ marginLeft: 6 }}>PRO</span>}
+          </button>
           {panelMode === 'quickactions' && (
             <button
               className="profile-ctx-item"
@@ -1965,6 +2567,86 @@ export default function SearchTemplatesPanel({
           <button className="profile-ctx-item profile-ctx-delete" onClick={ctxDelete}>
             {ctxDeleteConfirm ? 'Confirm Delete?' : 'Delete'}
           </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Move-to submenu (portal) — offers 'top' and every top-level category
+          except the one we are moving. Depth cap enforced: a top-level with
+          children cannot be demoted. */}
+      {moveToMenu && ReactDOM.createPortal(
+        <div
+          ref={moveToMenuRef}
+          className="profile-ctx-menu"
+          style={{ top: moveToMenu.y, left: moveToMenu.x }}
+        >
+          {(() => {
+            const name = moveToMenu.catName;
+            const isChild = isChildCat(name);
+            const activeHasKids = !isChild && catHasChildren(name);
+            const destinations = [];
+            if (isChild) destinations.push({ label: 'Top level', value: 'top' });
+            if (!activeHasKids) {
+              parentCategories
+                .filter(p => p.name !== name && p.name !== parentOf(name))
+                .forEach(p => destinations.push({ label: p.name, value: p.name }));
+            }
+            if (destinations.length === 0) {
+              return <div className="profile-ctx-item profile-ctx-item-disabled">Nowhere to move</div>;
+            }
+            return destinations.map(d => (
+              <button
+                key={d.value}
+                className="profile-ctx-item"
+                onClick={() => {
+                  activeCatHandlers.onMoveTo?.(name, d.value);
+                  setMoveToMenu(null);
+                }}
+              >
+                {d.label}
+              </button>
+            ));
+          })()}
+        </div>,
+        document.body
+      )}
+
+      {/* Delete-a-parent-with-children confirmation modal */}
+      {deleteTreeConfirm && ReactDOM.createPortal(
+        <div className="stp-delete-modal-backdrop" onClick={() => setDeleteTreeConfirm(null)}>
+          <div className="stp-delete-modal" onClick={e => e.stopPropagation()}>
+            <div className="stp-delete-title">Delete “{deleteTreeConfirm.name}”</div>
+            <div className="stp-delete-body">
+              This category contains <strong>{deleteTreeConfirm.childCount}</strong> sub-folder{deleteTreeConfirm.childCount !== 1 ? 's' : ''}.
+              Choose what happens to them.
+            </div>
+            <div className="stp-delete-actions">
+              <button
+                className="stp-delete-btn stp-delete-btn-promote"
+                type="button"
+                onClick={() => {
+                  activeCatHandlers.onDelete?.(deleteTreeConfirm.name, 'promote');
+                  if (activeCategory === deleteTreeConfirm.name) setActiveCategory('All');
+                  setDeleteTreeConfirm(null);
+                }}
+              >Promote sub-folders (keep them)</button>
+              <button
+                className="stp-delete-btn stp-delete-btn-tree"
+                type="button"
+                onClick={() => {
+                  activeCatHandlers.onDelete?.(deleteTreeConfirm.name, 'tree');
+                  if (activeCategory === deleteTreeConfirm.name
+                      || activeCategory.startsWith(deleteTreeConfirm.name + '/')) setActiveCategory('All');
+                  setDeleteTreeConfirm(null);
+                }}
+              >Delete this and all sub-folders</button>
+              <button
+                className="stp-delete-btn stp-delete-btn-cancel"
+                type="button"
+                onClick={() => setDeleteTreeConfirm(null)}
+              >Cancel</button>
+            </div>
+          </div>
         </div>,
         document.body
       )}

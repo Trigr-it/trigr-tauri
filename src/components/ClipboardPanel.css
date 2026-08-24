@@ -1277,12 +1277,16 @@
   border-color: var(--border-bright);
 }
 
+/* Middle band — grows to fill the space between the top meta+actions band
+   and the bottom band. min-height:0 lets it shrink; overflow-y:auto scrolls
+   just the content, keeping both bands anchored in view. */
 .cbg-detail-content {
+  flex: 1;
   min-height: 60px;
-  max-height: 260px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  padding: 10px 0;
 }
 
 .cbg-detail-text {
@@ -1320,31 +1324,50 @@
   border: 1px solid var(--border);
 }
 
-.cbg-detail-meta {
+/* Top band — thin horizontal strip of meta above the middle content pane.
+   Wraps if the pane is narrow. Right padding leaves clearance for the
+   absolutely-positioned close X in the top-right corner. */
+.cbg-detail-topband {
   flex-shrink: 0;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px 10px;
-  padding: 8px 0;
-  border-top: 1px solid var(--border);
-  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 4px 34px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cbg-detail-topband-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cbg-detail-topband-counts {
+  gap: 4px;
+  color: var(--text-muted);
 }
 
 .cbg-meta-label {
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .cbg-meta-value {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Buttons never shrink or wrap their labels — when the pane gets narrow the
-   ROWS wrap instead, moving whole buttons onto the next line. Same rule as
-   the MacroPanel row cap: squashed multi-line button text is never OK. */
+/* Top action band — primary buttons sit under the meta pairs row (Save/
+   Pin/Edit/Delete/Copy). Buttons never shrink or wrap their labels; when
+   the pane gets narrow the ROWS wrap instead, moving whole buttons onto
+   the next line. Same rule as the MacroPanel row cap. */
 .cbg-detail-actions {
   flex-shrink: 0;
   display: flex;
@@ -1352,8 +1375,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
+  padding: 6px 0 8px;
+  border-bottom: 1px solid var(--border);
 }
 
 .cbg-detail-actions-l,
@@ -1364,22 +1387,20 @@
   gap: 4px;
 }
 
-/* ── Stage C: text-pane extras ───────────────────────────────────────── */
-
-.cbg-detail-counts {
+/* Bottom band — static row of secondary tools (text transforms / smart
+   actions / image OCR + save + swatches). Always visible, never scrolls. */
+.cbg-detail-bottomband {
   flex-shrink: 0;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 0;
-  font-size: 0.7rem;
-  color: var(--text-muted);
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
   border-top: 1px solid var(--border);
-  margin-top: 6px;
 }
 
 .cbg-counts-sep {
   opacity: 0.5;
+  color: var(--text-muted);
 }
 
 .cbg-transform-pills {
@@ -1387,7 +1408,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  padding-bottom: 8px;
+  padding: 0;
 }
 
 .cbg-tpill {
@@ -1418,14 +1439,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
-  padding-bottom: 8px;
-}
-
-.cbg-paste-count {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-left: 6px;
-  white-space: nowrap;
 }
 
 /* ── Stage D: image-pane extras ──────────────────────────────────────── */
@@ -1555,13 +1568,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  padding: 6px 0 4px;
 }
 
 .cbg-ocr-error {
   flex-shrink: 0;
   padding: 6px 8px;
-  margin: 0 0 6px;
+  margin: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -1576,7 +1588,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px;
-  margin: 0 0 8px;
+  margin: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   border-radius: 6px;
@@ -1600,14 +1612,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin: -2px 0 8px;
+  margin: 0;
 }
 
 .cbg-color-swatches {
   flex-shrink: 0;
   display: flex;
   gap: 6px;
-  padding: 6px 0;
+  padding: 0;
   flex-wrap: wrap;
 }
 

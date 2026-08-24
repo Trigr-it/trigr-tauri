@@ -1917,6 +1917,9 @@ pub fn run_ocr_backfill() {
         info!("[Keyfire] Clipboard: OCR backfill starting, {} image(s) pending", total);
         emit_backfill_progress(0, total);
 
+        // v0.8.5: progress emit throttled to 5/sec so a big backfill can't
+        // drown the StatusBar renderer. Same shape as run_thumb_backfill.
+        let mut last_progress = std::time::Instant::now();
         let mut consecutive_failures: u32 = 0;
         for (i, id) in ids.iter().enumerate() {
             // If the user disables auto-OCR mid-backfill, bail out cleanly.
@@ -1944,7 +1947,12 @@ pub fn run_ocr_backfill() {
                     }
                 }
             }
-            emit_backfill_progress(i + 1, total);
+            let processed = i + 1;
+            let is_last = processed == total;
+            if is_last || last_progress.elapsed() >= std::time::Duration::from_millis(200) {
+                emit_backfill_progress(processed, total);
+                last_progress = std::time::Instant::now();
+            }
         }
 
         info!("[Keyfire] Clipboard: OCR backfill done");
@@ -2014,6 +2022,15 @@ pub fn run_thumb_backfill() {
         info!("[Keyfire] Clipboard: thumb backfill starting, {} image(s) pending", total);
         emit_thumb_backfill_progress(0, total);
 
+        // v0.8.5 throttling: prior loop emitted per-row and yielded no CPU
+        // between rows, so an 800-image legacy library drowned the frontend
+        // in ~800 events and monopolised the writer's channel behind
+        // GetImageBlob / SetThumbBlob traffic. Now:
+        //   - progress emits at most every 200ms (5/sec), with a guaranteed
+        //     final emit at 100% so the StatusBar always converges.
+        //   - a 30ms yield between rows lets new-capture / search / delete
+        //     traffic interleave with the backfill instead of queueing.
+        let mut last_progress = std::time::Instant::now();
         for (i, id) in ids.iter().enumerate() {
             let blob = get_image_blob(*id);
             if let Some(blob) = blob {
@@ -2021,7 +2038,15 @@ pub fn run_thumb_backfill() {
                     set_thumb_blob(*id, thumb);
                 }
             }
-            emit_thumb_backfill_progress(i + 1, total);
+            let processed = i + 1;
+            let is_last = processed == total;
+            if is_last || last_progress.elapsed() >= std::time::Duration::from_millis(200) {
+                emit_thumb_backfill_progress(processed, total);
+                last_progress = std::time::Instant::now();
+            }
+            if !is_last {
+                thread::sleep(std::time::Duration::from_millis(30));
+            }
         }
 
         info!("[Keyfire] Clipboard: thumb backfill done ({} row(s))", total);
@@ -2215,24 +2240,13 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
             None => (Some(entry.source_app_path.as_bytes().to_vec()), None),
         }
     };
-    // v0.8.4: pre-decode a small WebP thumbnail from the plaintext image bytes
-    // so the list payload can inline it. Skipped for non-image rows and for
-    // decode failures (row still saves; list falls back to full-res lazy
-    // load). Encrypted separately with a fresh IV — same tier as image_blob.
-    // The plaintext bytes are also kept in `thumb_plain` so the new-item event
-    // can emit thumb_b64 without a decrypt round-trip.
-    let thumb_plain: Option<Vec<u8>> = if entry.content_type == "image" {
-        entry.image_blob.as_deref().and_then(make_thumb_webp)
-    } else {
-        None
-    };
-    let (thumb_ct, iv_thumb): (Option<Vec<u8>>, Option<Vec<u8>>) = match thumb_plain.as_deref() {
-        Some(bytes) => match encrypt_blob(bytes) {
-            Some((ct, iv)) => (Some(ct), Some(iv)),
-            None => (Some(bytes.to_vec()), None),
-        },
-        None => (None, None),
-    };
+    // v0.8.5 perf: thumbnail generation moved off the writer thread. Row goes
+    // in with no thumb; a background worker computes the WebP thumb, sends
+    // SetThumbBlob so the writer can UPDATE it on a subsequent tick, and
+    // emits `clipboard-thumb-ready` so the frontend swaps in the inlined
+    // data URI when it arrives. The card renders instantly via the existing
+    // IntersectionObserver full-res fallback while the thumb is prepared.
+    let (thumb_ct, iv_thumb): (Option<Vec<u8>>, Option<Vec<u8>>) = (None, None);
 
     let result = conn.execute(
         "INSERT INTO clipboard_history (timestamp, content_type, text_content, html_content, image_blob, image_width, image_height, preview, pinned, source_app, content_tag, iv_text, iv_html, iv_image, iv_preview, thumb_blob, iv_thumb, source_app_path, iv_source_app_path)
@@ -2311,9 +2325,13 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 // paste blobs are ~KBs each) and the UI just needs the boolean
                 // to decide whether to surface "Paste as plain".
                 "has_html": entry.html_content.is_some(),
-                // v0.8.4: inline the plaintext WebP thumbnail so a fresh image
-                // copy's tile paints without a getClipboardImage round-trip.
-                "thumb_b64": thumb_plain.as_deref().map(|b| B64_STD.encode(b)),
+                // v0.8.5: thumb intentionally omitted here — the WebP encode
+                // moved off the writer thread. A follow-up `clipboard-thumb-
+                // ready` event carries thumb_b64 for this id once the worker
+                // finishes; until then the card falls back to the lazy
+                // IntersectionObserver full-res fetch (unchanged behaviour
+                // for freshly-copied images that were already visible).
+                "thumb_b64": serde_json::Value::Null,
                 // v0.8.4: full exe path so the frontend can look up an app
                 // icon via SHGetFileInfoW. Empty string emitted as null.
                 "source_app_path": if entry.source_app_path.is_empty() {
@@ -2323,6 +2341,36 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
                 },
             }),
         );
+    }
+
+    // v0.8.5: async thumbnail worker. Decode + downscale + WebP encode used
+    // to run inline on this writer thread — large screenshots (multi-MB PNG)
+    // could stall it for tens of ms, queueing every subsequent capture,
+    // OCR job, paste-count bump, and search behind them. Spawning the work
+    // keeps the writer free; the SetThumbBlob path already exists (backfill
+    // worker uses it) so the follow-up UPDATE is cheap and single-message.
+    if entry.content_type == "image" {
+        if let Some(png) = entry.image_blob.clone() {
+            std::thread::spawn(move || {
+                if let Some(thumb_bytes) = make_thumb_webp(&png) {
+                    if let Some(app) = APP_HANDLE.get() {
+                        use tauri::Emitter;
+                        let _ = app.emit(
+                            "clipboard-thumb-ready",
+                            serde_json::json!({
+                                "id": new_id,
+                                "thumb_b64": B64_STD.encode(&thumb_bytes),
+                            }),
+                        );
+                    }
+                    if let Some(tx_lock) = CLIPBOARD_TX.get() {
+                        if let Ok(tx) = tx_lock.lock() {
+                            let _ = tx.send(ClipboardMsg::SetThumbBlob { id: new_id, thumb: thumb_bytes });
+                        }
+                    }
+                }
+            });
+        }
     }
 }
 
@@ -2529,16 +2577,16 @@ fn search_history(
     // ocr_text = NULL so pulling those columns is cheap.
     let search_images = crate::licence::is_pro() && search_inside_images_enabled();
 
-    // Full-text scan (added with the clipboard perf patch). Preview is
-    // truncated to 200 chars at write time, so a substring that only appears
-    // past that offset used to be invisible to search. The scan now also
-    // pulls text_content + iv_text; on preview-miss (and ocr-miss for image
-    // rows) we decrypt the full body and retry the match. Preview hits
-    // short-circuit — the extra decrypt only fires when the cheaper checks
-    // failed, so common-word searches still return quickly for rows whose
-    // preview already contains the needle.
+    // Two-pass search. Pass 1 pulls only the cheap columns (preview + iv, OCR
+    // + iv) and evaluates preview / OCR hits. Rows that miss both cheap checks
+    // are collected as `text_check_ids` and go through a second query that
+    // pulls text_content + iv_text ONLY for those ids and only for rows where
+    // text_content IS NOT NULL. Previously the scan SELECT included
+    // text_content + iv_text for every row, so a search over a large history
+    // materialised the entire encrypted text corpus into memory on the writer
+    // thread — long freezes on histories with big Word/PDF pastes.
     let scan_sql = format!(
-        "SELECT id, preview, iv_preview, ocr_text, iv_ocr, text_content, iv_text FROM clipboard_history WHERE {} ORDER BY {}",
+        "SELECT id, preview, iv_preview, ocr_text, iv_ocr FROM clipboard_history WHERE {} ORDER BY {}",
         where_clause, order_clause
     );
     let bind_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
@@ -2552,27 +2600,25 @@ fn search_history(
     let mut scanned: usize = 0;
     let mut ocr_matches: HashSet<i64> = HashSet::new();
     let mut text_matches: HashSet<i64> = HashSet::new();
-    let matched_ids: Vec<i64> = stmt
+    // (id, cheap_hit) in ORDER BY sequence. cheap_hit=true means the row
+    // already matched via preview or OCR; false means it goes to pass 2.
+    let scan_order: Vec<(i64, bool)> = stmt
         .query_map(rusqlite::params_from_iter(bind_refs.iter()), |row| {
             let id = row.get::<_, i64>(0)?;
             let preview_ct = get_optional_bytes(row, 1)?.unwrap_or_default();
             let iv_preview = row.get::<_, Option<Vec<u8>>>(2)?;
             let ocr_ct = get_optional_bytes(row, 3)?;
             let iv_ocr = row.get::<_, Option<Vec<u8>>>(4)?;
-            let text_ct = get_optional_bytes(row, 5)?;
-            let iv_text = row.get::<_, Option<Vec<u8>>>(6)?;
             Ok((
                 id,
                 resolve_required_text(preview_ct, iv_preview),
                 ocr_ct.and_then(|ct| resolve_optional_text(Some(ct), iv_ocr)),
-                text_ct,
-                iv_text,
             ))
         })
         .map(|iter| {
             iter.filter_map(|r| r.ok())
                 .inspect(|_| scanned += 1)
-                .filter_map(|(id, preview, ocr, text_ct, iv_text)| {
+                .map(|(id, preview, ocr)| {
                     let preview_hit = preview.to_lowercase().contains(needle);
                     let ocr_hit = !preview_hit
                         && search_images
@@ -2580,34 +2626,58 @@ fn search_history(
                             .as_deref()
                             .map(|s| s.to_lowercase().contains(needle))
                             .unwrap_or(false);
-                    // Full text_content check on preview + ocr miss. Decrypt
-                    // is skipped when either lighter check already hit and
-                    // when text_content is NULL (image rows / empty rows).
-                    let text_hit = if preview_hit || ocr_hit {
-                        false
-                    } else {
-                        resolve_optional_text(text_ct, iv_text)
-                            .as_deref()
-                            .map(|s| s.to_lowercase().contains(needle))
-                            .unwrap_or(false)
-                    };
-                    if preview_hit || ocr_hit || text_hit {
-                        // Track hits that came from OCR or full text only.
-                        // Preview hits are the default and need no tag —
-                        // the frontend filter will pass them naturally.
-                        if ocr_hit {
-                            ocr_matches.insert(id);
-                        } else if text_hit {
-                            text_matches.insert(id);
-                        }
-                        Some(id)
-                    } else {
-                        None
+                    if ocr_hit {
+                        ocr_matches.insert(id);
                     }
+                    (id, preview_hit || ocr_hit)
                 })
                 .collect()
         })
         .unwrap_or_default();
+
+    // Pass 2: full-body text check only for rows that missed both cheap
+    // checks. Chunked query (SQLite parameter cap is ~999) so a big miss
+    // set on a huge history doesn't hit the bind limit.
+    let miss_ids: Vec<i64> = scan_order
+        .iter()
+        .filter_map(|(id, cheap_hit)| if !*cheap_hit { Some(*id) } else { None })
+        .collect();
+    if !miss_ids.is_empty() {
+        for chunk in miss_ids.chunks(500) {
+            let placeholders = std::iter::repeat("?").take(chunk.len()).collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT id, text_content, iv_text FROM clipboard_history WHERE id IN ({}) AND text_content IS NOT NULL",
+                placeholders
+            );
+            let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|i| i as &dyn rusqlite::ToSql).collect();
+            if let Ok(mut stmt2) = conn.prepare(&sql) {
+                let _ = stmt2
+                    .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                        let id = row.get::<_, i64>(0)?;
+                        let text_ct = get_optional_bytes(row, 1)?;
+                        let iv_text = row.get::<_, Option<Vec<u8>>>(2)?;
+                        Ok((id, resolve_optional_text(text_ct, iv_text)))
+                    })
+                    .map(|iter| {
+                        for r in iter.filter_map(|r| r.ok()) {
+                            let (id, text) = r;
+                            if let Some(s) = text {
+                                if s.to_lowercase().contains(needle) {
+                                    text_matches.insert(id);
+                                }
+                            }
+                        }
+                    });
+            }
+        }
+    }
+
+    let matched_ids: Vec<i64> = scan_order
+        .into_iter()
+        .filter_map(|(id, cheap_hit)| {
+            if cheap_hit || text_matches.contains(&id) { Some(id) } else { None }
+        })
+        .collect();
 
     let total = matched_ids.len() as i64;
     let page_ids: Vec<i64> = matched_ids

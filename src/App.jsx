@@ -1388,24 +1388,76 @@ function App() {
     window.electronAPI?.saveConfig({ searchTemplates: next });
   }, [searchTemplates]);
 
-  // ── Search Template Category CRUD ────────────────────────
+  // ── Search Template Category CRUD (v0.8.5: sub-folder aware) ────────────
   const handleAddSearchTemplateCategory = useCallback((name, colour = null) => {
     const next = [...searchTemplateCategories, { name, colour: colour || null }];
     setSearchTemplateCategories(next);
     window.electronAPI?.saveConfig({ searchTemplateCategories: next });
   }, [searchTemplateCategories]);
 
+  // Rename cascades: renaming a parent rewrites every child's prefix AND every
+  // template.category that matches the parent OR any child path (prefix match).
   const handleRenameSearchTemplateCategory = useCallback((oldName, newName) => {
-    const nextCats = searchTemplateCategories.map(c => c.name === oldName ? { ...c, name: newName } : c);
-    const nextTemplates = searchTemplates.map(t => t.category === oldName ? { ...t, category: newName } : t);
+    const oldSlash = oldName + '/';
+    const nextCats = searchTemplateCategories.map(c => {
+      if (c.name === oldName) return { ...c, name: newName };
+      if (c.name.startsWith(oldSlash)) return { ...c, name: newName + '/' + c.name.slice(oldSlash.length) };
+      return c;
+    });
+    const nextTemplates = searchTemplates.map(t => {
+      if (t.category === oldName) return { ...t, category: newName };
+      if (typeof t.category === 'string' && t.category.startsWith(oldSlash)) {
+        return { ...t, category: newName + '/' + t.category.slice(oldSlash.length) };
+      }
+      return t;
+    });
     setSearchTemplateCategories(nextCats);
     setSearchTemplates(nextTemplates);
     window.electronAPI?.saveConfig({ searchTemplateCategories: nextCats, searchTemplates: nextTemplates });
   }, [searchTemplateCategories, searchTemplates]);
 
-  const handleDeleteSearchTemplateCategory = useCallback((name) => {
-    const nextCats = searchTemplateCategories.filter(c => c.name !== name);
-    const nextTemplates = searchTemplates.map(t => t.category === name ? { ...t, category: null } : t);
+  // mode: 'single' (default; parent-with-children leaves callers to decide),
+  // 'tree' (delete parent + all children), 'promote' (delete parent only;
+  // children become top-level, auto-suffix on collision).
+  const handleDeleteSearchTemplateCategory = useCallback((name, mode = 'single') => {
+    const slash = name + '/';
+    const children = searchTemplateCategories.filter(c => c.name.startsWith(slash));
+
+    let nextCats;
+    let nextTemplates = searchTemplates;
+
+    if (children.length === 0 || mode === 'tree') {
+      const doomed = new Set([name, ...children.map(c => c.name)]);
+      nextCats = searchTemplateCategories.filter(c => !doomed.has(c.name));
+      nextTemplates = searchTemplates.map(t =>
+        (typeof t.category === 'string' && doomed.has(t.category))
+          ? { ...t, category: null }
+          : t);
+    } else {
+      // Promote children to top-level with collision auto-suffix.
+      const existingTop = new Set(searchTemplateCategories.filter(c => !c.name.includes('/') && c.name !== name).map(c => c.name));
+      const promoteMap = new Map();
+      nextCats = searchTemplateCategories
+        .filter(c => c.name !== name)
+        .map(c => {
+          if (!c.name.startsWith(slash)) return c;
+          const childBase = c.name.slice(slash.length);
+          let promoted = childBase;
+          if (existingTop.has(promoted)) promoted = `${childBase} (from ${name})`;
+          let n = 2;
+          while (existingTop.has(promoted)) promoted = `${childBase} (from ${name}) ${n++}`;
+          existingTop.add(promoted);
+          promoteMap.set(c.name, promoted);
+          return { ...c, name: promoted };
+        });
+      nextTemplates = searchTemplates.map(t => {
+        if (t.category === name) return { ...t, category: null };
+        if (typeof t.category === 'string' && promoteMap.has(t.category)) {
+          return { ...t, category: promoteMap.get(t.category) };
+        }
+        return t;
+      });
+    }
     setSearchTemplateCategories(nextCats);
     setSearchTemplates(nextTemplates);
     window.electronAPI?.saveConfig({ searchTemplateCategories: nextCats, searchTemplates: nextTemplates });
@@ -1421,6 +1473,61 @@ function App() {
     setSearchTemplateCategories(newOrder);
     window.electronAPI?.saveConfig({ searchTemplateCategories: newOrder });
   }, []);
+
+  // Bulk-aware move: idOrIds is a single template id or an array (multi-select
+  // drag). newCategory may be null (uncategorised) or a path.
+  const handleMoveSearchTemplateToCategory = useCallback((idOrIds, newCategory) => {
+    const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
+    if (ids.length === 0) return;
+    const next = newCategory || null;
+    const idSet = new Set(ids);
+    let changed = false;
+    const nextTemplates = searchTemplates.map(t => {
+      if (!idSet.has(t.id)) return t;
+      const current = t.category ?? null;
+      if (current === next) return t;
+      changed = true;
+      return { ...t, category: next };
+    });
+    if (!changed) return;
+    setSearchTemplates(nextTemplates);
+    window.electronAPI?.saveConfig({ searchTemplates: nextTemplates });
+  }, [searchTemplates]);
+
+  // Move a category in the tree: 'top' promotes a child, or a parent name
+  // demotes a childless top-level under it. Depth cap = 1.
+  const handleMoveSearchTemplateCategoryTo = useCallback((name, destination) => {
+    const isChild = name.includes('/');
+    const baseName = isChild ? name.slice(name.lastIndexOf('/') + 1) : name;
+
+    let newPath;
+    if (destination === 'top') {
+      if (!isChild) return;
+      newPath = baseName;
+      if (searchTemplateCategories.some(c => c.name === newPath)) {
+        const parentName = name.slice(0, name.lastIndexOf('/'));
+        newPath = `${baseName} (from ${parentName})`;
+        let n = 2;
+        while (searchTemplateCategories.some(c => c.name === newPath)) newPath = `${baseName} (from ${parentName}) ${n++}`;
+      }
+    } else {
+      if (destination.includes('/')) return;
+      if (!isChild) {
+        const hasChildren = searchTemplateCategories.some(c => c.name.startsWith(name + '/'));
+        if (hasChildren) return;
+      }
+      if (!searchTemplateCategories.some(c => c.name === destination)) return;
+      newPath = `${destination}/${baseName}`;
+      if (name === newPath) return;
+      if (searchTemplateCategories.some(c => c.name === newPath)) return;
+    }
+
+    const nextCats = searchTemplateCategories.map(c => c.name === name ? { ...c, name: newPath } : c);
+    const nextTemplates = searchTemplates.map(t => t.category === name ? { ...t, category: newPath } : t);
+    setSearchTemplateCategories(nextCats);
+    setSearchTemplates(nextTemplates);
+    window.electronAPI?.saveConfig({ searchTemplateCategories: nextCats, searchTemplates: nextTemplates });
+  }, [searchTemplateCategories, searchTemplates]);
 
   // ── Quick Action CRUD (stored in assignments as GLOBAL::QUICKACTION::uuid) ──
   // Fetch and persist an app icon on a Quick Action assignment. Same priority
@@ -1488,22 +1595,33 @@ function App() {
     saveConfig(newAssignments, profiles, activeProfile);
   }, [assignments, profiles, activeProfile, saveConfig]);
 
-  // ── Quick Action Category CRUD ───────────────────────────
+  // ── Quick Action Category CRUD (v0.8.5: sub-folder aware) ───────────────
   const handleAddQaCategory = useCallback((name, colour = null) => {
     const next = [...quickActionCategories, { name, colour: colour || null }];
     setQuickActionCategories(next);
     window.electronAPI?.saveConfig({ quickActionCategories: next });
   }, [quickActionCategories]);
 
+  // Rename cascades: parent → children (prefix rewrite) AND every QA
+  // assignment whose data.category matches parent OR any child path.
   const handleRenameQaCategory = useCallback((oldName, newName) => {
-    const nextCats = quickActionCategories.map(c => c.name === oldName ? { ...c, name: newName } : c);
+    const oldSlash = oldName + '/';
+    const nextCats = quickActionCategories.map(c => {
+      if (c.name === oldName) return { ...c, name: newName };
+      if (c.name.startsWith(oldSlash)) return { ...c, name: newName + '/' + c.name.slice(oldSlash.length) };
+      return c;
+    });
     setQuickActionCategories(nextCats);
-    // Update category on all quick actions that use the old name
     const newAssignments = { ...assignments };
     let changed = false;
     for (const [k, v] of Object.entries(newAssignments)) {
-      if (k.startsWith('GLOBAL::QUICKACTION::') && v.data?.category === oldName) {
+      if (!k.startsWith('GLOBAL::QUICKACTION::')) continue;
+      const cat = v.data?.category;
+      if (cat === oldName) {
         newAssignments[k] = { ...v, data: { ...v.data, category: newName } };
+        changed = true;
+      } else if (typeof cat === 'string' && cat.startsWith(oldSlash)) {
+        newAssignments[k] = { ...v, data: { ...v.data, category: newName + '/' + cat.slice(oldSlash.length) } };
         changed = true;
       }
     }
@@ -1511,18 +1629,56 @@ function App() {
     window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
   }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
 
-  const handleDeleteQaCategory = useCallback((name) => {
-    const nextCats = quickActionCategories.filter(c => c.name !== name);
-    setQuickActionCategories(nextCats);
-    // Move quick actions in deleted category to uncategorised
+  // mode: 'single' | 'tree' | 'promote'. Mirrors handleDeleteCategory.
+  const handleDeleteQaCategory = useCallback((name, mode = 'single') => {
+    const slash = name + '/';
+    const children = quickActionCategories.filter(c => c.name.startsWith(slash));
+
+    let nextCats;
     const newAssignments = { ...assignments };
     let changed = false;
-    for (const [k, v] of Object.entries(newAssignments)) {
-      if (k.startsWith('GLOBAL::QUICKACTION::') && v.data?.category === name) {
-        newAssignments[k] = { ...v, data: { ...v.data, category: null } };
-        changed = true;
+
+    if (children.length === 0 || mode === 'tree') {
+      const doomed = new Set([name, ...children.map(c => c.name)]);
+      nextCats = quickActionCategories.filter(c => !doomed.has(c.name));
+      for (const [k, v] of Object.entries(newAssignments)) {
+        if (!k.startsWith('GLOBAL::QUICKACTION::')) continue;
+        const cat = v.data?.category;
+        if (typeof cat === 'string' && doomed.has(cat)) {
+          newAssignments[k] = { ...v, data: { ...v.data, category: null } };
+          changed = true;
+        }
+      }
+    } else {
+      // Promote children to top-level with collision auto-suffix.
+      const existingTop = new Set(quickActionCategories.filter(c => !c.name.includes('/') && c.name !== name).map(c => c.name));
+      const promoteMap = new Map();
+      nextCats = quickActionCategories
+        .filter(c => c.name !== name)
+        .map(c => {
+          if (!c.name.startsWith(slash)) return c;
+          const childBase = c.name.slice(slash.length);
+          let promoted = childBase;
+          if (existingTop.has(promoted)) promoted = `${childBase} (from ${name})`;
+          let n = 2;
+          while (existingTop.has(promoted)) promoted = `${childBase} (from ${name}) ${n++}`;
+          existingTop.add(promoted);
+          promoteMap.set(c.name, promoted);
+          return { ...c, name: promoted };
+        });
+      for (const [k, v] of Object.entries(newAssignments)) {
+        if (!k.startsWith('GLOBAL::QUICKACTION::')) continue;
+        const cat = v.data?.category;
+        if (cat === name) {
+          newAssignments[k] = { ...v, data: { ...v.data, category: null } };
+          changed = true;
+        } else if (typeof cat === 'string' && promoteMap.has(cat)) {
+          newAssignments[k] = { ...v, data: { ...v.data, category: promoteMap.get(cat) } };
+          changed = true;
+        }
       }
     }
+    setQuickActionCategories(nextCats);
     if (changed) { setAssignments(newAssignments); saveConfig(newAssignments, profiles, activeProfile); }
     window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
   }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
@@ -1537,6 +1693,69 @@ function App() {
     setQuickActionCategories(newOrder);
     window.electronAPI?.saveConfig({ quickActionCategories: newOrder });
   }, []);
+
+  // Bulk-aware move: idOrIds is a single QA id or array; newCategory null or path.
+  const handleMoveQuickActionToCategory = useCallback((idOrIds, newCategory) => {
+    const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
+    if (ids.length === 0) return;
+    const next = newCategory || null;
+    const newAssignments = { ...assignments };
+    let changed = false;
+    for (const id of ids) {
+      const key = `GLOBAL::QUICKACTION::${id}`;
+      const existing = newAssignments[key];
+      if (!existing) continue;
+      const current = existing.data?.category ?? null;
+      if (current === next) continue;
+      newAssignments[key] = { ...existing, data: { ...existing.data, category: next } };
+      changed = true;
+    }
+    if (!changed) return;
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+  }, [assignments, profiles, activeProfile, saveConfig]);
+
+  // Move a QA category in the tree: 'top' or parent name. Depth cap = 1.
+  const handleMoveQaCategoryTo = useCallback((name, destination) => {
+    const isChild = name.includes('/');
+    const baseName = isChild ? name.slice(name.lastIndexOf('/') + 1) : name;
+
+    let newPath;
+    if (destination === 'top') {
+      if (!isChild) return;
+      newPath = baseName;
+      if (quickActionCategories.some(c => c.name === newPath)) {
+        const parentName = name.slice(0, name.lastIndexOf('/'));
+        newPath = `${baseName} (from ${parentName})`;
+        let n = 2;
+        while (quickActionCategories.some(c => c.name === newPath)) newPath = `${baseName} (from ${parentName}) ${n++}`;
+      }
+    } else {
+      if (destination.includes('/')) return;
+      if (!isChild) {
+        const hasChildren = quickActionCategories.some(c => c.name.startsWith(name + '/'));
+        if (hasChildren) return;
+      }
+      if (!quickActionCategories.some(c => c.name === destination)) return;
+      newPath = `${destination}/${baseName}`;
+      if (name === newPath) return;
+      if (quickActionCategories.some(c => c.name === newPath)) return;
+    }
+
+    const nextCats = quickActionCategories.map(c => c.name === name ? { ...c, name: newPath } : c);
+    setQuickActionCategories(nextCats);
+    const newAssignments = { ...assignments };
+    let changed = false;
+    for (const [k, v] of Object.entries(newAssignments)) {
+      if (!k.startsWith('GLOBAL::QUICKACTION::')) continue;
+      if (v.data?.category === name) {
+        newAssignments[k] = { ...v, data: { ...v.data, category: newPath } };
+        changed = true;
+      }
+    }
+    if (changed) { setAssignments(newAssignments); saveConfig(newAssignments, profiles, activeProfile); }
+    window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
+  }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
 
   // ── Modifier toggling ─────────────────────────────────────
   const handleToggleModifier = useCallback((modId) => {
@@ -5666,6 +5885,8 @@ function App() {
               onDeleteCategory={handleDeleteSearchTemplateCategory}
               onUpdateCategoryColour={handleUpdateSearchTemplateCategoryColour}
               onReorderCategories={handleReorderSearchTemplateCategories}
+              onMoveCategoryTo={handleMoveSearchTemplateCategoryTo}
+              onMoveTemplateToCategory={handleMoveSearchTemplateToCategory}
               quickActions={Object.entries(assignments).filter(([k]) => k.startsWith('GLOBAL::QUICKACTION::')).map(([k, v]) => ({ id: k.slice('GLOBAL::QUICKACTION::'.length), ...v }))}
               onAddQuickAction={handleAddQuickAction}
               onUpdateQuickAction={handleUpdateQuickAction}
@@ -5676,6 +5897,8 @@ function App() {
               onDeleteQaCategory={handleDeleteQaCategory}
               onUpdateQaCategoryColour={handleUpdateQaCategoryColour}
               onReorderQaCategories={handleReorderQaCategories}
+              onMoveQaCategoryTo={handleMoveQaCategoryTo}
+              onMoveQuickActionToCategory={handleMoveQuickActionToCategory}
               onExportQuickActions={handleExportQuickActions}
               onImportQuickActions={handleImportQuickActions}
               quickActionImportPrompt={quickActionImportPrompt}

@@ -23,6 +23,18 @@ static MOUSE_HOOK: AtomicIsize = AtomicIsize::new(0);
 static HOOK_THREAD_ID: AtomicIsize = AtomicIsize::new(0);
 static HOOKS_RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// Handle to the currently-running hook thread. Reinstall must join the old
+/// thread before spawning a new one — otherwise a lingering old thread can
+/// (a) leave its LL hooks temporarily co-installed with the new thread's,
+/// causing duplicate KeyDown/KeyUp dispatch, and (b) run its own cleanup
+/// block AFTER the new thread has already written its handles into KB_HOOK
+/// / MOUSE_HOOK / HOOKS_RUNNING, clobbering them and silently disabling the
+/// watchdog for the rest of the session.
+static HOOK_THREAD_HANDLE: OnceLock<Mutex<Option<thread::JoinHandle<()>>>> = OnceLock::new();
+fn hook_thread_handle() -> &'static Mutex<Option<thread::JoinHandle<()>>> {
+    HOOK_THREAD_HANDLE.get_or_init(|| Mutex::new(None))
+}
+
 /// True when the LL mouse hook has been intentionally uninstalled because the
 /// foreground window is fullscreen / borderless-fullscreen / chrome-less (e.g.
 /// World of Warcraft). The hook adds per-event latency that disrupts games'
@@ -3161,10 +3173,13 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 /// Any modifiers still held during the synthesis are naturally included in
 /// the app's view of the combo.
 ///
-/// 15ms hold between keydown and keyup is the [[feedback_synthetic_key_hold_time]]
-/// invariant — fused single-batch SendInput is invisible to ~60fps game
-/// polling. Caller MUST wrap with SUPPRESS_SIMULATED so our own LL hook
-/// ignores these synthetic events.
+/// PIPELINE_KEY_HOLD_MS hold between keydown and keyup is the
+/// [[feedback_synthetic_key_hold_time]] invariant — fused single-batch
+/// SendInput is invisible to per-frame game polling. Uses the shorter
+/// pipeline hold (not the 50ms one-shot KEY_HOLD_MS) because this runs on
+/// the processor thread, where sleeping delays all queued input. Caller MUST
+/// wrap with SUPPRESS_SIMULATED so our own LL hook ignores these synthetic
+/// events.
 fn send_synthetic_tap(vk: u32) {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         MapVirtualKeyW, SendInput, INPUT, INPUT_KEYBOARD, INPUT_0, KEYBDINPUT,
@@ -3216,7 +3231,7 @@ fn send_synthetic_tap(vk: u32) {
             },
         };
         SendInput(1, &down as *const _, std::mem::size_of::<INPUT>() as i32);
-        thread::sleep(Duration::from_millis(15));
+        thread::sleep(Duration::from_millis(crate::actions::PIPELINE_KEY_HOLD_MS));
         SendInput(1, &up as *const _, std::mem::size_of::<INPUT>() as i32);
     }
 }
@@ -4199,7 +4214,7 @@ fn key_id_to_display(key_id: &str) -> &str {
 
 /// Spawn the dedicated hook thread with PeekMessageW polling loop and elevated priority.
 fn spawn_hook_thread() {
-    thread::Builder::new()
+    let handle = thread::Builder::new()
         .name("trigr-input-hooks".to_string())
         .spawn(move || {
             unsafe {
@@ -4314,15 +4329,32 @@ fn spawn_hook_thread() {
                     std::thread::sleep(Duration::from_millis(1));
                 }
 
-                // Cleanup
-                UnhookWindowsHookEx(KB_HOOK.load(Ordering::SeqCst) as _);
-                UnhookWindowsHookEx(MOUSE_HOOK.load(Ordering::SeqCst) as _);
-                KB_HOOK.store(0, Ordering::SeqCst);
-                MOUSE_HOOK.store(0, Ordering::SeqCst);
-                HOOKS_RUNNING.store(false, Ordering::SeqCst);
+                // Cleanup. Gate on HOOK_THREAD_ID match so a stale exit path
+                // can't clobber a newer thread's atomics — the reinstall
+                // sequence joins the old thread before spawning the new, so
+                // in practice the ids always match here, but the check is
+                // cheap defence-in-depth against future refactors.
+                let my_tid = windows_sys::Win32::System::Threading::GetCurrentThreadId();
+                if HOOK_THREAD_ID.load(Ordering::SeqCst) == my_tid as isize {
+                    UnhookWindowsHookEx(KB_HOOK.load(Ordering::SeqCst) as _);
+                    UnhookWindowsHookEx(MOUSE_HOOK.load(Ordering::SeqCst) as _);
+                    KB_HOOK.store(0, Ordering::SeqCst);
+                    MOUSE_HOOK.store(0, Ordering::SeqCst);
+                    HOOKS_RUNNING.store(false, Ordering::SeqCst);
+                    HOOK_THREAD_ID.store(0, Ordering::SeqCst);
+                }
             }
         })
         .expect("Failed to spawn hook thread");
+    // Stash the handle so the reinstall path can join it deterministically.
+    // Any prior handle should already have been taken + joined by the
+    // reinstall code before this call — replacing a Some() here would be a
+    // caller-side bug, but we still log rather than silently drop it.
+    let mut slot = hook_thread_handle().lock().unwrap();
+    if slot.is_some() {
+        log::warn!("[HOOK] spawn_hook_thread: previous JoinHandle was not consumed — reinstall path likely skipped join");
+    }
+    *slot = Some(handle);
 }
 
 /// Tick-count timestamp of the last input event seen by the SYSTEM (any
@@ -4417,7 +4449,31 @@ pub fn start_hooks(app: AppHandle) {
                         if tid != 0 {
                             unsafe { PostThreadMessageW(tid as u32, WM_QUIT, 0, 0); }
                         }
-                        thread::sleep(Duration::from_millis(500));
+                        // Join the old thread before spawning the new one.
+                        // Skipping the join lets the old thread's cleanup
+                        // block clobber the new thread's KB_HOOK/MOUSE_HOOK
+                        // handles + HOOKS_RUNNING flag, and briefly leaves
+                        // two LL hooks co-installed for duplicate-fire.
+                        let old_handle = hook_thread_handle().lock().unwrap().take();
+                        if let Some(h) = old_handle {
+                            // Bound the wait: if the old thread is wedged
+                            // (already stuck under load), don't stall the
+                            // watchdog forever — fall back to the raw sleep
+                            // and accept the race. In normal case join
+                            // returns within a couple ms of WM_QUIT.
+                            let joined = std::sync::mpsc::channel::<()>();
+                            let (tx, rx) = joined;
+                            thread::spawn(move || {
+                                let _ = h.join();
+                                let _ = tx.send(());
+                            });
+                            match rx.recv_timeout(Duration::from_millis(2000)) {
+                                Ok(_) => log::info!("[HOOK] Old hook thread joined cleanly"),
+                                Err(_) => log::warn!("[HOOK] Old hook thread join timed out after 2s — proceeding with reinstall anyway"),
+                            }
+                        } else {
+                            thread::sleep(Duration::from_millis(500));
+                        }
                         spawn_hook_thread();
                         // Rebuild suppress set so the new hook has correct state
                         {

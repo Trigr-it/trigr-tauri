@@ -2797,6 +2797,22 @@ function DroppableSpecialRow({ id, data, children }) {
   );
 }
 
+// Custom collision detection: expansion-row drags use pointerWithin ONLY —
+// no fallback. Without that, when the cursor sits over the expansion list
+// (nowhere near the sidebar), fallbacks like closestCenter pick the
+// sidebar row nearest to the dragged row's centre, so sidebar rows appear
+// to "snap-follow" the cursor at the same y-level. Returning empty is
+// correct: mid-air release = no drop, no highlight until the cursor is
+// directly over a row. Category drags keep closestCenter for the
+// middle-third reparent-vs-reorder heuristic.
+function customCollisionDetection(args) {
+  const activeType = args.active?.data?.current?.type;
+  if (activeType === 'expansion') {
+    return pointerWithin(args);
+  }
+  return closestCenter(args);
+}
+
 // Draggable + droppable child-category wrapper. Deliberately NOT sortable —
 // keeping children out of SortableContext prevents dnd-kit from animating
 // the flat parent list to make room for a dragged child (which caused the
@@ -3601,6 +3617,7 @@ export default function TextExpansions({
   const [dragIntent, setDragIntent] = useState(null); // 'reparent' | 'reorder' | null
   const [dragOverName, setDragOverName] = useState(null); // category name (or special row id) currently being hovered
   const [dragActiveType, setDragActiveType] = useState(null); // 'category' | 'expansion' | null
+  const [dragActiveId, setDragActiveId] = useState(null);     // trigger of the primary dragged expansion
   const [dragCount, setDragCount] = useState(0); // number of items in the current drag payload
 
   function handleUnifiedDragStart(event) {
@@ -3610,8 +3627,10 @@ export default function TextExpansions({
     if (type === 'category') {
       setCatDragId(active.id);
       setDragCount(1);
+      setDragActiveId(null);
     } else if (type === 'expansion') {
       setDragCount(active.data.current.count || 1);
+      setDragActiveId(active.data.current.trigger || null);
     }
     setDragIntent(null);
     setDragOverName(null);
@@ -3656,6 +3675,7 @@ export default function TextExpansions({
   function handleUnifiedDragEnd(event) {
     setCatDragId(null);
     setDragActiveType(null);
+    setDragActiveId(null);
     setDragCount(0);
     const intent = dragIntent;
     setDragIntent(null);
@@ -3725,6 +3745,7 @@ export default function TextExpansions({
   function handleUnifiedDragCancel() {
     setCatDragId(null);
     setDragActiveType(null);
+    setDragActiveId(null);
     setDragCount(0);
     setDragIntent(null);
     setDragOverName(null);
@@ -3946,19 +3967,32 @@ export default function TextExpansions({
       return sortItems(pool).map(exp => ({ type: 'item', exp }));
     }
 
-    // All tab — grouped: uncategorised first, then named categories in user-defined order
+    // All tab — grouped: uncategorised first, then each PARENT category
+    // with its own items, then each of that parent's children (indented)
+    // immediately below, before moving on to the next parent. Keeps sub-
+    // folders visually anchored to their parent instead of scattered by
+    // array position.
     const result = [];
     const uncat = sortItems(typeFiltered.filter(e => !e.category));
     if (uncat.length > 0) {
       result.push({ type: 'header', label: 'Uncategorised', color: null, count: uncat.length });
       uncat.forEach(exp => result.push({ type: 'item', exp }));
     }
-    for (const cat of normCategories) {
-      const items = sortItems(typeFiltered.filter(e => e.category === cat.name));
-      if (items.length === 0) continue;
-      const label = cat.name.includes('/') ? cat.name.split('/').join(' › ') : cat.name;
-      result.push({ type: 'header', label, color: effectiveColour(cat), count: items.length });
-      items.forEach(exp => result.push({ type: 'item', exp }));
+    const parents = normCategories.filter(c => !c.name.includes('/'));
+    for (const parent of parents) {
+      const own = sortItems(typeFiltered.filter(e => e.category === parent.name));
+      if (own.length > 0) {
+        result.push({ type: 'header', label: parent.name, fullPath: parent.name, color: effectiveColour(parent), count: own.length });
+        own.forEach(exp => result.push({ type: 'item', exp }));
+      }
+      const kids = normCategories.filter(c => c.name.startsWith(parent.name + '/'));
+      for (const child of kids) {
+        const items = sortItems(typeFiltered.filter(e => e.category === child.name));
+        if (items.length === 0) continue;
+        const leafLabel = child.name.slice(parent.name.length + 1);
+        result.push({ type: 'header', label: leafLabel, fullPath: child.name, color: effectiveColour(child), count: items.length, indent: true });
+        items.forEach(exp => result.push({ type: 'item', exp }));
+      }
     }
     return result;
   })();
@@ -4186,7 +4220,7 @@ export default function TextExpansions({
             onDragMove={handleUnifiedDragMove}
             onDragEnd={handleUnifiedDragEnd}
             onDragCancel={handleUnifiedDragCancel}
-            collisionDetection={closestCenter}
+            collisionDetection={customCollisionDetection}
           >
           <div className={`te-content${dragActiveType ? ` te-content--drag-${dragActiveType}` : ''}`}>
 
@@ -4601,7 +4635,7 @@ export default function TextExpansions({
                 filteredListItems.map((item, i) => {
                   if (item.type === 'header') {
                     return (
-                      <div key={`h-${item.label}`} className="te-group-header">
+                      <div key={`h-${item.fullPath || item.label}`} className={`te-group-header${item.indent ? ' te-group-header-indent' : ''}`}>
                         {item.color && <span className="te-group-dot" style={{ background: item.color }} />}
                         <span className="te-group-name">{item.label.toUpperCase()}</span>
                         <span className="te-group-count">{item.count}</span>
@@ -5389,16 +5423,34 @@ export default function TextExpansions({
           </div>
           </div>
           </div>
-          <DragOverlay>
+          <DragOverlay dropAnimation={null}>
             {catDragId && dragActiveType === 'category' ? (
               <div className="te-cat-row-group te-cat-row-ghost">
                 <button className="te-cat-row te-cat-row-active">{catDragId.includes('/') ? leafName(catDragId) : catDragId}</button>
               </div>
-            ) : dragActiveType === 'expansion' && dragCount > 1 ? (
-              <div className="te-exp-drag-ghost">
-                {dragCount} expansions
-              </div>
-            ) : null}
+            ) : dragActiveType === 'expansion' ? (() => {
+              const exp = expansions.find(e => e.trigger === dragActiveId);
+              const label = exp?.displayName || exp?.trigger || 'Expansion';
+              if (dragCount > 1) {
+                return (
+                  <div className="te-drag-chip te-drag-chip-stack">
+                    <span className="te-drag-chip-stack-back" aria-hidden="true" />
+                    <span className="te-drag-chip-stack-mid"  aria-hidden="true" />
+                    <span className="te-drag-chip-inner">
+                      <span className="te-drag-chip-label">{label}</span>
+                      <span className="te-drag-chip-badge">+{dragCount - 1}</span>
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <div className="te-drag-chip">
+                  <span className="te-drag-chip-inner">
+                    <span className="te-drag-chip-label">{label}</span>
+                  </span>
+                </div>
+              );
+            })() : null}
           </DragOverlay>
           </DndContext>
         </>

@@ -358,14 +358,6 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
                 if let Some(down) = mouse_down.take() {
                     let dx = (*x - down.x).abs();
                     let dy = (*y - down.y).abs();
-                    // TEMP diagnostic (strip after drag-detection wild-verifies):
-                    // shows exactly what the classifier saw for every pair.
-                    log::info!(
-                        "[DISTILL] mouse pair: down=({},{}) up=({},{}) delta=({},{}) hold={}ms → {}",
-                        down.x, down.y, x, y, dx, dy,
-                        t.saturating_sub(down.t),
-                        if dx <= CLICK_TOLERANCE_PX && dy <= CLICK_TOLERANCE_PX { "click" } else { "drag" }
-                    );
                     if dx <= CLICK_TOLERANCE_PX && dy <= CLICK_TOLERANCE_PX {
                         let (x_rel, y_rel, target_window) = match down.target_at_down {
                             Some(t) => (Some(t.rel_x), Some(t.rel_y), Some(t.target)),
@@ -398,7 +390,6 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
             RecordedEvent::Wheel { delta, x, y, .. } => {
                 flush_text_buffer(&mut text_buf, &mut out);
                 out.push(DistilledStep::Scroll { delta: *delta, x: *x, y: *y });
-                log::info!("[DIAG scroll] distill emitted Scroll step (delta={} at ({},{}))", delta, x, y);
             }
             RecordedEvent::ForegroundChanged {
                 title,

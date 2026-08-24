@@ -363,10 +363,8 @@ fn toggle_window_visibility(app: &AppHandle) {
         let visible = window.is_visible().unwrap_or(false);
         let minimized = window.is_minimized().unwrap_or(false);
         if visible && !minimized {
-            log::info!("[Keyfire] Tray toggle: hiding (visible={} minimized={})", visible, minimized);
             hide_window_to_tray(app);
         } else {
-            log::info!("[Keyfire] Tray toggle: showing (visible={} minimized={})", visible, minimized);
             show_window(app);
         }
     }
@@ -375,13 +373,13 @@ fn toggle_window_visibility(app: &AppHandle) {
 // ── Pause toggle ────────────────────────────────────────────────────────────
 
 fn toggle_pause(app: &AppHandle) {
-    let was_enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::Relaxed);
+    let was_enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst);
     // Release any held/repeating key before pausing
     if was_enabled {
         crate::actions::release_held_key();
         crate::actions::stop_repeating_key();
     }
-    crate::hotkeys::MACROS_ENABLED.store(!was_enabled, Ordering::Relaxed);
+    crate::hotkeys::MACROS_ENABLED.store(!was_enabled, Ordering::SeqCst);
     let now_enabled = !was_enabled;
 
     info!(

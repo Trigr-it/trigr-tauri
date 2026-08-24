@@ -16,24 +16,35 @@ import './appIconCache.css';
 // ── Lazy image thumbnail ────────────────────────────────────────────────────
 
 function ImageThumb({ id, thumbB64, className, zoomable }) {
-  // v0.8.4 perf patch: when the history list payload inlines a WebP thumb,
-  // render it immediately from the data URI — no IPC round-trip. Legacy
-  // rows without a backfilled thumb (and the detail-pane path, which
-  // deliberately omits thumbB64 to force full-res) fall back to the
-  // existing getClipboardImage lazy fetch.
+  // Inline WebP thumb (v0.8.4 payload) renders immediately. Legacy rows
+  // without a backfilled thumb use an IntersectionObserver to defer the
+  // full-res getClipboardImage IPC until the card scrolls into view —
+  // otherwise every mounted card fires a full-res fetch in parallel.
   const [src, setSrc] = useState(thumbB64 ? `data:image/webp;base64,${thumbB64}` : null);
+  const holderRef = useRef(null);
   useEffect(() => {
     if (thumbB64) { setSrc(`data:image/webp;base64,${thumbB64}`); return; }
     setSrc(null);
     let cancelled = false;
-    window.electronAPI?.getClipboardImage(id).then(b64 => {
-      if (!cancelled && b64) setSrc(`data:image/png;base64,${b64}`);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    let requested = false;
+    const load = () => {
+      if (requested || cancelled) return;
+      requested = true;
+      window.electronAPI?.getClipboardImage(id).then(b64 => {
+        if (!cancelled && b64) setSrc(`data:image/png;base64,${b64}`);
+      }).catch(() => {});
+    };
+    const el = holderRef.current;
+    if (!el) { load(); return () => { cancelled = true; }; }
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) { load(); obs.disconnect(); }
+    });
+    obs.observe(el);
+    return () => { cancelled = true; obs.disconnect(); };
   }, [id, thumbB64]);
   if (!src) {
     return (
-      <div className="cbg-img-ph">
+      <div ref={holderRef} className="cbg-img-ph">
         <svg width="28" height="28" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1">
           <rect x="2" y="4" width="28" height="24" rx="3"/>
           <circle cx="10" cy="12" r="3"/>
@@ -649,7 +660,17 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
       // both filtered and unfiltered views.
       loadDateBuckets();
     });
-    return () => window.electronAPI?.removeAllListeners('clipboard-new-item');
+    // v0.8.5: async thumbnail worker delivers thumb_b64 shortly after the
+    // new-item event. Merge it into the corresponding row so the tile
+    // switches from the lazy full-res fetch to the inlined WebP.
+    window.electronAPI?.onClipboardThumbReady?.(({ id, thumb_b64 }) => {
+      if (!id || !thumb_b64) return;
+      setItems(prev => prev.map(it => it.id === id ? { ...it, thumb_b64 } : it));
+    });
+    return () => {
+      window.electronAPI?.removeAllListeners('clipboard-new-item');
+      window.electronAPI?.removeAllListeners?.('clipboard-thumb-ready');
+    };
     // loadDateBuckets is a stable useCallback; deps must stay `[]` so the
     // listener registers exactly once per [[feedback_tauri_listener_registration_race]].
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2020,6 +2041,123 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
               title="Clear selection"
               type="button"
             >✕</button>
+
+            {/* ── Top band: source app, last copied, size/word/char/line counts ── */}
+            {(() => {
+              const isImage = selected.content_type === 'image';
+              const fullText = isImage ? '' : (selected.text_content || selected.preview || '');
+              const showTextCounts = !isImage && !editing;
+              return (
+                <div className="cbg-detail-topband">
+                  {selected.source_app && (
+                    <span className="cbg-detail-topband-pair">
+                      <span className="cbg-meta-label">Source</span>
+                      <span className="cbg-meta-value">
+                        <SourceAppBadge name={selected.source_app} path={selected.source_app_path} showLabel />
+                      </span>
+                    </span>
+                  )}
+                  {/* "Last copied", not "Captured" — promote-on-use rewrites this
+                      timestamp whenever the item is copied or pasted again, and
+                      for never-reused items it's the original copy time anyway. */}
+                  <span className="cbg-detail-topband-pair">
+                    <span className="cbg-meta-label">Last copied</span>
+                    <span className="cbg-meta-value">{formatFullTime(selected.timestamp)}</span>
+                  </span>
+                  {isImage && (
+                    <span className="cbg-detail-topband-pair">
+                      <span className="cbg-meta-label">Size</span>
+                      <span className="cbg-meta-value">{selected.image_width} × {selected.image_height} px</span>
+                    </span>
+                  )}
+                  {showTextCounts && (
+                    <span className="cbg-detail-topband-pair cbg-detail-topband-counts">
+                      <span className="cbg-meta-value">{countWords(fullText)} word{countWords(fullText) === 1 ? '' : 's'}</span>
+                      <span className="cbg-counts-sep">·</span>
+                      <span className="cbg-meta-value">{fullText.length} char{fullText.length === 1 ? '' : 's'}</span>
+                      <span className="cbg-counts-sep">·</span>
+                      <span className="cbg-meta-value">{countLines(fullText)} line{countLines(fullText) === 1 ? '' : 's'}</span>
+                    </span>
+                  )}
+                  {(selected.paste_count || 0) > 0 && (
+                    <span className="cbg-detail-topband-pair">
+                      <span className="cbg-meta-label">Pasted</span>
+                      <span className="cbg-meta-value">{selected.paste_count} time{selected.paste_count === 1 ? '' : 's'}</span>
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ── Top action band: static row of primary buttons (under meta). ── */}
+            <div className="cbg-detail-actions">
+              <div className="cbg-detail-actions-l">
+                <button className="cbg-dbtn cbg-dbtn-icon" onClick={() => handleStar(selected.id, selected.starred)} type="button">
+                  <Bookmark size={13} strokeWidth={1.75} fill={selected.starred ? 'currentColor' : 'none'} />
+                  {selected.starred ? ' Unsave' : ' Save'}
+                </button>
+                <button className="cbg-dbtn cbg-dbtn-icon" onClick={() => handlePin(selected.id, selected.pinned)} type="button">
+                  {selected.pinned ? (
+                    <><PinOff size={13} strokeWidth={1.75} /> Unpin</>
+                  ) : (
+                    <><Pin size={13} strokeWidth={1.75} /> Pin</>
+                  )}
+                </button>
+                {isTextOnly && !editing && (
+                  <button className="cbg-dbtn" onClick={() => handleStartEdit(selected)} type="button">Edit</button>
+                )}
+                {isTextOnly && !editing && onCreateExpansion && (
+                  <button
+                    className="cbg-dbtn cbg-dbtn-create-expansion"
+                    onClick={async () => {
+                      let text = selected.text_content;
+                      if (text == null) {
+                        try {
+                          const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
+                          text = full?.text_content ?? selected.preview ?? '';
+                        } catch (_) { text = selected.preview ?? ''; }
+                      }
+                      onCreateExpansion(text);
+                    }}
+                    type="button"
+                    title="Save this clip as a text expansion"
+                  >Create Expansion</button>
+                )}
+                {editing && (
+                  <>
+                    <button className="cbg-dbtn cbg-dbtn-save" onClick={handleSaveEdit} type="button" title="Overwrite this clip with the edited text">Save</button>
+                    <button className="cbg-dbtn" onClick={handleSaveAsNew} type="button" title="Create a new clipboard entry with the edited text, leaving this one untouched">Save as New</button>
+                    <button className="cbg-dbtn" onClick={handleCancelEdit} type="button">Cancel</button>
+                  </>
+                )}
+              </div>
+              {!editing && (
+                <div className="cbg-detail-actions-r">
+                  <button className="cbg-dbtn cbg-dbtn-del" onClick={() => handleDelete(selected.id)} type="button">Delete</button>
+                  {selected.has_html && selected.content_type === 'text' && (
+                    <button
+                      className="cbg-dbtn"
+                      type="button"
+                      title="Copy without formatting"
+                      onClick={async () => {
+                        let text = selected.text_content;
+                        if (text == null) {
+                          try {
+                            const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
+                            text = full?.text_content ?? selected.preview ?? '';
+                          } catch (_) { text = selected.preview ?? ''; }
+                        }
+                        await window.electronAPI?.copyText(text);
+                        showActionToast('Copied as plain text');
+                      }}
+                    >Copy plain</button>
+                  )}
+                  <button className="cbg-dbtn cbg-dbtn-copy" onClick={() => handleCopyWithToast(selected.id)} type="button">Copy</button>
+                </div>
+              )}
+            </div>
+
+            {/* ── Middle: content only (no inline extras). ── */}
             <div className={`cbg-detail-content${selected.content_type === 'image' ? ' cbg-detail-content-img' : ''}`}>
               {selected.content_type === 'image' ? (
                 <div
@@ -2063,32 +2201,32 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
               )}
             </div>
 
-            {/* ── Text-type extras (counts, transforms, smart actions) ──    */}
-            {/* Skip when a custom pane is rendering (Link/Email/Colour) — those */}
-            {/* panes already provide tag-appropriate buttons.                    */}
+            {/* ── Bottom band: transform pills + smart actions (text) OR image
+                actions + OCR + colour swatches (image). Static; always visible. */}
             {selected.content_type === 'text' && !editing
               && !['Link', 'Email', 'Colour'].includes(selected.content_tag)
               && (() => {
               const fullText = selected.text_content || selected.preview || '';
-              const words = countWords(fullText);
-              const chars = fullText.length;
-              const lines = countLines(fullText);
               const smart = detectSmartAction(fullText);
+              const resolveFullText = async () => {
+                if (selected.text_content != null) return selected.text_content;
+                try {
+                  const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
+                  return full?.text_content ?? selected.preview ?? '';
+                } catch (_) { return selected.preview ?? ''; }
+              };
+              const pasteTransformed = async (transform) => {
+                const src = await resolveFullText();
+                await handlePasteText(transform(src), selected.id);
+              };
               return (
-                <>
-                  <div className="cbg-detail-counts">
-                    <span>{words} word{words === 1 ? '' : 's'}</span>
-                    <span className="cbg-counts-sep">·</span>
-                    <span>{chars} char{chars === 1 ? '' : 's'}</span>
-                    <span className="cbg-counts-sep">·</span>
-                    <span>{lines} line{lines === 1 ? '' : 's'}</span>
-                  </div>
+                <div className="cbg-detail-bottomband">
                   {fullText.trim() && (
                     <div className="cbg-transform-pills">
-                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(fullText.toLowerCase(), selected.id)}>lowercase</button>
-                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(fullText.toUpperCase(), selected.id)}>UPPERCASE</button>
-                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(fullText.trim(), selected.id)}>Trimmed</button>
-                      <button className="cbg-tpill" type="button" onClick={() => handlePasteText(toPlainAscii(fullText), selected.id)}>Plain</button>
+                      <button className="cbg-tpill" type="button" onClick={() => pasteTransformed(t => t.toLowerCase())}>lowercase</button>
+                      <button className="cbg-tpill" type="button" onClick={() => pasteTransformed(t => t.toUpperCase())}>UPPERCASE</button>
+                      <button className="cbg-tpill" type="button" onClick={() => pasteTransformed(t => t.trim())}>Trimmed</button>
+                      <button className="cbg-tpill" type="button" onClick={() => pasteTransformed(t => toPlainAscii(t))}>Plain</button>
                     </div>
                   )}
                   {smart.kind && (
@@ -2109,13 +2247,12 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                       >Copy</button>
                     </div>
                   )}
-                </>
+                </div>
               );
             })()}
 
-            {/* ── Image-type extras (OCR, colours, save) ── */}
             {selected.content_type === 'image' && (
-              <>
+              <div className="cbg-detail-bottomband">
                 <div className="cbg-image-actions">
                   <button
                     className="cbg-dbtn"
@@ -2183,106 +2320,8 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
                     })}
                   </div>
                 )}
-              </>
-            )}
-
-            <div className="cbg-detail-meta">
-              {selected.source_app && (
-                <>
-                  <span className="cbg-meta-label">Source</span>
-                  <span className="cbg-meta-value">
-                    <SourceAppBadge name={selected.source_app} path={selected.source_app_path} showLabel />
-                  </span>
-                </>
-              )}
-              {/* "Last copied", not "Captured" — promote-on-use rewrites this
-                  timestamp whenever the item is copied or pasted again, and
-                  for never-reused items it's the original copy time anyway. */}
-              <span className="cbg-meta-label">Last copied</span>
-              <span className="cbg-meta-value">{formatFullTime(selected.timestamp)}</span>
-              {selected.content_type === 'image' ? (
-                <>
-                  <span className="cbg-meta-label">Size</span>
-                  <span className="cbg-meta-value">{selected.image_width} × {selected.image_height} px</span>
-                </>
-              ) : (
-                <>
-                  <span className="cbg-meta-label">Characters</span>
-                  <span className="cbg-meta-value">{(selected.text_content || selected.preview || '').length}</span>
-                </>
-              )}
-            </div>
-            <div className="cbg-detail-actions">
-              <div className="cbg-detail-actions-l">
-                <button className="cbg-dbtn cbg-dbtn-icon" onClick={() => handleStar(selected.id, selected.starred)} type="button">
-                  <Bookmark size={13} strokeWidth={1.75} fill={selected.starred ? 'currentColor' : 'none'} />
-                  {selected.starred ? ' Unsave' : ' Save'}
-                </button>
-                <button className="cbg-dbtn cbg-dbtn-icon" onClick={() => handlePin(selected.id, selected.pinned)} type="button">
-                  {selected.pinned ? (
-                    <><PinOff size={13} strokeWidth={1.75} /> Unpin</>
-                  ) : (
-                    <><Pin size={13} strokeWidth={1.75} /> Pin</>
-                  )}
-                </button>
-                {isTextOnly && !editing && (
-                  <button className="cbg-dbtn" onClick={() => handleStartEdit(selected)} type="button">Edit</button>
-                )}
-                {isTextOnly && !editing && onCreateExpansion && (
-                  <button
-                    className="cbg-dbtn cbg-dbtn-create-expansion"
-                    onClick={async () => {
-                      let text = selected.text_content;
-                      if (text == null) {
-                        try {
-                          const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
-                          text = full?.text_content ?? selected.preview ?? '';
-                        } catch (_) { text = selected.preview ?? ''; }
-                      }
-                      onCreateExpansion(text);
-                    }}
-                    type="button"
-                    title="Save this clip as a text expansion"
-                  >Create Expansion</button>
-                )}
-                {editing && (
-                  <>
-                    <button className="cbg-dbtn cbg-dbtn-save" onClick={handleSaveEdit} type="button" title="Overwrite this clip with the edited text">Save</button>
-                    <button className="cbg-dbtn" onClick={handleSaveAsNew} type="button" title="Create a new clipboard entry with the edited text, leaving this one untouched">Save as New</button>
-                    <button className="cbg-dbtn" onClick={handleCancelEdit} type="button">Cancel</button>
-                  </>
-                )}
-                {(selected.paste_count || 0) > 0 && (
-                  <span className="cbg-paste-count">
-                    Pasted {selected.paste_count} time{selected.paste_count === 1 ? '' : 's'}
-                  </span>
-                )}
               </div>
-              {!editing && (
-                <div className="cbg-detail-actions-r">
-                  <button className="cbg-dbtn cbg-dbtn-del" onClick={() => handleDelete(selected.id)} type="button">Delete</button>
-                  {selected.has_html && selected.content_type === 'text' && (
-                    <button
-                      className="cbg-dbtn"
-                      type="button"
-                      title="Copy without formatting"
-                      onClick={async () => {
-                        let text = selected.text_content;
-                        if (text == null) {
-                          try {
-                            const full = await window.electronAPI?.getClipboardItemTextFull?.(selected.id);
-                            text = full?.text_content ?? selected.preview ?? '';
-                          } catch (_) { text = selected.preview ?? ''; }
-                        }
-                        await window.electronAPI?.copyText(text);
-                        showActionToast('Copied as plain text');
-                      }}
-                    >Copy plain</button>
-                  )}
-                  <button className="cbg-dbtn cbg-dbtn-copy" onClick={() => handleCopyWithToast(selected.id)} type="button">Copy</button>
-                </div>
-              )}
-            </div>
+            )}
           </>
           )}
         </div>
