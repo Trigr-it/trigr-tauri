@@ -1157,6 +1157,7 @@ function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, a
                   profiles={profiles}
                   isPro={isPro}
                   onShowUpgrade={onShowUpgrade}
+                  hideLoop
                 />
               </div>
             </>
@@ -1181,6 +1182,11 @@ function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, a
 // type remap in handleSave / displayTypeOf.
 function RecordMacroForm({ value, onChange, isPro = false, onShowUpgrade, assignments = {}, profiles = [], globalInputMethod = 'global' }) {
   const step = (value.steps && value.steps[0]) || { type: 'Record Macro', value: '' };
+  // Loop config sits on the outer assignment (`data.loop`), same shape as a
+  // hand-built macro. The Rust "macro" executor loops the single Record Macro
+  // step, so this applies to raw AND distilled playback and is Free-tier.
+  const loopCfg = value.loop || { enabled: false, mode: 'count', count: 5, delayMs: 0 };
+  const updateLoop = (patch) => onChange({ ...value, loop: { ...loopCfg, ...patch } });
   return (
     <div className="record-macro-form">
       <label className="form-label">Recording</label>
@@ -1197,6 +1203,9 @@ function RecordMacroForm({ value, onChange, isPro = false, onShowUpgrade, assign
         Press Record, perform your actions anywhere on screen, then press Ctrl+Shift+R to stop.
         Playback repeats them exactly, with the same timing.
       </p>
+      <div className="record-macro-loop">
+        <MacroLoopConfig loopCfg={loopCfg} onChange={updateLoop} radioName="record-macro-loop-mode" />
+      </div>
     </div>
   );
 }
@@ -3839,7 +3848,81 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
   );
 }
 
-export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles, isPro = false, onShowUpgrade }) {
+// Shared "Loop this macro" control. Rendered by MacroSequenceForm (hand-built
+// sequences) and RecordMacroForm (raw + distilled recordings). Both write the
+// same `data.loop` shape the Rust "macro" executor reads — loop config lives
+// on the OUTER assignment, never inside a step value, so a one-step Record
+// Macro assignment loops exactly like a multi-step sequence. Not Pro-gated.
+export function MacroLoopConfig({ loopCfg, onChange, radioName = 'seq-loop-mode' }) {
+  return (
+    <>
+      <div className="seq-method-row">
+        <label className="form-label" style={{ marginBottom: 0 }}>Loop this macro</label>
+        <input
+          type="checkbox"
+          className="seq-loop-checkbox"
+          checked={!!loopCfg.enabled}
+          onChange={e => onChange({ enabled: e.target.checked })}
+        />
+      </div>
+      {loopCfg.enabled && (
+        <div className="seq-loop-config">
+          <div className="seq-loop-mode-row">
+            <label className="seq-loop-row">
+              <input
+                type="radio"
+                name={radioName}
+                checked={loopCfg.mode !== 'forever'}
+                onChange={() => onChange({ mode: 'count' })}
+              />
+              <span>Repeat</span>
+              <NumberField
+                className="seq-loop-count"
+                min={2}
+                max={9999}
+                defaultOnEmpty={5}
+                value={loopCfg.count ?? 5}
+                disabled={loopCfg.mode === 'forever'}
+                onCommit={n => onChange({ count: n })}
+              />
+              <span>times</span>
+            </label>
+
+            <label className="seq-loop-row">
+              <input
+                type="radio"
+                name={radioName}
+                checked={loopCfg.mode === 'forever'}
+                onChange={() => onChange({ mode: 'forever' })}
+              />
+              <span>Repeat until stopped</span>
+            </label>
+          </div>
+
+          <label className="seq-loop-row seq-loop-delay">
+            <span>Delay between iterations</span>
+            <NumberField
+              className="seq-loop-delay-input"
+              min={0}
+              max={3600000}
+              step={50}
+              defaultOnEmpty={0}
+              value={loopCfg.delayMs ?? 0}
+              onCommit={n => onChange({ delayMs: n })}
+            />
+            <span>ms</span>
+          </label>
+
+          <div className="seq-loop-hint">
+            Re-press the trigger or press Esc to stop a running loop.
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles, isPro = false, onShowUpgrade, hideLoop = false }) {
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
   const loopCfg = value.loop || { enabled: false, mode: 'count', count: 5, delayMs: 0 };
@@ -3931,68 +4014,7 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
         </select>
       </div>
 
-      <div className="seq-method-row">
-        <label className="form-label" style={{ marginBottom: 0 }}>Loop this macro</label>
-        <input
-          type="checkbox"
-          className="seq-loop-checkbox"
-          checked={!!loopCfg.enabled}
-          onChange={e => updateLoop({ enabled: e.target.checked })}
-        />
-      </div>
-      {loopCfg.enabled && (
-        <div className="seq-loop-config">
-          <div className="seq-loop-mode-row">
-            <label className="seq-loop-row">
-              <input
-                type="radio"
-                name="seq-loop-mode"
-                checked={loopCfg.mode !== 'forever'}
-                onChange={() => updateLoop({ mode: 'count' })}
-              />
-              <span>Repeat</span>
-              <NumberField
-                className="seq-loop-count"
-                min={2}
-                max={9999}
-                defaultOnEmpty={5}
-                value={loopCfg.count ?? 5}
-                disabled={loopCfg.mode === 'forever'}
-                onCommit={n => updateLoop({ count: n })}
-              />
-              <span>times</span>
-            </label>
-
-            <label className="seq-loop-row">
-              <input
-                type="radio"
-                name="seq-loop-mode"
-                checked={loopCfg.mode === 'forever'}
-                onChange={() => updateLoop({ mode: 'forever' })}
-              />
-              <span>Repeat until stopped</span>
-            </label>
-          </div>
-
-          <label className="seq-loop-row seq-loop-delay">
-            <span>Delay between iterations</span>
-            <NumberField
-              className="seq-loop-delay-input"
-              min={0}
-              max={3600000}
-              step={50}
-              defaultOnEmpty={0}
-              value={loopCfg.delayMs ?? 0}
-              onCommit={n => updateLoop({ delayMs: n })}
-            />
-            <span>ms</span>
-          </label>
-
-          <div className="seq-loop-hint">
-            Re-press the trigger or press Esc to stop a running loop.
-          </div>
-        </div>
-      )}
+      {!hideLoop && <MacroLoopConfig loopCfg={loopCfg} onChange={updateLoop} />}
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <SortableContext items={stepsWithIds.map(s => s._id)} strategy={verticalListSortingStrategy}>
