@@ -1,0 +1,49 @@
+/* Overlay-local styles only — the snipoverlay window deliberately does
+   NOT import global.css / app.css so the transparent background survives
+   (per feedback_overlay_windows_no_global_css). */
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: transparent;
+  overflow: hidden;
+  /* Custom cursor for the whole overlay so the user knows they're in
+     snip mode. Crosshair matches the Snipping Tool convention. */
+  cursor: crosshair;
+  /* No text selection anywhere — this is a drag surface. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.snip-overlay-root {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+}
+
+.snip-overlay-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.snip-overlay-readout {
+  position: absolute;
+  padding: 6px 10px;
+  background: rgba(24, 24, 32, 0.92);
+  color: #f5f5f5;
+  border: 1px solid rgba(232, 160, 32, 0.55);
+  border-radius: 6px;
+  font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -839,7 +839,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                     // may itself contain Focus Window / Open App / Open URL — without
                     // a re-capture, subsequent parent-macro steps would target the
                     // pre-fire window.
-                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Wait for Pixel" | "Click at Position" | "Click Mouse" | "Press Key" | "Open URL" | "Fire Trigger" | "Fire Text Expansion" | "Record Macro") {
+                    if matches!(step_type, "Wait (ms)" | "Wait for Input" | "Open App" | "Focus Window" | "Wait for Window" | "Wait for Pixel" | "Wait for Text" | "Click at Position" | "Click Mouse" | "Press Key" | "Open URL" | "Fire Trigger" | "Fire Text Expansion" | "Record Macro") {
                         if step_type == "Open URL" {
                             thread::sleep(Duration::from_millis(OPEN_URL_FOCUS_SETTLE_MS));
                         }
@@ -2188,7 +2188,10 @@ fn is_mouse_button(name: &str) -> bool {
 }
 
 /// Send a single mouse event (down or up) at the current cursor position.
-fn send_mouse_event(button: &str, is_up: bool) {
+/// Build a mouse button INPUT under the Click-at-Position naming convention
+/// ("LButton"/"RButton"/"MButton"). Sibling of build_mouse_button_input which
+/// uses the recorder naming ("Left"/"Right"/"Middle"). None on unknown name.
+fn build_mouse_event_input(button: &str, is_up: bool) -> Option<INPUT> {
     let flag = match (button, is_up) {
         ("LButton", false) => MOUSEEVENTF_LEFTDOWN,
         ("LButton", true) => MOUSEEVENTF_LEFTUP,
@@ -2196,9 +2199,9 @@ fn send_mouse_event(button: &str, is_up: bool) {
         ("RButton", true) => MOUSEEVENTF_RIGHTUP,
         ("MButton", false) => MOUSEEVENTF_MIDDLEDOWN,
         ("MButton", true) => MOUSEEVENTF_MIDDLEUP,
-        _ => return,
+        _ => return None,
     };
-    let input = INPUT {
+    Some(INPUT {
         r#type: INPUT_MOUSE,
         Anonymous: INPUT_0 {
             mi: MOUSEINPUT {
@@ -2210,9 +2213,29 @@ fn send_mouse_event(button: &str, is_up: bool) {
                 dwExtraInfo: 0,
             },
         },
-    };
-    unsafe {
-        SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+    })
+}
+
+fn send_mouse_event(button: &str, is_up: bool) {
+    if let Some(input) = build_mouse_event_input(button, is_up) {
+        unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
+    }
+}
+
+/// Atomic move-then-button batch for the Click-at-Position drag paths.
+/// Sibling of replay_move_and_button (which uses recorder naming). Same
+/// interleave-prevention property: a hardware mouse event queued from the
+/// user's hand cannot slip between the move and the button dispatch.
+fn send_move_and_mouse_event(x: i32, y: i32, button: &str, is_up: bool) {
+    match (build_mouse_move_input(x, y), build_mouse_event_input(button, is_up)) {
+        (Some(m), Some(b)) => {
+            let inputs = [m, b];
+            unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        _ => {
+            replay_mouse_move(x, y);
+            send_mouse_event(button, is_up);
+        }
     }
 }
 
@@ -2302,7 +2325,9 @@ pub fn send_passthrough_click(button: &str) {
 // fused — because the recording carries down + up as separate events with
 // their original gap. The caller wraps the whole replay in a SuppressionGuard.
 
-fn replay_mouse_button(button: &str, is_down: bool) {
+/// Build the INPUT struct for a single mouse button down/up. Returns None on
+/// unknown button name (caller decides what to do — usually skip).
+fn build_mouse_button_input(button: &str, is_down: bool) -> Option<INPUT> {
     let (flag, mouse_data) = match (button, is_down) {
         ("Left",   true)  => (MOUSEEVENTF_LEFTDOWN,   0_u32),
         ("Left",   false) => (MOUSEEVENTF_LEFTUP,     0_u32),
@@ -2314,12 +2339,9 @@ fn replay_mouse_button(button: &str, is_down: bool) {
         ("Side1",  false) => (MOUSEEVENTF_XUP,        1_u32),
         ("Side2",  true)  => (MOUSEEVENTF_XDOWN,      2_u32),
         ("Side2",  false) => (MOUSEEVENTF_XUP,        2_u32),
-        _ => {
-            warn!("[Keyfire] Replay: unknown mouse button name: {}", button);
-            return;
-        }
+        _ => return None,
     };
-    let input = INPUT {
+    Some(INPUT {
         r#type: INPUT_MOUSE,
         Anonymous: INPUT_0 {
             mi: MOUSEINPUT {
@@ -2331,8 +2353,46 @@ fn replay_mouse_button(button: &str, is_down: bool) {
                 dwExtraInfo: 0,
             },
         },
+    })
+}
+
+fn replay_mouse_button(button: &str, is_down: bool) {
+    match build_mouse_button_input(button, is_down) {
+        Some(input) => unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); },
+        None => warn!("[Keyfire] Replay: unknown mouse button name: {}", button),
+    }
+}
+
+/// Build the INPUT struct for an absolute virtual-desktop mouse move. Returns
+/// None only in the pathological zero-monitor-size case (caller falls back to
+/// SetCursorPos so the replay still advances rather than dividing by zero).
+fn build_mouse_move_input(x: i32, y: i32) -> Option<INPUT> {
+    let (vsx, vsy, vsw, vsh) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
     };
-    unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
+    if vsw <= 1 || vsh <= 1 {
+        return None;
+    }
+    let nx = (((x - vsx) as i64 * 65535) / (vsw - 1) as i64) as i32;
+    let ny = (((y - vsy) as i64 * 65535) / (vsh - 1) as i64) as i32;
+    Some(INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: nx,
+                dy: ny,
+                mouseData: 0,
+                dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    })
 }
 
 /// Replay a mouse cursor move during macro playback. Crucially uses SendInput
@@ -2347,39 +2407,62 @@ fn replay_mouse_button(button: &str, is_down: bool) {
 /// normalise to the 0..=65535 range Windows expects for absolute mouse
 /// SendInput, mapped over the virtual screen rect from GetSystemMetrics.
 fn replay_mouse_move(x: i32, y: i32) {
-    let (vsx, vsy, vsw, vsh) = unsafe {
-        (
-            GetSystemMetrics(SM_XVIRTUALSCREEN),
-            GetSystemMetrics(SM_YVIRTUALSCREEN),
-            GetSystemMetrics(SM_CXVIRTUALSCREEN),
-            GetSystemMetrics(SM_CYVIRTUALSCREEN),
-        )
-    };
-    // Guard against pathological zero sizes — fall back to SetCursorPos so the
-    // replay still advances visually rather than dividing by zero. Realistic
-    // monitors always return non-zero metrics; this is a defensive belt.
-    if vsw <= 1 || vsh <= 1 {
-        unsafe {
+    match build_mouse_move_input(x, y) {
+        Some(input) => unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); },
+        None => unsafe {
             windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y);
-        }
-        return;
-    }
-    let nx = (((x - vsx) as i64 * 65535) / (vsw - 1) as i64) as i32;
-    let ny = (((y - vsy) as i64 * 65535) / (vsh - 1) as i64) as i32;
-    let input = INPUT {
-        r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 {
-            mi: MOUSEINPUT {
-                dx: nx,
-                dy: ny,
-                mouseData: 0,
-                dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
-                time: 0,
-                dwExtraInfo: 0,
-            },
         },
-    };
-    unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32); }
+    }
+}
+
+/// Atomic move-then-button batch. A hardware mouse event queued from the
+/// user's hand cannot interleave between the two events when both are sent
+/// in one SendInput call (MSDN: "the events in the INPUT structures [are
+/// inserted] serially into the keyboard or mouse input stream"). This closes
+/// the drift window in long multi-click recordings — hand tremor mid-macro
+/// no longer nudges the cursor between the move and the click.
+///
+/// Falls back to sequential replay_mouse_move + replay_mouse_button if
+/// either INPUT can't be built (zero monitor metrics / unknown button),
+/// preserving the pre-batch behaviour for those edge cases.
+fn replay_move_and_button(x: i32, y: i32, button: &str, is_down: bool) {
+    match (build_mouse_move_input(x, y), build_mouse_button_input(button, is_down)) {
+        (Some(m), Some(b)) => {
+            let inputs = [m, b];
+            unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        _ => {
+            replay_mouse_move(x, y);
+            replay_mouse_button(button, is_down);
+        }
+    }
+}
+
+/// Atomic move-then-wheel batch. Windows routes wheel events by cursor
+/// position (NOT focus), so batching guarantees the wheel fires at the
+/// recorded spot rather than wherever a hardware event has nudged the
+/// cursor between the move and the wheel dispatch.
+fn replay_move_and_wheel(x: i32, y: i32, delta: i32) {
+    if let Some(m) = build_mouse_move_input(x, y) {
+        let w = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: delta as u32,
+                    dwFlags: MOUSEEVENTF_WHEEL,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [m, w];
+        unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+    } else {
+        replay_mouse_move(x, y);
+        replay_wheel(delta);
+    }
 }
 
 fn replay_wheel(delta: i32) {
@@ -3034,6 +3117,13 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // title substring must match if set. At least one of process/title is
         // required. Returns when match found or timeout expires.
         "Wait for Window" => {
+            // Pro-gated. Same belt-and-braces pattern as the other Wait-for-*
+            // steps: UI blocks new saves via PRO_MACRO_STEPS, executor no-ops
+            // on Free tier so imported / hand-edited configs can't bypass.
+            if !crate::licence::is_pro() {
+                warn!("[Keyfire] Wait for Window: skipped — Pro feature (free tier)");
+                return true;
+            }
             if step_value.is_empty() {
                 warn!("[Keyfire] Wait for Window step: empty value");
                 return true;
@@ -3120,6 +3210,14 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // continuing, so suppression + settle behaviour stays identical to a
         // hand-authored click step.
         "Wait for Pixel" => {
+            // Pro-gated. Free users see the step in old configs but its
+            // executor no-ops with a warn — the UI blocks new saves via
+            // PRO_MACRO_STEPS in MacroPanel.jsx. Belt-and-braces prevents
+            // manual JSON edits or shared configs from bypassing.
+            if !crate::licence::is_pro() {
+                warn!("[Keyfire] Wait for Pixel: skipped — Pro feature (free tier)");
+                return true;
+            }
             let parsed: Value = match serde_json::from_str(step_value) {
                 Ok(v) => v,
                 Err(e) => {
@@ -3209,6 +3307,208 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     "message": format!("Wait for Pixel timed out after {}s. Macro stopped.", timeout_secs),
                 }));
                 return false;
+            }
+        }
+
+        // Wait for Text — OCR the configured screen region on a poll loop
+        // until the target text appears (per match mode) or the timeout
+        // fires. Region is REQUIRED (frontend refuses to save without one;
+        // executor also bails on missing region rather than OCR the whole
+        // desktop, which would poll at multi-second cadence). Poll floor
+        // 250ms because OCR is 50-300ms per pass on a typical button-sized
+        // region — going faster just burns CPU without landing hits sooner.
+        // clickOnMatch drops a left click at the centre of the matched
+        // line's bounding rect (region-relative → screen coords), reusing
+        // replay_move_and_button so the atomic move+click invariant carries
+        // over. Match modes: "contains" (default, whitespace-normalised
+        // substring), "exact" (whitespace-normalised equality),
+        // "case_insensitive" (contains with ASCII lowercasing).
+        "Wait for Text" => {
+            // Pro-gated. Same belt-and-braces pattern as Wait for Pixel —
+            // UI blocks new saves via PRO_MACRO_STEPS, executor no-ops on
+            // Free tier so imported / hand-edited configs can't bypass.
+            if !crate::licence::is_pro() {
+                warn!("[Keyfire] Wait for Text: skipped — Pro feature (free tier)");
+                return true;
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = step_value;
+                use tauri::Emitter;
+                let _ = app.emit("system-action-toast", serde_json::json!({
+                    "level": "error",
+                    "message": "Wait for Text is Windows-only.",
+                }));
+                return false;
+            }
+            #[cfg(windows)]
+            {
+                let parsed: Value = match serde_json::from_str(step_value) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[Keyfire] Wait for Text step: invalid JSON: {}", e);
+                        return true;
+                    }
+                };
+                let needle_raw = parsed.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if needle_raw.trim().is_empty() {
+                    warn!("[Keyfire] Wait for Text: empty search text — skipping step");
+                    return true;
+                }
+                let region = parsed.get("region");
+                let rx = region.and_then(|r| r.get("x")).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let ry = region.and_then(|r| r.get("y")).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let rw = region.and_then(|r| r.get("w")).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let rh = region.and_then(|r| r.get("h")).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                if rw < 4 || rh < 4 {
+                    warn!("[Keyfire] Wait for Text: missing/degenerate region ({}x{}) — skipping step", rw, rh);
+                    return true;
+                }
+                let match_mode = parsed.get("matchMode").and_then(|v| v.as_str()).unwrap_or("contains").to_string();
+                let timeout_secs = parsed.get("timeoutSecs").and_then(|v| v.as_u64()).unwrap_or(30).clamp(1, 300);
+                let on_timeout = parsed.get("onTimeout").and_then(|v| v.as_str()).unwrap_or("abort").to_string();
+                let click_on_match = parsed.get("clickOnMatch").and_then(|v| v.as_bool()).unwrap_or(false);
+                let poll_ms = parsed
+                    .get("pollMs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(500)
+                    .clamp(250, 5_000);
+
+                // Whitespace normaliser — collapses runs of any whitespace
+                // (incl. the empty gaps OCR often inserts inside labels like
+                // "Sub mit") to single spaces then trims. Applied to both
+                // needle and each OCR line before matching, so "Submit Order"
+                // matches whether OCR emits it as "SubmitOrder", "Submit
+                // Order" or "Submit  Order".
+                let normalise = |s: &str| -> String {
+                    let mut out = String::with_capacity(s.len());
+                    let mut prev_ws = false;
+                    for ch in s.chars() {
+                        if ch.is_whitespace() {
+                            if !prev_ws && !out.is_empty() {
+                                out.push(' ');
+                            }
+                            prev_ws = true;
+                        } else {
+                            out.push(ch);
+                            prev_ws = false;
+                        }
+                    }
+                    while out.ends_with(' ') {
+                        out.pop();
+                    }
+                    out
+                };
+                let needle_norm = normalise(&needle_raw);
+                let needle_ci = needle_norm.to_lowercase();
+                let is_match = |line_text: &str| -> bool {
+                    let line_norm = normalise(line_text);
+                    match match_mode.as_str() {
+                        "exact" => line_norm == needle_norm,
+                        "case_insensitive" => line_norm.to_lowercase().contains(&needle_ci),
+                        _ => line_norm.contains(&needle_norm), // "contains"
+                    }
+                };
+
+                info!(
+                    "[Keyfire] Wait for Text: starting — region=({},{}) {}×{}, needle=\"{}\" mode={} clickOnMatch={}",
+                    rx, ry, rw, rh, needle_norm, match_mode, click_on_match
+                );
+
+                let total = Duration::from_secs(timeout_secs);
+                let start = std::time::Instant::now();
+                let mut matched_line: Option<crate::ocr::OcrLineRect> = None;
+                let mut poll_count: u32 = 0;
+                loop {
+                    if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                        info!("[Keyfire] Wait for Text cancelled (Esc)");
+                        return false;
+                    }
+                    if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                        info!("[Keyfire] Wait for Text aborted (macros disabled)");
+                        return false;
+                    }
+                    poll_count += 1;
+                    let capture_ok = if let Some(png) = crate::ocr::capture_screen_region_png(rx, ry, rw, rh) {
+                        let png_len = png.len();
+                        match crate::ocr::ocr_png_bytes_with_rects(&png) {
+                            Ok(lines) => {
+                                // Log every 4th poll so we get a diagnostic
+                                // trail without spamming for the full 30s.
+                                if poll_count == 1 || poll_count % 4 == 0 {
+                                    let joined: String = lines
+                                        .iter()
+                                        .map(|l| l.text.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(" | ");
+                                    info!(
+                                        "[Keyfire] Wait for Text poll #{}: png={}B, {} line(s): [{}]",
+                                        poll_count, png_len, lines.len(), joined
+                                    );
+                                }
+                                if let Some(hit) = lines.into_iter().find(|l| is_match(&l.text)) {
+                                    matched_line = Some(hit);
+                                    break;
+                                }
+                                true
+                            }
+                            Err(e) => {
+                                if start.elapsed() < Duration::from_millis(poll_ms) {
+                                    warn!("[Keyfire] Wait for Text: OCR failure — {}", e);
+                                } else {
+                                    log::debug!("[Keyfire] Wait for Text: OCR failure — {}", e);
+                                }
+                                false
+                            }
+                        }
+                    } else {
+                        if poll_count == 1 {
+                            warn!(
+                                "[Keyfire] Wait for Text poll #1: BitBlt returned no bytes for region ({},{}) {}×{}",
+                                rx, ry, rw, rh
+                            );
+                        }
+                        false
+                    };
+                    let _ = capture_ok;
+                    if start.elapsed() >= total {
+                        break;
+                    }
+                    let remaining = total.saturating_sub(start.elapsed());
+                    thread::sleep(Duration::from_millis(poll_ms).min(remaining));
+                }
+
+                if let Some(hit) = matched_line {
+                    let cx = rx + hit.x + hit.w / 2;
+                    let cy = ry + hit.y + hit.h / 2;
+                    info!(
+                        "[Keyfire] Wait for Text: matched \"{}\" at ({}, {}) size {}x{} after {:?}",
+                        hit.text, cx, cy, hit.w, hit.h, start.elapsed()
+                    );
+                    if click_on_match {
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
+                        replay_move_and_button(cx, cy, "Left", true);
+                        thread::sleep(Duration::from_millis(KEY_HOLD_MS));
+                        replay_move_and_button(cx, cy, "Left", false);
+                        crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    }
+                } else if on_timeout == "continue" {
+                    warn!(
+                        "[Keyfire] Wait for Text: timeout ({}s) searching for \"{}\" — continuing (per step setting)",
+                        timeout_secs, needle_raw
+                    );
+                } else {
+                    warn!(
+                        "[Keyfire] Wait for Text: timeout ({}s) searching for \"{}\" — aborting macro",
+                        timeout_secs, needle_raw
+                    );
+                    use tauri::Emitter;
+                    let _ = app.emit("system-action-toast", serde_json::json!({
+                        "level": "error",
+                        "message": format!("Wait for Text timed out after {}s. Macro stopped.", timeout_secs),
+                    }));
+                    return false;
+                }
             }
         }
 
@@ -3958,6 +4258,13 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         }
 
         "Run AHK Script" => {
+            // Pro-gated. Full scripting-language passthrough is a headline
+            // Pro capability — Free tier no-ops with a warn; UI blocks new
+            // saves via PRO_MACRO_STEPS.
+            if !crate::licence::is_pro() {
+                warn!("[Keyfire] Run AHK Script: skipped — Pro feature (free tier)");
+                return true;
+            }
             if !step_value.is_empty() {
                 if let Ok(parsed) = serde_json::from_str::<Value>(step_value) {
                     let script = parsed.get("script").and_then(|v| v.as_str()).unwrap_or("");
@@ -4167,8 +4474,9 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     const HOLD_THRESHOLD_MS: u64 = 150;
                     if let Some((to_x, to_y)) = drag_to {
                         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                        replay_mouse_move(abs_x, abs_y);
-                        send_mouse_event(click_button, false); // down
+                        // Atomic move+down so a hardware event mid-macro can't
+                        // land the drag's initial press at the wrong pixel.
+                        send_move_and_mouse_event(abs_x, abs_y, click_button, false); // down
                         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                         let total_ms = hold_ms.clamp(200, 10_000);
                         const DRAG_STEPS: i64 = 16;
@@ -4186,9 +4494,9 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         }
                         // Land exactly on the end point, then release —
                         // unconditional so the button can never stick.
+                        // Atomic move+up mirrors the down at the start.
                         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
-                        replay_mouse_move(to_x, to_y);
-                        send_mouse_event(click_button, true); // up
+                        send_move_and_mouse_event(to_x, to_y, click_button, true); // up
                         crate::hotkeys::SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
                     } else if hold_ms > HOLD_THRESHOLD_MS {
                         crate::hotkeys::SUPPRESS_SIMULATED.store(true, Ordering::SeqCst);
@@ -4600,6 +4908,13 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         // failure modes (COM broken, IPolicyConfig refused) log only; they're
         // catastrophic and not the user's problem.
         "Change Audio Output" => {
+            // Pro-gated. Free tier no-ops with a warn; UI blocks new saves
+            // via PRO_MACRO_STEPS. Legacy free configs with this step skip
+            // it and macro continues to the next step.
+            if !crate::licence::is_pro() {
+                warn!("[Keyfire] Change Audio Output: skipped — Pro feature (free tier)");
+                return true;
+            }
             let parsed: Value = match serde_json::from_str(step_value) {
                 Ok(v) => v,
                 Err(e) => {
@@ -4748,17 +5063,19 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
             }
             crate::recorder::RecordedEvent::MouseDown { button, x, y, .. } => {
                 // Real WM_MOUSEMOVE first so apps see the cursor arrive at
-                // the click target, then the button-down. SendInput preserves
-                // event ordering so this is a clean move-then-down sequence.
-                replay_mouse_move(*x, *y);
-                replay_mouse_button(button, true);
+                // the click target, then the button-down — batched into ONE
+                // SendInput call so a hardware mouse event from the user's
+                // hand can't interleave between them and nudge the click
+                // off-target. This is the drift-fix for long multi-click
+                // recordings; see replay_move_and_button().
+                replay_move_and_button(*x, *y, button, true);
             }
             crate::recorder::RecordedEvent::MouseUp { button, x, y, .. } => {
-                // Ensure cursor is at the release point (via a real move
-                // message) before the button-up fires, so the OS reports the
-                // up coords consistently with what the recording captured.
-                replay_mouse_move(*x, *y);
-                replay_mouse_button(button, false);
+                // Same atomic move+button batch as MouseDown — the release
+                // must land where the recording captured it, and any
+                // hardware event between move and up would leak into the
+                // OS-reported up coords otherwise.
+                replay_move_and_button(*x, *y, button, false);
             }
             crate::recorder::RecordedEvent::MouseMove { x, y, .. } => {
                 // SendInput-with-MOVE — NOT SetCursorPos alone — so apps under
@@ -4767,8 +5084,10 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
                 replay_mouse_move(*x, *y);
             }
             crate::recorder::RecordedEvent::Wheel { delta, x, y, .. } => {
-                replay_mouse_move(*x, *y);
-                replay_wheel(*delta);
+                // Windows routes wheel by cursor position, so batching the
+                // move and wheel guarantees the wheel fires at the recorded
+                // spot rather than wherever a hardware event nudged it.
+                replay_move_and_wheel(*x, *y, *delta);
             }
             // ForegroundChanged is metadata for Phase 2 distillation, not a
             // replayable action. Raw-mode replay ignores it — the recording's

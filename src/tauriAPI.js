@@ -556,6 +556,26 @@ window.electronAPI = {
   onPixelPickCancelled: (callback) => {
     listen('pixel-pick-cancelled', () => callback()).then(u => { listeners['pixel-pick-cancelled'] = u; });
   },
+  // Drag-select region picker overlay — reusable across any macro step
+  // that needs the user to pick a screen rect (Wait for Text, future
+  // Wait for Image). Caller registers listeners then calls showSnipOverlay;
+  // on drag release, the overlay hides itself and Rust re-emits
+  // region-snip-result / region-snip-cancelled to the main window.
+  showSnipOverlay: ()            => invoke('show_snip_overlay'),
+  hideSnipOverlay: ()            => invoke('hide_snip_overlay'),
+  getSnipOverlayConfig: ()       => invoke('get_snip_overlay_config'),
+  // Called by the overlay window itself, NOT by feature callers.
+  emitSnipResult:  (rect)        => invoke('emit_snip_result', rect),
+  emitSnipCancelled: ()          => invoke('emit_snip_cancelled'),
+  onSnipOverlayShown: (callback) => {
+    listen('snip-overlay-shown', (event) => callback(event.payload)).then(u => { listeners['snip-overlay-shown'] = u; });
+  },
+  onRegionSnipResult: (callback) => {
+    listen('region-snip-result', (event) => callback(event.payload)).then(u => { listeners['region-snip-result'] = u; });
+  },
+  onRegionSnipCancelled: (callback) => {
+    listen('region-snip-cancelled', (event) => callback(event.payload)).then(u => { listeners['region-snip-cancelled'] = u; });
+  },
   enumMonitors:       ()         => invoke('enum_monitors'),
   checkForUpdates:    ()         => invoke('check_for_updates'),
 

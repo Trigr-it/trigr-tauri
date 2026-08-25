@@ -217,11 +217,16 @@ const SUPPRESS_MOUSE_SCROLL_UP: u8 = 6;
 const SUPPRESS_MOUSE_SCROLL_DOWN: u8 = 7;
 
 /// Set of (modifier bits, mouse suppress ID) pairs whose clicks must be
-/// swallowed by the hook: modified mouse combos with a ::hold variant. A
-/// hold-armed press must not leak its click to the app while the watcher
-/// waits for the threshold (mirror of the keyboard ::hold rule in
-/// rebuild_suppress_keys). Plain modified mouse singles/doubles deliberately
-/// do NOT suppress — that's shipped behaviour (the click still lands).
+/// swallowed by the hook. Populated by rebuild_suppress_keys in two cases:
+///   (1) modified mouse combos with a ::hold variant. A hold-armed press must
+///       not leak its click to the app while the watcher waits for the
+///       threshold (mirror of the keyboard ::hold rule).
+///   (2) modified scroll assignments (Alt+MOUSE_SCROLL_DOWN etc.). Apps almost
+///       always attach their own action to modified scroll — browser
+///       text-size on Alt+Scroll, zoom on Ctrl+Scroll — so a user who
+///       assigned a macro to it doesn't want both to fire.
+/// Plain modified mouse BUTTON singles/doubles deliberately do NOT suppress —
+/// that's shipped behaviour (the click still lands).
 static SUPPRESS_MOD_MOUSE: OnceLock<RwLock<HashSet<(u8, u8)>>> = OnceLock::new();
 
 fn suppress_mod_mouse() -> &'static RwLock<HashSet<(u8, u8)>> {
@@ -365,6 +370,19 @@ fn rebuild_suppress_keys(assignments: &HashMap<String, Value>, profile: &str, pr
             let bits = modifier_string_to_bits(combo_str);
             if bits != 0 {
                 set.insert((bits, vk));
+            }
+        } else if matches!(key_id, "MOUSE_SCROLL_UP" | "MOUSE_SCROLL_DOWN") {
+            // Modified scroll (e.g. Alt+Scroll Down → Volume Down). Unlike
+            // modified mouse BUTTONS — which deliberately pass through so the
+            // app still receives the click — modified scrolls suppress when
+            // assigned, because apps almost always attach their own action to
+            // modified scroll (browser text-size on Alt+Scroll, zoom on
+            // Ctrl+Scroll). See the suppress_mod_mouse comment for the design.
+            if let Some(mouse_id) = mouse_key_id_to_suppress(key_id) {
+                let bits = modifier_string_to_bits(combo_str);
+                if bits != 0 {
+                    mod_mouse_set.insert((bits, mouse_id));
+                }
             }
         } else if parts.last() == Some(&"hold") {
             // Modified mouse combo with a ::hold variant (Pro — free users
@@ -2019,10 +2037,23 @@ unsafe extern "system" fn mouse_hook_proc(
                         }
                     }
                 } else {
-                    // Scroll event — no pairing needed, standalone check
+                    // Scroll event — no pairing needed, standalone check.
+                    // Bare-scroll suppression only in linked profiles; modified
+                    // scroll suppression is global (the app almost always uses
+                    // modified scroll for its own action — Alt+Scroll browser
+                    // text-size, Ctrl+Scroll zoom — and a user who bound it to
+                    // a macro doesn't want both to fire).
                     if let Ok(set) = suppress_bare_mouse().try_read() {
                         if set.contains(&btn_id) {
                             if is_cursor_over_linked_app() && !is_foreground_dialog() {
+                                return 1;
+                            }
+                        }
+                    }
+                    let bits = modifier_bits();
+                    if bits != 0 {
+                        if let Ok(set) = suppress_mod_mouse().try_read() {
+                            if set.contains(&(bits, btn_id)) {
                                 return 1;
                             }
                         }
@@ -4120,21 +4151,47 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
         }
     }
 
-    // H1 re-entrancy guard — if the same trigger is mid-flight, drop the new
-    // fire. Without this, a manual re-press of a slow macro spawns a second
-    // thread that races the first across the clipboard snapshot/restore and
-    // SUPPRESS_SIMULATED, causing the BricsCAD-style freeze. Per-storage-key,
-    // so different macros still run concurrently. The guard travels into the
-    // spawned thread; Drop releases it on thread exit (including panic).
+    // H1 re-entrancy guard — same trigger mid-flight. Previously dropped
+    // the new fire outright (H1 re-entrancy guard) to prevent the
+    // BricsCAD-style race across clipboard snapshot/restore + SUPPRESS_SIMULATED.
+    // v0.8.6: on re-press we now signal cancel via ESC_LOOP_BREAK, wait for
+    // the running thread to release its guard, and acquire fresh. Enables
+    // re-pressing the trigger to abort a stuck Wait for Text / Wait for
+    // Pixel and try again — the specific ask from OCR-diagnosis testing.
+    // The 250ms wait ceiling is a safety net; if the old thread is stuck
+    // harder than ESC_LOOP_BREAK can reach, we drop the fire rather than
+    // race it. Caveat: ESC_LOOP_BREAK is global, so concurrent macros that
+    // happen to be inside a Wait step during this ~250ms window will also
+    // abort — accepted trade-off; restarting a single macro is the far
+    // more common intent.
     let macro_guard = if let Some(ref key) = trigger_key {
         match crate::actions::MacroRunningGuard::try_acquire(key) {
             Some(g) => Some(g),
             None => {
-                log::warn!(
-                    "[Keyfire] Dropped re-fire: {} already running (H1 re-entrancy guard)",
+                log::info!(
+                    "[Keyfire] Re-fire on active trigger {}: cancelling current run + restarting",
                     key
                 );
-                return;
+                crate::actions::ESC_LOOP_BREAK.store(true, Ordering::SeqCst);
+                let mut acquired = None;
+                for _ in 0..25 {
+                    thread::sleep(std::time::Duration::from_millis(10));
+                    if let Some(g) = crate::actions::MacroRunningGuard::try_acquire(key) {
+                        acquired = Some(g);
+                        break;
+                    }
+                }
+                crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+                match acquired {
+                    Some(g) => Some(g),
+                    None => {
+                        log::warn!(
+                            "[Keyfire] Re-fire cancel timed out (>250ms) — dropped: {}",
+                            key
+                        );
+                        return;
+                    }
+                }
             }
         }
     } else {

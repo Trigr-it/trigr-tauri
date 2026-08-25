@@ -1552,6 +1552,118 @@ fn hide_settings_window(app: tauri::AppHandle) {
     }
 }
 
+// ── Snip overlay (drag-select region picker) ────────────────────────────
+// Reusable region picker for any macro editor that needs a screen rect.
+// Show resizes the pre-created hidden overlay to the full virtual desktop,
+// positions it there and gives it focus. The overlay's own JS captures the
+// drag and calls back via emit_snip_result / emit_snip_cancelled which
+// forward as `region-snip-result` / `region-snip-cancelled` events to the
+// caller (main window). Wait for Text is the first consumer; Wait for
+// Image / template capture will reuse the same overlay unchanged.
+
+/// Overlay pulls this on mount to learn the virtual-desktop bounds without
+/// depending on the async `snip-overlay-shown` emit (Tauri listener race —
+/// the overlay's React listener isn't registered when the emit fires the
+/// first time). Returns the SAME values `show_snip_overlay` also emits.
+#[cfg(not(windows))]
+#[tauri::command]
+fn get_snip_overlay_config() -> serde_json::Value {
+    serde_json::json!({ "originX": 0, "originY": 0, "width": 0, "height": 0 })
+}
+
+#[cfg(windows)]
+#[tauri::command]
+fn get_snip_overlay_config() -> serde_json::Value {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
+    };
+    let (vsx, vsy, vsw, vsh) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    };
+    serde_json::json!({
+        "originX": vsx,
+        "originY": vsy,
+        "width": vsw,
+        "height": vsh,
+    })
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn show_snip_overlay(_app: tauri::AppHandle) {}
+
+#[cfg(windows)]
+#[tauri::command]
+fn show_snip_overlay(app: tauri::AppHandle) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
+    };
+    webview_mem::resume_for_show(&app, "snipoverlay");
+    let (vsx, vsy, vsw, vsh) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    };
+    if let Some(win) = app.get_webview_window("snipoverlay") {
+        // Payload FIRST so the mounted component knows the virtual-desktop
+        // origin — its own drag rect is in overlay-local pixels and must
+        // add (vsx, vsy) to produce screen coords the BitBlt path uses.
+        let _ = app.emit(
+            "snip-overlay-shown",
+            serde_json::json!({
+                "originX": vsx,
+                "originY": vsy,
+                "width": vsw,
+                "height": vsh,
+            }),
+        );
+        let _ = win.set_position(tauri::PhysicalPosition::new(vsx, vsy));
+        let _ = win.set_size(tauri::PhysicalSize::new(vsw as u32, vsh as u32));
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+#[tauri::command]
+fn hide_snip_overlay(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("snipoverlay") {
+        let _ = win.hide();
+    }
+}
+
+/// Overlay JS calls this on mouse-up with a completed rect. Rust re-emits
+/// as `region-snip-result` so main-window listeners look identical whether
+/// the picker was the overlay or (during transition) any fallback.
+#[tauri::command]
+fn emit_snip_result(app: tauri::AppHandle, x: i32, y: i32, w: i32, h: i32) {
+    if let Some(win) = app.get_webview_window("snipoverlay") {
+        let _ = win.hide();
+    }
+    let _ = app.emit(
+        "region-snip-result",
+        serde_json::json!({ "x": x, "y": y, "w": w, "h": h }),
+    );
+}
+
+/// Overlay JS calls this on ESC / right-click / any cancel path.
+#[tauri::command]
+fn emit_snip_cancelled(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("snipoverlay") {
+        let _ = win.hide();
+    }
+    let _ = app.emit("region-snip-cancelled", serde_json::json!({}));
+}
+
 #[tauri::command]
 fn toggle_settings_window(app: tauri::AppHandle, section: Option<String>) {
     let visible = app
@@ -6075,6 +6187,50 @@ pub fn run() {
             }
             let _ = &countdown_win;
 
+            // Pre-create the drag-select snip overlay hidden. Same pattern
+            // as fillin / clipboard / radial / countdown — transparent,
+            // decorations off, always-on-top, skip taskbar. Sized 1×1 here;
+            // show_snip_overlay resizes to full virtual desktop before
+            // showing so the drag surface covers every monitor. Reused by
+            // any macro step that needs the user to pick a screen rect
+            // (Wait for Text today, future Wait for Image / template
+            // capture). Reusable across features — do not put step-specific
+            // logic in the overlay itself.
+            let snip_url = tauri::WebviewUrl::App("index.html?snipoverlay=1".into());
+            let snip_win = tauri::WebviewWindowBuilder::new(app, "snipoverlay", snip_url)
+                .title("Keyfire Snip Overlay")
+                // Initial size is a placeholder — show_snip_overlay resizes
+                // to full virtual desktop before show. Using 100×100 here
+                // rather than 1×1 because some WebView2 versions refuse to
+                // initialise a sub-pixel window and show "can't reach this
+                // page" until first resize.
+                .inner_size(100.0, 100.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build()?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let _ = snip_win.with_webview(|webview| unsafe {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::{
+                        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+                    };
+                    use windows_core::Interface;
+                    let controller = webview.controller();
+                    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                        let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                            R: 0, G: 0, B: 0, A: 0,
+                        });
+                    }
+                });
+            }
+            let _ = &snip_win;
+
             // Pre-create the Settings window hidden. Unlike the overlays it is
             // an ordinary opaque window (no transparency, no NOACTIVATE, has a
             // taskbar entry) — undecorated so SettingsWindow.jsx can draw the
@@ -6375,6 +6531,11 @@ pub fn run() {
             get_cursor_pixel,
             get_pixel_color,
             set_pixel_pick_active,
+            get_snip_overlay_config,
+            show_snip_overlay,
+            hide_snip_overlay,
+            emit_snip_result,
+            emit_snip_cancelled,
             enum_monitors,
             show_monitor_identify,
             hide_monitor_identify,

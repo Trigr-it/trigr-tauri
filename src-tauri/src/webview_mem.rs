@@ -48,8 +48,8 @@ const TICK_SECS: u64 = 30;
 /// payloads on show and recover cleanly from suspend; the countdown does
 /// not. Memory cost is ~10MB shared via the WebView2 process — worth it
 /// for reliability.
-const SUSPEND_LABELS: [&str; 5] =
-    ["overlay", "fillin", "clipboardoverlay", "radialmenu", "settings"];
+const SUSPEND_LABELS: [&str; 6] =
+    ["overlay", "fillin", "clipboardoverlay", "radialmenu", "settings", "snipoverlay"];
 /// Cache-trim only — must keep running JS while hidden (see module docs).
 const TRIM_ONLY_LABELS: [&str; 1] = ["main"];
 

@@ -140,7 +140,7 @@ const MACRO_STEP_CATEGORIES = [
   { kind: 'group', label: 'Mouse',            items: ['Click Mouse', 'Click at Position', 'Mouse Scroll'] },
   { kind: 'group', label: 'Open & Play',      items: ['Open App', 'Open Folder', 'Open URL', 'Play Audio File', 'Play Video File'] },
   { kind: 'group', label: 'Files',            items: ['Create Folder', 'Copy Files', 'Move Files', 'Sort Files'] },
-  { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Wait for Pixel'] },
+  { kind: 'group', label: 'Timing',           items: ['Wait (ms)', 'Wait for Input', 'Wait for Window', 'Wait for Pixel', 'Wait for Text'] },
   { kind: 'group', label: 'Window',           items: ['Focus Window', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Minimise All', 'Restore All'] },
   { kind: 'group', label: 'System',           items: ['Change Volume', 'Media Control', 'Change Audio Output', 'Control Panel', 'Sleep Computer', 'Lock Computer', 'Log Off', 'Shut Down Computer'] },
   { kind: 'divider' },
@@ -161,7 +161,7 @@ function macroStepLabel(stepType) {
 // actions.rs arm). Shown with a PRO badge in the step menu; selecting one
 // without a licence opens the upgrade prompt (SortableMacroStep type-change
 // handler). Keep in sync with the backend gates.
-const PRO_MACRO_STEPS = new Set(['Sort Files']);
+const PRO_MACRO_STEPS = new Set(['Sort Files', 'Wait for Pixel', 'Wait for Text', 'Change Audio Output', 'Wait for Window', 'Run AHK Script']);
 
 // Sort Files (Pro) — full default config, shared by the type-change seed and
 // the parse block so a fresh step and a legacy/partial value agree. Shape
@@ -1492,6 +1492,165 @@ function WaitPixelFields({ step, updateStep }) {
   );
 }
 
+// Wait for Text — OCR-based find-on-screen. Same shape as Wait for Pixel but
+// the pick UI is a two-click region snip (top-left corner then bottom-right)
+// because a single pixel isn't enough to bound OCR; the Rust arm reads the
+// same keys (actions.rs "Wait for Text"). Region is REQUIRED — save is
+// blocked until one is captured.
+const WAIT_TEXT_DEFAULTS = {
+  text: '',
+  matchMode: 'contains',      // 'contains' | 'exact' | 'case_insensitive'
+  region: null,               // { x, y, w, h } once captured — falsy = not set
+  timeoutSecs: 30,
+  onTimeout: 'abort',
+  clickOnMatch: false,
+  pollMs: 500,
+};
+
+function parseWaitText(step) {
+  let wt = { ...WAIT_TEXT_DEFAULTS };
+  try { wt = { ...wt, ...JSON.parse(step.value || '{}') }; } catch (_) {}
+  return wt;
+}
+
+// Wait for Text sub-rows. Row 1 = region picker button + captured rect
+// display (or "no region — click Select Region" placeholder). Row 2 = text
+// input + match mode. Row 3 = timeout + on-timeout. Row 4 = click-on-match.
+// Region picker uses the shared drag-select overlay (SnipOverlay window) —
+// main hides via recorder_hide_main (so the foreground watcher can't
+// profile-switch and unmount this editor); the overlay owns input capture
+// and emits region-snip-result on drag release / region-snip-cancelled on
+// ESC or right-click. Component unmount closes the overlay as a safety net.
+function WaitTextFields({ step, updateStep }) {
+  const wt = parseWaitText(step);
+  const update = (patch) => updateStep({ ...step, value: JSON.stringify({ ...wt, ...patch }) });
+  const [picking, setPicking] = useState(false);
+  const pickingRef = useRef(false);
+  const updateRef = useRef(update);
+  updateRef.current = update;
+
+  const endPick = () => {
+    pickingRef.current = false;
+    setPicking(false);
+  };
+
+  const finishPick = async (rect) => {
+    endPick();
+    await window.electronAPI?.recorderRestoreMain();
+    updateRef.current({ region: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } });
+  };
+
+  const pickRegion = async () => {
+    if (pickingRef.current) return;
+    pickingRef.current = true;
+    setPicking(true);
+    window.electronAPI?.onRegionSnipResult((rect) => {
+      if (pickingRef.current && rect) finishPick(rect);
+    });
+    window.electronAPI?.onRegionSnipCancelled(async () => {
+      if (!pickingRef.current) return;
+      endPick();
+      await window.electronAPI?.recorderRestoreMain();
+    });
+    await window.electronAPI?.recorderHideMain();
+    await window.electronAPI?.showSnipOverlay();
+  };
+
+  // Safety net: component unmounts mid-pick (editor closed some other way)
+  // → hide the overlay and bring the main window back.
+  useEffect(() => () => {
+    if (pickingRef.current) {
+      pickingRef.current = false;
+      window.electronAPI?.hideSnipOverlay();
+      window.electronAPI?.recorderRestoreMain();
+    }
+  }, []);
+
+  const region = wt.region;
+  const hasRegion = !!(region && region.w >= 4 && region.h >= 4);
+  const pickLabel = picking
+    ? 'Selecting region…'
+    : (hasRegion ? 'Reselect Region' : 'Select Region');
+
+  return (
+    <>
+      <div className="wfi-config-row wfi-config-row-columns click-pos-row">
+        <button
+          type="button"
+          className="browse-btn click-pos-pick-btn"
+          onClick={pickRegion}
+          disabled={picking}
+          title="Hides Keyfire, then two clicks anywhere define the search region. Right-click or ESC cancels."
+        >
+          {pickLabel}
+        </button>
+        {hasRegion ? (
+          <span className="macro-substep-label" style={{ flex: '1 1 auto', minWidth: 0 }}>
+            {region.w}×{region.h} at ({region.x}, {region.y})
+          </span>
+        ) : (
+          <span
+            className="macro-substep-label"
+            style={{ flex: '1 1 auto', minWidth: 0, color: 'var(--text-muted)' }}
+          >
+            No region selected — save disabled until one is picked
+          </span>
+        )}
+      </div>
+      <div className="wfi-config-row wait-pixel-row">
+        <input
+          type="text"
+          className="form-input"
+          style={{ flex: '1 1 auto', minWidth: 120 }}
+          placeholder="Text to find (e.g. Submit)"
+          value={wt.text}
+          onChange={e => update({ text: e.target.value })}
+        />
+        <select
+          className="form-select"
+          style={{ flex: '0 1 190px', minWidth: 140 }}
+          value={wt.matchMode}
+          onChange={e => update({ matchMode: e.target.value })}
+        >
+          <option value="contains">Contains</option>
+          <option value="exact">Exact match</option>
+          <option value="case_insensitive">Case-insensitive</option>
+        </select>
+      </div>
+      <div className="wfi-config-row wait-pixel-row">
+        <span className="macro-substep-label">Timeout (s)</span>
+        <NumberField
+          value={wt.timeoutSecs}
+          min={1}
+          max={300}
+          defaultOnEmpty={30}
+          onCommit={n => update({ timeoutSecs: n })}
+          className="form-input wait-pixel-num-input"
+        />
+        <select
+          className="form-select"
+          style={{ flex: '0 1 160px', minWidth: 100 }}
+          value={wt.onTimeout}
+          onChange={e => update({ onTimeout: e.target.value })}
+        >
+          <option value="abort">then stop the macro</option>
+          <option value="continue">then continue anyway</option>
+        </select>
+      </div>
+      <div className="wfi-config-row">
+        <label className="wait-pixel-click-label">
+          <input
+            type="checkbox"
+            checked={!!wt.clickOnMatch}
+            onChange={e => update({ clickOnMatch: e.target.checked })}
+          />
+          <span>Click the matched text when found</span>
+        </label>
+      </div>
+    </>
+  );
+}
+
 const KEY_DISPLAY_MAP = {
   ' ': 'Space', 'ArrowUp': 'Up', 'ArrowDown': 'Down',
   'ArrowLeft': 'Left', 'ArrowRight': 'Right',
@@ -2620,7 +2779,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
     }
   }
 
-  const hasSubRow = ['Press Key', 'Click Mouse', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Wait for Pixel', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File', 'Create Folder', 'Copy Files', 'Move Files'].includes(step.type) || showWinAdvisory;
+  const hasSubRow = ['Press Key', 'Click Mouse', 'Wait for Input', 'Open App', 'Open Folder', 'Focus Window', 'Wait for Window', 'Wait for Pixel', 'Wait for Text', 'Run AHK Script', 'Click at Position', 'Minimise Window', 'Maximise Window', 'Resize Window', 'Play Audio File', 'Play Video File', 'Create Folder', 'Copy Files', 'Move Files'].includes(step.type) || showWinAdvisory;
 
   // Parse JSON values for structured step types
   let appData = { kind: 'path', appId: '', appName: '', path: '', args: '', monitor: 'default' };
@@ -2709,11 +2868,11 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
           value={step.type}
           isPro={isPro}
           onChange={(t) => {
-            // Sort Files is Pro-gated — show the upgrade prompt instead of
-            // switching the step type. Backend has a belt-and-braces
-            // licence::is_pro() check in the execution arm.
-            if (t === 'Sort Files' && !isPro) {
-              onShowUpgrade?.('Sort Files macro step');
+            // Pro-gated steps (see PRO_MACRO_STEPS) show the upgrade prompt
+            // instead of switching the step type. Backend has a belt-and-
+            // braces licence::is_pro() check in each execution arm.
+            if (PRO_MACRO_STEPS.has(t) && !isPro) {
+              onShowUpgrade?.(`${t} macro step`);
               return;
             }
             // Seed step.value with a sensible default per type so the step
@@ -2734,6 +2893,7 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
             else if (t === 'Copy Files' || t === 'Move Files') seed = JSON.stringify({ sourceMode: 'selected', sourcePath: '', pattern: '*', destMode: 'path', destPath: '', destSubfolder: '', createSubfolder: false });
             else if (t === 'Sort Files') seed = JSON.stringify(SORT_FILES_DEFAULTS);
             else if (t === 'Wait for Pixel') seed = JSON.stringify(WAIT_PIXEL_DEFAULTS);
+            else if (t === 'Wait for Text') seed = JSON.stringify(WAIT_TEXT_DEFAULTS);
             updateStep({ ...step, type: t, value: seed });
           }}
         />
@@ -3658,6 +3818,9 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
       {step.type === 'Wait for Pixel' && (
         <WaitPixelFields step={step} updateStep={updateStep} />
       )}
+      {step.type === 'Wait for Text' && (
+        <WaitTextFields step={step} updateStep={updateStep} />
+      )}
 
       {firePickerMode && (
         <FireTargetPicker
@@ -4545,6 +4708,22 @@ export default function MacroPanel({
     }
   };
 
+  // Wait for Text requires a captured region — reject an unbound step so
+  // the executor never has to skip a step at runtime (which would silently
+  // fail on the user with no warning at build time).
+  const macroStepsValid = (steps) => {
+    for (const s of steps || []) {
+      if (s?.type === 'Wait for Text') {
+        let parsed;
+        try { parsed = JSON.parse(s.value || '{}'); } catch (_) { return false; }
+        const r = parsed?.region;
+        if (!r || !(r.w >= 4) || !(r.h >= 4)) return false;
+        if (!parsed?.text || !String(parsed.text).trim()) return false;
+      }
+    }
+    return true;
+  };
+
   const isValid = () => {
     switch (activeType) {
       case 'text':      return !!formValue.text?.trim();
@@ -4554,7 +4733,7 @@ export default function MacroPanel({
       case 'app':       return !!(formValue.path?.trim() || formValue.appId?.trim());
       case 'folder':    return !!formValue.path?.trim();
       case 'url':       return !!formValue.url?.trim();
-      case 'macro':     return (formValue.steps || []).length > 0;
+      case 'macro':     return (formValue.steps || []).length > 0 && macroStepsValid(formValue.steps);
       case 'recordmacro': return !!formValue.steps?.[0]?.value;
       case 'ahk':       return !!formValue.script?.trim();
       default:          return false;

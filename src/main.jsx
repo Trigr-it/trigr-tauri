@@ -77,6 +77,13 @@ if (params.get('overlay') === '1') {
       <RecorderCountdown />
     </React.Suspense>
   );
+} else if (params.get('snipoverlay') === '1') {
+  const SnipOverlay = React.lazy(() => import('./components/SnipOverlay'));
+  root.render(
+    <React.Suspense fallback={null}>
+      <SnipOverlay />
+    </React.Suspense>
+  );
 } else {
   // Only import App (and its global.css/app.css) for the main window
   const App = React.lazy(() => import('./App'));
