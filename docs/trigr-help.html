@@ -1198,10 +1198,10 @@
     <tr><td><strong>Mouse</strong></td><td><strong>Click Mouse</strong> sends a mouse click, with a Press / Hold / Release radio so you can script drags cleanly. <strong>Click at Position</strong> moves the cursor to screen coordinates and clicks. <strong>Mouse Scroll</strong> scrolls up, down, left or right by a set number of notches.</td></tr>
     <tr><td><strong>Open &amp; Play</strong></td><td><strong>Open App</strong>, <strong>Open Folder</strong> and <strong>Open URL</strong> launch things mid-macro, with a monitor picker for where the window lands. <strong>Play Audio File</strong> and <strong>Play Video File</strong> open a media file in your default player, also with a monitor picker.</td></tr>
     <tr><td><strong>Files</strong></td><td><strong>Create Folder</strong> makes a new folder, with naming prompts, template contents and automatic numbering. <strong>Copy Files</strong> and <strong>Move Files</strong> send your Explorer selection or a wildcard match to a destination folder. <strong>Sort Files</strong> (Pro) routes files into folders based on a code in the filename. See the Files steps section below.</td></tr>
-    <tr><td><strong>Timing</strong></td><td><strong>Wait (ms)</strong> pauses for a set time. <strong>Wait for Input</strong> pauses until a chosen mouse or key event. <strong>Wait for Window</strong> pauses until a matching window is in the foreground. <strong>Wait for Pixel</strong> pauses until a screen pixel matches a target colour.</td></tr>
+    <tr><td><strong>Timing</strong></td><td><strong>Wait (ms)</strong> pauses for a set time. <strong>Wait for Input</strong> pauses until a chosen mouse or key event. <strong>Wait for Window</strong> (Pro) pauses until a matching window is in the foreground. <strong>Wait for Pixel</strong> (Pro) pauses until a screen pixel matches a target colour. <strong>Wait for Text</strong> (Pro) pauses until specific text appears on screen via OCR.</td></tr>
     <tr><td><strong>Window</strong></td><td><strong>Focus Window</strong> brings an app to the foreground. <strong>Minimise Window</strong>, <strong>Maximise Window</strong> and <strong>Resize Window</strong> control a specific window. <strong>Minimise All</strong> and <strong>Restore All</strong> act on every open window.</td></tr>
-    <tr><td><strong>System</strong></td><td><strong>Change Volume</strong> sets, nudges or mutes the system volume. <strong>Control Panel</strong> opens the Windows Control Panel. <strong>Sleep Computer</strong>, <strong>Lock Computer</strong>, <strong>Log Off</strong> and <strong>Shut Down Computer</strong> perform the matching Windows action.</td></tr>
-    <tr><td><strong>Run AHK Script</strong></td><td>Executes an AutoHotkey v1 or v2 script. Waits for completion before the next step.</td></tr>
+    <tr><td><strong>System</strong></td><td><strong>Change Volume</strong> sets, nudges or mutes the system volume. <strong>Media Control</strong> sends play, pause, next or previous track keys. <strong>Change Audio Output</strong> (Pro) switches the system default playback device. <strong>Control Panel</strong> opens the Windows Control Panel. <strong>Sleep Computer</strong>, <strong>Lock Computer</strong>, <strong>Log Off</strong> and <strong>Shut Down Computer</strong> perform the matching Windows action.</td></tr>
+    <tr><td><strong>Run AHK Script</strong> (Pro)</td><td>Executes an AutoHotkey v1 or v2 script. Waits for completion before the next step.</td></tr>
   </table>
 
   <h2>Building a macro</h2>
@@ -1248,6 +1248,26 @@
   <div class="callout tip">
     <div class="ct">Multi-monitor</div>
     <p>Wait for Pixel works across every monitor. Negative coordinates on the left-hand secondary monitor are supported.</p>
+  </div>
+
+  <h2>Wait for Text (Pro)</h2>
+  <p>Pauses the macro until specific text appears inside a chosen screen region, using the built-in Windows OCR engine. Ideal for waiting on a button label like <em>Send</em> or <em>Save</em> to appear, then optionally clicking it. Common flow: click something that opens a popup or dialog, then Wait for Text on the button that appears next, with Click when matched turned on.</p>
+  <p>Click <strong>Select Region</strong> to open the drag-select overlay. Keyfire minimises out of the way and a dim overlay covers your entire desktop. Drag a rectangle over the area you want Keyfire to watch. Right-click or press <kbd>Esc</kbd> to cancel. The captured rectangle appears next to the button as a confirmation.</p>
+  <table>
+    <tr><th>Field</th><th>What it controls</th></tr>
+    <tr><td>Text to find</td><td>The word or phrase Keyfire scans for inside the region.</td></tr>
+    <tr><td>Match mode</td><td><strong>Contains</strong>: fires when the region contains the text anywhere. <strong>Exact match</strong>: only when a whole line reads exactly the text. <strong>Case-insensitive</strong>: like Contains, ignoring letter case.</td></tr>
+    <tr><td>Region</td><td>The screen area to OCR every poll. Mandatory. Reselect by clicking the button again.</td></tr>
+    <tr><td>Timeout</td><td>Give up after this many seconds. Choose <strong>Abort</strong> to stop the macro or <strong>Continue</strong> to run the next step anyway.</td></tr>
+    <tr><td>Click when matched</td><td>When ticked, Keyfire left-clicks the centre of the matched text as soon as it appears. Skips the click if unchecked and just proceeds to the next step.</td></tr>
+  </table>
+  <div class="callout tip">
+    <div class="ct">Buttons with icons or chevrons</div>
+    <p>Some buttons like Gmail's Send button have a small chevron or icon next to the text, which OCR sometimes reads as an extra character. Use <strong>Contains</strong> match mode rather than <strong>Exact match</strong> so those extras do not stop the match from firing.</p>
+  </div>
+  <div class="callout info">
+    <div class="ct">Region size matters</div>
+    <p>Keep the region tight around the target text for best OCR accuracy and speed. Very small buttons at low DPI can be hard to read cleanly. If a specific label refuses to match, try picking a slightly larger region that includes a bit of padding around the button.</p>
   </div>
 
   <h2>System steps</h2>

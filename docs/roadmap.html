@@ -703,8 +703,26 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <span class="phase-name">
             <span class="phase-version">v0.8</span><span class="phase-subtitle">Unassigned Library &amp; Pixel Waits</span>
           </span>
-          <span class="phase-date">Aug 2026 · 5 releases published</span>
+          <span class="phase-date">Aug 2026 · 7 releases published</span>
         </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.8.6</span>
+            <time class="release-date">25 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Wait for Text macro step (Pro). Have Keyfire pause your macro until specific text appears on screen, then optionally click it. Powered by Windows OCR. Drag a region over the target area with the new snipping-tool style overlay, type the text to find, pick a match mode (Contains, Exact, or Case-insensitive), set a timeout, and turn on Click when matched to have Keyfire press the matched text. Great for flows like &quot;click Compose in Gmail, wait for Send to appear, then click it&quot;.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Click accuracy on long macro playback. Cursor move and click are now sent as one atomic pair, so hardware mouse events from your hand cannot slip between them and drift the click off target. Noticeably tighter on 30-second-plus recorded sequences.</li><li>OCR reads small button text more reliably. The preprocessing pipeline now upscales tight captures up to 4x, which fixes text that previously read as nothing on button-sized regions.</li><li>Re-press the same trigger while a macro is still running to abort the current run and start again from step one. Autoclicker-style triggers keep their existing press-to-stop behaviour.</li><li>Wait for Pixel, Wait for Text, Wait for Window, Change Audio Output, and Run AHK Script macro steps are now consistently Pro across the step picker and the runtime.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Alt+Scroll, Ctrl+Scroll, and other modified scroll wheels assigned to a macro no longer also pass through to the app underneath. You can bind Alt+Scroll Down to Volume Down without your browser also zooming.</li></ul>
+          </div>
+        </article>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.8.5</span>
+            <time class="release-date">24 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Sub-folders in Quick Search and Quick Actions (Pro). Nest categories by typing a slash in the name.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Clipboard detail pane redesigned as a three-band layout: primary actions pinned at the top, transforms at the bottom, content scrolls in the middle.</li><li>Phase labels on Press Key and Click Mouse steps renamed to &quot;Press &amp; Release&quot; and &quot;Click &amp; Release&quot; for clarity.</li><li>Wide-ranging performance and reliability pass across the clipboard tab, macro engine, and background workers.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Press Key macro steps now register reliably inside games.</li><li>Clipboard popup could open blank or flash dark the first time after boot or long idle.</li></ul>
+          </div>
+        </article>
         <article class="release-entry">
           <header class="release-head">
             <span class="release-version">v0.8.4</span>
