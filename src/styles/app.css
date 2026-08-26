@@ -227,14 +227,17 @@
   min-width: 0;
 }
 
-/* ── VIEW SWITCHER (Keyboard / Mouse tabs) ────────────── */
+/* ── VIEW SWITCHER (Keyboard / Mouse / Radial tabs) ───────────────────────
+   Same keycap segmented-control language as the top-bar section tabs
+   (TitleBar.css .area-tabs): inset track, raised --key-bg chip on the
+   active item, no gold. */
 .view-switcher {
   display: flex;
-  gap: var(--space-1);
-  padding: 3px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-bright);
-  border-radius: var(--radius-xl);
+  gap: var(--space-0);
+  padding: 2px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   margin-bottom: var(--space-3);
   flex-shrink: 0;
 }
@@ -242,9 +245,9 @@
 .view-tab {
   height: 28px;
   padding: 0 18px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
   font-family: var(--font-display);
   font-size: var(--text-md);
@@ -268,14 +271,14 @@
 }
 
 .view-tab.active {
-  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
-  color: var(--btn-primary-text);
-  border: 1px solid var(--accent);
-  box-shadow: 0 1px 6px rgba(var(--accent-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  background: var(--key-bg);
+  color: var(--text-primary);
+  border-color: var(--key-border);
+  box-shadow: var(--shadow-key);
 }
 
 .view-tab.active .view-tab-icon {
-  color: var(--on-accent);
+  color: var(--text-primary);
 }
 
 /* Below 1200px, view-switcher tabs collapse to icon-only so the row stays
