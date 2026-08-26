@@ -273,7 +273,9 @@
 
 .view-tab.active {
   background: var(--key-bg-assigned);
-  box-shadow: var(--key-border-assigned);6251var(--shadow-key), 0 0 12px rgba(var(--accent-rgb), 0.08);
+  color: var(--text-primary);
+  border-color: var(--key-border-assigned);
+  box-shadow: var(--shadow-key), 0 0 12px rgba(var(--accent-rgb), 0.08);
 }
 
 .view-tab.active .view-tab-icon {
