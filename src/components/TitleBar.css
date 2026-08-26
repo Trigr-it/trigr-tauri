@@ -83,16 +83,23 @@
   -webkit-app-region: no-drag;
 }
 
+/* The chip is the canvas's SELECTED key (.key.selected in KeyboardCanvas.css):
+   warm --key-bg-selected fill, gold ring, soft gold glow, radial wash, gold
+   legend. Sub-section switchers (.view-tab, mode tabs) use the plain --key-bg
+   key, so gold here means "the section you are in" and nothing else. */
 .area-tab-indicator {
   position: absolute;
   top: 2px;
   bottom: 2px;
   left: 0;
   width: 0;
-  background: var(--key-bg);
-  border: 1px solid var(--key-border);
+  background: var(--key-bg-selected);
+  border: 1px solid var(--key-border-selected);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-key);
+  box-shadow:
+    0 2px 8px rgba(0,0,0,0.3),
+    0 0 14px rgba(var(--accent-rgb), 0.22),
+    inset 0 0 10px rgba(var(--accent-rgb), 0.05);
   opacity: 0;
   pointer-events: none;
   overflow: hidden;
@@ -104,7 +111,15 @@
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 40%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
+  background: linear-gradient(to bottom, rgba(255,255,255,0.06), transparent);
+}
+
+/* Gold wash, mirrors .key.selected::after */
+.area-tab-indicator::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(var(--accent-rgb), 0.12) 0%, transparent 70%);
 }
 
 .area-tabs.is-ready .area-tab-indicator {
@@ -150,7 +165,7 @@
 }
 
 .area-tab.active {
-  color: var(--text-primary);
+  color: var(--accent);   /* gold legend, as .key.selected .key-label */
   font-weight: 600;
 }
 
@@ -171,12 +186,12 @@
   gap: var(--space-2);
   height: 30px;
   padding: 0 var(--space-4);
-  /* Same keycap chip as the inline active tab */
-  background: var(--key-bg);
-  border: 1px solid var(--key-border);
+  /* Same selected-key chip as the inline active tab */
+  background: var(--key-bg-selected);
+  border: 1px solid var(--key-border-selected);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-key);
-  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3), 0 0 14px rgba(var(--accent-rgb), 0.22);
+  color: var(--accent);
   font-family: var(--font-body);
   font-size: var(--text-lg);
   font-weight: 600;
@@ -186,7 +201,7 @@
 }
 
 .area-nav-btn:hover {
-  background: var(--key-bg-hover);
+  background: var(--accent-surface);
 }
 
 .area-nav-chevron {
