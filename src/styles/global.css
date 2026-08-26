@@ -455,6 +455,20 @@ input:focus, textarea:focus, select:focus {
   user-select: none;
 }
 
+/* ── Section label (Tier 3 recipe) ─────────────────────────────────────────
+   Uppercase eyebrow above a group of controls. This is the TARGET recipe
+   from the 2026-08-26 token sweep; the 24 hand-rolled variants listed in
+   docs/private/keyfire-design-tokens.md adopt this class as the brand pass
+   touches them. Layout (display, margin, padding) stays on the consumer.
+   Lives here rather than app.css so the Settings window gets it too. */
+.label-section {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-normal);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 /* ── Unified button hierarchy ──────────────────────────────────────────── */
 
 .btn-primary {
