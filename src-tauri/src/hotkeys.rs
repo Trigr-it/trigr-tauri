@@ -1550,8 +1550,23 @@ unsafe extern "system" fn keyboard_hook_proc(
         // SendInput a suppressed VK (e.g. F8 with ::hold mapped), this hook would
         // otherwise treat it as a real press and block it.
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
-        if matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN)
-            && (kb.flags & LLKHF_INJECTED) == 0
+        let is_real = (kb.flags & LLKHF_INJECTED) == 0;
+        let is_down = matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+        let is_up = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
+        // Real MODIFIER transitions must still reach the processor so the
+        // MOD_* atomics track the physical state. Repeat mode keeps this flag
+        // up for ~30ms of every iteration, so without this a held/released
+        // Alt inside that window left modifier_bits() stale and the next
+        // combo mis-matched. Pass through to the OS unchanged.
+        if is_real && is_modifier_vk(kb.vkCode) && (is_down || is_up) {
+            if is_down {
+                send_event(HookEvent::KeyDown { vk_code: kb.vkCode, scan_code: kb.scanCode });
+            } else {
+                send_event(HookEvent::KeyUp { vk_code: kb.vkCode, scan_code: kb.scanCode });
+            }
+        }
+        if is_down
+            && is_real
             && !is_modifier_vk(kb.vkCode)
             && MACROS_ENABLED.load(Ordering::SeqCst)
         {
@@ -1561,6 +1576,13 @@ unsafe extern "system" fn keyboard_hook_proc(
                     if kb.vkCode == 0x5D {
                         MENU_KEYDOWN_SUPPRESSED.store(true, Ordering::SeqCst);
                     }
+                    // Swallowed from the app, but the processor MUST still
+                    // hear it: this is a bound combo the user pressed on
+                    // purpose. Previously it was eaten silently here, so a
+                    // repeat-mode trigger re-pressed inside the suppression
+                    // window never reached the same-trigger stop check —
+                    // the "Alt+1 sometimes doesn't stop the spam" bug.
+                    send_event(HookEvent::KeyDown { vk_code: kb.vkCode, scan_code: kb.scanCode });
                     return 1;
                 }
             }
@@ -1802,6 +1824,33 @@ unsafe extern "system" fn mouse_hook_proc(
     l_param: LPARAM,
 ) -> LRESULT {
     HOOK_HEARTBEAT.fetch_add(1, Ordering::SeqCst);
+    // Mid-injection (SUPPRESS_SIMULATED): synthetic events must not re-enter
+    // the engine, but REAL button presses still have to reach the processor.
+    // Repeat mode holds the flag for ~30ms of every iteration, so a mouse
+    // trigger re-pressed inside that window was previously dropped here and
+    // the same-trigger stop check never ran (keyboard twin: the suppressed-
+    // combo forward in keyboard_hook_proc). Forward only — the suppress
+    // decision below is untouched, so this window's click still passes to
+    // the app exactly as it did before.
+    if n_code >= 0 && SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
+        let ms = &*(l_param as *const MSLLHOOKSTRUCT);
+        if (ms.flags & LLMHF_INJECTED) == 0 {
+            let xbutton = || -> MouseButton {
+                if ((ms.mouseData >> 16) & 0xFFFF) as u16 == 1 { MouseButton::Side1 } else { MouseButton::Side2 }
+            };
+            match w_param as u32 {
+                WM_LBUTTONDOWN => send_event(HookEvent::MouseDown { button: MouseButton::Left }),
+                WM_LBUTTONUP   => send_event(HookEvent::MouseUp   { button: MouseButton::Left }),
+                WM_RBUTTONDOWN => send_event(HookEvent::MouseDown { button: MouseButton::Right }),
+                WM_RBUTTONUP   => send_event(HookEvent::MouseUp   { button: MouseButton::Right }),
+                WM_MBUTTONDOWN => send_event(HookEvent::MouseDown { button: MouseButton::Middle }),
+                WM_MBUTTONUP   => send_event(HookEvent::MouseUp   { button: MouseButton::Middle }),
+                WM_XBUTTONDOWN => send_event(HookEvent::MouseDown { button: xbutton() }),
+                WM_XBUTTONUP   => send_event(HookEvent::MouseUp   { button: xbutton() }),
+                _ => {}
+            }
+        }
+    }
     if n_code >= 0 && !SUPPRESS_SIMULATED.load(Ordering::SeqCst) {
         let mut suppress_id: Option<u8> = None;
         let mut is_button_down = false;
