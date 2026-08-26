@@ -83,43 +83,24 @@
   -webkit-app-region: no-drag;
 }
 
-/* The chip is the canvas's SELECTED key (.key.selected in KeyboardCanvas.css):
-   warm --key-bg-selected fill, gold ring, soft gold glow, radial wash, gold
-   legend. Sub-section switchers (.view-tab, mode tabs) use the plain --key-bg
-   key, so gold here means "the section you are in" and nothing else. */
+/* The chip is the solid gold primary button (same recipe as the sidebar
+   "New category" / Add buttons: .te-cat-new-btn, .btn-primary). Sub-section
+   switchers (.view-tab, mode tabs) use the plain --key-bg key, so solid gold
+   in navigation means "the section you are in" and nothing else. */
 .area-tab-indicator {
   position: absolute;
   top: 2px;
   bottom: 2px;
   left: 0;
   width: 0;
-  background: var(--key-bg-selected);
-  border: 1px solid var(--key-border-selected);
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   box-shadow:
-    0 2px 8px rgba(0,0,0,0.3),
-    0 0 14px rgba(var(--accent-rgb), 0.22),
-    inset 0 0 10px rgba(var(--accent-rgb), 0.05);
+    0 1px 6px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
   opacity: 0;
   pointer-events: none;
-  overflow: hidden;
-}
-
-/* Keycap top sheen, mirrors .key::before */
-.area-tab-indicator::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 40%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.06), transparent);
-}
-
-/* Gold wash, mirrors .key.selected::after */
-.area-tab-indicator::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center, rgba(var(--accent-rgb), 0.12) 0%, transparent 70%);
 }
 
 .area-tabs.is-ready .area-tab-indicator {
@@ -165,7 +146,7 @@
 }
 
 .area-tab.active {
-  color: var(--accent);   /* gold legend, as .key.selected .key-label */
+  color: var(--btn-primary-text);   /* ink on gold, as the primary buttons */
   font-weight: 600;
 }
 
@@ -186,22 +167,23 @@
   gap: var(--space-2);
   height: 30px;
   padding: 0 var(--space-4);
-  /* Same selected-key chip as the inline active tab */
-  background: var(--key-bg-selected);
-  border: 1px solid var(--key-border-selected);
+  /* Same gold primary-button chip as the inline active tab */
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: 1px solid var(--accent);
   border-radius: var(--radius-md);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3), 0 0 14px rgba(var(--accent-rgb), 0.22);
-  color: var(--accent);
+  box-shadow: 0 1px 6px rgba(var(--accent-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  color: var(--btn-primary-text);
   font-family: var(--font-body);
   font-size: var(--text-lg);
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.12s;
+  transition: background 0.12s, box-shadow 0.12s;
 }
 
 .area-nav-btn:hover {
-  background: var(--accent-surface);
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .area-nav-chevron {
