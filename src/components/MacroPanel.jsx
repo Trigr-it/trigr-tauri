@@ -5242,7 +5242,7 @@ export default function MacroPanel({
               </div>
               {formValue.repeatMode && (
                 <>
-                  <p className="hold-mode-hint">Fires repeatedly until hotkey is pressed again</p>
+                  <p className="hold-mode-hint">Fires repeatedly until the hotkey is pressed again or you press Esc</p>
                   <div className="repeat-interval-row">
                     <label className="repeat-interval-label">Interval</label>
                     <NumberField

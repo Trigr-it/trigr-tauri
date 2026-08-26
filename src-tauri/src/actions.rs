@@ -1785,6 +1785,13 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
         crate::tray::update_tray_icon_repeating(app, &combo_label, repeat_interval);
         info!("[Keyfire] Repeat started: {} ({}ms)", combo_label, repeat_interval);
 
+        // Esc is the global cancel for every long-running Keyfire action
+        // (macro loops, Wait steps, replay). Repeat mode now honours it too.
+        // Clear any stale Esc first so a press from earlier can't kill the
+        // repeat on its first tick — same reset the "macro" arm does.
+        ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
+        let label_for_thread = combo_label.clone();
+
         thread::spawn(move || {
             // Request 1ms timer resolution for the lifetime of this thread.
             // Without it, thread::sleep on Windows runs at the default scheduler
@@ -1798,6 +1805,10 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             loop {
                 if stop_clone.load(Ordering::SeqCst) { break; }
                 if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) { break; }
+                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Repeat stopped (Esc): {}", label_for_thread);
+                    break;
+                }
 
                 if is_mouse_copy {
                     // Repeat needs the shorter hold — see PIPELINE_KEY_HOLD_MS
