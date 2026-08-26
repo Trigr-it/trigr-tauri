@@ -441,8 +441,8 @@ function HotkeyCaptureInput({ value, onChange }) {
       onChangeRef.current({ ...valueRef.current, modifiers: mods, key: parsed.key, holdMouseButtons: [] });
       setCapturing(false);
     };
-    window.electronAPI.onKeyCaptured(handler);
-    return () => window.electronAPI.removeAllListeners('key-captured');
+    const off = window.electronAPI.onKeyCaptured(handler);
+    return () => { Promise.resolve(off).then(u => { if (typeof u === 'function') u(); }).catch(() => {}); };
   }, []);
 
   function startCapture() {
@@ -1740,8 +1740,8 @@ function KeyCaptureInput({ value, onChange, onWinPressed }) {
       onChangeRef.current(finalCombo);
       setCapturing(false);
     };
-    window.electronAPI.onKeyCaptured(handler);
-    return () => window.electronAPI.removeAllListeners('key-captured');
+    const off = window.electronAPI.onKeyCaptured(handler);
+    return () => { Promise.resolve(off).then(u => { if (typeof u === 'function') u(); }).catch(() => {}); };
   }, []);
 
   function startCapture() {
@@ -4367,6 +4367,21 @@ export default function MacroPanel({
   // entry is saved when the user hits Assign. Resets when the user picks
   // a different key (via the selectedKey useEffect below).
   const [formValuesByType, setFormValuesByType] = useState({});
+  // Unsaved-change tracking. `seededRef` holds the last form state that came
+  // from a saved assignment (or a Save); anything else is a draft the user
+  // typed. Exposed on `window.__kf_editor_dirty` so App can keep the editor
+  // open on hide-to-tray, and used to stop the reset effect below from
+  // reseeding an in-progress edit when the assignment object's identity
+  // changes without the key changing (sync reload, unrelated re-render).
+  const seededRef = useRef({});
+  const formRef = useRef({});
+  formRef.current = formValuesByType;
+  const prevSelectedKeyRef = useRef(undefined);
+  const isFormDirty = () => JSON.stringify(formRef.current || {}) !== JSON.stringify(seededRef.current || {});
+  useEffect(() => {
+    window.__kf_editor_dirty = isFormDirty();
+  }, [formValuesByType]);
+  useEffect(() => () => { window.__kf_editor_dirty = false; }, []);
   const formValue = formValuesByType[activeType] || {};
   // When set to a press mode, the next selectedKey/assignment effect run will
   // preserve activeType + pressMode (skip auto-switch). Used by handleClearAction
@@ -4402,6 +4417,15 @@ export default function MacroPanel({
     setDuplicating(false);
     setPendingMouseSave(null);
     setConfirmingAction(null);
+    // Same key, unsaved edits, not a Clear: the assignment object changed
+    // identity without the user changing target (App re-rendered, or a
+    // shared-config reload landed). Keep the draft instead of reseeding.
+    const sameKey = prevSelectedKeyRef.current === selectedKey;
+    prevSelectedKeyRef.current = selectedKey;
+    if (sameKey && !justClearedRef.current && isFormDirty()) {
+      return;
+    }
+    const seedForm = (v) => { seededRef.current = v; setFormValuesByType(v); };
     // Seed formValuesByType from the saved assignment's `drafts` field if
     // present (persistent multi-type drafts), otherwise fall back to a
     // single-entry map of the active type's data (backward-compat for
@@ -4436,11 +4460,11 @@ export default function MacroPanel({
         : justClearedMode === 'hold' ? effectiveHold
         : effectiveAssignment;
       if (activeRecord) {
-        setFormValuesByType(seedDrafts(activeRecord));
+        seedForm(seedDrafts(activeRecord));
         setLabelByType(seedLabels(activeRecord));
         setVoicePhrases(readVoicePhrases(activeRecord.data));
       } else {
-        setFormValuesByType({});
+        seedForm({});
         setLabelByType({});
         setVoicePhrases([]);
       }
@@ -4451,14 +4475,14 @@ export default function MacroPanel({
       const t = displayTypeOf(effectiveDouble);
       setPressMode('double');
       setActiveType(t);
-      setFormValuesByType(seedDrafts(effectiveDouble));
+      seedForm(seedDrafts(effectiveDouble));
       setLabelByType(seedLabels(effectiveDouble));
       setVoicePhrases(readVoicePhrases(effectiveDouble.data));
     } else if (!effectiveAssignment && effectiveHold) {
       const t = displayTypeOf(effectiveHold);
       setPressMode('hold');
       setActiveType(t);
-      setFormValuesByType(seedDrafts(effectiveHold));
+      seedForm(seedDrafts(effectiveHold));
       setLabelByType(seedLabels(effectiveHold));
       setVoicePhrases(readVoicePhrases(effectiveHold.data));
     } else {
@@ -4466,12 +4490,12 @@ export default function MacroPanel({
       if (effectiveAssignment) {
         const t = displayTypeOf(effectiveAssignment);
         setActiveType(t);
-        setFormValuesByType(seedDrafts(effectiveAssignment));
+        seedForm(seedDrafts(effectiveAssignment));
         setLabelByType(seedLabels(effectiveAssignment));
         setVoicePhrases(readVoicePhrases(effectiveAssignment.data));
       } else {
         setActiveType('macro');
-        setFormValuesByType({});
+        seedForm({});
         setLabelByType({});
         setVoicePhrases([]);
       }
@@ -4666,6 +4690,9 @@ export default function MacroPanel({
 
   const handleSave = () => {
     if (!selectedKey) return;
+    // What we are about to persist becomes the clean baseline.
+    seededRef.current = formValuesByType;
+    window.__kf_editor_dirty = false;
 
     const data = { ...formValue };
     // Empty list removes both new and legacy voice phrase fields.
@@ -4956,7 +4983,14 @@ export default function MacroPanel({
               ⊕ Bind to Key
             </button>
           ) : null}
-          <button className="panel-close" onClick={onClose} title="Deselect key">✕</button>
+          <button
+            className="panel-close"
+            onClick={() => {
+              if (isFormDirty() && !window.confirm('Discard unsaved changes to this action?')) return;
+              onClose();
+            }}
+            title="Deselect key"
+          >✕</button>
         </div>
       </div>
 

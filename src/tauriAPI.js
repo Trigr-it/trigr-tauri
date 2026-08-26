@@ -261,11 +261,15 @@ window.electronAPI = {
   // ── Key capture ─────────────────────────────────────────────────────────────
   startKeyCapture: ()         => { window.__trigr_capturing = true; return invoke('start_key_capture'); },
   stopKeyCapture:  ()         => { window.__trigr_capturing = false; return invoke('stop_key_capture'); },
+  // Returns a Promise<unlisten>. Callers MUST clean up with it: several
+  // capture inputs can be mounted at once (one per Press Key step), and the
+  // shared `listeners['key-captured']` slot only ever held the last one, so
+  // unmounting one input killed a sibling's listener and leaked the rest.
   onKeyCaptured:   (callback) => {
-    listen('key-captured', (event) => {
+    return listen('key-captured', (event) => {
       window.__trigr_capturing = false; // Clear flag so JS interceptor stops eating keys
       callback(event.payload);
-    }).then(u => { listeners['key-captured'] = u; });
+    }).then(u => { listeners['key-captured'] = u; return u; });
   },
 
   // ── Macro recorder (Phase 1 — literal replay) ──────────────────────────────

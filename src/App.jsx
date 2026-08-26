@@ -305,6 +305,30 @@ function App() {
   // ── Per-profile radial menu items ──────────────────────────
   const radialMenuItems = radialItemsMap[activeProfile] || [];
 
+  // Assignment objects handed to the radial segment / folder-child editors.
+  // MacroPanel's reset effect keys on the object's identity, and these used
+  // to be rebuilt inline (`{ ...base, label }`) on every App render — so a
+  // toast dismissing or any hotkey firing wiped an in-progress wedge edit.
+  const radialSegmentAssignment = useMemo(() => {
+    if (selectedRadialSegment == null) return null;
+    const item = selectedRadialSegment < radialMenuItems.length ? radialMenuItems[selectedRadialSegment] : null;
+    if (!item?.storageKey) return null;
+    const base = assignments[item.storageKey];
+    if (!base) return null;
+    // Wheel label is a per-segment display override. Merge it in so reopening
+    // the panel shows what's on the wheel, not the library action's name.
+    return item.label ? { ...base, label: item.label } : base;
+  }, [selectedRadialSegment, radialMenuItems, assignments]);
+  const radialChildAssignment = useMemo(() => {
+    if (!selectedRadialChild) return null;
+    const folder = radialMenuItems.find(i => i && i.id === selectedRadialChild.folderId);
+    const child = folder?.children?.[selectedRadialChild.childIndex];
+    if (!child?.storageKey) return null;
+    const base = assignments[child.storageKey];
+    if (!base) return null;
+    return child.label ? { ...base, label: child.label } : base;
+  }, [selectedRadialChild, radialMenuItems, assignments]);
+
   // Ref tracks activeProfile so the wrapper below has a stable identity.
   // Without this, every handler that captures setRadialMenuItems would need
   // it in its dependency array, and a stale closure on profile switch causes
@@ -999,6 +1023,10 @@ function App() {
       window.electronAPI.onProfileSwitched(({ profile }) => {
         setActiveProfile(profile);
         setSelectedKey(null);
+        // The wheel is per-profile; a stale segment index would point into
+        // the new profile's layout.
+        setSelectedRadialSegment(null);
+        setSelectedRadialChild(null);
       });
       // Distilled Record Macro fired but its bound target app isn't running.
       // Show the modal telling the user to launch it manually — no auto-launch
@@ -1012,6 +1040,10 @@ function App() {
       // foreground watcher resumes auto-switching. Minimise / navigate-away never
       // fire this, so the test-in-another-app flow keeps its lock.
       window.electronAPI.onResetEditingOnHide?.(() => {
+        // Closing to the tray mid-edit used to wipe an unsaved action draft
+        // with no prompt. Keep the editor as-is when MacroPanel reports
+        // unsaved changes; the reset still runs for a clean editor.
+        if (window.__kf_editor_dirty) return;
         setSelectedKey(null);
         setActiveModifiers([]);
         setSidebarComboFilter(null);
@@ -1404,9 +1436,14 @@ function App() {
   // the same whether the main window is visible (side-monitor parking) or
   // hidden — auto-switch runs normally.
   useEffect(() => {
-    const active = !!selectedKey || !!selectedLibraryId || !!draftAssignment || expansionEditing || quickActionEditing;
+    // Radial segment / folder-child editors live outside `selectedKey` (the
+    // panel gets a literal), so they never armed the lock: alt-tabbing to a
+    // linked app mid-edit switched the profile under the open editor and Save
+    // wrote into the other profile's wheel.
+    const active = !!selectedKey || !!selectedLibraryId || !!draftAssignment || expansionEditing || quickActionEditing
+      || selectedRadialSegment != null || selectedRadialChild != null;
     window.electronAPI?.setEditingActive(active);
-  }, [selectedKey, selectedLibraryId, draftAssignment, expansionEditing, quickActionEditing]);
+  }, [selectedKey, selectedLibraryId, draftAssignment, expansionEditing, quickActionEditing, selectedRadialSegment, selectedRadialChild]);
 
   const saveConfig = useCallback((newAssignments, newProfiles, newProfile) => {
     window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newProfile, activeGlobalProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true, globalVariables, searchTemplates, searchTemplateCategories, quickActionCategories, clipboardCaptureEnabled, clipboardExcludedApps });
@@ -2371,9 +2408,29 @@ function App() {
     if (originalTrigger && originalTrigger !== trigger) {
       delete newAssignments[`GLOBAL::EXPANSION::${originalTrigger}`];
     }
-    const cleanAliases = Array.isArray(aliases)
+    let cleanAliases = Array.isArray(aliases)
       ? Array.from(new Set(aliases.map(a => (a || '').trim().toLowerCase()).filter(a => a && a !== trigger)))
       : [];
+    // Belt-and-braces behind the editor's clash checks: never overwrite a key
+    // that belongs to a DIFFERENT expansion. After the sweep above, anything
+    // still at these keys is another expansion's primary or alias shadow.
+    const ownedByOther = (k) => {
+      const e = newAssignments[k];
+      if (!e) return null;
+      const d = e.data || {};
+      if (d.isAlias) return d.primaryTrigger === trigger ? null : (d.primaryTrigger || 'another expansion');
+      return k === `GLOBAL::EXPANSION::${trigger}` && !originalTrigger ? (d.displayName || trigger) : null;
+    };
+    const primaryOwner = ownedByOther(`GLOBAL::EXPANSION::${trigger}`);
+    if (primaryOwner) {
+      showNotification(`"${trigger}" is already used by "${primaryOwner}". Choose a different trigger.`, 'error');
+      return;
+    }
+    cleanAliases = cleanAliases.filter(a => {
+      const owner = ownedByOther(`GLOBAL::EXPANSION::${a}`);
+      if (owner) showNotification(`Alias "${a}" is already used by "${owner}" and was not added.`, 'info');
+      return !owner;
+    });
     const data = { category: category || null, triggerMode: triggerMode || 'space', displayName: displayName || null };
     if (expansionType === 'image') {
       data.expansionType = 'image';
@@ -4299,10 +4356,32 @@ function App() {
   }, [assignments, fetchAndSetAppIcon]);
 
   const handleRemoveRadialMenuItem = useCallback((id) => {
+    // Radial-only actions (GLOBAL::RADIAL:: keys) exist solely for their
+    // wedge. Removing the wedge used to leave them as invisible, unreachable
+    // assignments forever; delete them (and a folder's children's) along with
+    // the slot. Library-linked / key-linked segments are references and are
+    // left alone. handleRadialClear does the same and stays idempotent.
+    const radialOnlyKeys = [];
+    const collect = (item) => {
+      if (!item) return;
+      if (item.storageKey?.startsWith('GLOBAL::RADIAL::')) radialOnlyKeys.push(item.storageKey);
+      if (item.type === 'folder' && Array.isArray(item.children)) item.children.forEach(collect);
+    };
     setRadialMenuItems(prev => {
+      prev.forEach(item => { if (item && item.id === id) collect(item); });
       return prev.map(item => (item && item.id === id) ? null : item);
     });
-  }, []);
+    if (radialOnlyKeys.length) {
+      setAssignments(prev => {
+        if (!radialOnlyKeys.some(k => prev[k])) return prev;
+        const next = { ...prev };
+        radialOnlyKeys.forEach(k => { delete next[k]; });
+        window.electronAPI?.saveConfig({ assignments: next });
+        window.electronAPI?.updateAssignments(next, activeProfile);
+        return next;
+      });
+    }
+  }, [activeProfile]);
 
   const handleReorderRadialMenuItems = useCallback((items) => {
     setRadialMenuItems(items);
@@ -6091,17 +6170,7 @@ function App() {
             selectedKey={'Folder Child'}
             activeModifiers={[]}
             currentCombo=""
-            assignment={(() => {
-              const folder = radialMenuItems.find(i => i && i.id === selectedRadialChild.folderId);
-              const child = folder?.children?.[selectedRadialChild.childIndex];
-              if (!child?.storageKey) return null;
-              const base = assignments[child.storageKey];
-              if (!base) return null;
-              // Wheel label is a per-child display override. Merge it in so
-              // reopening the panel shows what's on the wheel, not the
-              // library action's canonical name.
-              return child.label ? { ...base, label: child.label } : base;
-            })()}
+            assignment={radialChildAssignment}
             doubleAssignment={null}
             assignments={assignments}
             activeProfile={activeProfile}
@@ -6122,16 +6191,7 @@ function App() {
             selectedKey={'Radial Segment'}
             activeModifiers={[]}
             currentCombo=""
-            assignment={(() => {
-              const item = selectedRadialSegment < radialMenuItems.length ? radialMenuItems[selectedRadialSegment] : null;
-              if (!item?.storageKey) return null;
-              const base = assignments[item.storageKey];
-              if (!base) return null;
-              // Wheel label is a per-segment display override. Merge it in so
-              // reopening the panel shows what's on the wheel, not the
-              // library action's canonical name.
-              return item.label ? { ...base, label: item.label } : base;
-            })()}
+            assignment={radialSegmentAssignment}
             doubleAssignment={null}
             assignments={assignments}
             activeProfile={activeProfile}

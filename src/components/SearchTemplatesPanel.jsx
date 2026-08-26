@@ -2051,7 +2051,11 @@ export default function SearchTemplatesPanel({
                     </div>
                     <button
                       className="stp-tile-del"
-                      onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        // Hover-button mis-click used to delete with no confirm.
+                        if (window.confirm(`Delete the search template "${t.label}"?`)) handleDelete(t.id);
+                      }}
                       title="Delete"
                       type="button"
                     >✕</button>
@@ -2212,7 +2216,12 @@ export default function SearchTemplatesPanel({
                     >↑</button>
                     <button
                       className="stp-tile-del"
-                      onClick={e => { e.stopPropagation(); handleQaDelete(a.id); }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        // A quick action can hold a multi-step macro; the editor
+                        // footer confirms, the tile button didn't.
+                        if (window.confirm(`Delete the quick action "${a.label || 'Untitled'}"?`)) handleQaDelete(a.id);
+                      }}
                       title="Delete"
                       type="button"
                     >✕</button>

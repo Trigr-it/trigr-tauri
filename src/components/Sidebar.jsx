@@ -496,7 +496,16 @@ function ProfileAccordion({
             {!isDefault && (
               <>
                 <div className="profile-ctx-divider" />
-                <button className="profile-ctx-item profile-ctx-delete" onClick={() => { onDeleteProfile?.(contextMenu.profile); setContextMenu(null); }}>Delete</button>
+                <button className="profile-ctx-item profile-ctx-delete" onClick={() => {
+                  const name = contextMenu.profile;
+                  setContextMenu(null);
+                  // Every other destructive path confirms; this one deleted a
+                  // whole profile (assignments, wheel, app link) on a mis-click.
+                  const count = Object.keys(assignments || {}).filter(k => k.startsWith(`${name}::`)).length;
+                  const what = count === 1 ? '1 assignment' : `${count} assignments`;
+                  if (!window.confirm(`Delete the profile "${name}" and its ${what}? This can't be undone.`)) return;
+                  onDeleteProfile?.(name);
+                }}>Delete</button>
               </>
             )}
           </div>

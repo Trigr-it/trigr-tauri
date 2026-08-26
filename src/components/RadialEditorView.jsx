@@ -797,8 +797,13 @@ export default function RadialEditorView({
               )}
               <div className="assign-ctx-divider" />
               <button className="assign-ctx-item assign-ctx-danger" type="button" onClick={() => {
-                onRemoveRadialMenuItem?.(ctxMenu.item.id);
+                const item = ctxMenu.item;
                 setCtxMenu(null);
+                // Folder removal already confirms via its popover; plain
+                // segments removed here instantly with no undo.
+                const what = item?.label ? `"${item.label}"` : 'this segment';
+                if (!window.confirm(`Remove ${what} from the wheel?`)) return;
+                onRemoveRadialMenuItem?.(item.id);
               }}>Remove</button>
             </>
           )}

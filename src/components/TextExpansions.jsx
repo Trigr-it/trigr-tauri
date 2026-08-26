@@ -450,8 +450,8 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
       setKeyPickerCaptured(combo);
       setKeyPickerCapturing(false);
     };
-    window.electronAPI.onKeyCaptured(handler);
-    return () => window.electronAPI.removeAllListeners?.('key-captured');
+    const off = window.electronAPI.onKeyCaptured(handler);
+    return () => { Promise.resolve(off).then(u => { if (typeof u === 'function') u(); }).catch(() => {}); };
   }, []);
 
   // Close Insert dropdown on outside click or any scroll
@@ -3332,7 +3332,19 @@ export default function TextExpansions({
     // Fold a still-uncommitted alias input into the list so a user typing an
     // alias and hitting Save (without pressing Enter/comma first) doesn't lose it.
     const trailingAlias = aliasInput.trim().toLowerCase().replace(/\s/g, '');
-    const combinedAliases = trailingAlias && !aliases.includes(trailingAlias) && trailingAlias !== t
+    // Run the same clash check the Enter/comma path runs — an uncommitted alias
+    // used to be folded in unchecked and could silently take over another
+    // expansion's trigger or alias.
+    const trailingClashes = trailingAlias && expansions.some(exp => {
+      const primary = exp.trigger.toLowerCase();
+      if (primary === (editing?.isNew ? null : editing?.originalTrigger?.toLowerCase())) return false;
+      if (primary === trailingAlias) return true;
+      return (Array.isArray(exp.aliases) ? exp.aliases : []).some(a => (a || '').toLowerCase() === trailingAlias);
+    });
+    if (trailingClashes) {
+      setAliasError(`"${trailingAlias}" is already used by another expansion, so it wasn't added as an alias.`);
+    }
+    const combinedAliases = trailingAlias && !trailingClashes && !aliases.includes(trailingAlias) && trailingAlias !== t
       ? [...aliases, trailingAlias]
       : aliases;
     // randomVariant only meaningful when the expansion has variants; strip the
@@ -4965,7 +4977,7 @@ export default function TextExpansions({
                         placeholder="e.g. Email sign-off, CAD polyline command…"
                         value={displayName}
                         onChange={e => setDisplayName(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Escape') handleCancel(); }}
+                        onKeyDown={e => { if (e.key === 'Escape') e.currentTarget.blur(); }}
                         autoFocus
                         spellCheck={false}
                       />
@@ -4984,7 +4996,7 @@ export default function TextExpansions({
                                 next[i] = e.target.value;
                                 setVoicePhrases(next);
                               }}
-                              onKeyDown={e => { if (e.key === 'Escape') handleCancel(); }}
+                              onKeyDown={e => { if (e.key === 'Escape') e.currentTarget.blur(); }}
                               spellCheck={false}
                             />
                             <button
@@ -5014,12 +5026,21 @@ export default function TextExpansions({
                           setTrigger(val);
                           const normalized = val.trim().toLowerCase();
                           if (normalized) {
-                            const clash = expansions.find(exp =>
-                              exp.trigger.toLowerCase() === normalized &&
-                              (editing?.isNew || exp.trigger.toLowerCase() !== editing?.originalTrigger?.toLowerCase())
-                            );
+                            // Also refuse another expansion's ALIAS: saving a
+                            // trigger equal to A's alias replaced A's alias shadow
+                            // key, and A's next save then deleted this expansion.
+                            const selfOriginal = editing?.isNew ? null : editing?.originalTrigger?.toLowerCase();
+                            const clash = expansions.find(exp => {
+                              const primary = exp.trigger.toLowerCase();
+                              if (primary === selfOriginal) return false;
+                              if (primary === normalized) return true;
+                              return (Array.isArray(exp.aliases) ? exp.aliases : []).some(a => (a || '').toLowerCase() === normalized);
+                            });
                             if (clash) {
-                              setTriggerError(`This trigger is already in use by "${clash.displayName || clash.trigger}". Delete or rename that expansion first.`);
+                              const asAlias = clash.trigger.toLowerCase() !== normalized;
+                              setTriggerError(asAlias
+                                ? `"${normalized}" is already an alias of "${clash.displayName || clash.trigger}". Remove that alias first.`
+                                : `This trigger is already in use by "${clash.displayName || clash.trigger}". Delete or rename that expansion first.`);
                             } else {
                               setTriggerError('');
                             }
@@ -5027,7 +5048,7 @@ export default function TextExpansions({
                             setTriggerError('');
                           }
                         }}
-                        onKeyDown={e => { if (e.key === 'Escape') handleCancel(); }}
+                        onKeyDown={e => { if (e.key === 'Escape') e.currentTarget.blur(); }}
                         spellCheck={false}
                       />
                       {triggerError && <span className="te-trigger-error">{triggerError}</span>}
