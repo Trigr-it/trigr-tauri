@@ -5,23 +5,166 @@
 }
 
 :root {
-  --bg-base: #0d0d11;
-  --bg-surface: #13131a;
-  --bg-elevated: #1a1a24;
-  --bg-hover: #20202d;
-  --bg-active: #252535;
+  /* ═══════════════════════════════════════════════════════════════════════
+     TIER 1 — PRIMITIVES
+     Raw values only. Components reference the SEMANTIC tier below; a primitive
+     is used directly only where no semantic token fits yet (each such site is
+     listed in docs/private/keyfire-design-tokens.md).
 
-  --accent: #e8a020;
-  --accent-dim: #b87c14;
-  --accent-rgb: 232, 160, 32;
-  --accent-glow: rgba(232, 160, 32, 0.15);
-  --accent-glow-strong: rgba(232, 160, 32, 0.3);
+     Standalone windows (SearchOverlay, ClipboardOverlay, FillInWindow,
+     RadialMenu, RecorderCountdown, SnipOverlay, AnalyticsReport) do NOT load
+     this file — window transparency breaks if they do. Any token one of them
+     uses must be mirrored into that file's local :root / [data-theme="light"]
+     block. Renaming or re-valuing a token here is not finished until the
+     mirrors are updated.
+     ═══════════════════════════════════════════════════════════════════════ */
 
-  --text-primary: #f0ede8;
-  --text-secondary: #a8a6c2;
+  /* Gold ramp (brand). Numbered by luminance: 100 lightest → 950 darkest. */
+  --gold-100: #f5e0b0;
+  --gold-200: #f0d090;
+  --gold-300: #ffbb44;   /* gradient-button highlight stop */
+  --gold-400: #f0b030;   /* accent hover */
+  --gold-500: #e8a020;   /* the brand gold */
+  --gold-600: #c8860a;   /* gold as text/icon on light surfaces */
+  --gold-700: #b87c14;   /* accent dim */
+  --gold-800: #b07408;   /* gold text hover on light surfaces */
+  --gold-900: #4a3814;
+  --gold-950: #3d2e10;
+  --gold-500-rgb: 232, 160, 32;
+
+  /* Ink ramp — dark-theme surfaces */
+  --ink-900: #0d0d11;
+  --ink-800: #13131a;
+  --ink-700: #1a1a24;
+  --ink-600: #20202d;
+  --ink-500: #252535;
+
+  /* Paper ramp — light-theme surfaces (100-400) and borders (500-700) */
+  --paper-100: #f5f5fa;
+  --paper-200: #f0f0f5;
+  --paper-300: #ebebf0;
+  --paper-400: #e0e0ea;
+  --paper-500: #dcdce8;
+  --paper-600: #d0d0e0;
+  --paper-700: #c8c8dc;
+
+  /* Slate ramp — dark-theme text (100-400) and borders (600-800) */
+  --slate-100: #f0ede8;
+  --slate-200: #b0baca;
+  --slate-300: #a8a6c2;
+  --slate-400: #9794b3;
+  --slate-600: #525272;
+  --slate-700: #44445e;
+  --slate-800: #353550;
+
+  /* Navy ramp — light-theme text */
+  --navy-900: #1a1a2e;
+  --navy-700: #4a4a6a;
+  --navy-500: #6b6b88;
+
+  --white: #ffffff;
+  --black: #000000;
+
+  /* Red ramp */
+  --red-200: #ff8a8a;
+  --red-300: #ff5555;
+  --red-400: #e86060;
+  --red-500: #ef4444;
+  --red-600: #e54040;
+  --red-700: #c73e3e;
+  --red-800: #b93838;
+  --red-400-rgb: 232, 96, 96;
+  --red-600-rgb: 229, 64, 64;
+  --red-700-rgb: 199, 62, 62;
+
+  /* Amber ramp — warnings, update banner */
+  --amber-100: #fef3c7;
+  --amber-200: #fde68a;
+  --amber-300: #fcd34d;
+  --amber-400: #fbbf24;
+  --amber-500: #f59e0b;
+  --amber-700: #b45309;
+  --amber-800: #92400e;
+  --amber-900: #8a6202;
+
+  /* Orange ramp — bare-key indicator, macro type, urgent banners */
+  --orange-300: #ff9040;
+  --orange-400: #ff783c;
+  --orange-500: #e06420;
+  --orange-600: #c85818;
+  --orange-700: #a04010;
+
+  /* Single-step hues — action-type palette + info blue */
+  --green-400: #50c878;
+  --green-700: #147a3a;
+  --blue-400: #64b4ff;
+  --blue-600: #2569b8;
+  --violet-400: #c864ff;
+  --teal-400: #40c8a0;
+  --yellow-400: #ffc832;
+
+  /* Type scale */
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-lg: 13px;
+  --text-xl: 14px;
+  --text-2xl: 16px;
+  --text-display-sm: 18px;
+  --text-display-lg: 32px;
+
+  /* Radius scale. NOTE (2026-08-26 token sweep): md/lg/xl were re-valued
+     8/12/16 → 6/8/12 and every consumer was renamed in the same commit, so
+     no rendered radius changed. */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* Spacing scale — gap / padding / margin only. The 32px control height and
+     6px gutter grid are intentional; --space-2 exists so 6px is never
+     "rounded" to 8px. */
+  --space-0: 2px;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-8: 24px;
+
+  /* Letter-spacing */
+  --tracking-tight: 0.02em;
+  --tracking-normal: 0.04em;
+  --tracking-wide: 0.08em;
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TIER 2 — SEMANTIC
+     What components reference. Theme-aware: the light block below repoints
+     these at different primitives.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  --bg-base: var(--ink-900);
+  --bg-surface: var(--ink-800);
+  --bg-elevated: var(--ink-700);
+  --bg-hover: var(--ink-600);
+  --bg-active: var(--ink-500);
+
+  --accent: var(--gold-500);
+  --accent-hover: var(--gold-400);
+  --accent-dim: var(--gold-700);
+  --accent-rgb: var(--gold-500-rgb);
+  --accent-glow: rgba(var(--accent-rgb), 0.15);
+  --accent-glow-strong: rgba(var(--accent-rgb), 0.3);
+
+  --text-primary: var(--slate-100);
+  --text-secondary: var(--slate-300);
   /* Lifted from #72708c — original failed WCAG AA on darker surfaces (~3.6:1).
      #9794b3 hits ~5.0:1 on --bg-base and stays AA on --bg-hover / --bg-active. */
-  --text-muted: #9794b3;
+  --text-muted: var(--slate-400);
 
   /* Middle ground between original near-invisible borders (1.6:1) and strict
      WCAG 3:1. Trades a small amount of accessibility headroom for the quieter
@@ -29,28 +172,24 @@
      Verified vs --bg-base (L=0.00415):
      - #44445e → ~2.07:1 (general dividers)
      - #525272 → ~2.60:1 (emphasized borders) */
-  --border: #44445e;
-  --border-bright: #525272;
-  --border-accent: rgba(232, 160, 32, 0.4);
+  --border: var(--slate-700);
+  --border-bright: var(--slate-600);
+  --border-accent: rgba(var(--accent-rgb), 0.4);
 
   /* Lifted from #e05050 — original sat at 3.9-4.5:1 on elevated/hover/active
      surfaces. #e86060 holds ≥4.5:1 on every dark surface. */
-  --danger: #e86060;
-  --danger-hover: #ff5555;
-  --accent-hover: #f0b030;
+  --danger: var(--red-400);
+  --danger-hover: var(--red-300);
+  --danger-rgb: var(--red-400-rgb);
 
+  /* Keycap surfaces — bespoke tints, not on a ramp (candidates for the brand pass). */
   --key-bg: #1e1e2c;
   --key-bg-hover: #252538;
   --key-bg-assigned: #201f0c;
   --key-bg-selected: #1f1a08;
-  --key-border: #353550;
-  --key-border-assigned: rgba(232, 160, 32, 0.65);
+  --key-border: var(--slate-800);
+  --key-border-assigned: rgba(var(--accent-rgb), 0.65);
   --key-border-selected: var(--accent);
-
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
 
   --font-display: 'Rajdhani', sans-serif;
   --font-body: 'DM Sans', sans-serif;
@@ -74,10 +213,10 @@
 
   /* ── Button hierarchy ── */
   --btn-primary-bg: var(--accent);
-  --btn-primary-text: #0d0d11;
+  --btn-primary-text: var(--ink-900);
   /* White regardless of theme — for icons/marks that must pop on a gold fill
      even where the surrounding label uses --btn-primary-text ink. */
-  --on-accent: #ffffff;
+  --on-accent: var(--white);
   --btn-primary-hover: var(--accent-hover);
   --btn-secondary-bg: transparent;
   --btn-secondary-border: var(--border-bright);
@@ -86,64 +225,88 @@
   --btn-danger-bg: rgba(224, 80, 80, 0.1);
   --btn-danger-border: rgba(224, 80, 80, 0.35);
   --btn-danger-text: var(--danger);
-  --btn-radius: var(--radius-md);
+  --btn-radius: var(--radius-lg);
 
   /* ── Modal tokens ────────────────────────────────────────────────────── */
   --backdrop-modal: rgba(0, 0, 0, 0.55);
   --shadow-modal: 0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(232,160,32,0.10);
 
   /* ── Status colours (semantic, theme-aware) ───────────────────────────── */
-  --status-success: #50c878;
+  --status-success: var(--green-400);
   --status-success-glow: rgba(80, 200, 120, 0.15);
-  --status-warning: #f59e0b;
+  --status-warning: var(--amber-500);
   --status-warning-glow: rgba(245, 158, 11, 0.15);
+  --status-error: var(--red-500);
+  /* Macro recorder "REC" red — same in both themes (sits on its own dark pill). */
+  --status-recording: var(--red-600);
+  --status-recording-rgb: var(--red-600-rgb);
+  --status-recording-soft: var(--red-200);
+
+  /* ── Action-type palette (badges, dots, glyphs, radial wedge accents) ─────
+     Same in both themes. Owners confirmed against the JSX colour maps
+     (Sidebar / SearchOverlay / RadialWheel / SearchTemplatesPanel). */
+  --type-text: var(--blue-400);
+  --type-hotkey: var(--violet-400);
+  --type-app: var(--green-400);
+  --type-url: var(--yellow-400);
+  --type-folder: var(--teal-400);
+  --type-macro: var(--orange-400);
+  --type-expansion: var(--yellow-400);
+
+  /* ── Modifier-key palette (ModifierBar, sidebar tabs) ─────────────────── */
+  --mod-ctrl: var(--blue-400);
+  --mod-alt: var(--violet-400);
+  --mod-shift: var(--green-400);
+  --mod-win: var(--yellow-400);
+  --mod-bare: var(--orange-300);   /* "no modifier" / bare-key indicator */
 
   /* ── Accent-tinted surface (radial wedge hover, inset rows) ──────────── */
-  --accent-surface: #3d2e10;
-  --accent-surface-hover: #4a3814;
+  --accent-surface: var(--gold-950);
+  --accent-surface-hover: var(--gold-900);
 
   /* Radial wheel idle wedge + base donut fill. Dark theme uses an elevated
      surface so wedges read as raised against the desktop; light theme is pure
      white. Hover state stays gold in both themes (gradient in RadialWheel.jsx). */
-  --radial-wedge: #1a1a24;
+  --radial-wedge: var(--ink-700);
 }
 
 /* ── Light theme ──────────────────────────────────────────── */
 [data-theme="light"] {
-  --bg-base:     #f0f0f5;
-  --bg-surface:  #ffffff;
-  --bg-elevated: #f5f5fa;
-  --bg-hover:    #ebebf0;
-  --bg-active:   #e0e0ea;
+  --bg-base:     var(--paper-200);
+  --bg-surface:  var(--white);
+  --bg-elevated: var(--paper-100);
+  --bg-hover:    var(--paper-300);
+  --bg-active:   var(--paper-400);
 
-  --text-primary:   #1a1a2e;
-  --text-secondary: #4a4a6a;
+  --text-primary:   var(--navy-900);
+  --text-secondary: var(--navy-700);
   /* Lifted from #9090b0 — original failed WCAG AA everywhere in light theme
      (2.4-3.1:1). #6b6b88 hits 4.5:1 on --bg-base and 5.1:1 on --bg-surface.
      Mirror any change into the overlay palettes (they don't import this file). */
-  --text-muted:     #6b6b88;
+  --text-muted:     var(--navy-500);
 
   /* Gold inherits from :root (#e8a020) — light theme uses the same gold as
-     dark. --accent-rgb kept explicit so the shared rgba(var(--accent-rgb)…)
-     patterns resolve correctly. */
-  --accent-rgb: 232, 160, 32;
+     dark (brand over WCAG). --accent-rgb kept explicit so the shared
+     rgba(var(--accent-rgb)…) patterns resolve correctly. */
+  --accent-rgb: var(--gold-500-rgb);
 
   /* Darkened to hold ≥4.5:1 on light surfaces (originals: #e05050 3.9-4.4,
      old values matched the dark palette and were never re-audited). */
-  --danger: #c73e3e;
-  --danger-hover: #b93838;
+  --danger: var(--red-700);
+  --danger-hover: var(--red-800);
+  --danger-rgb: var(--red-700-rgb);
 
-  --border:        #dcdce8;
-  --border-bright: #c8c8dc;
-  --border-accent: rgba(232, 160, 32, 0.5);
+  --border:        var(--paper-500);
+  --border-bright: var(--paper-700);
+  --border-accent: rgba(var(--accent-rgb), 0.5);
 
-  --key-bg:              #ffffff;
+  --key-bg:              var(--white);
   --key-bg-hover:        #f0f0fa;
   --key-bg-assigned:     #fffbf0;
   --key-bg-selected:     #fff8e8;
-  --key-border:          #d0d0e0;
-  --key-border-assigned: rgba(232, 160, 32, 0.5);
-  --key-border-selected: #e8a020;
+  --key-border:          var(--paper-600);
+  --key-border-assigned: rgba(var(--accent-rgb), 0.5);
+  --key-border-selected: var(--accent);
 
   --shadow-key:       0 1px 4px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
   --shadow-key-hover: 0 2px 8px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
@@ -153,22 +316,22 @@
   --shadow-overlay-lg: 0 16px 48px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08);
   --backdrop-blur: blur(20px) saturate(130%);
   /* Light theme: white text on gold for buttons/banners. Dark theme keeps the
-     default dark #0d0d11 from :root (high-contrast dark text on gold). */
-  --btn-primary-text: #ffffff;
+     default dark ink from :root (high-contrast dark text on gold). */
+  --btn-primary-text: var(--white);
   --backdrop-modal: rgba(0, 0, 0, 0.35);
   --shadow-modal: 0 16px 48px rgba(0,0,0,0.20), 0 0 0 1px rgba(232, 160, 32, 0.10);
 
   /* Darkened for ≥4.5:1 as text on light surfaces (were #16a34a / #ca8a04,
      3.3:1 and 2.9:1 on white). */
-  --status-success: #147a3a;
+  --status-success: var(--green-700);
   --status-success-glow: rgba(22, 163, 74, 0.12);
-  --status-warning: #8a6202;
+  --status-warning: var(--amber-900);
   --status-warning-glow: rgba(202, 138, 4, 0.12);
 
-  --accent-surface: #f5e0b0;
-  --accent-surface-hover: #f0d090;
+  --accent-surface: var(--gold-100);
+  --accent-surface-hover: var(--gold-200);
 
-  --radial-wedge: #ffffff;
+  --radial-wedge: var(--white);
 }
 
 html, body, #root {
@@ -426,7 +589,7 @@ input:focus, textarea:focus, select:focus {
 .modal-panel {
   background: var(--bg-surface);
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-modal);
   animation: overlay-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

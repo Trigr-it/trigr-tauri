@@ -141,7 +141,7 @@
   min-width: 160px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-lg);
   padding: 4px;
   animation: area-nav-in 0.12s ease;
   backdrop-filter: var(--backdrop-blur);
@@ -513,7 +513,7 @@
   z-index: 1000;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-lg);
   padding: 4px;
   min-width: 160px;
   box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.4));

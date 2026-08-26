@@ -6,6 +6,7 @@
    hardcoded by design: this is a rendered document, not themed UI. Gold stays
    the brand #e8a020 even on white (brand over WCAG per light-theme gold rule). */
 
+/* stylelint-disable color-no-hex -- local mirror of global.css tokens; hex is legitimate inside this block only */
 :root {
   --rpt-bg: #ffffff;
   --rpt-card: #f8f7f3;
@@ -17,6 +18,7 @@
   --rpt-blue: #2569b8;
   --rpt-green: #147a3a;
 }
+/* stylelint-enable color-no-hex */
 
 * { box-sizing: border-box; }
 

@@ -3,6 +3,7 @@
 /* Dark values match global.css :root; light values match global.css          */
 /* [data-theme="light"]. Redefining here avoids a dependency on App rendering.*/
 
+/* stylelint-disable color-no-hex -- local mirror of global.css tokens; hex is legitimate inside this block only */
 :root {
   --bg-base:     #0d0d11;
   --bg-surface:  #13131a;
@@ -21,6 +22,7 @@
   --shadow-overlay: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(232,160,32,0.08);
   --backdrop-blur: blur(20px) saturate(150%);
   --transition-expand: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --radius-xl: 12px;
 }
 
 [data-theme="light"] {
@@ -38,6 +40,7 @@
   --shadow-overlay: 0 4px 12px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
   --backdrop-blur: blur(20px) saturate(130%);
 }
+/* stylelint-enable color-no-hex */
 
 /* ── Reset for transparent overlay window ─────────────────────────────────── */
 
@@ -90,7 +93,7 @@ html, body {
   margin: 12px auto 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   pointer-events: all;
   -webkit-app-region: no-drag;

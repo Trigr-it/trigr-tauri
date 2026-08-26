@@ -1,0 +1,12 @@
+{
+  "ignoreFiles": ["src/styles/global.css"],
+  "rules": {
+    "color-no-hex": true,
+    "color-named": "never",
+    "declaration-property-value-allowed-list": {
+      "border-radius": ["/^((var\\(--radius-[a-z]+\\)|50%|0)(\\s+|$))+$/"],
+      "font-size": ["/^var\\(--text-/", "inherit", "0"],
+      "letter-spacing": ["/^var\\(--tracking-/", "normal", "0"]
+    }
+  }
+}

@@ -4,7 +4,7 @@
   margin-top: 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   flex-shrink: 0;
   display: flex;
@@ -15,7 +15,7 @@
 .main-area--expansions .text-expansions {
   max-width: none;
   margin-top: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   flex: 1;
   min-height: 0;
 }
@@ -1918,7 +1918,7 @@ button.te-col-header:hover {
   z-index: 99999;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 4px;
   min-width: 220px;
   max-width: calc(100vw - 16px);
@@ -1940,7 +1940,7 @@ button.te-col-header:hover {
   margin: -4px -4px 4px -4px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface);
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   cursor: grab;
   user-select: none;
   color: var(--text-muted);
@@ -2277,7 +2277,7 @@ button.te-col-header:hover {
   padding: 6px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
   min-width: 240px;
   max-width: calc(100vw - 16px);
@@ -3652,7 +3652,7 @@ button.te-col-header:hover {
   z-index: 9000;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 8px;
   box-shadow: var(--shadow-overlay);
   backdrop-filter: var(--backdrop-blur);

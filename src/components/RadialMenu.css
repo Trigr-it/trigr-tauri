@@ -3,6 +3,7 @@
    because they don't import global.css (which sets html/body bg, breaking
    transparency). RadialWheel.css references these vars without defining them. */
 
+/* stylelint-disable color-no-hex -- local mirror of global.css tokens; hex is legitimate inside this block only */
 :root {
   --bg-base:       #0d0d11;
   --bg-surface:    #13131a;
@@ -45,6 +46,7 @@
   --accent-surface: #f5e0b0;
   --radial-wedge:   #ffffff;
 }
+/* stylelint-enable color-no-hex */
 
 /* ── Transparent window reset ─────────────────────────────────────────────── */
 

@@ -174,7 +174,7 @@
   height: 44px;
   background: linear-gradient(180deg, var(--accent-hover), var(--accent));
   border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: var(--btn-primary-text);
   font-family: var(--font-display);
   font-size: 14px;

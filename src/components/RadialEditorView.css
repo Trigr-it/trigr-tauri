@@ -660,7 +660,7 @@
   padding: 5px 10px;
   background: var(--btn-danger-bg);
   border: 1px solid var(--btn-danger-border);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-lg);
   color: var(--btn-danger-text);
   font-size: 11px;
 }

@@ -151,7 +151,7 @@
   padding: 0 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius-pill, 6px);
+  border-radius: var(--radius-md);
   height: 32px;
   transition: border-color 0.12s;
 }
@@ -347,6 +347,7 @@
 }
 
 .settings-encryption-icon {
+  /* stylelint-disable-next-line color-no-hex -- engine-running green, the one sanctioned literal (CLAUDE.md) */
   color: #22c55e; /* status green — allowed hex exception */
   flex-shrink: 0;
 }
@@ -457,7 +458,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-left: 3px solid var(--accent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   animation: overlay-enter 0.18s ease forwards;
 }
 
@@ -475,7 +476,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-left: 3px solid var(--accent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   animation: overlay-enter 0.18s ease forwards;
 }
 
@@ -501,7 +502,7 @@
   padding: 8px 10px;
   background: rgba(232, 160, 32, 0.07);
   border: 1px solid rgba(232, 160, 32, 0.22);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   font-size: 11px;
   color: #c8941a;
   line-height: 1.5;
@@ -530,7 +531,7 @@
   padding: 0 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: 12px;
@@ -751,7 +752,7 @@
 .settings-backup-list-wrap {
   margin-top: 12px;
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -873,7 +874,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-left: 3px solid var(--accent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   animation: overlay-enter 0.18s ease forwards;
 }
 
@@ -960,7 +961,7 @@
   flex-direction: column;
   gap: 1px;
   padding: 7px 10px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   cursor: pointer;
@@ -1183,7 +1184,7 @@
   padding: 5px 10px;
   background: rgba(224, 85, 85, 0.1);
   border: 1px solid rgba(224, 85, 85, 0.3);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: #e05555;
   font-size: 11px;
 }

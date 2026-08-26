@@ -52,7 +52,7 @@
   margin-bottom: 24px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-lg);
   padding: 16px;
 }
 
@@ -139,7 +139,7 @@
 .analytics-card-compound {
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -208,7 +208,7 @@
 .analytics-card-sm {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 12px;
   display: flex;
   flex-direction: column;

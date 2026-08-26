@@ -1,5 +1,6 @@
 /* ── CSS variable overrides for the overlay's standalone context ─────────── */
 
+/* stylelint-disable color-no-hex -- local mirror of global.css tokens; hex is legitimate inside this block only */
 :root {
   --bg-base:     #0d0d11;
   --bg-surface:  #13131a;
@@ -19,7 +20,7 @@
   --shadow-overlay-lg: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(232,160,32,0.08);
   --backdrop-blur: blur(20px) saturate(150%);
   --transition-expand: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  --radius-lg: 12px;
+  --radius-xl: 12px;
   --btn-primary-bg: var(--accent);
   --btn-primary-text: #0d0d11;
 }
@@ -41,6 +42,7 @@
   --backdrop-blur: blur(20px) saturate(130%);
   --btn-primary-text: #1a1a2e;
 }
+/* stylelint-enable color-no-hex */
 
 /* ── Reset ───────────────────────────────────────────────────────────────── */
 
@@ -88,7 +90,7 @@ html, body {
   flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   font-family: var(--font-body, 'DM Sans', sans-serif);
   box-shadow: var(--shadow-overlay-lg);
