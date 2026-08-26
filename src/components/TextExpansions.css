@@ -42,8 +42,7 @@
 
 /* ── Mode tabs (Text Expansions | Autocorrect inline toggle) ─── */
 /* Keycap segmented control: same geometry and plain-key chip as the top-bar
-   .area-tabs and .view-switcher. Active chip is the canvas ASSIGNED key (warm fill,
-   softer 65% gold ring); the top bar's SELECTED key carries the full gold. */
+   .area-tabs and .view-switcher. No gold here; gold marks the section only. */
 .te-mode-tabs {
   display: flex;
   gap: var(--space-0);
@@ -75,10 +74,10 @@
 }
 
 .te-mode-tab.active {
-  background: var(--key-bg-assigned);
+  background: var(--key-bg);
   color: var(--text-primary);
-  border-color: var(--key-border-assigned);
-  box-shadow: var(--shadow-key), 0 0 12px rgba(var(--accent-rgb), 0.08);
+  border-color: var(--key-border);
+  box-shadow: var(--shadow-key);
 }
 
 .te-mode-tab.active .te-mode-tab-icon {
