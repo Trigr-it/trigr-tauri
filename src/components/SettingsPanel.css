@@ -117,7 +117,7 @@
 .settings-nav-item.active {
   color: var(--accent);
   border-left-color: var(--accent);
-  background: var(--accent-glow, rgba(232, 160, 32, 0.06));
+  background: var(--accent-glow, rgba(var(--accent-rgb), 0.06));
 }
 
 .settings-nav-item.active svg {
@@ -464,7 +464,7 @@
 
 .settings-shared-error {
   font-size: 11px;
-  color: var(--text-danger, #e74c3c);
+  color: var(--danger);
   margin-top: 4px;
 }
 
@@ -500,18 +500,18 @@
   gap: 7px;
   margin-top: 10px;
   padding: 8px 10px;
-  background: rgba(232, 160, 32, 0.07);
-  border: 1px solid rgba(232, 160, 32, 0.22);
+  background: rgba(var(--accent-rgb), 0.07);
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
   border-radius: var(--radius-lg);
   font-size: 11px;
-  color: #c8941a;
+  color: var(--gold-600);
   line-height: 1.5;
 }
 
 [data-theme="light"] .settings-security-notice {
-  background: rgba(232, 160, 32, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   border-color: rgba(180, 120, 10, 0.3);
-  color: #8a6010;
+  color: var(--gold-800);
 }
 
 .settings-notice-icon {
@@ -649,7 +649,7 @@
 
 .settings-toggle.on::after {
   transform: translateX(16px);
-  background: #fff;
+  background: var(--white);
 }
 
 /* ── Backup & restore ───────────────────────────────────────────────────── */
@@ -1170,13 +1170,13 @@
 }
 
 .settings-danger-btn {
-  color: #e05555;
+  color: var(--danger);
   border-color: rgba(224, 85, 85, 0.35);
 }
 .settings-danger-btn:hover {
   background: rgba(224, 85, 85, 0.12);
-  border-color: #e05555;
-  color: #e05555;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .settings-conflict-warn {
@@ -1185,7 +1185,7 @@
   background: rgba(224, 85, 85, 0.1);
   border: 1px solid rgba(224, 85, 85, 0.3);
   border-radius: var(--radius-lg);
-  color: #e05555;
+  color: var(--danger);
   font-size: 11px;
 }
 

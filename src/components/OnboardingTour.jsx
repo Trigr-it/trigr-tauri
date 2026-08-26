@@ -641,7 +641,7 @@ export default function OnboardingTour({
           <p className="onboarding-tooltip-text">
             Click the{' '}
             <span className="onboarding-action-badge">
-              <Globe size={14} strokeWidth={2} style={{ color: '#ffc832' }} />
+              <Globe size={14} strokeWidth={2} style={{ color: 'var(--type-url)' }} />
               <strong>Open</strong>
             </span>
             {' '}action type, then choose <strong>URL</strong> from the row of options that appears underneath. Enter <strong>www.google.com</strong>, name it <strong>Open Google</strong>, then click <strong>Assign to Key</strong>.

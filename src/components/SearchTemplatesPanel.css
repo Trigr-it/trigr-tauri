@@ -171,7 +171,7 @@
 }
 
 .stp-add-btn:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -249,7 +249,7 @@
 .stp-cat-row-active {
   color: var(--cat-color, var(--accent));
   border-left-color: var(--cat-color, var(--accent));
-  background: var(--accent-glow, rgba(232, 160, 32, 0.06));
+  background: var(--accent-glow, rgba(var(--accent-rgb), 0.06));
 }
 
 .stp-cat-row-uncategorised {
@@ -326,7 +326,7 @@
 }
 
 .stp-cat-new-btn:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -371,15 +371,15 @@
 }
 
 [data-theme="light"] .stp-cat-pack-btn {
-  color: #c8860a;
-  background: rgba(232, 160, 32, 0.1);
-  border-color: rgba(232, 160, 32, 0.3);
+  color: var(--gold-600);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 [data-theme="light"] .stp-cat-pack-btn:hover {
-  color: #b07408;
-  background: rgba(232, 160, 32, 0.18);
-  border-color: #c8860a;
+  color: var(--gold-800);
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: var(--gold-600);
 }
 
 /* Inline create-category row inside the QA editor — replaces the <select>
@@ -411,7 +411,7 @@
 }
 
 .stp-cat-inline-confirm:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
 }
 
 .stp-cat-inline-confirm:disabled {
@@ -653,7 +653,7 @@
 }
 
 .stp-item.active {
-  background: rgba(232, 160, 32, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .stp-item-trigger {
@@ -1032,7 +1032,7 @@
 
 .stp-save-btn:hover:not(:disabled) {
   background: var(--accent-hover);
-  box-shadow: 0 2px 10px rgba(232, 160, 32, 0.3);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.3);
 }
 
 .stp-save-btn:disabled {
@@ -1305,7 +1305,7 @@
   top: 10px;
   left: 10px;
   background: var(--accent);
-  color: #1a1410;
+  color: var(--ink-900);
   font-size: 9px;
   font-family: var(--font-display);
   font-weight: 700;
@@ -1726,9 +1726,9 @@
   margin: 2px 8px 4px;
   padding: 4px 8px;
   font-size: 10px;
-  color: var(--danger-hover, #ff5050);
-  background: color-mix(in srgb, var(--danger-hover, #ff5050) 8%, transparent);
-  border-left: 2px solid var(--danger-hover, #ff5050);
+  color: var(--danger-hover);
+  background: color-mix(in srgb, var(--danger-hover) 8%, transparent);
+  border-left: 2px solid var(--danger-hover);
   border-radius: 3px;
 }
 
@@ -1843,7 +1843,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--danger-hover, #ff5050);
+  color: var(--danger-hover);
 }
 .stp-delete-body {
   font-size: 13px;
@@ -1886,7 +1886,7 @@
 }
 .stp-delete-btn-tree {
   border-color: rgba(255, 80, 80, 0.35);
-  color: var(--danger-hover, #ff5050);
+  color: var(--danger-hover);
 }
 .stp-delete-btn-tree:hover {
   background: rgba(255, 80, 80, 0.12);

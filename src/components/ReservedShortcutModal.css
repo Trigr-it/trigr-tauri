@@ -143,7 +143,7 @@
 
 .reserved-shortcut-continue-btn {
   background: var(--danger);
-  color: #ffffff;
+  color: var(--white);
 }
 
 .reserved-shortcut-continue-btn:hover {

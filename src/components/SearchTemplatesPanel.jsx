@@ -2166,7 +2166,7 @@ export default function SearchTemplatesPanel({
               }
               const a = entry.action;
               const typeIcons = { url: '⊕', app: '⬡', folder: '⬢', text: '✦', hotkey: '⌨', macro: '◈' };
-              const typeColors = { url: '#ffc832', app: '#50c878', folder: '#40c8a0', text: '#64b4ff', hotkey: '#c864ff', macro: '#ff783c' };
+              const typeColors = { url: 'var(--type-url)', app: 'var(--type-app)', folder: 'var(--type-folder)', text: 'var(--type-text)', hotkey: 'var(--type-hotkey)', macro: 'var(--type-macro)' };
               const preview = a.type === 'macro'
                 ? `Sequence (${a.data?.steps?.length || 0} step${(a.data?.steps?.length || 0) !== 1 ? 's' : ''})`
                 : (a.data?.url || a.data?.path || a.data?.folderPath || a.data?.urlName || a.data?.appName || '');
@@ -2201,7 +2201,7 @@ export default function SearchTemplatesPanel({
                     ) : (
                       <span
                         className="stp-tile-icon stp-tile-glyph"
-                        style={{ '--glyph-color': typeColors[a.type] || '#8a8799' }}
+                        style={{ '--glyph-color': typeColors[a.type] || 'var(--text-muted)' }}
                       >{typeIcons[a.type] || '◈'}</span>
                     )}
                     <div className="stp-tile-body">

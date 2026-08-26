@@ -66,7 +66,7 @@
   width: 56px;
   height: 56px;
   margin-bottom: 10px;
-  filter: drop-shadow(0 4px 12px rgba(232, 160, 32, 0.25));
+  filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.25));
 }
 
 .onboarding-logo svg {
@@ -191,7 +191,7 @@
 }
 
 .onboarding-btn-primary:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   box-shadow:
     0 6px 22px rgba(var(--accent-rgb), 0.48),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -226,15 +226,15 @@
 }
 
 [data-theme="light"] .onboarding-btn-secondary {
-  color: #c8860a;
-  background: rgba(232, 160, 32, 0.1);
-  border-color: rgba(232, 160, 32, 0.3);
+  color: var(--gold-600);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 [data-theme="light"] .onboarding-btn-secondary:hover {
-  color: #b07408;
-  background: rgba(232, 160, 32, 0.18);
-  border-color: #c8860a;
+  color: var(--gold-800);
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: var(--gold-600);
 }
 
 /* ── Skip link ──────────────────────────────────────────────────────────── */
@@ -496,7 +496,7 @@
   background: var(--accent-glow);
   border: 1.5px solid var(--accent);
   border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(232, 160, 32, 0.18);
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.18);
 }
 
 .onboarding-try-it-pill {

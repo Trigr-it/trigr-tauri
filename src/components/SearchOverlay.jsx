@@ -21,14 +21,14 @@ const HAYSTACK_CACHE = new WeakMap();
 // ── Type metadata ──────────────────────────────────────────────────────────────
 
 const TYPE_META = {
-  text:       { Icon: Type,        color: '#64b4ff' },
-  hotkey:     { Icon: Keyboard,    color: '#c864ff' },
-  app:        { Icon: AppWindow,   color: '#50c878' },
-  url:        { Icon: Globe,       color: '#ffc832' },
-  folder:     { Icon: FolderOpen,  color: '#40c8a0' },
-  macro:      { Icon: Layers,      color: '#ff783c' },
-  expansion:  { Icon: CornerDownLeft, color: '#ffc832' },
-  autocorrect:{ Icon: Edit2,       color: '#aaaaaa' },
+  text:       { Icon: Type,        color: 'var(--type-text)' },
+  hotkey:     { Icon: Keyboard,    color: 'var(--type-hotkey)' },
+  app:        { Icon: AppWindow,   color: 'var(--type-app)' },
+  url:        { Icon: Globe,       color: 'var(--type-url)' },
+  folder:     { Icon: FolderOpen,  color: 'var(--type-folder)' },
+  macro:      { Icon: Layers,      color: 'var(--type-macro)' },
+  expansion:  { Icon: CornerDownLeft, color: 'var(--type-expansion)' },
+  autocorrect:{ Icon: Edit2,       color: 'var(--text-muted)' },
 };
 
 const GROUP_ORDER = ['assignment', 'quickaction', 'expansion', 'autocorrect'];
@@ -940,8 +940,8 @@ export default function SearchOverlay() {
         const idx      = rowIdx;
         const isSelected = idx === selectedIndex;
         const meta     = item.type === 'assignment'
-          ? (TYPE_META[item.assignType] || { Icon: Layers, color: '#aaa' })
-          : (TYPE_META[item.type]       || { Icon: Layers, color: '#aaa' });
+          ? (TYPE_META[item.assignType] || { Icon: Layers, color: 'var(--text-muted)' })
+          : (TYPE_META[item.type]       || { Icon: Layers, color: 'var(--text-muted)' });
         const MetaIcon = meta.Icon;
 
         nodes.push(

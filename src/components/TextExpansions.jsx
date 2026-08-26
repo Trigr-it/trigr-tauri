@@ -1955,7 +1955,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                   onChange={e => setFormulaName(e.target.value)}
                   placeholder='e.g. total — gives this result a name so other formulas can reference it'
                   spellCheck={false}
-                  style={!nameValid ? { borderColor: '#ff6464' } : undefined}
+                  style={!nameValid ? { borderColor: 'var(--danger-hover)' } : undefined}
                   title={!nameValid ? 'Use letters, digits, and underscores; cannot start with a digit.' : ''}
                   onKeyDown={e => {
                     e.stopPropagation();
@@ -2187,7 +2187,7 @@ function RichTextEditor({ initialHtml, onChange, globalVariables = {}, isPro = f
                   onChange={e => setIfName(e.target.value)}
                   placeholder='e.g. greeting — names this conditional so other formulas can reference its chosen branch'
                   spellCheck={false}
-                  style={!ifNameValid ? { borderColor: '#ff6464' } : undefined}
+                  style={!ifNameValid ? { borderColor: 'var(--danger-hover)' } : undefined}
                   title={!ifNameValid ? 'Letters, digits, and underscores only; no leading digit.' : ''}
                   onKeyDown={e => {
                     e.stopPropagation();

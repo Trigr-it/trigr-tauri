@@ -338,7 +338,7 @@ html.using-keyboard .fillin-win-input:focus-visible {
 
 .fillin-variant-row:hover,
 .fillin-variant-row.selected {
-  background: rgba(232, 160, 32, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 .fillin-variant-row.selected .fillin-variant-label {
@@ -363,7 +363,7 @@ html.using-keyboard .fillin-win-input:focus-visible {
 .fillin-variant-row.selected .fillin-variant-num {
   color: var(--accent);
   border-color: var(--accent);
-  background: rgba(232, 160, 32, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .fillin-variant-text {

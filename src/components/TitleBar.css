@@ -274,8 +274,8 @@
   height: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: #e84545;
-  color: #fff;
+  background: var(--status-error);
+  color: var(--white);
   font-family: var(--font-display);
   font-size: 9px;
   font-weight: 700;
@@ -363,7 +363,7 @@
 }
 
 .macro-toggle.disabled .toggle-dot {
-  background: #7a7a88;
+  background: var(--slate-600);
 }
 
 @keyframes pulse-green {

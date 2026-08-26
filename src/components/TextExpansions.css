@@ -230,7 +230,7 @@
 }
 
 .te-add-btn:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -312,7 +312,7 @@
 .te-cat-row-active {
   color: var(--cat-color, var(--accent));
   border-left-color: var(--cat-color, var(--accent));
-  background: var(--accent-glow, rgba(232, 160, 32, 0.06));
+  background: var(--accent-glow, rgba(var(--accent-rgb), 0.06));
 }
 
 .te-cat-row-uncategorised {
@@ -456,7 +456,7 @@
    for reorder. */
 .te-cat-drop-reparent > .te-cat-row-group > .te-cat-row,
 .te-cat-drop-reparent > .te-cat-row-group-child > .te-cat-row {
-  box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 1px var(--accent-glow-strong, rgba(232, 160, 32, 0.4));
+  box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 1px var(--accent-glow-strong, rgba(var(--accent-rgb), 0.4));
   background: color-mix(in srgb, var(--accent) 28%, transparent);
   color: var(--accent);
 }
@@ -585,7 +585,7 @@
 }
 
 .te-cat-new-btn:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -621,15 +621,15 @@
 }
 
 [data-theme="light"] .te-cat-pack-btn {
-  color: #c8860a;
-  background: rgba(232, 160, 32, 0.1);
-  border-color: rgba(232, 160, 32, 0.3);
+  color: var(--gold-600);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 [data-theme="light"] .te-cat-pack-btn:hover {
-  color: #b07408;
-  background: rgba(232, 160, 32, 0.18);
-  border-color: #c8860a;
+  color: var(--gold-800);
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: var(--gold-600);
 }
 
 /* ── Import From ▾ menu (third-party migration) ─────────────────────────── */
@@ -811,7 +811,7 @@
 .te-selbar-btn--danger:hover {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--white);
 }
 
 /* ── Category inline rename ────────────────────────────────────────────── */
@@ -852,7 +852,7 @@
 }
 
 [data-theme="light"] .te-cat-rename-error {
-  color: #cc2020;
+  color: var(--danger);
 }
 
 .te-cat-add-error {
@@ -864,7 +864,7 @@
   white-space: normal;
 }
 [data-theme="light"] .te-cat-add-error {
-  color: #cc2020;
+  color: var(--danger);
 }
 
 .te-cat-add-form {
@@ -1074,13 +1074,13 @@ button.te-col-header:hover {
 
 .te-empty-icon {
   font-size: 32px;
-  color: #e8a020;
+  color: var(--accent);
   line-height: 1;
   margin-bottom: 2px;
 }
 
 [data-theme="light"] .te-empty-icon {
-  color: #c8860a;
+  color: var(--gold-600);
 }
 
 .te-empty-heading {
@@ -1761,7 +1761,7 @@ button.te-col-header:hover {
 }
 
 .te-cat-inline-confirm:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
 }
 
 .te-cat-inline-confirm:disabled {
@@ -1834,7 +1834,7 @@ button.te-col-header:hover {
 
 .te-save-btn:hover:not(:disabled) {
   background: var(--accent-hover);
-  box-shadow: 0 2px 10px rgba(232, 160, 32, 0.3);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.3);
 }
 
 .te-save-btn:disabled {
@@ -1846,8 +1846,8 @@ button.te-col-header:hover {
 /* Brief acknowledgement after Save — editor stays open, button flashes a
    green-tinted "✓ Saved" for ~1.5s before reverting to "Save". */
 .te-save-btn--saved {
-  background: #2da465 !important;
-  color: #ffffff;
+  background: var(--green-700) !important;
+  color: var(--white);
   box-shadow: 0 2px 10px rgba(45, 164, 101, 0.3);
 }
 
@@ -2011,14 +2011,14 @@ button.te-col-header:hover {
   flex-shrink: 0;
 }
 
-.rte-chip-clipboard  { background: rgba(100,180,255,0.15); color: #64b4ff; border: 1px solid rgba(100,180,255,0.35); }
-.rte-chip-date       { background: rgba(80,200,120,0.12);  color: #50c878; border: 1px solid rgba(80,200,120,0.35);  }
-.rte-chip-cursor     { background: rgba(255,200,50,0.12);  color: #ffc832; border: 1px solid rgba(255,200,50,0.35);  }
-.rte-chip-fillin     { background: rgba(200,100,255,0.12); color: #c864ff; border: 1px solid rgba(200,100,255,0.35); }
-.rte-chip-formula    { background: rgba(120,200,255,0.10); color: #5cb8ff; border: 1px solid rgba(120,200,255,0.40); font-family: var(--font-mono, ui-monospace, monospace); font-style: italic; }
-.rte-chip-globalvar  { background: rgba(232,160,32,0.12);  color: #e8a020; border: 1px solid rgba(232,160,32,0.35);  }
-.rte-chip-expansion  { background: rgba(120,90,220,0.14);  color: #a08cff; border: 1px solid rgba(120,90,220,0.40); }
-.rte-chip-key        { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); }
+.rte-chip-clipboard  { background: rgba(100,180,255,0.15); color: var(--blue-400); border: 1px solid rgba(100,180,255,0.35); }
+.rte-chip-date       { background: rgba(80,200,120,0.12);  color: var(--green-400); border: 1px solid rgba(80,200,120,0.35);  }
+.rte-chip-cursor     { background: rgba(255,200,50,0.12);  color: var(--yellow-400); border: 1px solid rgba(255,200,50,0.35);  }
+.rte-chip-fillin     { background: rgba(200,100,255,0.12); color: var(--violet-400); border: 1px solid rgba(200,100,255,0.35); }
+.rte-chip-formula    { background: rgba(120,200,255,0.10); color: var(--blue-400); border: 1px solid rgba(120,200,255,0.40); font-family: var(--font-mono, ui-monospace, monospace); font-style: italic; }
+.rte-chip-globalvar  { background: rgba(var(--accent-rgb), 0.12);  color: var(--accent); border: 1px solid rgba(var(--accent-rgb), 0.35);  }
+.rte-chip-expansion  { background: rgba(120,90,220,0.14);  color: var(--violet-400); border: 1px solid rgba(120,90,220,0.40); }
+.rte-chip-key        { background: rgba(160,170,190,0.12); color: var(--slate-200); border: 1px solid rgba(160,170,190,0.35); }
 
 .rte-menu-empty {
   padding: 8px 12px;
@@ -2026,7 +2026,7 @@ button.te-col-header:hover {
   color: var(--text-secondary);
   font-style: italic;
 }
-.rte-chip-heading    { background: rgba(160,170,190,0.12); color: #b0baca; border: 1px solid rgba(160,170,190,0.35); min-width: 22px; justify-content: center; }
+.rte-chip-heading    { background: rgba(160,170,190,0.12); color: var(--slate-200); border: 1px solid rgba(160,170,190,0.35); min-width: 22px; justify-content: center; }
 
 /* Text colour swatch grid inside the colour dropdown */
 .rte-colour-grid {
@@ -2055,11 +2055,11 @@ button.te-col-header:hover {
     linear-gradient(
       to top right,
       transparent calc(50% - 1px),
-      #e84040 calc(50% - 1px),
-      #e84040 calc(50% + 1px),
+      var(--red-600) calc(50% - 1px),
+      var(--red-600) calc(50% + 1px),
       transparent calc(50% + 1px)
     ),
-    #ffffff;
+    var(--white);
 }
 
 /* ── Table size picker (6×6 hover grid) ─────────────────────────────────── */
@@ -2108,11 +2108,11 @@ button.te-col-header:hover {
   padding: 0 6px;
 }
 .rte-btn-danger {
-  color: var(--danger, #e84040);
+  color: var(--danger);
 }
 .rte-btn-danger:hover {
   background: rgba(232, 64, 64, 0.12);
-  color: var(--danger, #e84040);
+  color: var(--danger);
 }
 
 /* ── Table styles inside the editor ─────────────────────────────────────── */
@@ -2195,7 +2195,7 @@ button.te-col-header:hover {
   background: rgba(200, 100, 255, 0.15);
   border: 1px solid rgba(200, 100, 255, 0.4);
   border-radius: 4px;
-  color: #c864ff;
+  color: var(--violet-400);
   font-size: 10px;
   font-weight: 700;
   font-family: var(--font-display);
@@ -2248,7 +2248,7 @@ button.te-col-header:hover {
   border-radius: 4px;
   background: rgba(200, 100, 255, 0.08);
   border: 1px solid rgba(200, 100, 255, 0.3);
-  color: #c864ff;
+  color: var(--violet-400);
   font-size: 11px;
   font-weight: 500;
   font-family: var(--font-body);
@@ -2440,7 +2440,7 @@ button.te-col-header:hover {
   background: rgba(160, 170, 190, 0.15);
   border: 1px solid rgba(160, 170, 190, 0.4);
   border-radius: 4px;
-  color: #b0baca;
+  color: var(--slate-200);
   font-size: 10px;
   font-weight: 700;
   font-family: var(--font-display);
@@ -2471,7 +2471,7 @@ button.te-col-header:hover {
   /* default: clipboard colour */
   background: rgba(100, 180, 255, 0.12);
   border: 1px solid rgba(100, 180, 255, 0.35);
-  color: #64b4ff;
+  color: var(--blue-400);
 }
 
 /* Date / time / day tokens → green */
@@ -2480,35 +2480,35 @@ button.te-col-header:hover {
 .rte-token[data-token="{dayofweek}"] {
   background: rgba(80, 200, 120, 0.12);
   border-color: rgba(80, 200, 120, 0.35);
-  color: #50c878;
+  color: var(--green-400);
 }
 
 /* Cursor token → amber */
 .rte-token[data-token="{cursor}"] {
   background: rgba(255, 200, 50, 0.12);
   border-color: rgba(255, 200, 50, 0.35);
-  color: #ffc832;
+  color: var(--yellow-400);
 }
 
 /* Fill-in tokens → purple */
 .rte-token[data-token^="{fillIn"] {
   background: rgba(200, 100, 255, 0.12);
   border-color: rgba(200, 100, 255, 0.35);
-  color: #c864ff;
+  color: var(--violet-400);
 }
 
 /* Global variable tokens {{key}} → amber */
 .rte-token[data-token^="{{"] {
-  background: rgba(232, 160, 32, 0.12);
-  border-color: rgba(232, 160, 32, 0.35);
-  color: #e8a020;
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
 }
 
 /* Key press tokens {key:Tab} etc. → neutral gray, keyboard-key look */
 .rte-token[data-token^="{key:"] {
   background: rgba(160, 170, 190, 0.12);
   border-color: rgba(160, 170, 190, 0.4);
-  color: #b0baca;
+  color: var(--slate-200);
   cursor: pointer;
 }
 
@@ -2910,7 +2910,7 @@ button.te-col-header:hover {
 }
 
 .ac-toggle.ac-toggle-on {
-  background: rgba(232, 160, 32, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
   border-color: var(--border-accent);
 }
 
@@ -3025,18 +3025,18 @@ button.te-col-header:hover {
 
 .ac-typo-badge {
   /* inherits .te-trigger-badge; override colour to blue for typos */
-  color: #64b4ff;
+  color: var(--blue-400);
   border-color: rgba(100, 180, 255, 0.45);
 }
 
 /* The light blue reads at 2.2:1 on white — darken for light theme (4.9:1). */
 [data-theme="light"] .ac-typo-badge {
-  color: #2569b8;
+  color: var(--blue-600);
   border-color: rgba(37, 105, 184, 0.45);
 }
 
 [data-theme="light"] .ac-chip {
-  color: #2569b8;
+  color: var(--blue-600);
   border-color: rgba(37, 105, 184, 0.45);
   background: rgba(37, 105, 184, 0.08);
 }
@@ -3090,7 +3090,7 @@ button.te-col-header:hover {
   padding: 2px 4px 2px 7px;
   border: 1px solid rgba(100, 180, 255, 0.45);
   border-radius: 5px;
-  color: #64b4ff;
+  color: var(--blue-400);
   font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 0.04em;

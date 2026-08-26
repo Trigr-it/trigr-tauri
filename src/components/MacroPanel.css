@@ -356,7 +356,7 @@
 }
 
 .reassign-conflict-label {
-  color: #ff9040;
+  color: var(--mod-bare);
 }
 
 .reassign-actions {
@@ -406,7 +406,7 @@
 }
 
 .reassign-replace {
-  background: #ff783c;
+  background: var(--orange-400);
 }
 
 /* Body */
@@ -1917,7 +1917,7 @@
 .btn-profile-move:hover,
 .btn-profile-move.active {
   border-color: rgba(255, 120, 60, 0.4);
-  color: #ff783c;
+  color: var(--orange-400);
   background: rgba(255, 120, 60, 0.08);
 }
 
@@ -2115,7 +2115,7 @@
 
 .btn-save:hover:not(:disabled) {
   background: var(--accent-hover);
-  box-shadow: 0 4px 16px rgba(232, 160, 32, 0.3);
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.3);
 }
 
 .btn-save:disabled {
@@ -2188,7 +2188,7 @@
 
 .mouse-save-confirm-icon {
   flex-shrink: 0;
-  color: #f59e0b;
+  color: var(--status-warning);
   font-size: 13px;
   line-height: 1.4;
 }
@@ -2223,7 +2223,7 @@
   background: rgba(245, 158, 11, 0.15);
   border: 1px solid rgba(245, 158, 11, 0.55);
   border-radius: 6px;
-  color: #f59e0b;
+  color: var(--status-warning);
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 600;
@@ -2681,12 +2681,12 @@
   color: var(--text-primary);
 }
 .fire-target-chip-missing {
-  border-color: #ff6b6b;
-  color: #ff6b6b;
+  border-color: var(--danger-hover);
+  color: var(--danger-hover);
 }
 .fire-target-chip-missing:hover {
-  border-color: #ff6b6b;
-  color: #ff6b6b;
+  border-color: var(--danger-hover);
+  color: var(--danger-hover);
 }
 /* Block variant — for standalone use inside a form-section (e.g. the single
    action Expansion form). Stretches to container width, matches form-input
@@ -2940,7 +2940,7 @@
 .replay-rec-btn--stop {
   background: rgba(229, 64, 64, 0.15);
   border-color: rgba(229, 64, 64, 0.5);
-  color: #ff8a8a;
+  color: var(--status-recording-soft);
 }
 .replay-rec-btn--stop:hover {
   background: rgba(229, 64, 64, 0.25);
@@ -2962,7 +2962,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #e54040;
+  background: var(--status-recording);
   box-shadow: 0 0 8px rgba(229, 64, 64, 0.7);
   animation: replay-rec-pulse 1.2s ease-in-out infinite;
   flex-shrink: 0;
@@ -3035,7 +3035,7 @@
   font-size: 10px;
   font-family: var(--font-mono, monospace);
   color: var(--accent);
-  background: var(--accent-dim, rgba(232, 160, 32, 0.12));
+  background: var(--accent-dim, rgba(var(--accent-rgb), 0.12));
   border: 1px solid var(--border-accent, var(--accent));
   border-radius: 4px;
   white-space: nowrap;
@@ -3075,7 +3075,7 @@
   border: 1px solid var(--border);
 }
 .distilled-target-app.is-set {
-  background: var(--accent-glow, rgba(232, 160, 32, 0.10));
+  background: var(--accent-glow, rgba(var(--accent-rgb), 0.10));
   border-color: var(--border-accent, var(--accent));
   color: var(--text-primary);
 }

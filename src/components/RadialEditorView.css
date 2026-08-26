@@ -321,11 +321,11 @@
 
 /* ── Drop target — accent glow ── */
 .rev-editor .rw-wedge--drop-target .rw-wedge-path {
-  fill: rgba(232, 160, 32, 0.08);
+  fill: rgba(var(--accent-rgb), 0.08);
   stroke: var(--accent);
   stroke-width: 1.5;
   stroke-dasharray: none;
-  filter: drop-shadow(0 0 10px rgba(232, 160, 32, 0.35));
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
 }
 
 
@@ -641,7 +641,7 @@
 
 .rev-drag-ghost--folder {
   border-color: var(--accent);
-  background: rgba(232, 160, 32, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .rev-drag-ghost-hint {

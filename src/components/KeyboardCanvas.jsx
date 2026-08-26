@@ -9,10 +9,10 @@ import {
 import NumpadCanvas from './NumpadCanvas';
 
 const MODIFIERS = [
-  { id: 'Ctrl',  label: 'Ctrl',   color: '#64b4ff' },
-  { id: 'Alt',   label: 'Alt',    color: '#c864ff' },
-  { id: 'Shift', label: 'Shift',  color: '#50c878' },
-  { id: 'Win',   label: '⊞ Win', color: '#ffc832' },
+  { id: 'Ctrl',  label: 'Ctrl',   color: 'var(--mod-ctrl)' },
+  { id: 'Alt',   label: 'Alt',    color: 'var(--mod-alt)' },
+  { id: 'Shift', label: 'Shift',  color: 'var(--mod-shift)' },
+  { id: 'Win',   label: '⊞ Win', color: 'var(--mod-win)' },
 ];
 
 // Build the display string for the current modifier combo e.g. "Ctrl+Alt"
@@ -93,7 +93,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
           <ModLayerButton
             modId="BARE"
             className={`mod-layer-btn bare-key-btn${isBare ? ' active' : ''}`}
-            style={isBare ? { '--mod-color': '#ff9040' } : {}}
+            style={isBare ? { '--mod-color': 'var(--mod-bare)' } : {}}
             onClick={isRecording ? undefined : () => onToggle('BARE')}
             disabled={isRecording}
             title={profileLinked

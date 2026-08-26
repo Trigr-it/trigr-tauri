@@ -48,8 +48,8 @@
   background-size: 22px 22px;
   pointer-events: none;
   z-index: 0;
-  mask-image: radial-gradient(80% 70% at 50% 50%, black 0%, transparent 92%);
-  -webkit-mask-image: radial-gradient(80% 70% at 50% 50%, black 0%, transparent 92%);
+  mask-image: radial-gradient(80% 70% at 50% 50%, var(--black) 0%, transparent 92%);
+  -webkit-mask-image: radial-gradient(80% 70% at 50% 50%, var(--black) 0%, transparent 92%);
 }
 
 [data-theme="light"] .welcome-modal::after {
@@ -101,9 +101,9 @@
 }
 
 [data-theme="light"] .welcome-pill {
-  color: #c8860a;
-  background: rgba(232, 160, 32, 0.1);
-  border-color: rgba(232, 160, 32, 0.32);
+  color: var(--gold-600);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.32);
 }
 
 .welcome-title {
@@ -171,14 +171,14 @@
 }
 
 [data-theme="light"] .welcome-tile {
-  background: #ffffff;
-  border-color: #e8e8f4;
+  background: var(--bg-surface);
+  border-color: var(--border);
 }
 
 [data-theme="light"] .welcome-tile:hover {
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.08),
-    0 0 0 1px rgba(232, 160, 32, 0.25);
+    0 0 0 1px rgba(var(--accent-rgb), 0.25);
 }
 
 .welcome-tile-icon {
@@ -198,8 +198,8 @@
 }
 
 [data-theme="light"] .welcome-tile-icon {
-  color: #c8860a;
-  border-color: rgba(232, 160, 32, 0.4);
+  color: var(--gold-600);
+  border-color: rgba(var(--accent-rgb), 0.4);
 }
 
 .welcome-tile-name {
@@ -251,7 +251,7 @@
 }
 
 .welcome-cta-btn:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   transform: translateY(-1px);
   box-shadow:
     0 6px 26px rgba(var(--accent-rgb), 0.5),

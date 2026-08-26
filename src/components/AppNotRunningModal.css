@@ -106,7 +106,7 @@
   letter-spacing: 0.04em;
   cursor: pointer;
   background: var(--accent);
-  color: var(--btn-primary-text, #000);
+  color: var(--btn-primary-text);
   transition: background 0.12s, transform 0.1s;
 }
 

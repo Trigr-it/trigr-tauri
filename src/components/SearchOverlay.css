@@ -23,6 +23,16 @@
   --backdrop-blur: blur(20px) saturate(150%);
   --transition-expand: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   --radius-xl: 12px;
+  /* Mirrored from global.css (token sweep 2026-08-26) */
+  --transition-micro: 0.12s cubic-bezier(0.2, 0, 0, 1);
+  /* Action-type palette used by TYPE_META in SearchOverlay.jsx (theme-invariant) */
+  --type-text: #64b4ff;
+  --type-hotkey: #c864ff;
+  --type-app: #50c878;
+  --type-url: #ffc832;
+  --type-folder: #40c8a0;
+  --type-macro: #ff783c;
+  --type-expansion: #ffc832;
 }
 
 [data-theme="light"] {
@@ -267,7 +277,7 @@ html, body {
 }
 
 .search-result-row.selected {
-  background: rgba(232, 160, 32, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 /* ── Result pieces ────────────────────────────────────────────────────────── */
@@ -310,7 +320,7 @@ html, body {
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
-  background: var(--accent-glow, rgba(232, 160, 32, 0.1));
+  background: var(--accent-glow, rgba(var(--accent-rgb), 0.1));
   border: 1px solid var(--border-accent);
   border-radius: 4px;
   padding: 2px 6px;
@@ -343,7 +353,7 @@ html, body {
   display: flex;
   align-items: center;
   padding: 5px 14px;
-  background: var(--accent-glow, rgba(232, 160, 32, 0.15));
+  background: var(--accent-glow, rgba(var(--accent-rgb), 0.15));
   border-bottom: 1px solid var(--border-accent);
 }
 

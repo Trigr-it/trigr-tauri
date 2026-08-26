@@ -113,10 +113,10 @@ function groupByTimeline(items) {
 // ── Type icons (matches SearchOverlay's TYPE_META pattern) ──────────────────
 
 const TYPE_ICONS = {
-  Text:   { Icon: Type,   color: '#64b4ff' },
-  Link:   { Icon: Link2,  color: '#ffc832' },
-  Email:  { Icon: Mail,   color: '#c864ff' },
-  Number: { Icon: Hash,   color: '#8a8799' },
+  Text:   { Icon: Type,   color: 'var(--blue-400)' },
+  Link:   { Icon: Link2,  color: 'var(--yellow-400)' },
+  Email:  { Icon: Mail,   color: 'var(--violet-400)' },
+  Number: { Icon: Hash,   color: 'var(--text-secondary)' },
 };
 
 // ── Overlay ─────────────────────────────────────────────────────────────────

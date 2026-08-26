@@ -3,9 +3,19 @@
    top of the main recording bar. Countdown pill collapses when phase
    transitions to 'recording'; the main bar stays put. */
 
+/* stylelint-disable color-no-hex -- local mirror of global.css tokens; hex is legitimate inside this block only */
 :root {
   color-scheme: dark;
+  /* Mirrored from global.css (token sweep 2026-08-26) */
+  --text-primary: #f0ede8;
+  --gold-300: #ffbb44;
+  --text-muted: #9794b3;
+  --text-secondary: #a8a6c2;
+  --status-recording-soft: #ff8a8a;
+  --status-recording: #e54040;
+  --white: #ffffff;
 }
+/* stylelint-enable color-no-hex */
 
 html, body, #root {
   margin: 0;
@@ -14,7 +24,7 @@ html, body, #root {
   width: 100%;
   height: 100%;
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  color: #f0f0f0;
+  color: var(--text-primary);
   user-select: none;
   -webkit-user-select: none;
   overflow: hidden;
@@ -62,7 +72,7 @@ html, body, #root {
   font-family: 'Rajdhani', 'DM Sans', sans-serif;
   font-size: 15px;
   font-weight: 600;
-  color: #ffcf70;
+  color: var(--gold-300);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   margin-bottom: 12px;
@@ -73,7 +83,7 @@ html, body, #root {
   font-size: 200px;
   font-weight: 800;
   line-height: 1;
-  color: #ffc850;
+  color: var(--gold-300);
   text-shadow:
     0 0 20px rgba(255, 200, 80, 0.7),
     0 0 40px rgba(255, 200, 80, 0.4),
@@ -91,7 +101,7 @@ html, body, #root {
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
   font-weight: 500;
-  color: #d8d8d8;
+  color: var(--text-primary);
   margin-top: 14px;
   max-width: 260px;
   line-height: 1.4;
@@ -99,7 +109,7 @@ html, body, #root {
 .rc-countdown-esc {
   margin-top: 18px;
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted);
   font-family: 'DM Sans', sans-serif;
 }
 .rc-countdown-esc kbd {
@@ -111,7 +121,7 @@ html, body, #root {
   border-radius: 4px;
   font-family: 'Chakra Petch', 'DM Sans', monospace;
   font-size: 10.5px;
-  color: #ccc;
+  color: var(--text-secondary);
 }
 
 /* ── Countdown pill (small, appears above main bar during 3-2-1) ────────── */
@@ -129,7 +139,7 @@ html, body, #root {
     0 0 16px rgba(255, 200, 80, 0.18);
   font-size: 11px;
   font-weight: 600;
-  color: #e8e8e8;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 .rc-countdown-num {
@@ -139,7 +149,7 @@ html, body, #root {
   font-family: 'Rajdhani', 'DM Sans', sans-serif;
   font-size: 14px;
   font-weight: 700;
-  color: #ffc850;
+  color: var(--gold-300);
   text-shadow: 0 0 6px rgba(255, 200, 80, 0.6);
   animation: rc-num-pop 0.35s ease-out;
 }
@@ -159,14 +169,14 @@ html, body, #root {
   background: transparent;
   border: none;
   border-radius: 50%;
-  color: #aaa;
+  color: var(--text-secondary);
   font-size: 10px;
   cursor: pointer;
   transition: background 100ms, color 100ms;
 }
 .rc-countdown-cancel:hover {
   background: rgba(229, 64, 64, 0.2);
-  color: #ff8a8a;
+  color: var(--status-recording-soft);
 }
 
 /* ── Main recording bar (always shown) ──────────────────────────────────── */
@@ -183,7 +193,7 @@ html, body, #root {
     0 10px 26px rgba(0, 0, 0, 0.5),
     0 0 20px rgba(229, 64, 64, 0.18);
   font-size: 12px;
-  color: #f0f0f0;
+  color: var(--text-primary);
   backdrop-filter: blur(10px);
   white-space: nowrap;
 }
@@ -191,7 +201,7 @@ html, body, #root {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #e54040;
+  background: var(--status-recording);
   box-shadow: 0 0 8px rgba(229, 64, 64, 0.8);
   animation: rc-pulse 1.2s ease-in-out infinite;
   flex-shrink: 0;
@@ -213,7 +223,7 @@ html, body, #root {
   background: rgba(229, 64, 64, 0.85);
   border: 1px solid rgba(229, 64, 64, 1);
   border-radius: 999px;
-  color: #fff;
+  color: var(--white);
   font-family: inherit;
   font-size: 11px;
   font-weight: 700;
@@ -231,7 +241,7 @@ html, body, #root {
 }
 .rc-pill-hint {
   font-size: 10.5px;
-  color: #aaa;
+  color: var(--text-secondary);
   padding-left: 6px;
   border-left: 1px solid rgba(255, 255, 255, 0.12);
   white-space: nowrap;
@@ -245,5 +255,5 @@ html, body, #root {
   border-radius: 3px;
   font-family: 'Chakra Petch', 'DM Sans', monospace;
   font-size: 9.5px;
-  color: #ccc;
+  color: var(--text-secondary);
 }

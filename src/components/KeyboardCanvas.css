@@ -33,7 +33,7 @@
 }
 
 .combo-key-bare {
-  color: #ff9040;
+  color: var(--mod-bare);
   border-color: rgba(255, 144, 64, 0.4);
 }
 
@@ -131,7 +131,7 @@
 
 .key:hover {
   background: var(--key-bg-hover);
-  border-color: #484868;
+  border-color: var(--slate-600);
   transform: translateY(-1px);
   box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
 }
@@ -168,7 +168,7 @@
 .key.assigned {
   background: var(--key-bg-assigned);
   border-color: var(--key-border-assigned);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(232,160,32,0.08), inset 0 1px 0 rgba(255,255,255,0.04);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(var(--accent-rgb), 0.08), inset 0 1px 0 rgba(255,255,255,0.04);
   opacity: 1 !important; /* always full opacity when assigned */
 }
 
@@ -176,18 +176,18 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, rgba(232,160,32,0.06) 0%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(var(--accent-rgb), 0.06) 0%, transparent 70%);
   pointer-events: none;
 }
 
 .key.assigned:hover {
-  border-color: rgba(232,160,32,0.7);
+  border-color: rgba(var(--accent-rgb), 0.7);
 }
 
 .key.selected {
   background: var(--key-bg-selected);
   border-color: var(--key-border-selected);
-  box-shadow: 0 0 20px rgba(232,160,32,0.25), inset 0 0 12px rgba(232,160,32,0.05);
+  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.25), inset 0 0 12px rgba(var(--accent-rgb), 0.05);
   transform: translateY(-1px);
   opacity: 1 !important;
 }
@@ -196,7 +196,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, rgba(232,160,32,0.12) 0%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(var(--accent-rgb), 0.12) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -307,8 +307,8 @@
   border: 1px solid;
 }
 
-.assigned-dot { background: rgba(232,160,32,0.15); border-color: rgba(232,160,32,0.5); }
-.selected-dot { background: rgba(232,160,32,0.3);  border-color: var(--accent); }
+.assigned-dot { background: rgba(var(--accent-rgb), 0.15); border-color: rgba(var(--accent-rgb), 0.5); }
+.selected-dot { background: rgba(var(--accent-rgb), 0.3);  border-color: var(--accent); }
 .system-dot   { background: transparent; border-color: var(--border-bright); opacity: 0.6; }
 
 /* ── MODIFIER BAR ─────────────────────────────────── */
@@ -558,13 +558,13 @@
 [data-theme="light"] .key.assigned {
   box-shadow:
     var(--shadow-key),
-    0 0 8px rgba(232,160,32,0.12);
+    0 0 8px rgba(var(--accent-rgb), 0.12);
 }
 
 [data-theme="light"] .key.selected {
   box-shadow:
-    0 0 0 2px rgba(232,160,32,0.35),
-    inset 0 0 8px rgba(232,160,32,0.06);
+    0 0 0 2px rgba(var(--accent-rgb), 0.35),
+    inset 0 0 8px rgba(var(--accent-rgb), 0.06);
 }
 
 /* The top-edge gloss is redundant on a light surface; tone it way down. */
@@ -668,7 +668,7 @@
 }
 
 .new-shortcut-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   color: var(--btn-primary-text);
   border-color: var(--accent);
   box-shadow:
@@ -764,13 +764,13 @@
 
 .keyboard-empty-icon {
   font-size: 32px;
-  color: #e8a020;
+  color: var(--accent);
   line-height: 1;
   margin-bottom: 2px;
 }
 
 [data-theme="light"] .keyboard-empty-icon {
-  color: #c8860a;
+  color: var(--gold-600);
 }
 
 .keyboard-empty-heading {

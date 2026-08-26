@@ -48,17 +48,17 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--accent);
-  background: rgba(232, 160, 32, 0.12);
-  border: 1px solid rgba(232, 160, 32, 0.25);
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
   padding: 4px 12px;
   border-radius: 100px;
   margin-bottom: 14px;
 }
 
 [data-theme="light"] .upgrade-pill {
-  color: #c8860a;
-  background: rgba(232, 160, 32, 0.1);
-  border-color: rgba(232, 160, 32, 0.3);
+  color: var(--gold-600);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 /* ── Title & body ──────────────────────────────────────────────────────── */
@@ -112,7 +112,7 @@
 }
 
 .upgrade-cta-btn:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   transform: translateY(-1px);
   box-shadow:
     0 6px 26px rgba(var(--accent-rgb), 0.5),
@@ -178,7 +178,7 @@
 .upgrade-status-error {
   margin: 2px 0 6px;
   font-size: 12px;
-  color: #ef4444;
+  color: var(--status-error);
   text-align: left;
   line-height: 1.4;
 }

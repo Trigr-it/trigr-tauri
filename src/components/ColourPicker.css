@@ -55,6 +55,7 @@
 /* Custom swatch — rainbow gradient when idle, live fill when a custom colour
    is active. Clicking opens the OS colour dialog via the hidden native input. */
 .cf-swatch-custom {
+  /* stylelint-disable-next-line color-no-hex -- hue wheel; literal spectrum stops, not palette */
   background: conic-gradient(from 0deg, #e84040, #e87040, #e8a020, #50c878, #40b0b0, #4a9eff, #6a7eff, #9a6eff, #c864ff, #ff6eb4, #e84040);
   overflow: hidden;
 }
@@ -66,7 +67,7 @@
   justify-content: center;
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
+  color: var(--white);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   line-height: 1;
   pointer-events: none;
@@ -139,17 +140,17 @@
   pointer-events: none;
 }
 .cf-sv-white {
-  background: linear-gradient(to right, #ffffff 0%, rgba(255, 255, 255, 0) 100%);
+  background: linear-gradient(to right, var(--white) 0%, rgba(255, 255, 255, 0) 100%);
 }
 .cf-sv-black {
-  background: linear-gradient(to top, #000000 0%, rgba(0, 0, 0, 0) 100%);
+  background: linear-gradient(to top, var(--black) 0%, rgba(0, 0, 0, 0) 100%);
 }
 .cf-sv-marker {
   position: absolute;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--white);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4);
   transform: translate(-50%, -50%);
   pointer-events: none;
@@ -182,7 +183,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--white);
   border: 2px solid rgba(0, 0, 0, 0.6);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   cursor: grab;
@@ -194,7 +195,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--white);
   border: 2px solid rgba(0, 0, 0, 0.6);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   cursor: grab;
@@ -267,10 +268,10 @@
 .cf-custom-btn-apply {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--btn-primary-text, #fff);
+  color: var(--btn-primary-text);
 }
 .cf-custom-btn-apply:hover {
   background: var(--accent-hover, var(--accent));
   border-color: var(--accent-hover, var(--accent));
-  color: var(--btn-primary-text, #fff);
+  color: var(--btn-primary-text);
 }

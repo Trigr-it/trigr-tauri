@@ -80,9 +80,9 @@
    since that's Keyfire's primary "this worked" colour. */
 
 .toast-success {
-  border-left-color: var(--status-success, #50c878);
+  border-left-color: var(--status-success);
 }
-.toast-success .toast-icon { color: var(--status-success, #50c878); }
+.toast-success .toast-icon { color: var(--status-success); }
 
 .toast-info {
   border-left-color: var(--accent);
@@ -90,9 +90,9 @@
 .toast-info .toast-icon { color: var(--accent); }
 
 .toast-warning {
-  border-left-color: var(--status-warning, #f59e0b);
+  border-left-color: var(--status-warning);
 }
-.toast-warning .toast-icon { color: var(--status-warning, #f59e0b); }
+.toast-warning .toast-icon { color: var(--status-warning); }
 
 .toast-error {
   border-left-color: var(--danger);

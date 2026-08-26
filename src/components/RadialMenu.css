@@ -27,6 +27,8 @@
   --accent-surface: #3d2e10;
   /* Radial wheel idle wedge + base donut fill (dark surface in dark theme). */
   --radial-wedge: #1a1a24;
+  /* Mirrored from global.css (token sweep 2026-08-26) */
+  --white: #ffffff;
 }
 
 [data-theme="light"] {

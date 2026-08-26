@@ -198,7 +198,7 @@
   font-size: 14px;
   line-height: 1.3;
   flex-shrink: 0;
-  color: #f59e0b;
+  color: var(--status-warning);
 }
 
 .mouse-advisory-text {
@@ -208,7 +208,7 @@
 }
 
 .mouse-advisory-text strong {
-  color: #f59e0b;
+  color: var(--status-warning);
 }
 
 .mouse-advisory-link {
@@ -216,7 +216,7 @@
   background: none;
   border: 1px solid rgba(245, 158, 11, 0.5);
   border-radius: 5px;
-  color: #f59e0b;
+  color: var(--status-warning);
   font-family: var(--font-display);
   font-size: 11px;
   font-weight: 600;
@@ -262,7 +262,7 @@
   background: rgba(245, 158, 11, 0.15);
   border: 1px solid rgba(245, 158, 11, 0.6);
   border-radius: 5px;
-  color: #f59e0b;
+  color: var(--status-warning);
   font-family: var(--font-display);
   font-size: 11px;
   font-weight: 600;
@@ -324,8 +324,8 @@
   border: 1px solid;
 }
 
-.mouse-hint-row .assigned-dot { background: rgba(232,160,32,0.15); border-color: rgba(232,160,32,0.5); }
-.mouse-hint-row .selected-dot { background: rgba(232,160,32,0.3);  border-color: var(--accent); }
+.mouse-hint-row .assigned-dot { background: rgba(var(--accent-rgb), 0.15); border-color: rgba(var(--accent-rgb), 0.5); }
+.mouse-hint-row .selected-dot { background: rgba(var(--accent-rgb), 0.3);  border-color: var(--accent); }
 .mouse-hint-row .risky-dot    { background: rgba(245,158,11,0.15);  border-color: rgba(245,158,11,0.6); }
 
 /* ── Drag-and-drop binding target highlight ───────────────────────── */

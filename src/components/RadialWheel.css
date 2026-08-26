@@ -290,7 +290,7 @@
 
 .rw-folder-chevron {
   fill: none;
-  stroke: #ffffff;
+  stroke: var(--white);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;

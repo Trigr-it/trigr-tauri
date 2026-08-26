@@ -221,8 +221,8 @@
 }
 
 [data-theme="light"] .profile-row-link {
-  color: #c8860a;
-  filter: drop-shadow(0 0 3px rgba(232, 160, 32, 0.25));
+  color: var(--gold-600);
+  filter: drop-shadow(0 0 3px rgba(var(--accent-rgb), 0.25));
 }
 
 .profile-rename-input {
@@ -290,7 +290,7 @@
 }
 
 .profile-action-btn--primary:hover {
-  background: linear-gradient(180deg, #ffbb44, var(--accent-hover));
+  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -321,15 +321,15 @@
 }
 
 [data-theme="light"] .profile-action-btn--secondary {
-  color: #c8860a;
-  background: rgba(232, 160, 32, 0.1);
-  border-color: rgba(232, 160, 32, 0.3);
+  color: var(--gold-600);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 [data-theme="light"] .profile-action-btn--secondary:hover {
-  color: #b07408;
-  background: rgba(232, 160, 32, 0.18);
-  border-color: #c8860a;
+  color: var(--gold-800);
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: var(--gold-600);
 }
 .profile-import-prompt {
   padding: 8px 12px;
@@ -372,8 +372,8 @@
   color: var(--text-secondary);
 }
 .profile-import-prompt-btn--overwrite:hover {
-  border-color: var(--text-danger, #e54);
-  color: var(--text-danger, #e54);
+  border-color: var(--danger);
+  color: var(--danger);
   background: var(--bg-hover);
 }
 
@@ -457,12 +457,12 @@
 }
 
 .profile-ctx-delete {
-  color: #ef4444;
+  color: var(--status-error);
 }
 
 .profile-ctx-delete:hover {
   background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  color: var(--status-error);
 }
 
 /* ── Profile Link to App modal ───────────────────────────────────────── */
@@ -628,7 +628,7 @@
 .profile-link-modal-confirm {
   background: var(--accent);
   border: 1px solid var(--accent);
-  color: var(--btn-primary-text, #0a0a0a);
+  color: var(--btn-primary-text);
 }
 
 .profile-link-modal-confirm:hover:not(:disabled) {
@@ -906,11 +906,11 @@
   text-align: center;
 }
 
-.sidebar-item.type-text .sidebar-key-badge { border-color: rgba(100, 180, 255, 0.3); color: #64b4ff; }
-.sidebar-item.type-hotkey .sidebar-key-badge { border-color: rgba(200, 100, 255, 0.3); color: #c864ff; }
-.sidebar-item.type-app .sidebar-key-badge { border-color: rgba(80, 200, 120, 0.3); color: #50c878; }
-.sidebar-item.type-url .sidebar-key-badge { border-color: rgba(255, 200, 50, 0.3); color: #ffc832; }
-.sidebar-item.type-macro .sidebar-key-badge { border-color: rgba(255, 120, 60, 0.3); color: #ff783c; }
+.sidebar-item.type-text .sidebar-key-badge { border-color: rgba(100, 180, 255, 0.3); color: var(--type-text); }
+.sidebar-item.type-hotkey .sidebar-key-badge { border-color: rgba(200, 100, 255, 0.3); color: var(--type-hotkey); }
+.sidebar-item.type-app .sidebar-key-badge { border-color: rgba(80, 200, 120, 0.3); color: var(--type-app); }
+.sidebar-item.type-url .sidebar-key-badge { border-color: rgba(255, 200, 50, 0.3); color: var(--type-url); }
+.sidebar-item.type-macro .sidebar-key-badge { border-color: rgba(255, 120, 60, 0.3); color: var(--type-macro); }
 
 .sidebar-item-info {
   flex: 1;
@@ -1005,7 +1005,7 @@
 }
 
 .legend-dot.selected {
-  background: rgba(232, 160, 32, 0.3);
+  background: rgba(var(--accent-rgb), 0.3);
   border-color: var(--accent);
 }
 
@@ -1104,18 +1104,18 @@
 }
 
 .sidebar-mod-bare {
-  color: #ff9040;
+  color: var(--mod-bare);
   border-color: rgba(255, 144, 64, 0.35);
 }
 
 .sidebar-tab.bare-tab {
-  color: #ff9040;
+  color: var(--mod-bare);
   opacity: 0.8;
 }
 
 .sidebar-tab.bare-tab.sidebar-tab-active {
-  color: #ff9040;
-  border-bottom-color: #ff9040;
+  color: var(--mod-bare);
+  border-bottom-color: var(--mod-bare);
   opacity: 1;
 }
 
@@ -1389,12 +1389,12 @@
 }
 
 .assign-ctx-danger {
-  color: var(--status-error, #ef4444);
+  color: var(--status-error);
 }
 
 .assign-ctx-danger:hover {
-  background: color-mix(in srgb, var(--status-error, #ef4444) 12%, transparent);
-  color: var(--status-error, #ef4444);
+  background: color-mix(in srgb, var(--status-error) 12%, transparent);
+  color: var(--status-error);
 }
 
 .assign-ctx-divider {
@@ -1513,9 +1513,9 @@
 }
 
 .sidebar-confirm-yes:hover {
-  background: color-mix(in srgb, var(--status-error, #ef4444) 12%, transparent);
-  border-color: var(--status-error, #ef4444);
-  color: var(--status-error, #ef4444);
+  background: color-mix(in srgb, var(--status-error) 12%, transparent);
+  border-color: var(--status-error);
+  color: var(--status-error);
 }
 
 .sidebar-confirm-no:hover {

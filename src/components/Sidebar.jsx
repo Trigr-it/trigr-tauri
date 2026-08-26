@@ -651,10 +651,10 @@ function ProfileAccordion({
 }
 
 const MODIFIERS = [
-  { id: 'Ctrl',  label: 'Ctrl',   color: '#64b4ff' },
-  { id: 'Alt',   label: 'Alt',    color: '#c864ff' },
-  { id: 'Shift', label: 'Shift',  color: '#50c878' },
-  { id: 'Win',   label: '⊞ Win', color: '#ffc832' },
+  { id: 'Ctrl',  label: 'Ctrl',   color: 'var(--mod-ctrl)' },
+  { id: 'Alt',   label: 'Alt',    color: 'var(--mod-alt)' },
+  { id: 'Shift', label: 'Shift',  color: 'var(--mod-shift)' },
+  { id: 'Win',   label: '⊞ Win', color: 'var(--mod-win)' },
 ];
 
 // ── Draggable wrapper for sidebar cards/items in radial mode ────────────────
@@ -1523,7 +1523,7 @@ export default function Sidebar({
           })}
           <button
             className={`sidebar-mod-btn sidebar-mod-btn--bare${isBare ? ' active' : ''}`}
-            style={isBare ? { '--mod-color': '#ff9040' } : {}}
+            style={isBare ? { '--mod-color': 'var(--mod-bare)' } : {}}
             onClick={isRecording ? undefined : () => onToggleModifier?.('BARE')}
             disabled={isRecording}
             title={profileLinked ? 'Bare key assignments' : 'Bare key assignments (F-keys, numpad, nav keys)'}

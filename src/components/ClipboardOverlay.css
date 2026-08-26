@@ -23,6 +23,12 @@
   --radius-xl: 12px;
   --btn-primary-bg: var(--accent);
   --btn-primary-text: #0d0d11;
+  /* Mirrored from global.css (token sweep 2026-08-26) */
+  --white: #ffffff;
+  /* Content-type icon colours used by TYPE_ICONS in ClipboardOverlay.jsx (theme-invariant) */
+  --blue-400: #64b4ff;
+  --yellow-400: #ffc832;
+  --violet-400: #c864ff;
 }
 
 [data-theme="light"] {
@@ -326,27 +332,27 @@ html, body {
 }
 
 .co-row-sel {
-  background: rgba(232, 160, 32, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 .co-row-sel:hover {
-  background: rgba(232, 160, 32, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
 }
 
 [data-theme="light"] .co-row-sel {
-  background: rgba(232, 160, 32, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 [data-theme="light"] .co-row-sel:hover {
-  background: rgba(232, 160, 32, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
 }
 
 .co-row-pin {
-  background: rgba(232, 160, 32, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
 }
 
 .co-row-sel.co-row-pin {
-  background: rgba(232, 160, 32, 0.20);
+  background: rgba(var(--accent-rgb), 0.20);
 }
 
 .co-row-thumb {
