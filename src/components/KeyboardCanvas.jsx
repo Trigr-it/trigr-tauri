@@ -527,6 +527,8 @@ export default function KeyboardCanvas({
           selectedKey={selectedKey}
           onKeySelect={onKeySelect}
           getKeyAssignment={getKeyAssignment}
+          getDoubleAssignment={getDoubleAssignment}
+          getHoldAssignment={getHoldAssignment}
           lastFired={lastFired}
           activeModifiers={activeModifiers}
           isRecording={isRecording}

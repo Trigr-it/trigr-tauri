@@ -149,6 +149,7 @@ export default function SettingsWindow() {
         defaultDateFormat={bridge.defaultDateFormat}
         onUpdateGlobalSettings={act('updateGlobalSettings')}
         searchOverlayHotkey={bridge.searchOverlayHotkey}
+        searchOverlayEnabled={bridge.searchOverlayEnabled}
         overlayShowAll={bridge.overlayShowAll}
         overlayCloseAfterFiring={bridge.overlayCloseAfterFiring}
         overlayIncludeAutocorrect={bridge.overlayIncludeAutocorrect}

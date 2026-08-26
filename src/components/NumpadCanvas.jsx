@@ -82,6 +82,11 @@ export default function NumpadCanvas({
   selectedKey,
   onKeySelect,
   getKeyAssignment,
+  // Double / hold variants — a key bound only as ×2 or Hold must still read
+  // as assigned (dot, badge, context menu, drag source). KeyboardCanvas and
+  // MouseCanvas already OR all three; numpad was keyed off single only.
+  getDoubleAssignment,
+  getHoldAssignment,
   lastFired,
   activeModifiers,
   isRecording = false,
@@ -105,9 +110,17 @@ export default function NumpadCanvas({
   const noLayer = activeModifiers.length === 0;
   const combo   = comboString(activeModifiers);
 
+  // All three trigger variants for a key id.
+  function variants(id) {
+    const single = getKeyAssignment(id);
+    const dbl    = getDoubleAssignment ? getDoubleAssignment(id) : null;
+    const hold   = getHoldAssignment ? getHoldAssignment(id) : null;
+    return { single, dbl, hold, any: single || dbl || hold };
+  }
+
   function keyClass(id) {
     const isSelected = selectedKey === id;
-    const isAssigned = !!getKeyAssignment(id);
+    const isAssigned = !!variants(id).any;
     const isFiring   = firingKeyId === id;
     return [
       'np-key',
@@ -121,14 +134,20 @@ export default function NumpadCanvas({
   function keyTitle(id, label) {
     const displayLabel = label.replace('\n', ' ');
     if (noLayer) return 'Select a modifier layer above first';
-    const a = getKeyAssignment(id);
-    if (a) return `${a.label || 'Assigned action'}\nClick to edit. Drag onto another key to move or swap.`;
+    const { single, dbl, hold, any } = variants(id);
+    if (any) {
+      const parts = [];
+      if (single?.label) parts.push(single.label);
+      if (dbl?.label)    parts.push(`×2: ${dbl.label}`);
+      if (hold?.label)   parts.push(`Hold: ${hold.label}`);
+      return `${parts.join('\n') || 'Assigned action'}\nClick to edit. Drag onto another key to move or swap.`;
+    }
     return `Assign macro to: ${combo}+${displayLabel}`;
   }
 
   function renderKey({ id, label, col, row, colSpan, rowSpan }) {
-    const assignment = getKeyAssignment(id);
-    const isAssigned = !!assignment;
+    const { single, dbl, hold, any } = variants(id);
+    const isAssigned = !!any;
     const isSelected = selectedKey === id;
     return (
       <NumpadKey
@@ -143,13 +162,15 @@ export default function NumpadCanvas({
         disabled={noLayer}
         draggable={isAssigned && !noLayer && !isRecording}
         dragCombo={combo}
-        dragLabel={assignment?.label || 'Action'}
+        dragLabel={single?.label || dbl?.label || hold?.label || 'Action'}
         onClick={noLayer ? undefined : () => onKeySelect(id)}
         onContextMenu={isAssigned && !noLayer ? (e) => onKeyContextMenu?.(e, id) : undefined}
         title={keyTitle(id, label)}
       >
         <span className="np-key-label">{label}</span>
         {isAssigned && !isSelected && <span className="np-key-dot" />}
+        {dbl && <span className="np-key-double-badge">×2</span>}
+        {hold && <span className="np-key-hold-badge" title="Hold trigger">⏱</span>}
       </NumpadKey>
     );
   }

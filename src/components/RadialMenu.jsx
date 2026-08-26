@@ -3,6 +3,13 @@ import { Aperture } from 'lucide-react';
 import RadialWheel from './RadialWheel';
 import './RadialMenu.css';
 
+// Seed the theme from the last session before first paint (shared cache key
+// with the clipboard popup + Quick Search) so a lost payload can't leave a
+// light-theme user with a dark wheel.
+try {
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('trigr_overlay_theme') || 'dark');
+} catch { /* storage unavailable — CSS :root default applies */ }
+
 export default function RadialMenu() {
   const [items, setItems] = useState([]);
   const [hoveredIndex, setHoveredIndex] = useState(-1);
@@ -35,19 +42,26 @@ export default function RadialMenu() {
   hoveredOuterIndexRef.current = hoveredOuterIndex;
 
   // ── Listen for data from Rust ──────────────────────────────────────────
+  // One applier for the pushed radial-menu-data payload AND the self-heal
+  // pull below, so both paths start the wheel in the same fresh state.
+  const applyRadialData = useCallback((data) => {
+    if (!data) return;
+    const theme = data.theme || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('trigr_overlay_theme', theme); } catch { /* ignore */ }
+    setItems(data.items || []);
+    setHoveredIndex(-1);
+    setHoveredOuterIndex(-1);
+    setExpandedFolder(null);
+    setMissingNotice(false);
+    setAnimKey(k => k + 1);
+    firedRef.current = false; // fresh wheel — re-arm the one-shot fire guard
+    holdToSelectRef.current = !!data.holdToSelect;
+    holdKeyRef.current = data.holdKey || '';
+  }, []);
+
   useEffect(() => {
-    window.electronAPI?.onRadialMenuData((data) => {
-      document.documentElement.setAttribute('data-theme', data.theme || 'dark');
-      setItems(data.items || []);
-      setHoveredIndex(-1);
-      setHoveredOuterIndex(-1);
-      setExpandedFolder(null);
-      setMissingNotice(false);
-      setAnimKey(k => k + 1);
-      firedRef.current = false; // fresh wheel — re-arm the one-shot fire guard
-      holdToSelectRef.current = !!data.holdToSelect;
-      holdKeyRef.current = data.holdKey || '';
-    });
+    window.electronAPI?.onRadialMenuData(applyRadialData);
 
     // Close on window blur (clicking outside the window entirely)
     const onBlur = () => window.electronAPI?.closeRadialMenu();
@@ -56,7 +70,35 @@ export default function RadialMenu() {
       window.removeEventListener('blur', onBlur);
       if (missingTimer.current) clearTimeout(missingTimer.current);
     };
-  }, []);
+  }, [applyRadialData]);
+
+  // ── Self-heal pull ─────────────────────────────────────────────────────
+  // The pushed payload can be lost at cold start (lazy chunk not yet listening)
+  // or on resume from webview_mem TrySuspend (IPC reconnect race) — the same
+  // two windows the clipboard popup closed in v0.8.5. A lost payload here
+  // meant an empty wheel AND no holdKey, so hold-to-select release never
+  // fired for that open. Pull at mount (fill only while empty) and, forced,
+  // on the visibilitychange that only a suspend→resume produces.
+  const selfHealPull = useCallback((force) => {
+    window.electronAPI?.getRadialMenuData?.()
+      .then((data) => {
+        if (!data || !Array.isArray(data.items)) return;
+        if (!force && itemsRef.current.length > 0) return;
+        applyRadialData(data);
+      })
+      .catch(() => {});
+  }, [applyRadialData]);
+
+  useEffect(() => { selfHealPull(false); }, [selfHealPull]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      selfHealPull(true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selfHealPull]);
 
   // ── Fire an item ───────────────────────────────────────────────────────
   const fireItem = useCallback((item) => {

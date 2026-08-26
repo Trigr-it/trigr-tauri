@@ -1208,6 +1208,13 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
 
     let mut char_count: u64 = 0;
     for ch in text.chars() {
+        // Esc / re-fire cancel — with a custom per-char delay of up to 200ms
+        // a long snippet is otherwise uninterruptible for minutes. Break (not
+        // return) so the drain + modifier restore below still run.
+        if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+            info!("[Keyfire] Type Text (send-input) cancelled (Esc) after {} chars", char_count);
+            break;
+        }
         let code = ch as u32;
         if code > 0xFFFF {
             let adjusted = code - 0x10000;
@@ -3151,6 +3158,17 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let start = std::time::Instant::now();
             let poll_interval = Duration::from_millis(150);
             loop {
+                // Cancel checks mirror Wait for Pixel / Wait for Text so Esc and
+                // the same-trigger re-fire (ESC_LOOP_BREAK + 250ms guard wait)
+                // can abort this poll instead of timing out and being dropped.
+                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Wait for Window cancelled (Esc)");
+                    return false;
+                }
+                if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
+                    info!("[Keyfire] Wait for Window aborted (macros disabled)");
+                    return false;
+                }
                 let hwnd = unsafe {
                     windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as isize
                 };
@@ -4254,7 +4272,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
         }
 
         "Wait for Input" => {
-            wait_for_input(step_value);
+            // Returns false only on cancel (Esc / pause / re-fire); a timeout
+            // or a matched input both continue the macro.
+            if !wait_for_input(step_value) {
+                return false;
+            }
         }
 
         "Run AHK Script" => {
@@ -5050,7 +5072,19 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
         };
         let gap = evt_t.saturating_sub(prev_t).min(MAX_GAP_MS);
         if gap > 0 {
-            thread::sleep(Duration::from_millis(gap));
+            // Chunked so a recorded multi-second pause stays cancellable;
+            // the per-event checks at the top of the loop then fire.
+            let total = Duration::from_millis(gap);
+            let gap_start = std::time::Instant::now();
+            while gap_start.elapsed() < total {
+                if ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                    || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
+                {
+                    break;
+                }
+                let remaining = total.saturating_sub(gap_start.elapsed());
+                thread::sleep(Duration::from_millis(100).min(remaining));
+            }
         }
         prev_t = evt_t;
 
@@ -5152,9 +5186,11 @@ pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], la
 
 // ── Wait for Input step ─────────────────────────────────────────────────────
 
-fn wait_for_input(config_json: &str) {
+/// Returns `false` when cancelled (Esc / macros paused), `true` on match or timeout.
+fn wait_for_input(config_json: &str) -> bool {
     use crate::hotkeys::{self, WaitEvent};
     use std::sync::mpsc::RecvTimeoutError;
+    let mut cancelled = false;
 
     // Parse config from JSON stored in step.value
     let config: serde_json::Value = serde_json::from_str(config_json).unwrap_or_default();
@@ -5200,6 +5236,13 @@ fn wait_for_input(config_json: &str) {
         // Check if macros were disabled
         if !hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) {
             log::info!("[WAIT] Cancelled — macros disabled");
+            cancelled = true;
+            break;
+        }
+        // Esc / same-trigger re-fire — parity with the other Wait-for-* steps.
+        if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+            log::info!("[WAIT] Cancelled — Esc");
+            cancelled = true;
             break;
         }
 
@@ -5261,7 +5304,8 @@ fn wait_for_input(config_json: &str) {
 
     // Always clear the waiter on exit
     hotkeys::clear_wait_for_input();
-    log::info!("[WAIT] Wait for Input complete");
+    log::info!("[WAIT] Wait for Input complete (cancelled={})", cancelled);
+    !cancelled
 }
 
 // ── Low-level VK key simulation ─────────────────────────────────────────────
@@ -5672,15 +5716,38 @@ fn execute_ahk_script_sync(script: &str, ahk_version: &str, app: &tauri::AppHand
     {
         Ok(mut child) => {
             info!("[Keyfire] AHK sync: waiting for process (pid: {})", child.id());
-            // Wait for process to finish (up to 60s for macro step context)
-            match child.wait() {
-                Ok(status) => {
-                    info!("[Keyfire] AHK sync: process exited with {}", status);
+            // Polled wait (100ms) with a 60s ceiling so Esc / pause / the
+            // same-trigger re-fire can abort a script that never exits.
+            // A plain `child.wait()` here held the MacroRunningGuard forever
+            // on a hung script and every subsequent re-fire was dropped.
+            const AHK_STEP_TIMEOUT: Duration = Duration::from_secs(60);
+            let start = std::time::Instant::now();
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        info!("[Keyfire] AHK sync: process exited with {}", status);
+                        break;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        warn!("[Keyfire] AHK sync: wait failed: {}", e);
+                        let _ = child.kill();
+                        break;
+                    }
                 }
-                Err(e) => {
-                    warn!("[Keyfire] AHK sync: wait failed: {}", e);
+                let cancel = ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                    || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst);
+                if cancel || start.elapsed() >= AHK_STEP_TIMEOUT {
+                    warn!(
+                        "[Keyfire] AHK sync: {} after {:?} — killing script",
+                        if cancel { "cancelled" } else { "timed out" },
+                        start.elapsed()
+                    );
                     let _ = child.kill();
+                    let _ = child.wait();
+                    break;
                 }
+                thread::sleep(Duration::from_millis(100));
             }
             let _ = std::fs::remove_file(&script_path);
         }

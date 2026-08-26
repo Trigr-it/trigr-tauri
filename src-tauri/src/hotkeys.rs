@@ -4835,6 +4835,22 @@ pub fn set_overlay_hotkey(combo: &str) {
     }
 }
 
+/// Quick Search disabled (Settings toggle) or hotkey cleared. With
+/// `overlay_hotkey = None` the LL hook never matches the combo, so it passes
+/// through to the focused app untouched, and macro Press Key dispatch can't
+/// open the overlay either. Mirrors clear_pause_hotkey / clear_voice_hotkey.
+pub fn clear_overlay_hotkey() {
+    let mut state = engine_state().lock().unwrap();
+    state.overlay_hotkey = None;
+    rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
+    add_overlay_to_suppress(state.overlay_hotkey);
+    add_pause_to_suppress(state.pause_hotkey);
+    add_clipboard_paste_to_suppress(state.clipboard_paste_hotkey);
+    add_voice_to_suppress(state.voice_hotkey);
+    add_radial_menu_to_suppress(state.radial_menu_hotkey);
+    log::info!("[HOOK] Overlay hotkey cleared (Quick Search disabled)");
+}
+
 pub fn set_pause_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
         let mut state = engine_state().lock().unwrap();

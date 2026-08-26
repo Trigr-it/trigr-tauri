@@ -278,6 +278,7 @@ export default function SettingsPanel({
   defaultDateFormat = 'DD/MM/YYYY',
   onUpdateGlobalSettings,
   searchOverlayHotkey      = 'Ctrl+Space',
+  searchOverlayEnabled      = true,
   overlayShowAll            = true,
   overlayCloseAfterFiring   = true,
   overlayIncludeAutocorrect = false,
@@ -1516,6 +1517,24 @@ export default function SettingsPanel({
 
           <div className="settings-toggle-row">
             <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Enable Quick Search</span>
+              <span className="settings-toggle-sub">
+                Off releases the hotkey so it reaches the app you are working in. Your search templates and settings are kept.
+              </span>
+            </div>
+            <button
+              type="button"
+              className={`settings-toggle${searchOverlayEnabled ? ' on' : ''}`}
+              onClick={() => onUpdateSearchSettings?.({ searchOverlayEnabled: !searchOverlayEnabled })}
+              role="switch"
+              aria-checked={searchOverlayEnabled}
+              title={searchOverlayEnabled ? 'Turn Quick Search off' : 'Turn Quick Search on'}
+            />
+          </div>
+
+          {searchOverlayEnabled && (<>
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
               <span className="settings-toggle-label">Global hotkey</span>
               <span className="settings-toggle-sub">Opens Quick Search from any app</span>
             </div>
@@ -1650,6 +1669,7 @@ export default function SettingsPanel({
             </button>
           </div>
           </>)}
+          </>)}
         </section>
 
         {/* ── CLIPBOARD ──────────────────────────────────── */}
@@ -1663,7 +1683,7 @@ export default function SettingsPanel({
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Capture clipboard history</span>
               <span className="settings-toggle-sub">
-                Existing history stays accessible via the quick-paste hotkey. Clear the hotkey below if you want the overlay fully disabled.
+                Off stops recording and releases the quick-paste hotkey so it reaches the app you are working in. Existing history is kept.
               </span>
             </div>
             <button

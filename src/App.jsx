@@ -230,6 +230,9 @@ function App() {
   const [keystrokeDelay,     setKeystrokeDelay]     = useState(10);
   const [macroTriggerDelay,  setMacroTriggerDelay]  = useState(10);
   const [searchOverlayHotkey,       setSearchOverlayHotkey]       = useState('Ctrl+Space');
+  // Master on/off for Quick Search (mirrors clipboardCaptureEnabled). Off =
+  // hotkey unregistered in the engine so the combo passes through to the app.
+  const [searchOverlayEnabled,      setSearchOverlayEnabled]      = useState(true);
   const [voiceEnabled,              setVoiceEnabled]              = useState(false);
   const [voiceHotkey,               setVoiceHotkey]               = useState('');
   const [voiceMicId,               setVoiceMicId]               = useState('');
@@ -389,6 +392,196 @@ function App() {
     });
   }, []);
 
+  // ── Apply a full config object to React state + engine ─────
+  // Single source of truth for "a whole config just arrived from disk":
+  // shared-config sync reload, Import Config, and Restore Backup. Import /
+  // restore used to re-hydrate ~10 fields and leave variables, templates,
+  // Quick Action categories, radial, global + autocorrect settings stale in
+  // state — the next full-object save then wrote the stale values back over
+  // the freshly imported file. Everything here is a stable setter or an
+  // engine invoke, so the callback has no deps.
+  const applyLoadedConfig = useCallback((config, opts = {}) => {
+    if (!config) return;
+    const raw = config.assignments || {};
+    setAssignments(raw);
+    setProfiles(config.profiles?.length ? config.profiles : ['Default']);
+    const globalProfile = config.activeGlobalProfile || 'Default';
+    // Sync reload follows the global profile (another machine may be mid-app-
+    // switch); import/restore honour whatever editing profile the file saved.
+    const editingProfile = (opts.useSavedActiveProfile && config.activeProfile) ? config.activeProfile : globalProfile;
+    setActiveProfile(editingProfile);
+    setActiveGlobalProfile(globalProfile);
+    setProfileSettings(config.profileSettings || {});
+    const savedTheme = config.theme || 'auto';
+    setTheme(savedTheme);
+    const resolvedInitial = savedTheme === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : savedTheme;
+    setResolvedTheme(resolvedInitial);
+    document.documentElement.setAttribute('data-theme', resolvedInitial);
+    const rawCats = config.expansionCategories || [];
+    setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
+    setGlobalVariables(config.globalVariables || {});
+    {
+      const cfgAcEnabled = config.autocorrectEnabled ?? false;
+      const cfgAcBuiltin = config.autocorrectBuiltinTypos ?? false;
+      const cfgAcDoubleCaps = config.autocorrectDoubleCaps ?? false;
+      const cfgAcExceptions = Array.isArray(config.autocorrectDoubleCapsExceptions) ? config.autocorrectDoubleCapsExceptions : [];
+      const cfgAcCapsLockFix = config.autocorrectCapsLockFix ?? false;
+      const cfgAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
+      const cfgAcExtended = config.autocorrectExtendedTypos ?? false;
+      const cfgAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
+      const cfgAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
+      const cfgAcDays = config.autocorrectDays ?? false;
+      const cfgAcSymbols = config.autocorrectSymbols ?? false;
+      const cfgAcEmojis = config.autocorrectEmojis ?? false;
+      const cfgExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
+      setAutocorrectEnabled(cfgAcEnabled);
+      setAutocorrectBuiltinTypos(cfgAcBuiltin);
+      setAutocorrectDoubleCaps(cfgAcDoubleCaps);
+      setAutocorrectDoubleCapsExceptions(cfgAcExceptions);
+      setAutocorrectCapsLockFix(cfgAcCapsLockFix);
+      setAutocorrectSentenceCaps(cfgAcSentenceCaps);
+      setAutocorrectExtendedTypos(cfgAcExtended);
+      setAutocorrectDays(cfgAcDays);
+      setAutocorrectSymbols(cfgAcSymbols);
+      setAutocorrectEmojis(cfgAcEmojis);
+      setAutocorrectExcludedApps(cfgAcExcluded);
+      setAutocorrectDisabledEntries(cfgAcDisabled);
+      setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
+      setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
+      setExpansionExcludedApps(cfgExpExcluded);
+      window.electronAPI?.updateAutocorrectSettings({
+        enabled: cfgAcEnabled,
+        builtinTypos: cfgAcBuiltin,
+        extendedTypos: cfgAcExtended,
+        days: cfgAcDays,
+        symbols: cfgAcSymbols,
+        emojis: cfgAcEmojis,
+        doubleCaps: cfgAcDoubleCaps,
+        doubleCapsExceptions: cfgAcExceptions,
+        capsLockFix: cfgAcCapsLockFix,
+        sentenceCaps: cfgAcSentenceCaps,
+        excludedApps: cfgAcExcluded,
+        disabledEntries: cfgAcDisabled,
+      });
+      window.electronAPI?.updateExpansionExcludedApps(cfgExpExcluded);
+    }
+    setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
+    const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
+    const cfgClipboardExcluded = Array.isArray(config.clipboardExcludedApps) ? config.clipboardExcludedApps : [];
+    setClipboardCaptureEnabled(cfgClipboardCapture);
+    setClipboardExcludedApps(cfgClipboardExcluded);
+    window.electronAPI?.setClipboardCaptureEnabled(cfgClipboardCapture);
+    window.electronAPI?.setClipboardExcludedApps(cfgClipboardExcluded);
+    setGlobalInputMethod(config.globalInputMethod   || 'direct');
+    setMacroSpeed(       config.macroSpeed          || 'safe');
+    setKeystrokeDelay(   config.keystrokeDelay      ?? 10);
+    setMacroTriggerDelay(config.macroTriggerDelay   ?? 10);
+    setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
+    setHoldThresholdMs(  config.holdThresholdMs     ?? 350);
+    setFireOnPress(      config.fireOnPress         ?? false);
+    setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
+    setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
+    setVoiceEnabled(            config.voiceEnabled             ?? false);
+    setVoiceHotkey(             config.voiceHotkey              || '');
+    setVoiceMicId(              config.voiceMicId               || '');
+    // Default global pause to Ctrl+Alt+Q on fresh installs (field missing
+    // from config). Existing users who explicitly cleared it have null
+    // stored and keep no hotkey.
+    setGlobalPauseToggleKey(
+      config.globalPauseToggleKey === undefined ? 'Ctrl+Alt+Q' : config.globalPauseToggleKey
+    );
+    // Clipboard paste hotkey — defaults to Ctrl+Shift+V on fresh installs,
+    // null means user explicitly cleared and has no hotkey for it.
+    {
+      const cfgClipPaste = config.clipboardPasteHotkey === undefined
+        ? 'Ctrl+Shift+V'
+        : config.clipboardPasteHotkey;
+      setClipboardPasteHotkey(cfgClipPaste || '');
+      if (cfgClipPaste) {
+        window.electronAPI?.setClipboardPasteHotkey(cfgClipPaste);
+      } else {
+        window.electronAPI?.clearClipboardPasteHotkey();
+      }
+    }
+    setOverlayShowAll(          config.overlayShowAll            ?? true);
+    setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
+    setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
+    setClipboardPreviewWidth(   Math.max(320, Math.min(1200, config.clipboardPreviewWidth ?? 480)));
+    setClipboardColumnMode(     config.clipboardColumnMode === 'one' || config.clipboardColumnMode === 'two' ? config.clipboardColumnMode : 'auto');
+    setSearchTemplates(config.searchTemplates || []);
+    setSearchTemplateCategories(config.searchTemplateCategories || []);
+    setQuickActionCategories(config.quickActionCategories || []);
+    {
+      let map = config.radialMenuItemsByProfile || {};
+      // Migration: old flat array → per-profile map under active profile
+      if (!config.radialMenuItemsByProfile && Array.isArray(config.radialMenuItems) && config.radialMenuItems.length > 0) {
+        map = { [globalProfile]: config.radialMenuItems };
+      }
+      setRadialItemsMap(map);
+    }
+    {
+      // Same default-on-fresh rule as the startup load path, and re-register
+      // with the engine (this sync path previously never re-registered the
+      // radial hotkey, unlike the clipboard-paste hotkey above).
+      const effectiveRadialHotkey = config.radialMenuHotkey === undefined
+        ? 'Ctrl+Shift+Space'
+        : config.radialMenuHotkey;
+      setRadialMenuHotkey(effectiveRadialHotkey || null);
+      if (effectiveRadialHotkey) {
+        window.electronAPI?.setRadialMenuHotkey(effectiveRadialHotkey);
+      } else {
+        window.electronAPI?.clearRadialMenuHotkey();
+      }
+      const holdToSelect = config.radialHoldToSelect ?? false;
+      setRadialHoldToSelect(holdToSelect);
+      window.electronAPI?.setRadialHoldToSelect(holdToSelect);
+    }
+    // Re-sync engine with updated config
+    window.electronAPI?.updateAssignments(raw, editingProfile);
+    window.electronAPI?.updateProfileSettings(config.profileSettings || {});
+    window.electronAPI?.setActiveGlobalProfile(globalProfile);
+    window.electronAPI?.updateGlobalVariables(config.globalVariables || {});
+    window.electronAPI?.updateGlobalSettings({
+      globalInputMethod: config.globalInputMethod  || 'direct',
+      macroSpeed:        config.macroSpeed         || 'safe',
+      keystrokeDelay:    config.keystrokeDelay     ?? 10,
+      macroTriggerDelay: config.macroTriggerDelay  ?? 10,
+      doubleTapWindow:   config.doubleTapWindow    ?? 300,
+      holdThresholdMs:   config.holdThresholdMs    ?? 350,
+      fireOnPress:       config.fireOnPress        ?? false,
+      defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
+    });
+
+    // Hotkeys the sync path previously read into state but never re-registered
+    // (pause / voice / Quick Search) — a change from another machine, or an
+    // imported config, only took effect after a restart. Mirrors the startup
+    // load path.
+    {
+      const effectivePauseKey = config.globalPauseToggleKey === undefined
+        ? 'Ctrl+Alt+Q'
+        : config.globalPauseToggleKey;
+      if (effectivePauseKey) {
+        window.electronAPI?.setPauseHotkey(effectivePauseKey);
+      } else {
+        window.electronAPI?.clearPauseHotkey?.();
+      }
+      if ((config.voiceEnabled ?? false) && config.voiceHotkey) {
+        window.electronAPI?.setVoiceHotkey(config.voiceHotkey);
+      } else {
+        window.electronAPI?.clearVoiceHotkey();
+      }
+      const cfgSearchHotkey  = config.searchOverlayHotkey || 'Ctrl+Space';
+      const cfgSearchEnabled = config.searchOverlayEnabled ?? true;
+      setSearchOverlayEnabled(cfgSearchEnabled);
+      window.electronAPI?.updateSearchSettings({
+        searchOverlayEnabled: cfgSearchEnabled,
+        searchOverlayHotkey:  cfgSearchHotkey,
+      });
+    }
+  }, []);
+
   // ── Load config on mount ──────────────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -494,7 +687,20 @@ function App() {
         setFireOnPress(      config.fireOnPress         ?? false);
         setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
         // Always start on the Mapping view — do not restore last-used view/area
-        setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
+        {
+          // Quick Search hotkey + master toggle. These were previously never
+          // persisted (the Settings handler skipped saveConfig) so the engine
+          // always came up on its Ctrl+Space default; now the saved combo and
+          // enabled flag are registered on every boot like pause/voice.
+          const cfgSearchHotkey  = config.searchOverlayHotkey || 'Ctrl+Space';
+          const cfgSearchEnabled = config.searchOverlayEnabled ?? true;
+          setSearchOverlayHotkey(cfgSearchHotkey);
+          setSearchOverlayEnabled(cfgSearchEnabled);
+          window.electronAPI?.updateSearchSettings({
+            searchOverlayEnabled: cfgSearchEnabled,
+            searchOverlayHotkey:  cfgSearchHotkey,
+          });
+        }
         setVoiceEnabled(            config.voiceEnabled             ?? false);
         setVoiceHotkey(             config.voiceHotkey              || '');
         setVoiceMicId(              config.voiceMicId               || '');
@@ -859,154 +1065,7 @@ function App() {
       // Shared config — listen for sync reload events from file watcher
       window.electronAPI.onConfigReloadedFromSync?.((config) => {
         if (!config) return;
-        const raw = config.assignments || {};
-        setAssignments(raw);
-        setProfiles(config.profiles?.length ? config.profiles : ['Default']);
-        const globalProfile = config.activeGlobalProfile || 'Default';
-        setActiveProfile(globalProfile);
-        setActiveGlobalProfile(globalProfile);
-        setProfileSettings(config.profileSettings || {});
-        const savedTheme = config.theme || 'auto';
-        setTheme(savedTheme);
-        const resolvedInitial = savedTheme === 'auto'
-          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-          : savedTheme;
-        setResolvedTheme(resolvedInitial);
-        document.documentElement.setAttribute('data-theme', resolvedInitial);
-        const rawCats = config.expansionCategories || [];
-        setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
-        setGlobalVariables(config.globalVariables || {});
-        {
-          const cfgAcEnabled = config.autocorrectEnabled ?? false;
-          const cfgAcBuiltin = config.autocorrectBuiltinTypos ?? false;
-          const cfgAcDoubleCaps = config.autocorrectDoubleCaps ?? false;
-          const cfgAcExceptions = Array.isArray(config.autocorrectDoubleCapsExceptions) ? config.autocorrectDoubleCapsExceptions : [];
-          const cfgAcCapsLockFix = config.autocorrectCapsLockFix ?? false;
-          const cfgAcSentenceCaps = config.autocorrectSentenceCaps ?? false;
-          const cfgAcExtended = config.autocorrectExtendedTypos ?? false;
-          const cfgAcExcluded = Array.isArray(config.autocorrectExcludedApps) ? config.autocorrectExcludedApps : [];
-          const cfgAcDisabled = Array.isArray(config.autocorrectDisabledEntries) ? config.autocorrectDisabledEntries : [];
-          const cfgAcDays = config.autocorrectDays ?? false;
-          const cfgAcSymbols = config.autocorrectSymbols ?? false;
-          const cfgAcEmojis = config.autocorrectEmojis ?? false;
-          const cfgExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
-          setAutocorrectEnabled(cfgAcEnabled);
-          setAutocorrectBuiltinTypos(cfgAcBuiltin);
-          setAutocorrectDoubleCaps(cfgAcDoubleCaps);
-          setAutocorrectDoubleCapsExceptions(cfgAcExceptions);
-          setAutocorrectCapsLockFix(cfgAcCapsLockFix);
-          setAutocorrectSentenceCaps(cfgAcSentenceCaps);
-          setAutocorrectExtendedTypos(cfgAcExtended);
-          setAutocorrectDays(cfgAcDays);
-          setAutocorrectSymbols(cfgAcSymbols);
-          setAutocorrectEmojis(cfgAcEmojis);
-          setAutocorrectExcludedApps(cfgAcExcluded);
-          setAutocorrectDisabledEntries(cfgAcDisabled);
-          setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
-          setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
-          setExpansionExcludedApps(cfgExpExcluded);
-          window.electronAPI?.updateAutocorrectSettings({
-            enabled: cfgAcEnabled,
-            builtinTypos: cfgAcBuiltin,
-            extendedTypos: cfgAcExtended,
-            days: cfgAcDays,
-            symbols: cfgAcSymbols,
-            emojis: cfgAcEmojis,
-            doubleCaps: cfgAcDoubleCaps,
-            doubleCapsExceptions: cfgAcExceptions,
-            capsLockFix: cfgAcCapsLockFix,
-            sentenceCaps: cfgAcSentenceCaps,
-            excludedApps: cfgAcExcluded,
-            disabledEntries: cfgAcDisabled,
-          });
-          window.electronAPI?.updateExpansionExcludedApps(cfgExpExcluded);
-        }
-        setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
-        const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
-        const cfgClipboardExcluded = Array.isArray(config.clipboardExcludedApps) ? config.clipboardExcludedApps : [];
-        setClipboardCaptureEnabled(cfgClipboardCapture);
-        setClipboardExcludedApps(cfgClipboardExcluded);
-        window.electronAPI?.setClipboardCaptureEnabled(cfgClipboardCapture);
-        window.electronAPI?.setClipboardExcludedApps(cfgClipboardExcluded);
-        setGlobalInputMethod(config.globalInputMethod   || 'direct');
-        setMacroSpeed(       config.macroSpeed          || 'safe');
-        setKeystrokeDelay(   config.keystrokeDelay      ?? 10);
-        setMacroTriggerDelay(config.macroTriggerDelay   ?? 10);
-        setDoubleTapWindow(  config.doubleTapWindow     ?? 300);
-        setHoldThresholdMs(  config.holdThresholdMs     ?? 350);
-        setFireOnPress(      config.fireOnPress         ?? false);
-        setDefaultDateFormat(config.defaultDateFormat   || 'DD/MM/YYYY');
-        setSearchOverlayHotkey(     config.searchOverlayHotkey      || 'Ctrl+Space');
-        setVoiceEnabled(            config.voiceEnabled             ?? false);
-        setVoiceHotkey(             config.voiceHotkey              || '');
-        setVoiceMicId(              config.voiceMicId               || '');
-        // Default global pause to Ctrl+Alt+Q on fresh installs (field missing
-        // from config). Existing users who explicitly cleared it have null
-        // stored and keep no hotkey.
-        setGlobalPauseToggleKey(
-          config.globalPauseToggleKey === undefined ? 'Ctrl+Alt+Q' : config.globalPauseToggleKey
-        );
-        // Clipboard paste hotkey — defaults to Ctrl+Shift+V on fresh installs,
-        // null means user explicitly cleared and has no hotkey for it.
-        {
-          const cfgClipPaste = config.clipboardPasteHotkey === undefined
-            ? 'Ctrl+Shift+V'
-            : config.clipboardPasteHotkey;
-          setClipboardPasteHotkey(cfgClipPaste || '');
-          if (cfgClipPaste) {
-            window.electronAPI?.setClipboardPasteHotkey(cfgClipPaste);
-          } else {
-            window.electronAPI?.clearClipboardPasteHotkey();
-          }
-        }
-        setOverlayShowAll(          config.overlayShowAll            ?? true);
-        setOverlayCloseAfterFiring( config.overlayCloseAfterFiring   ?? true);
-        setOverlayIncludeAutocorrect(config.overlayIncludeAutocorrect ?? false);
-        setClipboardPreviewWidth(   Math.max(320, Math.min(1200, config.clipboardPreviewWidth ?? 480)));
-        setClipboardColumnMode(     config.clipboardColumnMode === 'one' || config.clipboardColumnMode === 'two' ? config.clipboardColumnMode : 'auto');
-        setSearchTemplates(config.searchTemplates || []);
-        setSearchTemplateCategories(config.searchTemplateCategories || []);
-        setQuickActionCategories(config.quickActionCategories || []);
-        {
-          let map = config.radialMenuItemsByProfile || {};
-          // Migration: old flat array → per-profile map under active profile
-          if (!config.radialMenuItemsByProfile && Array.isArray(config.radialMenuItems) && config.radialMenuItems.length > 0) {
-            map = { [globalProfile]: config.radialMenuItems };
-          }
-          setRadialItemsMap(map);
-        }
-        {
-          // Same default-on-fresh rule as the startup load path, and re-register
-          // with the engine (this sync path previously never re-registered the
-          // radial hotkey, unlike the clipboard-paste hotkey above).
-          const effectiveRadialHotkey = config.radialMenuHotkey === undefined
-            ? 'Ctrl+Shift+Space'
-            : config.radialMenuHotkey;
-          setRadialMenuHotkey(effectiveRadialHotkey || null);
-          if (effectiveRadialHotkey) {
-            window.electronAPI?.setRadialMenuHotkey(effectiveRadialHotkey);
-          } else {
-            window.electronAPI?.clearRadialMenuHotkey();
-          }
-          const holdToSelect = config.radialHoldToSelect ?? false;
-          setRadialHoldToSelect(holdToSelect);
-          window.electronAPI?.setRadialHoldToSelect(holdToSelect);
-        }
-        // Re-sync engine with updated config
-        window.electronAPI?.updateAssignments(raw, globalProfile);
-        window.electronAPI?.updateProfileSettings(config.profileSettings || {});
-        window.electronAPI?.setActiveGlobalProfile(globalProfile);
-        window.electronAPI?.updateGlobalVariables(config.globalVariables || {});
-        window.electronAPI?.updateGlobalSettings({
-          globalInputMethod: config.globalInputMethod  || 'direct',
-          macroSpeed:        config.macroSpeed         || 'safe',
-          keystrokeDelay:    config.keystrokeDelay     ?? 10,
-          macroTriggerDelay: config.macroTriggerDelay  ?? 10,
-          doubleTapWindow:   config.doubleTapWindow    ?? 300,
-          holdThresholdMs:   config.holdThresholdMs    ?? 350,
-          fireOnPress:       config.fireOnPress        ?? false,
-          defaultDateFormat: config.defaultDateFormat  || 'DD/MM/YYYY',
-        });
+        applyLoadedConfig(config);
         showNotification('Config updated from sync', 'info');
       });
 
@@ -2143,17 +2202,42 @@ function App() {
       newProfileSettings[newName] = newProfileSettings[oldName];
       delete newProfileSettings[oldName];
     }
+    // Rewrite the radial layout: the per-profile map is keyed by profile
+    // name AND every wedge's storageKey embeds the profile prefix. Rust
+    // resolves the wheel by radialMenuItemsByProfile[active_profile], so
+    // without this the renamed profile came up with an empty wheel and the
+    // orphaned layout pointed at keys that no longer existed.
+    const remapKey = (k) => (typeof k === 'string' && k.startsWith(prefix)) ? newName + '::' + k.slice(prefix.length) : k;
+    const remapItem = (item) => {
+      if (!item) return item;
+      const next = item.storageKey ? { ...item, storageKey: remapKey(item.storageKey) } : { ...item };
+      if (item.type === 'folder' && Array.isArray(item.children)) {
+        next.children = item.children.map(remapItem);
+      }
+      return next;
+    };
+    const newRadialMap = {};
+    for (const [profileName, items] of Object.entries(radialItemsMap)) {
+      const targetName = profileName === oldName ? newName : profileName;
+      newRadialMap[targetName] = Array.isArray(items) ? items.map(remapItem) : items;
+    }
     const newProfiles = profiles.map(p => p === oldName ? newName : p);
     const newActive   = activeProfile === oldName ? newName : activeProfile;
+    const newGlobal   = activeGlobalProfile === oldName ? newName : activeGlobalProfile;
     setAssignments(newAssignments);
     setProfiles(newProfiles);
     setActiveProfile(newActive);
     setProfileSettings(newProfileSettings);
+    setRadialItemsMap(newRadialMap);
+    if (newGlobal !== activeGlobalProfile) {
+      setActiveGlobalProfile(newGlobal);
+      window.electronAPI?.setActiveGlobalProfile(newGlobal);
+    }
     window.electronAPI?.updateProfileSettings(newProfileSettings);
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, profileSettings: newProfileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, radialMenuItemsByProfile: newRadialMap, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
     syncEngine(newAssignments, newActive);
     showNotification(`Renamed to "${newName}"`);
-  }, [profiles, assignments, profileSettings, activeProfile, syncEngine, showNotification]);
+  }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, radialItemsMap, syncEngine, showNotification]);
 
   // ── Toggle macros ─────────────────────────────────────────
   const handleToggleMacros = useCallback(() => {
@@ -3465,6 +3549,11 @@ function App() {
     // Remove profile settings entry
     const newProfileSettings = { ...profileSettings };
     delete newProfileSettings[name];
+    // Drop the profile's radial layout too — it was left as an orphan
+    // (including up to ~1MB of custom icon data) and could never be reached.
+    const newRadialMap = { ...radialItemsMap };
+    const hadRadial = Object.prototype.hasOwnProperty.call(newRadialMap, name);
+    delete newRadialMap[name];
     const newActive = activeProfile === name ? 'Default' : activeProfile;
     setAssignments(newAssignments);
     setProfiles(newProfiles);
@@ -3472,6 +3561,7 @@ function App() {
     setSelectedKey(null);
     setSelectedLibraryId(null);
     setProfileSettings(newProfileSettings);
+    if (hadRadial) setRadialItemsMap(newRadialMap);
     // If the deleted profile was the active global profile, fall back to Default
     const newGlobal = activeGlobalProfile === name ? 'Default' : activeGlobalProfile;
     if (newGlobal !== activeGlobalProfile) {
@@ -3479,10 +3569,10 @@ function App() {
       window.electronAPI?.setActiveGlobalProfile(newGlobal);
     }
     window.electronAPI?.updateProfileSettings(newProfileSettings);
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, ...(hadRadial ? { radialMenuItemsByProfile: newRadialMap } : {}), theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
     syncEngine(newAssignments, newActive);
     showNotification(`Profile "${name}" deleted`, 'info');
-  }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, syncEngine, showNotification]);
+  }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, radialItemsMap, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, syncEngine, showNotification]);
 
   const handleSetActiveGlobalProfile = useCallback((name) => {
     setActiveGlobalProfile(name);
@@ -3540,8 +3630,12 @@ function App() {
     setSelectedKey(null);
     setSelectedLibraryId(prev => (prev === srcKey ? null : prev));
     saveConfig(newAssignments, profiles, activeProfile);
+    // Radial wedges reference assignments by storage key — re-point any
+    // wedge that was bound to the moved key (Unassign/Bind/Reassign already
+    // do this; Move-to was the one rewrite path that didn't).
+    remapRadialStorageKeys(variantKeyMap(oldKey, newKey));
     showNotification(`Moved to "${targetProfile}" profile`);
-  }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
+  }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, remapRadialStorageKeys, showNotification, makeAssignmentKey]);
 
   // ── Reassign hotkey ───────────────────────────────────────
   // Moves ALL trigger variants (single + double + hold) to the new trigger.
@@ -4840,11 +4934,23 @@ function App() {
   // ── Search overlay settings ───────────────────────────────
   const handleUpdateSearchSettings = useCallback((patch) => {
     if (patch.searchOverlayHotkey      !== undefined) setSearchOverlayHotkey(patch.searchOverlayHotkey);
+    if (patch.searchOverlayEnabled     !== undefined) setSearchOverlayEnabled(patch.searchOverlayEnabled);
     if (patch.overlayShowAll           !== undefined) setOverlayShowAll(patch.overlayShowAll);
     if (patch.overlayCloseAfterFiring  !== undefined) setOverlayCloseAfterFiring(patch.overlayCloseAfterFiring);
     if (patch.overlayIncludeAutocorrect !== undefined) setOverlayIncludeAutocorrect(patch.overlayIncludeAutocorrect);
-    window.electronAPI?.updateSearchSettings(patch);
-  }, []);
+    // Engine registration: always send enabled + hotkey together so a
+    // re-enable restores the user's combo and a hotkey change while disabled
+    // doesn't accidentally re-arm the overlay.
+    window.electronAPI?.updateSearchSettings({
+      ...patch,
+      searchOverlayEnabled: patch.searchOverlayEnabled ?? searchOverlayEnabled,
+      searchOverlayHotkey:  patch.searchOverlayHotkey  ?? searchOverlayHotkey,
+    });
+    // Persist. save_config shallow-merges, so the partial patch is enough.
+    // (Sibling handleUpdateGlobalSettings always saved; this one never did,
+    // so the overlay toggles and custom hotkey reverted on every restart.)
+    window.electronAPI?.saveConfig(patch);
+  }, [searchOverlayEnabled, searchOverlayHotkey]);
 
   const handleToggleMacrosOnStartup = useCallback((val) => {
     setMacrosEnabledOnStartup(val);
@@ -5154,40 +5260,20 @@ function App() {
     const cfg = result.config;
     // Reset interaction state so the sidebar and MacroPanel start clean
     setSelectedKey(null);
+    setSelectedLibraryId(null);
     setActiveModifiers([]);
-    // Apply all imported state
     const imported = cfg.assignments || {};
     const importedHotkeyCount    = Object.keys(imported).filter(k => !k.startsWith('GLOBAL::EXPANSION::')).length;
     const importedExpansionCount = Object.keys(imported).length - importedHotkeyCount;
-    console.log(`[KeyForge] Import applied — ${Object.keys(imported).length} assignments (${importedHotkeyCount} hotkeys, ${importedExpansionCount} expansions)`);
-    setAssignments(imported);
-    setProfiles(cfg.profiles?.length ? cfg.profiles : ['Default']);
-    setActiveProfile(cfg.activeProfile || 'Default');
-    setProfileSettings(cfg.profileSettings || {});
-    const importedTheme = cfg.theme || 'auto';
-    setTheme(importedTheme);
-    const importedResolved = importedTheme === 'auto'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : importedTheme;
-    setResolvedTheme(importedResolved);
-    document.documentElement.setAttribute('data-theme', importedResolved);
-    setExpansionCategories(cfg.expansionCategories || []);
-    const importedAc = cfg.autocorrectEnabled ?? false;
-    setAutocorrectEnabled(importedAc);
-    window.electronAPI?.updateAutocorrectEnabled(importedAc);
-    setMacrosEnabledOnStartup(cfg.macrosEnabledOnStartup ?? true);
-    const importedClipCapture = cfg.clipboardCaptureEnabled ?? true;
-    const importedClipExcluded = Array.isArray(cfg.clipboardExcludedApps) ? cfg.clipboardExcludedApps : [];
-    setClipboardCaptureEnabled(importedClipCapture);
-    setClipboardExcludedApps(importedClipExcluded);
-    window.electronAPI?.setClipboardCaptureEnabled(importedClipCapture);
-    window.electronAPI?.setClipboardExcludedApps(importedClipExcluded);
-    // main.js already wrote the imported config to disk — only sync the engine
-    window.electronAPI?.updateAssignments(imported, cfg.activeProfile || 'Default');
-    window.electronAPI?.updateProfileSettings(cfg.profileSettings || {});
+    console.log(`[Keyfire] Import applied — ${Object.keys(imported).length} assignments (${importedHotkeyCount} hotkeys, ${importedExpansionCount} expansions)`);
+    // Rust already wrote the imported file to disk — apply EVERY section to
+    // state + engine (not just assignments/profiles/theme) so the next
+    // full-object save can't write stale variables/templates/radial back.
+    applyLoadedConfig(cfg, { useSavedActiveProfile: true });
+    setBackupRestoredFrom(null);
     showNotification('Config imported successfully');
     window.electronAPI?.hideSettingsWindow();
-  }, [showNotification]);
+  }, [showNotification, applyLoadedConfig]);
 
   const handleRestoreBackup = useCallback(async (filename) => {
     const result = await window.electronAPI?.restoreBackup(filename);
@@ -5198,37 +5284,15 @@ function App() {
     const cfg = result.config;
     // Reset interaction state so the sidebar and MacroPanel start clean
     setSelectedKey(null);
+    setSelectedLibraryId(null);
     setActiveModifiers([]);
-    const restored = cfg.assignments || {};
-    setAssignments(restored);
-    setProfiles(cfg.profiles?.length ? cfg.profiles : ['Default']);
-    setActiveProfile(cfg.activeProfile || 'Default');
-    setProfileSettings(cfg.profileSettings || {});
-    const restoredTheme = cfg.theme || 'auto';
-    setTheme(restoredTheme);
-    const restoredResolved = restoredTheme === 'auto'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : restoredTheme;
-    setResolvedTheme(restoredResolved);
-    document.documentElement.setAttribute('data-theme', restoredResolved);
-    setExpansionCategories(cfg.expansionCategories || []);
-    const restoredAc = cfg.autocorrectEnabled ?? false;
-    setAutocorrectEnabled(restoredAc);
-    window.electronAPI?.updateAutocorrectEnabled(restoredAc);
-    setMacrosEnabledOnStartup(cfg.macrosEnabledOnStartup ?? true);
-    const restoredClipCapture = cfg.clipboardCaptureEnabled ?? true;
-    const restoredClipExcluded = Array.isArray(cfg.clipboardExcludedApps) ? cfg.clipboardExcludedApps : [];
-    setClipboardCaptureEnabled(restoredClipCapture);
-    setClipboardExcludedApps(restoredClipExcluded);
-    window.electronAPI?.setClipboardCaptureEnabled(restoredClipCapture);
-    window.electronAPI?.setClipboardExcludedApps(restoredClipExcluded);
+    // Same full-section apply as Import Config (see applyLoadedConfig).
+    applyLoadedConfig(cfg, { useSavedActiveProfile: true });
     window.electronAPI?.saveConfig({ ...cfg, hasSeenWelcome: true });
-    window.electronAPI?.updateAssignments(restored, cfg.activeProfile || 'Default');
-    window.electronAPI?.updateProfileSettings(cfg.profileSettings || {});
     setBackupRestoredFrom(null);
     showNotification('Config restored from backup');
     window.electronAPI?.hideSettingsWindow();
-  }, [showNotification]);
+  }, [showNotification, applyLoadedConfig]);
 
   // Whether the active profile has an app linked (enables Bare Keys mode)
   const profileLinked = !!(profileSettings[activeProfile]?.linkedApp);
@@ -5337,6 +5401,7 @@ function App() {
       fireOnPress,
       defaultDateFormat,
       searchOverlayHotkey,
+      searchOverlayEnabled,
       overlayShowAll,
       overlayCloseAfterFiring,
       overlayIncludeAutocorrect,
@@ -5403,7 +5468,7 @@ function App() {
   }, [
     macrosEnabledOnStartup, expansionExcludedApps, globalInputMethod,
     macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow,
-    holdThresholdMs, fireOnPress, defaultDateFormat, searchOverlayHotkey,
+    holdThresholdMs, fireOnPress, defaultDateFormat, searchOverlayHotkey, searchOverlayEnabled,
     overlayShowAll, overlayCloseAfterFiring, overlayIncludeAutocorrect,
     globalPauseToggleKey, voiceEnabled, voiceHotkey, hiddenTips, tipsHidden,
     activeProfile, isPro, licenceStatus, clipboardCaptureEnabled,
@@ -5904,6 +5969,8 @@ function App() {
               quickActionImportPrompt={quickActionImportPrompt}
               onQuickActionImportResolve={handleQuickActionImportResolve}
               globalInputMethod={globalInputMethod}
+              assignments={assignments}
+              profiles={profiles}
               onShowNotification={showNotification}
               onShowUpgrade={showUpgrade}
               onEditingChange={setQuickActionEditing}
@@ -5989,13 +6056,7 @@ function App() {
             globalInputMethod={globalInputMethod}
             onAssign={handleRadialChildAssign}
             onClear={handleRadialChildClear}
-            onAssignDouble={() => {}}
-            onClearDouble={() => {}}
-            onAssignHold={() => {}}
-            onClearHold={() => {}}
             onClose={() => setSelectedRadialChild(null)}
-            onReassign={() => {}}
-            onDuplicate={() => {}}
             isPro={isPro}
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}
@@ -6025,13 +6086,7 @@ function App() {
             globalInputMethod={globalInputMethod}
             onAssign={handleRadialAssign}
             onClear={handleRadialClear}
-            onAssignDouble={() => {}}
-            onClearDouble={() => {}}
-            onAssignHold={() => {}}
-            onClearHold={() => {}}
             onClose={() => setSelectedRadialSegment(null)}
-            onReassign={() => {}}
-            onDuplicate={() => {}}
             isPro={isPro}
             voiceEnabled={voiceEnabled}
             onShowUpgrade={showUpgrade}

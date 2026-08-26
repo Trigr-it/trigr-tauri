@@ -615,6 +615,11 @@ export default function SearchTemplatesPanel({
   quickActionImportPrompt,
   onQuickActionImportResolve,
   globalInputMethod,
+  // Full assignment map + profile order — the Quick Action macro editor's
+  // Fire Trigger / Fire Text Expansion pickers list from these (previously
+  // never passed, so the pickers were always empty here).
+  assignments = {},
+  profiles = [],
   onShowNotification,
   searchOverlayHotkey = 'Ctrl+Space',
   hiddenTips = [],
@@ -2395,7 +2400,15 @@ export default function SearchTemplatesPanel({
                 )}
                 {qaType === 'macro' && (
                   <div style={{ marginTop: 4 }}>
-                    <MacroSequenceForm value={qaFormValue} onChange={setQaFormValue} globalInputMethod={globalInputMethod} isPro={isPro} />
+                    <MacroSequenceForm
+                      value={qaFormValue}
+                      onChange={setQaFormValue}
+                      globalInputMethod={globalInputMethod}
+                      isPro={isPro}
+                      onShowUpgrade={onShowUpgrade}
+                      assignments={assignments}
+                      profiles={profiles}
+                    />
                   </div>
                 )}
 

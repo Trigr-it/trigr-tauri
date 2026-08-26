@@ -251,6 +251,37 @@
   box-shadow: 0 0 4px var(--accent);
 }
 
+/* ── Trigger-variant badges (mirror .key-double-badge / .key-hold-badge) ─── */
+/* ×2 bottom-right, ⏱ bottom-left so they never collide; the assigned dot
+   stays top-right. Numpad keys are ~10% smaller than main keys so the
+   glyphs step down a point. */
+.np-key-double-badge {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 2;
+  letter-spacing: -0.01em;
+}
+
+.np-key-hold-badge {
+  position: absolute;
+  bottom: 1px;
+  left: 3px;
+  font-size: 8px;
+  color: var(--accent);
+  line-height: 1;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* ── Drag-and-drop binding target highlight ───────────────────────── */
 .np-key.drop-over {
   border-color: var(--accent);

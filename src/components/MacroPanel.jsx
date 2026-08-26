@@ -1158,6 +1158,7 @@ function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, a
                   isPro={isPro}
                   onShowUpgrade={onShowUpgrade}
                   hideLoop
+                  hideInputMethod
                 />
               </div>
             </>
@@ -1187,6 +1188,10 @@ function RecordMacroForm({ value, onChange, isPro = false, onShowUpgrade, assign
   // step, so this applies to raw AND distilled playback and is Free-tier.
   const loopCfg = value.loop || { enabled: false, mode: 'count', count: 5, delayMs: 0 };
   const updateLoop = (patch) => onChange({ ...value, loop: { ...loopCfg, ...patch } });
+  // Input method also lives on the outer assignment (`data.inputMethod`) and
+  // is read by the Rust "macro" arm for distilled Type Text steps — same
+  // shape as the loop config, and previously never exposed for recordings.
+  const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
   return (
     <div className="record-macro-form">
       <label className="form-label">Recording</label>
@@ -1204,6 +1209,11 @@ function RecordMacroForm({ value, onChange, isPro = false, onShowUpgrade, assign
         Playback repeats them exactly, with the same timing.
       </p>
       <div className="record-macro-loop">
+        <InputMethodSelect
+          value={value.inputMethod}
+          globalLabel={globalLabel}
+          onChange={m => onChange({ ...value, inputMethod: m })}
+        />
         <MacroLoopConfig loopCfg={loopCfg} onChange={updateLoop} radioName="record-macro-loop-mode" />
       </div>
     </div>
@@ -3853,6 +3863,29 @@ function SortableMacroStep({ step, index, updateStep, removeStep, duplicateStep,
 // same `data.loop` shape the Rust "macro" executor reads — loop config lives
 // on the OUTER assignment, never inside a step value, so a one-step Record
 // Macro assignment loops exactly like a multi-step sequence. Not Pro-gated.
+// Sequence-level input method select, shared by MacroSequenceForm and
+// RecordMacroForm. Rust reads `data.inputMethod` off the outer assignment for
+// hand-built AND recorded macros (resolve_input_method → distilled Type Text
+// steps), so the control must exist on both editors.
+export function InputMethodSelect({ value, globalLabel, onChange }) {
+  return (
+    <div className="seq-method-row">
+      <label className="form-label" style={{ marginBottom: 0 }}>Input method</label>
+      <select
+        className="form-select seq-method-select"
+        value={value || 'global'}
+        onChange={e => onChange(e.target.value)}
+      >
+        {INPUT_METHOD_OPTS.map(o => (
+          <option key={o.id} value={o.id}>
+            {o.label}{o.id === 'global' ? ` (${globalLabel})` : ''}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function MacroLoopConfig({ loopCfg, onChange, radioName = 'seq-loop-mode' }) {
   return (
     <>
@@ -3922,7 +3955,11 @@ export function MacroLoopConfig({ loopCfg, onChange, radioName = 'seq-loop-mode'
   );
 }
 
-export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles, isPro = false, onShowUpgrade, hideLoop = false }) {
+// `hideLoop` / `hideInputMethod`: the distilled Record Macro embed passes both —
+// loop AND input method live on the OUTER recording assignment (`data.loop`,
+// `data.inputMethod`) and are rendered by RecordMacroForm; the embed's onChange
+// only round-trips `steps`, so a select shown here would snap back on every change.
+export function MacroSequenceForm({ value, onChange, globalInputMethod, assignments, profiles, isPro = false, onShowUpgrade, hideLoop = false, hideInputMethod = false }) {
   const seqMethod = value.inputMethod || 'global';
   const globalLabel = INPUT_METHOD_OPTS.find(o => o.id === globalInputMethod)?.label || globalInputMethod;
   const loopCfg = value.loop || { enabled: false, mode: 'count', count: 5, delayMs: 0 };
@@ -3999,20 +4036,13 @@ export function MacroSequenceForm({ value, onChange, globalInputMethod, assignme
 
   return (
     <div className="form-section">
-      <div className="seq-method-row">
-        <label className="form-label" style={{ marginBottom: 0 }}>Input method</label>
-        <select
-          className="form-select seq-method-select"
+      {!hideInputMethod && (
+        <InputMethodSelect
           value={seqMethod}
-          onChange={e => onChange({ ...value, inputMethod: e.target.value })}
-        >
-          {INPUT_METHOD_OPTS.map(o => (
-            <option key={o.id} value={o.id}>
-              {o.label}{o.id === 'global' ? ` (${globalLabel})` : ''}
-            </option>
-          ))}
-        </select>
-      </div>
+          globalLabel={globalLabel}
+          onChange={m => onChange({ ...value, inputMethod: m })}
+        />
+      )}
 
       {!hideLoop && <MacroLoopConfig loopCfg={loopCfg} onChange={updateLoop} />}
 
@@ -4883,7 +4913,7 @@ export default function MacroPanel({
           {/* Any saved variant (single / double / hold) can be moved — the
               handler carries all three suffixes. Mouse triggers included:
               the overlay captures mouse destinations too. */}
-          {(assignment || doubleAssignment || holdAssignment) ? (
+          {(assignment || doubleAssignment || holdAssignment) && onReassign ? (
             <button
               className={`reassign-btn${libraryMode ? ' bind-btn bind-btn-attention' : ''}`}
               onClick={() => setReassigning(true)}
@@ -4912,8 +4942,12 @@ export default function MacroPanel({
         </div>
       </div>
 
-      {/* Press mode toggle — keyboard keys and mouse buttons */}
-      {selectedKey && (
+      {/* Press mode toggle — keyboard keys and mouse buttons. Hidden when the
+          host provides no double/hold handlers (radial segment + folder child
+          editors: a wedge is a reference to one action, it has no press
+          variants). Previously those hosts passed no-op stubs and the bar
+          rendered dead ×2 / ⏱ buttons. */}
+      {selectedKey && (onAssignDouble || onAssignHold) && (
         <div className="press-mode-bar">
           <button
             className={`press-mode-btn${pressMode === 'single' ? ' active' : ''}`}
@@ -4922,22 +4956,24 @@ export default function MacroPanel({
           >
             ×1 Single Press
           </button>
-          <button
-            className={`press-mode-btn${pressMode === 'double' ? ' active' : ''}`}
-            onClick={() => {
-              if (!isPro) { onShowUpgrade?.('Double press hotkeys'); return; }
-              setPressMode('double');
-            }}
-            type="button"
-          >
-            ×2 Double Press {!isPro && <span className="pro-badge">PRO</span>}
-            {doubleAssignment && <span className="press-mode-dot" />}
-          </button>
+          {onAssignDouble && (
+            <button
+              className={`press-mode-btn${pressMode === 'double' ? ' active' : ''}`}
+              onClick={() => {
+                if (!isPro) { onShowUpgrade?.('Double press hotkeys'); return; }
+                setPressMode('double');
+              }}
+              type="button"
+            >
+              ×2 Double Press {!isPro && <span className="pro-badge">PRO</span>}
+              {doubleAssignment && <span className="press-mode-dot" />}
+            </button>
+          )}
           {/* Hold applies to keyboard keys and mouse BUTTONS (engine arms
               ::hold for mouse ids since the mouse-hold work, 2026-07-28).
               Scroll zones are excluded — a wheel tick has no release event
               to time a hold against. */}
-          {!selectedKey?.startsWith('MOUSE_SCROLL') && (
+          {onAssignHold && !selectedKey?.startsWith('MOUSE_SCROLL') && (
             <button
               className={`press-mode-btn${pressMode === 'hold' ? ' active' : ''}`}
               onClick={() => {
@@ -5338,13 +5374,16 @@ export default function MacroPanel({
                   title={clearKeyTitle}
                 >{clearVariantLabel}</button>
               )}
-              {/* Unassign lives in the header beside Reassign (Rory, 2026-08-17) */}
-              <button
-                className="btn-duplicate"
-                onClick={() => setDuplicating(true)}
-                type="button"
-                title={libraryMode ? 'Duplicate this action onto a hotkey (keeps the unassigned original)' : 'Duplicate this macro to a different hotkey'}
-              >Duplicate</button>
+              {/* Unassign lives in the header beside Reassign (Rory, 2026-08-17).
+                  Duplicate hides when the host has no handler (radial editors). */}
+              {onDuplicate && (
+                <button
+                  className="btn-duplicate"
+                  onClick={() => setDuplicating(true)}
+                  type="button"
+                  title={libraryMode ? 'Duplicate this action onto a hotkey (keeps the unassigned original)' : 'Duplicate this macro to a different hotkey'}
+                >Duplicate</button>
+              )}
               {onDelete && (
                 <button
                   className="btn-delete"

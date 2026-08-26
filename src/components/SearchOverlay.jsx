@@ -8,6 +8,13 @@ import { friendlyKeyName } from './keyboardLayout';
 import { readVoicePhrases } from '../voicePhrases';
 import useOverlayDrag from './useOverlayDrag';
 
+// Seed the theme from the last session before first paint so a cold boot or a
+// lost data payload doesn't flash (or stay) dark for a light-theme user. Same
+// key the clipboard popup writes — one theme cache for all overlays.
+try {
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('trigr_overlay_theme') || 'dark');
+} catch { /* storage unavailable — CSS :root default applies */ }
+
 // ── Type metadata ──────────────────────────────────────────────────────────────
 
 const TYPE_META = {
@@ -454,32 +461,76 @@ export default function SearchOverlay() {
   }, [voicePhraseMap, stopListening]);
 
   // ── Receive data from main process ──
+  // One applier for the pushed overlay-search-data payload AND the self-heal
+  // pull below, so both paths reset exactly the same state.
+  const applySearchData = useCallback((data) => {
+    if (!data) return;
+    // Apply theme before rendering so colours are correct on first paint
+    const theme = data.theme || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('trigr_overlay_theme', theme); } catch { /* ignore */ }
+    const { settings: newSettings } = data;
+    setSettings(newSettings || { showAll: false, closeAfterFiring: true, includeAutocorrect: false });
+    // flipUp is show-time geometry; the pull payload omits it so the bar keeps
+    // whatever the last show decided.
+    if (typeof data.flipUp === 'boolean') setFlipUp(data.flipUp);
+    const items = buildItems(data);
+    setAllItems(items);
+    setSearchTemplates(data.searchTemplates || []);
+    setQuery('');
+    setSelectedIndex(0);
+    setMode('main');
+    setActiveTemplate(null);
+    setTriggerToken('');
+    setVoiceState('idle');
+    setInterimText('');
+    setMatchedLabel('');
+    setReady(true);
+
+    // Focus the input each time the overlay opens (data arrives on every show)
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
   useEffect(() => {
     if (!window.electronAPI?.onOverlaySearchData) return;
+    window.electronAPI.onOverlaySearchData(applySearchData);
+  }, [applySearchData]);
 
-    window.electronAPI.onOverlaySearchData((data) => {
-      // Apply theme before rendering so colours are correct on first paint
-      document.documentElement.setAttribute('data-theme', data.theme || 'dark');
-      const { settings: newSettings } = data;
-      setSettings(newSettings || { showAll: false, closeAfterFiring: true, includeAutocorrect: false });
-      setFlipUp(!!data.flipUp);
-      const items = buildItems(data);
-      setAllItems(items);
-      setSearchTemplates(data.searchTemplates || []);
-      setQuery('');
-      setSelectedIndex(0);
-      setMode('main');
-      setActiveTemplate(null);
-      setTriggerToken('');
-      setVoiceState('idle');
-      setInterimText('');
-      setMatchedLabel('');
-      setReady(true);
+  // ── Self-heal pull ────────────────────────────────────────────────────────
+  // The pushed payload is fire-and-forget with two known loss windows (same as
+  // the clipboard popup, fixed there in v0.8.5): (1) cold start — this lazy
+  // chunk may not have registered its listener when the first show emits;
+  // (2) resume from webview_mem TrySuspend — the resume/IPC-reconnect race can
+  // drop events emitted right after Resume(). Either left Quick Search blank,
+  // stale, or dark until closed and reopened. So the overlay pulls its own
+  // data at mount (fills only while empty, never clobbers a fresher push) and
+  // on the visibilitychange that only fires on a suspend→resume (forced: the
+  // pushed payload for that show is exactly what may have been lost). Voice
+  // mode is left alone — its payload comes down a different event.
+  const allItemsLenRef = useRef(0);
+  useEffect(() => { allItemsLenRef.current = allItems.length; }, [allItems]);
+  // modeRef (declared above, live mirror of `mode`) gates the voice case.
+  const selfHealPull = useCallback((force) => {
+    window.electronAPI?.getSearchOverlayData?.()
+      .then((data) => {
+        if (!data || !data.assignments) return;
+        if (!force && allItemsLenRef.current > 0) return;
+        if (modeRef.current === 'voice') return;
+        applySearchData(data);
+      })
+      .catch(() => {});
+  }, [applySearchData]);
 
-      // Focus the input each time the overlay opens (data arrives on every show)
-      setTimeout(() => inputRef.current?.focus(), 0);
-    });
-  }, []);
+  useEffect(() => { selfHealPull(false); }, [selfHealPull]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      selfHealPull(true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selfHealPull]);
 
   // Mid-session flip change — currently only fired by a position reset while
   // the overlay is open (the bar returns to the default spot, which never

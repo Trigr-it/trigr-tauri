@@ -2953,37 +2953,10 @@ fn show_overlay(app: &tauri::AppHandle) {
         phys_y, flip_up, wa_bottom, scale
     );
 
-    // Send search data to the overlay — includes ALL assignments (profile + global)
-    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
-    // Pro gate: Free users get the first 5 templates. Anything beyond
-    // is preserved in config and returns when the user upgrades.
-    let search_templates = {
-        let templates = cfg.get("searchTemplates").cloned().unwrap_or_else(|| serde_json::json!([]));
-        if licence::is_pro() {
-            templates
-        } else if let Some(arr) = templates.as_array() {
-            serde_json::Value::Array(arr.iter().take(5).cloned().collect())
-        } else {
-            templates
-        }
-    };
-    let search_data = {
-        let state = hotkeys::engine_state().lock().unwrap();
-        serde_json::json!({
-            "assignments": state.assignments,
-            "activeProfile": state.active_profile,
-            "globalInputMethod": cfg.get("globalInputMethod").and_then(|v| v.as_str()).unwrap_or("direct"),
-            "theme": cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"),
-            "searchTemplates": search_templates,
-            "settings": {
-                "showAll": cfg.get("overlayShowAll").and_then(|v| v.as_bool()).unwrap_or(true),
-                "closeAfterFiring": cfg.get("overlayCloseAfterFiring").and_then(|v| v.as_bool()).unwrap_or(true),
-                "includeAutocorrect": cfg.get("overlayIncludeAutocorrect").and_then(|v| v.as_bool()).unwrap_or(false),
-            },
-            "voiceEnabled": cfg.get("voiceCommandsEnabled").and_then(|v| v.as_bool()).unwrap_or(true),
-            "flipUp": flip_up
-        })
-    };
+    // Send search data to the overlay — includes ALL assignments (profile + global).
+    // Same builder the overlay's self-heal pull uses (get_search_overlay_data),
+    // so push and pull can never drift.
+    let search_data = build_search_overlay_data(Some(flip_up));
     let _ = overlay.emit("overlay-search-data", search_data);
 
     // Show and focus
@@ -2998,6 +2971,235 @@ fn show_overlay(app: &tauri::AppHandle) {
     // Notify any listeners (onboarding tour Step 7 waits for this) that Quick
     // Search was actually fired by the user.
     let _ = app.emit("search-overlay-shown", serde_json::Value::Null);
+}
+
+/// Quick Search payload: every assignment (profile + global), Pro-capped search
+/// templates, overlay settings and theme. `flip_up` is a show-time geometry
+/// fact; the pull path passes `None` so the overlay keeps whatever the last
+/// show told it.
+fn build_search_overlay_data(flip_up: Option<bool>) -> Value {
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    // Pro gate: Free users get the first 5 templates. Anything beyond
+    // is preserved in config and returns when the user upgrades.
+    let search_templates = {
+        let templates = cfg.get("searchTemplates").cloned().unwrap_or_else(|| serde_json::json!([]));
+        if licence::is_pro() {
+            templates
+        } else if let Some(arr) = templates.as_array() {
+            serde_json::Value::Array(arr.iter().take(5).cloned().collect())
+        } else {
+            templates
+        }
+    };
+    let state = hotkeys::engine_state().lock().unwrap();
+    let mut data = serde_json::json!({
+        "assignments": state.assignments,
+        "activeProfile": state.active_profile,
+        "globalInputMethod": cfg.get("globalInputMethod").and_then(|v| v.as_str()).unwrap_or("direct"),
+        "theme": cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark"),
+        "searchTemplates": search_templates,
+        "settings": {
+            "showAll": cfg.get("overlayShowAll").and_then(|v| v.as_bool()).unwrap_or(true),
+            "closeAfterFiring": cfg.get("overlayCloseAfterFiring").and_then(|v| v.as_bool()).unwrap_or(true),
+            "includeAutocorrect": cfg.get("overlayIncludeAutocorrect").and_then(|v| v.as_bool()).unwrap_or(false),
+        },
+        "voiceEnabled": cfg.get("voiceCommandsEnabled").and_then(|v| v.as_bool()).unwrap_or(true),
+    });
+    if let (Some(flip), Some(obj)) = (flip_up, data.as_object_mut()) {
+        obj.insert("flipUp".to_string(), Value::Bool(flip));
+    }
+    data
+}
+
+/// Self-heal pull for the Quick Search overlay (mirrors the clipboard popup's
+/// v0.8.5 fix). The pushed `overlay-search-data` emit has two loss windows —
+/// cold start before the lazy chunk registers its listener, and the
+/// resume-from-TrySuspend IPC race — either of which left the bar blank /
+/// stale / dark until closed and reopened. Side-effect free: plain config
+/// read, never `load_config` the command (boot side effects).
+#[tauri::command]
+async fn get_search_overlay_data() -> Value {
+    tauri::async_runtime::spawn_blocking(|| build_search_overlay_data(None))
+        .await
+        .unwrap_or_else(|_| serde_json::json!({}))
+}
+
+/// Same for the radial menu (`radial-menu-data`). Also carries holdToSelect +
+/// holdKey, so a lost push used to disable hold-release firing for that open.
+#[tauri::command]
+async fn get_radial_menu_data() -> Value {
+    tauri::async_runtime::spawn_blocking(build_radial_menu_data)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({}))
+}
+
+/// Radial wheel payload for the CURRENT active profile. Shared by the show
+/// path (push) and `get_radial_menu_data` (self-heal pull).
+fn build_radial_menu_data() -> Value {
+    // Build payload: resolve radial menu items for the CURRENT active profile.
+    // Use radialMenuItemsByProfile[activeProfile] rather than the flat radialMenuItems
+    // array, which may be stale if a profile switch hasn't flushed to disk yet.
+    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+    let state = hotkeys::engine_state().lock().unwrap();
+    let active_profile = state.active_profile.clone();
+    // Per-profile map is the source of truth. The legacy flat radialMenuItems
+    // field is read ONLY when the map is entirely absent (pre-per-profile
+    // configs). Falling back per-profile would show stale items for profiles
+    // the user never configured — the editor shows them an empty wheel, the
+    // live overlay must match. The frontend no longer writes the flat field.
+    let radial_items = match cfg.get("radialMenuItemsByProfile") {
+        Some(m) => m.get(&active_profile).cloned().unwrap_or_else(|| serde_json::json!([])),
+        None => cfg
+            .get("radialMenuItems")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([])),
+    };
+    let resolve_item = |item: &Value| -> Option<Value> {
+        // Check if this is a folder item (has type: "folder")
+        let is_folder = item
+            .get("type")
+            .and_then(|v| v.as_str())
+            .map(|t| t == "folder")
+            .unwrap_or(false);
+
+        if is_folder {
+            let label = item
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Folder");
+            let children_raw = item
+                .get("children")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            // Resolve each child
+            let resolved_children: Vec<Value> = children_raw
+                .iter()
+                .filter_map(|child| {
+                    let sk = child.get("storageKey")?.as_str()?;
+                    let assignment = state.assignments.get(sk);
+                    let child_label_override = child
+                        .get("label")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty());
+                    let default_label = assignment
+                        .and_then(|a| a.get("label").and_then(|l| l.as_str()))
+                        .unwrap_or("");
+                    let assign_type = assignment
+                        .and_then(|a| a.get("type").and_then(|t| t.as_str()))
+                        .unwrap_or("");
+                    let child_type = if sk.starts_with("GLOBAL::EXPANSION::") {
+                        "expansion"
+                    } else if sk.starts_with("GLOBAL::QUICKACTION::") {
+                        "quickaction"
+                    } else if sk.starts_with("GLOBAL::AUTOCORRECT::") {
+                        "autocorrect"
+                    } else {
+                        "assignment"
+                    };
+                    Some(serde_json::json!({
+                        "id": child.get("id"),
+                        "storageKey": sk,
+                        "label": child_label_override.unwrap_or(default_label),
+                        "icon": child.get("icon"),
+                        "iconColor": child.get("iconColor"),
+                        "appIcon": child.get("appIcon"),
+                        "assignType": assign_type,
+                        "exists": assignment.is_some(),
+                        "type": child_type,
+                        "data": assignment.and_then(|a| a.get("data").cloned()),
+                    }))
+                })
+                .collect();
+
+            return Some(serde_json::json!({
+                "id": item.get("id"),
+                "type": "folder",
+                "label": label,
+                "icon": item.get("icon"),
+            "iconColor": item.get("iconColor"),
+            "appIcon": item.get("appIcon"),
+                "exists": true,
+                "children": resolved_children,
+            }));
+        }
+
+        // Regular item
+        let storage_key = item.get("storageKey")?.as_str()?;
+        let assignment = state.assignments.get(storage_key);
+        let label_override = item
+            .get("label")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let default_label = assignment
+            .and_then(|a| a.get("label").and_then(|l| l.as_str()))
+            .unwrap_or("");
+        let assign_type = assignment
+            .and_then(|a| a.get("type").and_then(|t| t.as_str()))
+            .unwrap_or("");
+        let item_type = if storage_key.starts_with("GLOBAL::EXPANSION::") {
+            "expansion"
+        } else if storage_key.starts_with("GLOBAL::QUICKACTION::") {
+            "quickaction"
+        } else if storage_key.starts_with("GLOBAL::AUTOCORRECT::") {
+            "autocorrect"
+        } else {
+            "assignment"
+        };
+
+        Some(serde_json::json!({
+            "id": item.get("id"),
+            "storageKey": storage_key,
+            "label": label_override.unwrap_or(default_label),
+            "icon": item.get("icon"),
+            "iconColor": item.get("iconColor"),
+            "appIcon": item.get("appIcon"),
+            "assignType": assign_type,
+            "exists": assignment.is_some(),
+            "type": item_type,
+            "data": assignment.and_then(|a| a.get("data").cloned()),
+        }))
+    };
+
+    let resolved_items: Vec<Value> = radial_items
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .map(|item| {
+            if item.is_null() {
+                Value::Null
+            } else {
+                resolve_item(item).unwrap_or(Value::Null)
+            }
+        })
+        .collect();
+    drop(state);
+
+    // Hold-to-select: the overlay holds keyboard focus (set_focus below), so
+    // its own web layer detects the launch-key release. Pass whether the mode
+    // is on and which key ends the gesture (the action segment of the radial
+    // hotkey combo, in KeyboardEvent.code form, e.g. "KeyW" from
+    // "Ctrl+Alt+KeyW"). This replaces the earlier hook-based detection, which
+    // could never observe the release of a key whose keydown we suppress.
+    let hold_to_select = cfg
+        .get("radialHoldToSelect")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let hold_key = cfg
+        .get("radialMenuHotkey")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.rsplit('+').next())
+        .unwrap_or("")
+        .to_string();
+    let payload = serde_json::json!({
+        "items": resolved_items,
+        "theme": theme,
+        "holdToSelect": hold_to_select,
+        "holdKey": hold_key,
+    });
+    payload
 }
 
 #[cfg(not(windows))]
@@ -3392,169 +3594,8 @@ fn show_radial_menu(app: &tauri::AppHandle) {
     let _ = win.set_position(tauri::PhysicalPosition::new(phys_x, phys_y));
     let _ = win.set_size(tauri::PhysicalSize::new(phys_size as u32, phys_size as u32));
 
-    // Build payload: resolve radial menu items for the CURRENT active profile.
-    // Use radialMenuItemsByProfile[activeProfile] rather than the flat radialMenuItems
-    // array, which may be stale if a profile switch hasn't flushed to disk yet.
-    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
-    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
-    let state = hotkeys::engine_state().lock().unwrap();
-    let active_profile = state.active_profile.clone();
-    // Per-profile map is the source of truth. The legacy flat radialMenuItems
-    // field is read ONLY when the map is entirely absent (pre-per-profile
-    // configs). Falling back per-profile would show stale items for profiles
-    // the user never configured — the editor shows them an empty wheel, the
-    // live overlay must match. The frontend no longer writes the flat field.
-    let radial_items = match cfg.get("radialMenuItemsByProfile") {
-        Some(m) => m.get(&active_profile).cloned().unwrap_or_else(|| serde_json::json!([])),
-        None => cfg
-            .get("radialMenuItems")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!([])),
-    };
-    let resolve_item = |item: &Value| -> Option<Value> {
-        // Check if this is a folder item (has type: "folder")
-        let is_folder = item
-            .get("type")
-            .and_then(|v| v.as_str())
-            .map(|t| t == "folder")
-            .unwrap_or(false);
-
-        if is_folder {
-            let label = item
-                .get("label")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Folder");
-            let children_raw = item
-                .get("children")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-
-            // Resolve each child
-            let resolved_children: Vec<Value> = children_raw
-                .iter()
-                .filter_map(|child| {
-                    let sk = child.get("storageKey")?.as_str()?;
-                    let assignment = state.assignments.get(sk);
-                    let child_label_override = child
-                        .get("label")
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty());
-                    let default_label = assignment
-                        .and_then(|a| a.get("label").and_then(|l| l.as_str()))
-                        .unwrap_or("");
-                    let assign_type = assignment
-                        .and_then(|a| a.get("type").and_then(|t| t.as_str()))
-                        .unwrap_or("");
-                    let child_type = if sk.starts_with("GLOBAL::EXPANSION::") {
-                        "expansion"
-                    } else if sk.starts_with("GLOBAL::QUICKACTION::") {
-                        "quickaction"
-                    } else if sk.starts_with("GLOBAL::AUTOCORRECT::") {
-                        "autocorrect"
-                    } else {
-                        "assignment"
-                    };
-                    Some(serde_json::json!({
-                        "id": child.get("id"),
-                        "storageKey": sk,
-                        "label": child_label_override.unwrap_or(default_label),
-                        "icon": child.get("icon"),
-                        "iconColor": child.get("iconColor"),
-                        "appIcon": child.get("appIcon"),
-                        "assignType": assign_type,
-                        "exists": assignment.is_some(),
-                        "type": child_type,
-                        "data": assignment.and_then(|a| a.get("data").cloned()),
-                    }))
-                })
-                .collect();
-
-            return Some(serde_json::json!({
-                "id": item.get("id"),
-                "type": "folder",
-                "label": label,
-                "icon": item.get("icon"),
-            "iconColor": item.get("iconColor"),
-            "appIcon": item.get("appIcon"),
-                "exists": true,
-                "children": resolved_children,
-            }));
-        }
-
-        // Regular item
-        let storage_key = item.get("storageKey")?.as_str()?;
-        let assignment = state.assignments.get(storage_key);
-        let label_override = item
-            .get("label")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty());
-        let default_label = assignment
-            .and_then(|a| a.get("label").and_then(|l| l.as_str()))
-            .unwrap_or("");
-        let assign_type = assignment
-            .and_then(|a| a.get("type").and_then(|t| t.as_str()))
-            .unwrap_or("");
-        let item_type = if storage_key.starts_with("GLOBAL::EXPANSION::") {
-            "expansion"
-        } else if storage_key.starts_with("GLOBAL::QUICKACTION::") {
-            "quickaction"
-        } else if storage_key.starts_with("GLOBAL::AUTOCORRECT::") {
-            "autocorrect"
-        } else {
-            "assignment"
-        };
-
-        Some(serde_json::json!({
-            "id": item.get("id"),
-            "storageKey": storage_key,
-            "label": label_override.unwrap_or(default_label),
-            "icon": item.get("icon"),
-            "iconColor": item.get("iconColor"),
-            "appIcon": item.get("appIcon"),
-            "assignType": assign_type,
-            "exists": assignment.is_some(),
-            "type": item_type,
-            "data": assignment.and_then(|a| a.get("data").cloned()),
-        }))
-    };
-
-    let resolved_items: Vec<Value> = radial_items
-        .as_array()
-        .unwrap_or(&vec![])
-        .iter()
-        .map(|item| {
-            if item.is_null() {
-                Value::Null
-            } else {
-                resolve_item(item).unwrap_or(Value::Null)
-            }
-        })
-        .collect();
-    drop(state);
-
-    // Hold-to-select: the overlay holds keyboard focus (set_focus below), so
-    // its own web layer detects the launch-key release. Pass whether the mode
-    // is on and which key ends the gesture (the action segment of the radial
-    // hotkey combo, in KeyboardEvent.code form, e.g. "KeyW" from
-    // "Ctrl+Alt+KeyW"). This replaces the earlier hook-based detection, which
-    // could never observe the release of a key whose keydown we suppress.
-    let hold_to_select = cfg
-        .get("radialHoldToSelect")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let hold_key = cfg
-        .get("radialMenuHotkey")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.rsplit('+').next())
-        .unwrap_or("")
-        .to_string();
-    let payload = serde_json::json!({
-        "items": resolved_items,
-        "theme": theme,
-        "holdToSelect": hold_to_select,
-        "holdKey": hold_key,
-    });
+    // Build payload — shared with get_radial_menu_data (self-heal pull).
+    let payload = build_radial_menu_data();
     use tauri::Emitter;
     let _ = win.emit("radial-menu-data", payload);
 
@@ -4033,10 +4074,28 @@ fn percent_encode_query(input: &str) -> String {
     encoded
 }
 
+/// Engine-side Quick Search settings. Persistence is the frontend's job
+/// (`handleUpdateSearchSettings` saves the patch to config); this only
+/// registers the hotkey. `searchOverlayEnabled: false` clears the hotkey so
+/// the combo passes through to the focused app — the frontend always sends
+/// `searchOverlayEnabled` and `searchOverlayHotkey` together so re-enabling
+/// restores the user's combo without a restart.
 #[tauri::command]
 fn update_search_settings(settings: Value) {
+    let enabled = settings
+        .get("searchOverlayEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    if !enabled {
+        hotkeys::clear_overlay_hotkey();
+        return;
+    }
     if let Some(hotkey) = settings.get("searchOverlayHotkey").and_then(|v| v.as_str()) {
-        hotkeys::set_overlay_hotkey(hotkey);
+        if hotkey.is_empty() {
+            hotkeys::clear_overlay_hotkey();
+        } else {
+            hotkeys::set_overlay_hotkey(hotkey);
+        }
     }
 }
 
@@ -6532,6 +6591,8 @@ pub fn run() {
             get_pixel_color,
             set_pixel_pick_active,
             get_snip_overlay_config,
+            get_search_overlay_data,
+            get_radial_menu_data,
             show_snip_overlay,
             hide_snip_overlay,
             emit_snip_result,

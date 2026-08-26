@@ -564,6 +564,9 @@ window.electronAPI = {
   showSnipOverlay: ()            => invoke('show_snip_overlay'),
   hideSnipOverlay: ()            => invoke('hide_snip_overlay'),
   getSnipOverlayConfig: ()       => invoke('get_snip_overlay_config'),
+  // Self-heal pulls for the push-only overlays (see ClipboardOverlay pattern).
+  getSearchOverlayData: ()       => invoke('get_search_overlay_data'),
+  getRadialMenuData:    ()       => invoke('get_radial_menu_data'),
   // Called by the overlay window itself, NOT by feature callers.
   emitSnipResult:  (rect)        => invoke('emit_snip_result', rect),
   emitSnipCancelled: ()          => invoke('emit_snip_cancelled'),
