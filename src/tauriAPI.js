@@ -293,7 +293,7 @@ window.electronAPI = {
   // flow. Show positions the window centred on the cursor's monitor; the
   // countdown component animates and emits recorder-countdown-recording when
   // the count finishes (Rust listens, morphs to pill, calls start). The
-  // listener below fires when the LL hook detects Ctrl+Shift+R.
+  // listener below fires when the LL hook detects the Quick Record stop hotkey (Ctrl+Alt+R by default).
   showRecorderCountdown: () => invoke('show_recorder_countdown'),
   hideRecorderCountdown: () => invoke('hide_recorder_countdown'),
   // Hide / restore the main window for the recorder flow. We use hide()
@@ -309,7 +309,7 @@ window.electronAPI = {
       (event) => callback(event.payload),
     );
   },
-  // Fired by the hook when the Ctrl+Shift+R stop hotkey is detected. The
+  // Fired by the hook when the Quick Record stop hotkey (Ctrl+Alt+R by default) is detected. The
   // listener should call stopMacroRecording() to retrieve the captured buffer.
   onRecorderStopRequested: (callback) => {
     listeners['recorder-stop-requested'] = listen(

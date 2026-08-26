@@ -2735,7 +2735,7 @@ fn check_hotkey_conflict(combo: String, from_slot: Option<String>) -> Value {
         None => return serde_json::json!({ "conflict": false, "conflictWith": null }),
     };
     let from = from_slot.unwrap_or_default();
-    let state = hotkeys::engine_state().lock().unwrap();
+    let state = hotkeys::engine_state_lock();
 
     if from != "overlay" && state.overlay_hotkey == Some(parsed) {
         return serde_json::json!({ "conflict": true, "conflictWith": "Quick Search overlay" });
@@ -3114,7 +3114,7 @@ fn build_search_overlay_data(flip_up: Option<bool>) -> Value {
             templates
         }
     };
-    let state = hotkeys::engine_state().lock().unwrap();
+    let state = hotkeys::engine_state_lock();
     let mut data = serde_json::json!({
         "assignments": state.assignments,
         "activeProfile": state.active_profile,
@@ -3164,7 +3164,7 @@ fn build_radial_menu_data() -> Value {
     // array, which may be stale if a profile switch hasn't flushed to disk yet.
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
-    let state = hotkeys::engine_state().lock().unwrap();
+    let state = hotkeys::engine_state_lock();
     let active_profile = state.active_profile.clone();
     // Per-profile map is the source of truth. The legacy flat radialMenuItems
     // field is read ONLY when the map is entirely absent (pre-per-profile
@@ -3383,7 +3383,7 @@ fn show_voice_overlay(app: &tauri::AppHandle) {
     // Send voice data to overlay
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let voice_data = {
-        let state = hotkeys::engine_state().lock().unwrap();
+        let state = hotkeys::engine_state_lock();
         serde_json::json!({
             "assignments": state.assignments,
             "activeProfile": state.active_profile,
@@ -4006,7 +4006,7 @@ fn execute_item_impl(result: &Value, target_hwnd: isize, app: &tauri::AppHandle)
                     actions::set_foreground_robust(target_hwnd);
                     std::thread::sleep(std::time::Duration::from_millis(30));
                 }
-                let state = hotkeys::engine_state().lock().unwrap();
+                let state = hotkeys::engine_state_lock();
                 if let Some(macro_val) = state.assignments.get(storage_key).cloned() {
                     drop(state);
                     actions::execute_action(&macro_val, false, target_hwnd, false, Some(storage_key), app);
@@ -6012,6 +6012,24 @@ fn relaunch_profile_mode(name: String, app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Panics anywhere (macro thread, expansion thread, processor) used to go
+    // to stderr only, which nobody sees in a tray app. Log them so a "hotkeys
+    // just stopped" report has a trace to chase; the processor loop recovers
+    // from its own panics (see hotkeys::process_events).
+    std::panic::set_hook(Box::new(|info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "non-string panic payload".to_string()
+        };
+        log::error!("[PANIC] thread '{}' at {}: {}", std::thread::current().name().unwrap_or("?"), location, msg);
+    }));
     tauri::Builder::default()
         // Single-instance lock — second launches focus the existing main
         // window and exit immediately. Prevents the WebView2 shared-runtime

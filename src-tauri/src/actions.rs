@@ -187,6 +187,20 @@ static LOOPING_MACROS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
 pub static LOOPING_COUNT: AtomicUsize = AtomicUsize::new(0);
 pub static ESC_LOOP_BREAK: AtomicBool = AtomicBool::new(false);
 
+/// Set by any action/step that aborts with a user-facing reason (target
+/// window not found, app failed to launch, Wait step timed out with Abort).
+/// `fire_macro_impl` swaps it back to false after `execute_action` returns and
+/// reports `ok: false` in the `macro-fired` event so the status bar shows a
+/// failure instead of the unconditional "fired" flash.
+pub static LAST_ACTION_FAILED: AtomicBool = AtomicBool::new(false);
+
+/// Abort helper for macro steps: toast (tray-aware), mark the run failed,
+/// caller returns false.
+fn fail_step(app: &tauri::AppHandle, message: &str) {
+    crate::emit_user_toast(app, "error", message);
+    LAST_ACTION_FAILED.store(true, Ordering::SeqCst);
+}
+
 pub(crate) struct MacroRunningGuard {
     key: String,
 }
@@ -460,7 +474,7 @@ fn normalise_url(raw: &str) -> String {
 
 /// Speed presets: (initial_delay, step_settle, foreground_settle, clipboard_restore)
 fn speed_delays() -> (u64, u64, u64, u64) {
-    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let state = crate::hotkeys::engine_state_lock();
     match state.macro_speed.as_str() {
         "fast"    => (5,  5,  5, 25),
         "instant" => (0,  0,  5, 25),
@@ -482,7 +496,7 @@ fn speed_delays() -> (u64, u64, u64, u64) {
 /// slider (clamped to the UI max). The frontend preset cards mirror these
 /// numbers — keep MACRO_SPEED_PRESETS in SettingsPanel.jsx in sync.
 fn keystroke_delay_ms() -> u64 {
-    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let state = crate::hotkeys::engine_state_lock();
     match state.macro_speed.as_str() {
         "fast"    => 5,
         "instant" => 0,
@@ -599,7 +613,10 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
             if let Some(url) = data.and_then(|d| d.get("url")).and_then(|v| v.as_str()) {
                 let normalised = normalise_url(url);
                 if !normalised.is_empty() {
-                    let _ = opener::open(&normalised);
+                    if let Err(e) = opener::open(&normalised) {
+                        warn!("[Keyfire] Open URL failed for {}: {}", normalised, e);
+                        fail_step(app, &format!("Couldn't open {}.", normalised));
+                    }
                 }
             }
         }
@@ -611,19 +628,28 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
             let monitor = crate::window_target::parse_monitor_target(data, target_hwnd);
             // Single-action path — user pressed a hotkey. No follow-up step to
             // sequence with, so the completion receiver is discarded.
-            let _ = crate::window_target::launch_with_monitor_target(
+            if crate::window_target::launch_with_monitor_target(
                 crate::window_target::LaunchKind::App { kind, path, app_id, args: "" },
                 monitor,
-            );
+            )
+            .is_none()
+            {
+                let what = if !path.is_empty() { path } else { app_id };
+                fail_step(app, &format!("Couldn't open \"{}\". Check the app is still installed.", what));
+            }
         }
 
         "folder" => {
             if let Some(path) = data.and_then(|d| d.get("path")).and_then(|v| v.as_str()) {
                 let monitor = crate::window_target::parse_monitor_target(data, target_hwnd);
-                let _ = crate::window_target::launch_with_monitor_target(
+                if crate::window_target::launch_with_monitor_target(
                     crate::window_target::LaunchKind::Folder { path },
                     monitor,
-                );
+                )
+                .is_none()
+                {
+                    fail_step(app, &format!("Couldn't open folder \"{}\".", path));
+                }
             }
         }
 
@@ -925,7 +951,7 @@ fn resolve_input_method(data: Option<&Value>) -> String {
         }
     }
     // Fall through to global default from settings
-    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let state = crate::hotkeys::engine_state_lock();
     state.global_input_method.clone()
 }
 
@@ -1077,7 +1103,7 @@ fn clipboard_paste_core(text: &str, target_hwnd: isize) {
 
 /// Check if Ctrl+V is mapped as a hotkey in the current assignments.
 fn is_ctrl_v_mapped() -> bool {
-    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let state = crate::hotkeys::engine_state_lock();
     let profile = &state.active_profile;
     let key = format!("{}::Ctrl::KeyV", profile);
     state.assignments.contains_key(&key)
@@ -2830,7 +2856,7 @@ fn try_fire_keyfire_hotkey_from_macro(
 ) -> bool {
     let bits = mod_vks_to_bits(mod_vks);
     let target = target_vk as u32;
-    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let state = crate::hotkeys::engine_state_lock();
     let overlay = state.overlay_hotkey;
     let radial = state.radial_menu_hotkey;
     let clipboard = state.clipboard_paste_hotkey;
@@ -3140,6 +3166,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             // on Free tier so imported / hand-edited configs can't bypass.
             if !crate::licence::is_pro() {
                 warn!("[Keyfire] Wait for Window: skipped — Pro feature (free tier)");
+                crate::emit_user_toast(app, "info", "Wait for Window is a Pro step and was skipped on the Free plan. The rest of the macro ran.");
                 return true;
             }
             if step_value.is_empty() {
@@ -3245,6 +3272,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             // manual JSON edits or shared configs from bypassing.
             if !crate::licence::is_pro() {
                 warn!("[Keyfire] Wait for Pixel: skipped — Pro feature (free tier)");
+                crate::emit_user_toast(app, "info", "Wait for Pixel is a Pro step and was skipped on the Free plan. The rest of the macro ran.");
                 return true;
             }
             let parsed: Value = match serde_json::from_str(step_value) {
@@ -3354,6 +3382,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             // Free tier so imported / hand-edited configs can't bypass.
             if !crate::licence::is_pro() {
                 warn!("[Keyfire] Wait for Text: skipped — Pro feature (free tier)");
+                crate::emit_user_toast(app, "info", "Wait for Text is a Pro step and was skipped on the Free plan. The rest of the macro ran.");
                 return true;
             }
             #[cfg(not(windows))]
@@ -4120,6 +4149,10 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 crate::window_target::LaunchKind::App { kind: "path", path, app_id: "", args: "" },
                 monitor,
             );
+            if rx.is_none() {
+                fail_step(app, &format!("Couldn't open \"{}\". Macro stopped.", path));
+                return false;
+            }
             if let Some(rx) = rx {
                 let _ = rx.recv_timeout(Duration::from_secs(5));
             }
@@ -4147,6 +4180,10 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 crate::window_target::LaunchKind::App { kind, path, app_id, args },
                 monitor,
             );
+            if rx.is_none() {
+                fail_step(app, &format!("Couldn't open \"{}\". Macro stopped.", path));
+                return false;
+            }
             // See Open Folder comment above — same rationale, same 5s ceiling.
             if let Some(rx) = rx {
                 let _ = rx.recv_timeout(Duration::from_secs(5));
@@ -4199,6 +4236,11 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 }
                 None => {
                     warn!("[Keyfire] Focus Window: no matching window found for process='{}' title='{}'", process, title);
+                    // Continuing here sent the following Type Text / Press Key
+                    // steps into whatever happened to be focused.
+                    let what = if !process.is_empty() { process.to_string() } else { title.to_string() };
+                    fail_step(app, &format!("Focus Window: no window found for \"{}\". Macro stopped.", what));
+                    return false;
                 }
             }
         }
@@ -4284,6 +4326,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             // saves via PRO_MACRO_STEPS.
             if !crate::licence::is_pro() {
                 warn!("[Keyfire] Run AHK Script: skipped — Pro feature (free tier)");
+                crate::emit_user_toast(app, "info", "Run AHK Script is a Pro step and was skipped on the Free plan. The rest of the macro ran.");
                 return true;
             }
             if !step_value.is_empty() {
@@ -4578,7 +4621,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 return true;
             }
             let lookup = {
-                let state = crate::hotkeys::engine_state().lock().unwrap();
+                let state = crate::hotkeys::engine_state_lock();
                 state.assignments.get(step_value).cloned()
             };
             match lookup {
@@ -4591,7 +4634,9 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     execute_action(&target_macro, false, *target_hwnd, false, None, app);
                 }
                 None => {
-                    warn!("[Keyfire] Fire Trigger: assignment \"{}\" not found, skipping", step_value);
+                    warn!("[Keyfire] Fire Trigger: assignment \"{}\" not found", step_value);
+                    fail_step(app, &format!("Fire Trigger: \"{}\" no longer exists. Macro stopped.", step_value));
+                    return false;
                 }
             }
         }
@@ -4934,6 +4979,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             // it and macro continues to the next step.
             if !crate::licence::is_pro() {
                 warn!("[Keyfire] Change Audio Output: skipped — Pro feature (free tier)");
+                crate::emit_user_toast(app, "info", "Change Audio Output is a Pro step and was skipped on the Free plan. The rest of the macro ran.");
                 return true;
             }
             let parsed: Value = match serde_json::from_str(step_value) {

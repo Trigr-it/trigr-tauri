@@ -79,7 +79,12 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
         {lastFired && (
           <>
             <span className="status-sep">·</span>
-            <span className="status-fired">▶ {lastFired.label}</span>
+            <span
+              className={`status-fired${lastFired.ok === false ? ' failed' : ''}`}
+              title={lastFired.ok === false ? 'The action stopped early — see the notification for why' : undefined}
+            >
+              {lastFired.ok === false ? '✗' : '▶'} {lastFired.label}
+            </span>
           </>
         )}
 
@@ -107,17 +112,16 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
       </div>
 
       <div className="statusbar-right">
+        {/* Single hooks chip. The old "Executor" chip was a permanent warning
+            left over from the Electron build (nutjsAvailable is always false
+            in Rust) and both tooltips told users to run npm commands. */}
         <span
           className={`engine-chip ${uiohookAvailable ? 'ok' : 'warn'}`}
-          title={uiohookAvailable ? 'Hotkey listener active' : 'Run: npm install uiohook-napi'}
+          title={uiohookAvailable
+            ? 'Global hotkey hooks are active'
+            : 'Hotkey hooks are not running. Keyfire keeps retrying; if this persists, restart Keyfire or check antivirus settings.'}
         >
-          {uiohookAvailable ? '⬤' : '○'} Listener
-        </span>
-        <span
-          className={`engine-chip ${nutjsAvailable ? 'ok' : 'warn'}`}
-          title={nutjsAvailable ? 'Macro executor active' : 'Run: npm install @nut-tree-fork/nut-js'}
-        >
-          {nutjsAvailable ? '⬤' : '○'} Executor
+          {uiohookAvailable ? '⬤' : '○'} Hooks
         </span>
         <span className="status-sep">·</span>
         <span className="status-info">Keyfire {appVersion ? `v${appVersion}` : 'v…'}</span>

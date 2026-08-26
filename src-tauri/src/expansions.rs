@@ -78,10 +78,19 @@ pub(crate) fn log_preview(s: &str) -> String {
 /// burst use (fast typist with short triggers ≈ 2-3/s) and cuts a runaway
 /// (observed at ~34/s on 2026-06-04) within a fraction of a second.
 fn fire_rate_ok(context: &str) -> bool {
+    // Programmatic fires (macro "Fire Text Expansion" steps, incl. inside
+    // loops) are deliberate and can't feed back through the typing buffer, so
+    // they are exempt — the breaker used to silently drop the 9th+ step of a
+    // legitimate loop.
+    if PROGRAMMATIC_FIRE_DEPTH.load(Ordering::SeqCst) > 0 {
+        return true;
+    }
     static FIRE_TIMES: std::sync::Mutex<Vec<std::time::Instant>> =
         std::sync::Mutex::new(Vec::new());
+    static LAST_TRIP_TOAST: std::sync::Mutex<Option<std::time::Instant>> =
+        std::sync::Mutex::new(None);
     let now = std::time::Instant::now();
-    let mut times = FIRE_TIMES.lock().unwrap();
+    let mut times = FIRE_TIMES.lock().unwrap_or_else(|p| p.into_inner());
     times.retain(|t| now.duration_since(*t) < Duration::from_secs(2));
     if times.len() >= 8 {
         log::error!(
@@ -89,10 +98,33 @@ fn fire_rate_ok(context: &str) -> bool {
             times.len(),
             context
         );
+        // Tell the user once per trip window rather than eating triggers silently.
+        let mut last = LAST_TRIP_TOAST.lock().unwrap_or_else(|p| p.into_inner());
+        if last.map(|t| now.duration_since(t) > Duration::from_secs(5)).unwrap_or(true) {
+            *last = Some(now);
+            if let Some(app) = APP_HANDLE.get() {
+                crate::emit_user_toast(app, "info", "Expansions paused for 2 seconds (runaway protection: 8 fires in 2s).");
+            }
+        }
         return false;
     }
     times.push(now);
     true
+}
+
+/// >0 while a macro-driven expansion fire is in progress (see fire_rate_ok).
+static PROGRAMMATIC_FIRE_DEPTH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+struct ProgrammaticFireGuard;
+impl ProgrammaticFireGuard {
+    fn new() -> Self {
+        PROGRAMMATIC_FIRE_DEPTH.fetch_add(1, Ordering::SeqCst);
+        ProgrammaticFireGuard
+    }
+}
+impl Drop for ProgrammaticFireGuard {
+    fn drop(&mut self) {
+        PROGRAMMATIC_FIRE_DEPTH.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// Replay keystrokes that were buffered while an injection was in progress,
@@ -340,7 +372,7 @@ fn format_date_for_display(iso: &str) -> String {
         Err(_) => return iso.to_string(),
     };
     let pattern = {
-        let state = crate::hotkeys::engine_state().lock().unwrap();
+        let state = crate::hotkeys::engine_state_lock();
         state.default_date_format.clone()
     };
     let chrono_fmt = match pattern.as_str() {
@@ -1682,8 +1714,9 @@ fn apply_case(text: &str, pattern: CasePattern) -> String {
 /// gating + missing-trigger handling matches the live-typing path so behaviour
 /// is identical regardless of how the expansion was invoked.
 pub(crate) fn fire_expansion_by_trigger(trigger: &str) {
+    let _programmatic = ProgrammaticFireGuard::new();
     let entry = {
-        let state = crate::hotkeys::engine_state().lock().unwrap();
+        let state = crate::hotkeys::engine_state_lock();
         state.assignments
             .get(&format!("GLOBAL::EXPANSION::{}", trigger))
             .cloned()
@@ -2358,7 +2391,7 @@ pub fn resolve_tokens(
     // unformatted Date Math tokens ({date:+1d} etc). Explicit-format variants
     // below are unaffected.
     let default_date_format = {
-        let state = crate::hotkeys::engine_state().lock().unwrap();
+        let state = crate::hotkeys::engine_state_lock();
         state.default_date_format.clone()
     };
     let default_chrono_fmt = match default_date_format.as_str() {
@@ -3839,6 +3872,11 @@ fn inject_via_clipboard(text: &str, html: Option<&str>, target_hwnd: isize) {
     // Write replacement to clipboard — if this fails, do NOT paste (would paste old clipboard content)
     if !write_clipboard_dual(&payload_text, payload_html.as_deref()) {
         log::warn!("[Keyfire] write_clipboard FAILED — skipping paste to avoid pasting wrong content");
+        // The trigger has already been erased at this point; tell the user why
+        // nothing appeared instead of looking like Keyfire ate their text.
+        if let Some(app) = APP_HANDLE.get() {
+            crate::emit_user_toast(app, "error", "Couldn't access the clipboard (another app is holding it), so the expansion was skipped. Type the trigger again.");
+        }
         return;
     }
     let post_write_seq = clipboard_sequence_number();
@@ -4508,7 +4546,7 @@ fn fire_image_expansion(
 }
 
 fn is_ctrl_v_mapped() -> bool {
-    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let state = crate::hotkeys::engine_state_lock();
     let profile = &state.active_profile;
     let key = format!("{}::Ctrl::KeyV", profile);
     state.assignments.contains_key(&key)

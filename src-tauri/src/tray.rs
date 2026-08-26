@@ -393,11 +393,11 @@ fn toggle_pause(app: &AppHandle) {
 
     // Notify the renderer of the state change
     if let Some(window) = app.get_webview_window("main") {
-        let state = crate::hotkeys::engine_state().lock().unwrap();
+        let state = crate::hotkeys::engine_state_lock();
         let _ = window.emit(
             "engine-status",
             serde_json::json!({
-                "uiohookAvailable": false,
+                "uiohookAvailable": crate::hotkeys::hooks_running(),
                 "nutjsAvailable": false,
                 "macrosEnabled": now_enabled,
                 "activeProfile": state.active_profile,

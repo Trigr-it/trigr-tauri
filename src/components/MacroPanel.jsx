@@ -10,6 +10,22 @@ import {
 import './MacroPanel.css';
 import MonitorPicker from './MonitorPicker';
 import NumberField from './NumberField';
+
+// The combo that stops a macro recording is the user's Quick Record hotkey
+// (Ctrl+Alt+R when none is set — see hotkeys.rs hardcoded stop). The editor
+// used to hardcode "Ctrl+Shift+R", which the engine never listened for and
+// which hard-reloads the page in every Chromium app.
+function useRecordStopHotkey() {
+  const [hotkey, setHotkey] = useState('Ctrl+Alt+R');
+  useEffect(() => {
+    let live = true;
+    window.electronAPI?.getTempMacroStatus?.()
+      .then(s => { if (live && s?.recordHotkey) setHotkey(s.recordHotkey); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  return hotkey;
+}
 import { SearchBar } from './SearchBar';
 import { friendlyKeyName, STATIC_BARE_ALLOWED } from './keyboardLayout';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
@@ -28,7 +44,7 @@ const ACTION_TYPES = [
     id: 'recordmacro',
     Icon: CircleDot,
     label: 'Record Macro',
-    desc: 'Record your actual keyboard and mouse actions once, then replay them exactly with a single trigger. Press Ctrl+Shift+R to stop recording.',
+    desc: 'Record your actual keyboard and mouse actions once, then replay them exactly with a single trigger. Press your Quick Record hotkey (Ctrl+Alt+R by default) to stop recording.',
     color: '#ff5c5c',
   },
   {
@@ -842,7 +858,7 @@ function MacroDynamicTextValue({ value, onChange }) {
 // Inline value for the "Record Macro" macro step. Hosts the Record / Stop
 // / Re-record / Discard buttons + a live duration+event-count readout.
 // While recording the LL hooks observe input and push to recorder.rs; pressing
-// Ctrl+Shift+R from anywhere on the system stops the recording (the hook
+// The Quick Record hotkey (Ctrl+Alt+R by default) from anywhere on the system stops the recording (the hook
 // detects it and emits a Tauri event we listen for here).
 function formatRecordingDuration(ms) {
   if (!ms || ms < 0) return '0:00';
@@ -887,6 +903,7 @@ function summariseRecording(parsed) {
 
 
 function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, assignments = {}, profiles = [], globalInputMethod = 'global' }) {
+  const stopHotkey = useRecordStopHotkey();
   const [isRecording, setIsRecording] = useState(false);
   const [liveStatus, setLiveStatus] = useState({ count: 0, durationMs: 0 });
   const [isDistilling, setIsDistilling] = useState(false);
@@ -1005,7 +1022,7 @@ function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, a
         <span className="replay-rec-dot" aria-hidden="true" />
         <span className="replay-rec-label">
           Recording {formatRecordingDuration(liveStatus.durationMs)} · {liveStatus.count} events
-          <span className="replay-rec-hint"> · Ctrl+Shift+R to stop</span>
+          <span className="replay-rec-hint"> · {stopHotkey} to stop</span>
         </span>
         <button type="button" className="replay-rec-btn replay-rec-btn--stop" onClick={stopRecording}>
           <Square size={11} fill="currentColor" strokeWidth={0} /> Stop
@@ -1182,6 +1199,7 @@ function ReplayRecordingValue({ value, onChange, isPro = false, onShowUpgrade, a
 // Record Macro step] }) so saving/loading needs no conversion beyond the
 // type remap in handleSave / displayTypeOf.
 function RecordMacroForm({ value, onChange, isPro = false, onShowUpgrade, assignments = {}, profiles = [], globalInputMethod = 'global' }) {
+  const stopHotkey = useRecordStopHotkey();
   const step = (value.steps && value.steps[0]) || { type: 'Record Macro', value: '' };
   // Loop config sits on the outer assignment (`data.loop`), same shape as a
   // hand-built macro. The Rust "macro" executor loops the single Record Macro
@@ -1205,7 +1223,7 @@ function RecordMacroForm({ value, onChange, isPro = false, onShowUpgrade, assign
         globalInputMethod={globalInputMethod}
       />
       <p className="record-macro-hint">
-        Press Record, perform your actions anywhere on screen, then press Ctrl+Shift+R to stop.
+        Press Record, perform your actions anywhere on screen, then press {stopHotkey} to stop.
         Playback repeats them exactly, with the same timing.
       </p>
       <div className="record-macro-loop">

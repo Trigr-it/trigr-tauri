@@ -500,7 +500,7 @@ fn remove_clipboard_paste_from_suppress(combo: Option<(u8, u32)>) {
 /// whenever the toggle flips, so the hotkey is atomically freed (when
 /// disabled) or reclaimed (when re-enabled) without restarting hooks.
 pub fn refresh_clipboard_paste_suppress() {
-    let combo = engine_state().lock().unwrap().clipboard_paste_hotkey;
+    let combo = engine_state_lock().clipboard_paste_hotkey;
     if crate::clipboard::is_capture_enabled() {
         if let Some(c) = combo {
             if let Ok(mut w) = suppress_keys().write() {
@@ -568,6 +568,40 @@ static ENGINE_STATE: OnceLock<Mutex<EngineState>> = OnceLock::new();
 
 pub(crate) fn engine_state() -> &'static Mutex<EngineState> {
     ENGINE_STATE.get_or_init(|| Mutex::new(EngineState::default()))
+}
+
+/// Lock the engine state, tolerating a poisoned mutex. A panic on any thread
+/// that held this lock used to poison it, after which every `lock().unwrap()`
+/// on the processor thread panicked too: the LL hook kept swallowing bound
+/// keys while nothing dispatched them — a silently dead engine with a green
+/// tray icon. The state is plain data, so recovering the guard is safe.
+pub(crate) fn engine_state_lock() -> std::sync::MutexGuard<'static, EngineState> {
+    engine_state().lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// True while both LL hooks are installed.
+pub fn hooks_running() -> bool {
+    HOOKS_RUNNING.load(Ordering::SeqCst)
+}
+
+/// Push the current engine status to the main window (status-bar chips).
+/// Same payload shape as the pause-toggle and profile-switch emits.
+pub fn emit_engine_status(app: &AppHandle) {
+    let (profile, pause_str) = {
+        let state = engine_state_lock();
+        (state.active_profile.clone(), state.pause_hotkey_str.clone())
+    };
+    let _ = app.emit(
+        "engine-status",
+        serde_json::json!({
+            "uiohookAvailable": HOOKS_RUNNING.load(Ordering::SeqCst),
+            "nutjsAvailable": false,
+            "macrosEnabled": MACROS_ENABLED.load(Ordering::SeqCst),
+            "activeProfile": profile,
+            "globalPauseToggleKey": pause_str,
+            "isDemoMode": false,
+        }),
+    );
 }
 
 // ── Hold trigger state machine (v0.5, Pro) ──────────────────────────────────
@@ -728,7 +762,7 @@ fn spawn_hold_watcher(app: AppHandle) {
                     // double window, any pending single timer, and any deferred
                     // pending macro for this key.
                     {
-                        let mut state = engine_state().lock().unwrap();
+                        let mut state = engine_state_lock();
                         if let Some(cancel) = state.pending_single_cancel.remove(&sk) {
                             cancel.store(true, Ordering::SeqCst);
                         }
@@ -2127,6 +2161,13 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
         .spawn(move || {
             log::info!("[PROC] Event processor started");
             info!("[Keyfire] Event processor started");
+            // Supervised: a panic inside any handler used to unwind out of
+            // this closure, drop the receiver and leave the LL hook feeding a
+            // dead channel forever (heartbeat still ticked, so the watchdog
+            // never noticed). Catch, log, and re-enter the loop.
+            let mut panic_count: u32 = 0;
+            loop {
+            let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let mut last_heartbeat_count: isize = 0;
             while let Ok(event) = receiver.recv() {
                 // Periodic heartbeat — log every 500 hook events
@@ -2187,6 +2228,7 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     // mid-replay, mixing the two streams.
                     if crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst) {
                         log::info!("[RECORDER] Quick Record press ignored — Quick Loop is running");
+                        crate::emit_user_toast(&app, "info", "Stop the running Quick Loop first (loop hotkey again or Esc).");
                         continue;
                     }
                     crate::recorder::TEMP_RECORDING_ACTIVE.store(true, Ordering::SeqCst);
@@ -2294,6 +2336,7 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                         None => {
                             let _ = app.emit("temp-macro-replay-empty", serde_json::json!({}));
                             log::info!("[RECORDER] Quick Loop: no temp macro saved");
+                            crate::emit_user_toast(&app, "info", "Nothing recorded yet. Press the Quick Record hotkey first.");
                         }
                     }
                     continue;
@@ -2379,6 +2422,21 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                     HookEvent::TempMacroPlayRequested => {}
                     HookEvent::TempMacroLoopRequested => {}
                 }
+            }
+            }));
+            match run {
+                Ok(()) => break,
+                Err(_) => {
+                    panic_count += 1;
+                    error!("[Keyfire] Event processor recovered from a panic (#{}) — see the [PANIC] line above", panic_count);
+                    // Drop stale suppression state so a half-finished dispatch
+                    // can't leave the keyboard swallowed.
+                    SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                    INJECTION_IN_PROGRESS.store(false, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+            }
             }
             info!("[Keyfire] Event processor stopped");
         })
@@ -2491,7 +2549,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
         // Track sole modifier for key capture mode
         if IS_CAPTURING_KEY.load(Ordering::SeqCst) {
-            let mut state = engine_state().lock().unwrap();
+            let mut state = engine_state_lock();
             let other_mods = match vk {
                 0xA0 | 0xA1 => has_any_modifier() && (MOD_CTRL.load(Ordering::SeqCst) || MOD_ALT.load(Ordering::SeqCst) || MOD_META.load(Ordering::SeqCst)),
                 0xA2 | 0xA3 => MOD_ALT.load(Ordering::SeqCst) || MOD_SHIFT.load(Ordering::SeqCst) || MOD_META.load(Ordering::SeqCst),
@@ -2592,7 +2650,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
     // ── Overlay hotkey check (works even when Keyfire is focused) ───────
     if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
-        let state = engine_state().lock().unwrap();
+        let state = engine_state_lock();
         if let Some((mod_bits, vk)) = state.overlay_hotkey {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
@@ -2620,7 +2678,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // Full combo match (e.g., Ctrl+Alt+W): emit voice-open on first press,
     // voice-keydown on subsequent presses (voice already active).
     if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
-        let state = engine_state().lock().unwrap();
+        let state = engine_state_lock();
         if let Some((mod_bits, vk)) = state.voice_hotkey {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
@@ -2680,7 +2738,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         && has_any_modifier()
         && crate::clipboard::is_capture_enabled()
     {
-        let state = engine_state().lock().unwrap();
+        let state = engine_state_lock();
         if let Some((mod_bits, vk)) = state.clipboard_paste_hotkey {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
@@ -2713,7 +2771,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
     // ── Radial menu hotkey check ─────────────────────────────────────
     if MACROS_ENABLED.load(Ordering::SeqCst) && has_any_modifier() {
-        let state = engine_state().lock().unwrap();
+        let state = engine_state_lock();
         if let Some((mod_bits, vk)) = state.radial_menu_hotkey {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
@@ -2751,7 +2809,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
 
     // ── Global pause hotkey check (works even when paused) ────────────
     if has_any_modifier() {
-        let state = engine_state().lock().unwrap();
+        let state = engine_state_lock();
         if let Some((mod_bits, vk)) = state.pause_hotkey {
             let current_bits = modifier_bits();
             let key_vk = key_id_to_vk(key_id);
@@ -2770,7 +2828,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 crate::tray::rebuild_tray_menu(app);
                 crate::tray::update_tray_icon(app, now_enabled);
                 {
-                    let st = engine_state().lock().unwrap();
+                    let st = engine_state_lock();
                     let _ = app.emit("engine-status", serde_json::json!({
                         "uiohookAvailable": HOOKS_RUNNING.load(Ordering::SeqCst),
                         "nutjsAvailable": false,
@@ -2824,7 +2882,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     }
 
     // ── Normal hotkey matching ──────────────────────────────────────────
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
 
     if !has_any_modifier() {
         // Bare key — check profile assignments
@@ -3165,7 +3223,7 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
                 }
                 // Single confirmed — fire directly from timer thread
                 {
-                    let mut state = engine_state().lock().unwrap();
+                    let mut state = engine_state_lock();
                     state.pending_single_cancel.remove(&sk);
                     state.last_hotkey_time.remove(&sk);
                 }
@@ -3356,7 +3414,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
 
         // Key capture: bare modifier release
         if IS_CAPTURING_KEY.load(Ordering::SeqCst) && no_modifiers_held() {
-            let state = engine_state().lock().unwrap();
+            let state = engine_state_lock();
             if let Some(ref sole) = state.capture_sole_modifier {
                 IS_CAPTURING_KEY.store(false, Ordering::SeqCst);
                 let _ = app.emit("key-captured", Value::String(sole.clone()));
@@ -3393,7 +3451,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                         // pending_single_cancel in the keydown hold branch.
                         let sk = entry.storage_key.clone();
                         let is_bare = entry.is_bare;
-                        let mut state = engine_state().lock().unwrap();
+                        let mut state = engine_state_lock();
                         let dtw = state.double_tap_window_ms;
                         if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
                             old_cancel.store(true, Ordering::SeqCst);
@@ -3408,7 +3466,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                                 return; // second tap arrived — double fired instead
                             }
                             {
-                                let mut state = engine_state().lock().unwrap();
+                                let mut state = engine_state_lock();
                                 state.pending_single_cancel.remove(&sk);
                                 state.last_hotkey_time.remove(&sk);
                             }
@@ -3418,7 +3476,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                     } else {
                         // Single + hold only: fire through the pending route so
                         // injection waits for clean modifier state as usual.
-                        let mut state = engine_state().lock().unwrap();
+                        let mut state = engine_state_lock();
                         state.pending_macro = Some(single);
                         state.pending_storage_key = None;
                         state.pending_trigger_key = Some(entry.storage_key.clone());
@@ -3432,7 +3490,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                     // fires (the LL hook suppressed the original physical keydown).
                     let sk = entry.storage_key.clone();
                     let key_vk = normalised_vk;
-                    let mut state = engine_state().lock().unwrap();
+                    let mut state = engine_state_lock();
                     let dtw = state.double_tap_window_ms;
                     if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
                         old_cancel.store(true, Ordering::SeqCst);
@@ -3446,7 +3504,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
                             return; // second tap arrived → double fired instead
                         }
                         {
-                            let mut state = engine_state().lock().unwrap();
+                            let mut state = engine_state_lock();
                             state.pending_single_cancel.remove(&sk);
                             state.last_hotkey_time.remove(&sk);
                         }
@@ -3473,7 +3531,7 @@ fn handle_keyup(vk: u32, scan: u32, app: &AppHandle) {
 
     // Fire pending macro once all modifiers released (or immediately for bare keys)
     if no_modifiers_held() {
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
         if let Some(macro_val) = state.pending_macro.take() {
             let storage_key = state.pending_storage_key.take();
             let trigger_key = state.pending_trigger_key.take();
@@ -3739,7 +3797,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
             crate::actions::stop_repeating_key();
         }
 
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
 
         // If we're in a refocus scenario, switch to the linked profile now
         // so the assignment lookup uses the correct profile.
@@ -3802,7 +3860,7 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
 
     // Modified mouse button — check for explicit modifier assignment first
     let combo = build_modifier_combo();
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     let profile = state.active_profile.clone();
     let storage_key = format!("{}::{}::{}", profile, combo, mouse_id);
 
@@ -3903,7 +3961,7 @@ fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
                         // mouse_hold_check.
                         let sk = entry.storage_key.clone();
                         let is_bare = entry.is_bare;
-                        let mut state = engine_state().lock().unwrap();
+                        let mut state = engine_state_lock();
                         let dtw = state.double_tap_window_ms;
                         if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
                             old_cancel.store(true, Ordering::SeqCst);
@@ -3918,7 +3976,7 @@ fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
                                 return; // second tap arrived — double fired instead
                             }
                             {
-                                let mut state = engine_state().lock().unwrap();
+                                let mut state = engine_state_lock();
                                 state.pending_single_cancel.remove(&sk);
                                 state.last_hotkey_time.remove(&sk);
                             }
@@ -3937,7 +3995,7 @@ fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
                     // click the hook suppressed.
                     let sk = entry.storage_key.clone();
                     let btn_name = mouse_button_to_replay_name(button);
-                    let mut state = engine_state().lock().unwrap();
+                    let mut state = engine_state_lock();
                     let dtw = state.double_tap_window_ms;
                     if let Some(old_cancel) = state.pending_single_cancel.remove(&sk) {
                         old_cancel.store(true, Ordering::SeqCst);
@@ -3951,7 +4009,7 @@ fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
                             return; // second tap arrived → double fired instead
                         }
                         {
-                            let mut state = engine_state().lock().unwrap();
+                            let mut state = engine_state_lock();
                             state.pending_single_cancel.remove(&sk);
                             state.last_hotkey_time.remove(&sk);
                         }
@@ -3983,7 +4041,7 @@ fn handle_mouse_up(button: MouseButton, app: &AppHandle) {
 fn button_has_hold_assignment(mouse_id: &str) -> bool {
     let single_suffix = format!("::{}", mouse_id);
     let double_suffix = format!("::{}::double", mouse_id);
-    let state = engine_state().lock().unwrap();
+    let state = engine_state_lock();
     state.assignments.iter().any(|(k, v)| {
         (k.ends_with(&single_suffix) || k.ends_with(&double_suffix))
             && v.get("data")
@@ -4033,7 +4091,7 @@ fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
 
     if !has_any_modifier() {
         // Bare scroll — only in app-linked profiles
-        let state = engine_state().lock().unwrap();
+        let state = engine_state_lock();
         let profile = state.active_profile.clone();
         let linked = state
             .profile_settings
@@ -4053,7 +4111,7 @@ fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
     }
 
     let combo = build_modifier_combo();
-    let state = engine_state().lock().unwrap();
+    let state = engine_state_lock();
     let profile = state.active_profile.clone();
     let storage_key = format!("{}::{}::{}", profile, combo, wheel_id);
 
@@ -4074,7 +4132,7 @@ fn dispatch_double_only(storage_key: &str, double_macro: Option<Value>, app: &Ap
     if !crate::licence::is_pro() {
         return;
     }
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     let now = Instant::now();
     let dtw = state.double_tap_window_ms;
 
@@ -4093,7 +4151,7 @@ fn dispatch_double_only(storage_key: &str, double_macro: Option<Value>, app: &Ap
 }
 
 fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Option<String>, app: &AppHandle) {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     let double_key = format!("{}::double", storage_key);
     // Pro gate: Free users get single-press only. Double-tap assignments from
     // a lapsed trial stay in config (data preserved) but never fire until upgrade.
@@ -4155,7 +4213,7 @@ fn dispatch_with_double_tap(storage_key: &str, macro_val: Value, trigger_key: Op
         }
         // Single confirmed
         {
-            let mut state = engine_state().lock().unwrap();
+            let mut state = engine_state_lock();
             state.pending_single_cancel.remove(&sk);
             state.last_hotkey_time.remove(&sk);
         }
@@ -4270,7 +4328,9 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
         // from ACTIVE_MACRO_KEYS so future fires can proceed.
         let _macro_guard = macro_guard;
 
+        crate::actions::LAST_ACTION_FAILED.store(false, Ordering::SeqCst);
         crate::actions::execute_action(&macro_clone, is_bare, target_hwnd, is_altgr, trigger_key.as_deref(), &app_clone);
+        let action_failed = crate::actions::LAST_ACTION_FAILED.swap(false, Ordering::SeqCst);
 
         // Log analytics — log_assignment_fired computes the time-saved credit
         // from the assignment's own data (steps, repeats, recording durations).
@@ -4284,6 +4344,7 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
             serde_json::json!({
                 "label": macro_clone.get("label").and_then(|v| v.as_str()).unwrap_or(""),
                 "type": macro_clone.get("type").and_then(|v| v.as_str()).unwrap_or(""),
+                "ok": !action_failed,
             }),
         );
     });
@@ -4498,17 +4559,44 @@ pub fn start_hooks(app: AppHandle) {
     // Hold trigger watcher (v0.5) — one thread for all hold timers.
     spawn_hold_watcher(app.clone());
 
-    process_events(receiver, app);
+    process_events(receiver, app.clone());
 
     // Health monitor — reinstalls hooks if heartbeat stalls for 30s
     thread::Builder::new()
         .name("trigr-hook-monitor".to_string())
-        .spawn(|| {
+        .spawn(move || {
             let mut last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
             let mut last_input_tick = last_system_input_tick();
+            let mut install_failure_notified = false;
             thread::sleep(Duration::from_secs(5));
             loop {
                 thread::sleep(Duration::from_secs(15));
+                // A failed SetWindowsHookExW at startup (AV/EDR, another hook
+                // consumer) used to leave HOOKS_RUNNING=false forever: the
+                // stale-heartbeat branch below only runs while hooks are up,
+                // so nothing retried and nothing told the user. Retry each
+                // tick and say so once.
+                if !HOOKS_RUNNING.load(Ordering::SeqCst) && !MOUSE_HOOK_PAUSED.load(Ordering::SeqCst) {
+                    log::warn!("[HOOK] Hooks not running — attempting (re)install");
+                    spawn_hook_thread();
+                    thread::sleep(Duration::from_millis(750));
+                    let up = HOOKS_RUNNING.load(Ordering::SeqCst);
+                    if up {
+                        info!("[HOOK] Hooks installed on retry");
+                        if install_failure_notified {
+                            crate::emit_user_toast(&app, "success", "Keyfire's keyboard hooks are working again.");
+                            install_failure_notified = false;
+                        }
+                        emit_engine_status(&app);
+                    } else if !install_failure_notified {
+                        crate::emit_user_toast(&app, "error", "Keyfire couldn't hook the keyboard, so hotkeys and expansions aren't running. It will keep retrying; if this persists, check antivirus settings or restart Keyfire.");
+                        install_failure_notified = true;
+                        emit_engine_status(&app);
+                    }
+                    last_heartbeat = HOOK_HEARTBEAT.load(Ordering::SeqCst);
+                    last_input_tick = last_system_input_tick();
+                    continue;
+                }
                 // Skip the stale-check entirely while the mouse hook is intentionally
                 // paused (foreground watcher detected a fullscreen game). Tearing
                 // down the thread here would re-install the mouse hook and re-break
@@ -4583,7 +4671,7 @@ pub fn start_hooks(app: AppHandle) {
                         spawn_hook_thread();
                         // Rebuild suppress set so the new hook has correct state
                         {
-                            let state = engine_state().lock().unwrap();
+                            let state = engine_state_lock();
                             rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
                             rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
                             add_overlay_to_suppress(state.overlay_hotkey);
@@ -4620,6 +4708,16 @@ pub fn start_hooks(app: AppHandle) {
                             INJECTION_IN_PROGRESS.store(false, Ordering::SeqCst);
                             INJECTION_STARTED_MS.store(0, Ordering::SeqCst);
                             SUPPRESS_SIMULATED.store(false, Ordering::SeqCst);
+                            // Keys typed during the stuck window were buffered
+                            // for replay; replaying them into whatever is
+                            // focused at the NEXT expansion fire (seconds or
+                            // minutes later) typed them out of context. Drop.
+                            if let Ok(mut buf) = injection_buffer().lock() {
+                                if !buf.is_empty() {
+                                    log::warn!("[Keyfire] Discarding {} keystrokes buffered during the stuck injection", buf.len());
+                                    buf.clear();
+                                }
+                            }
                         }
                     }
                 }
@@ -4731,7 +4829,7 @@ pub fn set_recording(recording: bool) {
 pub fn set_capturing(capturing: bool) {
     IS_CAPTURING_KEY.store(capturing, Ordering::SeqCst);
     if capturing {
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
         state.capture_sole_modifier = None;
     }
 }
@@ -4751,7 +4849,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
     // Auto-repeat tracking is keyed by raw VK and survives assignment
     // changes harmlessly, but clearing here keeps state minimal.
     clear_held_keys();
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.assignments = assignments;
     state.active_profile = profile;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
@@ -4765,7 +4863,7 @@ pub fn update_assignments(assignments: HashMap<String, Value>, profile: String) 
 }
 
 pub fn set_active_profile(profile: String) {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.active_profile = profile.clone();
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
@@ -4780,7 +4878,7 @@ pub fn set_active_profile(profile: String) {
 }
 
 pub fn get_active_profile() -> String {
-    engine_state().lock().unwrap().active_profile.clone()
+    engine_state_lock().active_profile.clone()
 }
 
 /// Clear the overlay-opened flag (called when overlay is hidden/toggled off).
@@ -4802,7 +4900,7 @@ pub fn is_voice_active() -> bool {
 }
 
 pub fn update_profile_settings(settings: HashMap<String, Value>) {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.profile_settings = settings;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
@@ -4814,7 +4912,7 @@ pub fn update_profile_settings(settings: HashMap<String, Value>) {
 }
 
 pub fn update_global_settings(settings: &Value) {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     if let Some(dtw) = settings.get("doubleTapWindow").and_then(|v| v.as_u64()) {
         state.double_tap_window_ms = dtw;
     }
@@ -4872,7 +4970,7 @@ pub fn parse_hotkey_combo(combo: &str) -> Option<(u8, u32)> {
 
 pub fn set_overlay_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
         state.overlay_hotkey = Some(parsed);
         rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         add_overlay_to_suppress(Some(parsed));
@@ -4889,7 +4987,7 @@ pub fn set_overlay_hotkey(combo: &str) {
 /// through to the focused app untouched, and macro Press Key dispatch can't
 /// open the overlay either. Mirrors clear_pause_hotkey / clear_voice_hotkey.
 pub fn clear_overlay_hotkey() {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.overlay_hotkey = None;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
@@ -4902,7 +5000,7 @@ pub fn clear_overlay_hotkey() {
 
 pub fn set_pause_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
         state.pause_hotkey = Some(parsed);
         state.pause_hotkey_str = Some(combo.to_string());
         rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
@@ -4921,7 +5019,7 @@ pub fn set_pause_hotkey(combo: &str) {
 /// empty combo to clear (record disabled).
 pub fn set_temp_macro_record_hotkey(combo: &str) {
     let parsed = parse_hotkey_combo(combo);
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     match parsed {
         Some((bits, vk)) => {
             state.temp_macro_record_hotkey = Some((bits, vk));
@@ -4941,7 +5039,7 @@ pub fn set_temp_macro_record_hotkey(combo: &str) {
 
 pub fn set_temp_macro_play_hotkey(combo: &str) {
     let parsed = parse_hotkey_combo(combo);
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     match parsed {
         Some((bits, vk)) => {
             state.temp_macro_play_hotkey = Some((bits, vk));
@@ -4965,7 +5063,7 @@ pub fn set_temp_macro_play_hotkey(combo: &str) {
 /// the LL hook can match without acquiring engine_state.
 pub fn set_temp_macro_loop_hotkey(combo: &str) {
     let parsed = parse_hotkey_combo(combo);
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     match parsed {
         Some((bits, vk)) => {
             state.temp_macro_loop_hotkey = Some((bits, vk));
@@ -4985,7 +5083,7 @@ pub fn set_temp_macro_loop_hotkey(combo: &str) {
 
 pub fn set_voice_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
         state.voice_hotkey = Some(parsed);
         rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
@@ -4999,7 +5097,7 @@ pub fn set_voice_hotkey(combo: &str) {
 }
 
 pub fn clear_voice_hotkey() {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.voice_hotkey = None;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
@@ -5012,7 +5110,7 @@ pub fn clear_voice_hotkey() {
 }
 
 pub fn clear_pause_hotkey() {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.pause_hotkey = None;
     state.pause_hotkey_str = None;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
@@ -5025,7 +5123,7 @@ pub fn clear_pause_hotkey() {
 
 pub fn set_clipboard_paste_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
         state.clipboard_paste_hotkey = Some(parsed);
         rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
@@ -5039,7 +5137,7 @@ pub fn set_clipboard_paste_hotkey(combo: &str) {
 }
 
 pub fn clear_clipboard_paste_hotkey() {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.clipboard_paste_hotkey = None;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
@@ -5053,7 +5151,7 @@ pub fn clear_clipboard_paste_hotkey() {
 
 pub fn set_radial_menu_hotkey(combo: &str) {
     if let Some(parsed) = parse_hotkey_combo(combo) {
-        let mut state = engine_state().lock().unwrap();
+        let mut state = engine_state_lock();
         state.radial_menu_hotkey = Some(parsed);
         rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
         rebuild_all_linked_mouse(&state.assignments, &state.profile_settings);
@@ -5067,7 +5165,7 @@ pub fn set_radial_menu_hotkey(combo: &str) {
 }
 
 pub fn clear_radial_menu_hotkey() {
-    let mut state = engine_state().lock().unwrap();
+    let mut state = engine_state_lock();
     state.radial_menu_hotkey = None;
     rebuild_suppress_keys(&state.assignments, &state.active_profile, &state.profile_settings);
     add_overlay_to_suppress(state.overlay_hotkey);
@@ -5089,7 +5187,7 @@ pub fn clear_radial_menu_open() {
 }
 
 pub fn get_engine_status() -> Value {
-    let state = engine_state().lock().unwrap();
+    let state = engine_state_lock();
     serde_json::json!({
         "uiohookAvailable": HOOKS_RUNNING.load(Ordering::SeqCst),
         "nutjsAvailable": false,

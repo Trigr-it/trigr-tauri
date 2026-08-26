@@ -375,7 +375,15 @@ pub async fn check_and_revalidate() -> LicenceStatus {
 
     let key = match &state.key {
         Some(k) if !k.is_empty() => k.clone(),
-        _ => return build_status(&state),
+        _ => {
+            // Trial-only install: nothing to re-verify, but the engine's
+            // IS_PRO flag was only ever recomputed inside update_state, so a
+            // trial that expired mid-session left double-tap / hold / app
+            // profiles firing while the UI already said Free (and vice versa
+            // after restart, with no notice).
+            IS_PRO.store(compute_is_pro(&state), Ordering::SeqCst);
+            return build_status(&state);
+        }
     };
 
     match verify_key(&key) {

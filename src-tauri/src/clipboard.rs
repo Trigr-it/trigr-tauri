@@ -1340,12 +1340,35 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
         .spawn(move || {
             // `mut` because Reset Clipboard Storage closes this connection,
             // deletes the db files, and swaps in a fresh one mid-loop.
-            let mut conn = match open_clipboard_db(&db_path) {
-                Ok(c) => c,
-                Err(e) => {
-                    error!("[Keyfire] Failed to open clipboard DB: {}", e);
-                    return;
+            // Retry the open with backoff: AV / backup tools commonly hold the
+            // DB for a moment at login. If it still fails, tell the user and
+            // keep DRAINING the channel instead of returning — dropping each
+            // message drops its reply sender, so UI calls return their empty
+            // default immediately instead of hanging 5s on recv_timeout with
+            // an ever-empty history and no explanation.
+            let mut conn: Option<rusqlite::Connection> = None;
+            let mut last_err = String::new();
+            for attempt in 0..5u32 {
+                match open_clipboard_db(&db_path) {
+                    Ok(c) => { conn = Some(c); break; }
+                    Err(e) => {
+                        last_err = e.to_string();
+                        warn!("[Keyfire] Clipboard DB open failed (attempt {}/5): {}", attempt + 1, last_err);
+                        thread::sleep(std::time::Duration::from_millis(200 * (1u64 << attempt)));
+                    }
                 }
+            }
+            let Some(mut conn) = conn else {
+                error!("[Keyfire] Failed to open clipboard DB after retries: {}", last_err);
+                if let Some(app) = APP_HANDLE.get() {
+                    crate::emit_user_toast(
+                        app,
+                        "error",
+                        "Clipboard history is unavailable: the clipboard database couldn't be opened. Restart Keyfire; if it persists, use Settings → Clipboard → Reset clipboard storage.",
+                    );
+                }
+                for _dropped in rx { /* reply senders close → callers return defaults */ }
+                return;
             };
 
             // Phase 3b (v0.5): clean up an expired plaintext backup from a prior

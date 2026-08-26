@@ -258,6 +258,10 @@ function App() {
   // { actions: [{id, type, label, data}], categories: [{name, colour}], collisions: [{id, label},...], totalCount }
   const [quickActionImportPrompt, setQuickActionImportPrompt] = useState(null);
   const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, email: null, key_id: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
+  // Live mirror for the focus-revalidation handler (registered once) so it can
+  // detect the Pro → Free transition when a trial ends.
+  const licenceStatusRef = useRef(licenceStatus);
+  useEffect(() => { licenceStatusRef.current = licenceStatus; }, [licenceStatus]);
   // Shared-config grace period state, populated from Rust via getGracePeriodState.
   // Shape: { pro_expired_at, shared_active, days_remaining, migration_deferred }.
   // When pro_expired_at is non-null AND shared_active is true, the banner shows.
@@ -1165,7 +1169,15 @@ function App() {
   useEffect(() => {
     const handleFocus = () => {
       window.electronAPI?.checkLicenceRevalidation?.().then(ls => {
-        if (ls) setLicenceStatus(ls);
+        if (!ls) return;
+        // Trial ran out while the app was open or between sessions: say so
+        // once instead of letting double-tap / hold bindings just stop.
+        const prev = licenceStatusRef.current;
+        if (prev?.is_pro && !ls.is_pro && !ls.key_entered && ls.trial_used) {
+          showNotification('Your Pro trial has ended. Pro features are locked until you add a licence key (Settings → Licence).', 'info');
+        }
+        licenceStatusRef.current = ls;
+        setLicenceStatus(ls);
         // Grace period state may have changed (timer ticked over while
         // Keyfire was unfocused, or migration just ran).
         window.electronAPI?.getGracePeriodState?.().then(g => setGracePeriodState(g));

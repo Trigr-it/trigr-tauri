@@ -99,6 +99,8 @@
   background: transparent;
 }
 
+.status-fired.failed { color: var(--danger); }
+
 .status-fired {
   font-size: 11px;
   color: var(--status-success);

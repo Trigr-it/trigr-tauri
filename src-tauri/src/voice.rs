@@ -241,7 +241,7 @@ pub fn prewarm(phrases: Vec<String>) {
 /// buildItems filter: active profile assignments + GLOBAL expansions + GLOBAL
 /// quick actions. Reads both voicePhrases (array) and legacy voicePhrase (string).
 pub fn collect_voice_phrases_from_state() -> Vec<String> {
-    let state = crate::hotkeys::engine_state().lock().unwrap();
+    let state = crate::hotkeys::engine_state_lock();
     let active_profile = state.active_profile.clone();
     let profile_prefix = format!("{}::", active_profile);
     let mut phrases = Vec::new();
