@@ -4986,7 +4986,10 @@ export default function MacroPanel({
           <button
             className="panel-close"
             onClick={() => {
-              if (isFormDirty() && !window.confirm('Discard unsaved changes to this action?')) return;
+              // Inline confirm row (footer) rather than a native window.confirm:
+              // the native dialog pulls focus out of the WebView mid-click and
+              // the editor behind it was reported as already cleared.
+              if (isFormDirty()) { setConfirmingAction('close'); return; }
               onClose();
             }}
             title="Deselect key"
@@ -5364,6 +5367,21 @@ export default function MacroPanel({
           const activeRecord = pressMode === 'double' ? doubleAssignment
             : pressMode === 'hold' ? holdAssignment
             : assignment;
+          // Discard-draft confirm for the header X. Rendered before the
+          // activeRecord gate so a dirty draft on an EMPTY key gets it too.
+          if (confirmingAction === 'close') {
+            return (
+              <div className="footer-assignment-actions footer-confirm-row">
+                <span className="footer-confirm-text">Discard unsaved changes to this action?</span>
+                <button
+                  className="btn-confirm-yes"
+                  type="button"
+                  onClick={() => { setConfirmingAction(null); window.__kf_editor_dirty = false; onClose(); }}
+                >Discard</button>
+                <button className="btn-confirm-no" type="button" onClick={() => setConfirmingAction(null)}>Keep editing</button>
+              </div>
+            );
+          }
           if (!activeRecord) return null;
           if (confirmingAction) {
             const confirmText =

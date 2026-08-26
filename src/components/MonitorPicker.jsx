@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Monitor, Check } from 'lucide-react';
 import './MonitorPicker.css';
 
@@ -53,6 +54,11 @@ async function hideIdentifyOverlays() {
 export default function MonitorPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [monitors, setMonitors] = useState(cachedMonitors);
+  // Portal position (viewport coords). The dropdown used to be absolutely
+  // positioned inside the step row, which has overflow:hidden (415px rule)
+  // and is followed by sibling rows that paint over it — so it rendered
+  // clipped and underneath the next macro step.
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const wrapRef = useRef(null);
   const dropdownRef = useRef(null);
   const current = value || 'default';
@@ -60,7 +66,9 @@ export default function MonitorPicker({ value, onChange }) {
   useEffect(() => {
     if (!open) return;
     function onDown(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      const inWrap = wrapRef.current && wrapRef.current.contains(e.target);
+      const inDrop = dropdownRef.current && dropdownRef.current.contains(e.target);
+      if (!inWrap && !inDrop) setOpen(false);
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -77,19 +85,27 @@ export default function MonitorPicker({ value, onChange }) {
   }, [open]);
 
   useLayoutEffect(() => {
-    if (!open || !dropdownRef.current) return;
-    const el = dropdownRef.current;
-    el.style.top = '';
-    el.style.bottom = '';
-    el.style.marginTop = '';
-    el.style.marginBottom = '';
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom > window.innerHeight - 8) {
-      el.style.top = 'auto';
-      el.style.bottom = '100%';
-      el.style.marginTop = '0';
-      el.style.marginBottom = '4px';
-    }
+    if (!open || !wrapRef.current) return;
+    const place = () => {
+      const anchor = wrapRef.current?.getBoundingClientRect();
+      if (!anchor) return;
+      const height = dropdownRef.current?.offsetHeight || 0;
+      let top = anchor.bottom + 4;
+      // Flip above the button when there's no room below.
+      if (height && top + height > window.innerHeight - 8) {
+        top = Math.max(8, anchor.top - height - 4);
+      }
+      setPos({ top, left: anchor.left, width: anchor.width });
+    };
+    place();
+    window.addEventListener('resize', place);
+    // Any scroll (panel or page) moves the anchor — close rather than drift.
+    const onScroll = () => setOpen(false);
+    document.addEventListener('scroll', onScroll, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      document.removeEventListener('scroll', onScroll, true);
+    };
   }, [open, monitors]);
 
   const handleToggle = async () => {
@@ -126,8 +142,12 @@ export default function MonitorPicker({ value, onChange }) {
         <span className="monitor-pick-label">{labelFor(current)}</span>
         <span className="monitor-pick-caret" aria-hidden="true">▾</span>
       </button>
-      {open && (
-        <div className="monitor-pick-dropdown" ref={dropdownRef}>
+      {open && createPortal(
+        <div
+          className="monitor-pick-dropdown monitor-pick-dropdown--portal"
+          ref={dropdownRef}
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
+        >
           {VIRTUAL_OPTIONS.map(o => (
             <div
               key={o.value}
@@ -160,7 +180,8 @@ export default function MonitorPicker({ value, onChange }) {
               ))}
             </>
           ) : null}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -76,6 +76,15 @@
   overflow-x: hidden;
 }
 
+/* Portalled to document.body so it escapes the step row's overflow:hidden
+   and the later sibling rows' paint order. Inline style supplies top/left/width. */
+.monitor-pick-dropdown--portal {
+  position: fixed;
+  right: auto;
+  margin-top: 0;
+  z-index: 10000;
+}
+
 .monitor-pick-item {
   display: flex;
   align-items: center;
