@@ -100,7 +100,8 @@
 }
 
 /* Keycap segmented control: same geometry and plain-key chip as the top-bar
-   .area-tabs and .view-switcher. No gold here; gold marks the section only. */
+   .area-tabs and .view-switcher. Active chip is the canvas ASSIGNED key (warm fill,
+   softer 65% gold ring); the top bar's SELECTED key carries the full gold. */
 .stp-mode-tabs {
   display: flex;
   gap: var(--space-0);
@@ -135,10 +136,10 @@
 }
 
 .stp-mode-tab.active {
-  background: var(--key-bg);
+  background: var(--key-bg-assigned);
   color: var(--text-primary);
-  border-color: var(--key-border);
-  box-shadow: var(--shadow-key);
+  border-color: var(--key-border-assigned);
+  box-shadow: var(--shadow-key), 0 0 12px rgba(var(--accent-rgb), 0.08);
 }
 
 .stp-mode-tab.active .stp-mode-tab-icon {

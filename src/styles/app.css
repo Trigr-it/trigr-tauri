@@ -229,8 +229,9 @@
 
 /* ── VIEW SWITCHER (Keyboard / Mouse / Radial tabs) ───────────────────────
    Same keycap segmented-control language as the top-bar section tabs
-   (TitleBar.css .area-tabs): inset track, raised --key-bg chip on the
-   active item, no gold. */
+   (TitleBar.css .area-tabs): inset track, active item is the canvas ASSIGNED
+   key (warm --key-bg-assigned fill, softer 65% gold ring). The top bar's
+   SELECTED key carries the full gold, so hierarchy reads at a glance. */
 .view-switcher {
   display: flex;
   gap: var(--space-0);
@@ -271,10 +272,8 @@
 }
 
 .view-tab.active {
-  background: var(--key-bg);
-  color: var(--text-primary);
-  border-color: var(--key-border);
-  box-shadow: var(--shadow-key);
+  background: var(--key-bg-assigned);
+  box-shadow: var(--key-border-assigned);6251var(--shadow-key), 0 0 12px rgba(var(--accent-rgb), 0.08);
 }
 
 .view-tab.active .view-tab-icon {
