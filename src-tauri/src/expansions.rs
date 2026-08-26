@@ -400,6 +400,12 @@ struct ExpansionState {
     /// to decide whether to pre-swallow a Space keystroke before it leaks to
     /// the target app. Rebuilt whenever assignments change.
     space_triggers: HashSet<String>,
+    /// Immediate-mode triggers as (trigger, storage key), longest first.
+    /// Rebuilt with the assignments. `check_immediate_triggers` used to
+    /// rebuild this list on EVERY printable keystroke, deep-cloning the full
+    /// text + html body of every immediate expansion before a single
+    /// `ends_with` test.
+    immediate_triggers: Vec<(String, String)>,
     /// Lowercase misspellings from GLOBAL::AUTOCORRECT:: assignment keys.
     /// Rebuilt whenever assignments change — drives AUTOCORRECT_PENDING.
     autocorrect_words: HashSet<String>,
@@ -452,6 +458,7 @@ impl Default for ExpansionState {
             buffer: String::new(),
             assignments: HashMap::new(),
             space_triggers: HashSet::new(),
+            immediate_triggers: Vec::new(),
             autocorrect_words: HashSet::new(),
             // Off until the startup settings sync says otherwise — autocorrect
             // is an opt-in Pro feature, never active before config loads.
@@ -1550,16 +1557,14 @@ pub fn check_immediate_triggers() -> bool {
         options: Option<Vec<serde_json::Value>>,
         random_variant: bool,
     }
-    let mut immediate_triggers: Vec<ImmTrigger> = s
-        .assignments
+    // Longest-first prebuilt list; only the matching entry is materialised.
+    let matched_key = s
+        .immediate_triggers
         .iter()
-        .filter(|(k, v)| {
-            k.starts_with("GLOBAL::EXPANSION::")
-                && v.get("data")
-                    .and_then(|d| d.get("triggerMode"))
-                    .and_then(|v| v.as_str())
-                    == Some("immediate")
-        })
+        .find(|(t, _)| buf_lower.ends_with(t.as_str()))
+        .map(|(_, k)| k.clone());
+    let immediate_triggers: Vec<ImmTrigger> = matched_key
+        .and_then(|k| s.assignments.get(&k).map(|v| (k, v)))
         .map(|(k, v)| {
             let data = v.get("data");
             ImmTrigger {
@@ -1573,8 +1578,8 @@ pub fn check_immediate_triggers() -> bool {
                 random_variant: data.and_then(|d| d.get("randomVariant")).and_then(|v| v.as_bool()).unwrap_or(false),
             }
         })
+        .into_iter()
         .collect();
-    immediate_triggers.sort_by(|a, b| b.trigger.len().cmp(&a.trigger.len()));
 
     for imm in &immediate_triggers {
         if buf_lower.ends_with(&imm.trigger) {
@@ -5158,6 +5163,21 @@ pub fn update_assignments(assignments: HashMap<String, Value>) {
         })
         .map(|(k, _)| k["GLOBAL::EXPANSION::".len()..].to_string())
         .collect();
+    // Immediate triggers, longest first (see the field doc).
+    let mut imm: Vec<(String, String)> = s
+        .assignments
+        .iter()
+        .filter(|(k, v)| {
+            k.starts_with("GLOBAL::EXPANSION::")
+                && v.get("data")
+                    .and_then(|d| d.get("triggerMode"))
+                    .and_then(|m| m.as_str())
+                    == Some("immediate")
+        })
+        .map(|(k, _)| (k["GLOBAL::EXPANSION::".len()..].to_string(), k.clone()))
+        .collect();
+    imm.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    s.immediate_triggers = imm;
     // Rebuild the misspelling set driving AUTOCORRECT_PENDING.
     s.autocorrect_words = s
         .assignments

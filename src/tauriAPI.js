@@ -35,6 +35,8 @@ window.electronAPI = {
 
   toggleMacros: (enabled) =>
     invoke('toggle_macros', { enabled }),
+  // Release held / repeating synthetic input before an updater-driven exit.
+  releaseInputForExit: () => invoke('release_input_for_exit'),
 
   getEngineStatus: () =>
     invoke('get_engine_status'),

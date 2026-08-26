@@ -280,6 +280,19 @@ fn is_window_fullscreen(hwnd: isize) -> bool {
         if (style & WS_CAPTION) != 0 {
             return false;
         }
+        // The bare desktop (Progman / WorkerW) is chrome-less and exactly
+        // monitor-sized on single-monitor machines, so clicking the desktop
+        // used to pause the mouse hook and all hold detection.
+        {
+            let mut cls = [0u16; 64];
+            let n = windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd as _, cls.as_mut_ptr(), cls.len() as i32);
+            if n > 0 {
+                let name = String::from_utf16_lossy(&cls[..n as usize]);
+                if name == "Progman" || name == "WorkerW" {
+                    return false;
+                }
+            }
+        }
 
         // 2) Window rect vs monitor rect. We use rcMonitor (the full monitor
         //    bounds) not rcWork (which excludes the taskbar) — borderless
@@ -348,6 +361,10 @@ pub fn start_watcher(app: AppHandle) {
             // Local transition tracker for fullscreen-detected mouse-hook pause.
             // Starts false (normal startup state); only flips on observed change.
             let mut fs_last: bool = false;
+            // Session-lock tracking (Win+L / secure desktop / sleep). The lock
+            // screen is either no foreground window at all or LockApp.exe.
+            let mut fg_is_lockapp: bool = false;
+            let mut locked_last: bool = false;
 
             while WATCHER_RUNNING.load(Ordering::Relaxed) {
                 unsafe {
@@ -366,6 +383,7 @@ pub fn start_watcher(app: AppHandle) {
                             LAST_FG_HWND.store(hwnd_val, Ordering::SeqCst);
                             *last_fg_title().lock().unwrap() = title.clone();
                             if let Some(name) = get_fg_proc_name(hwnd_val) {
+                                fg_is_lockapp = name.eq_ignore_ascii_case("lockapp.exe");
                                 // Cache PID for linked-app detection from the hook
                                 cache_linked_pid_if_match(hwnd_val, &name);
                                 handle_foreground_change(&name, &title, &app);
@@ -376,7 +394,10 @@ pub fn start_watcher(app: AppHandle) {
                         // every poll (not gated on hwnd_changed) so a window
                         // toggling fullscreen in-place — e.g. browser F11 —
                         // is still caught.
-                        let fs_now = is_window_fullscreen(hwnd_val);
+                        // The lock screen is chrome-less and monitor-sized but
+                        // is not a game; pausing the mouse hook + hold detection
+                        // for it was a false positive.
+                        let fs_now = !fg_is_lockapp && is_window_fullscreen(hwnd_val);
                         if fs_now != fs_last {
                             set_mouse_hook_paused(fs_now);
                             fs_last = fs_now;
@@ -386,6 +407,19 @@ pub fn start_watcher(app: AppHandle) {
                         // Treat as not-fullscreen so the hook resumes.
                         set_mouse_hook_paused(false);
                         fs_last = false;
+                    }
+
+                    let locked_now = hwnd_val == 0 || fg_is_lockapp;
+                    if locked_now != locked_last {
+                        if locked_now {
+                            crate::hotkeys::on_session_locked();
+                        } else {
+                            // Back from the lock screen: modifier keyups were
+                            // swallowed by the secure desktop; resync so the
+                            // first combo after unlock isn't mis-read.
+                            crate::hotkeys::sync_modifier_state_from_os();
+                        }
+                        locked_last = locked_now;
                     }
                 }
 

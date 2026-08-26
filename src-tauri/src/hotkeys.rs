@@ -584,6 +584,25 @@ pub fn hooks_running() -> bool {
     HOOKS_RUNNING.load(Ordering::SeqCst)
 }
 
+/// Called by the foreground watcher when the session locks (Win+L, secure
+/// desktop, sleep). Keyups delivered while the secure desktop is up never
+/// reach the LL hook, so anything Keyfire was holding stays held: a repeat
+/// kept spamming into the lock screen and resumed after unlock, a Hold-mode
+/// key or bare-key remap stayed logically DOWN, and KEYS_HELD_DOWN treated the
+/// first press after unlock as auto-repeat and dropped it.
+pub fn on_session_locked() {
+    crate::actions::stop_repeating_key();
+    crate::actions::release_held_key();
+    crate::actions::release_all_bare_remaps();
+    if let Some(set) = KEYS_HELD_DOWN.get() {
+        if let Ok(mut w) = set.write() {
+            w.clear();
+        }
+    }
+    sync_modifier_state_from_os();
+    info!("[Keyfire] Session locked — released held/repeating input state");
+}
+
 /// Push the current engine status to the main window (status-bar chips).
 /// Same payload shape as the pause-toggle and profile-switch emits.
 pub fn emit_engine_status(app: &AppHandle) {
@@ -3609,6 +3628,11 @@ fn handle_mouse_down(button: MouseButton, app: &AppHandle) {
     // Runs before the input-focus early return so this still fires when the user
     // hasn't yet clicked into the overlay.
     check_overlay_outside_click(app);
+    // Same OS resync the keydown path does. After a missed modifier keyup
+    // (secure desktop, Alt+Tab into Keyfire's own window) the MOD_* atomics
+    // were stale here, so a plain click or scroll fired the Alt/Ctrl-modified
+    // binding until the next keyboard keydown corrected them.
+    sync_modifier_state_from_os();
 
     // A click moves the caret (or focus) — the expansion buffer no longer
     // reflects what's left of the caret, so expansion triggers, autocorrect,
@@ -4052,6 +4076,7 @@ fn button_has_hold_assignment(mouse_id: &str) -> bool {
 }
 
 fn handle_mouse_wheel(delta: i16, app: &AppHandle) {
+    sync_modifier_state_from_os(); // see handle_mouse_down
     // ── Recording mode: capture scroll trigger and send to frontend ─────
     // Mirror of the mouse-button capture branch in handle_mouse_down and of
     // the wheel suppression condition in mouse_hook_proc — keep in sync.
@@ -4313,7 +4338,27 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
     // Detect AltGr (Ctrl+Alt held simultaneously) — snapshot now, modifiers
     // will be cleared by the time execute_action runs. Fire-on-press dispatch
     // skips this: Ctrl+Alt is legitimately still held at keydown-fire time.
+    // The erase exists for a Ctrl+Alt (AltGr) keydown that LEAKED a dead
+    // character into the app. A bound combo is in the suppress set, so its
+    // keydown never reached the app and there is nothing to erase — yet the
+    // Backspace was still sent, deleting one real character from the user's
+    // document on every Ctrl+Alt hold / double-tap / mouse trigger. Mouse
+    // triggers can't type a character at all.
+    let trigger_reached_app = trigger_key.as_deref().map(|sk| {
+        let parts: Vec<&str> = sk.split("::").collect();
+        if parts.len() < 3 { return true; }
+        let key_id = parts[2];
+        if key_id.starts_with("MOUSE_") { return false; }
+        match key_id_to_vk(key_id) {
+            Some(vk) => {
+                let bits = modifier_bits();
+                !suppress_keys().try_read().map(|set| set.contains(&(bits, vk))).unwrap_or(false)
+            }
+            None => true,
+        }
+    }).unwrap_or(true);
     let is_altgr = !skip_altgr_erase
+        && trigger_reached_app
         && MOD_CTRL.load(Ordering::SeqCst) && MOD_ALT.load(Ordering::SeqCst);
     if is_altgr {
         log::info!("[FIRE] AltGr combo detected — will erase dead character");
@@ -4493,7 +4538,21 @@ fn spawn_hook_thread() {
                             continue;
                         }
                     }
-                    std::thread::sleep(Duration::from_millis(1));
+                    // Block until the next queued OR sent message. LL hook
+                    // callbacks are delivered to this thread only while it is
+                    // inside a message-retrieval call; the old Sleep(1) between
+                    // PeekMessage drains rounded up to the 15.6 ms scheduler
+                    // tick, adding up to ~15 ms of jitter to EVERY keystroke and
+                    // mouse event on the machine while Keyfire ran. MsgWait
+                    // returns the instant anything arrives (QS_ALLINPUT covers
+                    // sent messages, so hook callbacks run immediately).
+                    windows_sys::Win32::UI::WindowsAndMessaging::MsgWaitForMultipleObjectsEx(
+                        0,
+                        std::ptr::null(),
+                        windows_sys::Win32::System::Threading::INFINITE,
+                        windows_sys::Win32::UI::WindowsAndMessaging::QS_ALLINPUT,
+                        windows_sys::Win32::UI::WindowsAndMessaging::MWMO_INPUTAVAILABLE,
+                    );
                 }
 
                 // Cleanup. Gate on HOOK_THREAD_ID match so a stale exit path
@@ -4663,7 +4722,20 @@ pub fn start_hooks(app: AppHandle) {
                             });
                             match rx.recv_timeout(Duration::from_millis(2000)) {
                                 Ok(_) => log::info!("[HOOK] Old hook thread joined cleanly"),
-                                Err(_) => log::warn!("[HOOK] Old hook thread join timed out after 2s — proceeding with reinstall anyway"),
+                                Err(_) => {
+                                    log::warn!("[HOOK] Old hook thread join timed out after 2s — unhooking its handles directly before reinstall");
+                                    // The old thread's own cleanup is gated on
+                                    // HOOK_THREAD_ID == its tid, which the new
+                                    // thread is about to overwrite, so it would
+                                    // never unhook. Do it here by handle.
+                                    unsafe {
+                                        let kb = KB_HOOK.swap(0, Ordering::SeqCst);
+                                        if kb != 0 { UnhookWindowsHookEx(kb as _); }
+                                        let ms = MOUSE_HOOK.swap(0, Ordering::SeqCst);
+                                        if ms != 0 { UnhookWindowsHookEx(ms as _); }
+                                    }
+                                    HOOKS_RUNNING.store(false, Ordering::SeqCst);
+                                }
                             }
                         } else {
                             thread::sleep(Duration::from_millis(500));

@@ -214,6 +214,12 @@ fn build_tray(
                 }
                 "quit" => {
                     info!("[Keyfire] Quit requested from tray");
+                    // Same cleanup as the UI quit_app command (RunEvent::Exit
+                    // repeats it; both are idempotent).
+                    crate::actions::release_held_key();
+                    crate::actions::stop_repeating_key();
+                    crate::actions::release_all_bare_remaps();
+                    crate::actions::kill_all_ahk_processes();
                     app.exit(0);
                 }
                 _ => {}

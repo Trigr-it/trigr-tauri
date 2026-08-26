@@ -1619,16 +1619,36 @@ fn get_engine_status() -> Value {
 }
 
 #[tauri::command]
-fn update_assignments(assignments: Value, profile: String) {
-    // Convert Value map to HashMap
-    let map: std::collections::HashMap<String, Value> = assignments
-        .as_object()
-        .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-        .unwrap_or_default();
-    hotkeys::update_assignments(map.clone(), profile);
-    expansions::update_assignments(map);
-    // Voice phrase grammar may have changed — pre-warm asynchronously
+async fn update_assignments(assignments: Value, profile: String) {
+    // Parsing + cloning the whole assignment map and rebuilding the suppress
+    // set ran synchronously on the main thread on EVERY edit (see
+    // feedback_tauri_sync_commands_main_thread); with a large config that was
+    // a visible stutter per save.
+    tauri::async_runtime::spawn_blocking(move || {
+        let map: std::collections::HashMap<String, Value> = assignments
+            .as_object()
+            .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+        hotkeys::update_assignments(map.clone(), profile);
+        expansions::update_assignments(map);
+    })
+    .await
+    .ok();
+    // Voice phrase grammar may have changed — pre-warm (main thread by design).
     voice::prewarm_from_state();
+}
+
+/// Called by the frontend immediately before the updater's
+/// downloadAndInstall(): the plugin calls process::exit right after launching
+/// the installer, skipping RunEvent::Exit, so any synthetic input Keyfire is
+/// holding (Hold-mode key, repeat, bare-key remap) would stay down in Windows
+/// through the install and relaunch.
+#[tauri::command]
+fn release_input_for_exit() {
+    actions::release_held_key();
+    actions::stop_repeating_key();
+    actions::release_all_bare_remaps();
+    actions::kill_all_ahk_processes();
 }
 
 #[tauri::command]
@@ -6461,16 +6481,26 @@ pub fn run() {
             // Listen for overlay toggle from the hotkey system
             let app_handle = app.handle().clone();
             app.listen("toggle-overlay", move |_| {
-                let overlay_visible = app_handle
-                    .get_webview_window("overlay")
-                    .and_then(|w| w.is_visible().ok())
-                    .unwrap_or(false);
-                if overlay_visible {
-                    hide_overlay(&app_handle);
-                    restore_overlay_target();
-                } else {
-                    show_overlay(&app_handle);
-                }
+                // Rust listeners run on the EMITTING thread — here the hotkey
+                // processor. show_overlay reads + parses the config file and
+                // serialises every assignment for the payload, which stalled
+                // hotkey/expansion dispatch for the whole show. Do it off-thread.
+                let handle = app_handle.clone();
+                std::thread::Builder::new()
+                    .name("keyfire-overlay-toggle".into())
+                    .spawn(move || {
+                        let overlay_visible = handle
+                            .get_webview_window("overlay")
+                            .and_then(|w| w.is_visible().ok())
+                            .unwrap_or(false);
+                        if overlay_visible {
+                            hide_overlay(&handle);
+                            restore_overlay_target();
+                        } else {
+                            show_overlay(&handle);
+                        }
+                    })
+                    .ok();
             });
 
             // voice-open: first press of voice hotkey — VOICE_ACTIVE was false in the hook
@@ -6651,6 +6681,7 @@ pub fn run() {
             get_engine_status,
             update_assignments,
             toggle_macros,
+            release_input_for_exit,
             input_focus_changed,
             show_settings_window,
             hide_settings_window,
@@ -6869,6 +6900,15 @@ pub fn run() {
             // hold the demo .db files open at this point — a partial delete is
             // fine because every demo LAUNCH wipes the folder first anyway.
             if let tauri::RunEvent::Exit = event {
+                // Every exit path (tray Quit, updater relaunch, app.exit from
+                // anywhere) releases synthetic input state. Injected key state
+                // survives process exit: a Hold-mode key or repeat left DOWN
+                // stayed down in Windows until the user tapped it physically,
+                // and spawned AHK children were orphaned. Idempotent with quit_app.
+                actions::release_held_key();
+                actions::stop_repeating_key();
+                actions::release_all_bare_remaps();
+                actions::kill_all_ahk_processes();
                 if is_demo_mode() {
                     if let Ok(dir) = app_handle.path().app_data_dir() {
                         match std::fs::remove_dir_all(dir.join("demo")) {

@@ -1367,6 +1367,10 @@ function App() {
             { title: 'Update Available', kind: 'info' }
           );
           if (confirmed) {
+            // The updater exits the process right after launching the
+            // installer (RunEvent::Exit never runs), so release any held /
+            // repeating synthetic input first.
+            await window.electronAPI?.releaseInputForExit?.();
             await update.downloadAndInstall();
             await relaunch();
           }

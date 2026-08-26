@@ -1556,6 +1556,20 @@ pub fn remap_key_press(trigger_vk: u16, data: &Value) -> bool {
 ///
 /// Sends target_keyup + mod_ups for the remap that was started by `remap_key_press`.
 /// Returns `true` if a remap was active for this trigger VK (caller should early-return).
+/// Release every bare-key remap still held (session lock / quit). Each entry
+/// otherwise waits for a trigger keyup the LL hook may never see.
+pub fn release_all_bare_remaps() {
+    let vks: Vec<u16> = ACTIVE_BARE_REMAPS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .keys()
+        .copied()
+        .collect();
+    for vk in vks {
+        let _ = remap_key_release(vk);
+    }
+}
+
 pub fn remap_key_release(trigger_vk: u16) -> bool {
     let entry = ACTIVE_BARE_REMAPS.lock().unwrap().remove(&trigger_vk);
     if let Some(entry) = entry {
