@@ -1606,11 +1606,16 @@ function App() {
         if (!cur || cur.type !== 'app') return prev;
         if (cur.data?.appIcon === dataUrl) return prev;
         const next = { ...prev, [key]: { ...cur, data: { ...cur.data, appIcon: dataUrl } } };
-        saveConfig(next, profiles, activeProfile);
+        // Save ONLY the assignments. This runs after an await, so the helper
+        // `saveConfig` captured before it carried stale copies of templates /
+        // categories and wrote them back over edits made while the icon was
+        // resolving. `next` itself is fresh (functional update).
+        window.electronAPI?.saveConfig({ assignments: next });
+        window.electronAPI?.updateAssignments(next, activeProfile);
         return next;
       });
     } catch (e) {}
-  }, [assignments, profiles, activeProfile, saveConfig]);
+  }, [assignments, activeProfile]);
 
   const handleAddQuickAction = useCallback((action) => {
     const key = `GLOBAL::QUICKACTION::${action.id}`;
@@ -1684,9 +1689,17 @@ function App() {
         changed = true;
       }
     }
-    if (changed) { setAssignments(newAssignments); saveConfig(newAssignments, profiles, activeProfile); }
-    window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
-  }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
+    // One save carrying both keys. Two concurrent saves (helper + partial)
+    // each re-read disk and merged independently, so the last writer dropped
+    // the other's key.
+    if (changed) {
+      setAssignments(newAssignments);
+      window.electronAPI?.saveConfig({ assignments: newAssignments, quickActionCategories: nextCats });
+      syncEngine(newAssignments, activeProfile);
+    } else {
+      window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
+    }
+  }, [quickActionCategories, assignments, activeProfile, syncEngine]);
 
   // mode: 'single' | 'tree' | 'promote'. Mirrors handleDeleteCategory.
   const handleDeleteQaCategory = useCallback((name, mode = 'single') => {
@@ -1738,9 +1751,17 @@ function App() {
       }
     }
     setQuickActionCategories(nextCats);
-    if (changed) { setAssignments(newAssignments); saveConfig(newAssignments, profiles, activeProfile); }
-    window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
-  }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
+    // One save carrying both keys. Two concurrent saves (helper + partial)
+    // each re-read disk and merged independently, so the last writer dropped
+    // the other's key.
+    if (changed) {
+      setAssignments(newAssignments);
+      window.electronAPI?.saveConfig({ assignments: newAssignments, quickActionCategories: nextCats });
+      syncEngine(newAssignments, activeProfile);
+    } else {
+      window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
+    }
+  }, [quickActionCategories, assignments, activeProfile, syncEngine]);
 
   const handleUpdateQaCategoryColour = useCallback((name, colour) => {
     const next = quickActionCategories.map(c => c.name === name ? { ...c, colour } : c);
@@ -1812,9 +1833,17 @@ function App() {
         changed = true;
       }
     }
-    if (changed) { setAssignments(newAssignments); saveConfig(newAssignments, profiles, activeProfile); }
-    window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
-  }, [quickActionCategories, assignments, profiles, activeProfile, saveConfig]);
+    // One save carrying both keys. Two concurrent saves (helper + partial)
+    // each re-read disk and merged independently, so the last writer dropped
+    // the other's key.
+    if (changed) {
+      setAssignments(newAssignments);
+      window.electronAPI?.saveConfig({ assignments: newAssignments, quickActionCategories: nextCats });
+      syncEngine(newAssignments, activeProfile);
+    } else {
+      window.electronAPI?.saveConfig({ quickActionCategories: nextCats });
+    }
+  }, [quickActionCategories, assignments, activeProfile, syncEngine]);
 
   // ── Modifier toggling ─────────────────────────────────────
   const handleToggleModifier = useCallback((modId) => {
@@ -2234,7 +2263,11 @@ function App() {
       window.electronAPI?.setActiveGlobalProfile(newGlobal);
     }
     window.electronAPI?.updateProfileSettings(newProfileSettings);
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, radialMenuItemsByProfile: newRadialMap, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
+    // Only the keys this handler actually changed. save_config shallow-merges,
+    // and sending theme / expansionCategories / autocorrectEnabled from this
+    // closure wrote back STALE copies (they weren't in the dep array), so a
+    // category added moments earlier vanished on a profile rename.
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, radialMenuItemsByProfile: newRadialMap, hasSeenWelcome: true });
     syncEngine(newAssignments, newActive);
     showNotification(`Renamed to "${newName}"`);
   }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, radialItemsMap, syncEngine, showNotification]);
@@ -2853,8 +2886,9 @@ function App() {
 
     setAssignments(newAssignments);
     setQuickActionCategories(newCategories);
-    saveConfig(newAssignments, profiles, activeProfile);
-    window.electronAPI?.saveConfig({ quickActionCategories: newCategories });
+    // Single save for both keys (see the QA category handlers above).
+    window.electronAPI?.saveConfig({ assignments: newAssignments, quickActionCategories: newCategories });
+    syncEngine(newAssignments, activeProfile);
 
     let msg;
     if (choice === 'skip') {
@@ -2874,7 +2908,7 @@ function App() {
       }
     }
     showNotification(msg);
-  }, [assignments, quickActionCategories, profiles, activeProfile, saveConfig, showNotification]);
+  }, [assignments, quickActionCategories, activeProfile, syncEngine, showNotification]);
 
   const handleImportQuickActions = useCallback(async () => {
     try {
@@ -5258,6 +5292,14 @@ function App() {
     if (!confirmed) return;
 
     const cfg = result.config;
+    // Nothing has touched disk yet — import_config only read + validated the
+    // file. Commit now that the user has confirmed (Cancel above really
+    // cancels; previously the file and last-known-good were already replaced).
+    const commit = await window.electronAPI?.commitImportConfig?.(cfg);
+    if (!commit?.ok) {
+      showNotification(commit?.error || 'Could not write the imported config to disk.', 'error');
+      return;
+    }
     // Reset interaction state so the sidebar and MacroPanel start clean
     setSelectedKey(null);
     setSelectedLibraryId(null);
@@ -5266,9 +5308,9 @@ function App() {
     const importedHotkeyCount    = Object.keys(imported).filter(k => !k.startsWith('GLOBAL::EXPANSION::')).length;
     const importedExpansionCount = Object.keys(imported).length - importedHotkeyCount;
     console.log(`[Keyfire] Import applied — ${Object.keys(imported).length} assignments (${importedHotkeyCount} hotkeys, ${importedExpansionCount} expansions)`);
-    // Rust already wrote the imported file to disk — apply EVERY section to
-    // state + engine (not just assignments/profiles/theme) so the next
-    // full-object save can't write stale variables/templates/radial back.
+    // Apply EVERY section to state + engine (not just assignments/profiles/
+    // theme) so the next full-object save can't write stale variables/
+    // templates/radial back.
     applyLoadedConfig(cfg, { useSavedActiveProfile: true });
     setBackupRestoredFrom(null);
     showNotification('Config imported successfully');

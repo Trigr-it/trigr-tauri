@@ -3330,11 +3330,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     "[Keyfire] Wait for Pixel: timeout ({}s) at ({}, {}) — aborting macro",
                     timeout_secs, x, y
                 );
-                use tauri::Emitter;
-                let _ = app.emit("system-action-toast", serde_json::json!({
-                    "level": "error",
-                    "message": format!("Wait for Pixel timed out after {}s. Macro stopped.", timeout_secs),
-                }));
+                crate::emit_user_toast(app, "error", &format!("Wait for Pixel timed out after {}s. Macro stopped.", timeout_secs));
                 return false;
             }
         }
@@ -3363,11 +3359,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             #[cfg(not(windows))]
             {
                 let _ = step_value;
-                use tauri::Emitter;
-                let _ = app.emit("system-action-toast", serde_json::json!({
-                    "level": "error",
-                    "message": "Wait for Text is Windows-only.",
-                }));
+                crate::emit_user_toast(app, "error", &"Wait for Text is Windows-only.");
                 return false;
             }
             #[cfg(windows)]
@@ -3531,11 +3523,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         "[Keyfire] Wait for Text: timeout ({}s) searching for \"{}\" — aborting macro",
                         timeout_secs, needle_raw
                     );
-                    use tauri::Emitter;
-                    let _ = app.emit("system-action-toast", serde_json::json!({
-                        "level": "error",
-                        "message": format!("Wait for Text timed out after {}s. Macro stopped.", timeout_secs),
-                    }));
+                    crate::emit_user_toast(app, "error", &format!("Wait for Text timed out after {}s. Macro stopped.", timeout_secs));
                     return false;
                 }
             }
@@ -4968,11 +4956,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 Err(e) => {
                     warn!("[Keyfire] Change Audio Output: {}", e);
                     if matches!(e, crate::audio_devices::SetOutputError::DeviceNotFound(_)) {
-                        use tauri::Emitter;
-                        let _ = app.emit("system-action-toast", serde_json::json!({
-                            "level": "error",
-                            "message": format!("Audio device \"{}\" not connected", device_name),
-                        }));
+                        crate::emit_user_toast(app, "error", &format!("Audio device \"{}\" not connected", device_name));
                     }
                 }
             }

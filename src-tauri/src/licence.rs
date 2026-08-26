@@ -754,7 +754,8 @@ fn load_from_local_settings() -> LicenceState {
 }
 
 fn save_to_local_settings(state: &LicenceState) {
-    let mut val = crate::config::load_local_settings_json();
+    // Strict: never rewrite the file as `{licence}` over a copy that merely failed to read.
+    let Some(mut val) = crate::config::load_local_settings_json_strict() else { return; };
     if let Some(obj) = val.as_object_mut() {
         match serde_json::to_value(state) {
             Ok(v) => {

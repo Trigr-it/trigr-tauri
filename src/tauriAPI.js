@@ -220,6 +220,10 @@ window.electronAPI = {
   // ── Backup & restore ────────────────────────────────────────────────────────
   exportConfig:   ()         => invoke('export_config'),
   importConfig:   ()         => invoke('import_config'),
+  // Two-step import: import_config only reads + validates; this writes it
+  // after the user has confirmed (Cancel used to leave the file already
+  // replaced on disk).
+  commitImportConfig: (config) => invoke('commit_import_config', { config }),
 
   // ── Profile export/import ──────────────────────────────────────────────────
   exportProfile:  (filenameHint, content) => invoke('export_profile', { filenameHint, content }),

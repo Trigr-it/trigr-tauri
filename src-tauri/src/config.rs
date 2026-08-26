@@ -57,37 +57,85 @@ fn local_settings_path() -> PathBuf {
     app_data_dir().join(LOCAL_SETTINGS_FILE)
 }
 
-/// Read the full local settings JSON. Returns empty object if file missing or invalid.
-pub fn load_local_settings_json() -> Value {
-    let _guard = LOCAL_SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+/// Raw local-settings read. `Ok(None)` = file missing (fresh install),
+/// `Ok(Some(v))` = parsed, `Err` = file exists but could not be read/parsed.
+/// The distinction matters: this file holds licence state, the shared-config
+/// path and the telemetry opt-out, and every writer does load → mutate →
+/// save. A transient read error that surfaced as `{}` was then persisted by
+/// the next writer (24h licence revalidation, 6h telemetry tick) as a fresh
+/// file: user silently back to Free, shared path dropped, opt-out reset.
+fn read_local_settings_raw() -> Result<Option<Value>, String> {
     let path = local_settings_path();
     if !path.exists() {
-        return serde_json::json!({});
+        return Ok(None);
     }
-    match fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str::<Value>(&raw).unwrap_or_else(|e| {
-            warn!("[Keyfire] Failed to parse local settings: {}", e);
-            serde_json::json!({})
-        }),
+    let raw = fs::read_to_string(&path).map_err(|e| format!("read: {}", e))?;
+    if raw.trim().is_empty() {
+        return Err("file is empty".to_string());
+    }
+    serde_json::from_str::<Value>(&raw)
+        .map(Some)
+        .map_err(|e| format!("parse: {}", e))
+}
+
+/// Read the full local settings JSON for READERS. Returns an empty object if
+/// the file is missing or unreadable (readers degrade to defaults). Writers
+/// must use `load_local_settings_json_strict` so they never persist `{}` over
+/// a file that merely failed to read.
+pub fn load_local_settings_json() -> Value {
+    let _guard = LOCAL_SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    match read_local_settings_raw() {
+        Ok(Some(v)) => v,
+        Ok(None) => serde_json::json!({}),
         Err(e) => {
-            warn!("[Keyfire] Failed to read local settings: {}", e);
+            warn!("[Keyfire] Failed to load local settings ({}); using defaults for this read", e);
             serde_json::json!({})
         }
     }
 }
 
-/// Write the full local settings JSON to disk.
+/// Writer-side load: `Some({})` for a missing file, `Some(v)` when parsed,
+/// `None` when the file exists but is unreadable — the caller must abort the
+/// write. A `.corrupt` copy is kept once for forensics.
+pub fn load_local_settings_json_strict() -> Option<Value> {
+    let _guard = LOCAL_SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    match read_local_settings_raw() {
+        Ok(Some(v)) => Some(v),
+        Ok(None) => Some(serde_json::json!({})),
+        Err(e) => {
+            let path = local_settings_path();
+            let corrupt = path.with_extension("json.corrupt");
+            if !corrupt.exists() {
+                let _ = fs::copy(&path, &corrupt);
+            }
+            error!(
+                "[Keyfire] Local settings unreadable ({}); refusing to overwrite. Copy kept at {}",
+                e,
+                corrupt.display()
+            );
+            None
+        }
+    }
+}
+
+/// Write the full local settings JSON to disk atomically (tmp + rename), same
+/// as the main config, so a crash mid-write can't leave a truncated file.
 pub fn save_local_settings_json(val: &Value) -> bool {
     let _guard = LOCAL_SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = local_settings_path();
+    let tmp = path.with_extension("json.tmp");
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
     match serde_json::to_string_pretty(val) {
-        Ok(json) => match fs::write(&path, json) {
+        Ok(json) => match fs::write(&tmp, json).and_then(|_| fs::rename(&tmp, &path)) {
             Ok(()) => {
                 info!("[Keyfire] Local settings saved");
                 true
             }
             Err(e) => {
                 error!("[Keyfire] Failed to write local settings: {}", e);
+                let _ = fs::remove_file(&tmp);
                 false
             }
         },
@@ -111,7 +159,7 @@ fn load_local_settings() {
 
 /// Save shared config path to local settings (merge-based — preserves other keys like licence).
 pub fn save_local_settings(shared_path: Option<&Path>) -> bool {
-    let mut val = load_local_settings_json();
+    let Some(mut val) = load_local_settings_json_strict() else { return false; };
     let obj = val.as_object_mut().unwrap();
     match shared_path {
         Some(p) => {
@@ -161,7 +209,7 @@ pub fn get_pro_expired_at() -> Option<chrono::DateTime<chrono::Utc>> {
 
 /// Write or clear the grace-period start timestamp. Merge-safe.
 pub fn set_pro_expired_at(ts: Option<chrono::DateTime<chrono::Utc>>) -> bool {
-    let mut val = load_local_settings_json();
+    let Some(mut val) = load_local_settings_json_strict() else { return false; };
     let obj = val.as_object_mut().unwrap();
     match ts {
         Some(t) => {
@@ -184,7 +232,7 @@ pub fn get_migration_deferred() -> bool {
 }
 
 fn set_migration_deferred(deferred: bool) {
-    let mut val = load_local_settings_json();
+    let Some(mut val) = load_local_settings_json_strict() else { return; };
     let obj = val.as_object_mut().unwrap();
     if deferred {
         obj.insert("migration_deferred".to_string(), Value::Bool(true));
@@ -212,7 +260,7 @@ pub fn get_telemetry_opt_out() -> bool {
 /// Persist the opt-out flag. Writing `false` removes the key entirely so the
 /// file stays lean for users who never touched the toggle.
 pub fn set_telemetry_opt_out(opted_out: bool) -> bool {
-    let mut val = load_local_settings_json();
+    let Some(mut val) = load_local_settings_json_strict() else { return false; };
     let obj = val.as_object_mut().unwrap();
     if opted_out {
         obj.insert("telemetry_opt_out".to_string(), Value::Bool(true));
@@ -236,7 +284,7 @@ pub fn get_telemetry_epoch() -> String {
 
 /// Stamp the epoch. Called once, on the first telemetry tick of this machine.
 pub fn set_telemetry_epoch(date: &str) -> bool {
-    let mut val = load_local_settings_json();
+    let Some(mut val) = load_local_settings_json_strict() else { return false; };
     let obj = val.as_object_mut().unwrap();
     obj.insert("telemetry_epoch".to_string(), Value::String(date.to_string()));
     save_local_settings_json(&val)
@@ -617,7 +665,7 @@ fn read_with_retry(path: &Path, retries: u32, delay: std::time::Duration) -> Opt
 
 // ── Validation ──────────────────────────────────────────────────────────────
 
-fn is_valid_config(cfg: &Value) -> bool {
+pub fn is_valid_config(cfg: &Value) -> bool {
     let obj = match cfg.as_object() {
         Some(o) => o,
         None => return false,
@@ -689,6 +737,30 @@ pub fn load_config() -> Option<Value> {
             None
         }
     }
+}
+
+/// Save-path read. When the file EXISTS but can't be read or parsed right
+/// now (AV / sync client holding it, mid-rename), retry briefly and then
+/// return `Err` so the caller aborts the save instead of merging the payload
+/// onto `{}` — which rewrote the config as only the payload and, if that
+/// passed validation, poisoned last-known-good with it.
+pub fn load_config_for_save() -> Result<Value, String> {
+    let path = config_path();
+    if !path.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    for attempt in 0..4 {
+        if let Some(v) = load_config() {
+            return Ok(v);
+        }
+        if attempt < 3 {
+            std::thread::sleep(std::time::Duration::from_millis(60));
+        }
+    }
+    Err(format!(
+        "config file exists but could not be read after retries: {}",
+        path.display()
+    ))
 }
 
 /// Resilient loader: main config -> last-known-good -> timestamped backups (newest first).
@@ -810,27 +882,61 @@ fn ensure_backup_dir() {
     }
 }
 
+/// Edit-time backups: `keyforge-config-YYYY-MM-DD-HH-MM-SS.json` (older
+/// files without the seconds field still match and are pruned in order).
 fn backup_filename_regex() -> regex_lite::Regex {
-    regex_lite::Regex::new(r"^keyforge-config-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.json$").unwrap()
+    regex_lite::Regex::new(r"^keyforge-config-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}(-\d{2})?\.json$").unwrap()
+}
+
+/// Boot-time snapshots live in their own small ring so ten restarts can't
+/// evict every edit-time restore point (the old scheme wrote a plain
+/// timestamped backup on every healthy load into the same 10-slot ring).
+fn boot_backup_filename_regex() -> regex_lite::Regex {
+    regex_lite::Regex::new(r"^keyforge-config-boot-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.json$").unwrap()
+}
+const MAX_BOOT_BACKUPS: usize = 2;
+
+fn write_backup_file(config: &Value, name: &str) -> bool {
+    ensure_backup_dir();
+    let dest = backup_dir().join(name);
+    match serde_json::to_string_pretty(config) {
+        Ok(json) => match fs::write(&dest, json) {
+            Ok(()) => {
+                info!("[Keyfire] Backup created: {}", name);
+                true
+            }
+            Err(e) => {
+                error!("[Keyfire] Failed to create backup {}: {}", name, e);
+                false
+            }
+        },
+        Err(e) => {
+            error!("[Keyfire] Failed to serialize backup: {}", e);
+            false
+        }
+    }
 }
 
 pub fn create_timestamped_backup(config: &Value) {
     if !is_valid_config(config) {
         return;
     }
-    ensure_backup_dir();
-    let now = chrono::Local::now();
-    let stamp = now.format("%Y-%m-%d-%H-%M").to_string();
-    let dest = backup_dir().join(format!("keyforge-config-{}.json", stamp));
-    match serde_json::to_string_pretty(config) {
-        Ok(json) => match fs::write(&dest, json) {
-            Ok(()) => {
-                info!("[Keyfire] Backup created: keyforge-config-{}.json", stamp);
-                prune_backups();
-            }
-            Err(e) => error!("[Keyfire] Failed to create timestamped backup: {}", e),
-        },
-        Err(e) => error!("[Keyfire] Failed to serialize backup: {}", e),
+    // Seconds in the stamp: two significant changes inside one minute used to
+    // share a filename and the second silently overwrote the first.
+    let stamp = chrono::Local::now().format("%Y-%m-%d-%H-%M-%S").to_string();
+    if write_backup_file(config, &format!("keyforge-config-{}.json", stamp)) {
+        prune_backups();
+    }
+}
+
+/// Healthy-load snapshot. Separate ring from edit-time backups (see above).
+pub fn create_boot_backup(config: &Value) {
+    if !is_valid_config(config) {
+        return;
+    }
+    let stamp = chrono::Local::now().format("%Y-%m-%d-%H-%M-%S").to_string();
+    if write_backup_file(config, &format!("keyforge-config-boot-{}.json", stamp)) {
+        prune_named(&boot_backup_filename_regex(), MAX_BOOT_BACKUPS);
     }
 }
 
@@ -851,8 +957,11 @@ pub fn update_last_known_good(config: &Value) {
 }
 
 fn prune_backups() {
+    prune_named(&backup_filename_regex(), MAX_BACKUPS);
+}
+
+fn prune_named(re: &regex_lite::Regex, keep: usize) {
     let bdir = backup_dir();
-    let re = backup_filename_regex();
     let Ok(entries) = fs::read_dir(&bdir) else {
         return;
     };
@@ -862,8 +971,8 @@ fn prune_backups() {
         .filter(|f| re.is_match(f))
         .collect();
     files.sort();
-    if files.len() > MAX_BACKUPS {
-        let excess = files.len() - MAX_BACKUPS;
+    if files.len() > keep {
+        let excess = files.len() - keep;
         for f in &files[..excess] {
             let path = bdir.join(f);
             if let Err(e) = fs::remove_file(&path) {
@@ -1042,17 +1151,23 @@ pub fn merge_with_remote(base: &Value, incoming: &Value, existing: &Value) -> Me
         let i = in_obj.get(&k);
         let e = ex_obj.get(&k);
 
-        let local_edited = i != b;
+        // A key ABSENT from the incoming payload is "no local opinion", not a
+        // local delete. Almost every frontend save is a partial patch (one to
+        // sixteen keys), so treating absence as an edit turned a single
+        // Settings toggle on the conflict path into a wipe of assignments,
+        // profiles, radial, autocorrect and hotkeys (`None != Some(_)` was
+        // true for every omitted key and the None arm removed it). Deletion
+        // of a top-level key is never expressed by omission anywhere in the
+        // frontend, so the remove arm is gone.
+        let local_edited = match i {
+            Some(v) => Some(v) != b,
+            None => false,
+        };
         let remote_edited = e != b;
 
         if local_edited {
-            match i {
-                Some(v) => {
-                    merged.insert(k.clone(), v.clone());
-                }
-                None => {
-                    merged.remove(&k);
-                }
+            if let Some(v) = i {
+                merged.insert(k.clone(), v.clone());
             }
         } else if remote_edited {
             // Disk value already lives in `merged` from ex_obj.clone(); record
@@ -1112,9 +1227,13 @@ pub fn is_significant_change(incoming: &Value, existing: &Value) -> bool {
                 diff += 1;
             }
         }
+        // Any REMOVED assignment is significant on its own: deleting one to
+        // five keys used to take no backup at all, and LKG was immediately
+        // overwritten with the post-delete state, so a mis-click was
+        // unrecoverable.
         for k in &ex_keys {
             if !in_keys.contains(k) {
-                diff += 1;
+                return true;
             }
         }
         if diff > 5 {
@@ -1125,13 +1244,36 @@ pub fn is_significant_change(incoming: &Value, existing: &Value) -> bool {
     // Radial layout: any change to radialMenuItemsByProfile is significant, so a
     // backup is always taken before the radial menu is altered. The layout was
     // otherwise invisible to this heuristic and could be lost without a snapshot.
-    if incoming.get("radialMenuItemsByProfile").is_some()
-        && incoming.get("radialMenuItemsByProfile") != existing.get("radialMenuItemsByProfile")
-    {
-        return true;
+    // Compared with `appIcon` blobs stripped: the editor re-saves the layout
+    // on every drag and an icon re-encode is not a layout change, yet each one
+    // used to write another 1-2 MB backup into the 10-slot ring.
+    if let Some(inc_r) = incoming.get("radialMenuItemsByProfile") {
+        let ex_r = existing.get("radialMenuItemsByProfile");
+        if Some(strip_radial_icons(inc_r)) != ex_r.map(strip_radial_icons) {
+            return true;
+        }
     }
 
     false
+}
+
+/// Deep-copy of a radial layout map with every `appIcon` removed, for
+/// change detection that should ignore icon re-encodes.
+fn strip_radial_icons(v: &Value) -> Value {
+    match v {
+        Value::Object(m) => {
+            let mut out = serde_json::Map::new();
+            for (k, val) in m {
+                if k == "appIcon" {
+                    continue;
+                }
+                out.insert(k.clone(), strip_radial_icons(val));
+            }
+            Value::Object(out)
+        }
+        Value::Array(a) => Value::Array(a.iter().map(strip_radial_icons).collect()),
+        other => other.clone(),
+    }
 }
 
 // ── Config summary ──────────────────────────────────────────────────────────

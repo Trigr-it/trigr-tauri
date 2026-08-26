@@ -109,8 +109,9 @@ fn load_config() -> Value {
                 config::save_config(&c);
                 config::update_last_known_good(&c);
             } else {
-                // Healthy load — create timestamped backup snapshot
-                config::create_timestamped_backup(&c);
+                // Healthy load — boot snapshot in its own 2-slot ring so restarts
+                // can't evict edit-time backups from the main 10-slot ring.
+                config::create_boot_backup(&c);
             }
             // Phase 2: record what the frontend's view started from so any
             // subsequent save can detect a cross-device sync that landed
@@ -133,17 +134,77 @@ fn load_config() -> Value {
     }
 }
 
+/// Serialises the read → merge → write chain in `save_config` and the other
+/// config writers. Without it two saves fired in the same tick (e.g. the
+/// Quick-Action category handlers used to send `assignments` and
+/// `quickActionCategories` as separate saves) both read the same on-disk
+/// state, merged independently, and the last writer dropped the other's key.
+static SAVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// User-visible notice that works whether or not the main window is showing.
+/// Every in-app toast renders inside the main window's DOM; Keyfire lives in
+/// the tray most of the time, so a Rust-side failure (save failed, macro
+/// stopped, device missing) used to be invisible. When the main window is
+/// hidden this falls back to a native Windows notification.
+pub fn emit_user_toast(app: &tauri::AppHandle, level: &str, message: &str) {
+    let main_visible = app
+        .get_webview_window("main")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    if main_visible {
+        let _ = app.emit(
+            "system-action-toast",
+            serde_json::json!({ "level": level, "message": message }),
+        );
+        return;
+    }
+    use tauri_plugin_notification::NotificationExt;
+    let title = match level {
+        "error" => "Keyfire — problem",
+        "success" => "Keyfire",
+        _ => "Keyfire",
+    };
+    if let Err(e) = app.notification().builder().title(title).body(message).show() {
+        log::warn!("[Keyfire] Native notification failed ({}); message was: {}", e, message);
+    }
+}
+
+/// Re-read whatever `config_path()` now points at, make it the frontend's
+/// merge base, and push it to React through the same event the shared-config
+/// watcher uses (App.jsx → applyLoadedConfig). Used when the config SOURCE
+/// changes under a running app: shared folder adopted, shared folder
+/// disconnected, shared drive reconnected.
+fn reload_config_and_emit(app: &tauri::AppHandle) {
+    match config::load_config() {
+        Some(cfg) if config::is_valid_config(&cfg) => {
+            config::snapshot_loaded(&cfg);
+            if let Err(e) = app.emit("config-reloaded-from-sync", &cfg) {
+                log::error!("[Keyfire] reload_config_and_emit: emit failed: {}", e);
+            }
+        }
+        _ => log::warn!("[Keyfire] reload_config_and_emit: no valid config at the new source; UI keeps current state"),
+    }
+}
+
 #[tauri::command]
 async fn save_config(app: tauri::AppHandle, config: Value) -> bool {
     // Save can touch a shared/OneDrive path where fs::read_to_string blocks
     // on the sync agent; keep the entire disk-IO chain off the main event
     // loop so unrelated UI + tray + emit traffic stays responsive.
     let (ok, remote_preserved) = tauri::async_runtime::spawn_blocking(move || {
+        let _save_guard = SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Re-read from disk RIGHT NOW so we catch any cross-device sync that landed
         // between the frontend's last load and this save. Without this, we'd merge
         // against the file's state at app launch and silently overwrite another
-        // machine's edits.
-        let existing = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+        // machine's edits. If the file exists but can't be read right now, ABORT
+        // rather than merge onto `{}` (which rewrote the config as just the payload).
+        let existing = match config::load_config_for_save() {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!("[Keyfire] save_config aborted: {}", e);
+                return (false, Vec::new());
+            }
+        };
 
         // Phase 2 conflict detection: disk revision ahead of what the frontend's
         // view started from means another machine wrote since we loaded.
@@ -231,6 +292,18 @@ async fn save_config(app: tauri::AppHandle, config: Value) -> bool {
                 log::error!("[Keyfire] Failed to emit sync-conflict-resolved: {}", e);
             }
         }
+    } else {
+        // Every frontend caller is fire-and-forget and shows its own success
+        // toast, so a failed write used to look like a successful save until
+        // the next restart lost the change.
+        emit_user_toast(
+            &app,
+            "error",
+            &format!(
+                "Couldn't save your changes to {}. Check the file isn't locked or read-only. Changes stay active until Keyfire restarts.",
+                config::config_path().display()
+            ),
+        );
     }
     ok
 }
@@ -321,19 +394,45 @@ async fn set_shared_config_path(app: tauri::AppHandle, path: String, mode: Optio
     config::save_local_settings(Some(&shared_dir));
 
     // Start file watcher for sync detection
-    config::start_config_watcher(shared_dir, app);
+    config::start_config_watcher(shared_dir, app.clone());
+
+    // "Use Existing": the file on disk is now the truth, but React still holds
+    // this machine's config. Without a reload the next save shallow-merged the
+    // local state over the file the user chose to keep (and the watcher then
+    // pushed that to every other machine).
+    if existed && mode == "use_existing" {
+        reload_config_and_emit(&app);
+    }
 
     serde_json::json!({ "ok": true, "existed": existed })
 }
 
 #[tauri::command]
-fn clear_shared_config_path() -> bool {
-    config::stop_config_watcher();
-    config::set_shared_config_dir(None);
+fn clear_shared_config_path(app: tauri::AppHandle) -> bool {
+    // Copy the shared file over the local one FIRST (atomic, validated), the
+    // same way the Pro grace-period migration does. The local file is a
+    // snapshot from the day sharing was enabled; switching back to it while
+    // React held the shared content produced a piecemeal hybrid on the next
+    // save. `migrate_shared_to_local` also clears the override, saves local
+    // settings and stops the watcher on success.
+    let copied = match config::migrate_shared_to_local() {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!("[Keyfire] clear_shared_config_path: could not copy shared → local ({}); disconnecting anyway", e);
+            config::stop_config_watcher();
+            config::set_shared_config_dir(None);
+            false
+        }
+    };
     // If the user manually unsets shared config, any grace-period timestamp
     // is moot — clear it so the banner disappears immediately.
     let _ = config::set_pro_expired_at(None);
-    config::save_local_settings(None)
+    let ok = if copied { true } else { config::save_local_settings(None) };
+    reload_config_and_emit(&app);
+    if !copied {
+        emit_user_toast(&app, "info", "Shared folder disconnected. The shared file couldn't be copied, so Keyfire is using its last local copy.");
+    }
+    ok
 }
 
 #[tauri::command]
@@ -409,37 +508,29 @@ async fn import_config(app: tauri::AppHandle) -> Value {
     match std::fs::read_to_string(&file_path) {
         Ok(raw) => match serde_json::from_str::<Value>(&raw) {
             Ok(mut cfg) => {
-                // Validate: must have assignments object
-                if !cfg.is_object()
-                    || !cfg
-                        .get("assignments")
-                        .map(|v| v.is_object())
-                        .unwrap_or(false)
-                {
+                // A Profile export also carries an `assignments` object; importing
+                // one here used to pass validation and wipe every other section.
+                if cfg.get("trigr_profile").is_some() {
                     return serde_json::json!({
                         "ok": false,
-                        "error": "Invalid Keyfire config file — missing assignments object."
+                        "error": "That file is a Profile export. Use Import Profile in the sidebar instead."
                     });
                 }
-
-                // Backup current config before overwriting
-                if let Some(current) = config::load_config() {
-                    config::create_timestamped_backup(&current);
+                if !config::is_valid_config(&cfg) {
+                    return serde_json::json!({
+                        "ok": false,
+                        "error": "That file isn't a Keyfire config export (it needs a profiles list and an assignments object)."
+                    });
                 }
-
-                // Set hasSeenWelcome
                 if let Some(obj) = cfg.as_object_mut() {
                     obj.insert("hasSeenWelcome".to_string(), Value::Bool(true));
                 }
-
-                // Write directly to disk
-                if config::save_config(&cfg) {
-                    config::update_last_known_good(&cfg);
-                    log::info!("[Keyfire] Config imported from: {}", file_path.display());
-                    serde_json::json!({ "ok": true, "config": cfg })
-                } else {
-                    serde_json::json!({ "ok": false, "error": "Could not write imported config to disk." })
-                }
+                // Nothing is written here. The frontend shows its confirm dialog
+                // and then calls `commit_import_config`; previously the file (and
+                // LKG) were already replaced by the time the user saw "Are you
+                // sure?", so Cancel didn't cancel.
+                log::info!("[Keyfire] Config import candidate read from: {}", file_path.display());
+                serde_json::json!({ "ok": true, "config": cfg, "path": file_path.to_string_lossy() })
             }
             Err(e) => {
                 serde_json::json!({ "ok": false, "error": format!("Could not parse file: {}", e) })
@@ -449,6 +540,38 @@ async fn import_config(app: tauri::AppHandle) -> Value {
             serde_json::json!({ "ok": false, "error": format!("Could not read file: {}", e) })
         }
     }
+}
+
+/// Second half of Import Config: runs only after the user confirmed. Backs up
+/// the current file, writes the import, promotes it to last-known-good and
+/// makes it the merge base so the next partial save can't 3-way-merge
+/// against the pre-import file.
+#[tauri::command]
+async fn commit_import_config(app: tauri::AppHandle, config: Value) -> Value {
+    let ok = tauri::async_runtime::spawn_blocking(move || {
+        let _save_guard = SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        if !config::is_valid_config(&config) {
+            return false;
+        }
+        if let Some(current) = config::load_config() {
+            config::create_timestamped_backup(&current);
+        }
+        if config::save_config(&config) {
+            config::update_last_known_good(&config);
+            config::snapshot_loaded(&config);
+            log::info!("[Keyfire] Config import committed");
+            true
+        } else {
+            false
+        }
+    })
+    .await
+    .unwrap_or(false);
+    if !ok {
+        emit_user_toast(&app, "error", "Couldn't write the imported config to disk. Your current config is unchanged.");
+        return serde_json::json!({ "ok": false, "error": "Could not write imported config to disk." });
+    }
+    serde_json::json!({ "ok": true })
 }
 
 #[tauri::command]
@@ -3731,7 +3854,7 @@ fn save_overlay_position(name: String, app: tauri::AppHandle) {
     let span_y = ((wb - wt) - eff_h).max(1) as f64;
     let fx = ((pos.x - wl) as f64 / span_x).clamp(0.0, 1.0);
     let fy = ((eff_y - wt) as f64 / span_y).clamp(0.0, 1.0);
-    let mut val = config::load_local_settings_json();
+    let Some(mut val) = config::load_local_settings_json_strict() else { return; };
     if let Some(obj) = val.as_object_mut() {
         let positions = obj
             .entry("overlayPositions".to_string())
@@ -3759,7 +3882,7 @@ fn save_overlay_position(name: String, app: tauri::AppHandle) {
 /// recomputes the exact default either way.
 #[tauri::command]
 fn reset_overlay_position(name: String, app: tauri::AppHandle) {
-    let mut val = config::load_local_settings_json();
+    let Some(mut val) = config::load_local_settings_json_strict() else { return; };
     if let Some(positions) = val.get_mut("overlayPositions").and_then(|v| v.as_object_mut()) {
         if positions.remove(&name).is_some() {
             config::save_local_settings_json(&val);
@@ -6039,7 +6162,11 @@ pub fn run() {
                                 std::thread::sleep(std::time::Duration::from_secs(30));
                                 if shared_dir.exists() {
                                     log::info!("[Keyfire] Shared config dir became available: {}", shared_dir.display());
-                                    config::start_config_watcher(shared_dir, app_handle);
+                                    config::start_config_watcher(shared_dir, app_handle.clone());
+                                    // The session has been running on the stale LOCAL copy;
+                                    // re-base on the shared file before any save can
+                                    // overwrite it with local state.
+                                    reload_config_and_emit(&app_handle);
                                     break;
                                 }
                             }
@@ -6499,6 +6626,7 @@ pub fn run() {
             clear_shared_config_path,
             export_config,
             import_config,
+            commit_import_config,
             list_backups,
             restore_backup,
             // Engine
