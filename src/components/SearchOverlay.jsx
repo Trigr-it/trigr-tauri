@@ -15,6 +15,9 @@ try {
   document.documentElement.setAttribute('data-theme', localStorage.getItem('trigr_overlay_theme') || 'dark');
 } catch { /* storage unavailable — CSS :root default applies */ }
 
+// Per-item search haystack cache (see the scoring loop).
+const HAYSTACK_CACHE = new WeakMap();
+
 // ── Type metadata ──────────────────────────────────────────────────────────────
 
 const TYPE_META = {
@@ -208,14 +211,22 @@ function searchItems(items, query, showAll) {
 
   const scored = items
     .map(item => {
-      const fields = [
-        item.label      || '',
-        item.preview    || '',
-        item.comboLabel || '',
-        item.trigger    || '',
-        item.text       || '',
-      ];
-      const haystack = fields.join(' ').toLowerCase();
+      // Fields + joined lowercase haystack are computed once per item object
+      // (items are rebuilt per open, so a WeakMap cache is exact). Before,
+      // every keystroke re-joined and lowercased every expansion's full body.
+      let cached = HAYSTACK_CACHE.get(item);
+      if (!cached) {
+        const fields = [
+          item.label      || '',
+          item.preview    || '',
+          item.comboLabel || '',
+          item.trigger    || '',
+          item.text       || '',
+        ];
+        cached = { fields, haystack: fields.join(' ').toLowerCase() };
+        HAYSTACK_CACHE.set(item, cached);
+      }
+      const { fields, haystack } = cached;
 
       // Every token must appear somewhere in the joined haystack.
       const allMatch = tokens.every(tok => haystack.includes(tok));

@@ -2392,7 +2392,11 @@ function App() {
   // expansion so the buffer matcher fires on any alias trigger without needing
   // per-key lookup logic. They are hidden from this list — the UI only shows
   // the primary. The primary carries `aliases: string[]` for editing.
-  const expansions = Object.entries(assignments)
+  // Memoised: this rebuilt (and re-sorted) the full expansion list — every
+  // body's text AND html — on every App render, i.e. on every toast, every
+  // macro fire, every engine-status event, and handed TextExpansions a new
+  // array identity each time.
+  const expansions = useMemo(() => Object.entries(assignments)
     .filter(([k, v]) => k.startsWith('GLOBAL::EXPANSION::') && !v?.data?.isAlias)
     .map(([k, v]) => ({
       trigger: k.slice('GLOBAL::EXPANSION::'.length),
@@ -2409,7 +2413,7 @@ function App() {
       aliases: Array.isArray(v.data?.aliases) ? v.data.aliases : [],
       voicePhrases: readVoicePhrases(v.data),
     }))
-    .sort((a, b) => a.trigger.localeCompare(b.trigger));
+    .sort((a, b) => a.trigger.localeCompare(b.trigger)), [assignments]);
 
   // editorValue is { html, text } from the rich text editor.
   // originalTrigger is provided when editing an existing expansion; if it differs
@@ -3241,12 +3245,12 @@ function App() {
   }, [expansionCategories, assignments, profiles, activeProfile, profileSettings, theme, syncEngine, autocorrectEnabled]);
 
   // ── Autocorrect ───────────────────────────────────────────
-  const autocorrections = Object.entries(assignments)
+  const autocorrections = useMemo(() => Object.entries(assignments)
     .filter(([k]) => k.startsWith('GLOBAL::AUTOCORRECT::'))
     .map(([k, v]) => ({
       typo: k.slice('GLOBAL::AUTOCORRECT::'.length),
       correction: v.data?.correction || '',
-    }));
+    })), [assignments]);
 
   // Unified settings patch: {enabled?, builtinTypos?, doubleCaps?, exceptions?}.
   // Syncs the engine and persists via shallow-merge saveConfig.

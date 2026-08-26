@@ -310,6 +310,10 @@ window.electronAPI = {
   recorderRestoreMain: () => invoke('recorder_restore_main'),
   // Countdown emits this if the user hits Esc / Cancel during the 3-2-1.
   onRecorderCountdownCancelled: (callback) => {
+    // Registered on every Record press; the previous handle was overwritten
+    // and its closure kept firing (cancelRecording N times after N sessions).
+    const prev = listeners['recorder-countdown-cancelled'];
+    if (prev) Promise.resolve(prev).then(u => { if (typeof u === 'function') u(); }).catch(() => {});
     listeners['recorder-countdown-cancelled'] = listen(
       'recorder-countdown-cancelled',
       (event) => callback(event.payload),
@@ -318,6 +322,8 @@ window.electronAPI = {
   // Fired by the hook when the Quick Record stop hotkey (Ctrl+Alt+R by default) is detected. The
   // listener should call stopMacroRecording() to retrieve the captured buffer.
   onRecorderStopRequested: (callback) => {
+    const prev = listeners['recorder-stop-requested'];
+    if (prev) Promise.resolve(prev).then(u => { if (typeof u === 'function') u(); }).catch(() => {});
     listeners['recorder-stop-requested'] = listen(
       'recorder-stop-requested',
       (event) => callback(event.payload),

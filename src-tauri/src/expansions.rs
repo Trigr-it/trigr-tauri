@@ -777,7 +777,7 @@ pub fn check_space_trigger() -> bool {
         s.buffer.clear();
         drop(s);
 
-        info!("[Keyfire] Expansion: \"{}\" → \"{}\"", buffer_lower, text);
+        info!("[Keyfire] Expansion: \"{}\" → \"{}\"", buffer_lower, log_preview(&text));
         let case_pattern = detect_case(&original_buffer);
         let html_opt = if html.is_empty() { None } else { Some(html.as_str()) };
         fire_expansion(&buffer_lower, trigger_len, delete_extra, &text, html_opt, &global_vars, case_pattern);

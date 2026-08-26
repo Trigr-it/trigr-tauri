@@ -153,6 +153,14 @@ pub fn init(app_data_dir: PathBuf) {
             let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN trigger_key TEXT NOT NULL DEFAULT '';");
             let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN label TEXT NOT NULL DEFAULT '';");
             let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN target_app TEXT NOT NULL DEFAULT '';");
+            // The log had no indexes at all: every panel open ran full scans
+            // over an ever-growing table (no retention), and the per-trigger /
+            // per-type breakdowns are the common queries. Idempotent.
+            let _ = conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_action_log_ts ON action_log(timestamp);
+                 CREATE INDEX IF NOT EXISTS idx_action_log_type_ts ON action_log(action_type, timestamp);
+                 CREATE INDEX IF NOT EXISTS idx_action_log_trigger ON action_log(trigger_key);",
+            );
 
             // Version tracking for one-time migrations
             let _ = conn.execute_batch(

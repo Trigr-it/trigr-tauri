@@ -3090,11 +3090,6 @@ fn show_overlay(app: &tauri::AppHandle) {
         let _ = overlay.set_position(tauri::PhysicalPosition::new(phys_x, anchor - max_h_phys));
         let _ = overlay.set_size(tauri::PhysicalSize::new(phys_w as u32, max_h_phys as u32));
     }
-    // TEMP [QS-FLIP] diagnostic — strip after the flip-mode wild window closes.
-    log::info!(
-        "[Keyfire] [QS-FLIP] show: y={} flip={} wa_bottom={} scale={:.2}",
-        phys_y, flip_up, wa_bottom, scale
-    );
 
     // Send search data to the overlay — includes ALL assignments (profile + global).
     // Same builder the overlay's self-heal pull uses (get_search_overlay_data),
@@ -3547,29 +3542,16 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     // kept.
     let win_data = win.clone();
     std::thread::spawn(move || {
-        // TEMP [CLIP-SNAPPY] diagnostics — strip after the async-show change
-        // wild-verifies.
-        let t0 = std::time::Instant::now();
         let history = clipboard::get_history(1, 500, None, None, None, None, false);
-        let fetch_ms = t0.elapsed().as_millis();
-        let n_items = history
-            .get("items")
-            .and_then(|v| v.as_array())
-            .map(|a| a.len())
-            .unwrap_or(0);
         let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
         let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
         let mut payload = history;
         if let Some(obj) = payload.as_object_mut() {
             obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
         }
-        let emit_result = win_data.emit("clipboard-overlay-data", payload);
-        log::info!(
-            "[CLIP-SNAPPY] overlay data: fetch={}ms items={} emit_ok={}",
-            fetch_ms,
-            n_items,
-            emit_result.is_ok()
-        );
+        if let Err(e) = win_data.emit("clipboard-overlay-data", payload) {
+            log::warn!("[Keyfire] clipboard overlay data emit failed: {}", e);
+        }
     });
 
     // Raw Win32 show — bypass Tauri's win.show() which calls ShowWindow(SW_SHOW)

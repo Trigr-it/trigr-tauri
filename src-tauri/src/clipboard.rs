@@ -1370,6 +1370,11 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                 for _dropped in rx { /* reply senders close → callers return defaults */ }
                 return;
             };
+            // Indexes for the list/filter paths (none existed). Idempotent.
+            let _ = conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(timestamp);
+                 CREATE INDEX IF NOT EXISTS idx_history_pinned_ts ON history(pinned, timestamp);",
+            );
 
             // Phase 3b (v0.5): clean up an expired plaintext backup from a prior
             // upgrade, then run the one-time migration of any remaining legacy
@@ -2302,7 +2307,21 @@ fn handle_new_entry(conn: &Connection, entry: ClipEntry) {
     }
 
     let new_id = conn.last_insert_rowid();
-    handle_prune(conn);
+    // Retention prune (which VACUUMs when it deletes) ran after EVERY copy;
+    // once the history was older than the retention window each new copy
+    // expired one row and rewrote the whole DB — seconds per copy on image
+    // histories, with the popup's history query queued behind it. Prune at
+    // most every 10 minutes; retention is a days-scale setting.
+    {
+        static LAST_PRUNE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+        let mut last = LAST_PRUNE.lock().unwrap_or_else(|p| p.into_inner());
+        let due = last.map(|t| t.elapsed() >= std::time::Duration::from_secs(600)).unwrap_or(true);
+        if due {
+            *last = Some(std::time::Instant::now());
+            drop(last);
+            handle_prune(conn);
+        }
+    }
 
     // Auto-OCR dispatch (Pro, setting-gated, size-gated). Uses plaintext PNG
     // bytes from the entry directly — cheaper than round-tripping through DB
