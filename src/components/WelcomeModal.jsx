@@ -21,7 +21,7 @@ const FEATURES = [
   {
     Icon: Disc,
     name: 'Radial Menu',
-    desc: 'Press-and-hold pie menu for your most-used actions.',
+    desc: 'Pie menu of your most-used actions. Click a wedge or press its number to fire.',
     accent: 'c',
   },
   {
@@ -33,24 +33,30 @@ const FEATURES = [
   {
     Icon: Search,
     name: 'Quick Search',
-    desc: 'Ctrl + Space launcher for apps, URLs and search templates.',
+    desc: '{{QS}} launcher for apps, URLs and search templates.',
     accent: 'e',
   },
   {
     Icon: ClipboardList,
     name: 'Clipboard History',
-    desc: 'Ctrl + Shift + V to recall and paste anything you’ve copied.',
+    desc: '{{CB}} to recall and paste anything you’ve copied.',
     accent: 'f',
   },
 ];
 
-export default function WelcomeModal({ onContinue, onSkip, onDismiss }) {
+export default function WelcomeModal({ onContinue, onSkip, onDismiss, searchOverlayHotkey = 'Ctrl+Space', clipboardPasteHotkey = 'Ctrl+Shift+V' }) {
+  // Live hotkeys in the tile copy (the tour is re-runnable after rebinding).
+  const spaced = (combo) => (combo ? String(combo).split('+').join(' + ') : 'No hotkey set');
+  const fillDesc = (d) => d.replace('{{QS}}', spaced(searchOverlayHotkey)).replace('{{CB}}', spaced(clipboardPasteHotkey));
   // Backwards-compat: existing call sites that only pass onDismiss get the
   // same handler used for both Get Started and Skip. App.jsx splits them.
   const handleContinue = onContinue || onDismiss;
   const handleSkip = onSkip || onDismiss;
   const panelRef = useRef(null);
-  useModalKeyboard(panelRef, handleSkip);
+  // Esc used to run the permanent skip (onboarding_complete = true) — a
+  // reflexive Esc on the very first screen lost the tour for good. Esc now
+  // does nothing here; the explicit "Skip the tour" link remains.
+  useModalKeyboard(panelRef, () => {});
 
   return (
     <div className="modal-overlay welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
@@ -98,7 +104,7 @@ export default function WelcomeModal({ onContinue, onSkip, onDismiss }) {
                   <FeatureIcon size={22} strokeWidth={1.75} />
                 </span>
                 <span className="welcome-tile-name">{f.name}</span>
-                <span className="welcome-tile-desc">{f.desc}</span>
+                <span className="welcome-tile-desc">{fillDesc(f.desc)}</span>
               </div>
             );
           })}

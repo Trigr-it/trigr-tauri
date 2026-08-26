@@ -6060,12 +6060,11 @@ pub fn run() {
         // any other plugin per the plugin's own docs. Args are ignored —
         // future protocol-handler support (trigr://) can add argv parsing.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            webview_mem::resume_for_show(app, "main");
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            // tray::show_window does resume_for_show + unminimize + the
+            // AttachThreadInput foreground dance; bare set_focus here let the
+            // window surface BEHIND the current app, which read as "nothing
+            // happened" when the user double-clicked the exe while in the tray.
+            tray::show_window(app);
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(

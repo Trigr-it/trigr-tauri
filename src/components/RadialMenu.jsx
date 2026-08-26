@@ -247,7 +247,7 @@ export default function RadialMenu() {
         <div className="radial-empty">
           <span className="radial-empty-icon" aria-hidden="true"><Aperture size={42} strokeWidth={1.5} /></span>
           <span className="radial-empty-text">
-            No items added.<br />Configure in Settings.
+            No actions on this wheel yet.<br />Open Keyfire, then Triggers → Radial to add some.
           </span>
         </div>
       </div>

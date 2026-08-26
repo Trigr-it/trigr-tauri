@@ -1343,6 +1343,24 @@ function App() {
         const { confirm } = await import('@tauri-apps/plugin-dialog');
         const update = await check();
         if (update?.available) {
+          // "No" used to be forgotten: the same "Install now?" box re-asked on
+          // every launch and every 6 hours. Remember the declined version.
+          let skipped = null;
+          try { skipped = localStorage.getItem('trigr_update_skipped_version'); } catch {}
+          if (skipped && skipped === update.version) return;
+          // The native confirm is owned by the main window; while Keyfire is in
+          // the tray it either stays invisible or disables the hidden owner.
+          // Defer the prompt until the window is next shown; the toast below
+          // still tells the user an update exists.
+          if (document.hidden) {
+            const onVisible = () => {
+              if (document.hidden) return;
+              document.removeEventListener('visibilitychange', onVisible);
+              isChecking = false;
+              checkForUpdates();
+            };
+            document.addEventListener('visibilitychange', onVisible);
+          }
           // Native Windows toast so lid-closers / hidden-window users get
           // pinged even when the main window is in the tray. The confirm()
           // dialog below stays invisible until the window is shown, so the
@@ -1362,10 +1380,14 @@ function App() {
           } catch (notifyErr) {
             console.error('Update notification failed:', notifyErr);
           }
+          if (document.hidden) return; // prompt deferred above
           const confirmed = await confirm(
             `Keyfire ${update.version} is available. Install now?`,
             { title: 'Update Available', kind: 'info' }
           );
+          if (!confirmed) {
+            try { localStorage.setItem('trigr_update_skipped_version', update.version); } catch {}
+          }
           if (confirmed) {
             // The updater exits the process right after launching the
             // installer (RunEvent::Exit never runs), so release any held /
@@ -5226,6 +5248,13 @@ function App() {
     // Tour, which makes the "press your hotkey" prompt confusing.
     setActiveModifiers([]);
     setSidebarComboFilter(null);
+    // Also drop any open editor. With a key still selected the tour skipped
+    // Step 2b (the panel was already non-empty) and could dead-end at 2c.
+    setSelectedKey(null);
+    setSelectedLibraryId(null);
+    setDraftAssignment(null);
+    setSelectedRadialSegment(null);
+    setSelectedRadialChild(null);
     // Snap back to the keyboard mapping UI. If the user clicked Restart Tour
     // while on Expansions / Analytics / Mouse / Radial / Clipboard, Step 2
     // can't render its highlights (modifier bar + keyboard canvas don't
@@ -5635,6 +5664,11 @@ function App() {
           onSkip={handleOnboardingComplete}
           onAreaChange={handleSetArea}
           onShowUpgrade={showUpgrade}
+          searchOverlayHotkey={searchOverlayHotkey}
+          searchOverlayEnabled={searchOverlayEnabled}
+          clipboardPasteHotkey={clipboardPasteHotkey || null}
+          radialMenuHotkey={radialMenuHotkey || null}
+          globalPauseToggleKey={globalPauseToggleKey || null}
         />
       )}
       {showWelcome && !showOnboarding && (
@@ -5642,6 +5676,8 @@ function App() {
           onContinue={handleWelcomeContinue}
           onSkip={handleWelcomeSkip}
           onDismiss={handleDismissWelcome}
+          searchOverlayHotkey={searchOverlayEnabled ? searchOverlayHotkey : null}
+          clipboardPasteHotkey={clipboardPasteHotkey || null}
         />
       )}
       {upgradePrompt && (
@@ -5976,7 +6012,7 @@ function App() {
             </div>
           )}
           {showTips && (
-            <QuickTips onDismiss={handleDismissTips} />
+            <QuickTips onDismiss={handleDismissTips} searchOverlayHotkey={searchOverlayHotkey} searchOverlayEnabled={searchOverlayEnabled} />
           )}
           {activeArea === 'mapping' && activeView === 'mouse' && (
             <MouseCanvas

@@ -25,7 +25,34 @@ function parseAssignmentHotkey(key) {
   return `${modifier.replace(/\+/g, ' + ')} + ${keyCode}`;
 }
 
-export default function OnboardingTour({ assignments, onComplete, onSkip, onAreaChange, onShowUpgrade }) {
+// Renders a "Ctrl+Shift+V"-style combo as kbd pills. The tour used to
+// hardcode the four default hotkeys, so a user who had rebound Quick Search
+// (or turned it off) was told to press a combo that did nothing — and step 8
+// waited forever for the overlay to open.
+function KbdCombo({ combo, large = false }) {
+  const cls = `onboarding-kbd${large ? ' onboarding-kbd--lg' : ''}`;
+  if (!combo) return <kbd className={cls}>Not set</kbd>;
+  const parts = String(combo).split('+').filter(Boolean);
+  return (
+    <>
+      {parts.map((part, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <span className="onboarding-kbd-plus">+</span>}
+          <kbd className={cls}>{part.replace(/^Key/, '')}</kbd>
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
+export default function OnboardingTour({
+  assignments, onComplete, onSkip, onAreaChange, onShowUpgrade,
+  searchOverlayHotkey = 'Ctrl+Space',
+  searchOverlayEnabled = true,
+  clipboardPasteHotkey = 'Ctrl+Shift+V',
+  radialMenuHotkey = 'Ctrl+Shift+Space',
+  globalPauseToggleKey = 'Ctrl+Alt+Q',
+}) {
   const [step, setStep] = useState(1);
   const [subStep, setSubStep] = useState('a'); // Step 2 sub-stages: 'a' | 'b' | 'c'
   const [targetRect, setTargetRect] = useState(null);
@@ -161,6 +188,10 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
     };
     const guard = (e) => {
       if (tooltipRef.current?.contains(e.target)) return;
+      // Modals that open ON TOP of a step (e.g. the reserved-shortcut warning
+      // when the user picks Ctrl+C in step 2b) must stay clickable, or the
+      // tour traps the user with only Esc as a way out.
+      if (e.target?.closest?.('[role="dialog"], .modal-overlay')) return;
       if (isInside(targetRect, e.clientX, e.clientY)) return;
       if (isInside(secondaryRect, e.clientX, e.clientY)) return;
       e.stopPropagation();
@@ -342,6 +373,12 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
   // ── Step 8: listen for search-overlay-shown to unlock Next ──
   useEffect(() => {
     if (step !== 8) return;
+    if (!searchOverlayEnabled || !searchOverlayHotkey) {
+      // Quick Search is off (or unbound) — the overlay can never open, so
+      // don't gate Next on it.
+      setSearchFired(true);
+      return;
+    }
     let unlisten = null;
     let cancelled = false;
     listen('search-overlay-shown', () => {
@@ -542,7 +579,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
           </span>
           <div className="onboarding-brand">Keyfire</div>
           <p className="onboarding-welcome-text">Welcome to Keyfire — let's take a quick tour of what you can do.</p>
-          <p className="onboarding-welcome-text">We've pre-loaded a few starter actions, snippets and a radial menu (try Ctrl+Shift+Space) so you have things to explore straight away. Keep, edit or delete them any time.</p>
+          <p className="onboarding-welcome-text">We've pre-loaded a few starter actions, snippets and a radial menu (try {radialMenuHotkey || 'the Radial hotkey once you set one in the Radial panel'}) so you have things to explore straight away. Keep, edit or delete them any time.</p>
           {stepDots}
           <button className="onboarding-btn-primary" onClick={() => setStep(2)}>
             Let's go
@@ -670,7 +707,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <>
               <p className="onboarding-success-text">You just used Keyfire!</p>
               <p className="onboarding-hint">
-                Your hotkey works the same way in any app on your PC, <strong>except when Fire itself is the focused window</strong>. Hotkeys are paused while you're in Keyfire so you can configure them without firing them by accident.
+                Your hotkey works the same way in any app on your PC, <strong>except when Keyfire itself is the focused window</strong>. Hotkeys are paused while you're in Keyfire so you can configure them without firing them by accident.
               </p>
               <button className="onboarding-btn-primary" onClick={() => setStep(4)}>
                 Continue
@@ -756,7 +793,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
         <div className="onboarding-modal onboarding-modal--right">
           {stepLabelJSX}
           <p className="onboarding-tooltip-text">
-            The <strong>Radial Menu</strong> is a wheel of actions that pops up wherever your mouse is when you trigger it. Hover a wedge, release, and the action fires.
+            The <strong>Radial Menu</strong> is a wheel of actions that pops up wherever your mouse is when you trigger it. Click a wedge (or press its number) to fire it. Prefer hover-and-release? Turn on hold-to-select in the Radial panel.
           </p>
           <p className="onboarding-hint">
             8 inner segments per wheel. <strong>Right-click an empty segment</strong> to make it a folder — folders open an outer ring of 8 more actions. Fill every segment with folders and you get up to <strong>64 actions</strong> in one wheel.
@@ -813,9 +850,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
               <div className="onboarding-try-it">
                 <span className="onboarding-try-it-pill">Try it now</span>
                 <div className="onboarding-try-it-shortcut">
-                  <kbd className="onboarding-kbd onboarding-kbd--lg">Ctrl</kbd>
-                  <span className="onboarding-kbd-plus">+</span>
-                  <kbd className="onboarding-kbd onboarding-kbd--lg">Space</kbd>
+                  <KbdCombo combo={searchOverlayEnabled ? searchOverlayHotkey : null} large />
                 </div>
               </div>
               <p className="onboarding-hint">
@@ -852,7 +887,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <strong>Quick Actions</strong> let you launch apps, open folders, URLs, or run macros — accessible instantly from Quick Search without assigning a hotkey.
           </p>
           <p className="onboarding-hint">
-            Organise with categories. Search by name from the Ctrl+Space overlay.
+            Organise with categories. Search by name from the Quick Search overlay ({searchOverlayEnabled && searchOverlayHotkey ? searchOverlayHotkey : 'turned off in Settings'}).
           </p>
           {stepDots}
           <button className="onboarding-btn-secondary" onClick={() => setStep(10)}>Next</button>
@@ -896,11 +931,7 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             <strong>Clipboard Manager</strong> saves everything you copy — text and images. Browse, search, pin favourites, and re-paste from any app.
           </p>
           <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
-            <kbd className="onboarding-kbd">Ctrl</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Shift</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">V</kbd>
+            <KbdCombo combo={clipboardPasteHotkey} />
             <span className="onboarding-shortcut-label">Clipboard popup — paste from history anywhere</span>
           </div>
           {stepDots}
@@ -949,33 +980,19 @@ export default function OnboardingTour({ assignments, onComplete, onSkip, onArea
             You're all set. Here are the global shortcuts you'll use most:
           </p>
           <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
-            <kbd className="onboarding-kbd">Ctrl</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Space</kbd>
+            <KbdCombo combo={searchOverlayEnabled ? searchOverlayHotkey : null} />
             <span className="onboarding-shortcut-label">Quick Search — find and fire anything</span>
           </div>
           <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
-            <kbd className="onboarding-kbd">Ctrl</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Shift</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Space</kbd>
+            <KbdCombo combo={radialMenuHotkey} />
             <span className="onboarding-shortcut-label">Radial Menu — 8-wedge wheel at your cursor</span>
           </div>
           <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
-            <kbd className="onboarding-kbd">Ctrl</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Shift</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">V</kbd>
+            <KbdCombo combo={clipboardPasteHotkey} />
             <span className="onboarding-shortcut-label">Clipboard popup — paste from history</span>
           </div>
           <div className="onboarding-shortcut-row onboarding-shortcut-row--centred">
-            <kbd className="onboarding-kbd">Ctrl</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Alt</kbd>
-            <span className="onboarding-kbd-plus">+</span>
-            <kbd className="onboarding-kbd">Q</kbd>
+            <KbdCombo combo={globalPauseToggleKey} />
             <span className="onboarding-shortcut-label">Global Pause — toggle Keyfire on/off</span>
           </div>
           <p className="onboarding-hint">

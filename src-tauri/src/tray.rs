@@ -232,6 +232,18 @@ fn build_tray(
                 ..
             } = event
             {
+                // A double-click arrives as UP, DBLCLK, UP — two toggles, so the
+                // window flashed open and vanished for anyone who double-clicks
+                // tray icons by habit. Ignore an Up inside the double-click window.
+                static LAST_TRAY_CLICK_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let last = LAST_TRAY_CLICK_MS.swap(now_ms, std::sync::atomic::Ordering::SeqCst);
+                if now_ms.saturating_sub(last) < 400 {
+                    return;
+                }
                 let app = tray.app_handle();
                 toggle_window_visibility(app);
             }
@@ -287,6 +299,24 @@ pub fn show_window(app: &AppHandle) {
     // Restore the webview memory target trimmed while hidden in the tray.
     crate::webview_mem::resume_for_show(app, "main");
     if let Some(window) = app.get_webview_window("main") {
+        // Off-screen guard: Windows relocates VISIBLE windows when a monitor
+        // disappears, not hidden ones. A user who parked Keyfire on an
+        // external monitor, closed to tray and undocked got an invisible
+        // window (and is_visible() then said true, so the next click hid it
+        // again). Centre it if it no longer intersects any monitor.
+        #[cfg(windows)]
+        if let Ok(hwnd) = window.hwnd() {
+            let hmon = unsafe {
+                windows_sys::Win32::Graphics::Gdi::MonitorFromWindow(
+                    hwnd.0 as _,
+                    windows_sys::Win32::Graphics::Gdi::MONITOR_DEFAULTTONULL,
+                )
+            };
+            if hmon.is_null() {
+                info!("[Keyfire] Main window is off every monitor — centring before show");
+                let _ = window.center();
+            }
+        }
         let _ = window.show();
         // If the window is minimized, restore it before focusing — set_focus
         // on a minimized window leaves it in the taskbar with no actual focus.

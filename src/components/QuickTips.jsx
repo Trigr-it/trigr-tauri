@@ -4,21 +4,25 @@ import './QuickTips.css';
 
 const TIPS = [
   { Icon: Disc,          text: 'Press Record to capture any hotkey combo instantly' },
-  { Icon: Repeat2,       text: 'Double-press support — assign a second action to any hotkey' },
+  { Icon: Repeat2,       text: 'Double-press (Pro) — assign a second action to any hotkey' },
   { Icon: MousePointer2, text: 'Switch to Mouse view to assign macros to mouse buttons' },
   { Icon: Type,          text: 'Text Expansions — type a trigger word + Space to expand' },
   { Icon: AppWindow,     text: 'App Profiles — create per-app hotkeys that auto-switch' },
   { Icon: Layers,        text: 'Macro Sequences — chain multiple actions into one hotkey' },
-  { Icon: Search,        text: 'Quick Search — press Ctrl+Space to find any macro instantly' },
+  { Icon: Search,        text: 'Quick Search — press {{QS}} to find any action instantly', needsQuickSearch: true },
 ];
 
 const COUNT = 3;
 
-export default function QuickTips({ onDismiss }) {
+export default function QuickTips({ onDismiss, searchOverlayHotkey = 'Ctrl+Space', searchOverlayEnabled = true }) {
   const shown = useMemo(() => {
-    const shuffled = [...TIPS].sort(() => Math.random() - 0.5);
+    // Live hotkey, and drop the Quick Search tip entirely when it's turned off.
+    const pool = TIPS
+      .filter(t => !(t.needsQuickSearch && (!searchOverlayEnabled || !searchOverlayHotkey)))
+      .map(t => ({ ...t, text: t.text.replace('{{QS}}', searchOverlayHotkey) }));
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, COUNT);
-  }, []);
+  }, [searchOverlayHotkey, searchOverlayEnabled]);
 
   return (
     <div className="quick-tips">

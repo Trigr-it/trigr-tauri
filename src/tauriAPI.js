@@ -612,13 +612,45 @@ window.electronAPI = {
   markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),
 };
 
+// ── Suppress the WebView2 browser context menu ─────────────────────────────
+// Right-clicking any non-interactive area showed Back / Forward / Reload /
+// Save as / Print. "Reload" remounts the app and loses an open editor. Text
+// fields keep their native Cut/Copy/Paste menu; components with their own
+// menus already call preventDefault in onContextMenu.
+document.addEventListener('contextmenu', (e) => {
+  const t = e.target;
+  if (t && t.closest && t.closest('input, textarea, [contenteditable="true"], [data-allow-ctx]')) return;
+  e.preventDefault();
+});
+
 // ── Suppress webview browser accelerators ──────────────────────────────────
 // Keyfire is a desktop app, not a browser. Prevent Ctrl+F (find), Ctrl+P (print),
 // Ctrl+R (reload), etc. from triggering built-in WebView2 browser UI.
 // Preserve Ctrl+C/V/X/A/Z for normal text editing within the Keyfire UI.
+// Text-editing combos that must keep working inside inputs / textareas /
+// contentEditable. The blanket block below used to eat Ctrl+Backspace (delete
+// word), Ctrl+Left/Right (word jump), Ctrl+Shift+arrows (select word),
+// Ctrl+Home/End and Ctrl+Y in every text field in Keyfire.
+const EDITING_KEYS = new Set([
+  'backspace', 'delete', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown',
+  'home', 'end', 'y', 'insert',
+]);
+function isEditableTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
+}
 document.addEventListener('keydown', (e) => {
+  const editable = isEditableTarget(e.target) || isEditableTarget(document.activeElement);
+  const keyLower = e.key.toLowerCase();
+  // AltGr on EU layouts is reported by some Chromium builds as Ctrl+Alt+<char>;
+  // those are characters being typed (`{ } [ ] @ €`), never accelerators.
+  const altGrChar = editable && e.key.length === 1 && ((e.ctrlKey && e.altKey) || e.getModifierState?.('AltGraph'));
   // Block browser accelerator Ctrl/Meta combos
-  if ((e.ctrlKey || e.metaKey) && !['c', 'v', 'x', 'a', 'z'].includes(e.key.toLowerCase())) {
+  if ((e.ctrlKey || e.metaKey)
+      && !['c', 'v', 'x', 'a', 'z'].includes(keyLower)
+      && !(editable && EDITING_KEYS.has(keyLower))
+      && !altGrChar) {
     e.preventDefault();
     // Ctrl+Space: toggle overlay (JS path for when Keyfire has focus)
     if (e.code === 'Space' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
@@ -627,8 +659,9 @@ document.addEventListener('keydown', (e) => {
       return;
     }
   }
-  // Block Alt key activating the system menu in WebView2
-  if (e.altKey) {
+  // Block Alt key activating the system menu in WebView2 — but never an AltGr
+  // character being typed into a field (see altGrChar above).
+  if (e.altKey && !altGrChar) {
     e.preventDefault();
   }
   // Block standalone browser keys
