@@ -149,21 +149,23 @@
   flex-shrink: 0;
 }
 
+/* Keycap segmented control: same geometry and plain-key chip as the top-bar
+   .area-tabs and .view-switcher. No gold here; gold marks the section only. */
 .cbg-mode-tabs {
   display: flex;
-  gap: var(--space-1);
-  padding: 3px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-bright);
-  border-radius: var(--radius-xl);
+  gap: var(--space-0);
+  padding: 2px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .cbg-mode-tab {
   height: 28px;
   padding: 0 14px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
   font-family: var(--font-display);
   font-size: var(--text-md);
@@ -182,14 +184,14 @@
 }
 
 .cbg-mode-tab.active {
-  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
-  color: var(--btn-primary-text);
-  border: 1px solid var(--accent);
-  box-shadow: 0 1px 6px rgba(var(--accent-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  background: var(--key-bg);
+  color: var(--text-primary);
+  border-color: var(--key-border);
+  box-shadow: var(--shadow-key);
 }
 
 .cbg-mode-tab.active .cbg-mode-tab-icon {
-  color: var(--on-accent);
+  color: var(--text-primary);
 }
 
 /* ── How-to tip — gold TIP pill, mirrors .stp-tip / .te-tip (kept local so
