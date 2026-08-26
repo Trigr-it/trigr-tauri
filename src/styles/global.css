@@ -104,6 +104,7 @@
   --yellow-400: #ffc832;
 
   /* Type scale */
+  --text-3xs: 8px;    /* key sub-labels only */
   --text-2xs: 9px;
   --text-xs: 10px;
   --text-sm: 11px;
@@ -112,6 +113,7 @@
   --text-xl: 14px;
   --text-2xl: 16px;
   --text-display-sm: 18px;
+  --text-display-md: 22px;
   --text-display-lg: 32px;
 
   /* Radius scale. NOTE (2026-08-26 token sweep): md/lg/xl were re-valued
@@ -137,9 +139,12 @@
   --space-8: 24px;
 
   /* Letter-spacing */
+  --tracking-tighter: -0.01em;  /* large display headings */
   --tracking-tight: 0.02em;
   --tracking-normal: 0.04em;
   --tracking-wide: 0.08em;
+  --tracking-wider: 0.14em;     /* uppercase eyebrow labels */
+  --tracking-widest: 0.18em;    /* hero eyebrows, countdown title */
 
   /* ═══════════════════════════════════════════════════════════════════════
      TIER 2 — SEMANTIC

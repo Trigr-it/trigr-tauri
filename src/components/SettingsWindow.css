@@ -22,7 +22,7 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px 0 16px;
+  padding: 0 var(--space-4) 0 var(--space-6);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-bright);
   -webkit-app-region: drag;
@@ -31,7 +31,7 @@ html, body, #root {
 .sw-title-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .sw-title-icon {
@@ -41,9 +41,9 @@ html, body, #root {
 
 .sw-title {
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-primary);
 }
@@ -51,7 +51,7 @@ html, body, #root {
 .sw-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   -webkit-app-region: no-drag;
 }
 
@@ -60,7 +60,7 @@ html, body, #root {
 .sw-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   display: flex;

@@ -9,31 +9,31 @@
   max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-5);
 }
 
 .fillin-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .fillin-icon {
-  font-size: 16px;
+  font-size: var(--text-2xl);
   color: var(--accent);
 }
 
 .fillin-title {
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   text-transform: uppercase;
   color: var(--accent);
 }
 
 .fillin-label {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-primary);
   font-weight: 500;
   line-height: 1.4;
@@ -41,12 +41,12 @@
 
 .fillin-input {
   height: 34px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   background: var(--bg-surface);
   border: 1px solid var(--border-accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-family: var(--font-body);
   width: 100%;
   user-select: text;
@@ -62,7 +62,7 @@
 .fillin-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .fillin-cancel {
@@ -70,9 +70,9 @@
   padding: 0 14px;
   background: transparent;
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-body);
   cursor: pointer;
 }
@@ -88,12 +88,12 @@
   padding: 0 18px;
   background: var(--btn-primary-bg);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--btn-primary-text);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 700;
   font-family: var(--font-display);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
 }

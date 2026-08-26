@@ -54,25 +54,25 @@
 .cbg-date-sidebar-list {
   flex: 1;
   overflow-y: auto;
-  padding: 6px 0;
+  padding: var(--space-2) 0;
   min-height: 0;
 }
 
 .cbg-date-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   width: 100%;
   height: 30px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   background: transparent;
   border: none;
   border-left: 2px solid transparent;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   font-family: var(--font-display);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -115,10 +115,10 @@
 .cbg-date-count {
   background: var(--bg-active);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   padding: 1px 5px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-family: var(--font-body);
   letter-spacing: 0;
   flex-shrink: 0;
@@ -132,7 +132,7 @@
 .cbg-date-divider {
   height: 1px;
   background: var(--border);
-  margin: 6px 10px;
+  margin: var(--space-2) var(--space-4);
 }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
@@ -144,31 +144,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
+  padding: var(--space-3) 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .cbg-mode-tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 3px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
 }
 
 .cbg-mode-tab {
   height: 28px;
   padding: 0 14px;
-  border-radius: 7px;
+  border-radius: var(--radius-lg);
   background: transparent;
   border: none;
   color: var(--text-muted);
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: all 0.15s;
   display: inline-flex;
@@ -199,13 +199,13 @@
   display: flex;
   align-items: center;
   align-self: stretch;
-  gap: 8px;
-  margin: 0 auto 0 12px;
-  padding: 0 10px;
+  gap: var(--space-3);
+  margin: 0 auto 0 var(--space-5);
+  padding: 0 var(--space-4);
   background: var(--accent-glow);
   border: 1px solid var(--accent);
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-primary);
   min-width: 0;
@@ -221,23 +221,23 @@
 
 .cbg-tip-badge {
   flex-shrink: 0;
-  padding: 2px 8px;
+  padding: var(--space-0) var(--space-3);
   background: var(--accent);
   color: var(--btn-primary-text);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
 }
 
 .cbg-tip-kbd {
   background: var(--bg-active);
   border: 1px solid var(--border-bright);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-display);
   font-weight: 600;
   padding: 1px 5px;
@@ -245,18 +245,18 @@
 
 .cbg-tip-plus {
   color: var(--text-muted);
-  font-size: 10px;
-  padding: 0 2px;
+  font-size: var(--text-xs);
+  padding: 0 var(--space-0);
 }
 
 .cbg-tip-close {
   flex-shrink: 0;
   background: none;
   border: none;
-  padding: 2px;
+  padding: var(--space-0);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1;
   transition: color 0.12s;
 }
@@ -268,7 +268,7 @@
 .cbg-header-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-4);
 }
 
 /* Filter toolbar — sits BELOW the header. Holds the app filter, tag pills,
@@ -276,8 +276,8 @@
 .cbg-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: var(--space-4);
+  padding: var(--space-3) 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -292,10 +292,10 @@
   align-items: center;
   height: 32px;
   padding: 3px;
-  gap: 2px;
+  gap: var(--space-0);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   flex-shrink: 0;
 }
 
@@ -308,7 +308,7 @@
   background: transparent;
   border: none;
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
@@ -327,13 +327,13 @@
 .cbg-search {
   flex: 1;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   border: 1px solid var(--border-accent, rgba(var(--accent-rgb), 0.4));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   outline: none;
   transition: border-color 0.15s;
   box-sizing: border-box;
@@ -348,10 +348,10 @@
   height: 32px;
   padding: 0 14px;
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-lg);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
   white-space: nowrap;
@@ -365,20 +365,20 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
   height: 32px;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-secondary);
 }
 
 .cbg-clear-yes, .cbg-clear-no {
   height: 32px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
   box-sizing: border-box;
 }
@@ -397,8 +397,8 @@
 .cbg-filters {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 0 8px;
+  gap: var(--space-4);
+  padding: 0 0 var(--space-3);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -406,20 +406,20 @@
 .cbg-app-filter {
   flex-shrink: 0;
   height: 32px;
-  padding: 0 8px 0 10px;
+  padding: 0 var(--space-3) 0 var(--space-4);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-sizing: border-box;
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   outline: none;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 130px;
   max-width: 200px;
 }
@@ -427,7 +427,7 @@
 .cbg-app-filter:hover { border-color: var(--accent); }
 
 .cbg-app-filter img {
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   display: block;
   flex-shrink: 0;
 }
@@ -459,28 +459,28 @@
   min-width: 200px;
   max-height: 320px;
   overflow-y: auto;
-  padding: 4px;
+  padding: var(--space-1);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .cbg-app-filter-opt {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: none;
   background: transparent;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   text-align: left;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.1s;
   white-space: nowrap;
@@ -498,7 +498,7 @@
 .cbg-app-filter-opt-icon {
   width: 16px;
   height: 16px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
   display: block;
 }
@@ -515,7 +515,7 @@
 .cbg-tag-pills {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   flex-shrink: 0;
 }
@@ -524,12 +524,12 @@
   height: 32px;
   padding: 0 14px;
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   box-sizing: border-box;
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
@@ -555,7 +555,7 @@
 
 .cbg-storage-size {
   flex-shrink: 0;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -563,7 +563,7 @@
 /* ── Timeline groups ────────────────────────────────────────────────────── */
 
 .cbg-timeline-group {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 /* Matches .te-group-header in TextExpansions.css so the date buckets read as
@@ -572,9 +572,9 @@
 .cbg-timeline-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 26px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   background: rgba(var(--accent-rgb), 0.15);
   border-left: 4px solid var(--accent);
   border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
@@ -582,25 +582,25 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .cbg-timeline-name {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   color: var(--accent);
   white-space: nowrap;
   text-transform: uppercase;
 }
 
 .cbg-timeline-count {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   background: var(--bg-active);
   color: var(--text-muted);
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-family: var(--font-body);
   flex-shrink: 0;
 }
@@ -609,7 +609,7 @@
   flex: 1;
   height: 1px;
   background: rgba(var(--accent-rgb), 0.30);
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 .cbg-timeline-icon {
@@ -629,13 +629,13 @@
 
 /* Sidebar folder rows sit indented under the Saved bucket. */
 .cbg-date-row-folder {
-  padding-left: 24px;
+  padding-left: var(--space-8);
 }
 
 /* Folder sub-headers inside the Saved section — slightly inset so they read
    as children of the Saved header above. */
 .cbg-folder-group {
-  margin: 2px 0 4px 10px;
+  margin: var(--space-0) 0 var(--space-1) var(--space-4);
 }
 
 /* Header click toggles collapse; caret shows the current state. */
@@ -658,7 +658,7 @@
   background: var(--bg-hover);
   outline: 1px dashed var(--accent);
   outline-offset: -1px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .cbg-drop-over .cbg-timeline-name {
@@ -671,7 +671,7 @@
 .cbg-drop-eligible {
   outline: 1px dashed rgba(var(--accent-rgb), 0.45);
   outline-offset: -1px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 /* ── Collapse animation ──────────────────────────────────────────────────
@@ -720,7 +720,7 @@
 .cbg-hl {
   background: rgba(var(--accent-rgb), 0.3);
   color: inherit;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 /* Placeholder shown in the always-visible detail pane before a selection. */
@@ -729,11 +729,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: var(--space-4);
   height: 100%;
-  padding: 24px;
+  padding: var(--space-8);
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   text-align: center;
 }
 
@@ -747,9 +747,9 @@
   z-index: 9999;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent, rgba(var(--accent-rgb), 0.4));
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--text-primary);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   padding: 7px 14px;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
@@ -773,12 +773,12 @@
 /* Empty folder body — doubles as a drop zone. */
 .cbg-folder-empty {
   border: 1px dashed var(--border);
-  border-radius: 8px;
-  margin: 0 0 10px;
-  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  margin: 0 0 var(--space-4);
+  padding: 14px var(--space-6);
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 /* Add Folder — sidebar primary action, mirrors .te-cat-new-btn in
@@ -789,14 +789,14 @@
   justify-content: center;
   gap: 7px;
   width: calc(100% - 20px);
-  margin: 8px 10px 0;
+  margin: var(--space-3) var(--space-4) 0;
   height: 30px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 11.5px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
-  letter-spacing: 0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease,
@@ -833,17 +833,17 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 8px 10px 0;
+  padding: var(--space-3) var(--space-4) 0;
 }
 
 .cbg-folder-add-input {
   height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--space-3);
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-body);
   flex: 1;
   min-width: 0;
@@ -852,32 +852,32 @@
 .cbg-pro-chip {
   display: inline-flex;
   align-items: center;
-  font-size: 0.58rem;
+  font-size: var(--text-3xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   color: var(--btn-primary-text);
   border: 1px solid currentColor;
-  border-radius: 4px;
-  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
   opacity: 0.85;
 }
 
 .cbg-folder-rename-input {
   background: var(--bg-active);
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
   outline: none;
-  font-size: 0.7rem;
-  padding: 2px 6px;
+  font-size: var(--text-xs);
+  padding: var(--space-0) var(--space-2);
   max-width: 160px;
 }
 
 /* Move-to-Folder expandable list inside the right-click menu. */
 .cbg-ctx-sub {
   border-top: 1px solid var(--border);
-  margin-top: 2px;
-  padding-top: 2px;
+  margin-top: var(--space-0);
+  padding-top: var(--space-0);
   max-height: 180px;
   overflow-y: auto;
 }
@@ -889,8 +889,8 @@
 .cbg-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-  padding: 4px 0 16px;
+  gap: var(--space-5);
+  padding: var(--space-1) 0 var(--space-6);
 }
 
 .cbg-empty {
@@ -898,22 +898,22 @@
   padding: 50px 20px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
 }
 
 .cbg-loading {
   grid-column: 1 / -1;
-  padding: 12px;
+  padding: var(--space-5);
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
 }
 
 /* ── Card base ───────────────────────────────────────────────────────────── */
 
 .cbg-card {
   position: relative;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: border-color 0.12s;
 }
@@ -928,11 +928,11 @@
   position: absolute;
   top: 6px;
   right: 8px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 0.6rem;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-3xs);
   font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-tight);
   z-index: 1;
   pointer-events: none;
 }
@@ -964,7 +964,7 @@
 .cbg-card-pin {
   display: inline-flex;
   align-items: center;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--accent);
 }
 
@@ -986,14 +986,14 @@
 .cbg-card-text {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  padding: 10px;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .cbg-card-body {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--text-primary);
   line-height: 1.5;
   display: -webkit-box;
@@ -1007,20 +1007,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: var(--space-2);
   margin-top: auto;
 }
 
 .cbg-card-time {
-  font-size: 0.65rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   white-space: nowrap;
 }
 
 .cbg-source-badge {
   padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 0.6rem;
+  border-radius: var(--radius-xs);
+  font-size: var(--text-3xs);
   background: color-mix(in srgb, var(--text-muted) 15%, transparent);
   color: var(--text-muted);
   white-space: nowrap;
@@ -1037,16 +1037,16 @@
   max-width: none;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .cbg-source-badge-icon img {
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   display: block;
 }
 
 .cbg-source-badge-label {
-  font-size: 0.65rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -1056,11 +1056,11 @@
   position: absolute;
   top: 6px;
   right: 6px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.6rem;
+  padding: var(--space-0) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-3xs);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-tight);
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
@@ -1072,7 +1072,7 @@
 /* ── Link icon ───────────────────────────────────────────────────────────── */
 
 .cbg-link-icon {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 /* ── Colour card ─────────────────────────────────────────────────────────── */
@@ -1080,14 +1080,14 @@
 .cbg-colour-swatch {
   width: 100%;
   height: 60px;
-  border-radius: 8px 8px 0 0;
-  margin: -12px -12px 8px -12px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  margin: -12px -12px var(--space-3) -12px;
   width: calc(100% + 24px);
 }
 
 .cbg-colour-value {
   font-family: var(--font-body);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   -webkit-line-clamp: 1;
 }
@@ -1106,7 +1106,7 @@
   height: 120px;
   object-fit: cover;
   display: block;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .cbg-img-ph {
@@ -1116,7 +1116,7 @@
   align-items: center;
   justify-content: center;
   background: var(--bg-hover);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--text-muted);
 }
 
@@ -1128,11 +1128,11 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 5px 8px;
-  font-size: 0.62rem;
+  padding: 5px var(--space-3);
+  font-size: var(--text-2xs);
   color: var(--text-primary);
   background: color-mix(in srgb, var(--bg-base) 70%, transparent);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .cbg-overlay-right {
@@ -1147,18 +1147,18 @@
   min-width: 100px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent, rgba(var(--accent-rgb), 0.4));
-  border-radius: 8px;
-  padding: 4px 0;
+  border-radius: var(--radius-lg);
+  padding: var(--space-1) 0;
 }
 
 .cbg-ctx-item {
   display: block;
   width: 100%;
-  padding: 6px 14px;
+  padding: var(--space-2) 14px;
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -1227,7 +1227,7 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 10px 14px 10px 18px; /* extra left padding leaves room for the resize handle */
+  padding: var(--space-4) 14px var(--space-4) 18px; /* extra left padding leaves room for the resize handle */
   box-sizing: border-box;
   background: var(--bg-elevated);
 }
@@ -1262,9 +1262,9 @@
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
   z-index: 2;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
@@ -1286,13 +1286,13 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding: 10px 0;
+  padding: var(--space-4) 0;
 }
 
 .cbg-detail-text {
   margin: 0;
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
   color: var(--text-primary);
   line-height: 1.55;
   white-space: pre-wrap;
@@ -1305,11 +1305,11 @@
   margin: 0;
   padding: 0;
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
   line-height: 1.55;
   resize: none;
   outline: none;
@@ -1320,7 +1320,7 @@
   max-width: 100%;
   max-height: 50vh;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
 }
 
@@ -1332,32 +1332,32 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 14px;
-  padding: 4px 34px 8px 0;
+  gap: var(--space-1) 14px;
+  padding: var(--space-1) 34px var(--space-3) 0;
   border-bottom: 1px solid var(--border);
 }
 
 .cbg-detail-topband-pair {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
 .cbg-detail-topband-counts {
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--text-muted);
 }
 
 .cbg-meta-label {
-  font-size: 0.66rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
 }
 
 .cbg-meta-value {
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -1374,8 +1374,8 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
-  padding: 6px 0 8px;
+  gap: var(--space-1);
+  padding: var(--space-2) 0 var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 
@@ -1384,7 +1384,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* Bottom band — static row of secondary tools (text transforms / smart
@@ -1393,8 +1393,8 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-top: 8px;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
@@ -1412,13 +1412,13 @@
 }
 
 .cbg-tpill {
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-4);
   border: 1px solid var(--border-bright);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: border-color 0.12s, color 0.12s, background 0.12s, transform 0.12s, box-shadow 0.12s;
   white-space: nowrap;
@@ -1482,7 +1482,7 @@
   justify-content: center;
   background: color-mix(in srgb, var(--bg-base) 70%, transparent);
   color: var(--text-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transition: opacity 0.12s;
   pointer-events: none;
@@ -1526,9 +1526,9 @@
   justify-content: center;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--white);
-  font-size: 16px;
+  font-size: var(--text-2xl);
   cursor: pointer;
   transition: background 0.12s;
   z-index: 1001;
@@ -1559,8 +1559,8 @@
   flex-shrink: 0;
   padding-top: 14px;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-normal);
 }
 
 .cbg-image-actions {
@@ -1572,12 +1572,12 @@
 
 .cbg-ocr-error {
   flex-shrink: 0;
-  padding: 6px 8px;
+  padding: var(--space-2) var(--space-3);
   margin: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  font-size: 0.72rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -1586,19 +1586,19 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--space-2);
+  padding: var(--space-3);
   margin: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   max-height: 160px;
   overflow-y: auto;
 }
 
 .cbg-ocr-text {
   font-family: var(--font-body);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--text-primary);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -1618,7 +1618,7 @@
 .cbg-color-swatches {
   flex-shrink: 0;
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   padding: 0;
   flex-wrap: wrap;
 }
@@ -1627,7 +1627,7 @@
   position: relative;
   width: 36px;
   height: 36px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-bright);
   cursor: pointer;
   padding: 0;
@@ -1648,8 +1648,8 @@
   background: var(--bg-base);
   color: var(--accent);
   font-weight: 700;
-  font-size: 16px;
-  border-radius: 5px;
+  font-size: var(--text-2xl);
+  border-radius: var(--radius-md);
   opacity: 0.85;
 }
 
@@ -1659,24 +1659,24 @@
 .cbg-pane-email {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 6px;
+  gap: var(--space-5);
+  padding: 20px var(--space-2);
 }
 
 .cbg-pane-link-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-5);
   min-width: 0;
 }
 
 .cbg-pane-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   object-fit: contain;
   background: var(--bg-active);
-  padding: 4px;
+  padding: var(--space-1);
   box-sizing: border-box;
   flex-shrink: 0;
 }
@@ -1684,12 +1684,12 @@
 .cbg-pane-icon-fallback {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--bg-active);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: var(--text-display-sm);
   flex-shrink: 0;
 }
 
@@ -1697,7 +1697,7 @@
 .cbg-pane-email-addr {
   flex: 1;
   font-family: var(--font-body);
-  font-size: 1.05rem;
+  font-size: var(--text-xl);
   color: var(--text-primary);
   word-break: break-all;
   line-height: 1.4;
@@ -1705,14 +1705,14 @@
 }
 
 .cbg-pane-email-addr {
-  font-size: 1.2rem;
+  font-size: var(--text-2xl);
   text-align: center;
-  padding: 12px 0;
+  padding: var(--space-5) 0;
 }
 
 .cbg-pane-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -1720,14 +1720,14 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 12px 6px;
+  padding: var(--space-5) var(--space-2);
 }
 
 .cbg-pane-colour-swatch {
   width: 100%;
   height: 200px;
   max-height: 200px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1735,32 +1735,32 @@
 .cbg-pane-colour-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .cbg-pane-colour-row {
   display: grid;
   grid-template-columns: 40px 1fr auto;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .cbg-pane-colour-label {
   font-family: var(--font-display);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   color: var(--text-muted);
   text-transform: uppercase;
 }
 
 .cbg-pane-colour-value {
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
   color: var(--text-primary);
   background: transparent;
   padding: 0;
@@ -1773,12 +1773,12 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-5);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: background 0.1s, border-color 0.1s, color 0.1s;
   /* Static size at any pane width — rows wrap, buttons don't squash. */

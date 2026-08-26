@@ -5,12 +5,12 @@
 .app-search-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: var(--space-3);
+  padding: 0 var(--space-5);
   height: 32px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
 }
@@ -27,7 +27,7 @@
 
 .app-search-bar-icon {
   color: var(--accent);
-  font-size: 13px;
+  font-size: var(--text-lg);
   opacity: 0.85;
   flex-shrink: 0;
   line-height: 1;
@@ -41,7 +41,7 @@
   outline: none;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 400;
   caret-color: var(--accent);
   min-width: 0;
@@ -75,7 +75,7 @@
   border-radius: 50%;
   background: transparent;
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: var(--text-2xl);
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -97,14 +97,14 @@
 /* Compact variant — for tight popovers (e.g. inline comboboxes) */
 .app-search-bar.compact {
   height: 34px;
-  padding: 0 10px;
-  gap: 8px;
+  padding: 0 var(--space-4);
+  gap: var(--space-3);
 }
 
 .app-search-bar.compact .app-search-bar-icon {
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .app-search-bar.compact .app-search-bar-input {
-  font-size: 13px;
+  font-size: var(--text-lg);
 }

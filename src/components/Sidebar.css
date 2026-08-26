@@ -34,8 +34,8 @@
 .profile-accordion-header {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px 12px 16px;
+  gap: var(--space-0);
+  padding: var(--space-4) var(--space-5) var(--space-5) var(--space-6);
   cursor: pointer;
   transition: background 0.15s;
   min-width: 0;
@@ -55,7 +55,7 @@
 .profile-accordion-header-top {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -66,10 +66,10 @@
 
 .profile-accordion-label {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-wider);
   flex-shrink: 0;
 }
 
@@ -79,11 +79,11 @@
   gap: 3px;
   margin-left: auto;
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   transition: color 0.12s;
 }
 
@@ -92,7 +92,7 @@
 }
 
 .profile-accordion-chevron {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: inherit;
   flex-shrink: 0;
 }
@@ -102,10 +102,10 @@
    name is long. */
 .profile-accordion-header-name {
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -114,7 +114,7 @@
   /* Small right pad so the ellipsis has breathing room from the accordion's
      right edge, matching feedback_gradient_text_padding-style precautions
      for any coloured display text. */
-  padding-right: 6px;
+  padding-right: var(--space-2);
 }
 
 /* Line 3 — conditional "fallback: X" note when the currently firing
@@ -124,16 +124,16 @@
    the gold name stays the focal point. */
 .profile-accordion-header-fallback {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-tight);
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-  padding-right: 6px;
+  padding-right: var(--space-2);
 }
 
 .profile-accordion-header-fallback span {
@@ -145,14 +145,14 @@
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
 }
 
 .profile-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-5);
   cursor: pointer;
   transition: background 0.1s, transform 0.12s;
   min-height: 30px;
@@ -169,14 +169,14 @@
 
 .profile-row.active {
   border-left: 2px solid var(--accent);
-  padding-left: 10px;
+  padding-left: var(--space-4);
   background: var(--accent-glow);
 }
 
 .profile-row-ghost {
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   opacity: 0.85;
 }
 
@@ -186,7 +186,7 @@
   text-align: center;
   cursor: grab;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   touch-action: none;
 }
 
@@ -198,7 +198,7 @@
 .profile-row-name {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
@@ -212,7 +212,7 @@
 
 .profile-row-link {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--accent);
   opacity: 1;
   display: inline-flex;
@@ -228,27 +228,27 @@
 .profile-rename-input {
   flex: 1;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 var(--space-2);
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: inherit;
   outline: none;
   min-width: 0;
 }
 
 .profile-add-row {
-  padding: 8px 12px 8px 12px;
+  padding: var(--space-3) var(--space-5) var(--space-3) var(--space-5);
 }
 
 .profile-actions-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px 12px 12px;
-  margin-top: 4px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5) var(--space-5) var(--space-5);
+  margin-top: var(--space-1);
   border-top: 1px solid var(--border-dim);
 }
 
@@ -259,12 +259,12 @@
   justify-content: center;
   gap: 7px;
   height: 30px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 11.5px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
-  letter-spacing: 0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease,
               box-shadow 0.14s ease, transform 0.08s ease;
@@ -332,15 +332,15 @@
   border-color: var(--gold-600);
 }
 .profile-import-prompt {
-  padding: 8px 12px;
+  padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border-dim);
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 .profile-import-prompt-msg {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: 1.4;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-3);
 }
 .profile-import-prompt-msg strong {
   color: var(--text-primary);
@@ -348,16 +348,16 @@
 }
 .profile-import-prompt-btns {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .profile-import-prompt-btn {
   flex: 1;
   padding: 5px 0;
   border: 1px solid var(--border-bright);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.1s, border-color 0.1s;
@@ -380,23 +380,23 @@
 /* Group labels and divider */
 .profile-group-label {
   font-family: var(--font-display);
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
   color: var(--text-secondary);
-  padding: 10px 12px 6px 14px;
-  margin-top: 4px;
+  padding: var(--space-4) var(--space-5) var(--space-2) 14px;
+  margin-top: var(--space-1);
 }
 
 .profile-group-label:first-of-type {
-  margin-top: 2px;
+  margin-top: var(--space-0);
 }
 
 .profile-group-divider {
   height: 0;
   border-top: 0.5px solid var(--border);
-  margin: 4px 12px;
+  margin: var(--space-1) var(--space-5);
 }
 
 /* Green fallback dot */
@@ -420,7 +420,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
-  padding: 4px;
+  padding: var(--space-1);
   min-width: 150px;
   box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.4));
   backdrop-filter: var(--backdrop-blur);
@@ -436,8 +436,8 @@
   padding: 7px 14px;
   border: none;
   background: transparent;
-  border-radius: 5px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
@@ -478,22 +478,22 @@
   padding: 20px 22px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-4);
 }
 
 .profile-link-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-5);
 }
 
 .profile-link-modal-title {
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   margin: 0;
   line-height: 1.25;
 }
@@ -505,7 +505,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -519,7 +519,7 @@
 }
 
 .profile-link-modal-sub {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.45;
@@ -531,12 +531,12 @@
 }
 
 .profile-link-modal-current {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
-  padding: 7px 10px;
+  padding: 7px var(--space-4);
   background: var(--bg-elevated);
   border: 1px solid var(--border-dim);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   line-height: 1.3;
 }
 
@@ -546,9 +546,9 @@
 }
 
 .profile-link-modal-hint {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
-  margin: 2px 0 0;
+  margin: var(--space-0) 0 0;
   line-height: 1.4;
 }
 
@@ -556,31 +556,31 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-height: 36px;
 }
 
 .profile-link-modal-title-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 2px;
+  gap: var(--space-1);
+  margin-top: var(--space-0);
 }
 
 .profile-link-modal-label {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   line-height: 1.2;
 }
 
 .profile-link-modal-title-input {
   height: 30px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   background: var(--bg-input, var(--bg-deep));
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: inherit;
   outline: none;
   transition: border-color 0.12s;
@@ -598,16 +598,16 @@
 .profile-link-modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
 .profile-link-modal-cancel,
 .profile-link-modal-confirm {
   height: 32px;
   padding: 0 14px;
-  border-radius: 5px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -656,15 +656,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px 10px;
+  padding: 14px var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
 .sidebar-title {
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -673,10 +673,10 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
 }
 
 /* ── Assignment filter ─────────────────────────────────────────────────── */
@@ -684,8 +684,8 @@
 .sidebar-filter-wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 4px 10px 6px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4) var(--space-2);
 }
 
 .sidebar-filter-input-wrap {
@@ -697,12 +697,12 @@
 .sidebar-filter-input {
   width: 100%;
   height: 32px;
-  padding: 0 26px 0 10px;
+  padding: 0 26px 0 var(--space-4);
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-body);
   caret-color: var(--accent);
   outline: none;
@@ -728,12 +728,12 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   padding: 0;
 }
 
@@ -747,12 +747,12 @@
 .sidebar-sort-select {
   width: 100%;
   height: 32px;
-  padding: 0 28px 0 10px;
+  padding: 0 28px 0 var(--space-4);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-body);
   box-sizing: border-box;
   cursor: pointer;
@@ -782,8 +782,8 @@
   flex-wrap: wrap;
   justify-content: center;
   border-bottom: 1px solid var(--border);
-  padding: 0 6px;
-  gap: 2px 0;
+  padding: 0 var(--space-2);
+  gap: var(--space-0) 0;
   flex-shrink: 0;
 }
 
@@ -795,10 +795,10 @@
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   font-family: var(--font-display);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
@@ -819,36 +819,36 @@
 .sidebar-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--space-3);
 }
 
 .sidebar-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 32px 16px;
-  gap: 12px;
+  padding: 32px var(--space-6);
+  gap: var(--space-5);
   text-align: center;
 }
 
 .sidebar-empty-icon {
-  font-size: 28px;
+  font-size: var(--text-display-lg);
   opacity: 0.2;
 }
 
 .sidebar-empty p {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 
 .sidebar-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 8px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0);
   border: 1px solid transparent;
   border-left: 2px solid transparent;
   cursor: pointer;
@@ -878,7 +878,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0);
   flex-shrink: 0;
   padding-top: 1px;
 }
@@ -888,7 +888,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .sidebar-key-badge {
@@ -897,11 +897,11 @@
   border: 1px solid var(--border-bright);
   color: var(--text-secondary);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border-radius: 3px;
+  letter-spacing: var(--tracking-normal);
+  padding: var(--space-0) var(--space-2);
+  border-radius: var(--radius-xs);
   min-width: 28px;
   text-align: center;
 }
@@ -918,14 +918,14 @@
 }
 
 .sidebar-item-label {
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.3;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0);
   display: flex;
   align-items: center;
   gap: 5px;
@@ -935,19 +935,19 @@
    -only variant flags a key whose ONLY mapping is that mode (no single-press
    action). Words live in the title tooltip, not the chip. */
 .sidebar-mode-chip {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--accent);
   opacity: 0.85;
   flex-shrink: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-tighter);
 }
 
 .sidebar-mode-chip-only {
   color: var(--text-secondary);
   opacity: 0.75;
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 3px;
 }
 
@@ -958,11 +958,11 @@
 .sidebar-item-type {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 10px;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
   font-weight: 400;
   color: var(--text-muted);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .type-dot {
@@ -975,27 +975,27 @@
 
 .sidebar-footer {
   border-top: 1px solid var(--border);
-  padding: 12px 16px;
+  padding: var(--space-5) var(--space-6);
 }
 
 .sidebar-footer-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 10px;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .legend-dot {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   border: 1px solid;
 }
 
@@ -1017,16 +1017,16 @@
 
 /* Grouped modifier layers */
 .sidebar-group {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-4);
 }
 
 .sidebar-group-label {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   margin-bottom: 3px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
 }
@@ -1043,14 +1043,14 @@
   background: var(--accent);
   box-shadow: 0 0 4px var(--accent);
   flex-shrink: 0;
-  margin-right: 2px;
+  margin-right: var(--space-0);
 }
 
 .sidebar-mod-chip {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   color: var(--accent);
   text-transform: uppercase;
 }
@@ -1060,22 +1060,22 @@
 }
 
 .sidebar-mod-sep {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
 /* Combo groups */
 .sidebar-group {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-5);
 }
 
 .sidebar-group-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px 5px 4px;
+  gap: var(--space-1);
+  padding: 5px var(--space-3) 5px var(--space-1);
   margin-bottom: 3px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .sidebar-group.active-group .sidebar-group-header {
@@ -1087,11 +1087,11 @@
   border: 1px solid var(--border-bright);
   color: var(--accent);
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   padding: 1px 5px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
+  border-radius: var(--radius-xs);
+  letter-spacing: var(--tracking-normal);
 }
 
 .sidebar-group.active-group .sidebar-mod-key {
@@ -1100,7 +1100,7 @@
 
 .sidebar-mod-plus {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .sidebar-mod-bare {
@@ -1124,10 +1124,10 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1138,15 +1138,15 @@
 .sidebar-modifier-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .sidebar-modifier-keys {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   flex-wrap: wrap;
   flex: 1;
   min-width: 0;
@@ -1154,15 +1154,15 @@
 
 .sidebar-mod-btn {
   height: 26px;
-  padding: 0 10px;
-  border-radius: 5px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   color: var(--text-secondary);
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: all 0.15s;
   flex-shrink: 0;
@@ -1200,19 +1200,19 @@
 /* ── Record button ──────────────────────────────────────────── */
 .sidebar-record-btn {
   height: 26px;
-  padding: 0 10px;
-  border-radius: 13px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   color: var(--text-muted);
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   white-space: nowrap;
 }
 
@@ -1249,13 +1249,13 @@
 .sidebar-grid-wrap {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--space-3);
 }
 
 .sidebar-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 /* Group headers span full grid width — gold section bars */
@@ -1263,15 +1263,15 @@
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 4px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--btn-primary-text);
   font-family: var(--font-display);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
 }
 
@@ -1285,8 +1285,8 @@
 .grid-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-sm);
@@ -1308,17 +1308,17 @@
 
 .grid-card-combo {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-tight);
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
 .grid-card-label {
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
@@ -1329,12 +1329,12 @@
 .grid-card-bottom {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 2px;
+  gap: var(--space-2);
+  margin-top: var(--space-0);
 }
 
 .grid-card-preview {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1345,7 +1345,7 @@
 
 .sidebar-empty--grid {
   grid-column: 1 / -1;
-  padding: 48px 24px;
+  padding: 48px var(--space-8);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1358,7 +1358,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
-  padding: 4px;
+  padding: var(--space-1);
   min-width: 140px;
   box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.4));
   backdrop-filter: var(--backdrop-blur);
@@ -1374,8 +1374,8 @@
   padding: 7px 14px;
   border: none;
   background: transparent;
-  border-radius: 5px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
@@ -1420,8 +1420,8 @@
   min-width: 120px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 8px;
-  padding: 4px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   flex-direction: column;
   gap: 1px;
@@ -1432,12 +1432,12 @@
 .sidebar-rename-input {
   width: 100%;
   height: 22px;
-  padding: 0 6px;
+  padding: 0 var(--space-2);
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: inherit;
   outline: none;
   min-width: 0;
@@ -1463,16 +1463,16 @@
 /* ── Drag overlay card ────────────────────────────────────── */
 
 .rmp-card-overlay {
-  padding: 8px 12px;
+  padding: var(--space-3) var(--space-5);
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   pointer-events: none;
 }
 
 .rmp-card-overlay .rmp-card-label {
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -1483,30 +1483,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
 }
 
 .sidebar-confirm-text {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-secondary);
   font-weight: 500;
 }
 
 .sidebar-confirm-btns {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .sidebar-confirm-yes,
 .sidebar-confirm-no {
   height: 24px;
-  padding: 0 10px;
-  border-radius: 4px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-bright);
   background: var(--bg-elevated);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.12s;
@@ -1534,7 +1534,7 @@
   margin-bottom: 14px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 /* Grid view renders the section inside the grid wrap — span full width */
@@ -1545,15 +1545,15 @@
 .sidebar-unassigned-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 26px;
   /* 4px stripe + 8px pad = title starts 12px in, same x as the grid slab
      headers' text (.sidebar-grid-group-header, padding 6px 12px). */
-  padding: 0 8px;
+  padding: 0 var(--space-3);
   background: rgba(var(--accent-rgb), 0.15);
   border-left: 4px solid var(--accent);
   border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
@@ -1564,7 +1564,7 @@
      text; the whole bar stays the click target. */
   margin-left: auto;
   color: var(--accent);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1;
 }
 
@@ -1574,19 +1574,19 @@
   /* Text metrics match .sidebar-grid-group-header (BARE KEYS / CTRL / …) so
      the two header families read as one system; only the colour treatment
      differs (gold-on-tint band vs solid gold slab). */
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
 }
 
 .sidebar-unassigned-header .sidebar-group-count {
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 .sidebar-unassigned-empty {
-  padding: 10px 12px;
-  font-size: 11px;
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-muted);
 }
@@ -1615,7 +1615,7 @@
 .sidebar-unassigned-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 /* Tile variant of the Bind affordance — always visible (no hover-reveal;
@@ -1631,10 +1631,10 @@
   background: transparent;
   border: 1px solid rgba(var(--accent-rgb), 0.45);
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 3px;
+  padding: var(--space-0) var(--space-3);
+  border-radius: var(--radius-xs);
   cursor: pointer;
   opacity: 0.85;
   transition: opacity 0.12s, background 0.15s;

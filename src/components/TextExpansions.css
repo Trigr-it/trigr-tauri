@@ -1,7 +1,7 @@
 .text-expansions {
   width: 100%;
   max-width: 820px;
-  margin-top: 12px;
+  margin-top: var(--space-5);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
@@ -35,7 +35,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
+  padding: var(--space-3) 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -43,24 +43,24 @@
 /* ── Mode tabs (Text Expansions | Autocorrect inline toggle) ─── */
 .te-mode-tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 3px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
 }
 
 .te-mode-tab {
   height: 28px;
   padding: 0 14px;
-  border-radius: 7px;
+  border-radius: var(--radius-lg);
   background: transparent;
   border: none;
   color: var(--text-muted);
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
@@ -85,7 +85,7 @@
 .te-header-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-4);
 }
 
 /* Global Variables link — right-aligned, text-link style, visually separated */
@@ -94,19 +94,19 @@
   align-items: center;
   gap: 5px;
   height: 28px;
-  padding: 0 8px 0 12px;
+  padding: 0 var(--space-3) 0 var(--space-5);
   background: transparent;
   border: none;
   border-left: 1px solid var(--border-bright);
-  margin-left: 2px;
+  margin-left: var(--space-0);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 500;
   font-family: var(--font-body);
   cursor: pointer;
   transition: color 0.15s;
   white-space: nowrap;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .te-gv-link:hover {
@@ -133,13 +133,13 @@
   display: flex;
   align-items: center;
   align-self: stretch;
-  gap: 8px;
-  margin: 0 auto 0 12px;
-  padding: 0 10px;
+  gap: var(--space-3);
+  margin: 0 auto 0 var(--space-5);
+  padding: 0 var(--space-4);
   background: var(--accent-glow);
   border: 1px solid var(--accent);
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-primary);
   min-width: 0;
@@ -155,23 +155,23 @@
 
 .te-tip-badge {
   flex-shrink: 0;
-  padding: 2px 8px;
+  padding: var(--space-0) var(--space-3);
   background: var(--accent);
   color: var(--btn-primary-text);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
 }
 
 .te-tip-kbd {
   background: var(--bg-active);
   border: 1px solid var(--border-bright);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-display);
   font-weight: 600;
   padding: 1px 5px;
@@ -181,10 +181,10 @@
   flex-shrink: 0;
   background: none;
   border: none;
-  padding: 2px;
+  padding: var(--space-0);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1;
   transition: color 0.12s;
 }
@@ -198,9 +198,9 @@
 .te-tip-instant {
   background: var(--bg-active);
   border: 1px solid var(--border-bright);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-display);
   font-weight: 600;
   padding: 1px 5px;
@@ -211,14 +211,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 28px;
   padding: 0 14px;
-  border-radius: 6px;
-  font-size: 11.5px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
-  letter-spacing: 0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, transform 0.08s ease;
   background: linear-gradient(180deg, var(--accent-hover), var(--accent));
@@ -272,7 +272,7 @@
 .te-cat-sidebar-list {
   flex: 1;
   overflow-y: auto;
-  padding: 6px 0;
+  padding: var(--space-2) 0;
   min-height: 0;
 }
 
@@ -285,18 +285,18 @@
 .te-cat-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   width: 100%;
   height: 30px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   background: transparent;
   border: none;
   border-left: 2px solid transparent;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   font-family: var(--font-display);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -345,10 +345,10 @@
 .te-cat-count {
   background: var(--bg-active);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   padding: 1px 5px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-family: var(--font-body);
   letter-spacing: 0;
   flex-shrink: 0;
@@ -371,7 +371,7 @@
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
   color: var(--text-muted);
   transition: transform 0.12s ease;
@@ -390,9 +390,9 @@
 
 .te-cat-row-child {
   padding-left: 30px; /* aligns child dot with parent label start */
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-tight);
 }
 
 .te-cat-row-group-child {
@@ -407,13 +407,13 @@
 .te-subfolder-banner {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 6px 8px 4px;
-  padding: 8px 10px;
+  gap: var(--space-2);
+  margin: var(--space-2) var(--space-3) var(--space-1);
+  padding: var(--space-3) var(--space-4);
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   line-height: 1.35;
   color: var(--text-secondary);
 }
@@ -425,9 +425,9 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 2px 4px;
-  font-size: 12px;
-  border-radius: 3px;
+  padding: var(--space-0) var(--space-1);
+  font-size: var(--text-md);
+  border-radius: var(--radius-xs);
 }
 .te-subfolder-banner-close:hover {
   color: var(--text-primary);
@@ -438,7 +438,7 @@
 .profile-ctx-disabled {
   color: var(--text-muted);
   cursor: default;
-  padding: 6px 12px;
+  padding: var(--space-2) var(--space-5);
   font-style: italic;
 }
 
@@ -473,7 +473,7 @@
   left: 4px; right: 4px; top: -1px;
   height: 2px;
   background: var(--accent);
-  border-radius: 1px;
+  border-radius: var(--radius-xs);
   pointer-events: none;
 }
 
@@ -503,15 +503,15 @@
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px 5px 10px;
+  gap: var(--space-2);
+  padding: 5px var(--space-4) 5px var(--space-4);
   max-width: 240px;
   background: var(--bg-elevated);
   border: 1px solid var(--accent);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35),
               0 0 0 2px rgba(var(--accent-rgb), 0.15);
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-primary);
 }
 
@@ -523,14 +523,14 @@
 }
 
 .te-drag-chip-badge {
-  padding: 1px 6px;
+  padding: 1px var(--space-2);
   background: var(--accent);
   color: var(--bg-base);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   line-height: 1.4;
 }
 
@@ -542,7 +542,7 @@
   height: 100%;
   background: var(--bg-elevated);
   border: 1px solid var(--accent);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
   opacity: 0.55;
 }
@@ -564,14 +564,14 @@
   justify-content: center;
   gap: 7px;
   width: calc(100% - 20px);
-  margin: 8px 10px 0;
+  margin: var(--space-3) var(--space-4) 0;
   height: 30px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 11.5px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
-  letter-spacing: 0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease,
@@ -610,7 +610,7 @@
   border: 1px solid rgba(var(--accent-rgb), 0.35);
   color: var(--accent);
   box-shadow: none;
-  margin-top: 6px;
+  margin-top: var(--space-2);
 }
 
 .te-cat-pack-btn:hover {
@@ -639,7 +639,7 @@
 .te-import-from-wrap {
   position: relative;
   width: calc(100% - 20px);
-  margin: 6px 10px 0;
+  margin: var(--space-2) var(--space-4) 0;
 }
 
 .te-import-from-wrap .te-cat-pack-btn {
@@ -654,28 +654,28 @@
   bottom: calc(100% + 4px);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-modal);
-  padding: 4px;
+  padding: var(--space-1);
   z-index: 40;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .te-import-from-menu button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-3);
   width: 100%;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--space-3);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   text-align: left;
   cursor: pointer;
 }
@@ -686,7 +686,7 @@
 }
 
 .te-import-from-ext {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -713,12 +713,12 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  margin-right: 2px;
+  margin-right: var(--space-0);
   border: 1.5px solid var(--text-muted);
   border-radius: 50%;
   background: transparent;
   color: transparent;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -757,13 +757,13 @@
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
   border: 1px solid rgba(var(--accent-rgb), 0.4);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated);
   box-shadow: var(--shadow-modal);
-  font-size: 11.5px;
+  font-size: var(--text-sm);
   animation: te-selection-toast-in 0.14s ease;
 }
 
@@ -779,19 +779,19 @@
 .te-selection-count {
   color: var(--accent);
   font-weight: 600;
-  margin-right: 2px;
+  margin-right: var(--space-0);
 }
 
 .te-selbar-btn {
   display: inline-flex;
   align-items: center;
   height: 24px;
-  padding: 0 10px;
-  border-radius: 5px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -818,8 +818,8 @@
 
 .te-cat-rename-wrap {
   cursor: default;
-  padding: 0 6px;
-  gap: 4px;
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
   flex-direction: column;
   align-items: flex-start;
   height: auto;
@@ -832,18 +832,18 @@
   border-bottom: 1.5px solid var(--accent);
   outline: none;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   color: var(--text-primary);
   width: 100%;
   min-width: 50px;
-  padding: 0 2px;
+  padding: 0 var(--space-0);
   line-height: 1;
 }
 
 .te-cat-rename-error {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-family: var(--font-display);
   color: var(--danger-hover);
   line-height: 1;
@@ -856,11 +856,11 @@
 }
 
 .te-cat-add-error {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-display);
   color: var(--danger-hover);
   line-height: 1.2;
-  padding: 2px 12px 4px;
+  padding: var(--space-0) var(--space-5) var(--space-1);
   white-space: normal;
 }
 [data-theme="light"] .te-cat-add-error {
@@ -871,7 +871,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-4);
 }
 
 .te-cat-add-colour-dot {
@@ -891,12 +891,12 @@
 
 .te-cat-add-input {
   height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--space-3);
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-body);
   flex: 1;
   min-width: 0;
@@ -907,7 +907,7 @@
 .te-cat-row-ghost {
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   opacity: 0.85;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -928,7 +928,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-5);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -936,13 +936,13 @@
 .te-search-input {
   flex: 0 1 160px;
   height: 32px;
-  padding: 0 10px;
-  margin-left: 4px;
+  padding: 0 var(--space-4);
+  margin-left: var(--space-1);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-body);
   outline: none;
   box-sizing: border-box;
@@ -955,7 +955,7 @@
 }
 
 .te-toolbar-count {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-family: var(--font-body);
 }
@@ -967,7 +967,7 @@
   grid-template-columns: 120px 180px 1fr 100px 28px;
   align-items: center;
   height: 28px;
-  padding: 0 4px 0 12px;
+  padding: 0 var(--space-1) 0 var(--space-5);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border-bright);
   flex-shrink: 0;
@@ -980,11 +980,11 @@
 .te-col-header {
   display: flex;
   align-items: center;
-  gap: 2px;
-  font-size: 10px;
+  gap: var(--space-0);
+  font-size: var(--text-xs);
   font-weight: 600;
   font-family: var(--font-display);
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   text-transform: uppercase;
   color: var(--text-muted);
   background: none;
@@ -1012,7 +1012,7 @@ button.te-col-header:hover {
 }
 
 .te-sort-arrow {
-  font-size: 8px;
+  font-size: var(--text-3xs);
   line-height: 1;
   color: var(--accent);
 }
@@ -1044,11 +1044,11 @@ button.te-col-header:hover {
 
 /* Empty state — single slim row */
 .te-empty-row {
-  padding: 0 16px;
+  padding: 0 var(--space-6);
   height: 40px;
   display: flex;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
 }
@@ -1060,8 +1060,8 @@ button.te-col-header:hover {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 48px 24px;
+  gap: var(--space-4);
+  padding: 48px var(--space-8);
   text-align: center;
   flex: 1;
   animation: te-empty-in 0.25s ease;
@@ -1073,10 +1073,10 @@ button.te-col-header:hover {
 }
 
 .te-empty-icon {
-  font-size: 32px;
+  font-size: var(--text-display-lg);
   color: var(--accent);
   line-height: 1;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0);
 }
 
 [data-theme="light"] .te-empty-icon {
@@ -1085,14 +1085,14 @@ button.te-col-header:hover {
 
 .te-empty-heading {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-tight);
 }
 
 .te-empty-sub {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
   max-width: 400px;
   line-height: 1.55;
@@ -1103,8 +1103,8 @@ button.te-col-header:hover {
 }
 
 .te-empty-example {
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: var(--space-1);
+  font-size: var(--text-md);
   color: var(--text-muted);
   opacity: 0.65;
   font-style: italic;
@@ -1115,22 +1115,22 @@ button.te-col-header:hover {
   background: var(--bg-active);
   border: 1px solid var(--border-bright);
   border-bottom-width: 2px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   padding: 1px 5px;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
 }
 
 /* Category section divider in the All tab */
 .te-group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 26px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   background: rgba(var(--accent-rgb), 0.15);
   border-left: 4px solid var(--accent);
   border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
@@ -1150,7 +1150,7 @@ button.te-col-header:hover {
   border-left-width: 3px;
 }
 .te-group-header-indent .te-group-name {
-  font-size: 8.5px;
+  font-size: var(--text-3xs);
   opacity: 0.85;
 }
 
@@ -1162,20 +1162,20 @@ button.te-col-header:hover {
 }
 
 .te-group-name {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   color: var(--accent);
   white-space: nowrap;
 }
 
 .te-group-count {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   background: var(--bg-active);
   color: var(--text-muted);
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-family: var(--font-body);
   flex-shrink: 0;
 }
@@ -1184,7 +1184,7 @@ button.te-col-header:hover {
   flex: 1;
   height: 1px;
   background: rgba(var(--accent-rgb), 0.30);
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 /* Grid row — four fixed columns: Trigger | Name | Preview | Tag | Actions
@@ -1195,7 +1195,7 @@ button.te-col-header:hover {
   grid-template-columns: 120px 180px 1fr 100px 28px;
   align-items: center;
   min-height: 36px;
-  padding: 8px 4px 8px 12px;
+  padding: var(--space-3) var(--space-1) var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   transition: background 0.1s;
@@ -1216,20 +1216,20 @@ button.te-col-header:hover {
 .te-col-trigger {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
-  padding-right: 8px;
+  padding-right: var(--space-3);
 }
 
 /* Col 2 — Name */
 .te-col-name {
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-right: 10px;
+  padding-right: var(--space-4);
   min-width: 0;
 }
 
@@ -1237,7 +1237,7 @@ button.te-col-header:hover {
    expansions in the row; the row's `title` attribute (set in JSX) carries
    the full plain text for hover when an expansion exceeds two lines. */
 .te-col-preview {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   overflow: hidden;
   display: -webkit-box;
@@ -1246,7 +1246,7 @@ button.te-col-header:hover {
   word-break: break-word;
   line-height: 1.4;
   min-width: 0;
-  padding-right: 8px;
+  padding-right: var(--space-3);
 }
 
 /* Col 4 — Tag */
@@ -1254,7 +1254,7 @@ button.te-col-header:hover {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding-right: 8px;
+  padding-right: var(--space-3);
   min-width: 0;
 }
 
@@ -1263,12 +1263,12 @@ button.te-col-header:hover {
   border: 1px solid var(--border-bright);
   border-bottom-width: 2px;
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-display);
   font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
+  padding: var(--space-0) 7px;
+  border-radius: var(--radius-sm);
+  letter-spacing: var(--tracking-normal);
   white-space: nowrap;
   flex-shrink: 0;
   max-width: 100%;
@@ -1277,7 +1277,7 @@ button.te-col-header:hover {
 }
 
 .te-immediate-badge {
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
   flex-shrink: 0;
   opacity: 0.75;
@@ -1287,12 +1287,12 @@ button.te-col-header:hover {
   display: inline-flex;
   align-items: center;
   height: 16px;
-  padding: 0 6px;
-  border-radius: 8px;
-  font-size: 9px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-2xs);
   font-weight: 700;
   font-family: var(--font-display);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   white-space: nowrap;
   flex-shrink: 0;
   max-width: 100%;
@@ -1307,7 +1307,7 @@ button.te-col-header:hover {
 
 .te-item-arrow {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   flex-shrink: 0;
 }
 
@@ -1315,7 +1315,7 @@ button.te-col-header:hover {
 .te-replacement {
   min-width: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1327,7 +1327,7 @@ button.te-col-header:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-primary);
 }
 
@@ -1349,12 +1349,12 @@ button.te-col-header:hover {
 .te-item-edit {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
-  padding: 2px 7px;
+  padding: var(--space-0) 7px;
   height: 22px;
   transition: all 0.12s;
   font-family: var(--font-body);
@@ -1380,9 +1380,9 @@ button.te-col-header:hover {
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   cursor: pointer;
   transition: all 0.12s;
   flex-shrink: 0;
@@ -1404,9 +1404,9 @@ button.te-col-header:hover {
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: all 0.12s;
   flex-shrink: 0;
@@ -1487,7 +1487,7 @@ button.te-col-header:hover {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 32px 24px;
+  padding: 32px var(--space-8);
   text-align: center;
   color: var(--text-muted);
 }
@@ -1497,7 +1497,7 @@ button.te-col-header:hover {
 }
 
 .te-panel-idle p {
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
   margin: 0;
 }
@@ -1510,7 +1510,7 @@ button.te-col-header:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px 9px;
+  padding: var(--space-4) 14px 9px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1528,9 +1528,9 @@ button.te-col-header:hover {
 
 .te-panel-title {
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--accent);
 }
@@ -1543,9 +1543,9 @@ button.te-col-header:hover {
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: all 0.12s;
   padding: 0;
@@ -1559,8 +1559,8 @@ button.te-col-header:hover {
 /* "(OPTIONAL)" suffix in field labels */
 .te-optional-label {
   font-weight: 400;
-  font-size: 9px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-normal);
   color: var(--text-muted);
   opacity: 0.75;
   margin-left: 3px;
@@ -1568,17 +1568,17 @@ button.te-col-header:hover {
 
 /* Fixed-height top fields: trigger, mode toggle, category */
 .te-panel-fields {
-  padding: 12px 14px 0;
+  padding: var(--space-5) 14px 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-3);
   flex-shrink: 0;
 }
 
 .te-panel-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* RTE section — grows to fill remaining vertical space, but asserts a real
@@ -1587,10 +1587,10 @@ button.te-col-header:hover {
 .te-panel-rte {
   flex: 1 0 auto;
   min-height: 280px;
-  padding: 10px 14px 0;
+  padding: var(--space-4) 14px 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   overflow: hidden;
 }
 
@@ -1613,7 +1613,7 @@ button.te-col-header:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: var(--space-4) 14px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1622,7 +1622,7 @@ button.te-col-header:hover {
 
 .te-trigger-input {
   font-family: var(--font-display) !important;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-normal);
 }
 
 .te-input-error {
@@ -1631,7 +1631,7 @@ button.te-col-header:hover {
 }
 
 .te-trigger-error {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--danger);
   line-height: 1.35;
   margin-top: 1px;
@@ -1642,12 +1642,12 @@ button.te-col-header:hover {
 .te-alias-input-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   min-height: 36px;
 }
 
@@ -1658,14 +1658,14 @@ button.te-col-header:hover {
 .te-alias-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 8px;
+  gap: var(--space-1);
+  padding: var(--space-0) var(--space-1) var(--space-0) var(--space-3);
   background: rgba(var(--accent-rgb), 0.12);
   border: 1px solid rgba(var(--accent-rgb), 0.28);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-display);
-  font-size: 12px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-normal);
   color: var(--text-primary);
 }
 
@@ -1679,10 +1679,10 @@ button.te-col-header:hover {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--text-xl);
   line-height: 1;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .te-alias-chip-remove:hover {
@@ -1694,23 +1694,23 @@ button.te-col-header:hover {
   flex: 1 1 120px;
   min-width: 100px;
   height: 26px;
-  padding: 0 6px;
+  padding: 0 var(--space-2);
   background: transparent;
   border: none;
   outline: none;
   font-family: var(--font-display);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-normal);
   color: var(--text-primary);
 }
 
 .te-cat-select {
   height: 36px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-body);
   cursor: pointer;
   appearance: none;
@@ -1736,7 +1736,7 @@ button.te-col-header:hover {
 .te-cat-inline-create {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .te-cat-inline-input {
@@ -1748,8 +1748,8 @@ button.te-col-header:hover {
 .te-cat-inline-confirm {
   height: 36px;
   padding: 0 14px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -1772,11 +1772,11 @@ button.te-col-header:hover {
 .te-cat-inline-cancel {
   width: 36px;
   height: 36px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: 1px solid var(--border-bright);
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-lg);
   cursor: pointer;
   transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
 }
@@ -1788,24 +1788,24 @@ button.te-col-header:hover {
 }
 
 .te-paste-note {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   opacity: 0.7;
 }
 
 .te-form-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .te-cancel-btn {
   height: 30px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   background: transparent;
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: all 0.15s;
   font-family: var(--font-body);
@@ -1819,15 +1819,15 @@ button.te-col-header:hover {
 
 .te-save-btn {
   height: 30px;
-  padding: 0 16px;
+  padding: 0 var(--space-6);
   background: var(--accent);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--btn-primary-text);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 700;
   font-family: var(--font-display);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -1860,11 +1860,11 @@ button.te-col-header:hover {
 
 .te-trigger-mode-btn {
   flex: 1;
-  padding: 3px 6px;
-  font-size: 10px;
+  padding: 3px var(--space-2);
+  font-size: var(--text-xs);
   font-family: inherit;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-muted);
   cursor: pointer;
@@ -1890,7 +1890,7 @@ button.te-col-header:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .te-trigger-mode-btn.locked:not(.active) {
@@ -1901,15 +1901,15 @@ button.te-col-header:hover {
 
 .rte-insert-btn {
   width: auto;
-  padding: 0 8px;
-  gap: 4px;
-  font-size: 11px;
+  padding: 0 var(--space-3);
+  gap: var(--space-1);
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .rte-caret {
-  font-size: 8px;
+  font-size: var(--text-3xs);
   opacity: 0.7;
 }
 
@@ -1919,7 +1919,7 @@ button.te-col-header:hover {
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
-  padding: 4px;
+  padding: var(--space-1);
   min-width: 220px;
   max-width: calc(100vw - 16px);
   max-height: 50vh;
@@ -1935,19 +1935,19 @@ button.te-col-header:hover {
 .rte-popup-drag {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 6px;
-  margin: -4px -4px 4px -4px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-2);
+  margin: -4px -4px var(--space-1) -4px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   cursor: grab;
   user-select: none;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-display);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-normal);
   font-weight: 600;
 }
 .rte-popup-drag:active {
@@ -1957,7 +1957,7 @@ button.te-col-header:hover {
   display: inline-block;
   width: 22px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: var(--border-accent);
   opacity: 0.6;
   flex-shrink: 0;
@@ -1972,14 +1972,14 @@ button.te-col-header:hover {
 .rte-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
   width: 100%;
-  padding: 5px 8px;
+  padding: 5px var(--space-3);
   background: transparent;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-body);
   text-align: left;
   cursor: pointer;
@@ -1994,7 +1994,7 @@ button.te-col-header:hover {
 .rte-menu-sep {
   height: 1px;
   background: var(--border);
-  margin: 3px 4px;
+  margin: 3px var(--space-1);
 }
 
 /* Mini chips shown in the dropdown rows */
@@ -2002,12 +2002,12 @@ button.te-col-header:hover {
   display: inline-flex;
   align-items: center;
   height: 16px;
-  padding: 0 6px;
-  border-radius: 4px;
-  font-size: 9px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
   font-family: var(--font-display);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   flex-shrink: 0;
 }
 
@@ -2021,8 +2021,8 @@ button.te-col-header:hover {
 .rte-chip-key        { background: rgba(160,170,190,0.12); color: var(--slate-200); border: 1px solid rgba(160,170,190,0.35); }
 
 .rte-menu-empty {
-  padding: 8px 12px;
-  font-size: 11px;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   font-style: italic;
 }
@@ -2032,13 +2032,13 @@ button.te-col-header:hover {
 .rte-colour-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
-  padding: 6px 8px 8px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }
 .rte-colour-swatch {
   width: 22px;
   height: 22px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--hairline-strong);
   cursor: pointer;
   padding: 0;
@@ -2067,13 +2067,13 @@ button.te-col-header:hover {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 3px;
-  padding: 6px 8px 4px;
+  padding: var(--space-2) var(--space-3) var(--space-1);
 }
 .rte-table-cell {
   width: 18px;
   height: 18px;
   border: 1px solid var(--border-bright);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: rgba(127, 127, 127, 0.08);
   cursor: pointer;
   padding: 0;
@@ -2087,8 +2087,8 @@ button.te-col-header:hover {
   border-color: var(--accent);
 }
 .rte-table-readout {
-  padding: 2px 8px 8px;
-  font-size: 11px;
+  padding: var(--space-0) var(--space-3) var(--space-3);
+  font-size: var(--text-sm);
   color: var(--text-muted);
   text-align: center;
   min-height: 14px;
@@ -2097,15 +2097,15 @@ button.te-col-header:hover {
 /* ── Contextual table-edit toolbar (appears when caret is in a cell) ────── */
 .rte-table-toolbar {
   border-top: 1px solid var(--border-bright);
-  padding-top: 4px;
-  gap: 2px;
+  padding-top: var(--space-1);
+  gap: var(--space-0);
 }
 /* Compact text-mode buttons for the "− Row" / "− Col" labels. Keeps them the
    same visual height as the icon buttons alongside. */
 .rte-table-toolbar .rte-btn {
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  padding: 0 6px;
+  padding: 0 var(--space-2);
 }
 .rte-btn-danger {
   color: var(--danger);
@@ -2118,14 +2118,14 @@ button.te-col-header:hover {
 /* ── Table styles inside the editor ─────────────────────────────────────── */
 .rte-editor table {
   border-collapse: collapse;
-  margin: 6px 0;
+  margin: var(--space-2) 0;
   min-width: 60%;
   table-layout: fixed;
 }
 .rte-editor table td,
 .rte-editor table th {
   border: 1px solid var(--border-bright);
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   min-width: 32px;
   min-height: 20px;
   vertical-align: top;
@@ -2149,12 +2149,12 @@ button.te-col-header:hover {
 
 /* Section label inside the insert dropdown */
 .rte-menu-section-label {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
-  padding: 5px 8px 2px;
+  padding: 5px var(--space-3) var(--space-0);
   opacity: 0.7;
 }
 
@@ -2162,12 +2162,12 @@ button.te-col-header:hover {
 .rte-fillin-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 6px 4px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-1);
 }
 
 .rte-fillin-prompt-label {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-weight: 600;
   white-space: nowrap;
@@ -2180,9 +2180,9 @@ button.te-col-header:hover {
   padding: 0 7px;
   background: var(--bg-surface);
   border: 1px solid var(--border-accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-body);
   min-width: 0;
   user-select: text;
@@ -2191,12 +2191,12 @@ button.te-col-header:hover {
 
 .rte-fillin-ok {
   height: 28px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   background: rgba(200, 100, 255, 0.15);
   border: 1px solid rgba(200, 100, 255, 0.4);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--violet-400);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   font-family: var(--font-display);
   cursor: pointer;
@@ -2215,27 +2215,27 @@ button.te-col-header:hover {
 .rte-fillin-reuse {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 0 6px 6px;
+  gap: var(--space-3);
+  padding: 0 var(--space-2) var(--space-2);
   border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .rte-fillin-reuse-label {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   font-family: var(--font-display);
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
-  padding-top: 6px;
+  padding-top: var(--space-2);
   flex-shrink: 0;
 }
 
 .rte-fillin-reuse-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 1;
   min-width: 0;
 }
@@ -2244,12 +2244,12 @@ button.te-col-header:hover {
   display: inline-flex;
   align-items: center;
   height: 22px;
-  padding: 0 8px;
-  border-radius: 4px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
   background: rgba(200, 100, 255, 0.08);
   border: 1px solid rgba(200, 100, 255, 0.3);
   color: var(--violet-400);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 500;
   font-family: var(--font-body);
   cursor: pointer;
@@ -2273,8 +2273,8 @@ button.te-col-header:hover {
   z-index: 99999;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
@@ -2289,8 +2289,8 @@ button.te-col-header:hover {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  column-gap: 6px;
-  row-gap: 6px;
+  column-gap: var(--space-2);
+  row-gap: var(--space-2);
   min-width: 340px;
 }
 
@@ -2316,10 +2316,10 @@ button.te-col-header:hover {
 }
 
 .rte-fillin-rename-label {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   font-family: var(--font-display);
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
   white-space: nowrap;
@@ -2330,11 +2330,11 @@ button.te-col-header:hover {
 
 .rte-key-capture-popup {
   width: 220px;
-  padding: 4px 0 8px;
+  padding: var(--space-1) 0 var(--space-3);
 }
 
 .rte-key-popup-body {
-  padding: 4px 8px 0;
+  padding: var(--space-1) var(--space-3) 0;
 }
 
 .rte-key-zone {
@@ -2342,9 +2342,9 @@ button.te-col-header:hover {
   align-items: center;
   justify-content: center;
   min-height: 38px;
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--border-bright);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
   cursor: pointer;
   user-select: none;
@@ -2365,13 +2365,13 @@ button.te-col-header:hover {
 }
 
 .rte-key-zone-placeholder {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-style: italic;
 }
 
 .rte-key-zone-prompt {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--accent);
   font-style: italic;
 }
@@ -2388,9 +2388,9 @@ button.te-col-header:hover {
   background: var(--bg-active);
   border: 1px solid var(--border-bright);
   border-bottom-width: 2px;
-  border-radius: 3px;
-  padding: 1px 6px;
-  font-size: 11px;
+  border-radius: var(--radius-xs);
+  padding: 1px var(--space-2);
+  font-size: var(--text-sm);
   font-family: var(--font-display);
   font-weight: 700;
   color: var(--text-primary);
@@ -2398,14 +2398,14 @@ button.te-col-header:hover {
 
 .rte-key-zone-plus {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .rte-key-popup-footer {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .rte-key-repeat-row {
@@ -2416,7 +2416,7 @@ button.te-col-header:hover {
 }
 
 .rte-key-repeat-x {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
   font-weight: 600;
 }
@@ -2428,20 +2428,20 @@ button.te-col-header:hover {
   text-align: center;
   background: var(--bg-surface);
   border: 1px solid var(--border-bright);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-body);
 }
 
 .rte-key-insert-btn {
   height: 26px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   background: rgba(160, 170, 190, 0.15);
   border: 1px solid rgba(160, 170, 190, 0.4);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--slate-200);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   font-family: var(--font-display);
   cursor: pointer;
@@ -2458,11 +2458,11 @@ button.te-col-header:hover {
 .rte-token {
   display: inline-block;
   padding: 1px 7px;
-  border-radius: 4px;
-  font-size: 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   font-family: var(--font-display);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   vertical-align: middle;
   margin: 0 1px;
   cursor: default;
@@ -2521,7 +2521,7 @@ button.te-col-header:hover {
 
 .rte-wrap {
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--bg-elevated);
   transition: border-color 0.15s;
@@ -2536,8 +2536,8 @@ button.te-col-header:hover {
   align-items: center;
   flex-wrap: wrap;
   row-gap: 3px;
-  gap: 2px;
-  padding: 4px 6px;
+  gap: var(--space-0);
+  padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface);
 }
@@ -2550,9 +2550,9 @@ button.te-col-header:hover {
   height: 22px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
   transition: all 0.12s;
   font-family: var(--font-body);
@@ -2580,7 +2580,7 @@ button.te-col-header:hover {
   position: absolute;
   top: 1px;
   right: 2px;
-  font-size: 8px;
+  font-size: var(--text-3xs);
   color: var(--accent);
   pointer-events: none;
 }
@@ -2592,11 +2592,11 @@ button.te-col-header:hover {
    chip style and helps read parens, quotes, and operators at a glance. */
 .rte-formula-input {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.4;
   resize: vertical;
   min-height: 44px;
-  padding: 6px 8px;
+  padding: var(--space-2) var(--space-3);
 }
 
 /* Stack the textarea + button on the right so a multi-line expression isn't
@@ -2609,12 +2609,12 @@ button.te-col-header:hover {
    the formula reference panel because every new user hits the same
    "why don't my {=expr} results appear in the chip list" question. */
 .rte-formula-banner {
-  padding: 8px 10px;
-  margin: 0 10px 4px;
+  padding: var(--space-3) var(--space-4);
+  margin: 0 var(--space-4) var(--space-1);
   border: 1px solid rgba(var(--accent-rgb), 0.35);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--accent-glow);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: 1.45;
 }
@@ -2626,9 +2626,9 @@ button.te-col-header:hover {
 
 .rte-formula-banner code {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  padding: 1px 4px;
-  border-radius: 3px;
+  font-size: var(--text-xs);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-xs);
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -2638,11 +2638,11 @@ button.te-col-header:hover {
 .rte-formula-help {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px 10px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   max-width: 420px;
 }
@@ -2654,24 +2654,24 @@ button.te-col-header:hover {
 }
 
 .rte-formula-help-label {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
 .rte-formula-help-body {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: 1.5;
 }
 
 .rte-formula-help-body code {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  padding: 1px 4px;
-  border-radius: 3px;
+  font-size: var(--text-xs);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-xs);
   background: var(--bg-hover);
   color: var(--text-primary);
   margin: 0 1px;
@@ -2681,12 +2681,12 @@ button.te-col-header:hover {
 .rte-formula-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
+  gap: var(--space-1);
+  margin-top: var(--space-0);
 }
 
 .rte-formula-chips-empty {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
   line-height: 1.4;
@@ -2695,13 +2695,13 @@ button.te-col-header:hover {
 .rte-formula-chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
+  padding: var(--space-0) 7px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--bg-hover);
   color: var(--text-primary);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s, color 0.12s;
 }
@@ -2722,25 +2722,25 @@ button.te-col-header:hover {
 .rte-formula-fn-row {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .rte-formula-fn-cat {
   flex-shrink: 0;
   min-width: 52px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   color: var(--text-muted);
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
 .rte-formula-fn-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 1;
   min-width: 0;
 }
@@ -2748,8 +2748,8 @@ button.te-col-header:hover {
 .rte-formula-else-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
@@ -2764,22 +2764,22 @@ button.te-col-header:hover {
 .rte-formula-examples {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 2px;
+  gap: var(--space-1);
+  margin-top: var(--space-0);
 }
 
 .rte-formula-example {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 5px 8px;
+  gap: var(--space-4);
+  padding: 5px var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s, color 0.12s;
 }
@@ -2796,7 +2796,7 @@ button.te-col-header:hover {
 
 .rte-formula-example-code {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--accent);
   opacity: 0.95;
   white-space: nowrap;
@@ -2819,12 +2819,12 @@ button.te-col-header:hover {
 }
 
 .rte-editor {
-  padding: 8px 10px;
+  padding: var(--space-3) var(--space-4);
   min-height: 60px;
   max-height: 140px;
   overflow-y: auto;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-family: var(--font-body);
   line-height: 1.5;
   outline: none;
@@ -2842,7 +2842,7 @@ button.te-col-header:hover {
 .rte-editor i, .rte-editor em     { font-style: italic; }
 .rte-editor ul, .rte-editor ol    { padding-left: 18px; margin: 2px 0; }
 .rte-editor li                    { margin: 1px 0; }
-.rte-editor p                     { margin: 0 0 4px; }
+.rte-editor p                     { margin: 0 0 var(--space-1); }
 .rte-editor p:last-child          { margin-bottom: 0; }
 
 /* ── Autocorrect view ───────────────────────────────────────────────────── */
@@ -2857,8 +2857,8 @@ button.te-col-header:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: var(--space-5);
+  padding: var(--space-4) 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-shrink: 0;
@@ -2867,18 +2867,18 @@ button.te-col-header:hover {
 .ac-builtin-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
   min-width: 0;
 }
 
 .ac-builtin-label {
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .ac-builtin-sub {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   line-height: 1.4;
 }
@@ -2888,7 +2888,7 @@ button.te-col-header:hover {
   flex-shrink: 0;
   width: 36px;
   height: 20px;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--bg-active);
   border: 1px solid var(--border-bright);
   cursor: pointer;
@@ -2924,11 +2924,11 @@ button.te-col-header:hover {
 .ac-section-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px 6px;
-  font-size: 10px;
+  gap: var(--space-2);
+  padding: var(--space-3) 14px var(--space-2);
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
@@ -2938,10 +2938,10 @@ button.te-col-header:hover {
 .ac-section-count {
   background: var(--bg-active);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   padding: 1px 5px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-family: var(--font-body);
   letter-spacing: 0;
 }
@@ -2949,7 +2949,7 @@ button.te-col-header:hover {
 /* ── Autocorrect add/edit form ──────────────────────────────────────────── */
 
 .ac-form {
-  padding: 10px 14px;
+  padding: var(--space-4) 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-shrink: 0;
@@ -2958,35 +2958,35 @@ button.te-col-header:hover {
 .ac-form-fields {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .ac-form-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 1;
   min-width: 0;
 }
 
 .ac-form-arrow {
-  font-size: 16px;
+  font-size: var(--text-2xl);
   color: var(--text-muted);
-  padding-bottom: 6px;
+  padding-bottom: var(--space-2);
   flex-shrink: 0;
 }
 
 .ac-field-input {
   font-family: var(--font-display) !important;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
 }
 
 .ac-form-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 /* ── Autocorrect compact list ────────────────────────────────────────────── */
@@ -2996,7 +2996,7 @@ button.te-col-header:hover {
 .ac-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  column-gap: 24px;
+  column-gap: var(--space-8);
   align-content: start;
 }
 
@@ -3009,7 +3009,7 @@ button.te-col-header:hover {
   align-items: center;
   gap: 7px;
   height: 36px;
-  padding: 0 10px 0 12px;
+  padding: 0 var(--space-4) 0 var(--space-5);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   transition: background 0.1s;
@@ -3045,7 +3045,7 @@ button.te-col-header:hover {
   flex: 1;
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3054,14 +3054,14 @@ button.te-col-header:hover {
 /* ── Autocorrect v2: master row, chips, double-caps exceptions ──────────── */
 
 .ac-master-row .ac-builtin-label {
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .ac-dc-exceptions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 14px 10px;
+  gap: var(--space-1);
+  padding: var(--space-3) 14px var(--space-4);
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-shrink: 0;
@@ -3071,29 +3071,29 @@ button.te-col-header:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* Chip editor variant used inside the add/edit form — bordered like an input */
 .ac-chiprow-input {
   min-height: 30px;
-  padding: 3px 6px;
+  padding: 3px var(--space-2);
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-primary);
 }
 
 .ac-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 7px;
+  gap: var(--space-1);
+  padding: var(--space-0) var(--space-1) var(--space-0) 7px;
   border: 1px solid rgba(100, 180, 255, 0.45);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   color: var(--blue-400);
   font-family: var(--font-display);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-normal);
   background: rgba(100, 180, 255, 0.08);
   flex-shrink: 0;
 }
@@ -3101,10 +3101,10 @@ button.te-col-header:hover {
 .ac-chip-x {
   background: none;
   border: none;
-  padding: 0 2px;
+  padding: 0 var(--space-0);
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   line-height: 1;
 }
 
@@ -3120,9 +3120,9 @@ button.te-col-header:hover {
   outline: none;
   color: var(--text-primary);
   font-family: var(--font-display);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  padding: 3px 2px;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-normal);
+  padding: 3px var(--space-0);
 }
 
 .ac-chip-input::placeholder {
@@ -3136,7 +3136,7 @@ button.te-col-header:hover {
 
 .ac-form-hint {
   flex: 1;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -3144,7 +3144,7 @@ button.te-col-header:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
   flex-shrink: 1;
   overflow: hidden;
@@ -3154,8 +3154,8 @@ button.te-col-header:hover {
 .ac-item {
   height: auto;
   min-height: 36px;
-  padding-top: 4px;
-  padding-bottom: 4px;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
 }
 
 /* ── Rail + main layout (reuses te-content / te-cat-sidebar / te-main) ──── */
@@ -3199,7 +3199,7 @@ button.te-col-header:hover {
 
 /* Excluded-apps editor gets the same band treatment as the toggle rows */
 .ac-excluded-wrap {
-  padding: 10px 14px;
+  padding: var(--space-4) 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-shrink: 0;
@@ -3209,11 +3209,11 @@ button.te-col-header:hover {
 .ac-pack-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .ac-pack-toggle-label {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -3245,23 +3245,23 @@ button.te-col-header:hover {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 24px;
+  gap: var(--space-3);
+  padding: var(--space-8);
   text-align: center;
 }
 
 .ac-empty-title {
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .ac-empty-sub {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   max-width: 340px;
   line-height: 1.5;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .ac-list-dim {
@@ -3272,12 +3272,12 @@ button.te-col-header:hover {
 
 .ac-typo-toggle {
   display: none;
-  margin-left: 4px;
+  margin-left: var(--space-1);
   padding: 0;
   border: none;
   background: none;
   color: inherit;
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
   cursor: pointer;
   opacity: 0.7;
@@ -3309,8 +3309,8 @@ button.te-col-header:hover {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 14px;
+  gap: var(--space-2);
+  padding: var(--space-4) 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
 }
@@ -3318,7 +3318,7 @@ button.te-col-header:hover {
 .ac-suggest-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .ac-suggest-text {
@@ -3326,10 +3326,10 @@ button.te-col-header:hover {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .ac-suggest-text strong {
@@ -3351,41 +3351,41 @@ button.te-col-header:hover {
 .te-delete-dialog {
   background: var(--bg-elevated);
   border: 1px solid rgba(255, 80, 80, 0.35);
-  border-radius: 12px;
-  padding: 20px 22px 16px;
+  border-radius: var(--radius-xl);
+  padding: 20px 22px var(--space-6);
   min-width: 280px;
   max-width: 360px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-4);
 }
 
 .te-delete-title {
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--danger-hover);
 }
 
 .te-delete-body {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-secondary);
   line-height: 1.5;
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .te-delete-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
 }
 
 /* Delete-tree modal uses a stacked, full-width button layout so the
@@ -3396,24 +3396,24 @@ button.te-col-header:hover {
 .te-delete-actions--stack {
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .te-delete-tree-btn {
   width: 100%;
   min-height: 34px;
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-md);
   font-family: var(--font-display);
   font-weight: 600;
-  letter-spacing: 0.03em;
-  border-radius: 6px;
+  letter-spacing: var(--tracking-tight);
+  border-radius: var(--radius-md);
   cursor: pointer;
   text-align: center;
   white-space: normal;
   line-height: 1.3;
 }
 .te-delete-tree-btn--cancel {
-  margin-top: 2px;
+  margin-top: var(--space-0);
 }
 
 .te-delete-confirm-btn {
@@ -3421,9 +3421,9 @@ button.te-col-header:hover {
   padding: 0 14px;
   background: rgba(255, 80, 80, 0.12);
   border: 1px solid rgba(255, 80, 80, 0.35);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--danger-hover);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
@@ -3450,21 +3450,21 @@ button.te-col-header:hover {
 .te-import-collisions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 4px 0 6px;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 var(--space-2);
   max-height: 96px;
   overflow-y: auto;
 }
 
 .te-import-collisions-more {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   align-self: center;
 }
 
 .te-import-actions {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 /* ════════════════════════════════════ GLOBAL VARIABLES ════════════════════════════════ */
@@ -3478,15 +3478,15 @@ button.te-col-header:hover {
 }
 
 .gd-helper {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-secondary);
-  padding: 10px 16px;
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border);
   line-height: 1.5;
 }
 
 .gd-helper kbd {
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .gd-helper strong {
@@ -3496,19 +3496,19 @@ button.te-col-header:hover {
 .gd-form {
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
-  padding: 12px 16px 10px;
+  padding: var(--space-5) var(--space-6) var(--space-4);
 }
 
 .gd-form-fields {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-5);
 }
 
 .gd-form-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 1;
   min-width: 130px;
 }
@@ -3519,7 +3519,7 @@ button.te-col-header:hover {
 
 /* Auto-generated key hint below Display Title field */
 .gd-key-hint {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -3528,7 +3528,7 @@ button.te-col-header:hover {
 }
 
 .gd-key-badge {
-  font-size: 10px !important;
+  font-size: var(--text-xs) !important;
   padding: 1px 5px !important;
 }
 
@@ -3542,7 +3542,7 @@ button.te-col-header:hover {
   align-items: center;
   gap: 0;
   height: 40px;
-  padding: 0 12px 0 16px;
+  padding: 0 var(--space-5) 0 var(--space-6);
   border-bottom: 1px solid var(--border);
   transition: background 0.1s;
   cursor: default;
@@ -3559,7 +3559,7 @@ button.te-col-header:hover {
 .gd-item-title {
   width: 42%;
   min-width: 100px;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
@@ -3571,12 +3571,12 @@ button.te-col-header:hover {
 .gd-item-value {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   border-left: 1px solid var(--border);
 }
 
@@ -3586,12 +3586,12 @@ button.te-col-header:hover {
 }
 
 .gd-suggestions-label {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
-  padding: 8px 16px 4px;
+  padding: var(--space-3) var(--space-6) var(--space-1);
   opacity: 0.65;
 }
 
@@ -3613,19 +3613,19 @@ button.te-col-header:hover {
 .gd-placeholder-value {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   border-left: 1px solid var(--border);
   font-style: italic;
 }
 
 .gd-placeholder-cta {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--accent);
   opacity: 0;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-family: var(--font-body);
   flex-shrink: 0;
   transition: opacity 0.12s;
@@ -3638,7 +3638,7 @@ button.te-col-header:hover {
 /* legacy — keep for any residual references */
 .gd-value {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3653,7 +3653,7 @@ button.te-col-header:hover {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 8px;
+  padding: var(--space-3);
   box-shadow: var(--shadow-overlay);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
@@ -3692,7 +3692,7 @@ button.te-col-header:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1;
   color: var(--text-muted);
 }
@@ -3713,21 +3713,21 @@ button.te-col-header:hover {
 .te-type-filter {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .te-type-filter-pill {
   height: 32px;
   padding: 0 14px;
   border: 1px solid var(--border-bright);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 500;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-tight);
   transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
 }
@@ -3747,29 +3747,29 @@ button.te-col-header:hover {
 
 .te-type-selector {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px 0;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-5) 0;
 }
 
 .te-panel-image {
   flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
   min-height: 280px;
   overflow-y: auto;
 }
 
 .te-image-pick-btn {
-  padding: 6px 14px;
+  padding: var(--space-2) 14px;
   border: 1px dashed var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   transition: border-color 0.15s, color 0.15s;
 }
 
@@ -3784,7 +3784,7 @@ button.te-col-header:hover {
   filter: grayscale(0.4);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .te-image-pick-btn.locked:hover {
@@ -3797,13 +3797,13 @@ button.te-col-header:hover {
 .te-image-pro-banner {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  margin-bottom: 4px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-1);
   background: var(--accent-glow);
   border: 1px solid var(--border-accent);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   color: var(--text-secondary);
 }
 
@@ -3813,15 +3813,15 @@ button.te-col-header:hover {
 }
 
 .te-image-pro-banner-cta {
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-4);
   background: var(--accent);
   color: var(--btn-primary-text);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   text-transform: uppercase;
   cursor: pointer;
   transition: background 0.12s;
@@ -3836,10 +3836,10 @@ button.te-col-header:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
 }
 
@@ -3847,38 +3847,38 @@ button.te-col-header:hover {
   max-height: 120px;
   max-width: 100%;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .te-image-path {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   word-break: break-all;
   text-align: center;
 }
 
 .te-image-missing {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
 }
 
 .te-image-none {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .te-image-scale {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .te-image-scale-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .te-image-scale-input {
@@ -3887,7 +3887,7 @@ button.te-col-header:hover {
 }
 
 .te-image-scale-pct {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
@@ -3895,14 +3895,14 @@ button.te-col-header:hover {
 .te-img-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 0.65rem;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 /* Dulled IMG badge when the row is gated on Free (paired with .te-list-pro-badge) */
@@ -3912,7 +3912,7 @@ button.te-col-header:hover {
 }
 
 .te-list-pro-badge {
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 /* Variant glyph in trigger column — minimal visual hint that this row has
@@ -3923,12 +3923,12 @@ button.te-col-header:hover {
   justify-content: center;
   width: 14px;
   height: 14px;
-  border-radius: 4px;
-  font-size: 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   line-height: 1;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
-  margin-left: 4px;
+  margin-left: var(--space-1);
   flex-shrink: 0;
 }
 
@@ -3947,7 +3947,7 @@ button.te-col-header:hover {
 .te-col-preview-variants {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   /* Force the chip container to fill the grid track instead of sizing to its
      single-line content width — flex-wrap only engages when the container
@@ -3962,11 +3962,11 @@ button.te-col-header:hover {
   align-items: center;
   height: 18px;
   padding: 0 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid var(--border-bright);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 500;
   font-family: var(--font-body);
   letter-spacing: 0;
@@ -3981,17 +3981,17 @@ button.te-col-header:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-3);
 }
 
 .te-variant-toggle-btn {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--accent);
   background: transparent;
   border: 1px solid var(--border-accent);
-  border-radius: 4px;
-  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-4);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -4001,9 +4001,9 @@ button.te-col-header:hover {
 }
 
 .te-variant-hint {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-4);
   line-height: 1.4;
 }
 
@@ -4013,8 +4013,8 @@ button.te-col-header:hover {
 .te-variant-random-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   color: var(--text-muted);
   cursor: pointer;
   user-select: none;
@@ -4034,21 +4034,21 @@ button.te-col-header:hover {
 .te-variant-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .te-variant-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 32px;
-  padding: 0 4px 0 12px;
+  padding: 0 var(--space-1) 0 var(--space-5);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   font-family: var(--font-body);
   cursor: pointer;
@@ -4090,8 +4090,8 @@ button.te-col-header:hover {
   border: none;
   background: transparent;
   color: var(--text-muted);
-  border-radius: 3px;
-  font-size: 10px;
+  border-radius: var(--radius-xs);
+  font-size: var(--text-xs);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.12s, color 0.12s, background 0.12s;
@@ -4115,13 +4115,13 @@ button.te-col-header:hover {
 
 .te-variant-tab-rename-input {
   height: 22px;
-  padding: 0 6px;
-  font-size: 12px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-md);
   font-weight: 500;
   font-family: var(--font-body);
   background: var(--bg-input, var(--bg-elevated));
   border: 1px solid var(--border-accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   max-width: 160px;
   outline: none;
@@ -4131,12 +4131,12 @@ button.te-col-header:hover {
   display: inline-flex;
   align-items: center;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   background: transparent;
   border: 1px dashed var(--border-accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: var(--font-body);
   cursor: pointer;
@@ -4163,14 +4163,14 @@ button.te-col-header:hover {
 }
 
 .te-variant-tab-pro {
-  margin-left: 2px;
+  margin-left: var(--space-0);
   flex-shrink: 0;
 }
 
 .te-variant-tab-add--locked {
   opacity: 0.55;
   filter: grayscale(0.4);
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .te-variant-tab-add--locked:hover {
@@ -4187,7 +4187,7 @@ button.te-col-header:hover {
 
 /* Locked "+ Add Variants" entry button (state A — no variants yet). */
 .te-variant-toggle-btn.locked {
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 /* Small destructive link below the editor — collapse all variants back to
@@ -4195,12 +4195,12 @@ button.te-col-header:hover {
    variants loses content for tabs other than the active one. */
 .te-variant-remove-all-link {
   display: inline-block;
-  margin-top: 8px;
-  padding: 4px 0;
+  margin-top: var(--space-3);
+  padding: var(--space-1) 0;
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-body);
   cursor: pointer;
   text-decoration: underline;

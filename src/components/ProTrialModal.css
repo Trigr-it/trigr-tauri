@@ -27,7 +27,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -43,15 +43,15 @@
 
 .protrial-pill {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: var(--tracking-widest);
   text-transform: uppercase;
   color: var(--accent);
   background: rgba(var(--accent-rgb), 0.12);
   border: 1px solid rgba(var(--accent-rgb), 0.25);
-  padding: 4px 12px;
-  border-radius: 100px;
+  padding: var(--space-1) var(--space-5);
+  border-radius: var(--radius-pill);
   margin-bottom: 14px;
 }
 
@@ -65,17 +65,17 @@
 
 .protrial-title {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: var(--text-display-md);
   font-weight: 800;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-tighter);
   line-height: 1.25;
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-3);
   max-width: 420px;
 }
 
 .protrial-subtitle {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-secondary);
   line-height: 1.55;
   margin: 0 0 20px;
@@ -87,7 +87,7 @@
 .protrial-hero-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: var(--space-4);
   width: 100%;
   margin-bottom: 14px;
   box-sizing: border-box;
@@ -98,36 +98,36 @@
   padding: 18px 20px;
   background: var(--accent-glow);
   border: 1px solid var(--accent-dim);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   text-align: left;
   box-sizing: border-box;
 }
 
 .protrial-card-badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: var(--space-0) var(--space-3);
   background: var(--accent);
   color: var(--btn-primary-text);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: var(--tracking-normal);
   text-transform: uppercase;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   line-height: 1.4;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-3);
 }
 
 .protrial-card-title {
   font-family: 'Space Grotesk', var(--font-display), sans-serif;
-  font-size: 18px;
+  font-size: var(--text-display-sm);
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.3px;
-  margin: 0 0 6px;
+  letter-spacing: var(--tracking-tighter);
+  margin: 0 0 var(--space-2);
 }
 
 .protrial-card-body {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-secondary);
   line-height: 1.55;
   margin: 0;
@@ -139,29 +139,29 @@
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 10px;
+  gap: var(--space-4);
   margin-bottom: 20px;
   box-sizing: border-box;
 }
 
 .protrial-feature-card {
-  padding: 12px 14px;
+  padding: var(--space-5) 14px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   text-align: left;
 }
 
 .protrial-feature-title {
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0 0 4px;
-  letter-spacing: -0.1px;
+  margin: 0 0 var(--space-1);
+  letter-spacing: var(--tracking-tighter);
 }
 
 .protrial-feature-body {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-secondary);
   line-height: 1.45;
   margin: 0;
@@ -177,15 +177,15 @@
   border-radius: var(--radius-lg);
   color: var(--btn-primary-text);
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: var(--text-xl);
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   text-decoration: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-3);
   transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   box-shadow:
     0 4px 20px rgba(var(--accent-rgb), 0.35),
@@ -211,7 +211,7 @@
 }
 
 .protrial-footnote {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }

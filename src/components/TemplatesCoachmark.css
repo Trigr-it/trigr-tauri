@@ -3,8 +3,8 @@
   z-index: 9000;
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
-  border-radius: 8px;
-  padding: 14px 14px 12px;
+  border-radius: var(--radius-lg);
+  padding: 14px 14px var(--space-5);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), 0 0 0 1px var(--accent-glow);
   animation: tplCoachmarkIn 180ms ease-out;
 }
@@ -36,7 +36,7 @@
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
@@ -51,8 +51,8 @@
 .tpl-coachmark-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .tpl-coachmark-icon {
@@ -62,33 +62,33 @@
 
 .tpl-coachmark-title {
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .tpl-coachmark-body {
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.45;
   color: var(--text-secondary);
-  margin-bottom: 12px;
+  margin-bottom: var(--space-5);
 }
 
 .tpl-coachmark-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-3);
   justify-content: flex-end;
 }
 
 .tpl-coachmark-btn {
   height: 32px;
   padding: 0 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: all 0.15s;
   border: 1px solid transparent;

@@ -29,6 +29,19 @@
   --radial-wedge: #1a1a24;
   /* Mirrored from global.css (token sweep 2026-08-26) */
   --white: #ffffff;
+  /* Scale tokens mirrored from global.css (token sweep Phase C) */
+  --radius-md: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --text-2xs: 9px;
+  --text-3xs: 8px;
+  --text-display-lg: 32px;
+  --text-display-md: 22px;
+  --text-md: 12px;
+  --text-sm: 11px;
+  --text-xl: 14px;
+  --tracking-normal: 0.04em;
+  --tracking-tight: 0.02em;
 }
 
 [data-theme="light"] {
@@ -62,7 +75,7 @@ html, body {
   user-select: none;
   -webkit-app-region: no-drag;
   font-family: var(--font-body, 'DM Sans', sans-serif);
-  font-size: 14px;
+  font-size: var(--text-xl);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
 }
@@ -97,7 +110,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-3);
   animation: radial-appear 150ms ease-out both;
 }
 
@@ -107,13 +120,13 @@ html, body {
 }
 
 .radial-empty-icon {
-  font-size: 28px;
+  font-size: var(--text-display-lg);
   color: var(--text-muted);
 }
 
 .radial-empty-text {
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   text-align: center;
   line-height: 1.5;
@@ -130,12 +143,12 @@ html, body {
   left: 50%;
   transform: translate(-50%, -50%);
   max-width: 130px;
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-primary);
   text-align: center;
   line-height: 1.45;

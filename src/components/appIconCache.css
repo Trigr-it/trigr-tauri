@@ -13,12 +13,12 @@
 .app-icon-badge img {
   display: block;
   image-rendering: -webkit-optimize-contrast;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
 }
 
 .app-icon-badge-label {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   font-family: var(--font-body);
   white-space: nowrap;

@@ -14,6 +14,25 @@
   --status-recording-soft: #ff8a8a;
   --status-recording: #e54040;
   --white: #ffffff;
+  /* Scale tokens mirrored from global.css (token sweep Phase C) */
+  --radius-pill: 999px;
+  --radius-sm: 4px;
+  --radius-xl: 12px;
+  --radius-xs: 3px;
+  --space-0: 2px;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --text-2xs: 9px;
+  --text-lg: 13px;
+  --text-md: 12px;
+  --text-sm: 11px;
+  --text-xl: 14px;
+  --text-xs: 10px;
+  --tracking-tight: 0.02em;
+  --tracking-wider: 0.14em;
 }
 /* stylelint-enable color-no-hex */
 
@@ -60,7 +79,7 @@ html, body, #root {
   min-width: 320px;
   background: linear-gradient(180deg, rgba(24, 24, 28, 0.96), rgba(14, 14, 18, 0.98));
   border: 2px solid rgba(255, 200, 80, 0.55);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   box-shadow:
     0 0 0 1px rgba(255, 200, 80, 0.15),
     0 20px 60px rgba(0, 0, 0, 0.65),
@@ -70,16 +89,17 @@ html, body, #root {
 }
 .rc-countdown-title {
   font-family: 'Rajdhani', 'DM Sans', sans-serif;
-  font-size: 15px;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--gold-300);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  margin-bottom: 12px;
+  letter-spacing: var(--tracking-wider);
+  margin-bottom: var(--space-5);
   text-shadow: 0 0 8px rgba(255, 200, 80, 0.4);
 }
 .rc-countdown-number {
   font-family: 'Rajdhani', 'DM Sans', sans-serif;
+  /* stylelint-disable-next-line declaration-property-value-allowed-list -- full-window countdown digit, not on the type scale */
   font-size: 200px;
   font-weight: 800;
   line-height: 1;
@@ -89,7 +109,7 @@ html, body, #root {
     0 0 40px rgba(255, 200, 80, 0.4),
     0 4px 12px rgba(0, 0, 0, 0.5);
   animation: rc-countdown-pop 0.9s ease-out;
-  margin: 8px 0;
+  margin: var(--space-3) 0;
 }
 @keyframes rc-countdown-pop {
   0%   { transform: scale(0.4); opacity: 0; }
@@ -99,7 +119,7 @@ html, body, #root {
 }
 .rc-countdown-hint {
   font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 500;
   color: var(--text-primary);
   margin-top: 14px;
@@ -108,19 +128,19 @@ html, body, #root {
 }
 .rc-countdown-esc {
   margin-top: 18px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-family: 'DM Sans', sans-serif;
 }
 .rc-countdown-esc kbd {
   display: inline-block;
-  padding: 2px 7px;
+  padding: var(--space-0) 7px;
   margin-right: 3px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-family: 'Chakra Petch', 'DM Sans', monospace;
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
@@ -128,16 +148,16 @@ html, body, #root {
 .rc-countdown-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 12px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4) var(--space-1) var(--space-5);
   background: linear-gradient(180deg, rgba(28, 28, 32, 0.94), rgba(18, 18, 22, 0.98));
   border: 1px solid rgba(255, 200, 80, 0.45);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   box-shadow:
     0 0 0 1px rgba(255, 200, 80, 0.12),
     0 6px 18px rgba(0, 0, 0, 0.4),
     0 0 16px rgba(255, 200, 80, 0.18);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -147,7 +167,7 @@ html, body, #root {
   min-width: 14px;
   text-align: center;
   font-family: 'Rajdhani', 'DM Sans', sans-serif;
-  font-size: 14px;
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--gold-300);
   text-shadow: 0 0 6px rgba(255, 200, 80, 0.6);
@@ -164,13 +184,13 @@ html, body, #root {
   justify-content: center;
   width: 16px;
   height: 16px;
-  margin-left: 2px;
+  margin-left: var(--space-0);
   padding: 0;
   background: transparent;
   border: none;
   border-radius: 50%;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: background 100ms, color 100ms;
 }
@@ -183,16 +203,16 @@ html, body, #root {
 .rc-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 14px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) 14px;
   background: linear-gradient(180deg, rgba(28, 28, 32, 0.94), rgba(18, 18, 22, 0.98));
   border: 1px solid rgba(229, 64, 64, 0.5);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   box-shadow:
     0 0 0 1px rgba(229, 64, 64, 0.12),
     0 10px 26px rgba(0, 0, 0, 0.5),
     0 0 20px rgba(229, 64, 64, 0.18);
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-primary);
   backdrop-filter: blur(10px);
   white-space: nowrap;
@@ -218,16 +238,16 @@ html, body, #root {
   display: inline-flex;
   align-items: center;
   height: 22px;
-  padding: 0 12px;
-  margin-left: 2px;
+  padding: 0 var(--space-5);
+  margin-left: var(--space-0);
   background: rgba(229, 64, 64, 0.85);
   border: 1px solid rgba(229, 64, 64, 1);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--white);
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-tight);
   cursor: pointer;
   transition: background 120ms, transform 100ms, opacity 120ms;
 }
@@ -240,9 +260,9 @@ html, body, #root {
   opacity: 0.7;
 }
 .rc-pill-hint {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
-  padding-left: 6px;
+  padding-left: var(--space-2);
   border-left: 1px solid rgba(255, 255, 255, 0.12);
   white-space: nowrap;
 }
@@ -252,8 +272,8 @@ html, body, #root {
   margin: 0 1px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   font-family: 'Chakra Petch', 'DM Sans', monospace;
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   color: var(--text-secondary);
 }

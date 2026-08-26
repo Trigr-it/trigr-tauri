@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px 0 16px;
+  padding: 0 var(--space-5) 0 var(--space-6);
   flex-shrink: 0;
   -webkit-app-region: drag;
   position: relative;
@@ -28,14 +28,14 @@
 .app-logo {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
   flex-shrink: 0;
-  margin-right: 16px;
+  margin-right: var(--space-6);
 }
 
 .app-name {
   font-family: var(--font-label);
-  font-size: 14px;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--text-secondary);
   letter-spacing: normal;
@@ -45,7 +45,7 @@
   width: 1px;
   height: 20px;
   background: var(--border-bright);
-  margin-right: 16px;
+  margin-right: var(--space-6);
   flex-shrink: 0;
 }
 
@@ -68,22 +68,22 @@
 .area-tabs {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0);
   white-space: nowrap;
   -webkit-app-region: no-drag;
 }
 
 .area-tab {
   height: 30px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
@@ -109,15 +109,15 @@
 .area-nav-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 30px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   background: transparent;
   border: 1px solid var(--border-accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--accent);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -129,7 +129,7 @@
 }
 
 .area-nav-chevron {
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
 }
 
@@ -142,7 +142,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
-  padding: 4px;
+  padding: var(--space-1);
   animation: area-nav-in 0.12s ease;
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
@@ -158,12 +158,12 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 7px 12px;
+  padding: 7px var(--space-5);
   border: none;
   background: transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
@@ -183,7 +183,7 @@
 .titlebar-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-6);
   flex-shrink: 0;
 }
 
@@ -191,14 +191,14 @@
 .tb-list-toggle {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: 1px solid transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: var(--text-2xl);
   cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
@@ -224,15 +224,15 @@
 .tb-whatsnew-btn {
   position: relative;
   height: 26px;
-  padding: 0 12px;
-  border-radius: 13px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
   background: transparent;
   border: 1px solid var(--btn-primary-bg);
   color: var(--btn-primary-bg);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.08s;
   white-space: nowrap;
@@ -272,12 +272,12 @@
   right: -4px;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-lg);
   background: var(--status-error);
   color: var(--white);
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
@@ -290,15 +290,15 @@
    dark text on gold. */
 .tb-feedback-btn {
   height: 26px;
-  padding: 0 12px;
-  border-radius: 13px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
   background: var(--btn-primary-bg);
   border: 1px solid var(--btn-primary-bg);
   color: var(--btn-primary-text);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.08s;
   white-space: nowrap;
@@ -326,13 +326,13 @@
 .macro-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 26px;
-  padding: 0 12px;
-  border-radius: 13px;
-  font-size: 10px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-wide);
   transition: all 0.2s;
   border: 1px solid;
 }
@@ -374,7 +374,7 @@
 .tb-settings-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   display: flex;
@@ -400,7 +400,7 @@
 .theme-toggle-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   display: flex;
@@ -429,27 +429,27 @@
   right: 0;
   z-index: 100;
   min-width: 180px;
-  padding: 4px;
+  padding: var(--space-1);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .theme-picker-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
   background: transparent;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--text-md);
   text-align: left;
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
@@ -480,13 +480,13 @@
 .window-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wc-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   display: flex;
@@ -514,7 +514,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
-  padding: 4px;
+  padding: var(--space-1);
   min-width: 160px;
   box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.4));
   backdrop-filter: var(--backdrop-blur);
@@ -527,8 +527,8 @@
   padding: 7px 14px;
   border: none;
   background: transparent;
-  border-radius: 5px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;

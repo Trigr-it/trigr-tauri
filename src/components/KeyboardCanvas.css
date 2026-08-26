@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-4);
   position: relative;
   z-index: 1;
   width: 100%;
@@ -21,14 +21,14 @@
 .keyboard-extras-row {
   display: flex;
   justify-content: center;
-  margin-top: 8px;
+  margin-top: var(--space-3);
 }
 
 .modifier-bar-sep {
   width: 1px;
   height: 18px;
   background: var(--border-bright);
-  margin: 0 2px;
+  margin: 0 var(--space-0);
   flex-shrink: 0;
 }
 
@@ -38,10 +38,10 @@
 }
 
 .combo-bare-hint {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
-  margin-left: 2px;
+  margin-left: var(--space-0);
   white-space: nowrap;
 }
 
@@ -72,8 +72,8 @@
   flex-shrink: 0; /* never let the outer get squished by flexbox */
   background: var(--bg-surface);
   border: 1px solid var(--border-bright);
-  border-radius: 14px;
-  padding: 16px 18px 18px;
+  border-radius: var(--radius-xl);
+  padding: var(--space-6) 18px 18px;
   box-shadow:
     0 0 0 1px var(--border),
     0 24px 64px rgba(0,0,0,0.6),
@@ -85,7 +85,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 13px;
+  border-radius: var(--radius-xl);
   background: linear-gradient(160deg, rgba(255,255,255,0.02) 0%, transparent 50%);
   pointer-events: none;
 }
@@ -93,12 +93,12 @@
 .keyboard-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .keyboard-row {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
 }
 
@@ -109,7 +109,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--key-bg);
   border: 1px solid var(--key-border);
   cursor: pointer;
@@ -125,7 +125,7 @@
   top: 0; left: 0; right: 0;
   height: 40%;
   background: linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
-  border-radius: 5px 5px 0 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   pointer-events: none;
 }
 
@@ -227,10 +227,10 @@
 
 .key-label {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--text-secondary);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-tight);
   line-height: 1;
   pointer-events: none;
   z-index: 1;
@@ -242,7 +242,7 @@
 
 .key-sublabel {
   font-family: var(--font-body);
-  font-size: 7px;
+  font-size: var(--text-3xs);
   color: var(--text-muted);
   position: absolute;
   top: 3px; left: 5px;
@@ -256,14 +256,14 @@
   bottom: 3px;
   right: 3px;
   font-family: var(--font-display);
-  font-size: 7px;
+  font-size: var(--text-3xs);
   font-weight: 700;
   color: var(--accent);
   line-height: 1;
   opacity: 0.85;
   pointer-events: none;
   z-index: 2;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-tighter);
 }
 
 /* Hold badge — shown when a hold-trigger assignment exists. Uses the same
@@ -274,7 +274,7 @@
   position: absolute;
   bottom: 2px;
   left: 3px;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   color: var(--accent);
   line-height: 1;
   opacity: 0.85;
@@ -295,15 +295,15 @@
 .hint-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
 }
 
 .hint-dot {
   width: 8px; height: 8px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   border: 1px solid;
 }
 
@@ -320,11 +320,11 @@
      single row; row-gap controls the vertical gap when secondary wraps below
      the primary at narrower widths. */
   column-gap: 14px;
-  row-gap: 8px;
-  padding: 10px 18px;
+  row-gap: var(--space-3);
+  padding: var(--space-4) 18px;
   background: var(--bg-surface);
   border: 1px solid var(--border-bright);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   width: 100%;
   /* Fixed min-height prevents layout shift when combo-hint ↔ combo-active
      content swaps. Height grows naturally when the secondary group wraps. */
@@ -357,9 +357,9 @@
 
 .modifier-bar-label {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--text-muted);
   flex-shrink: 0;
@@ -379,27 +379,27 @@
 
 .modifier-bar-keys {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .modifier-bar-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .mod-layer-btn {
   height: 32px;
-  padding: 0 16px;
-  border-radius: 6px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   color: var(--text-secondary);
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   transition: all 0.15s;
   flex-shrink: 0;
@@ -427,7 +427,7 @@
 }
 
 .combo-hint {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-style: italic;
   white-space: nowrap;
@@ -444,12 +444,12 @@
 }
 
 .combo-active-label {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-normal);
   text-transform: uppercase;
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 
 .combo-key {
@@ -458,11 +458,11 @@
   border-bottom-width: 2px;
   color: var(--accent);
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
+  padding: var(--space-0) var(--space-3);
+  border-radius: var(--radius-sm);
+  letter-spacing: var(--tracking-normal);
 }
 
 .combo-key-target {
@@ -486,7 +486,7 @@
 
 .combo-plus {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 300;
 }
 
@@ -499,8 +499,8 @@
   overflow: hidden;
 }
 
-.label-muted { color: var(--text-muted); font-size: 11px; }
-.label-assigning { font-size: 12px; color: var(--text-secondary); }
+.label-muted { color: var(--text-muted); font-size: var(--text-sm); }
+.label-assigning { font-size: var(--text-md); color: var(--text-secondary); }
 .label-assigning strong { color: var(--accent); }
 .label-combo { color: var(--accent); }
 
@@ -574,15 +574,15 @@
 
 /* Hint row: push it clear of even the lightest residual keyboard shadow. */
 [data-theme="light"] .keyboard-hint-row {
-  margin-top: 6px;
+  margin-top: var(--space-2);
 }
 
 /* ── RECORD HOTKEY BUTTON ─────────────────────────────── */
 
 .record-btn {
-  padding: 0 12px;
+  padding: 0 var(--space-5);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: 5px;
@@ -653,11 +653,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-2);
   padding: 0 14px;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: inherit;
-  letter-spacing: 0.005em;
+  letter-spacing: 0;
   background: linear-gradient(180deg, var(--accent-hover), var(--accent));
   border: 1px solid var(--accent);
   color: var(--btn-primary-text);
@@ -750,8 +750,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 32px 24px 28px;
+  gap: var(--space-4);
+  padding: 32px var(--space-8) 28px;
   text-align: center;
   width: 100%;
   animation: empty-fade-in 0.25s ease;
@@ -763,10 +763,10 @@
 }
 
 .keyboard-empty-icon {
-  font-size: 32px;
+  font-size: var(--text-display-lg);
   color: var(--accent);
   line-height: 1;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0);
 }
 
 [data-theme="light"] .keyboard-empty-icon {
@@ -775,21 +775,21 @@
 
 .keyboard-empty-heading {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-tight);
 }
 
 .keyboard-empty-sub {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
   max-width: 400px;
   line-height: 1.55;
 }
 
 .keyboard-empty-record-hint {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -814,18 +814,18 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
-  padding: 8px 10px;
+  padding: var(--space-3) var(--space-4);
   box-shadow: var(--shadow-overlay);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   transform: translate(-50%, -100%);
 }
 
 .key-popover-clear {
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 
@@ -854,13 +854,13 @@
 }
 
 .keyboard-drop-hint {
-  margin: 6px 0 0;
-  padding: 8px 12px;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3) var(--space-5);
   background: rgba(var(--accent-rgb), 0.12);
   border: 1px dashed rgba(var(--accent-rgb), 0.5);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   text-align: center;
 }
