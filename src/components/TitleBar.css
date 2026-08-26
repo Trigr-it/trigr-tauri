@@ -64,39 +64,98 @@
   overflow: visible;
 }
 
-/* ── Area tabs (inline mode) ────────────────────────────────── */
+/* ── Area tabs (inline mode) ────────────────────────────────────────────────
+   Segmented control styled as a keycap: an inset track holds the labels and
+   one raised chip (same surface/border/shadow recipe as .key) slides behind
+   the active one. Gold is deliberately absent — it stays reserved for
+   actions and Pro. The chip is positioned from TitleBar.jsx (measured
+   offsetLeft/offsetWidth of .area-tab.active). */
 .area-tabs {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-0);
+  padding: 2px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   white-space: nowrap;
   -webkit-app-region: no-drag;
 }
 
+.area-tab-indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 0;
+  background: var(--key-bg);
+  border: 1px solid var(--key-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-key);
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Keycap top sheen, mirrors .key::before */
+.area-tab-indicator::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
+}
+
+.area-tabs.is-ready .area-tab-indicator {
+  opacity: 1;
+  transition: transform var(--transition-expand), width var(--transition-expand);
+}
+
 .area-tab {
-  height: 30px;
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
   padding: 0 var(--space-4);
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-md);
   color: var(--text-muted);
   font-family: var(--font-body);
   font-size: var(--text-lg);
   font-weight: 500;
   letter-spacing: 0;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s;
   white-space: nowrap;
-  margin-bottom: -1px;
+}
+
+/* Reserve the bold width so the row doesn't shift when weight changes */
+.area-tab::after {
+  content: attr(data-label);
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
 }
 
 .area-tab:hover {
   color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .area-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.area-tab.active:hover {
+  background: transparent;
 }
 
 /* ── Area nav dropdown (collapsed mode) ─────────────────────── */
@@ -112,10 +171,12 @@
   gap: var(--space-2);
   height: 30px;
   padding: 0 var(--space-4);
-  background: transparent;
-  border: 1px solid var(--border-accent);
+  /* Same keycap chip as the inline active tab */
+  background: var(--key-bg);
+  border: 1px solid var(--key-border);
   border-radius: var(--radius-md);
-  color: var(--accent);
+  box-shadow: var(--shadow-key);
+  color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--text-lg);
   font-weight: 600;
@@ -125,7 +186,7 @@
 }
 
 .area-nav-btn:hover {
-  background: var(--accent-glow);
+  background: var(--key-bg-hover);
 }
 
 .area-nav-chevron {

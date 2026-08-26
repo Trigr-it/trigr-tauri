@@ -152,6 +152,38 @@ export default function TitleBar({
     return () => ro.disconnect();
   }, [tabsCollapsed]);
 
+  // ── Sliding keycap indicator behind the active area tab ────────────────
+  // One absolutely-positioned chip is moved under whichever .area-tab is
+  // active (measured, not per-tab CSS) so the selection visibly travels.
+  // `tabsReady` gates the transition so the first paint doesn't animate the
+  // chip in from x=0.
+  const indicatorRef = useRef(null);
+  const [tabsReady, setTabsReady] = useState(false);
+  const positionIndicator = useCallback(() => {
+    const wrap = tabsInnerRef.current;
+    const ind = indicatorRef.current;
+    if (!wrap || !ind) return;
+    const btn = wrap.querySelector('.area-tab.active');
+    if (!btn) { ind.style.width = '0px'; return; }
+    ind.style.transform = `translateX(${btn.offsetLeft}px)`;
+    ind.style.width = `${btn.offsetWidth}px`;
+  }, []);
+  useLayoutEffect(() => {
+    if (tabsCollapsed) return;
+    positionIndicator();
+    if (!tabsReady) {
+      const id = requestAnimationFrame(() => setTabsReady(true));
+      return () => cancelAnimationFrame(id);
+    }
+  }, [activeArea, tabsCollapsed, tabsReady, positionIndicator]);
+  useEffect(() => {
+    const el = tabsInnerRef.current;
+    if (!el || tabsCollapsed) return;
+    const ro = new ResizeObserver(positionIndicator);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tabsCollapsed, positionIndicator]);
+
   // Close nav dropdown on outside click
   useEffect(() => {
     if (!navDropdownOpen) return;
@@ -224,13 +256,16 @@ export default function TitleBar({
               )}
             </div>
           ) : (
-            <div className="area-tabs" data-drag="false" ref={tabsInnerRef}>
+            <div className={`area-tabs${tabsReady ? ' is-ready' : ''}`} data-drag="false" ref={tabsInnerRef}>
+              <span className="area-tab-indicator" ref={indicatorRef} aria-hidden="true" />
               {AREA_TABS.map(t => (
                 <button
                   key={t.key}
                   className={`area-tab${t.key === activeArea ? ' active' : ''}`}
+                  data-label={t.label}
                   onClick={() => onAreaChange?.(t.key)}
                   type="button"
+                  aria-current={t.key === activeArea ? 'page' : undefined}
                 >
                   {t.label}
                 </button>
