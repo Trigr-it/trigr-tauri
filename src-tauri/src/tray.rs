@@ -204,6 +204,10 @@ fn build_tray(
         .icon(icon)
         .tooltip(tooltip)
         .menu(&menu)
+        // Tauri's default pops the context menu on LEFT click too, so a single
+        // left click both toggled the window (our handler below) and opened
+        // the menu as if right-clicked. Left = show/hide only; right = menu.
+        .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
                 "open" => show_window(app),
