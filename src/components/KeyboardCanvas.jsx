@@ -149,14 +149,12 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
         ) : isBare ? (
           <span className="combo-active">
             <span className="combo-active-label">Layer:</span>
-            <kbd className="combo-key combo-key-bare">Bare</kbd>
-            <span className="combo-plus">+</span>
             {selectedKey ? (
               <kbd className="combo-key combo-key-selected">{friendlyKeyName(selectedKey)}</kbd>
             ) : (
               <kbd className="combo-key combo-key-target">key</kbd>
             )}
-            <span className="combo-bare-hint"> — fires only when linked app is focused</span>
+            <span className="combo-bare-hint"> — no modifier, fires only when linked app is focused</span>
           </span>
         ) : (
           <span className="combo-active">
@@ -434,7 +432,7 @@ export default function KeyboardCanvas({
         ) : isBare ? (
           selectedKey ? (
             <span className="label-assigning">
-              Assigning: <strong>Bare</strong> + <strong>{friendlyKeyName(selectedKey)}</strong>
+              Assigning: <strong>{friendlyKeyName(selectedKey)}</strong>
             </span>
           ) : (
             <span className="label-muted">

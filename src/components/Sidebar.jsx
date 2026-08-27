@@ -1099,7 +1099,7 @@ export default function Sidebar({
         className={`sidebar-item type-${macro.type}${isSelected ? ' sidebar-item-active' : ''}${isBareItem ? ' bare-item' : ''}`}
         onClick={() => onSelectAssignment(keyId, combo)}
         onContextMenu={e => handleAssignContextMenu(e, combo, keyId, macro)}
-        title={`Edit ${isBareItem ? 'Bare' : combo}+${displayKey}`}
+        title={`Edit ${isBareItem ? displayKey : `${combo}+${displayKey}`}`}
       >
         <div className="sidebar-key-stack">
           <span className="sidebar-key-badge" style={{ borderColor: meta.color + '55', color: meta.color }}>

@@ -62,7 +62,7 @@ export function findReservedShortcut(combo, keyId) {
 
 // Human-readable shortcut string for display in the modal: "Ctrl+C", "Win+Shift+S".
 export function formatComboDisplay(combo, keyId) {
-  const parts = combo ? combo.split('+') : [];
+  const parts = combo && combo !== 'BARE' ? combo.split('+') : [];
   parts.push(keyDisplay(keyId));
   return parts.join('+');
 }

@@ -142,7 +142,7 @@ export default function NumpadCanvas({
       if (hold?.label)   parts.push(`Hold: ${hold.label}`);
       return `${parts.join('\n') || 'Assigned action'}\nClick to edit. Drag onto another key to move or swap.`;
     }
-    return `Assign macro to: ${combo}+${displayLabel}`;
+    return `Assign macro to: ${combo === 'BARE' ? displayLabel : `${combo}+${displayLabel}`}`;
   }
 
   function renderKey({ id, label, col, row, colSpan, rowSpan }) {

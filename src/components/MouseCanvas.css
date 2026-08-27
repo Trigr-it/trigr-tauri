@@ -8,6 +8,12 @@
 }
 
 .mouse-label {
+  /* Same fixed, vertically-centred box as .keyboard-label so the diagram
+     starts at the same offset below the modifier bar as the keyboard does. */
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: var(--text-sm);
   color: var(--text-muted);
   letter-spacing: var(--tracking-tight);
@@ -306,6 +312,9 @@
   display: flex;
   align-items: center;
   gap: 20px;
+  /* Mirrors .keyboard-hint-row: fixed height prevents layout shift */
+  height: 24px;
+  flex-shrink: 0;
 }
 
 /* Reuse keyboard canvas hint-chip / hint-dot styles */

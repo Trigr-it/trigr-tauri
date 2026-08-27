@@ -1093,8 +1093,9 @@ function App() {
         setSelectedLibraryId(null);
         if (keyId.startsWith('MOUSE_')) setActiveView('mouse');
         else setActiveView('keyboard');
-        const modsLabel = modifiers.length === 0 ? 'Bare' : modifiers.join('+');
-        setRecordCapture(`${modsLabel}+${friendlyKeyName(keyId)}`);
+        setRecordCapture(modifiers.length === 0
+          ? friendlyKeyName(keyId)
+          : `${modifiers.join('+')}+${friendlyKeyName(keyId)}`);
         setTimeout(() => setRecordCapture(null), 2000);
       });
 
@@ -2110,7 +2111,7 @@ function App() {
     setDraftAssignment(null);
     setDraftDoubleAssignment(null);
     propagateLabelToRadialItems(key, oldLabel, macro?.label || '');
-    showNotification(`Assigned to ${currentCombo}+${keyId}`);
+    showNotification(`Assigned to ${triggerLabel(currentCombo, keyId)}`);
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey, draftDoubleAssignment, propagateLabelToRadialItems]);
 
   // ── Clear key (single-press only) ────────────────────────
@@ -2123,7 +2124,7 @@ function App() {
     delete newAssignments[key];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification(`Cleared ${currentCombo}+${keyId}`, 'info');
+    showNotification(`Cleared ${triggerLabel(currentCombo, keyId)}`, 'info');
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
   // ── Delete key (both single + double) ────────────────────
@@ -2140,7 +2141,7 @@ function App() {
     delete newAssignments[holdKey];
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification(`Deleted ${currentCombo}+${keyId}`, 'info');
+    showNotification(`Deleted ${triggerLabel(currentCombo, keyId)}`, 'info');
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeAssignmentKey]);
 
   // ── Rename assignment label (sidebar right-click → Rename) ───────────
@@ -2175,7 +2176,7 @@ function App() {
     // Sidebar Delete on an unassigned entry routes here with combo="UNASSIGNED"
     // and keyId = the entry's uuid.
     setSelectedLibraryId(prev => (prev === keyId ? null : prev));
-    showNotification(combo === 'UNASSIGNED' ? 'Deleted from Unassigned' : `Cleared ${combo}+${keyId}`, 'info');
+    showNotification(combo === 'UNASSIGNED' ? 'Deleted from Unassigned' : `Cleared ${triggerLabel(combo, keyId)}`, 'info');
   }, [assignments, activeProfile, profiles, saveConfig, syncEngine, selectedKey, showNotification]);
 
   // ── Duplicate assignment via draft state ──────────────────
@@ -2222,7 +2223,7 @@ function App() {
     const newAssignments = { ...assignments, [key]: macro };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification(`Double-tap assigned to ${currentCombo}+${keyId}`);
+    showNotification(`Double-tap assigned to ${triggerLabel(currentCombo, keyId)}`);
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeDoubleKey]);
 
   const handleClearDouble = useCallback((keyId) => {
@@ -2254,7 +2255,7 @@ function App() {
     const newAssignments = { ...assignments, [key]: macro };
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
-    showNotification(`Hold assigned to ${currentCombo}+${keyId}`);
+    showNotification(`Hold assigned to ${triggerLabel(currentCombo, keyId)}`);
   }, [assignments, activeProfile, currentCombo, profiles, saveConfig, showNotification, makeHoldKey]);
 
   const handleClearHold = useCallback((keyId) => {

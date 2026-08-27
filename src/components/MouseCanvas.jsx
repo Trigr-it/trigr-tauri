@@ -229,7 +229,7 @@ export default function MouseCanvas({
         ) : isBare ? (
           selectedKey?.startsWith('MOUSE_') && BARE_MOUSE_ALLOWED.has(selectedKey) ? (
             <span className="label-assigning">
-              Assigning bare: <strong>{MOUSE_ZONES.find(z => z.id === selectedKey)?.label || selectedKey}</strong>
+              Assigning: <strong>{MOUSE_ZONES.find(z => z.id === selectedKey)?.label || selectedKey}</strong>
             </span>
           ) : (
             <span className="label-muted">

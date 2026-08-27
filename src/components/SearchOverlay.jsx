@@ -44,7 +44,7 @@ const GROUP_LABELS = {
 function buildComboLabel(combo, keyId) {
   const keyPart = friendlyKeyName(keyId);
   if (combo === 'BARE' || combo === '') {
-    return `${keyPart} (bare)`;
+    return keyPart;
   }
   return `${combo}+${keyPart}`;
 }

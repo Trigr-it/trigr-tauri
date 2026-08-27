@@ -71,7 +71,7 @@ export default function StatusBar({ selectedKey, currentCombo, macrosEnabled, as
           <>
             <span className="status-sep">·</span>
             <span className="status-info">
-              Editing: <strong>{currentCombo ? `${currentCombo}+` : ''}{selectedKey}</strong>
+              Editing: <strong>{currentCombo && currentCombo !== 'BARE' ? `${currentCombo}+` : ''}{selectedKey}</strong>
             </span>
           </>
         )}

@@ -4199,7 +4199,7 @@ function ReassignOverlay({ currentCombo, currentKeyId, assignments, activeProfil
   }
 
   const currentLabel = [
-    ...(currentCombo === 'BARE' ? ['Bare'] : currentCombo ? currentCombo.split('+') : []),
+    ...(currentCombo && currentCombo !== 'BARE' ? currentCombo.split('+') : []),
     keyIdToLabel(currentKeyId),
   ].filter(Boolean);
 
@@ -4919,17 +4919,22 @@ export default function MacroPanel({
       )}
       <div className="macro-panel-header">
         <div className="macro-panel-title">
-          {activeModifiers && activeModifiers.length > 0 && (
-            <div className="combo-badge">
-              {[...activeModifiers].sort().map((m, i) => (
-                <React.Fragment key={m}>
-                  <kbd className="selected-key-badge mod-badge">{m}</kbd>
-                  {i < activeModifiers.length - 1 && <span className="badge-plus">+</span>}
-                </React.Fragment>
-              ))}
-              <span className="badge-plus">+</span>
-            </div>
-          )}
+          {(() => {
+            // The bare layer is the ABSENCE of a modifier: never render it as
+            // a "BARE" badge, the key badge alone is the whole trigger.
+            const mods = (activeModifiers || []).filter(m => m !== 'BARE').sort();
+            return mods.length > 0 && (
+              <div className="combo-badge">
+                {mods.map((m, i) => (
+                  <React.Fragment key={m}>
+                    <kbd className="selected-key-badge mod-badge">{m}</kbd>
+                    {i < mods.length - 1 && <span className="badge-plus">+</span>}
+                  </React.Fragment>
+                ))}
+                <span className="badge-plus">+</span>
+              </div>
+            );
+          })()}
           {libraryMode ? (
             <kbd className="selected-key-badge selected-key-badge-unassigned">Unassigned</kbd>
           ) : selectedKey ? (
