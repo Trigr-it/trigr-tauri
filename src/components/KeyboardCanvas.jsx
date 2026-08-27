@@ -154,7 +154,7 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
             ) : (
               <kbd className="combo-key combo-key-target">key</kbd>
             )}
-            <span className="combo-bare-hint"> — no modifier, fires only when linked app is focused</span>
+            <span className="combo-bare-hint">, no modifier. Fires only when the linked app is focused.</span>
           </span>
         ) : (
           <span className="combo-active">
