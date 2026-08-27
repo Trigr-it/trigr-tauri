@@ -5890,8 +5890,60 @@ function App() {
         onDragCancel={handleRadialDragCancel}
       >
       <div className="app-body">
-        {/* Sidebar only visible in Mapping area */}
         {activeArea === 'mapping' && (
+          /* Triggers frame: the same contained card shell as Text Expansions /
+             Quick Search / Clipboard (.text-expansions / .stp-panel / .cbg-panel).
+             The header row carries the Keyboard | Mouse | Radial mode tabs
+             top-left; the row below holds the profile Sidebar, the canvas the
+             keyboard / mouse / radial editor paint on, and the MacroPanel editor. */
+          <div className="main-area trig-shell">
+          <div className="trig-panel">
+          {!listViewActive && (
+          <div className="trig-header">
+            <div className="view-switcher">
+              <button
+                className={`view-tab${activeView === 'keyboard' ? ' active' : ''}`}
+                onClick={() => handleSetView('keyboard')}
+                type="button"
+                title="Keyboard"
+                aria-label="Keyboard"
+              >
+                <span className="view-tab-icon" aria-hidden="true">⌨</span>
+                <span className="view-tab-label">Keyboard</span>
+              </button>
+              <button
+                className={`view-tab${activeView === 'mouse' ? ' active' : ''}`}
+                onClick={() => handleSetView('mouse')}
+                type="button"
+                title="Mouse"
+                aria-label="Mouse"
+              >
+                <span className="view-tab-icon" aria-hidden="true">🖱</span>
+                <span className="view-tab-label">Mouse</span>
+              </button>
+              <button
+                className={`view-tab${activeView === 'radial' ? ' active' : ''}`}
+                onClick={() => handleSetView('radial')}
+                type="button"
+                title="Radial"
+                aria-label="Radial"
+              >
+                <span className="view-tab-icon" aria-hidden="true">&#x25ce;</span>
+                <span className="view-tab-label">Radial</span>
+              </button>
+            </div>
+          {!hiddenTips.includes('profile-link') && (
+            <div className="profile-link-tip" title="Right-click any profile in the sidebar to link it to a specific app. Keyfire auto-switches profiles when that app gains focus.">
+              <span className="profile-link-tip-badge">TIP</span>
+              <span className="profile-link-tip-text">
+                Right-click any profile in the sidebar to link it to a specific app. Keyfire auto-switches profiles when that app gains focus.
+              </span>
+              <button type="button" className="profile-link-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => handleHideTip('profile-link')}>&#10005;</button>
+            </div>
+          )}
+          </div>
+          )}
+          <div className="trig-row">
           <Sidebar
             activeProfile={activeProfile}
             assignments={assignments}
@@ -5939,52 +5991,8 @@ function App() {
             isPro={isPro}
             onShowUpgrade={showUpgrade}
           />
-        )}
-        <main className={`main-area${activeArea !== 'mapping' ? ' main-area--expansions' : ''}${listViewActive && activeArea === 'mapping' ? ' main-area--hidden' : ''}`}>
-          {activeArea === 'mapping' && !listViewActive && (
-            <div className="view-switcher">
-              <button
-                className={`view-tab${activeView === 'keyboard' ? ' active' : ''}`}
-                onClick={() => handleSetView('keyboard')}
-                type="button"
-                title="Keyboard"
-                aria-label="Keyboard"
-              >
-                <span className="view-tab-icon" aria-hidden="true">⌨</span>
-                <span className="view-tab-label">Keyboard</span>
-              </button>
-              <button
-                className={`view-tab${activeView === 'mouse' ? ' active' : ''}`}
-                onClick={() => handleSetView('mouse')}
-                type="button"
-                title="Mouse"
-                aria-label="Mouse"
-              >
-                <span className="view-tab-icon" aria-hidden="true">🖱</span>
-                <span className="view-tab-label">Mouse</span>
-              </button>
-              <button
-                className={`view-tab${activeView === 'radial' ? ' active' : ''}`}
-                onClick={() => handleSetView('radial')}
-                type="button"
-                title="Radial"
-                aria-label="Radial"
-              >
-                <span className="view-tab-icon" aria-hidden="true">&#x25ce;</span>
-                <span className="view-tab-label">Radial</span>
-              </button>
-            </div>
-          )}
-          {activeArea === 'mapping' && !listViewActive && !hiddenTips.includes('profile-link') && (
-            <div className="profile-link-tip">
-              <span className="profile-link-tip-badge">TIP</span>
-              <span className="profile-link-tip-text">
-                Right-click any profile in the sidebar to link it to a specific app. Keyfire auto-switches profiles when that app gains focus.
-              </span>
-              <button type="button" className="profile-link-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => handleHideTip('profile-link')}>&#10005;</button>
-            </div>
-          )}
-          {activeArea === 'mapping' && activeView === 'keyboard' && !listViewActive && (
+          <main className={`main-area trig-canvas trig-canvas--${activeView}${listViewActive ? ' main-area--hidden' : ''}`}>
+          {activeView === 'keyboard' && !listViewActive && (
             <div className="keyboard-numpad-wrap">
               <KeyboardCanvas
                 selectedKey={selectedKey}
@@ -6019,7 +6027,7 @@ function App() {
           {showTips && (
             <QuickTips onDismiss={handleDismissTips} searchOverlayHotkey={searchOverlayHotkey} searchOverlayEnabled={searchOverlayEnabled} />
           )}
-          {activeArea === 'mapping' && activeView === 'mouse' && (
+          {activeView === 'mouse' && (
             <MouseCanvas
               selectedKey={selectedKey}
               onKeySelect={handleKeySelect}
@@ -6039,6 +6047,184 @@ function App() {
               newTriggerHint={newTriggerHint}
               bindDragActive={!!bindActiveDrag}
             />
+          )}
+            {activeView === 'radial' && (
+              <RadialEditorView
+                hiddenTips={hiddenTips}
+                onHideTip={handleHideTip}
+                radialMenuHotkey={radialMenuHotkey}
+                onSetRadialMenuHotkey={handleSetRadialMenuHotkey}
+                onClearRadialMenuHotkey={handleClearRadialMenuHotkey}
+                radialHoldToSelect={radialHoldToSelect}
+                onSetRadialHoldToSelect={handleSetRadialHoldToSelect}
+                radialMenuItems={radialMenuItems}
+                onAddRadialMenuItem={handleAddRadialMenuItem}
+                onRemoveRadialMenuItem={handleRemoveRadialMenuItem}
+                onReorderRadialMenuItems={handleReorderRadialMenuItems}
+                onAddRadialMenuFolder={handleAddRadialMenuFolder}
+                onAddChildToFolder={handleAddChildToFolder}
+                onRemoveChildFromFolder={handleRemoveChildFromFolder}
+                onMoveItemToFolder={handleMoveItemToFolder}
+                onMoveChildToMain={handleMoveChildToMain}
+                onReorderFolderChildren={handleReorderFolderChildren}
+                onRenameFolder={handleRenameFolder}
+                onRenameRadialMenuItem={handleRenameRadialMenuItem}
+                onRenameChildInFolder={handleRenameChildInFolder}
+                onSwapRadialMenuItems={handleSwapRadialMenuItems}
+                onCreateRadialAction={handleCreateRadialAction}
+                onSetRadialMenuItemIcon={handleSetRadialMenuItemIcon}
+                onSetRadialChildIcon={handleSetRadialChildIcon}
+                selectedRadialSegment={selectedRadialSegment}
+                onSelectRadialSegment={handleSelectRadialSegment}
+                onSelectRadialChild={(folderId, childIndex) => {
+                  setSelectedRadialChild({ folderId, childIndex });
+                  setSelectedRadialSegment(null);
+                  setSelectedKey(null);
+                }}
+                assignments={assignments}
+                dropTargetIndex={radialActiveDrag ? radialDropTarget : -1}
+                dropTargetOuterIndex={radialActiveDrag ? radialDropTargetOuter : -1}
+                rejectIndex={radialRejectIndex}
+                wheelRef={wheelRef}
+                usedKeys={radialUsedKeys}
+                expandedFolder={expandedRadialFolder}
+                onExpandedFolderChange={setExpandedRadialFolder}
+                profiles={profiles}
+                activeProfile={activeProfile}
+                onCopyRadialSegmentToProfile={handleCopyRadialSegmentToProfile}
+                onForceOverwriteRadialSegment={handleForceOverwriteRadialSegment}
+              />
+            )}
+          </main>
+        {/* Right panel: MacroPanel (Settings lives in its own window) */}
+        {activeView === 'radial' && selectedRadialChild != null ? (
+          <MacroPanel
+            selectedKey={'Folder Child'}
+            activeModifiers={[]}
+            currentCombo=""
+            assignment={radialChildAssignment}
+            doubleAssignment={null}
+            assignments={assignments}
+            activeProfile={activeProfile}
+            profiles={profiles}
+            profileLinked={profileLinked}
+            globalInputMethod={globalInputMethod}
+            onAssign={handleRadialChildAssign}
+            onClear={handleRadialChildClear}
+            onClose={() => setSelectedRadialChild(null)}
+            isPro={isPro}
+            voiceEnabled={voiceEnabled}
+            onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
+          />
+        ) : activeView === 'radial' && selectedRadialSegment != null ? (
+          <MacroPanel
+            selectedKey={'Radial Segment'}
+            activeModifiers={[]}
+            currentCombo=""
+            assignment={radialSegmentAssignment}
+            doubleAssignment={null}
+            assignments={assignments}
+            activeProfile={activeProfile}
+            profiles={profiles}
+            profileLinked={profileLinked}
+            globalInputMethod={globalInputMethod}
+            onAssign={handleRadialAssign}
+            onClear={handleRadialClear}
+            onClose={() => setSelectedRadialSegment(null)}
+            isPro={isPro}
+            voiceEnabled={voiceEnabled}
+            onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
+          />
+        ) : selectedLibraryId ? (
+          // Unassigned library editor — same MacroPanel, library mode. The
+          // uuid rides in selectedKey so the save/select plumbing works
+          // unchanged; App routes every assign/clear callback to the
+          // {Profile}::UNASSIGNED::{uuid} storage keys.
+          <MacroPanel
+            libraryMode={true}
+            selectedKey={selectedLibraryId}
+            activeModifiers={[]}
+            currentCombo="UNASSIGNED"
+            assignment={getLibraryEntry(selectedLibraryId)}
+            doubleAssignment={getLibraryEntry(selectedLibraryId, '::double')}
+            holdAssignment={getLibraryEntry(selectedLibraryId, '::hold')}
+            assignments={assignments}
+            activeProfile={activeProfile}
+            profiles={profiles}
+            profileLinked={profileLinked}
+            globalInputMethod={globalInputMethod}
+            onAssign={(id, macro) => handleAssignLibraryVariant(id, macro, '')}
+            onClear={(id) => handleClearLibraryVariant(id, '')}
+            onDelete={handleDeleteLibraryEntry}
+            onAssignDouble={(id, macro) => handleAssignLibraryVariant(id, macro, '::double')}
+            onClearDouble={(id) => handleClearLibraryVariant(id, '::double')}
+            onAssignHold={(id, macro) => handleAssignLibraryVariant(id, macro, '::hold')}
+            onClearHold={(id) => handleClearLibraryVariant(id, '::hold')}
+            onClose={() => setSelectedLibraryId(null)}
+            onCancelDraft={() => {}}
+            onReassign={(combo, keyId) => handleBindLibrary(selectedLibraryId, combo, keyId)}
+            onDuplicate={(combo, keyId) => handleDuplicateLibraryToKey(selectedLibraryId, combo, keyId)}
+            duplicateOverlaySignal={duplicateOverlaySignal}
+            bindOverlaySignal={bindOverlaySignal}
+            isPro={isPro}
+            voiceEnabled={false}
+            onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
+          />
+        ) : (!isNarrow || selectedKey != null || draftAssignment != null) ? (
+          // Below 1200px the MacroPanel is hidden until the user picks a key or
+          // starts a draft. The selection / draft check covers the keyboard +
+          // mouse views; the radial branches above have their own guards on
+          // selectedRadialSegment / selectedRadialChild so they're unaffected.
+          <MacroPanel
+            selectedKey={selectedKey}
+            activeModifiers={activeModifiers}
+            currentCombo={currentCombo}
+            assignment={selectedKey ? getKeyAssignment(selectedKey) : null}
+            doubleAssignment={selectedKey ? getDoubleAssignment(selectedKey) : null}
+            holdAssignment={selectedKey ? getHoldAssignment(selectedKey) : null}
+            draftAssignment={draftAssignment}
+            draftDoubleAssignment={draftDoubleAssignment}
+            assignments={assignments}
+            activeProfile={activeProfile}
+            profiles={profiles}
+            profileLinked={profileLinked}
+            globalInputMethod={globalInputMethod}
+            onAssign={handleAssign}
+            onClear={handleClearKey}
+            onDelete={handleDeleteKey}
+            onAssignDouble={handleAssignDouble}
+            onClearDouble={handleClearDouble}
+            onAssignHold={handleAssignHold}
+            onClearHold={handleClearHold}
+            onClose={() => { clearDraft(); setSelectedKey(null); }}
+            onCancelDraft={clearDraft}
+            onReassign={handleReassign}
+            onDuplicate={handleDuplicateAssignment}
+            onUnassign={(keyId) => handleUnassignKey(currentCombo, keyId)}
+            onNewLibraryAction={handleNewLibraryAction}
+            duplicateOverlaySignal={duplicateOverlaySignal}
+            bindOverlaySignal={bindOverlaySignal}
+            isPro={isPro}
+            voiceEnabled={voiceEnabled}
+            onShowUpgrade={showUpgrade}
+            hiddenTips={hiddenTips}
+            onHideTip={handleHideTip}
+          />
+        ) : null}
+          </div>
+          </div>
+          </div>
+        )}
+        {activeArea !== 'mapping' && (
+        <main className="main-area main-area--expansions">
+          {showTips && (
+            <QuickTips onDismiss={handleDismissTips} searchOverlayHotkey={searchOverlayHotkey} searchOverlayEnabled={searchOverlayEnabled} />
           )}
           {activeArea === 'analytics' && (
             <AnalyticsPanel isPro={isPro} onShowUpgrade={showUpgrade} />
@@ -6063,53 +6249,6 @@ function App() {
               onCreateExpansion={handleCreateExpansionFromClip}
               isPro={isPro}
               onShowUpgrade={showUpgrade}
-            />
-          )}
-          {activeArea === 'mapping' && activeView === 'radial' && (
-            <RadialEditorView
-              hiddenTips={hiddenTips}
-              onHideTip={handleHideTip}
-              radialMenuHotkey={radialMenuHotkey}
-              onSetRadialMenuHotkey={handleSetRadialMenuHotkey}
-              onClearRadialMenuHotkey={handleClearRadialMenuHotkey}
-              radialHoldToSelect={radialHoldToSelect}
-              onSetRadialHoldToSelect={handleSetRadialHoldToSelect}
-              radialMenuItems={radialMenuItems}
-              onAddRadialMenuItem={handleAddRadialMenuItem}
-              onRemoveRadialMenuItem={handleRemoveRadialMenuItem}
-              onReorderRadialMenuItems={handleReorderRadialMenuItems}
-              onAddRadialMenuFolder={handleAddRadialMenuFolder}
-              onAddChildToFolder={handleAddChildToFolder}
-              onRemoveChildFromFolder={handleRemoveChildFromFolder}
-              onMoveItemToFolder={handleMoveItemToFolder}
-              onMoveChildToMain={handleMoveChildToMain}
-              onReorderFolderChildren={handleReorderFolderChildren}
-              onRenameFolder={handleRenameFolder}
-              onRenameRadialMenuItem={handleRenameRadialMenuItem}
-              onRenameChildInFolder={handleRenameChildInFolder}
-              onSwapRadialMenuItems={handleSwapRadialMenuItems}
-              onCreateRadialAction={handleCreateRadialAction}
-              onSetRadialMenuItemIcon={handleSetRadialMenuItemIcon}
-              onSetRadialChildIcon={handleSetRadialChildIcon}
-              selectedRadialSegment={selectedRadialSegment}
-              onSelectRadialSegment={handleSelectRadialSegment}
-              onSelectRadialChild={(folderId, childIndex) => {
-                setSelectedRadialChild({ folderId, childIndex });
-                setSelectedRadialSegment(null);
-                setSelectedKey(null);
-              }}
-              assignments={assignments}
-              dropTargetIndex={radialActiveDrag ? radialDropTarget : -1}
-              dropTargetOuterIndex={radialActiveDrag ? radialDropTargetOuter : -1}
-              rejectIndex={radialRejectIndex}
-              wheelRef={wheelRef}
-              usedKeys={radialUsedKeys}
-              expandedFolder={expandedRadialFolder}
-              onExpandedFolderChange={setExpandedRadialFolder}
-              profiles={profiles}
-              activeProfile={activeProfile}
-              onCopyRadialSegmentToProfile={handleCopyRadialSegmentToProfile}
-              onForceOverwriteRadialSegment={handleForceOverwriteRadialSegment}
             />
           )}
           {activeArea === 'templates' && (
@@ -6209,127 +6348,7 @@ function App() {
             />
           )}
         </main>
-        {/* Right panel: MacroPanel only in Mapping area (Settings lives in its own window) */}
-        {activeArea === 'mapping' && activeView === 'radial' && selectedRadialChild != null ? (
-          <MacroPanel
-            selectedKey={'Folder Child'}
-            activeModifiers={[]}
-            currentCombo=""
-            assignment={radialChildAssignment}
-            doubleAssignment={null}
-            assignments={assignments}
-            activeProfile={activeProfile}
-            profiles={profiles}
-            profileLinked={profileLinked}
-            globalInputMethod={globalInputMethod}
-            onAssign={handleRadialChildAssign}
-            onClear={handleRadialChildClear}
-            onClose={() => setSelectedRadialChild(null)}
-            isPro={isPro}
-            voiceEnabled={voiceEnabled}
-            onShowUpgrade={showUpgrade}
-            hiddenTips={hiddenTips}
-            onHideTip={handleHideTip}
-          />
-        ) : activeArea === 'mapping' && activeView === 'radial' && selectedRadialSegment != null ? (
-          <MacroPanel
-            selectedKey={'Radial Segment'}
-            activeModifiers={[]}
-            currentCombo=""
-            assignment={radialSegmentAssignment}
-            doubleAssignment={null}
-            assignments={assignments}
-            activeProfile={activeProfile}
-            profiles={profiles}
-            profileLinked={profileLinked}
-            globalInputMethod={globalInputMethod}
-            onAssign={handleRadialAssign}
-            onClear={handleRadialClear}
-            onClose={() => setSelectedRadialSegment(null)}
-            isPro={isPro}
-            voiceEnabled={voiceEnabled}
-            onShowUpgrade={showUpgrade}
-            hiddenTips={hiddenTips}
-            onHideTip={handleHideTip}
-          />
-        ) : activeArea === 'mapping' && selectedLibraryId ? (
-          // Unassigned library editor — same MacroPanel, library mode. The
-          // uuid rides in selectedKey so the save/select plumbing works
-          // unchanged; App routes every assign/clear callback to the
-          // {Profile}::UNASSIGNED::{uuid} storage keys.
-          <MacroPanel
-            libraryMode={true}
-            selectedKey={selectedLibraryId}
-            activeModifiers={[]}
-            currentCombo="UNASSIGNED"
-            assignment={getLibraryEntry(selectedLibraryId)}
-            doubleAssignment={getLibraryEntry(selectedLibraryId, '::double')}
-            holdAssignment={getLibraryEntry(selectedLibraryId, '::hold')}
-            assignments={assignments}
-            activeProfile={activeProfile}
-            profiles={profiles}
-            profileLinked={profileLinked}
-            globalInputMethod={globalInputMethod}
-            onAssign={(id, macro) => handleAssignLibraryVariant(id, macro, '')}
-            onClear={(id) => handleClearLibraryVariant(id, '')}
-            onDelete={handleDeleteLibraryEntry}
-            onAssignDouble={(id, macro) => handleAssignLibraryVariant(id, macro, '::double')}
-            onClearDouble={(id) => handleClearLibraryVariant(id, '::double')}
-            onAssignHold={(id, macro) => handleAssignLibraryVariant(id, macro, '::hold')}
-            onClearHold={(id) => handleClearLibraryVariant(id, '::hold')}
-            onClose={() => setSelectedLibraryId(null)}
-            onCancelDraft={() => {}}
-            onReassign={(combo, keyId) => handleBindLibrary(selectedLibraryId, combo, keyId)}
-            onDuplicate={(combo, keyId) => handleDuplicateLibraryToKey(selectedLibraryId, combo, keyId)}
-            duplicateOverlaySignal={duplicateOverlaySignal}
-            bindOverlaySignal={bindOverlaySignal}
-            isPro={isPro}
-            voiceEnabled={false}
-            onShowUpgrade={showUpgrade}
-            hiddenTips={hiddenTips}
-            onHideTip={handleHideTip}
-          />
-        ) : activeArea === 'mapping' && (!isNarrow || selectedKey != null || draftAssignment != null) ? (
-          // Below 1200px the MacroPanel is hidden until the user picks a key or
-          // starts a draft. The selection / draft check covers the keyboard +
-          // mouse views; the radial branches above have their own guards on
-          // selectedRadialSegment / selectedRadialChild so they're unaffected.
-          <MacroPanel
-            selectedKey={selectedKey}
-            activeModifiers={activeModifiers}
-            currentCombo={currentCombo}
-            assignment={selectedKey ? getKeyAssignment(selectedKey) : null}
-            doubleAssignment={selectedKey ? getDoubleAssignment(selectedKey) : null}
-            holdAssignment={selectedKey ? getHoldAssignment(selectedKey) : null}
-            draftAssignment={draftAssignment}
-            draftDoubleAssignment={draftDoubleAssignment}
-            assignments={assignments}
-            activeProfile={activeProfile}
-            profiles={profiles}
-            profileLinked={profileLinked}
-            globalInputMethod={globalInputMethod}
-            onAssign={handleAssign}
-            onClear={handleClearKey}
-            onDelete={handleDeleteKey}
-            onAssignDouble={handleAssignDouble}
-            onClearDouble={handleClearDouble}
-            onAssignHold={handleAssignHold}
-            onClearHold={handleClearHold}
-            onClose={() => { clearDraft(); setSelectedKey(null); }}
-            onCancelDraft={clearDraft}
-            onReassign={handleReassign}
-            onDuplicate={handleDuplicateAssignment}
-            onUnassign={(keyId) => handleUnassignKey(currentCombo, keyId)}
-            onNewLibraryAction={handleNewLibraryAction}
-            duplicateOverlaySignal={duplicateOverlaySignal}
-            bindOverlaySignal={bindOverlaySignal}
-            isPro={isPro}
-            voiceEnabled={voiceEnabled}
-            onShowUpgrade={showUpgrade}
-            hiddenTips={hiddenTips}
-            onHideTip={handleHideTip}
-          />
-        ) : null}
+        )}
       </div>
       <DragOverlay>
         {radialActiveDrag && (
