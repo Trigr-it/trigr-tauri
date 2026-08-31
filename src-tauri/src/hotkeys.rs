@@ -60,6 +60,10 @@ pub static HOLD_DETECTION_PAUSED: AtomicBool = AtomicBool::new(false);
 pub(crate) static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
 static IS_RECORDING_HOTKEY: AtomicBool = AtomicBool::new(false);
 static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
+/// Set the first time the ISO-only key (scancode 0x56, beside left Shift) is
+/// pressed this run; the frontend is told once so the on-screen keyboard can
+/// switch to the ISO shape.
+static ISO_KEY_SEEN: AtomicBool = AtomicBool::new(false);
 // Wait for Pixel eyedropper: while true, the next left click anywhere picks
 // that screen point (suppressed + emitted to the editor); right click or ESC
 // cancels. Self-clearing — the first L/R click or ESC always resets it, so a
@@ -308,10 +312,16 @@ fn suppress_vk_for_key_id(key_id: &str) -> Option<u32> {
 /// Rebuild the suppress key set from current assignments.
 /// Must be called while holding the engine_state lock — overlay_hotkey is read from the state.
 /// Keys allowed for bare mapping in static (non-app-linked) profiles.
+/// F13-F24: character-less extra function keys (Stream Deck / macropad triggers).
+fn is_extra_f_key(key_id: &str) -> bool {
+    matches!(key_id, "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24")
+}
+
 /// Matches STATIC_BARE_ALLOWED in keyboardLayout.jsx.
 fn is_static_bare_allowed(key_id: &str) -> bool {
     matches!(key_id,
         "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12"
+        | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24"
         | "Insert" | "Home" | "End" | "Delete" | "PageUp" | "PageDown"
         | "PrintScreen" | "ScrollLock" | "Pause"
         | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight"
@@ -541,6 +551,11 @@ fn key_id_to_vk(key_id: &str) -> Option<u32> {
         "F4" => Some(0x73), "F5" => Some(0x74), "F6" => Some(0x75),
         "F7" => Some(0x76), "F8" => Some(0x77), "F9" => Some(0x78),
         "F10" => Some(0x79), "F11" => Some(0x7A), "F12" => Some(0x7B),
+        // F13-F24: no physical keyboard has them, which makes them ideal
+        // dedicated triggers for Stream Decks, macropads and remapped keys.
+        "F13" => Some(0x7C), "F14" => Some(0x7D), "F15" => Some(0x7E), "F16" => Some(0x7F),
+        "F17" => Some(0x80), "F18" => Some(0x81), "F19" => Some(0x82), "F20" => Some(0x83),
+        "F21" => Some(0x84), "F22" => Some(0x85), "F23" => Some(0x86), "F24" => Some(0x87),
         "ArrowLeft" => Some(0x25), "ArrowUp" => Some(0x26),
         "ArrowRight" => Some(0x27), "ArrowDown" => Some(0x28),
         "Home" => Some(0x24), "End" => Some(0x23),
@@ -554,6 +569,7 @@ fn key_id_to_vk(key_id: &str) -> Option<u32> {
         "Semicolon" => Some(0xBA), "Quote" => Some(0xDE),
         "Backquote" => Some(0xC0),
         "Backslash" => Some(0xDC),
+        "IntlBackslash" => Some(0xE2), // VK_OEM_102, ISO key beside left Shift
         "Comma" => Some(0xBC), "Period" => Some(0xBE), "Slash" => Some(0xBF),
         "Numpad0" => Some(0x60), "Numpad1" => Some(0x61), "Numpad2" => Some(0x62),
         "Numpad3" => Some(0x63), "Numpad4" => Some(0x64), "Numpad5" => Some(0x65),
@@ -942,7 +958,7 @@ pub(crate) struct EngineState {
     pub(crate) temp_macro_play_hotkey: Option<(u8, u32)>,
     pub(crate) temp_macro_play_hotkey_str: Option<String>,
     // Continuous-replay loop hotkey — press once to start, press again to
-    // stop. Esc also stops via the global ESC_LOOP_BREAK gate per
+    // stop. Esc also stops via actions::esc_requested per
     // [[feedback_esc_global_macro_cancel]]. None when unset/disabled.
     pub(crate) temp_macro_loop_hotkey: Option<(u8, u32)>,
     pub(crate) temp_macro_loop_hotkey_str: Option<String>,
@@ -1146,6 +1162,9 @@ fn vk_to_key_id(vk: u32) -> Option<&'static str> {
         0x79 => Some("F10"),
         0x7A => Some("F11"),
         0x7B => Some("F12"),
+        0x7C => Some("F13"), 0x7D => Some("F14"), 0x7E => Some("F15"), 0x7F => Some("F16"),
+        0x80 => Some("F17"), 0x81 => Some("F18"), 0x82 => Some("F19"), 0x83 => Some("F20"),
+        0x84 => Some("F21"), 0x85 => Some("F22"), 0x86 => Some("F23"), 0x87 => Some("F24"),
         // Navigation
         0x25 => Some("ArrowLeft"),
         0x26 => Some("ArrowUp"),
@@ -1178,6 +1197,7 @@ fn vk_to_key_id(vk: u32) -> Option<&'static str> {
         0xDE => Some("Quote"),
         0xC0 => Some("Backquote"),
         0xDC => Some("Backslash"),
+        0xE2 => Some("IntlBackslash"),
         0xBC => Some("Comma"),
         0xBE => Some("Period"),
         0xBF => Some("Slash"),
@@ -1399,6 +1419,87 @@ fn resolve_key_id(vk: u32, scan: u32) -> Option<&'static str> {
     vk_to_key_id(vk)
 }
 
+// ── Live key legends from the Windows layout ─────────────────────────────────
+// The on-screen keyboard is drawn from fixed physical positions ("slots",
+// named after their US-QWERTY key id). For each slot we ask the active input
+// layout which VK sits there and what it types, plain and shifted, and run
+// that VK through resolve_key_id so the slot shows the SAME key id the hook
+// will report when the user presses it. AZERTY/QWERTZ letters therefore land
+// in the right place, and UK/DE/FR/… symbols carry their real legends.
+
+/// One drawn key position and what the current layout puts on it.
+#[derive(serde::Serialize)]
+pub struct KeyLegend {
+    /// US-QWERTY id of the physical position (matches keyboardLayout.jsx).
+    pub slot: &'static str,
+    /// Key id the hook reports for a press at this position on this layout.
+    pub key_id: String,
+    pub base: String,
+    pub shift: String,
+}
+
+/// Set-1 scancodes of every character slot the canvas draws.
+const SLOT_SCANCODES: &[(&str, u32)] = &[
+    ("Backquote", 0x29),
+    ("Digit1", 0x02), ("Digit2", 0x03), ("Digit3", 0x04), ("Digit4", 0x05), ("Digit5", 0x06),
+    ("Digit6", 0x07), ("Digit7", 0x08), ("Digit8", 0x09), ("Digit9", 0x0A), ("Digit0", 0x0B),
+    ("Minus", 0x0C), ("Equal", 0x0D),
+    ("KeyQ", 0x10), ("KeyW", 0x11), ("KeyE", 0x12), ("KeyR", 0x13), ("KeyT", 0x14),
+    ("KeyY", 0x15), ("KeyU", 0x16), ("KeyI", 0x17), ("KeyO", 0x18), ("KeyP", 0x19),
+    ("BracketLeft", 0x1A), ("BracketRight", 0x1B),
+    ("KeyA", 0x1E), ("KeyS", 0x1F), ("KeyD", 0x20), ("KeyF", 0x21), ("KeyG", 0x22),
+    ("KeyH", 0x23), ("KeyJ", 0x24), ("KeyK", 0x25), ("KeyL", 0x26),
+    ("Semicolon", 0x27), ("Quote", 0x28), ("Backslash", 0x2B),
+    ("KeyZ", 0x2C), ("KeyX", 0x2D), ("KeyC", 0x2E), ("KeyV", 0x2F), ("KeyB", 0x30),
+    ("KeyN", 0x31), ("KeyM", 0x32),
+    ("Comma", 0x33), ("Period", 0x34), ("Slash", 0x35),
+    ("IntlBackslash", 0x56),
+];
+
+/// What a VK types on `hkl` with the given Shift state. Dead keys come back
+/// as a negative count with the character still in the buffer, so the sign is
+/// dropped. Flag 0x4 asks ToUnicodeEx not to disturb the real keyboard state
+/// (Windows 10 1607+), which matters because a dead key would otherwise
+/// linger and mangle the user's next real keystroke.
+unsafe fn layout_char(vk: u32, scan: u32, shift: bool, hkl: windows_sys::Win32::UI::Input::KeyboardAndMouse::HKL) -> String {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::ToUnicodeEx;
+    let mut state = [0u8; 256];
+    if shift {
+        state[0x10] = 0x80; // VK_SHIFT down
+    }
+    let mut buf = [0u16; 8];
+    let n = ToUnicodeEx(vk, scan, state.as_ptr(), buf.as_mut_ptr(), buf.len() as i32, 0x4, hkl);
+    let n = (n.unsigned_abs() as usize).min(buf.len());
+    String::from_utf16_lossy(&buf[..n])
+        .chars()
+        .filter(|c| !c.is_control() && !c.is_whitespace())
+        .collect()
+}
+
+/// Legends for every character slot on the calling thread's input layout.
+pub fn keyboard_legends() -> Vec<KeyLegend> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayout, MapVirtualKeyExW};
+    const MAPVK_VSC_TO_VK_EX: u32 = 3;
+    let mut out = Vec::with_capacity(SLOT_SCANCODES.len());
+    unsafe {
+        let hkl = GetKeyboardLayout(0);
+        for &(slot, scan) in SLOT_SCANCODES {
+            let vk = MapVirtualKeyExW(scan, MAPVK_VSC_TO_VK_EX, hkl);
+            if vk == 0 {
+                continue;
+            }
+            let key_id = resolve_key_id(vk, scan).unwrap_or(slot);
+            out.push(KeyLegend {
+                slot,
+                key_id: key_id.to_string(),
+                base: layout_char(vk, scan, false, hkl),
+                shift: layout_char(vk, scan, true, hkl),
+            });
+        }
+    }
+    out
+}
+
 /// Resolve character for expansion buffer using scan code for OEM keys.
 pub(crate) fn resolve_char(vk: u32, scan: u32) -> Option<char> {
     if is_oem_vk(vk) {
@@ -1506,6 +1607,22 @@ fn build_modifier_combo() -> String {
     mods.join("+")
 }
 
+/// True if the key being pressed right now (key_id + currently held
+/// modifiers) is the trigger described by `storage_key`
+/// ("Profile::Combo::KeyId[::double|::hold]"; Combo is "BARE" or the
+/// build_modifier_combo string).
+fn press_matches_trigger(storage_key: &str, key_id: &str) -> bool {
+    let mut parts = storage_key.split("::");
+    let (Some(_profile), Some(combo), Some(trigger_key)) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    if trigger_key != key_id {
+        return false;
+    }
+    let held = build_modifier_combo();
+    if combo == "BARE" { held.is_empty() } else { combo == held }
+}
+
 fn has_any_modifier() -> bool {
     MOD_CTRL.load(Ordering::SeqCst)
         || MOD_ALT.load(Ordering::SeqCst)
@@ -1561,16 +1678,17 @@ unsafe extern "system" fn keyboard_hook_proc(
         HOOK_NCODE_NEGATIVE.store(true, Ordering::SeqCst);
     }
 
-    // Esc → cancel any running macro (loop OR one-shot OR Record Macro replay).
-    // Single atomic store on every real Esc keydown. Macro execution paths
-    // reset the flag at start and poll it per step / per event; no harm if
-    // the flag is set while no macro is running because the next macro fire
-    // resets it. We do NOT suppress Esc — the target app should still see
-    // it so any open modal closes too.
+    // Esc → cancel whatever is running right now (loop, one-shot, Type Text,
+    // Wait step, Record Macro replay, repeat). One lock-free timestamp store
+    // per real Esc keydown; runs compare it against their own start time
+    // (actions::esc_requested), so an Esc pressed while nothing is running
+    // is simply older than the next run and cannot block it. We do NOT
+    // suppress Esc — the target app should still see it so any open modal
+    // closes too.
     if n_code >= 0 && matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN) {
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         if kb.vkCode == 0x1B /* VK_ESCAPE */ && (kb.flags & LLKHF_INJECTED) == 0 {
-            crate::actions::ESC_LOOP_BREAK.store(true, Ordering::SeqCst);
+            crate::actions::esc_stamp();
         }
     }
     // Buffer real user keystrokes during injection — swallow them so they don't land in the target app.
@@ -2280,19 +2398,15 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                         });
                     match snapshot {
                         Some((events, captured_at)) => {
-                            // Clear any stale Esc from before this fire — the
-                            // hook sets ESC_LOOP_BREAK on every real Esc keydown
-                            // and editor-flow macro fires reset it via the
-                            // MacroRunningGuard, but Quick Replay bypasses that
-                            // infrastructure. Without this, a single Esc press
-                            // at any point in the past makes every future
-                            // Quick Replay abort on the first event.
-                            crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
                             let _ = app.emit(
                                 "temp-macro-replay-started",
                                 serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
                             );
                             std::thread::spawn(move || {
+                                // Quick Replay bypasses execute_action, so it
+                                // marks its own cancellable run (Esc from
+                                // before this instant cannot abort it).
+                                crate::actions::begin_cancellable_run();
                                 let duration = crate::recorder::events_duration_secs(&events);
                                 crate::actions::replay_recorded_events(&events, "Quick Replay");
                                 crate::analytics::log_replay_fired(
@@ -2330,16 +2444,13 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                         });
                     match snapshot {
                         Some((events, captured_at)) => {
-                            // Same stale-Esc reset as Quick Replay — the loop
-                            // thread reads ESC_LOOP_BREAK on every checkpoint
-                            // so a leftover true would terminate the loop
-                            // before its first iteration completes.
-                            crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
                             let _ = app.emit(
                                 "temp-macro-loop-started",
                                 serde_json::json!({ "count": events.len(), "capturedAt": captured_at }),
                             );
                             std::thread::spawn(move || {
+                                // Same as Quick Replay: own cancellable run.
+                                crate::actions::begin_cancellable_run();
                                 let duration = crate::recorder::events_duration_secs(&events);
                                 let iters = crate::actions::replay_recorded_events_loop(&events, "Quick Loop");
                                 if iters > 0 {
@@ -2548,6 +2659,12 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         }
     };
 
+    // First sighting of the ISO-only key proves the physical board is ISO.
+    // Processor thread, not the hook proc, so an emit here is fine.
+    if key_id == "IntlBackslash" && !ISO_KEY_SEEN.swap(true, Ordering::SeqCst) {
+        let _ = app.emit("iso-key-detected", ());
+    }
+
     // Update modifier state
     if is_modifier_vk(vk) {
         update_modifier_state(vk, true);
@@ -2616,11 +2733,31 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
         crate::foreground::check_and_switch_if_stale(app);
     }
 
-    // ── Release any held key on physical keypress ───────────────────────
-    if crate::actions::is_key_held() {
-        log::debug!("[DEBUG] HELD RELEASE: firing before pause check, key_id={}", key_id);
+    // ── Hold / repeat "stops when" ──────────────────────────────────────
+    // Esc always releases a held hotkey. Beyond that the action's `stopOn`
+    // policy decides (actions::stop_on_any_key): "anyKey" stops on any real
+    // NON-modifier key that is not the trigger itself — modifiers are chord
+    // parts, and the trigger's own re-press must reach the executor so it
+    // toggles the hold/repeat off cleanly; "escOrTrigger" leaves other keys
+    // alone. Defaults: hold = anyKey, repeat = escOrTrigger (autoclickers
+    // keep going while the user types), both changeable in the editor.
+    if vk == 0x1B && crate::actions::is_key_held() {
         crate::actions::release_held_key();
         crate::tray::update_tray_icon_normal(app);
+    } else if !is_modifier_vk(vk) && !is_auto_repeat {
+        if let Some(policy) = crate::actions::held_any_key_stop() {
+            if !policy.trigger.as_deref().map_or(false, |t| press_matches_trigger(t, &key_id)) {
+                log::debug!("[DEBUG] HELD RELEASE (any key): key_id={}", key_id);
+                crate::actions::release_held_key();
+                crate::tray::update_tray_icon_normal(app);
+            }
+        }
+        if let Some(policy) = crate::actions::repeat_any_key_stop() {
+            if !policy.trigger.as_deref().map_or(false, |t| press_matches_trigger(t, &key_id)) {
+                crate::actions::stop_repeating_key();
+                crate::tray::update_tray_icon_normal(app);
+            }
+        }
     }
 
     // ── Pixel-pick eyedropper: ESC cancels ──────────────────────────────
@@ -4286,16 +4423,17 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
     // H1 re-entrancy guard — same trigger mid-flight. Previously dropped
     // the new fire outright (H1 re-entrancy guard) to prevent the
     // BricsCAD-style race across clipboard snapshot/restore + SUPPRESS_SIMULATED.
-    // v0.8.6: on re-press we now signal cancel via ESC_LOOP_BREAK, wait for
-    // the running thread to release its guard, and acquire fresh. Enables
-    // re-pressing the trigger to abort a stuck Wait for Text / Wait for
-    // Pixel and try again — the specific ask from OCR-diagnosis testing.
-    // The 250ms wait ceiling is a safety net; if the old thread is stuck
-    // harder than ESC_LOOP_BREAK can reach, we drop the fire rather than
-    // race it. Caveat: ESC_LOOP_BREAK is global, so concurrent macros that
-    // happen to be inside a Wait step during this ~250ms window will also
-    // abort — accepted trade-off; restarting a single macro is the far
-    // more common intent.
+    // v0.8.6: on re-press we now signal cancel (esc_stamp, same signal as a
+    // real Esc), wait for the running thread to release its guard, and
+    // acquire fresh. Enables re-pressing the trigger to abort a stuck Wait
+    // for Text / Wait for Pixel and try again — the specific ask from
+    // OCR-diagnosis testing. The 250ms wait ceiling is a safety net; if the
+    // old thread is stuck harder than the cancel signal can reach, we drop
+    // the fire rather than race it. Caveat: the cancel signal is global, so
+    // concurrent macros that happen to be inside a Wait step at this instant
+    // will also abort — accepted trade-off; restarting a single macro is the
+    // far more common intent. The new run starts after the stamp, so it is
+    // unaffected by it (no clear needed).
     let macro_guard = if let Some(ref key) = trigger_key {
         match crate::actions::MacroRunningGuard::try_acquire(key) {
             Some(g) => Some(g),
@@ -4304,7 +4442,7 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
                     "[Keyfire] Re-fire on active trigger {}: cancelling current run + restarting",
                     key
                 );
-                crate::actions::ESC_LOOP_BREAK.store(true, Ordering::SeqCst);
+                crate::actions::esc_stamp();
                 let mut acquired = None;
                 for _ in 0..25 {
                     thread::sleep(std::time::Duration::from_millis(10));
@@ -4313,7 +4451,6 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
                         break;
                     }
                 }
-                crate::actions::ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
                 match acquired {
                     Some(g) => Some(g),
                     None => {
@@ -4360,6 +4497,14 @@ fn fire_macro_impl(macro_val: Value, is_bare: bool, trigger_key: Option<String>,
     let is_altgr = !skip_altgr_erase
         && trigger_reached_app
         && MOD_CTRL.load(Ordering::SeqCst) && MOD_ALT.load(Ordering::SeqCst);
+    // F13-F24 never produce a character (no physical keyboard has them; a
+    // Stream Deck or macropad press arrives as a bare VK 0x7C-0x87), so the
+    // bare-key leaked-character erase has nothing to undo. Skip it, or every
+    // deck press would delete one real character in the target app.
+    let is_bare = is_bare && !trigger_key.as_deref()
+        .and_then(|sk| sk.split("::").nth(2))
+        .map(is_extra_f_key)
+        .unwrap_or(false);
     if is_altgr {
         log::info!("[FIRE] AltGr combo detected — will erase dead character");
     }
@@ -4409,6 +4554,7 @@ fn key_id_to_display(key_id: &str) -> &str {
         "BracketLeft" => "[",
         "BracketRight" => "]",
         "Backslash" => "\\",
+        "IntlBackslash" => "\\",
         "Comma" => ",",
         "Period" => ".",
         "Slash" => "/",

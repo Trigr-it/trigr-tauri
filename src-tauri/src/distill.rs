@@ -184,6 +184,16 @@ pub enum DistilledStep {
         hold_ms: u64,
         #[serde(default)]
         modifiers: Vec<u32>,
+        /// Client-relative start/end + window identity, set only when BOTH
+        /// endpoints fell inside the same foreground window's client area.
+        /// Same contract as ClickAtPosition's x_rel/y_rel/target_window, so
+        /// a drag follows its window (moves, monitor swaps, resizes) too.
+        #[serde(default)]
+        from_rel: Option<(i32, i32)>,
+        #[serde(default)]
+        to_rel: Option<(i32, i32)>,
+        #[serde(default)]
+        target_window: Option<TargetWindow>,
     },
     Scroll {
         delta: i32,
@@ -374,6 +384,21 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
                             modifiers: down.modifiers,
                         });
                     } else {
+                        // Bind the drag to the window only when the release
+                        // landed in the SAME window's client area as the press
+                        // (dragging a file onto another window, or out of the
+                        // window, stays absolute: two coordinate systems).
+                        let target_at_up = current_fg
+                            .as_ref()
+                            .and_then(|fg| resolve_rel(*x, *y, fg));
+                        let (from_rel, to_rel, target_window) = match (down.target_at_down, target_at_up) {
+                            (Some(d), Some(u))
+                                if d.target.title == u.target.title && d.target.exe == u.target.exe =>
+                            {
+                                (Some((d.rel_x, d.rel_y)), Some((u.rel_x, u.rel_y)), Some(d.target))
+                            }
+                            _ => (None, None, None),
+                        };
                         out.push(DistilledStep::Drag {
                             from_x: down.x,
                             from_y: down.y,
@@ -382,6 +407,9 @@ fn distill_internal(events: &[RecordedEvent]) -> Vec<DistilledStep> {
                             button: down.button,
                             hold_ms: t.saturating_sub(down.t),
                             modifiers: down.modifiers,
+                            from_rel,
+                            to_rel,
+                            target_window,
                         });
                     }
                 }
@@ -516,17 +544,45 @@ fn distilled_to_macro_step(step: DistilledStep) -> serde_json::Value {
         // steps → up-at-end, spread across holdMs, so drag-detecting apps
         // (sliders, drag-drop, canvas tools) see a genuine drag. The exact
         // recorded cursor path is not preserved — start/end/duration are.
-        DistilledStep::Drag { from_x, from_y, to_x, to_y, button, hold_ms, modifiers } => {
-            let click_value = json!({
-                "x": from_x,
-                "y": from_y,
-                "button": button_short_name(&button),
-                "mode": "absolute",
-                "holdMs": hold_ms,
-                "modifiers": modifier_vk_names(&modifiers),
-                "dragToX": to_x,
-                "dragToY": to_y,
-            });
+        // Window-bound drags mirror the ClickAtPosition windowClient shape:
+        // x/y and dragToX/Y are client-relative, fallbackX/Y and
+        // fallbackDragToX/Y keep the recorded absolute points for Free tier,
+        // "window not found" and the cleared-binding rewrite.
+        DistilledStep::Drag { from_x, from_y, to_x, to_y, button, hold_ms, modifiers, from_rel, to_rel, target_window } => {
+            let click_value = match (from_rel, to_rel, target_window) {
+                (Some((fx, fy)), Some((tx, ty)), Some(tw)) => json!({
+                    "x": fx,
+                    "y": fy,
+                    "button": button_short_name(&button),
+                    "mode": "windowClient",
+                    "targetWindow": {
+                        "title": tw.title,
+                        "exe": tw.exe,
+                        "class": tw.class,
+                        "clientW": tw.client_w,
+                        "clientH": tw.client_h,
+                    },
+                    "resizeBehavior": "proportional",
+                    "holdMs": hold_ms,
+                    "modifiers": modifier_vk_names(&modifiers),
+                    "dragToX": tx,
+                    "dragToY": ty,
+                    "fallbackX": from_x,
+                    "fallbackY": from_y,
+                    "fallbackDragToX": to_x,
+                    "fallbackDragToY": to_y,
+                }),
+                _ => json!({
+                    "x": from_x,
+                    "y": from_y,
+                    "button": button_short_name(&button),
+                    "mode": "absolute",
+                    "holdMs": hold_ms,
+                    "modifiers": modifier_vk_names(&modifiers),
+                    "dragToX": to_x,
+                    "dragToY": to_y,
+                }),
+            };
             json!({
                 "type": "Click at Position",
                 "value": click_value.to_string(),

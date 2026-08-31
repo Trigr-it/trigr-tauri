@@ -1,6 +1,27 @@
 use serde_json::Value;
 use tauri::{Emitter, Listener, Manager};
 
+/// Chromium switches for EVERY WebView2 window. WebView2 refuses to create a
+/// webview whose browser arguments differ from the browser process already
+/// running for this user-data folder (ERROR_INVALID_STATE), so every
+/// WebviewWindowBuilder in this crate AND the main window in tauri.conf.json
+/// (`additionalBrowserArgs`) must use this exact string.
+///
+/// `--process-per-site`: Chromium normally gives each WebView its own renderer
+/// process (30-120 MB private each; with 8 pre-created windows that was
+/// ~500 MB at startup). All Keyfire windows load the same origin
+/// (tauri.localhost), so this folds them into ONE renderer process.
+/// `--disable-background-timer-throttling` / `--disable-renderer-backgrounding`:
+/// webview_mem parks hidden windows with SetIsVisible(false), which makes
+/// Chromium treat them as background tabs. Without these, timers in the main
+/// window (hidden in the tray) would be aligned to 1 s and then to once a
+/// minute after 5 min, and the shared renderer would drop to background CPU
+/// priority whenever every window is hidden, i.e. most of the time.
+///
+/// The `--disable-features` list is wry's default and must be kept.
+pub const WEBVIEW_BROWSER_ARGS: &str =
+    "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+
 // Platform seam: the 10 engine modules below are Win32-bound. On Windows the
 // real modules compile; everywhere else the compiler swaps in no-op twins from
 // stubs/ so the app builds and boots UI-only. Shared modules (analytics,
@@ -1901,6 +1922,7 @@ pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
         None => {
             let url = tauri::WebviewUrl::App("index.html?countdown=1".into());
             let builder = tauri::WebviewWindowBuilder::new(&app, "countdown", url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire Recorder")
                 .inner_size(380.0, 320.0)
                 .decorations(false)
@@ -2868,6 +2890,38 @@ fn set_startup_enabled(enabled: bool) {
 #[tauri::command]
 fn get_app_version(app: tauri::AppHandle) -> String {
     app.package_info().version.to_string()
+}
+
+/// Best-effort guess at the physical keyboard form factor from the active
+/// input language: "iso" (tall Enter, extra key beside left Shift) for the UK
+/// and mainland-European layouts, "ansi" otherwise. Windows does not expose
+/// the real shape; the frontend upgrades the guess to ISO the first time the
+/// hook sees the ISO key (scancode 0x56) and the user can override it.
+#[tauri::command]
+fn get_keyboard_layout_hint() -> String {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayout;
+    // 0 = the calling thread's layout; sync commands run on the main thread,
+    // whose layout follows the user's active input language.
+    let hkl = unsafe { GetKeyboardLayout(0) } as usize;
+    let langid = (hkl & 0xFFFF) as u32;
+    let primary = langid & 0x3FF;
+    let sub = langid >> 10;
+    let iso = match primary {
+        0x09 => matches!(sub, 0x02 | 0x06), // en-GB, en-IE (other English = ANSI)
+        0x02 | 0x03 | 0x05 | 0x06 | 0x07 | 0x08 | 0x0A | 0x0B | 0x0C | 0x0E | 0x0F | 0x10
+        | 0x13 | 0x14 | 0x15 | 0x16 | 0x18 | 0x1A | 0x1B | 0x1D | 0x1F | 0x22 | 0x24
+        | 0x25 | 0x26 | 0x27 | 0x2D | 0x56 => true, // bg ca cs da de el es fi fr hu is it nl nb pl pt ro hr sk sv tr uk sl et lv lt eu gl
+        _ => false,
+    };
+    if iso { "iso".to_string() } else { "ansi".to_string() }
+}
+
+/// Per-position legends (and hook key ids) from the active Windows input
+/// layout, for the on-screen keyboard. Sync so it runs on the main thread,
+/// whose layout follows the user's active input language.
+#[tauri::command]
+fn get_keyboard_legends() -> Vec<hotkeys::KeyLegend> {
+    hotkeys::keyboard_legends()
 }
 
 // ── Help / External (Phase 3) ───────────────────────────────────────────────
@@ -4507,6 +4561,7 @@ async fn export_analytics_pdf(
         };
         let url = tauri::WebviewUrl::App(format!("index.html?report=1&{}", url_query).into());
         let built = tauri::WebviewWindowBuilder::new(&app, "report", url)
+            .additional_browser_args(WEBVIEW_BROWSER_ARGS)
             .title("Keyfire Report")
             .inner_size(940.0, 1240.0)
             .visible(false)
@@ -6202,6 +6257,7 @@ pub fn run() {
             // Pre-create overlay window hidden — prevents frozen first launch
             let overlay_url = tauri::WebviewUrl::App("index.html?overlay=1".into());
             let overlay_win = tauri::WebviewWindowBuilder::new(app, "overlay", overlay_url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire Quick Search")
                 .inner_size(620.0, 103.0)
                 .decorations(false)
@@ -6240,6 +6296,7 @@ pub fn run() {
             // both are required to prevent a visible background box around the panel.
             let fillin_url = tauri::WebviewUrl::App("index.html?fillin=1".into());
             let fillin_win = tauri::WebviewWindowBuilder::new(app, "fillin", fillin_url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire — Fill In")
                 .inner_size(420.0, 300.0)
                 .decorations(false)
@@ -6276,6 +6333,7 @@ pub fn run() {
             // Pre-create clipboard overlay window hidden
             let clipoverlay_url = tauri::WebviewUrl::App("index.html?clipboardoverlay=1".into());
             let clipoverlay_win = tauri::WebviewWindowBuilder::new(app, "clipboardoverlay", clipoverlay_url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire Clipboard")
                 .inner_size(400.0, 300.0)
                 .decorations(false)
@@ -6325,6 +6383,7 @@ pub fn run() {
             // Pre-create radial menu window hidden
             let radial_url = tauri::WebviewUrl::App("index.html?radialmenu=1".into());
             let radial_win = tauri::WebviewWindowBuilder::new(app, "radialmenu", radial_url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire Radial Menu")
                 .inner_size(525.0, 525.0)
                 .decorations(false)
@@ -6356,14 +6415,15 @@ pub fn run() {
             let _ = &radial_win;
 
             // Pre-create recorder countdown window hidden. Same pattern as
-            // fillin / clipboard / radial overlays — Tauri shares one
-            // WebView2 process across all windows so each additional one is
-            // incremental (~10-15MB), and webview_mem suspends it after
+            // fillin / clipboard / radial overlays. NOTE: every window is its
+            // own renderer process unless WEBVIEW_BROWSER_ARGS folds them (it
+            // does, via --process-per-site); webview_mem also suspends it after
             // 5min idle. On-demand creation was attempted but proved
             // unreliable (destroy/rebuild race made the modal silently fail
             // to appear, leaving main hidden and the flow stuck).
             let countdown_url = tauri::WebviewUrl::App("index.html?countdown=1".into());
             let countdown_win = tauri::WebviewWindowBuilder::new(app, "countdown", countdown_url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire Recorder")
                 .inner_size(380.0, 320.0)
                 .decorations(false)
@@ -6403,6 +6463,7 @@ pub fn run() {
             // logic in the overlay itself.
             let snip_url = tauri::WebviewUrl::App("index.html?snipoverlay=1".into());
             let snip_win = tauri::WebviewWindowBuilder::new(app, "snipoverlay", snip_url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire Snip Overlay")
                 // Initial size is a placeholder — show_snip_overlay resizes
                 // to full virtual desktop before show. Using 100×100 here
@@ -6443,6 +6504,7 @@ pub fn run() {
             // CloseRequested handler hides it instead.
             let settings_url = tauri::WebviewUrl::App("index.html?settings=1".into());
             let settings_win = tauri::WebviewWindowBuilder::new(app, "settings", settings_url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
                 .title("Keyfire Settings")
                 .inner_size(900.0, 640.0)
                 .min_inner_size(720.0, 520.0)
@@ -6559,14 +6621,19 @@ pub fn run() {
             // Start foreground watcher for app-specific profile switching
             foreground::start_watcher(app.handle().clone());
 
-            // Reclaim renderer memory from long-hidden windows (suspend
-            // overlays / cache-trim main after 5 min hidden)
+            // Park hidden windows (release their rendering resources) and
+            // suspend long-idle overlays. See webview_mem.rs.
             webview_mem::start(app.handle().clone());
+
+            // Esc-cancel clock: first use must not be inside the LL hook.
+            actions::init_cancel_clock();
 
             // Autolaunch: if --autolaunch flag, keep window hidden (tray only)
             // Normal launch: show window
             if !tray::is_autolaunch() {
                 if let Some(window) = app.get_webview_window("main") {
+                    // Belt-and-braces: never show a window webview_mem may have parked.
+                    webview_mem::resume_for_show(app.handle(), "main");
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
@@ -6762,6 +6829,8 @@ pub fn run() {
             get_startup_enabled,
             set_startup_enabled,
             get_app_version,
+            get_keyboard_layout_hint,
+            get_keyboard_legends,
             // Help / External
             open_help,
             open_config_folder,

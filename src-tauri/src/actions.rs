@@ -1,7 +1,7 @@
 use log::{info, warn};
 use serde_json::Value;
 use std::cell::Cell;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tauri::{Emitter, Manager};
 use std::sync::Arc;
 use std::thread;
@@ -176,8 +176,7 @@ impl Drop for PasteOpGuard {
 // FIRST: if the trigger is already looping, we set its cancel flag and return
 // without spawning a new fire. `LOOPING_COUNT` is the cheap "any loop active?"
 // predicate the LL hook polls on every Esc keydown — single atomic read, no
-// mutex contention. `ESC_LOOP_BREAK` is the global cancel signal set by the
-// hook on Esc and reset when the last loop exits.
+// mutex contention.
 static ACTIVE_MACRO_KEYS: LazyLock<Mutex<HashSet<String>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
@@ -185,7 +184,67 @@ static LOOPING_MACROS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static LOOPING_COUNT: AtomicUsize = AtomicUsize::new(0);
-pub static ESC_LOOP_BREAK: AtomicBool = AtomicBool::new(false);
+
+// ── Esc cancel: an EDGE, not a latch ──────────────────────────────────────────
+// Esc cancels whatever is running at the instant it is pressed and has no
+// effect on anything started afterwards. The hook stamps the press time; a
+// cancellable run (a fire, repeat mode, a Quick Replay/Loop) records its own
+// start time on its thread, and `esc_requested()` is true only while an Esc
+// stamp is NEWER than the current run's start. Nothing ever has to "clear"
+// the signal, so a path that forgets to do so cannot be blocked by a stale
+// Esc from minutes earlier (the v0.8.8-v0.8.10 bug: every plain Type Text
+// action aborted at 0 chars after any Esc press until a macro happened to
+// reset the old boolean).
+//
+// Millisecond resolution from a process-monotonic clock. An Esc pressed in
+// the same millisecond a run starts is treated as "before" it, which is the
+// intended reading (the user was cancelling the previous thing, not this one).
+
+static CANCEL_CLOCK: OnceLock<Instant> = OnceLock::new();
+/// Monotonic ms of the most recent real Esc keydown (or programmatic cancel
+/// request via `esc_stamp`). 0 = never.
+static ESC_PRESSED_AT_MS: AtomicU64 = AtomicU64::new(0);
+thread_local! {
+    /// Start of the cancellable run executing on this thread. 0 = none yet.
+    static RUN_STARTED_MS: Cell<u64> = const { Cell::new(0) };
+}
+
+fn cancel_now_ms() -> u64 {
+    // +1 so a stamped value is never 0 ("never").
+    CANCEL_CLOCK.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+}
+
+/// Call once at startup so the clock's first use is not inside the LL hook.
+pub fn init_cancel_clock() {
+    let _ = cancel_now_ms();
+}
+
+/// Record a cancel request NOW. Called by the LL hook on every real Esc
+/// keydown and by the same-trigger re-fire path. Lock-free, hook-safe.
+pub fn esc_stamp() {
+    ESC_PRESSED_AT_MS.store(cancel_now_ms(), Ordering::SeqCst);
+}
+
+/// Mark the start of a cancellable run on the CURRENT thread. Must be the
+/// first thing every entry point does: `execute_action` at depth 1 (covers
+/// hotkey fires, editor test fires and every nested step), the repeat-mode
+/// thread, and the Quick Replay / Quick Loop threads.
+pub fn begin_cancellable_run() {
+    RUN_STARTED_MS.with(|s| s.set(cancel_now_ms()));
+}
+
+/// True if Esc was pressed (or a cancel requested) since this thread's run
+/// began. A thread that never called `begin_cancellable_run` starts its run
+/// implicitly at the first check, so an old Esc can never abort it.
+pub fn esc_requested() -> bool {
+    let started = RUN_STARTED_MS.with(|s| {
+        if s.get() == 0 {
+            s.set(cancel_now_ms());
+        }
+        s.get()
+    });
+    ESC_PRESSED_AT_MS.load(Ordering::SeqCst) > started
+}
 
 /// Set by any action/step that aborts with a user-facing reason (target
 /// window not found, app failed to launch, Wait step timed out with Abort).
@@ -243,7 +302,7 @@ impl LoopHandle {
     }
 
     pub(crate) fn is_cancelled(&self) -> bool {
-        self.cancel_flag.load(Ordering::SeqCst) || ESC_LOOP_BREAK.load(Ordering::SeqCst)
+        self.cancel_flag.load(Ordering::SeqCst) || esc_requested()
     }
 }
 
@@ -252,10 +311,7 @@ impl Drop for LoopHandle {
         if let Ok(mut map) = LOOPING_MACROS.lock() {
             map.remove(&self.key);
         }
-        let prev = LOOPING_COUNT.fetch_sub(1, Ordering::SeqCst);
-        if prev <= 1 {
-            ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
-        }
+        LOOPING_COUNT.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -280,7 +336,8 @@ pub fn cancel_loop_if_running(trigger_key: &str) -> bool {
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::{Mutex, LazyLock};
+use std::sync::{Mutex, LazyLock, OnceLock};
+use std::time::Instant;
 
 struct AhkProcess {
     child: Child,
@@ -316,6 +373,10 @@ struct HeldKeyState {
     mouse_buttons: Vec<String>, // held mouse buttons — chords hold several at once
     label: String, // e.g. "Ctrl+W" for tray tooltip
     trigger_mouse_id: Option<String>, // e.g. "MOUSE_RIGHT" — when set, release on mouse-up instead of toggle
+    /// Storage key of the trigger that started the hold (exempt from any-key release).
+    trigger_storage_key: Option<String>,
+    /// `stopOn` policy: true = any other (non-modifier) key releases the hold.
+    stop_on_any_key: bool,
 }
 
 /// Send the UP events for a held state's outputs, teardown order: mouse
@@ -414,6 +475,48 @@ struct RepeatingKeyState {
     #[allow(dead_code)]
     interval_ms: u64,
     stop: Arc<AtomicBool>,
+    /// `stopOn` policy: true = any other key stops the repeat.
+    stop_on_any_key: bool,
+}
+
+// ── Hold / repeat "stops when" policy ──────────────────────────────────────
+// Send Hotkey actions in Hold mode (pressed-again variant) or Repeat mode
+// carry `stopOn`: "anyKey" (any other key stops it) or "escOrTrigger" (only
+// Esc or the hotkey itself). Defaults keep the historical behaviour of each
+// mode: hold = anyKey, repeat = escOrTrigger. handle_keydown consults the
+// two `*_any_key_stop` probes on every real keypress.
+
+fn stop_on_any_key(data: &Value, default_any_key: bool) -> bool {
+    match data.get("stopOn").and_then(|v| v.as_str()) {
+        Some("anyKey") => true,
+        Some("escOrTrigger") => false,
+        _ => default_any_key,
+    }
+}
+
+/// Returned when the active hold / repeat wants "any other key" to stop it.
+/// `trigger` is its storage key so the caller can exempt the hotkey's own
+/// re-press (that press must reach the executor, which toggles it off).
+pub struct AnyKeyStop {
+    pub trigger: Option<String>,
+}
+
+pub fn held_any_key_stop() -> Option<AnyKeyStop> {
+    let mgr = HELD_KEY.lock().unwrap();
+    let state = mgr.key.as_ref()?;
+    if !state.stop_on_any_key {
+        return None;
+    }
+    Some(AnyKeyStop { trigger: state.trigger_storage_key.clone() })
+}
+
+pub fn repeat_any_key_stop() -> Option<AnyKeyStop> {
+    let rep = REPEATING_KEY.lock().unwrap();
+    let state = rep.as_ref()?;
+    if !state.stop_on_any_key {
+        return None;
+    }
+    Some(AnyKeyStop { trigger: Some(state.trigger_storage_key.clone()) })
 }
 
 static REPEATING_KEY: Mutex<Option<RepeatingKeyState>> = Mutex::new(None);
@@ -550,6 +653,14 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
     log::info!("[ACTION] Firing: [{}] {} altgr={}", macro_type, label, is_altgr);
     info!("[Keyfire] Firing: [{}] {} (depth {})", macro_type, label, depth);
 
+    // Every top-level fire is a cancellable run: from here on, only an Esc
+    // pressed AFTER this instant can abort it (see esc_requested). Nested
+    // fires (depth > 1) run inside the parent's run and share its start, so
+    // an Esc during the parent still stops the whole thing.
+    if depth == 1 {
+        begin_cancellable_run();
+    }
+
     let (initial_ms, step_settle_ms, _fg_settle_ms, _clip_restore_ms) = speed_delays();
 
     // Initial delay — lets Windows finish delivering the trigger keydown.
@@ -660,13 +771,6 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 let mut current_hwnd = target_hwnd;
                 let (_, settle_ms, _, clip_restore_ms) = speed_delays();
 
-                // Clear any stale Esc-cancel flag so a pre-press doesn't
-                // immediately abort the macro we're about to fire. The flag
-                // is set globally on every real Esc keydown — once we're
-                // running, any subsequent Esc press will set it again and
-                // the per-step check below will catch it.
-                ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
-
                 // Loop config — backward compatible: missing `loop` = single fire.
                 // `count` clamped to >= 1; `forever` runs until cancelled.
                 let loop_cfg = data.and_then(|d| d.get("loop"));
@@ -741,7 +845,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 'outer: while iter_index < max_iters {
                     // Per-iteration cancel checks.
                     //   1) Loop-specific flag (re-press) — only applies when looping.
-                    //   2) Global ESC_LOOP_BREAK — applies to BOTH loops and
+                    //   2) Esc since this run began — applies to BOTH loops and
                     //      one-shots, so Esc can cancel any running macro.
                     if let Some(ref lh) = loop_handle {
                         if lh.is_cancelled() {
@@ -750,7 +854,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                             break;
                         }
                     }
-                    if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    if esc_requested() {
                         info!("[Keyfire] Macro cancelled (Esc) at iter {}", iter_index);
                         cancelled = true;
                         break;
@@ -773,7 +877,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                                     break 'outer;
                                 }
                             }
-                            if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                            if esc_requested() {
                                 info!("[Keyfire] Macro cancelled (Esc) during inter-iter delay");
                                 cancelled = true;
                                 break 'outer;
@@ -791,7 +895,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                 for (i, step) in steps.iter().enumerate() {
                     // Inter-step cancel poll — keeps Esc/re-press response time bounded
                     // by step duration even inside long macros. Mirrors the per-iter
-                    // checks above (loop-specific flag + global ESC_LOOP_BREAK).
+                    // checks above (loop-specific flag + Esc since run start).
                     if let Some(ref lh) = loop_handle {
                         if lh.is_cancelled() {
                             info!("[Keyfire] Macro loop cancelled mid-iter at step {}/{}", i + 1, steps.len());
@@ -799,7 +903,7 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                             break 'outer;
                         }
                     }
-                    if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    if esc_requested() {
                         info!("[Keyfire] Macro cancelled (Esc) at step {}/{}", i + 1, steps.len());
                         cancelled = true;
                         break 'outer;
@@ -910,9 +1014,8 @@ pub fn execute_action(macro_val: &Value, is_bare: bool, target_hwnd: isize, is_a
                         iter_index, cancelled
                     );
                 }
-                // loop_handle dropped at end of scope — removes from LOOPING_MACROS map,
-                // decrements LOOPING_COUNT, resets ESC_LOOP_BREAK if this was the last
-                // active loop.
+                // loop_handle dropped at end of scope — removes from LOOPING_MACROS map
+                // and decrements LOOPING_COUNT.
             }
         }
 
@@ -1237,7 +1340,7 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
         // Esc / re-fire cancel — with a custom per-char delay of up to 200ms
         // a long snippet is otherwise uninterruptible for minutes. Break (not
         // return) so the drain + modifier restore below still run.
-        if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+        if esc_requested() {
             info!("[Keyfire] Type Text (send-input) cancelled (Esc) after {} chars", char_count);
             break;
         }
@@ -1819,20 +1922,20 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
                 label: combo_label.clone(),
                 interval_ms: repeat_interval,
                 stop: stop.clone(),
+                stop_on_any_key: stop_on_any_key(data, false),
             });
         }
 
         crate::tray::update_tray_icon_repeating(app, &combo_label, repeat_interval);
         info!("[Keyfire] Repeat started: {} ({}ms)", combo_label, repeat_interval);
 
-        // Esc is the global cancel for every long-running Keyfire action
-        // (macro loops, Wait steps, replay). Repeat mode now honours it too.
-        // Clear any stale Esc first so a press from earlier can't kill the
-        // repeat on its first tick — same reset the "macro" arm does.
-        ESC_LOOP_BREAK.store(false, Ordering::SeqCst);
         let label_for_thread = combo_label.clone();
 
         thread::spawn(move || {
+            // Esc is the global cancel for every long-running Keyfire action
+            // (macro loops, Wait steps, replay); repeat mode honours it too.
+            // Runs are thread-scoped, so the start mark goes on THIS thread.
+            begin_cancellable_run();
             // Request 1ms timer resolution for the lifetime of this thread.
             // Without it, thread::sleep on Windows runs at the default scheduler
             // quantum (~15.625ms), so sleep(100) actually waits 109-125ms and
@@ -1845,7 +1948,7 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             loop {
                 if stop_clone.load(Ordering::SeqCst) { break; }
                 if !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst) { break; }
-                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                if esc_requested() {
                     info!("[Keyfire] Repeat stopped (Esc): {}", label_for_thread);
                     break;
                 }
@@ -2005,6 +2108,8 @@ fn execute_send_hotkey(data: &Value, trigger_key: Option<&str>, app: &tauri::App
             mouse_buttons: hold_mouse_buttons,
             label: combo_label.clone(),
             trigger_mouse_id: trigger_mouse.clone(),
+            trigger_storage_key: trigger_key.map(String::from),
+            stop_on_any_key: stop_on_any_key(data, true),
         });
 
         // Check if the mouse button was already released before we stored the hold.
@@ -2784,14 +2889,37 @@ fn neutralize_click_to_absolute(step: &Value) -> Option<Value> {
     }
     let fx = inner.get("fallbackX").and_then(|v| v.as_i64())?;
     let fy = inner.get("fallbackY").and_then(|v| v.as_i64())?;
+    let drag_fallback = match (
+        inner.get("fallbackDragToX").and_then(|v| v.as_i64()),
+        inner.get("fallbackDragToY").and_then(|v| v.as_i64()),
+    ) {
+        (Some(dx), Some(dy)) => Some((dx, dy)),
+        _ => None,
+    };
     let obj = inner.as_object_mut()?;
     obj.insert("x".to_string(), serde_json::json!(fx));
     obj.insert("y".to_string(), serde_json::json!(fy));
     obj.insert("mode".to_string(), serde_json::json!("absolute"));
+    // A windowClient drag's dragToX/Y are client-relative; swap in the
+    // recorded absolute end point (drop the drag if it was never stored).
+    if obj.contains_key("dragToX") {
+        match drag_fallback {
+            Some((dx, dy)) => {
+                obj.insert("dragToX".to_string(), serde_json::json!(dx));
+                obj.insert("dragToY".to_string(), serde_json::json!(dy));
+            }
+            None => {
+                obj.remove("dragToX");
+                obj.remove("dragToY");
+            }
+        }
+    }
     obj.remove("targetWindow");
     obj.remove("resizeBehavior");
     obj.remove("fallbackX");
     obj.remove("fallbackY");
+    obj.remove("fallbackDragToX");
+    obj.remove("fallbackDragToY");
     let mut clone = step.clone();
     if let Some(step_obj) = clone.as_object_mut() {
         step_obj.insert("value".to_string(), serde_json::json!(inner.to_string()));
@@ -3117,7 +3245,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let total = Duration::from_millis(ms);
             let start = std::time::Instant::now();
             while start.elapsed() < total {
-                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                if esc_requested() {
                     info!("[Keyfire] Wait (ms) cancelled (Esc)");
                     return false;  // abort whole macro
                 }
@@ -3211,9 +3339,9 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let poll_interval = Duration::from_millis(150);
             loop {
                 // Cancel checks mirror Wait for Pixel / Wait for Text so Esc and
-                // the same-trigger re-fire (ESC_LOOP_BREAK + 250ms guard wait)
+                // the same-trigger re-fire (esc_stamp + 250ms guard wait)
                 // can abort this poll instead of timing out and being dropped.
-                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                if esc_requested() {
                     info!("[Keyfire] Wait for Window cancelled (Esc)");
                     return false;
                 }
@@ -3324,7 +3452,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
             let start = std::time::Instant::now();
             let mut matched = false;
             loop {
-                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                if esc_requested() {
                     info!("[Keyfire] Wait for Pixel cancelled (Esc)");
                     return false;
                 }
@@ -3484,7 +3612,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                 let mut matched_line: Option<crate::ocr::OcrLineRect> = None;
                 let mut poll_count: u32 = 0;
                 loop {
-                    if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                    if esc_requested() {
                         info!("[Keyfire] Wait for Text cancelled (Esc)");
                         return false;
                     }
@@ -4377,6 +4505,19 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         (Some(dx), Some(dy)) => Some((dx as i32, dy as i32)),
                         _ => None,
                     };
+                    // windowClient drags store dragToX/Y client-relative (same
+                    // space as x/y) plus the recorded absolute end point here.
+                    let drag_fallback = match (
+                        parsed.get("fallbackDragToX").and_then(|v| v.as_i64()),
+                        parsed.get("fallbackDragToY").and_then(|v| v.as_i64()),
+                    ) {
+                        (Some(dx), Some(dy)) => Some((dx as i32, dy as i32)),
+                        _ => None,
+                    };
+                    // Screen-space drag end. The windowClient branch below
+                    // transforms the relative end point alongside (x, y);
+                    // every fallback path swaps in the recorded absolute one.
+                    let mut drag_abs: Option<(i32, i32)> = drag_to;
                     // Modifiers held during the recorded click (Shift+drag to
                     // constrain to a straight line, Ctrl+click multi-select…).
                     // Pressed before the button-down, released after the up.
@@ -4406,6 +4547,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         let fy = parsed.get("fallbackY").and_then(|v| v.as_i64()).unwrap_or(y as i64) as i32;
                         if !crate::licence::is_pro() {
                             info!("[Keyfire] Click at Position: windowClient mode requires Pro — using fallback absolute ({}, {})", fx, fy);
+                            drag_abs = drag_fallback;
                             (fx, fy)
                         } else if let Some(tw_json) = parsed.get("targetWindow") {
                             let target = crate::distill::TargetWindow {
@@ -4444,7 +4586,8 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                                     let behavior = parsed.get("resizeBehavior")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("proportional");
-                                    let (click_x, click_y) = if behavior == "proportional"
+                                    // Live client size, only when the transform applies.
+                                    let live_client: Option<(i32, i32)> = if behavior == "proportional"
                                         && target.client_w > 0
                                         && target.client_h > 0
                                     {
@@ -4453,41 +4596,58 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                                             windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd as _, &mut cr)
                                         };
                                         if ok != 0 {
-                                            let cur_w = (cr.right - cr.left).max(1);
-                                            let cur_h = (cr.bottom - cr.top).max(1);
-                                            let (cx, ax) = anchor_transform_axis(
-                                                x, target.client_w, cur_w, "x",
-                                            );
-                                            let (cy, ay) = anchor_transform_axis(
-                                                y, target.client_h, cur_h, "y",
-                                            );
-                                            info!(
-                                                "[Keyfire] Click at Position: anchor xy=({}/{},{}/{}) ({},{})→({},{}) [rec {}×{}, live {}×{}]",
-                                                ax, x, ay, y, x, y, cx, cy, target.client_w, target.client_h, cur_w, cur_h
-                                            );
-                                            (cx, cy)
+                                            Some(((cr.right - cr.left).max(1), (cr.bottom - cr.top).max(1)))
                                         } else {
-                                            (x, y)
+                                            None
                                         }
                                     } else {
-                                        (x, y)
+                                        None
                                     };
+                                    // Recorded client-relative point → live client-relative
+                                    // point. Shared by the click and a drag's end point so
+                                    // both move with the window (and its resize) together.
+                                    let transform = |px: i32, py: i32, what: &str| -> (i32, i32) {
+                                        match live_client {
+                                            Some((cur_w, cur_h)) => {
+                                                let (cx, ax) = anchor_transform_axis(
+                                                    px, target.client_w, cur_w, "x",
+                                                );
+                                                let (cy, ay) = anchor_transform_axis(
+                                                    py, target.client_h, cur_h, "y",
+                                                );
+                                                info!(
+                                                    "[Keyfire] Click at Position: {} anchor xy=({}/{},{}/{}) ({},{})→({},{}) [rec {}×{}, live {}×{}]",
+                                                    what, ax, px, ay, py, px, py, cx, cy, target.client_w, target.client_h, cur_w, cur_h
+                                                );
+                                                (cx, cy)
+                                            }
+                                            None => (px, py),
+                                        }
+                                    };
+                                    let (click_x, click_y) = transform(x, y, "click");
+                                    if let Some((rx, ry)) = drag_to {
+                                        let (tx, ty) = transform(rx, ry, "drag end");
+                                        drag_abs = crate::distill::client_to_screen(hwnd, tx, ty).or(drag_fallback);
+                                    }
 
                                     match crate::distill::client_to_screen(hwnd, click_x, click_y) {
                                         Some((sx, sy)) => (sx, sy),
                                         None => {
                                             warn!("[Keyfire] Click at Position: ClientToScreen failed, using fallback ({}, {})", fx, fy);
+                                            drag_abs = drag_fallback;
                                             (fx, fy)
                                         }
                                     }
                                 }
                                 None => {
                                     warn!("[Keyfire] Click at Position: target window '{}' ({}) not found, using fallback ({}, {})", target.title, target.exe, fx, fy);
+                                    drag_abs = drag_fallback;
                                     (fx, fy)
                                 }
                             }
                         } else {
                             warn!("[Keyfire] Click at Position: windowClient mode without targetWindow — using fallback");
+                            drag_abs = drag_fallback;
                             (fx, fy)
                         }
                     } else if mode == "relative" {
@@ -4501,7 +4661,13 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         (x, y)
                     };
 
-                    info!("[Keyfire] Click at Position: ({}, {}) mode={} button={}", abs_x, abs_y, mode, button);
+                    // From here on the drag end is in screen space.
+                    let drag_to = drag_abs;
+                    info!(
+                        "[Keyfire] Click at Position: ({}, {}) mode={} button={}{}",
+                        abs_x, abs_y, mode, button,
+                        drag_to.map(|(dx, dy)| format!(" drag→({}, {})", dx, dy)).unwrap_or_default()
+                    );
 
                     // Save original cursor position
                     let mut original_pos = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
@@ -4560,7 +4726,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         const DRAG_STEPS: i64 = 16;
                         let step_sleep = (total_ms / DRAG_STEPS as u64).max(10);
                         for i in 1..=DRAG_STEPS {
-                            if ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                            if esc_requested()
                                 || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
                             {
                                 break;
@@ -4583,7 +4749,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                         let total = hold_ms.min(10_000);
                         let mut waited = 0u64;
                         while waited < total {
-                            if ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                            if esc_requested()
                                 || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
                             {
                                 break;
@@ -4785,7 +4951,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
                     info!("[Keyfire] Record Macro: aborted (macros disabled) at step {}", i);
                     break;
                 }
-                if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+                if esc_requested() {
                     info!("[Keyfire] Record Macro: aborted (Esc) at step {}", i);
                     break;
                 }
@@ -5097,7 +5263,7 @@ fn execute_macro_step(step: &Value, target_hwnd: &mut isize, method: &str, app: 
 /// macro forever). INTENTIONALLY NO SuppressionGuard — replayed events fire
 /// Keyfire's own hotkey assignments / text expansions / radial triggers.
 /// Recursion bounded by FIRE_DEPTH inside execute_action. Esc cancels mid-
-/// stream via ESC_LOOP_BREAK; macros-disabled also aborts. Always finishes
+/// stream via esc_requested; macros-disabled also aborts. Always finishes
 /// with a defensive modifier release so a buffer that ended mid-modifier-
 /// press doesn't leave Ctrl/Shift/Alt/Win stuck down. Shared by the macro
 /// step path AND the global temp-macro play hotkey.
@@ -5112,7 +5278,7 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
             info!("[Keyfire] {}: aborted (macros disabled)", label);
             break;
         }
-        if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+        if esc_requested() {
             info!("[Keyfire] {}: aborted (Esc)", label);
             break;
         }
@@ -5132,7 +5298,7 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
             let total = Duration::from_millis(gap);
             let gap_start = std::time::Instant::now();
             while gap_start.elapsed() < total {
-                if ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                if esc_requested()
                     || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
                 {
                     break;
@@ -5205,8 +5371,8 @@ pub fn replay_recorded_events(events: &[crate::recorder::RecordedEvent], label: 
 
 /// Continuous-replay wrapper for the Quick Record temp macro. Runs
 /// `replay_recorded_events` in a loop until the user presses the configured
-/// Loop hotkey again, presses Esc (via the global ESC_LOOP_BREAK gate
-/// per [[feedback_esc_global_macro_cancel]]), or disables macros entirely.
+/// Loop hotkey again, presses Esc (via esc_requested, per
+/// [[feedback_esc_global_macro_cancel]]), or disables macros entirely.
 ///
 /// Inter-iteration pause polled in 100ms chunks per
 /// [[feedback_polled_sleep_for_cancel]] so a stop signal mid-pause is honoured
@@ -5217,7 +5383,7 @@ pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], la
     info!("[Keyfire] {}: loop started", label);
     let mut iter: u64 = 0;
     while crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst)
-        && !ESC_LOOP_BREAK.load(Ordering::SeqCst)
+        && !esc_requested()
         && crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
     {
         iter += 1;
@@ -5226,7 +5392,7 @@ pub fn replay_recorded_events_loop(events: &[crate::recorder::RecordedEvent], la
         // 500ms breathing room between iterations, polled cancellable.
         for _ in 0..5 {
             if !crate::recorder::TEMP_MACRO_LOOP_ACTIVE.load(Ordering::SeqCst)
-                || ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                || esc_requested()
                 || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst)
             {
                 break;
@@ -5295,7 +5461,7 @@ fn wait_for_input(config_json: &str) -> bool {
             break;
         }
         // Esc / same-trigger re-fire — parity with the other Wait-for-* steps.
-        if ESC_LOOP_BREAK.load(Ordering::SeqCst) {
+        if esc_requested() {
             log::info!("[WAIT] Cancelled — Esc");
             cancelled = true;
             break;
@@ -5790,7 +5956,7 @@ fn execute_ahk_script_sync(script: &str, ahk_version: &str, app: &tauri::AppHand
                         break;
                     }
                 }
-                let cancel = ESC_LOOP_BREAK.load(Ordering::SeqCst)
+                let cancel = esc_requested()
                     || !crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst);
                 if cancel || start.elapsed() >= AHK_STEP_TIMEOUT {
                     warn!(
