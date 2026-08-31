@@ -949,6 +949,13 @@
   border-color: var(--accent);
 }
 
+/* Select sitting on the right of a toggle row (Keyboard shape). */
+.settings-select-inline {
+  width: auto;
+  max-width: 240px;
+  flex-shrink: 0;
+}
+
 .settings-method-grid {
   display: flex;
   flex-direction: column;

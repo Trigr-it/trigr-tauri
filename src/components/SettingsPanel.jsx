@@ -263,6 +263,9 @@ export default function SettingsPanel({
   navRequest = null,
   macrosEnabledOnStartup,
   onToggleMacrosOnStartup,
+  physicalKeyboardLayout = 'auto',
+  resolvedPhysicalLayout = 'ansi',
+  onSetPhysicalKeyboardLayout,
   onExportConfig,
   onImportConfig,
   onRestoreBackup,
@@ -1009,6 +1012,25 @@ export default function SettingsPanel({
               aria-checked={macrosEnabledOnStartup}
               title={macrosEnabledOnStartup ? 'Disable macros on startup' : 'Enable macros on startup'}
             />
+          </div>
+
+          <div className="settings-toggle-row settings-toggle-row-select">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Keyboard shape</span>
+              <span className="settings-toggle-sub">
+                How the on-screen keyboard is drawn. Auto follows your Windows keyboard language and switches to ISO the first time you press the extra key beside left Shift.
+              </span>
+            </div>
+            <select
+              className="settings-select settings-select-inline"
+              value={physicalKeyboardLayout}
+              onChange={e => onSetPhysicalKeyboardLayout?.(e.target.value)}
+              aria-label="Keyboard shape"
+            >
+              <option value="auto">Auto ({resolvedPhysicalLayout === 'iso' ? 'ISO' : 'ANSI'})</option>
+              <option value="ansi">ANSI (US): wide Enter</option>
+              <option value="iso">ISO (UK / Europe): tall Enter</option>
+            </select>
           </div>
 
           <div className="settings-pause-stack">

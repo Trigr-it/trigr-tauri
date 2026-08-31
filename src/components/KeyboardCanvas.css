@@ -103,6 +103,24 @@
 }
 
 /* ── KEYS ─────────────────────────────────────────────── */
+/* ISO Enter (reverse-L across two rows): lift above the later-DOM spacer
+   that reserves its lower half in the ASDF row, so clicks reach the key. */
+.key.tall-key {
+  z-index: 2;
+}
+
+/* F13-F24 row: half height, quieter legend, so it reads as an accessory row
+   for Stream Deck / macropad triggers rather than part of the real keyboard. */
+.key.half-key .key-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.key.half-key.assigned .key-label,
+.key.half-key.selected .key-label {
+  color: inherit;
+}
+
 .key {
   position: relative;
   display: flex;

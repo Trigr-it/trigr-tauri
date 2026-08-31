@@ -134,6 +134,9 @@ export default function SettingsWindow() {
         onClose={close}
         macrosEnabledOnStartup={bridge.macrosEnabledOnStartup}
         onToggleMacrosOnStartup={act('toggleMacrosOnStartup')}
+        physicalKeyboardLayout={bridge.physicalKeyboardLayout}
+        resolvedPhysicalLayout={bridge.resolvedPhysicalLayout}
+        onSetPhysicalKeyboardLayout={act('setPhysicalKeyboardLayout')}
         onExportConfig={act('exportConfig')}
         onImportConfig={act('importConfig')}
         onRestoreBackup={act('restoreBackup')}

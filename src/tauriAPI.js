@@ -72,6 +72,16 @@ window.electronAPI = {
     listen('engine-status', (event) => callback(event.payload)).then(u => { listeners['engine-status'] = u; });
   },
 
+  // Physical keyboard shape: 'ansi' | 'iso' guess from the Windows input
+  // language, and the once-per-run signal that the ISO key (scancode 0x56)
+  // was actually pressed. Returns the unlisten promise so App can clean up.
+  getKeyboardLayoutHint: () => invoke('get_keyboard_layout_hint'),
+  // [{ slot, key_id, base, shift }] for every character position, from the
+  // live Windows layout. Cheap; App refetches on window focus so an input
+  // language switch shows up the next time the user looks at Keyfire.
+  getKeyboardLegends: () => invoke('get_keyboard_legends'),
+  onIsoKeyDetected: (callback) => listen('iso-key-detected', () => callback()),
+
   onProfileSwitched: (callback) => {
     listen('profile-switched', (event) => callback(event.payload)).then(u => { listeners['profile-switched'] = u; });
   },

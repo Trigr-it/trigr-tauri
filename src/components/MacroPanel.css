@@ -1879,7 +1879,8 @@
 }
 
 .footer-assignment-actions .btn-clear,
-.footer-assignment-actions .btn-duplicate {
+.footer-assignment-actions .btn-duplicate,
+.footer-assignment-actions .btn-move {
   flex: 1;
   min-width: 0;
 }
@@ -2096,6 +2097,52 @@
   border-color: var(--border-accent);
   color: var(--accent);
   background: var(--accent-glow);
+}
+
+/* Change Press shares the Duplicate recipe: a neutral secondary action. */
+.btn-move {
+  height: 36px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-move:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* Non-destructive confirm-row action (move destination, swap): accent
+   outline rather than the red used by the delete confirms. */
+.btn-confirm-go {
+  height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
+}
+
+.btn-confirm-go:hover {
+  background: var(--accent);
+  color: var(--btn-primary-text);
+}
+
+.footer-confirm-note {
+  color: var(--text-muted);
 }
 
 .btn-save {

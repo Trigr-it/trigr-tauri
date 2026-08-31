@@ -1336,7 +1336,7 @@ function ClickPositionFields({ step, updateStep }) {
               className="click-pos-extra-clear"
               title="Remove modifiers/hold/drag — make this a plain click"
               onClick={() => {
-                const { holdMs, dragToX, dragToY, modifiers, ...rest } = cp;
+                const { holdMs, dragToX, dragToY, fallbackDragToX, fallbackDragToY, modifiers, ...rest } = cp;
                 updateStep({ ...step, value: JSON.stringify(rest) });
               }}
             >×</button>
@@ -4315,6 +4315,10 @@ export default function MacroPanel({
   onClearDouble,
   onAssignHold,
   onClearHold,
+  // Re-home the saved action at the current press mode to another press mode
+  // on the same trigger (App swaps if the destination is occupied). Hidden
+  // when the host has no handler (radial editors).
+  onMoveVariant,
   onClose,
   onCancelDraft,
   onReassign,
@@ -4405,12 +4409,20 @@ export default function MacroPanel({
   const setLabel = (l) => setLabelByType(prev => ({ ...prev, [activeType]: l }));
   const [voicePhrases, setVoicePhrases] = useState([]);
   const [pressMode, setPressMode] = useState('single'); // 'single' | 'double' | 'hold'
+  const PRESS_MODE_LABEL = { single: 'Single Press', double: 'Double Press', hold: 'Hold' };
   const [reassigning, setReassigning] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [pendingMouseSave, setPendingMouseSave] = useState(null); // macro pending global-mouse confirmation
   // Inline confirm step for the destructive footer buttons (Clear Key / Delete).
   // Value: null | 'clear' | 'delete'. Reset on key change in the effect below.
   const [confirmingAction, setConfirmingAction] = useState(null);
+  // Press modes the current action can be moved to: mirrors the press-mode
+  // bar (double / hold only when the host handles them, no hold on scroll).
+  const moveTargets = ['single', 'double', 'hold'].filter(m =>
+    m !== pressMode
+    && (m !== 'double' || onAssignDouble)
+    && (m !== 'hold' || (onAssignHold && !selectedKey?.startsWith('MOUSE_SCROLL')))
+  );
 
   useEffect(() => {
     setReassigning(false);
@@ -4572,11 +4584,15 @@ export default function MacroPanel({
     if (record) {
       const t = displayTypeOf(record);
       setActiveType(t);
-      setFormValuesByType(seedDrafts(record));
+      // Track the seed too, or isFormDirty() reports every tab switch as an
+      // unsaved edit (spurious discard prompt on the header X and Move to).
+      seededRef.current = seedDrafts(record);
+      setFormValuesByType(seededRef.current);
       setLabelByType(seedLabels(record));
       setVoicePhrases(readVoicePhrases(record.data));
     } else {
       setActiveType('macro');
+      seededRef.current = {};
       setFormValuesByType({});
       setLabelByType({});
       setVoicePhrases([]);
@@ -5270,7 +5286,9 @@ export default function MacroPanel({
                   <p className="hold-mode-hint">
                     {formValue.holdUntilRelease
                       ? 'Held while you hold the trigger, released the moment you let go'
-                      : 'Key stays held until hotkey is pressed again'}
+                      : (formValue.stopOn ?? 'anyKey') === 'anyKey'
+                        ? 'Held until you press the hotkey again, Esc, or any other key'
+                        : 'Held until you press the hotkey again or Esc'}
                   </p>
                   <div className="hold-release-row">
                     <label className="repeat-interval-label">Release</label>
@@ -5283,6 +5301,19 @@ export default function MacroPanel({
                       <option value="trigger">When I release the trigger key</option>
                     </select>
                   </div>
+                  {!formValue.holdUntilRelease && (
+                    <div className="hold-release-row">
+                      <label className="repeat-interval-label">Stops when</label>
+                      <select
+                        className="form-select hold-release-select"
+                        value={formValue.stopOn ?? 'anyKey'}
+                        onChange={e => setFormValue(prev => ({ ...prev, stopOn: e.target.value }))}
+                      >
+                        <option value="anyKey">Any other key is pressed</option>
+                        <option value="escOrTrigger">Only Esc or the hotkey again</option>
+                      </select>
+                    </div>
+                  )}
                   {formValue.holdUntilRelease && (
                     <p className="hold-mode-hint">
                       Fires the moment the trigger is pressed. Not compatible with a double-press action on the same key.
@@ -5302,7 +5333,11 @@ export default function MacroPanel({
               </div>
               {formValue.repeatMode && (
                 <>
-                  <p className="hold-mode-hint">Fires repeatedly until the hotkey is pressed again or you press Esc</p>
+                  <p className="hold-mode-hint">
+                    {(formValue.stopOn ?? 'escOrTrigger') === 'anyKey'
+                      ? 'Fires repeatedly until you press the hotkey again, Esc, or any other key'
+                      : 'Fires repeatedly until you press the hotkey again or Esc'}
+                  </p>
                   <div className="repeat-interval-row">
                     <label className="repeat-interval-label">Interval</label>
                     <NumberField
@@ -5314,6 +5349,17 @@ export default function MacroPanel({
                       onCommit={n => setFormValue(prev => ({ ...prev, repeatInterval: n }))}
                     />
                     <span className="repeat-interval-suffix">ms</span>
+                  </div>
+                  <div className="hold-release-row">
+                    <label className="repeat-interval-label">Stops when</label>
+                    <select
+                      className="form-select hold-release-select"
+                      value={formValue.stopOn ?? 'escOrTrigger'}
+                      onChange={e => setFormValue(prev => ({ ...prev, stopOn: e.target.value }))}
+                    >
+                      <option value="escOrTrigger">Only Esc or the hotkey again</option>
+                      <option value="anyKey">Any other key is pressed</option>
+                    </select>
                   </div>
                 </>
               )}
@@ -5388,6 +5434,69 @@ export default function MacroPanel({
             );
           }
           if (!activeRecord) return null;
+          // Move to another press mode — step 1 picks the destination, step 2
+          // (only when that destination already holds an action) confirms the
+          // swap. Both records survive either way; nothing here is destructive.
+          if (confirmingAction === 'move' || confirmingAction?.startsWith('move-swap:')) {
+            const recordAt = (mode) => mode === 'double' ? doubleAssignment
+              : mode === 'hold' ? holdAssignment
+              : assignment;
+            const commitMove = (toMode) => {
+              // Land on the destination tab with the moved record seeded.
+              // Setting justClearedRef skips the effect's auto-switch, which
+              // would otherwise park a hold→double move on the single tab
+              // whenever a single-press action also exists.
+              justClearedRef.current = toMode;
+              setPressMode(toMode);
+              setConfirmingAction(null);
+              onMoveVariant?.(selectedKey, pressMode, toMode);
+            };
+            if (confirmingAction.startsWith('move-swap:')) {
+              const toMode = confirmingAction.slice('move-swap:'.length);
+              const other = recordAt(toMode);
+              return (
+                <div className="footer-assignment-actions footer-confirm-row">
+                  <span className="footer-confirm-text">
+                    {PRESS_MODE_LABEL[toMode]} already has "{other?.label || 'an action'}". Swap the two actions?
+                  </span>
+                  <button className="btn-confirm-go" type="button" onClick={() => commitMove(toMode)}>Swap</button>
+                  <button className="btn-confirm-no" type="button" onClick={() => setConfirmingAction(null)}>Cancel</button>
+                </div>
+              );
+            }
+            const dirty = isFormDirty();
+            return (
+              <div className="footer-assignment-actions footer-confirm-row">
+                <span className="footer-confirm-text">
+                  Change press to:
+                  {dirty && <span className="footer-confirm-note"> Unsaved edits will be discarded.</span>}
+                </span>
+                {moveTargets.map((mode) => {
+                  const occupied = !!recordAt(mode);
+                  return (
+                    <button
+                      key={mode}
+                      className="btn-confirm-go"
+                      type="button"
+                      title={occupied
+                        ? `${PRESS_MODE_LABEL[mode]} already has an action, the two will swap`
+                        : `Move this action to ${PRESS_MODE_LABEL[mode].toLowerCase()}`}
+                      onClick={() => {
+                        if (mode !== 'single' && !isPro) {
+                          setConfirmingAction(null);
+                          onShowUpgrade?.(mode === 'double' ? 'Double press hotkeys' : 'Hold trigger');
+                          return;
+                        }
+                        if (occupied) setConfirmingAction(`move-swap:${mode}`);
+                        else commitMove(mode);
+                      }}
+                    >{PRESS_MODE_LABEL[mode]}{occupied ? ' (swap)' : ''}</button>
+                  );
+                })}
+                <button className="btn-confirm-no" type="button" onClick={() => setConfirmingAction(null)}>Cancel</button>
+              </div>
+            );
+          }
           if (confirmingAction) {
             const confirmText =
               confirmingAction === 'clear-action'
@@ -5435,6 +5544,14 @@ export default function MacroPanel({
             : 'Clear Single';
           return (
             <div className="footer-assignment-actions">
+              {onMoveVariant && moveTargets.length > 0 && (
+                <button
+                  className="btn-move"
+                  onClick={() => setConfirmingAction('move')}
+                  type="button"
+                  title="Change which press fires this action: single, double press or hold on the same key"
+                >Change Press</button>
+              )}
               <button
                 className="btn-clear-action"
                 onClick={() => setConfirmingAction('clear-action')}

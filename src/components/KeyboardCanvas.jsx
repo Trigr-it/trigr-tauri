@@ -3,8 +3,8 @@ import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { Disc, Keyboard as KeyboardIcon, Plus } from 'lucide-react';
 import './KeyboardCanvas.css';
 import {
-  KEYBOARD_ROWS, SYSTEM_KEYS, STATIC_BARE_ALLOWED, KEY_UNIT, KEY_GAP, KEY_HEIGHT,
-  KEYBOARD_NATURAL_WIDTH, KEYBOARD_NATURAL_HEIGHT, friendlyKeyName,
+  SYSTEM_KEYS, STATIC_BARE_ALLOWED, KEY_UNIT, KEY_GAP, KEY_HEIGHT, KEY_HALF_HEIGHT,
+  getKeyboardRows, keyboardNaturalSize, friendlyKeyName, legendToLabels,
 } from './keyboardLayout';
 import NumpadCanvas from './NumpadCanvas';
 
@@ -181,6 +181,24 @@ export function ModifierBar({ activeModifiers, onToggle, profileLinked, isRecord
 
 function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFiring, noLayer, isRecording, currentCombo, actionTitle, dragLabel, onClick, onContextMenu }) {
   const width = keyDef.width * KEY_UNIT + (keyDef.width - 1) * KEY_GAP;
+  // ISO Enter: a reverse-L spanning two rows. The element is two rows tall
+  // but a negative bottom margin keeps its flex box one row tall, so the
+  // QWERTY row's height is unchanged; the ASDF row reserves the lower half
+  // with a spacer. clip-path cuts the lower-left notch so the key next to it
+  // (# ~ on UK boards) has room.
+  const height = keyDef.tall ? KEY_HEIGHT * 2 + KEY_GAP
+    : keyDef.half ? KEY_HALF_HEIGHT
+    : KEY_HEIGHT;
+  const tallStyle = keyDef.tall ? (() => {
+    const lowerUnits = keyDef.lowerWidth || keyDef.width;
+    const lowerWidth = lowerUnits * KEY_UNIT + (lowerUnits - 1) * KEY_GAP;
+    const cut = Math.max(0, width - lowerWidth);
+    const stepY = KEY_HEIGHT + KEY_GAP / 2;
+    return {
+      marginBottom: -(KEY_HEIGHT + KEY_GAP),
+      clipPath: `polygon(0 0, 100% 0, 100% 100%, ${cut}px 100%, ${cut}px ${stepY}px, 0 ${stepY}px)`,
+    };
+  })() : null;
 
   // Drop target for sidebar bind-action drags. The target combo comes from
   // the active modifier layer at drop time (App reads currentCombo), so keys
@@ -214,6 +232,8 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFir
     isDragging ? 'dragging'  : '',
     keyDef.id === 'Space' ? 'spacebar'  : '',
     keyDef.id === 'Enter' ? 'enter-key' : '',
+    keyDef.tall           ? 'tall-key'  : '',
+    keyDef.half           ? 'half-key'  : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -221,7 +241,7 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFir
       ref={node => { setNodeRef(node); setDragRef(node); }}
       {...listeners}
       className={classNames}
-      style={{ width, height: KEY_HEIGHT, flexShrink: 0 }}
+      style={{ width, height, flexShrink: 0, ...tallStyle }}
       onClick={isSystem || noLayer ? undefined : onClick}
       onContextMenu={isAssigned && !isSystem && !noLayer ? onContextMenu : undefined}
       title={
@@ -242,6 +262,11 @@ function Key({ keyDef, isSelected, isAssigned, isDouble, isHold, isSystem, isFir
 
 export default function KeyboardCanvas({
   selectedKey,
+  physicalLayout = 'ansi', // 'ansi' | 'iso' (resolved by App; never 'auto' here)
+  // { [slotId]: { keyId, base, shift } } from the live Windows layout, or null
+  // to draw the hard-coded US legends. keyId is what the hook reports for a
+  // press at that position, so it drives selection / assignment lookups too.
+  legends = null,
   onKeySelect,
   getKeyAssignment,
   getDoubleAssignment,
@@ -346,26 +371,60 @@ export default function KeyboardCanvas({
     }
   }, [lastFired]);
 
-  // Observe the container width and compute a CSS scale factor so the keyboard
-  // always fits without horizontal overflow, but also grows when space allows.
-  // Guard: only update scale when the WIDTH actually changes — height-only changes
-  // (e.g. from internal content reflows) must not trigger a scale recalculation,
-  // as that would create a feedback loop via keyboard-scale-wrap's inline height.
+  const rows = getKeyboardRows(physicalLayout);
+  const natural = keyboardNaturalSize(physicalLayout);
+
+  // Compute a CSS scale factor so the keyboard fits the space it has: never
+  // wider than the scale wrap, and (when the surrounding rows allow) never
+  // taller than what is left of the scrolling .main-area once the fixed rows
+  // (modifier bar, label, numpad row, hint row, gaps) are accounted for. The
+  // width-only version parked at the 1.4 cap on a 1920x1080 window and left
+  // the area 56px too tall, so the keyboard view always had a scrollbar.
+  //
+  // Loop safety: keyboard-scale-wrap's inline height follows the scale, so
+  // every input here is measured in a scale-independent way: the wrap width,
+  // the .main-area box, and the fixed rows' height (wrap height minus the
+  // body row, which is the only scale-dependent child). Same-value results
+  // never reach setScale.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    let lastWidth = 0;
-    const ro = new ResizeObserver(entries => {
-      const availableWidth = entries[0].contentRect.width;
-      if (availableWidth > 0 && Math.abs(availableWidth - lastWidth) >= 1) {
-        lastWidth = availableWidth;
-        const scaleX = availableWidth / KEYBOARD_NATURAL_WIDTH;
-        setScale(Math.min(1.4, Math.max(0.3, scaleX)));
+    const bodyRow = el.parentElement;                       // .keyboard-body-row
+    const wrap = el.closest('.keyboard-canvas-wrap');
+    const scroller = el.closest('.main-area');
+    let lastScale = 0;
+    const recompute = () => {
+      const availableWidth = el.getBoundingClientRect().width;
+      if (availableWidth <= 0) return;
+      let next = availableWidth / natural.width;
+      if (bodyRow && wrap && scroller) {
+        const cs = getComputedStyle(scroller);
+        const availableHeight = scroller.clientHeight
+          - parseFloat(cs.paddingTop || '0') - parseFloat(cs.paddingBottom || '0');
+        const fixedRows = wrap.getBoundingClientRect().height - bodyRow.getBoundingClientRect().height;
+        const scaleY = (availableHeight - fixedRows) / natural.height;
+        // Below ~0.85 the keys get too small to be worth it; let the area
+        // scroll on very short windows rather than shrink further.
+        next = Math.min(next, Math.max(0.85, scaleY));
       }
-    });
+      next = Math.min(1.4, Math.max(0.3, next));
+      if (Math.abs(next - lastScale) < 0.005) return;
+      lastScale = next;
+      setScale(next);
+    };
+    const ro = new ResizeObserver(recompute);
     ro.observe(el);
+    if (scroller) ro.observe(scroller);
+    // Scale-independent siblings whose height can change at runtime (the
+    // modifier bar wraps at narrow widths; the numpad row can be toggled).
+    if (wrap) {
+      for (const child of wrap.children) {
+        if (child !== bodyRow) ro.observe(child);
+      }
+    }
+    recompute();
     return () => ro.disconnect();
-  }, []);
+  }, [natural.width, natural.height]);
 
   const handleKeyClick = useCallback((keyId) => {
     onKeySelect(keyId);
@@ -461,19 +520,26 @@ export default function KeyboardCanvas({
         <div
           ref={containerRef}
           className="keyboard-scale-wrap"
-          style={{ height: KEYBOARD_NATURAL_HEIGHT * scale }}
+          style={{ height: natural.height * scale }}
         >
           <div
             className={`keyboard-outer${isRecording ? ' recording' : ''}`}
             style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
           >
             <div className="keyboard-body">
-              {KEYBOARD_ROWS.map((row, rowIdx) => (
+              {rows.map((row, rowIdx) => (
                 <div key={rowIdx} className="keyboard-row">
-                  {row.map((keyDef) => {
-                    if (keyDef.spacer) {
-                      return <div key={keyDef.id} style={{ width: keyDef.width * KEY_UNIT, flexShrink: 0 }} />;
+                  {row.map((slotDef) => {
+                    if (slotDef.spacer) {
+                      return <div key={slotDef.id} style={{ width: slotDef.width * KEY_UNIT, flexShrink: 0 }} />;
                     }
+                    // Slot → key: the live layout may put a different key id
+                    // and legend at this physical position (AZERTY, UK symbols).
+                    const legend = legends?.[slotDef.id];
+                    const labels = legendToLabels(legend);
+                    const keyDef = legend
+                      ? { ...slotDef, id: legend.keyId || slotDef.id, ...(labels || {}) }
+                      : slotDef;
                     const isSelected = selectedKey === keyDef.id;
                     const single     = getKeyAssignment(keyDef.id);
                     const dbl        = getDoubleAssignment ? getDoubleAssignment(keyDef.id) : null;
@@ -495,7 +561,7 @@ export default function KeyboardCanvas({
 
                     return (
                       <Key
-                        key={keyDef.id}
+                        key={slotDef.id}
                         keyDef={keyDef}
                         isSelected={isSelected}
                         isAssigned={isAssigned}
