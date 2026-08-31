@@ -703,8 +703,17 @@ footer { border-top:1px solid var(--hairline); padding:48px 32px 36px; max-width
           <span class="phase-name">
             <span class="phase-version">v0.8</span><span class="phase-subtitle">Unassigned Library &amp; Pixel Waits</span>
           </span>
-          <span class="phase-date">Aug 2026 · 11 releases published</span>
+          <span class="phase-date">Aug 2026 · 12 releases published</span>
         </div>
+        <article class="release-entry">
+          <header class="release-head">
+            <span class="release-version">v0.8.11</span>
+            <time class="release-date">31 August 2026</time>
+          </header>
+          <div class="release-body">
+            <h5 class="re-cat re-cat-new">New</h5><ul class="re-bullets"><li>Change Press: move an action between single, double and hold press on the same key without rebuilding it. If the target slot is taken, the two actions swap.</li><li>The on-screen keyboard now matches your physical keyboard. ANSI and ISO shapes are detected automatically (with an override in Settings), and key labels follow your Windows keyboard layout.</li><li>F13 to F24 keys are now on the keyboard view, ready for Stream Deck and macropad triggers.</li></ul><h5 class="re-cat re-cat-improved">Improved</h5><ul class="re-bullets"><li>Keyfire now uses a fraction of the memory it did. All windows share one renderer process and hidden windows are parked, cutting typical usage from around 740 MB to 450 MB.</li><li>Hold and Repeat modes have a new &quot;Stops when&quot; option: stop on any key press, or only on Esc or the hotkey again.</li><li>The main window starts lighter. Panels now load when you first open them.</li></ul><h5 class="re-cat re-cat-fixed">Fixed</h5><ul class="re-bullets"><li>Pressing Esc no longer stops later text actions from firing. Esc now only cancels what is running at that moment.</li><li>Dragging in a distilled macro now follows the window it was recorded in, even after the window moves.</li><li>The keyboard view no longer scrolls at 1080p.</li><li>Switching tabs while editing an action no longer triggers a false unsaved-changes prompt.</li></ul>
+          </div>
+        </article>
         <article class="release-entry">
           <header class="release-head">
             <span class="release-version">v0.8.10</span>
