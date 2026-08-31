@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import './styles/global.css';
 import './styles/app.css';
 import { readVoicePhrases, writeVoicePhrases } from './voicePhrases';
@@ -9,7 +9,10 @@ import MouseCanvas from './components/MouseCanvas';
 import MacroPanel from './components/MacroPanel';
 import StatusBar from './components/StatusBar';
 import Toaster from './components/Toaster';
-import TextExpansions from './components/TextExpansions';
+// Main-window inner-tab panels are code-split so an autostart-into-tray user
+// who never opens the window (or only lives in Triggers) never loads them.
+// Once opened they stay resident for the session — instant on later switches.
+const TextExpansions = lazy(() => import('./components/TextExpansions'));
 import WelcomeModal from './components/WelcomeModal';
 import UpgradeModal from './components/UpgradeModal';
 import ReservedShortcutModal from './components/ReservedShortcutModal';
@@ -20,16 +23,16 @@ import OnboardingTour from './components/OnboardingTour';
 import ProTrialModal from './components/ProTrialModal';
 import TemplatesCoachmark from './components/TemplatesCoachmark';
 import QuickTips from './components/QuickTips';
-import AnalyticsPanel from './components/AnalyticsPanel';
-import ClipboardPanel from './components/ClipboardPanel';
-import SearchTemplatesPanel from './components/SearchTemplatesPanel';
-import RadialEditorView from './components/RadialEditorView';
+const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'));
+const ClipboardPanel = lazy(() => import('./components/ClipboardPanel'));
+const SearchTemplatesPanel = lazy(() => import('./components/SearchTemplatesPanel'));
+const RadialEditorView = lazy(() => import('./components/RadialEditorView'));
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, pointerWithin } from '@dnd-kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen as listenEvent, emit as emitEvent } from '@tauri-apps/api/event';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/iconUtils';
-import { friendlyKeyName } from './components/keyboardLayout';
+import { friendlyKeyName, setLiveKeyLegends, STATIC_BARE_ALLOWED } from './components/keyboardLayout';
 import { parseEspansoYaml, parseAhkHotstrings, parseTextExpanderCsv, parseTextBlazeJson } from './importAdapters';
 
 // Bump whenever the onboarding tour changes meaningfully. Existing users whose
@@ -43,6 +46,9 @@ const ONBOARDING_VERSION = 3;
 // storage key: base (single press), base::double, base::hold. Any operation
 // that moves an assignment must carry every variant that exists.
 const ASSIGNMENT_VARIANT_SUFFIXES = ['', '::double', '::hold'];
+// Press-mode name (as MacroPanel knows it) → storage-key suffix.
+const PRESS_MODE_SUFFIX = { single: '', double: '::double', hold: '::hold' };
+const PRESS_MODE_LABEL = { single: 'single press', double: 'double press', hold: 'hold' };
 
 // Unassigned library entries live at "{Profile}::UNASSIGNED::{uuid}" in the
 // same assignments map. This is THE predicate — don't hand-roll the check.
@@ -216,6 +222,17 @@ function App() {
   const [showWelcome, setShowWelcome]               = useState(false);
   const [showOnboarding, setShowOnboarding]         = useState(false);
   const [macrosEnabledOnStartup, setMacrosEnabledOnStartup] = useState(true);
+  // On-screen keyboard shape. 'auto' = guess from the Windows input language
+  // (Rust get_keyboard_layout_hint), upgraded to ISO for good the first time
+  // the ISO-only key beside left Shift is pressed. Both persisted in config.
+  const [physicalKeyboardLayout, setPhysicalKeyboardLayout] = useState('auto'); // 'auto' | 'ansi' | 'iso'
+  const [isoKeyDetected, setIsoKeyDetected] = useState(false);
+  const [keyboardLayoutHint, setKeyboardLayoutHint] = useState('ansi');
+  // Live legends by canvas slot from the Windows input layout (Phase B).
+  const [keyboardLegends, setKeyboardLegends] = useState(null);
+  const resolvedPhysicalLayout = physicalKeyboardLayout === 'auto'
+    ? (isoKeyDetected ? 'iso' : keyboardLayoutHint)
+    : physicalKeyboardLayout;
   // Clipboard privacy controls. Defaults are permissive so existing installs
   // behave unchanged; users opt in via Settings.
   const [clipboardCaptureEnabled, setClipboardCaptureEnabled] = useState(true);
@@ -496,6 +513,8 @@ function App() {
       window.electronAPI?.updateExpansionExcludedApps(cfgExpExcluded);
     }
     setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
+    setPhysicalKeyboardLayout(['ansi', 'iso'].includes(config.physicalKeyboardLayout) ? config.physicalKeyboardLayout : 'auto');
+    setIsoKeyDetected(!!config.isoKeyDetected);
     const cfgClipboardCapture = config.clipboardCaptureEnabled ?? true;
     const cfgClipboardExcluded = Array.isArray(config.clipboardExcludedApps) ? config.clipboardExcludedApps : [];
     setClipboardCaptureEnabled(cfgClipboardCapture);
@@ -699,6 +718,8 @@ function App() {
         window.electronAPI?.updateExpansionExcludedApps(savedExpExcluded);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
+        setPhysicalKeyboardLayout(['ansi', 'iso'].includes(config.physicalKeyboardLayout) ? config.physicalKeyboardLayout : 'auto');
+        setIsoKeyDetected(!!config.isoKeyDetected);
         // Clipboard privacy controls — defaults preserve existing behaviour.
         const savedClipboardCapture = config.clipboardCaptureEnabled ?? true;
         const savedClipboardExcluded = Array.isArray(config.clipboardExcludedApps) ? config.clipboardExcludedApps : [];
@@ -3726,9 +3747,22 @@ function App() {
   // ── Copy / Move assignment to another profile ─────────────
   // Copy/Move must carry every variant that exists (see
   // ASSIGNMENT_VARIANT_SUFFIXES at module scope), in any combination.
+  // Bare character keys are only mappable in app-linked profiles (the engine
+  // refuses them in static profiles via is_static_bare_allowed, so the copy
+  // would show on the keyboard but never fire). Block the cross-profile
+  // copy/move up front instead of creating a dead assignment.
+  const bareBlockedInProfile = useCallback((targetProfile, combo, keyId) => {
+    if (combo !== 'BARE' || !keyId || keyId.startsWith('MOUSE_')) return false;
+    if (profileSettings[targetProfile]?.linkedApp) return false;
+    if (STATIC_BARE_ALLOWED.has(keyId)) return false;
+    showNotification(`${friendlyKeyName(keyId)} can't be a bare trigger in "${targetProfile}". Character keys only work bare in profiles linked to an app.`, 'error');
+    return true;
+  }, [profileSettings, showNotification]);
+
   const handleCopyToProfile = useCallback((targetProfile, combo, keyId) => {
     const srcCombo = combo || currentCombo;
     const srcKey   = keyId || selectedKey;
+    if (bareBlockedInProfile(targetProfile, srcCombo, srcKey)) return;
     const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
     const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
     const newAssignments = { ...assignments };
@@ -3743,11 +3777,12 @@ function App() {
     setAssignments(newAssignments);
     saveConfig(newAssignments, profiles, activeProfile);
     showNotification(`Copied to "${targetProfile}" profile`);
-  }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey]);
+  }, [assignments, activeProfile, currentCombo, selectedKey, profiles, saveConfig, showNotification, makeAssignmentKey, bareBlockedInProfile]);
 
   const handleMoveToProfile = useCallback((targetProfile, combo, keyId) => {
     const srcCombo = combo || currentCombo;
     const srcKey   = keyId || selectedKey;
+    if (bareBlockedInProfile(targetProfile, srcCombo, srcKey)) return;
     const oldKey = makeAssignmentKey(activeProfile, srcCombo, srcKey);
     const newKey = makeAssignmentKey(targetProfile, srcCombo, srcKey);
     const newAssignments = { ...assignments };
@@ -3871,6 +3906,37 @@ function App() {
     remapRadialStorageKeys(variantKeyMap(oldKey, newKey));
     showNotification('Moved to Unassigned, at the top of the sidebar');
   }, [assignments, activeProfile, profiles, saveConfig, showNotification, makeAssignmentKey, makeLibraryKey, remapRadialStorageKeys]);
+  // Move the saved action at one press mode (single / double / hold) to
+  // another press mode on the SAME trigger — e.g. a hold action the user now
+  // wants on double press. An occupied destination is swapped, never
+  // overwritten: both records survive. baseKey is either a real trigger key or
+  // an Unassigned-library key; only the suffix changes. Radial wedges reference
+  // assignments by full storage key, so the remap keeps any segment pointing
+  // at either record alive after the move.
+  const movePressVariant = useCallback((baseKey, fromMode, toMode) => {
+    if (fromMode === toMode) return false;
+    const fromKey = baseKey + PRESS_MODE_SUFFIX[fromMode];
+    const toKey = baseKey + PRESS_MODE_SUFFIX[toMode];
+    const moving = assignments[fromKey];
+    if (!moving) return false;
+    const displaced = assignments[toKey] || null;
+    const newAssignments = { ...assignments, [toKey]: moving };
+    if (displaced) newAssignments[fromKey] = displaced;
+    else delete newAssignments[fromKey];
+    setAssignments(newAssignments);
+    saveConfig(newAssignments, profiles, activeProfile);
+    remapRadialStorageKeys(displaced ? { [fromKey]: toKey, [toKey]: fromKey } : { [fromKey]: toKey });
+    showNotification(displaced
+      ? `Swapped the ${PRESS_MODE_LABEL[fromMode]} and ${PRESS_MODE_LABEL[toMode]} actions`
+      : `Moved to ${PRESS_MODE_LABEL[toMode]}`);
+    return true;
+  }, [assignments, activeProfile, profiles, saveConfig, showNotification, remapRadialStorageKeys]);
+  const handleMovePressVariant = useCallback((keyId, fromMode, toMode) => {
+    return movePressVariant(makeAssignmentKey(activeProfile, currentCombo, keyId), fromMode, toMode);
+  }, [movePressVariant, makeAssignmentKey, activeProfile, currentCombo]);
+  const handleMoveLibraryVariant = useCallback((id, fromMode, toMode) => {
+    return movePressVariant(makeLibraryKey(activeProfile, id), fromMode, toMode);
+  }, [movePressVariant, makeLibraryKey, activeProfile]);
 
   // Save / clear one press-mode variant of a library entry. MacroPanel's
   // onAssign/onAssignDouble/onAssignHold (and clear counterparts) are routed
@@ -5112,6 +5178,62 @@ function App() {
     setMacrosEnabledOnStartup(val);
     window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup: val, hasSeenWelcome: true });
   }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled]);
+  // ── Physical keyboard shape (Settings → General → Keyboard shape) ─────────
+  const handleSetPhysicalKeyboardLayout = useCallback((val) => {
+    const next = ['ansi', 'iso'].includes(val) ? val : 'auto';
+    setPhysicalKeyboardLayout(next);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, physicalKeyboardLayout: next, hasSeenWelcome: true });
+  }, [assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup]);
+  // Both capture paths land here: the LL hook (Rust emits iso-key-detected
+  // once per run when scancode 0x56 is pressed) and the WebView keydown
+  // listener (e.code === 'IntlBackslash' while Keyfire itself is focused).
+  // Persisted so the shape survives restarts without re-detection.
+  const handleIsoKeyDetected = useCallback(() => {
+    if (isoKeyDetected) return;
+    setIsoKeyDetected(true);
+    window.electronAPI?.saveConfig({ assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, isoKeyDetected: true, hasSeenWelcome: true });
+    if (physicalKeyboardLayout === 'auto' && keyboardLayoutHint !== 'iso') {
+      showNotification('ISO keyboard detected (extra key beside Shift). The on-screen keyboard now uses the ISO shape. Change it in Settings, General.', 'info');
+    }
+  }, [isoKeyDetected, physicalKeyboardLayout, keyboardLayoutHint, assignments, profiles, activeProfile, profileSettings, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, showNotification]);
+  useEffect(() => {
+    window.electronAPI?.getKeyboardLayoutHint?.()
+      .then(h => { if (h === 'iso' || h === 'ansi') setKeyboardLayoutHint(h); })
+      .catch(() => {});
+  }, []);
+  // Legends: fetched on mount and again whenever the window regains focus,
+  // which is when a user who switched input language will next look at the
+  // canvas. On failure (or an empty answer) the hard-coded US legends stay.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      window.electronAPI?.getKeyboardLegends?.()
+        .then(list => {
+          if (cancelled || !Array.isArray(list) || list.length === 0) return;
+          const bySlot = {};
+          const byKeyId = {};
+          for (const l of list) {
+            bySlot[l.slot] = { keyId: l.key_id, base: l.base, shift: l.shift };
+            if (l.base) byKeyId[l.key_id] = l.base;
+          }
+          setLiveKeyLegends(byKeyId);
+          setKeyboardLegends(prev => (JSON.stringify(prev) === JSON.stringify(bySlot) ? prev : bySlot));
+        })
+        .catch(() => {});
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => { cancelled = true; window.removeEventListener('focus', refresh); };
+  }, []);
+  useEffect(() => {
+    let unlisten = null;
+    let disposed = false;
+    window.electronAPI?.onIsoKeyDetected?.(handleIsoKeyDetected)
+      ?.then(u => { if (disposed) u?.(); else unlisten = u; });
+    const onKeyDown = (e) => { if (e.code === 'IntlBackslash') handleIsoKeyDetected(); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => { disposed = true; unlisten?.(); document.removeEventListener('keydown', onKeyDown); };
+  }, [handleIsoKeyDetected]);
 
   const handleToggleClipboardCapture = useCallback((enabled) => {
     setClipboardCaptureEnabled(enabled);
@@ -5562,6 +5684,8 @@ function App() {
   useEffect(() => {
     settingsStateRef.current = {
       macrosEnabledOnStartup,
+      physicalKeyboardLayout,
+      resolvedPhysicalLayout,
       expansionExcludedApps,
       globalInputMethod,
       macroSpeed,
@@ -5594,6 +5718,7 @@ function App() {
     const focusMain = () => window.electronAPI?.showMainWindow?.();
     settingsActionsRef.current = {
       toggleMacrosOnStartup: handleToggleMacrosOnStartup,
+      setPhysicalKeyboardLayout: handleSetPhysicalKeyboardLayout,
       exportConfig: handleExportConfig,
       importConfig: handleImportConfig,
       restoreBackup: handleRestoreBackup,
@@ -5659,6 +5784,42 @@ function App() {
     }).then(u => unlisteners.push(u));
     return () => unlisteners.forEach(u => { if (typeof u === 'function') u(); });
   }, []);
+
+  //    Dev-only UI test bridge ("Claude Test")                              
+  // Exposes App-level setters to src/devBridge.js so scripts/ui-shot.ps1 can
+  // drive the running dev app deterministically (no screen-coordinate clicks).
+  // import.meta.env.DEV is a build-time constant, so this block is dropped from
+  // production bundles entirely. Add setters here as tests need them.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    window.__kf_dev = {
+      ...(window.__kf_dev || {}),
+      setArea: handleSetArea,                       // ('mapping'|'expansions'|'templates'|'clipboard'|'analytics', view?)
+      setView: handleSetView,                       // ('keyboard'|'mouse'|'radial')
+      setTheme: handleSetTheme,                     // ('auto'|'light'|'dark') — persists like the menu does
+      setListView: (on) => setListViewActive(!!on),
+      toggleListView: handleToggleListView,
+      selectKey: handleKeySelect,                   // (keyId) as the canvas would
+      clearSelection: () => { setSelectedKey(null); setSelectedLibraryId(null); setSelectedRadialSegment(null); },
+      setModifiers: (mods) => setActiveModifiers(Array.isArray(mods) ? mods : []),
+      setProfile: handleProfileChange,
+      hideTip: handleHideTip,
+      setHiddenTips: (keys) => setHiddenTips(Array.isArray(keys) ? keys : []),
+      setPro: (pro) => window.electronAPI?.devSetProOverride(pro),  // true | false | null (clear)
+      setPhysicalLayout: handleSetPhysicalKeyboardLayout, // ('auto'|'ansi'|'iso') persists like Settings does
+      getAssignments: () => assignments,             // read-only snapshot of the storage map
+      friendlyKeyName,                                // live instance (consults Windows-layout legends)
+      assign: (keyId, macro, mode = 'single') => (mode === 'double' ? handleAssignDouble : mode === 'hold' ? handleAssignHold : handleAssign)(keyId, macro),
+      deleteKey: handleDeleteKey,                   // (keyId) all variants on the active combo
+      getState: () => ({
+        activeArea, activeView, theme, resolvedTheme, listViewActive, selectedKey, selectedLibraryId,
+        selectedRadialSegment, activeModifiers, activeProfile, isPro, macrosEnabled, hiddenTips,
+        physicalKeyboardLayout, resolvedPhysicalLayout, isoKeyDetected, keyboardLayoutHint,
+        keyboardLegends,
+        width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio,
+      }),
+    };
+  });
 
   return (
     <div className="app">
@@ -5996,6 +6157,8 @@ function App() {
             <div className="keyboard-numpad-wrap">
               <KeyboardCanvas
                 selectedKey={selectedKey}
+                physicalLayout={resolvedPhysicalLayout}
+                legends={keyboardLegends}
                 onKeySelect={handleKeySelect}
                 getKeyAssignment={getKeyAssignment}
                 getDoubleAssignment={getDoubleAssignment}
@@ -6049,6 +6212,7 @@ function App() {
             />
           )}
             {activeView === 'radial' && (
+              <Suspense fallback={null}>
               <RadialEditorView
                 hiddenTips={hiddenTips}
                 onHideTip={handleHideTip}
@@ -6094,6 +6258,7 @@ function App() {
                 onCopyRadialSegmentToProfile={handleCopyRadialSegmentToProfile}
                 onForceOverwriteRadialSegment={handleForceOverwriteRadialSegment}
               />
+              </Suspense>
             )}
           </main>
         {/* Right panel: MacroPanel (Settings lives in its own window) */}
@@ -6164,6 +6329,7 @@ function App() {
             onClearDouble={(id) => handleClearLibraryVariant(id, '::double')}
             onAssignHold={(id, macro) => handleAssignLibraryVariant(id, macro, '::hold')}
             onClearHold={(id) => handleClearLibraryVariant(id, '::hold')}
+            onMoveVariant={handleMoveLibraryVariant}
             onClose={() => setSelectedLibraryId(null)}
             onCancelDraft={() => {}}
             onReassign={(combo, keyId) => handleBindLibrary(selectedLibraryId, combo, keyId)}
@@ -6202,6 +6368,7 @@ function App() {
             onClearDouble={handleClearDouble}
             onAssignHold={handleAssignHold}
             onClearHold={handleClearHold}
+            onMoveVariant={handleMovePressVariant}
             onClose={() => { clearDraft(); setSelectedKey(null); }}
             onCancelDraft={clearDraft}
             onReassign={handleReassign}
@@ -6227,9 +6394,12 @@ function App() {
             <QuickTips onDismiss={handleDismissTips} searchOverlayHotkey={searchOverlayHotkey} searchOverlayEnabled={searchOverlayEnabled} />
           )}
           {activeArea === 'analytics' && (
-            <AnalyticsPanel isPro={isPro} onShowUpgrade={showUpgrade} />
+            <Suspense fallback={null}>
+              <AnalyticsPanel isPro={isPro} onShowUpgrade={showUpgrade} />
+            </Suspense>
           )}
           {activeArea === 'clipboard' && (
+            <Suspense fallback={null}>
             <ClipboardPanel
               hiddenTips={hiddenTips}
               onHideTip={handleHideTip}
@@ -6250,8 +6420,10 @@ function App() {
               isPro={isPro}
               onShowUpgrade={showUpgrade}
             />
+            </Suspense>
           )}
           {activeArea === 'templates' && (
+            <Suspense fallback={null}>
             <SearchTemplatesPanel
               hiddenTips={hiddenTips}
               onHideTip={handleHideTip}
@@ -6292,10 +6464,12 @@ function App() {
               onShowUpgrade={showUpgrade}
               onEditingChange={setQuickActionEditing}
             />
+            </Suspense>
           )}
           {activeArea === 'expansions' && (
             // Phase 3: Text Expansions will eventually support its own profile bar
             // for per-app or team expansion profiles.  For now a single global set.
+            <Suspense fallback={null}>
             <TextExpansions
               hiddenTips={hiddenTips}
               onHideTip={handleHideTip}
@@ -6346,6 +6520,7 @@ function App() {
               onExpansionImportResolve={handleExpansionImportResolve}
               onEditingChange={setExpansionEditing}
             />
+            </Suspense>
           )}
         </main>
         )}
