@@ -78,7 +78,8 @@ export default function RadialMenu() {
   // two windows the clipboard popup closed in v0.8.5. A lost payload here
   // meant an empty wheel AND no holdKey, so hold-to-select release never
   // fired for that open. Pull at mount (fill only while empty) and, forced,
-  // on the visibilitychange that only a suspend→resume produces.
+  // on visibilitychange. webview_mem parks hidden windows, so that fires on
+  // every show, not only after a suspend; the pull is idempotent.
   const selfHealPull = useCallback((force) => {
     window.electronAPI?.getRadialMenuData?.()
       .then((data) => {

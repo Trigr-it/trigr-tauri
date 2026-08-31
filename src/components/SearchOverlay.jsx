@@ -515,8 +515,9 @@ export default function SearchOverlay() {
   // drop events emitted right after Resume(). Either left Quick Search blank,
   // stale, or dark until closed and reopened. So the overlay pulls its own
   // data at mount (fills only while empty, never clobbers a fresher push) and
-  // on the visibilitychange that only fires on a suspend→resume (forced: the
-  // pushed payload for that show is exactly what may have been lost). Voice
+  // on visibilitychange (forced: the pushed payload for that show is exactly
+  // what may have been lost). webview_mem parks hidden windows, so that event
+  // now fires on every show, not only after a suspend; the pull is idempotent. Voice
   // mode is left alone — its payload comes down a different event.
   const allItemsLenRef = useRef(0);
   useEffect(() => { allItemsLenRef.current = allItems.length; }, [allItems]);

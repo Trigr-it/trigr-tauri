@@ -28,6 +28,14 @@ function highlightMatches(text, needle) {
   return parts;
 }
 
+// Incremental list rendering. The popup used to mount every history row (500
+// items = ~5,100 DOM nodes and ~700 <img> thumbnails) and keep them alive while
+// hidden. Only the first ROW_CHUNK timeline entries are rendered; more are
+// appended as the user scrolls or arrows past the rendered range, and the
+// limit collapses back when the window is parked (visibilityState 'hidden'),
+// so a hidden popup holds ~60 rows, not the whole history.
+const ROW_CHUNK = 60;
+
 // ── Lazy image thumbnail loader ─────────────────────────────────────────────
 
 function ImageThumb({ id, thumbB64, className, fallbackClass, zoomable }) {
@@ -134,6 +142,7 @@ export default function ClipboardOverlay() {
     return next;
   });
   const [items, setItems] = useState([]);
+  const [renderLimit, setRenderLimit] = useState(ROW_CHUNK);
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Seeded from the last session's theme so a fresh boot paints the right
   // palette immediately instead of flashing the dark default until the first
@@ -193,13 +202,18 @@ export default function ClipboardOverlay() {
 
   useEffect(() => { selfHealPull(false); }, [selfHealPull]);
 
-  // Suspend-wake recovery. Normal shows never toggle the WebView2 controller's
-  // visibility, so a hidden→visible transition here means the webview was just
-  // resumed from TrySuspend ahead of a show — exactly the window where the
-  // show path's reset + data emits can be lost. Redo both locally.
+  // Wake / park hook. webview_mem parks every hidden window with
+  // SetIsVisible(false), so visibilityState is truthful here and this fires
+  // hidden->visible on EVERY show (before v0.8.11 it fired only after a
+  // TrySuspend resume). The forced re-pull is idempotent and still covers the
+  // suspend/IPC-reconnect race that can drop the show path's reset + data
+  // emits. The hidden branch shrinks the mounted list back to one chunk.
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') {
+        setRenderLimit(ROW_CHUNK);
+        return;
+      }
       selfHealPull(true);
       setSelectedIndex(0);
       setSearch('');
@@ -272,7 +286,21 @@ export default function ClipboardOverlay() {
     return result;
   }, [filtered]);
 
-  useEffect(() => { setSelectedIndex(0); setEditing(false); }, [filtered.length]);
+  useEffect(() => { setSelectedIndex(0); setEditing(false); setRenderLimit(ROW_CHUNK); }, [filtered.length]);
+
+  // Keep the selected row mounted when arrowing past the rendered range.
+  useEffect(() => {
+    const pos = groupedFlat.findIndex(e => e.type === 'item' && e.flatIndex === selectedIndex);
+    if (pos >= 0) setRenderLimit(l => (pos + 8 > l ? pos + ROW_CHUNK : l));
+  }, [selectedIndex, groupedFlat]);
+
+  // Append the next chunk as the list nears its rendered end.
+  const onListScroll = useCallback((e) => {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
+      setRenderLimit(l => (l < groupedFlat.length ? l + ROW_CHUNK : l));
+    }
+  }, [groupedFlat.length]);
 
   // Cancel edit when selection changes
   useEffect(() => { setEditing(false); setEditText(''); }, [selectedIndex]);
@@ -397,7 +425,7 @@ export default function ClipboardOverlay() {
   useLayoutEffect(() => {
     const el = rowRefs.current[selectedIndex];
     if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [selectedIndex]);
+  }, [selectedIndex, renderLimit]);
 
   // ── Resize window to panel ────────────────────────────────────────────────
 
@@ -530,11 +558,11 @@ export default function ClipboardOverlay() {
               >{tag}</button>
             ))}
           </div>
-          <div className="co-left-list">
+          <div className="co-left-list" onScroll={onListScroll}>
             {filtered.length === 0 ? (
               <div className="co-empty">{items.length === 0 ? 'No history' : 'No matches'}</div>
             ) : (
-              groupedFlat.map((entry) => {
+              groupedFlat.slice(0, renderLimit).map((entry) => {
                 if (entry.type === 'header') {
                   return <div key={`h-${entry.label}`} className="co-timeline-header">{entry.label}</div>;
                 }

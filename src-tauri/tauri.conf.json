@@ -22,7 +22,8 @@
         "resizable": true,
         "decorations": false,
         "visible": false,
-        "backgroundColor": "#0d0d11"
+        "backgroundColor": "#0d0d11",
+        "additionalBrowserArgs": "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
       }
     ],
     "security": {
