@@ -1,4 +1,5 @@
 import './tauriAPI'; // Initialize window.electronAPI bridge before anything else
+import './devBridge'; // Dev-only UI test bridge — no-op outside the Vite dev server
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 
