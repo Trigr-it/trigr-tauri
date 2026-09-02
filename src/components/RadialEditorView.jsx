@@ -616,44 +616,6 @@ export default function RadialEditorView({
         <div className="rmp-conflict-warn">{radialConflict}</div>
       )}
 
-      {/* Wheel layouts (Pro): which arrangement this device fires */}
-      {radialMenuHotkey && (
-        <div className="rev-layouts-bar">
-          <div className="rev-layouts-text">
-            <span className="rev-layouts-label">
-              Wheel layouts
-              {!isPro && <span className="pro-badge">PRO</span>}
-            </span>
-            <span className="rev-layouts-hint">
-              {isPro
-                ? 'One shared set of actions, any number of wheel arrangements. Each device that shares your config picks which layout its radial hotkey opens.'
-                : 'Keep a different wheel arrangement on each device that shares your config. Actions stay shared.'}
-            </span>
-          </div>
-          <RadialLayoutSwitcher
-            layouts={radialLayouts}
-            editingId={editingRadialLayoutId}
-            deviceId={deviceRadialLayoutId}
-            isPro={isPro}
-            onSelect={onSelectRadialLayout}
-            onCreate={onCreateRadialLayout}
-            onRename={onRenameRadialLayout}
-            onDelete={onDeleteRadialLayout}
-            onSetDevice={onSetDeviceRadialLayout}
-            onShowUpgrade={onShowUpgrade}
-          />
-        </div>
-      )}
-      {radialMenuHotkey && isPro && !hiddenTips.includes('radial-layouts') && (
-        <div className="rev-tip rev-tip-prominent rev-layouts-tip">
-          <span className="rev-tip-badge">TIP</span>
-          <span>
-            Want a different wheel on your laptop and your desktop? Create a layout, arrange its segments, then click <strong>Use on this device</strong>. Every action underneath stays in sync across devices. The layout you are editing is shown in the chip; a monitor icon marks the one this device fires.
-          </span>
-          <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-layouts')}>&#10005;</button>
-        </div>
-      )}
-
       {/* Stats bar */}
       {radialMenuHotkey && (
         <div className="rev-stats">
@@ -943,6 +905,40 @@ export default function RadialEditorView({
               <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-hotkey')}>&#10005;</button>
             </div>
           )}
+          {isPro && !hiddenTips.includes('radial-layouts') && (
+            <div className="rev-tip rev-layouts-tip">
+              <Info size={14} strokeWidth={2} aria-hidden="true" />
+              <span>Create a layout, arrange it, then click <strong>Use on this device</strong>. Other devices sharing your config keep their own choice.</span>
+              <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-layouts')}>&#10005;</button>
+            </div>
+          )}
+          {/* Wheel layouts (Pro): which arrangement this device fires. Sits
+              under the wheel, apart from the hotkey / hold settings above. */}
+          <div className="rev-layouts-bar">
+            <div className="rev-layouts-text">
+              <span className="rev-layouts-label">
+                Wheel layouts
+                {!isPro && <span className="pro-badge">PRO</span>}
+              </span>
+              <span className="rev-layouts-hint">
+                {isPro
+                  ? 'Same actions, a different arrangement per device.'
+                  : 'A different wheel on each device that shares your config.'}
+              </span>
+            </div>
+            <RadialLayoutSwitcher
+              layouts={radialLayouts}
+              editingId={editingRadialLayoutId}
+              deviceId={deviceRadialLayoutId}
+              isPro={isPro}
+              onSelect={onSelectRadialLayout}
+              onCreate={onCreateRadialLayout}
+              onRename={onRenameRadialLayout}
+              onDelete={onDeleteRadialLayout}
+              onSetDevice={onSetDeviceRadialLayout}
+              onShowUpgrade={onShowUpgrade}
+            />
+          </div>
         </div>
       )}
 

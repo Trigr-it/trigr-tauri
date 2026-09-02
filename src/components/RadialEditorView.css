@@ -46,13 +46,16 @@
    selector chip is a neutral keycap (sub-section switcher, never gold); only
    the "fires on this device" state uses the accent. */
 
+/* Lives at the bottom of .rev-wheel-zone (a centred flex column), so it
+   stretches to the zone's width and sits below the wheel and its tips. */
 .rev-layouts-bar {
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-6);
   padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
   position: relative;
   z-index: 2;
@@ -80,10 +83,7 @@
 }
 
 .rev-layouts-tip {
-  max-width: none;
-  margin: var(--space-3) var(--space-6) 0;
-  position: relative;
-  z-index: 1;
+  max-width: 520px;
 }
 
 .rev-layout-switcher {
@@ -147,7 +147,7 @@
 
 .rev-layout-menu {
   position: absolute;
-  top: calc(100% + var(--space-1));
+  bottom: calc(100% + var(--space-1));
   right: 0;
   min-width: 280px;
   background: var(--bg-elevated);
