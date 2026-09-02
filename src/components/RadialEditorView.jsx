@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
-import { Info, ChevronDown, Monitor, Pencil, Trash2, Plus, Check } from 'lucide-react';
+import { Info, ChevronDown, Pencil, Trash2, Plus, Check } from 'lucide-react';
 import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
@@ -18,12 +18,13 @@ const EDITOR_OUTER_R = 105;
 
 
 // ── Layout switcher (Pro, per-device wheels) ───────────────────────────────
-// Picks which wheel the editor shows and which one THIS device fires. Extra
-// layouts sync with the config; the device choice is machine-local (Rust).
+// ONE selector: the layout it shows is both the one being edited and the one
+// this device's radial hotkey opens (a pick persists as this machine's
+// choice). Extra layouts sync with the config; the choice is machine-local.
 // Free tier: one chip showing "Default" + PRO badge → upgrade prompt.
 function RadialLayoutSwitcher({
-  layouts = [], editingId = 'default', deviceId = 'default', isPro = false,
-  onSelect, onCreate, onRename, onDelete, onSetDevice, onShowUpgrade,
+  layouts = [], editingId = 'default', isPro = false,
+  onSelect, onCreate, onRename, onDelete, onShowUpgrade,
 }) {
   const [open, setOpen] = useState(false);
   const [renamingId, setRenamingId] = useState(null);
@@ -34,8 +35,6 @@ function RadialLayoutSwitcher({
 
   const all = [{ id: 'default', name: 'Default' }, ...layouts];
   const current = all.find(l => l.id === editingId) || all[0];
-  const effectiveDeviceId = all.some(l => l.id === deviceId) ? deviceId : 'default';
-  const editingIsDevice = current.id === effectiveDeviceId;
 
   const close = useCallback(() => {
     setOpen(false);
@@ -62,7 +61,7 @@ function RadialLayoutSwitcher({
         onClick={() => onShowUpgrade?.('Radial layouts per device')}
         title="Pro: keep a different wheel on each device that shares this config"
       >
-        <span className="rev-layout-chip-prefix">Editing</span>
+        <span className="rev-layout-chip-prefix">Active Radial</span>
         <span className="rev-layout-chip-name">Default</span>
         <ChevronDown size={14} />
       </button>
@@ -86,25 +85,15 @@ function RadialLayoutSwitcher({
         type="button"
         className={`rev-layout-chip${open ? ' is-open' : ''}`}
         onClick={() => (open ? close() : setOpen(true))}
-        title="Choose which radial layout to edit"
+        title="The radial layout this device opens and you are editing here"
       >
-        <span className="rev-layout-chip-prefix">Editing</span>
+        <span className="rev-layout-chip-prefix">Active Radial</span>
         <span className="rev-layout-chip-name">{current.name}</span>
         <ChevronDown size={14} />
-      </button>
-      <button
-        type="button"
-        className={`rev-device-btn${editingIsDevice ? ' is-active' : ''}`}
-        onClick={() => { if (!editingIsDevice) onSetDevice?.(current.id); }}
-        title={editingIsDevice ? 'This device fires this layout' : 'Make this the layout the radial hotkey opens on this device'}
-      >
-        <Monitor size={14} />
-        <span>{editingIsDevice ? 'Fires on this device' : 'Use on this device'}</span>
       </button>
       {open && (
         <div className="rev-layout-menu" role="menu">
           {all.map(l => {
-            const isDevice = l.id === effectiveDeviceId;
             const isEditing = l.id === current.id;
             if (renamingId === l.id) {
               return (
@@ -141,7 +130,6 @@ function RadialLayoutSwitcher({
               >
                 <span className="rev-layout-row-check">{isEditing && <Check size={12} />}</span>
                 <span className="rev-layout-row-name">{l.name}</span>
-                {isDevice && <span className="rev-layout-row-device" title="Fires on this device"><Monitor size={11} /></span>}
                 {l.id !== 'default' && (
                   <span className="rev-layout-row-actions">
                     <button type="button" className="rev-layout-icon-btn" title="Rename" onClick={e => { e.stopPropagation(); setDraftName(l.name); setRenamingId(l.id); }}><Pencil size={11} /></button>
@@ -227,7 +215,6 @@ export default function RadialEditorView({
   onCreateRadialLayout,
   onRenameRadialLayout,
   onDeleteRadialLayout,
-  onSetDeviceRadialLayout,
   isPro                 = false,
   onShowUpgrade,
 }) {
@@ -908,7 +895,7 @@ export default function RadialEditorView({
           {isPro && !hiddenTips.includes('radial-layouts') && (
             <div className="rev-tip rev-layouts-tip">
               <Info size={14} strokeWidth={2} aria-hidden="true" />
-              <span>Create a layout, arrange it, then click <strong>Use on this device</strong>. Other devices sharing your config keep their own choice.</span>
+              <span>Pick a layout to make it this device's active radial and edit it here. Other devices sharing your config keep their own.</span>
               <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-layouts')}>&#10005;</button>
             </div>
           )}
@@ -922,20 +909,18 @@ export default function RadialEditorView({
               </span>
               <span className="rev-layouts-hint">
                 {isPro
-                  ? 'Same actions, a different arrangement per device.'
+                  ? 'The wheel this device opens. Same actions, a different arrangement per device.'
                   : 'A different wheel on each device that shares your config.'}
               </span>
             </div>
             <RadialLayoutSwitcher
               layouts={radialLayouts}
               editingId={editingRadialLayoutId}
-              deviceId={deviceRadialLayoutId}
               isPro={isPro}
               onSelect={onSelectRadialLayout}
               onCreate={onCreateRadialLayout}
               onRename={onRenameRadialLayout}
               onDelete={onDeleteRadialLayout}
-              onSetDevice={onSetDeviceRadialLayout}
               onShowUpgrade={onShowUpgrade}
             />
           </div>

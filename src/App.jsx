@@ -5001,8 +5001,14 @@ function App() {
   // Layouts are pointers to the shared actions, so creating, renaming or
   // deleting one never touches assignments. Which layout THIS device fires
   // lives in trigr-local-settings.json (Rust); the editor opens on it.
+  // One selector: the picked layout is both what the editor shows and what
+  // this device's radial hotkey opens, so a pick persists as the machine's
+  // choice (trigr-local-settings.json via Rust).
   const handleSelectRadialLayout = useCallback((id) => {
-    setEditingRadialLayoutId(id && id !== 'default' ? id : 'default');
+    const value = id && id !== 'default' ? id : 'default';
+    setEditingRadialLayoutId(value);
+    setDeviceRadialLayoutId(value);
+    window.electronAPI?.setRadialLayoutId?.(value === 'default' ? null : value);
     setSelectedRadialSegment(null);
     setSelectedRadialChild(null);
     setExpandedRadialFolder(null);
@@ -5052,14 +5058,6 @@ function App() {
     if (editingRadialLayoutId === id) handleSelectRadialLayout('default');
     showNotification('Layout deleted', 'info');
   }, [radialLayouts, deviceRadialLayoutId, editingRadialLayoutId, handleSelectRadialLayout, showNotification]);
-
-  const handleSetDeviceRadialLayout = useCallback((id) => {
-    const value = id && id !== 'default' ? id : 'default';
-    setDeviceRadialLayoutId(value);
-    window.electronAPI?.setRadialLayoutId?.(value === 'default' ? null : value);
-    const layoutName = value === 'default' ? 'Default' : (radialLayouts.find(l => l.id === value)?.name || 'this layout');
-    showNotification(`This device now fires "${layoutName}"`);
-  }, [radialLayouts, showNotification]);
 
   // A layout deleted on another device (or dropped by a sync) must not leave
   // the editor pointing at nothing.
@@ -5987,8 +5985,7 @@ function App() {
       clearSelection: () => { setSelectedKey(null); setSelectedLibraryId(null); setSelectedRadialSegment(null); },
       setModifiers: (mods) => setActiveModifiers(Array.isArray(mods) ? mods : []),
       setProfile: handleProfileChange,
-      setRadialLayout: handleSelectRadialLayout,    // (layoutId | 'default') switch the wheel being edited
-      setDeviceRadialLayout: handleSetDeviceRadialLayout, // (layoutId | 'default') persists like the header button
+      setRadialLayout: handleSelectRadialLayout,    // (layoutId | 'default') active radial for this device (edit + fire)
       getRadialLayouts: () => radialLayouts.map(l => ({ id: l.id, name: l.name })),
       hideTip: handleHideTip,
       setHiddenTips: (keys) => setHiddenTips(Array.isArray(keys) ? keys : []),
@@ -6447,12 +6444,10 @@ function App() {
                 onForceOverwriteRadialSegment={handleForceOverwriteRadialSegment}
                 radialLayouts={radialLayouts}
                 editingRadialLayoutId={effectiveEditingLayoutId}
-                deviceRadialLayoutId={deviceRadialLayoutId}
                 onSelectRadialLayout={handleSelectRadialLayout}
                 onCreateRadialLayout={handleCreateRadialLayout}
                 onRenameRadialLayout={handleRenameRadialLayout}
                 onDeleteRadialLayout={handleDeleteRadialLayout}
-                onSetDeviceRadialLayout={handleSetDeviceRadialLayout}
                 isPro={isPro}
                 onShowUpgrade={showUpgrade}
               />
