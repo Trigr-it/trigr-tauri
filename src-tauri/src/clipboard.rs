@@ -1595,12 +1595,17 @@ pub fn get_history(
 
 pub fn get_item_full(id: i64) -> Option<FullClipItem> {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetItemFull { id, reply: reply_tx }).is_ok() {
-                if let Ok(item) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return item;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::GetItemFull { id, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(item) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return item;
             }
         }
     }
@@ -1609,12 +1614,17 @@ pub fn get_item_full(id: i64) -> Option<FullClipItem> {
 
 pub fn delete_item(id: i64) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::DeleteItem { id, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::DeleteItem { id, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1623,12 +1633,17 @@ pub fn delete_item(id: i64) -> bool {
 
 pub fn clear_all() -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::ClearAll { reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::ClearAll { reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1640,12 +1655,17 @@ pub fn clear_all() -> bool {
 /// when the message lands, and the reset itself does file I/O.
 pub fn reset_storage() -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::ResetStorage { reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(15)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::ResetStorage { reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(15)) {
+                return ok;
             }
         }
     }
@@ -1703,12 +1723,17 @@ pub fn delete_plaintext_backup_now() -> bool {
 
 pub fn pin_item(id: i64, pinned: bool) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::PinItem { id, pinned, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::PinItem { id, pinned, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1717,12 +1742,17 @@ pub fn pin_item(id: i64, pinned: bool) -> bool {
 
 pub fn star_item(id: i64, starred: bool) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::StarItem { id, starred, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::StarItem { id, starred, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1731,12 +1761,17 @@ pub fn star_item(id: i64, starred: bool) -> bool {
 
 pub fn reorder_pinned(ids: Vec<i64>) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::ReorderPinned { ids, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::ReorderPinned { ids, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1745,12 +1780,17 @@ pub fn reorder_pinned(ids: Vec<i64>) -> bool {
 
 pub fn reorder_starred(ids: Vec<i64>) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::ReorderStarred { ids, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::ReorderStarred { ids, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1759,12 +1799,17 @@ pub fn reorder_starred(ids: Vec<i64>) -> bool {
 
 pub fn create_folder(name: String) -> Option<i64> {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::CreateFolder { name, reply: reply_tx }).is_ok() {
-                if let Ok(id) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return id;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::CreateFolder { name, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(id) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return id;
             }
         }
     }
@@ -1773,12 +1818,17 @@ pub fn create_folder(name: String) -> Option<i64> {
 
 pub fn rename_folder(id: i64, name: String) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::RenameFolder { id, name, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::RenameFolder { id, name, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1787,12 +1837,17 @@ pub fn rename_folder(id: i64, name: String) -> bool {
 
 pub fn delete_folder(id: i64) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::DeleteFolder { id, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::DeleteFolder { id, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1801,12 +1856,17 @@ pub fn delete_folder(id: i64) -> bool {
 
 pub fn move_to_folder(id: i64, folder_id: Option<i64>) -> bool {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::MoveToFolder { id, folder_id, reply: reply_tx }).is_ok() {
-                if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return ok;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::MoveToFolder { id, folder_id, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(ok) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return ok;
             }
         }
     }
@@ -1815,12 +1875,17 @@ pub fn move_to_folder(id: i64, folder_id: Option<i64>) -> bool {
 
 pub fn get_folders() -> Value {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetFolders { reply: reply_tx }).is_ok() {
-                if let Ok(folders) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return folders;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::GetFolders { reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(folders) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return folders;
             }
         }
     }
@@ -1850,12 +1915,17 @@ pub fn get_image_blob(id: i64) -> Option<Vec<u8>> {
 
 pub fn get_distinct_source_apps() -> Vec<String> {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetDistinctSourceApps { reply: reply_tx }).is_ok() {
-                if let Ok(apps) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return apps;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::GetDistinctSourceApps { reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(apps) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return apps;
             }
         }
     }
@@ -1864,12 +1934,17 @@ pub fn get_distinct_source_apps() -> Vec<String> {
 
 pub fn get_date_buckets(app_filter: Option<String>, tag_filter: Option<String>) -> Value {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::GetDateBuckets { app_filter, tag_filter, reply: reply_tx }).is_ok() {
-                if let Ok(buckets) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return buckets;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::GetDateBuckets { app_filter, tag_filter, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(buckets) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return buckets;
             }
         }
     }
@@ -1878,12 +1953,17 @@ pub fn get_date_buckets(app_filter: Option<String>, tag_filter: Option<String>) 
 
 pub fn update_item(id: i64, new_text: String) -> Option<String> {
     if let Some(tx) = CLIPBOARD_TX.get() {
-        if let Ok(tx) = tx.lock() {
-            let (reply_tx, reply_rx) = mpsc::channel();
-            if tx.send(ClipboardMsg::UpdateItem { id, new_text, reply: reply_tx }).is_ok() {
-                if let Ok(tag) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    return tag;
-                }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        // Lock scoped to the send; the reply is awaited AFTER the guard drops.
+        // Holding it across recv_timeout serialised every concurrent clipboard
+        // caller on this mutex for the full writer round trip (see get_image_blob).
+        let sent = tx
+            .lock()
+            .map(|tx| tx.send(ClipboardMsg::UpdateItem { id, new_text, reply: reply_tx }).is_ok())
+            .unwrap_or(false);
+        if sent {
+            if let Ok(tag) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                return tag;
             }
         }
     }
@@ -1921,18 +2001,19 @@ pub fn run_ocr_backfill() {
 
     thread::spawn(move || {
         let ids: Vec<i64> = if let Some(tx) = CLIPBOARD_TX.get() {
-            if let Ok(tx) = tx.lock() {
-                let (reply_tx, reply_rx) = mpsc::channel();
-                if tx.send(ClipboardMsg::GetPendingOcrIds { reply: reply_tx }).is_ok() {
-                    reply_rx
-                        .recv_timeout(std::time::Duration::from_secs(10))
-                        .unwrap_or_default()
-                } else {
-                    return;
-                }
-            } else {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            // Lock scoped to the send — this wait is up to 10 s and used to
+            // hold the channel mutex, stalling every other clipboard caller.
+            let sent = tx
+                .lock()
+                .map(|tx| tx.send(ClipboardMsg::GetPendingOcrIds { reply: reply_tx }).is_ok())
+                .unwrap_or(false);
+            if !sent {
                 return;
             }
+            reply_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap_or_default()
         } else {
             return;
         };
@@ -2025,18 +2106,19 @@ pub fn set_thumb_blob(id: i64, thumb: Vec<u8>) {
 pub fn run_thumb_backfill() {
     thread::spawn(move || {
         let ids: Vec<i64> = if let Some(tx) = CLIPBOARD_TX.get() {
-            if let Ok(tx) = tx.lock() {
-                let (reply_tx, reply_rx) = mpsc::channel();
-                if tx.send(ClipboardMsg::GetPendingThumbIds { reply: reply_tx }).is_ok() {
-                    reply_rx
-                        .recv_timeout(std::time::Duration::from_secs(10))
-                        .unwrap_or_default()
-                } else {
-                    return;
-                }
-            } else {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            // Lock scoped to the send — this wait is up to 10 s and used to
+            // hold the channel mutex, stalling every other clipboard caller.
+            let sent = tx
+                .lock()
+                .map(|tx| tx.send(ClipboardMsg::GetPendingThumbIds { reply: reply_tx }).is_ok())
+                .unwrap_or(false);
+            if !sent {
                 return;
             }
+            reply_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap_or_default()
         } else {
             return;
         };

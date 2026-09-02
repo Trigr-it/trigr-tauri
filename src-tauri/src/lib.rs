@@ -5524,9 +5524,18 @@ fn move_clipboard_item_to_folder(id: i64, folder_id: Option<i64>) -> bool {
     clipboard::move_to_folder(id, folder_id)
 }
 
+// The ClipboardPanel fires folders, distinct source apps, date buckets and
+// storage size on mount, alongside get_clipboard_history. As sync commands
+// they ran on the MAIN thread and each waited on the single clipboard writer
+// thread, which was busy decrypting the 50-row history page, so the whole UI
+// froze until the page was done (seconds in debug, 10-30 ms hitches in
+// release). Async + spawn_blocking: the wait moves off the main thread.
+// Crypto path untouched — same decrypts, same thread, same data.
 #[tauri::command]
-fn get_clipboard_folders() -> serde_json::Value {
-    clipboard::get_folders()
+async fn get_clipboard_folders() -> serde_json::Value {
+    tauri::async_runtime::spawn_blocking(clipboard::get_folders)
+        .await
+        .unwrap_or_else(|_| serde_json::json!([]))
 }
 
 #[tauri::command]
@@ -5573,16 +5582,20 @@ fn get_clipboard_image_blocking(id: i64) -> Option<String> {
 }
 
 #[tauri::command]
-fn get_distinct_source_apps() -> Vec<String> {
-    clipboard::get_distinct_source_apps()
+async fn get_distinct_source_apps() -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(clipboard::get_distinct_source_apps)
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-fn get_clipboard_date_buckets(
+async fn get_clipboard_date_buckets(
     app_filter: Option<String>,
     tag_filter: Option<String>,
 ) -> Value {
-    clipboard::get_date_buckets(app_filter, tag_filter)
+    tauri::async_runtime::spawn_blocking(move || clipboard::get_date_buckets(app_filter, tag_filter))
+        .await
+        .unwrap_or_else(|_| serde_json::json!({ "dates": [], "pinned_count": 0, "starred_count": 0 }))
 }
 
 #[tauri::command]
@@ -5733,8 +5746,10 @@ fn set_clipboard_excluded_apps(apps: Vec<String>) {
 }
 
 #[tauri::command]
-fn get_clipboard_storage_size() -> u64 {
-    clipboard::get_storage_size()
+async fn get_clipboard_storage_size() -> u64 {
+    tauri::async_runtime::spawn_blocking(clipboard::get_storage_size)
+        .await
+        .unwrap_or(0)
 }
 
 // ── Auto-updater (Phase 10) ─────────────────────────────────────────────────
