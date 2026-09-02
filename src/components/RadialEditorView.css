@@ -42,29 +42,81 @@
 }
 
 /* ── Layout switcher (Pro, per-device wheels) ─────────────────────────── */
-/* Neutral keycap chips, never gold: this is a sub-section switcher. */
+/* Own row under the header, same recipe as the hold-to-select row. The
+   selector chip is a neutral keycap (sub-section switcher, never gold); only
+   the "fires on this device" state uses the accent. */
+
+.rev-layouts-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.rev-layouts-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  min-width: 0;
+}
+
+.rev-layouts-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rev-layouts-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.rev-layouts-tip {
+  max-width: none;
+  margin: var(--space-3) var(--space-6) 0;
+  position: relative;
+  z-index: 1;
+}
 
 .rev-layout-switcher {
   position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .rev-layout-chip,
 .rev-device-btn {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  min-height: 32px;
   background: var(--key-bg);
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius-sm);
-  padding: var(--space-0) var(--space-3);
-  font-size: var(--text-sm);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--text-md);
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.08s, border-color 0.08s, color 0.08s;
+}
+
+.rev-layout-chip-prefix {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .rev-layout-chip:hover,
@@ -75,10 +127,15 @@
 }
 
 .rev-layout-chip-name {
-  font-weight: 600;
-  max-width: 160px;
+  font-weight: 700;
+  color: var(--text-primary);
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rev-layout-chip .pro-badge {
+  margin-left: var(--space-1);
 }
 
 .rev-device-btn.is-active {
@@ -91,8 +148,8 @@
 .rev-layout-menu {
   position: absolute;
   top: calc(100% + var(--space-1));
-  left: 0;
-  min-width: 260px;
+  right: 0;
+  min-width: 280px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
@@ -105,9 +162,9 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   color: var(--text-secondary);
   cursor: pointer;
 }

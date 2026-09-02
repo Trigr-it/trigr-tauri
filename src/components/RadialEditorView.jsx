@@ -62,8 +62,9 @@ function RadialLayoutSwitcher({
         onClick={() => onShowUpgrade?.('Radial layouts per device')}
         title="Pro: keep a different wheel on each device that shares this config"
       >
+        <span className="rev-layout-chip-prefix">Editing</span>
         <span className="rev-layout-chip-name">Default</span>
-        <span className="pro-badge">PRO</span>
+        <ChevronDown size={14} />
       </button>
     );
   }
@@ -87,8 +88,9 @@ function RadialLayoutSwitcher({
         onClick={() => (open ? close() : setOpen(true))}
         title="Choose which radial layout to edit"
       >
+        <span className="rev-layout-chip-prefix">Editing</span>
         <span className="rev-layout-chip-name">{current.name}</span>
-        <ChevronDown size={12} />
+        <ChevronDown size={14} />
       </button>
       <button
         type="button"
@@ -96,8 +98,8 @@ function RadialLayoutSwitcher({
         onClick={() => { if (!editingIsDevice) onSetDevice?.(current.id); }}
         title={editingIsDevice ? 'This device fires this layout' : 'Make this the layout the radial hotkey opens on this device'}
       >
-        <Monitor size={12} />
-        <span>{editingIsDevice ? 'On this device' : 'Use on this device'}</span>
+        <Monitor size={14} />
+        <span>{editingIsDevice ? 'Fires on this device' : 'Use on this device'}</span>
       </button>
       {open && (
         <div className="rev-layout-menu" role="menu">
@@ -550,18 +552,6 @@ export default function RadialEditorView({
       {/* Hotkey capture strip */}
       <div className="rev-header">
         <span className="rev-title">Radial Menu</span>
-        <RadialLayoutSwitcher
-          layouts={radialLayouts}
-          editingId={editingRadialLayoutId}
-          deviceId={deviceRadialLayoutId}
-          isPro={isPro}
-          onSelect={onSelectRadialLayout}
-          onCreate={onCreateRadialLayout}
-          onRename={onRenameRadialLayout}
-          onDelete={onDeleteRadialLayout}
-          onSetDevice={onSetDeviceRadialLayout}
-          onShowUpgrade={onShowUpgrade}
-        />
         <div className="rev-hotkey-ctrl">
           {capturingKey ? (
             <div
@@ -624,6 +614,44 @@ export default function RadialEditorView({
       </div>
       {radialConflict && (
         <div className="rmp-conflict-warn">{radialConflict}</div>
+      )}
+
+      {/* Wheel layouts (Pro): which arrangement this device fires */}
+      {radialMenuHotkey && (
+        <div className="rev-layouts-bar">
+          <div className="rev-layouts-text">
+            <span className="rev-layouts-label">
+              Wheel layouts
+              {!isPro && <span className="pro-badge">PRO</span>}
+            </span>
+            <span className="rev-layouts-hint">
+              {isPro
+                ? 'One shared set of actions, any number of wheel arrangements. Each device that shares your config picks which layout its radial hotkey opens.'
+                : 'Keep a different wheel arrangement on each device that shares your config. Actions stay shared.'}
+            </span>
+          </div>
+          <RadialLayoutSwitcher
+            layouts={radialLayouts}
+            editingId={editingRadialLayoutId}
+            deviceId={deviceRadialLayoutId}
+            isPro={isPro}
+            onSelect={onSelectRadialLayout}
+            onCreate={onCreateRadialLayout}
+            onRename={onRenameRadialLayout}
+            onDelete={onDeleteRadialLayout}
+            onSetDevice={onSetDeviceRadialLayout}
+            onShowUpgrade={onShowUpgrade}
+          />
+        </div>
+      )}
+      {radialMenuHotkey && isPro && !hiddenTips.includes('radial-layouts') && (
+        <div className="rev-tip rev-tip-prominent rev-layouts-tip">
+          <span className="rev-tip-badge">TIP</span>
+          <span>
+            Want a different wheel on your laptop and your desktop? Create a layout, arrange its segments, then click <strong>Use on this device</strong>. Every action underneath stays in sync across devices. The layout you are editing is shown in the chip; a monitor icon marks the one this device fires.
+          </span>
+          <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-layouts')}>&#10005;</button>
+        </div>
       )}
 
       {/* Stats bar */}
