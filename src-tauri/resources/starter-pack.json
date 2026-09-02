@@ -837,18 +837,6 @@
         "url": "https://calendar.google.com"
       },
       "isStarter": true
-    },
-    "Chrome::Alt::KeyS": {
-      "type": "hotkey",
-      "label": "Screenshot region",
-      "data": {
-        "key": "S",
-        "modifiers": [
-          "shift",
-          "win"
-        ]
-      },
-      "isStarter": true
     }
   },
   "radialMenuItemsByProfile": {
