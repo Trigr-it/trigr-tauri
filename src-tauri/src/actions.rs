@@ -12,7 +12,8 @@ use windows_sys::Win32::System::DataExchange::{
 };
 use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
+    GetAsyncKeyState, GetKeyState, GetKeyboardLayout, MapVirtualKeyExW, MapVirtualKeyW, SendInput,
+    ToUnicodeEx, VkKeyScanExW, HKL, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
     KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE,
     MOUSEINPUT, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
@@ -613,6 +614,8 @@ fn keystroke_delay_ms() -> u64 {
 const VK_LCONTROL: u16 = 0xA2;
 const VK_LALT: u16 = 0xA4;
 const VK_LSHIFT: u16 = 0xA0;
+const VK_SHIFT: u16 = 0x10;
+const VK_CAPITAL: u16 = 0x14;
 const VK_LWIN: u16 = 0x5B;
 const VK_BACKSPACE: u16 = 0x08;
 const VK_INSERT: u16 = 0x2D;
@@ -1077,7 +1080,7 @@ fn output_text(text: &str, method: &str, target_hwnd: isize) {
         "send-input" | "direct" => {
             // Character-by-character fallback for apps that don't support paste
             info!("[Keyfire] Output text (sendinput): \"{}\"", crate::expansions::log_preview(text));
-            send_unicode_text(text, target_hwnd);
+            send_text_keystrokes(text, target_hwnd);
         }
         _ => {
             // Default: clipboard paste (instant)
@@ -1319,9 +1322,151 @@ fn write_clipboard_impl(text: &str, suppress_listener: bool) -> bool {
     false
 }
 
-// ── Type Text: character-by-character fallback ──────────────────────────────
+// ── Type Text: layout-aware keystroke synthesis ─────────────────────────────
+//
+// Printable characters that exist on the TARGET window's keyboard layout are
+// typed as a real key (scancode, with Shift wrapped around it when the layout
+// needs it), exactly as a physical keyboard produces them. KEYEVENTF_UNICODE
+// (VK_PACKET) is used only for characters the layout has no plain key for:
+// emoji, CJK, symbols behind AltGr, dead keys, control characters.
+//
+// Why (Word + Win11 Notepad garble, 2026-08-28): spell-check-as-you-type stalls
+// the target's UI thread on a misspelled word. Every VK_PACKET keydown queued
+// behind the stall is translated against the NEWEST pending Unicode payload,
+// so "Testing Macro" came out as "Testing ooooo". A real keydown carries its
+// own key + Shift state through the message queue, so a backlog cannot
+// cross-contaminate one character with another. Same approach AutoHotkey's
+// Send uses. Confirmed root cause: spell-check off = clean in both apps.
 
-fn send_unicode_text(text: &str, target_hwnd: isize) {
+/// Per-character keystroke plan for one target layout.
+enum TypedKey {
+    /// A plain layout key: (scancode, needs Shift).
+    Key(u16, bool),
+    /// No plain key on the layout — fall back to KEYEVENTF_UNICODE.
+    Unicode,
+}
+
+/// Snapshot of the target window's input layout + Caps Lock state, taken
+/// once per Type Text fire. `push_char` appends the SendInput records for one
+/// character (2-4 records) and reports whether it went out as a layout key.
+pub(crate) struct TypingLayout {
+    hkl: HKL,
+    caps_on: bool,
+    shift_scan: u16,
+}
+
+impl TypingLayout {
+    /// Layout of the thread that owns `target_hwnd` (the foreground window
+    /// when 0). Windows derives the VK for a scancode-mode event from the
+    /// foreground thread's layout, so the scancodes we compute here and the
+    /// keys the app sees always come from the same layout.
+    pub(crate) fn for_target(target_hwnd: isize) -> Self {
+        unsafe {
+            let hwnd = if target_hwnd != 0 { target_hwnd } else { GetForegroundWindow() as isize };
+            let tid = if hwnd != 0 { GetWindowThreadProcessId(hwnd as _, std::ptr::null_mut()) } else { 0 };
+            let hkl = GetKeyboardLayout(tid);
+            let caps_on = (GetKeyState(VK_CAPITAL as i32) & 1) != 0;
+            let mut shift_scan = MapVirtualKeyExW(VK_LSHIFT as u32, 0, hkl) as u16;
+            if shift_scan == 0 { shift_scan = 0x2A; }
+            TypingLayout { hkl, caps_on, shift_scan }
+        }
+    }
+
+    /// What the layout emits for `vk` + `scan` with the given Shift state and
+    /// the real Caps Lock state. None for nothing / dead keys / ligatures.
+    fn produces(&self, vk: u16, scan: u16, shift: bool) -> Option<char> {
+        let mut state = [0u8; 256];
+        if shift {
+            state[VK_SHIFT as usize] = 0x80;
+            state[VK_LSHIFT as usize] = 0x80;
+        }
+        if self.caps_on {
+            state[VK_CAPITAL as usize] = 0x01;
+        }
+        let mut buf = [0u16; 4];
+        // 0x4 = do not touch the kernel's dead-key state (Win10 1607+), same
+        // flag hotkeys::layout_char uses for the on-screen keyboard legends.
+        let n = unsafe {
+            ToUnicodeEx(vk as u32, scan as u32, state.as_ptr(), buf.as_mut_ptr(), buf.len() as i32, 0x4, self.hkl)
+        };
+        if n != 1 {
+            return None;
+        }
+        char::from_u32(buf[0] as u32)
+    }
+
+    fn plan(&self, ch: char) -> TypedKey {
+        // Control chars (newline, tab, CR) keep the historical Unicode path so
+        // line breaks and tabs behave exactly as before this change.
+        if ch.is_control() || (ch as u32) > 0xFFFF {
+            return TypedKey::Unicode;
+        }
+        let r = unsafe { VkKeyScanExW(ch as u16, self.hkl) };
+        if r == -1 {
+            return TypedKey::Unicode;
+        }
+        let vk = (r & 0xFF) as u16;
+        let mods = ((r >> 8) & 0xFF) as u8;
+        // Ctrl / Alt (AltGr) chords are not plain keys — Unicode is safer than
+        // synthesising a modifier chord the app may bind to something else.
+        if mods & 0x06 != 0 {
+            return TypedKey::Unicode;
+        }
+        let scan = unsafe { MapVirtualKeyExW(vk as u32, 0, self.hkl) } as u16;
+        if scan == 0 {
+            return TypedKey::Unicode;
+        }
+        let want_shift = mods & 0x01 != 0;
+        // Verify against the layout with the real Caps Lock state; when Caps
+        // Lock has flipped the case, the inverted Shift produces the char.
+        for shift in [want_shift, !want_shift] {
+            if self.produces(vk, scan, shift) == Some(ch) {
+                return TypedKey::Key(scan, shift);
+            }
+        }
+        TypedKey::Unicode
+    }
+
+    fn push_scan(inputs: &mut Vec<INPUT>, scan: u16, key_up: bool) {
+        let flags = if key_up { KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP } else { KEYEVENTF_SCANCODE };
+        inputs.push(INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT { wVk: 0, wScan: scan, dwFlags: flags, time: 0, dwExtraInfo: 0 },
+            },
+        });
+    }
+
+    /// Append the SendInput records for `ch`. Returns true when the character
+    /// went out as a layout key, false when it fell back to Unicode.
+    pub(crate) fn push_char(&self, inputs: &mut Vec<INPUT>, ch: char) -> bool {
+        match self.plan(ch) {
+            TypedKey::Key(scan, shift) => {
+                if shift { Self::push_scan(inputs, self.shift_scan, false); }
+                Self::push_scan(inputs, scan, false);
+                Self::push_scan(inputs, scan, true);
+                if shift { Self::push_scan(inputs, self.shift_scan, true); }
+                true
+            }
+            TypedKey::Unicode => {
+                let mut units = [0u16; 2];
+                for &cu in ch.encode_utf16(&mut units).iter() {
+                    for flags in [KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP] {
+                        inputs.push(INPUT {
+                            r#type: INPUT_KEYBOARD,
+                            Anonymous: INPUT_0 {
+                                ki: KEYBDINPUT { wVk: 0, wScan: cu, dwFlags: flags, time: 0, dwExtraInfo: 0 },
+                            },
+                        });
+                    }
+                }
+                false
+            }
+        }
+    }
+}
+
+fn send_text_keystrokes(text: &str, target_hwnd: isize) {
     let (_, _, fg_settle_ms, _) = speed_delays();
     let key_delay_ms = keystroke_delay_ms();
     let _suppress = SuppressionGuard::new();
@@ -1335,7 +1480,10 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
         if fg_settle_ms > 0 { thread::sleep(Duration::from_millis(fg_settle_ms)); }
     }
 
+    let layout = TypingLayout::for_target(target_hwnd);
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(4);
     let mut char_count: u64 = 0;
+    let mut key_count: u64 = 0;
     for ch in text.chars() {
         // Esc / re-fire cancel — with a custom per-char delay of up to 200ms
         // a long snippet is otherwise uninterruptible for minutes. Break (not
@@ -1344,23 +1492,27 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
             info!("[Keyfire] Type Text (send-input) cancelled (Esc) after {} chars", char_count);
             break;
         }
-        let code = ch as u32;
-        if code > 0xFFFF {
-            let adjusted = code - 0x10000;
-            let hi = (0xD800 + (adjusted >> 10)) as u16;
-            let lo = (0xDC00 + (adjusted & 0x3FF)) as u16;
-            send_unicode_key(hi, false);
-            send_unicode_key(hi, true);
-            send_unicode_key(lo, false);
-            send_unicode_key(lo, true);
-        } else {
-            send_unicode_key(code as u16, false);
-            send_unicode_key(code as u16, true);
+        // One SendInput per character: Shift-down, key-down, key-up, Shift-up
+        // land in the target's queue as one indivisible group. Down and up stay
+        // fused on purpose (no hold window): Type Text has its own speed sliders
+        // and a per-key hold would cap it at 20-40 cps.
+        inputs.clear();
+        if layout.push_char(&mut inputs, ch) {
+            key_count += 1;
+        }
+        unsafe {
+            SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
         }
         char_count += 1;
         if key_delay_ms > 0 {
             thread::sleep(Duration::from_millis(key_delay_ms));
         }
+    }
+    if char_count > 0 {
+        info!(
+            "[Keyfire] Type Text (send-input): {} chars, {} as layout keys, {} as Unicode",
+            char_count, key_count, char_count - key_count
+        );
     }
 
     // Drain buffer — `SendInput` only queues keystrokes into the OS input
@@ -1379,28 +1531,6 @@ fn send_unicode_text(text: &str, target_hwnd: isize) {
     }
 
     restore_modifiers(&held);
-}
-
-fn send_unicode_key(scan: u16, key_up: bool) {
-    let mut flags = KEYEVENTF_UNICODE;
-    if key_up {
-        flags |= KEYEVENTF_KEYUP;
-    }
-    let input = INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: 0,
-                wScan: scan,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
-    };
-    unsafe {
-        SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
-    }
 }
 
 // ── Direct inline key remap (AHK-style T::W passthrough) ────────────────────

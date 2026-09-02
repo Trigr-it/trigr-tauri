@@ -3711,7 +3711,12 @@ pub(crate) fn target_is_office(target_hwnd: isize) -> bool {
     )
 }
 
-/// Inject text via batched KEYEVENTF_UNICODE SendInput (single call).
+/// Inject text via one batched SendInput call. Characters that exist on the
+/// target's keyboard layout go out as real keys (scancode + Shift), anything
+/// else as KEYEVENTF_UNICODE — see `actions::TypingLayout` for why (Word /
+/// Win11 Notepad translate a backlog of VK_PACKET keydowns against the newest
+/// pending char when spell-check stalls the UI thread). Same builder as the
+/// Type Text send-input path so both fire paths type identically.
 fn inject_via_sendinput(text: &str, target_hwnd: isize) {
     log::info!("[Keyfire] Inject (sendinput): \"{}\"", log_preview(text));
     // Release physically held modifiers
@@ -3725,35 +3730,11 @@ fn inject_via_sendinput(text: &str, target_hwnd: isize) {
         thread::sleep(Duration::from_millis(10));
     }
 
-    // Build batched INPUT array — down+up per UTF-16 code unit
-    // Surrogate pairs are handled automatically by encode_utf16()
-    let utf16: Vec<u16> = text.encode_utf16().collect();
-    let mut inputs: Vec<INPUT> = Vec::with_capacity((utf16.len() * 2) + 2);
-    for &code_unit in &utf16 {
-        inputs.push(INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: 0,
-                    wScan: code_unit,
-                    dwFlags: KEYEVENTF_UNICODE,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        });
-        inputs.push(INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: 0,
-                    wScan: code_unit,
-                    dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        });
+    // Build batched INPUT array — 2-4 records per character
+    let layout = crate::actions::TypingLayout::for_target(target_hwnd);
+    let mut inputs: Vec<INPUT> = Vec::with_capacity((text.len() * 2) + 2);
+    for ch in text.chars() {
+        layout.push_char(&mut inputs, ch);
     }
 
     // Trailing space as VK_SPACE (not KEYEVENTF_UNICODE — some apps strip trailing whitespace)
