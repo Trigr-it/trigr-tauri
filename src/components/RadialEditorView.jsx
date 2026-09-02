@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
-import { Info } from 'lucide-react';
+import { Info, ChevronDown, Monitor, Pencil, Trash2, Plus, Check } from 'lucide-react';
 import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
@@ -16,6 +16,167 @@ const IconPicker = React.lazy(() => import('./IconPicker'));
 const EDITOR_INNER_R = 55;
 const EDITOR_OUTER_R = 105;
 
+
+// ── Layout switcher (Pro, per-device wheels) ───────────────────────────────
+// Picks which wheel the editor shows and which one THIS device fires. Extra
+// layouts sync with the config; the device choice is machine-local (Rust).
+// Free tier: one chip showing "Default" + PRO badge → upgrade prompt.
+function RadialLayoutSwitcher({
+  layouts = [], editingId = 'default', deviceId = 'default', isPro = false,
+  onSelect, onCreate, onRename, onDelete, onSetDevice, onShowUpgrade,
+}) {
+  const [open, setOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const rootRef = useRef(null);
+
+  const all = [{ id: 'default', name: 'Default' }, ...layouts];
+  const current = all.find(l => l.id === editingId) || all[0];
+  const effectiveDeviceId = all.some(l => l.id === deviceId) ? deviceId : 'default';
+  const editingIsDevice = current.id === effectiveDeviceId;
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setRenamingId(null);
+    setConfirmDeleteId(null);
+    setCreating(false);
+    setDraftName('');
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) close();
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open, close]);
+
+  if (!isPro) {
+    return (
+      <button
+        type="button"
+        className="rev-layout-chip"
+        onClick={() => onShowUpgrade?.('Radial layouts per device')}
+        title="Pro: keep a different wheel on each device that shares this config"
+      >
+        <span className="rev-layout-chip-name">Default</span>
+        <span className="pro-badge">PRO</span>
+      </button>
+    );
+  }
+
+  const commitRename = () => {
+    const n = draftName.trim();
+    if (renamingId && n) onRename?.(renamingId, n);
+    setRenamingId(null);
+    setDraftName('');
+  };
+  const commitCreate = (duplicate) => {
+    onCreate?.(draftName.trim(), duplicate);
+    close();
+  };
+
+  return (
+    <div className="rev-layout-switcher" ref={rootRef}>
+      <button
+        type="button"
+        className={`rev-layout-chip${open ? ' is-open' : ''}`}
+        onClick={() => (open ? close() : setOpen(true))}
+        title="Choose which radial layout to edit"
+      >
+        <span className="rev-layout-chip-name">{current.name}</span>
+        <ChevronDown size={12} />
+      </button>
+      <button
+        type="button"
+        className={`rev-device-btn${editingIsDevice ? ' is-active' : ''}`}
+        onClick={() => { if (!editingIsDevice) onSetDevice?.(current.id); }}
+        title={editingIsDevice ? 'This device fires this layout' : 'Make this the layout the radial hotkey opens on this device'}
+      >
+        <Monitor size={12} />
+        <span>{editingIsDevice ? 'On this device' : 'Use on this device'}</span>
+      </button>
+      {open && (
+        <div className="rev-layout-menu" role="menu">
+          {all.map(l => {
+            const isDevice = l.id === effectiveDeviceId;
+            const isEditing = l.id === current.id;
+            if (renamingId === l.id) {
+              return (
+                <div key={l.id} className="rev-layout-row is-editing">
+                  <input
+                    className="rev-layout-input"
+                    autoFocus
+                    value={draftName}
+                    onChange={e => setDraftName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitRename();
+                      if (e.key === 'Escape') { e.stopPropagation(); setRenamingId(null); setDraftName(''); }
+                    }}
+                    onBlur={commitRename}
+                  />
+                </div>
+              );
+            }
+            if (confirmDeleteId === l.id) {
+              return (
+                <div key={l.id} className="rev-layout-row is-confirm">
+                  <span className="rev-layout-row-name">Delete "{l.name}"?</span>
+                  <button type="button" className="rev-layout-mini rev-layout-mini-danger" onClick={() => { onDelete?.(l.id); setConfirmDeleteId(null); }}>Delete</button>
+                  <button type="button" className="rev-layout-mini" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+                </div>
+              );
+            }
+            return (
+              <div
+                key={l.id}
+                className={`rev-layout-row${isEditing ? ' is-selected' : ''}`}
+                role="menuitem"
+                onClick={() => { onSelect?.(l.id); close(); }}
+              >
+                <span className="rev-layout-row-check">{isEditing && <Check size={12} />}</span>
+                <span className="rev-layout-row-name">{l.name}</span>
+                {isDevice && <span className="rev-layout-row-device" title="Fires on this device"><Monitor size={11} /></span>}
+                {l.id !== 'default' && (
+                  <span className="rev-layout-row-actions">
+                    <button type="button" className="rev-layout-icon-btn" title="Rename" onClick={e => { e.stopPropagation(); setDraftName(l.name); setRenamingId(l.id); }}><Pencil size={11} /></button>
+                    <button type="button" className="rev-layout-icon-btn" title="Delete layout" onClick={e => { e.stopPropagation(); setConfirmDeleteId(l.id); }}><Trash2 size={11} /></button>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          <div className="rev-layout-menu-sep" />
+          {creating ? (
+            <div className="rev-layout-row is-editing">
+              <input
+                className="rev-layout-input"
+                autoFocus
+                placeholder="Layout name"
+                value={draftName}
+                onChange={e => setDraftName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') commitCreate(false);
+                  if (e.key === 'Escape') { e.stopPropagation(); setCreating(false); setDraftName(''); }
+                }}
+              />
+              <button type="button" className="rev-layout-mini" onClick={() => commitCreate(false)} title="Start from an empty wheel">Blank</button>
+              <button type="button" className="rev-layout-mini" onClick={() => commitCreate(true)} title={`Start from a copy of "${current.name}"`}>Copy current</button>
+            </div>
+          ) : (
+            <div className="rev-layout-row rev-layout-row-new" role="menuitem" onClick={() => { setDraftName(''); setCreating(true); }}>
+              <span className="rev-layout-row-check"><Plus size={12} /></span>
+              <span className="rev-layout-row-name">New layout</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RadialEditorView({
   radialMenuHotkey      = null,
@@ -57,6 +218,16 @@ export default function RadialEditorView({
   onForceOverwriteRadialSegment,
   hiddenTips            = [],
   onHideTip,
+  radialLayouts         = [],
+  editingRadialLayoutId = 'default',
+  deviceRadialLayoutId  = 'default',
+  onSelectRadialLayout,
+  onCreateRadialLayout,
+  onRenameRadialLayout,
+  onDeleteRadialLayout,
+  onSetDeviceRadialLayout,
+  isPro                 = false,
+  onShowUpgrade,
 }) {
   const [capturingKey, setCapturingKey] = useState(false);
   const [capturedKey, setCapturedKey]   = useState(null);
@@ -379,6 +550,18 @@ export default function RadialEditorView({
       {/* Hotkey capture strip */}
       <div className="rev-header">
         <span className="rev-title">Radial Menu</span>
+        <RadialLayoutSwitcher
+          layouts={radialLayouts}
+          editingId={editingRadialLayoutId}
+          deviceId={deviceRadialLayoutId}
+          isPro={isPro}
+          onSelect={onSelectRadialLayout}
+          onCreate={onCreateRadialLayout}
+          onRename={onRenameRadialLayout}
+          onDelete={onDeleteRadialLayout}
+          onSetDevice={onSetDeviceRadialLayout}
+          onShowUpgrade={onShowUpgrade}
+        />
         <div className="rev-hotkey-ctrl">
           {capturingKey ? (
             <div

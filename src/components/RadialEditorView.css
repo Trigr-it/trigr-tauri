@@ -41,6 +41,186 @@
   margin-left: auto;
 }
 
+/* ── Layout switcher (Pro, per-device wheels) ─────────────────────────── */
+/* Neutral keycap chips, never gold: this is a sub-section switcher. */
+
+.rev-layout-switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rev-layout-chip,
+.rev-device-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--key-bg);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  padding: var(--space-0) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.08s, border-color 0.08s, color 0.08s;
+}
+
+.rev-layout-chip:hover,
+.rev-layout-chip.is-open,
+.rev-device-btn:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+.rev-layout-chip-name {
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rev-device-btn.is-active {
+  color: var(--accent);
+  border-color: var(--border-accent);
+  background: var(--accent-glow);
+  cursor: default;
+}
+
+.rev-layout-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  min-width: 260px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: var(--space-1);
+  z-index: 20;
+}
+
+.rev-layout-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.rev-layout-row:hover {
+  background: var(--accent-glow);
+  color: var(--text-primary);
+}
+
+.rev-layout-row.is-selected {
+  color: var(--text-primary);
+}
+
+.rev-layout-row.is-editing,
+.rev-layout-row.is-confirm {
+  cursor: default;
+}
+
+.rev-layout-row.is-editing:hover,
+.rev-layout-row.is-confirm:hover {
+  background: none;
+}
+
+.rev-layout-row-check {
+  width: 14px;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.rev-layout-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rev-layout-row-device {
+  display: inline-flex;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.rev-layout-row-actions {
+  display: none;
+  gap: var(--space-0);
+}
+
+.rev-layout-row:hover .rev-layout-row-actions {
+  display: inline-flex;
+}
+
+.rev-layout-icon-btn {
+  display: inline-flex;
+  background: none;
+  border: none;
+  padding: var(--space-0);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.rev-layout-icon-btn:hover {
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.rev-layout-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--key-bg);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-0) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.rev-layout-mini {
+  background: none;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  padding: var(--space-0) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rev-layout-mini:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.rev-layout-mini-danger:hover {
+  color: var(--status-error);
+  border-color: var(--status-error);
+  background: none;
+}
+
+.rev-layout-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-1) 0;
+}
+
+.rev-layout-row-new {
+  color: var(--text-muted);
+}
+
 /* ── Stats bar ────────────────────────────────────────────────────────── */
 
 .rev-stats {

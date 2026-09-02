@@ -290,6 +290,39 @@ pub fn set_telemetry_epoch(date: &str) -> bool {
     save_local_settings_json(&val)
 }
 
+// ── Radial layout for this device (machine-local, NOT shared config) ───────
+// Pro: the shared config can hold extra wheel layouts under `radialLayouts`
+// ([{ id, name, itemsByProfile }]) alongside the Default layout in
+// `radialMenuItemsByProfile`. The LAYOUTS sync like everything else; only the
+// choice of which one THIS machine fires is stored here, so a laptop and a
+// desktop sharing one config can each show a different wheel while every
+// action, macro and expansion behind the wedges stays shared.
+
+/// Id of the extra layout this machine fires. None = the Default layout.
+pub fn get_radial_layout_id() -> Option<String> {
+    load_local_settings_json()
+        .get("radial_layout_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty() && *s != "default")
+        .map(|s| s.to_string())
+}
+
+/// Persist the device's layout choice. None (or "default") removes the key so
+/// the file stays lean for the many users who never create a second layout.
+pub fn set_radial_layout_id(id: Option<&str>) -> bool {
+    let Some(mut val) = load_local_settings_json_strict() else { return false; };
+    let obj = val.as_object_mut().unwrap();
+    match id.filter(|s| !s.is_empty() && *s != "default") {
+        Some(id) => {
+            obj.insert("radial_layout_id".to_string(), Value::String(id.to_string()));
+        }
+        None => {
+            obj.remove("radial_layout_id");
+        }
+    }
+    save_local_settings_json(&val)
+}
+
 /// Days remaining in the grace period, or None if no grace period is active.
 /// Returns 0 if grace period has expired and migration is pending.
 pub fn grace_period_days_remaining() -> Option<i64> {
@@ -1006,6 +1039,19 @@ fn radial_item_count(cfg: &Value) -> usize {
             n += a.iter().filter(|x| !x.is_null()).count();
         }
     }
+    // Extra per-device layouts (Pro): [{ id, name, itemsByProfile }]. Counted
+    // so the clobber guards below protect them exactly like the Default wheel.
+    if let Some(layouts) = cfg.get("radialLayouts").and_then(|v| v.as_array()) {
+        for layout in layouts {
+            if let Some(by_prof) = layout.get("itemsByProfile").and_then(|v| v.as_object()) {
+                for arr in by_prof.values() {
+                    if let Some(a) = arr.as_array() {
+                        n += a.iter().filter(|x| !x.is_null()).count();
+                    }
+                }
+            }
+        }
+    }
     n
 }
 
@@ -1250,6 +1296,13 @@ pub fn is_significant_change(incoming: &Value, existing: &Value) -> bool {
     if let Some(inc_r) = incoming.get("radialMenuItemsByProfile") {
         let ex_r = existing.get("radialMenuItemsByProfile");
         if Some(strip_radial_icons(inc_r)) != ex_r.map(strip_radial_icons) {
+            return true;
+        }
+    }
+    // Same rule for the extra per-device layouts (same shape one level down).
+    if let Some(inc_l) = incoming.get("radialLayouts") {
+        let ex_l = existing.get("radialLayouts");
+        if Some(strip_radial_icons(inc_l)) != ex_l.map(strip_radial_icons) {
             return true;
         }
     }

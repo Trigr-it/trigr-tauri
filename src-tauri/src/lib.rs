@@ -3233,6 +3233,9 @@ fn build_radial_menu_data() -> Value {
     // array, which may be stale if a profile switch hasn't flushed to disk yet.
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
+    // Read the machine-local layout choice BEFORE taking the engine lock: it
+    // is a small file read and the processor thread must not wait on it.
+    let device_layout_id = if crate::licence::is_pro() { config::get_radial_layout_id() } else { None };
     let state = hotkeys::engine_state_lock();
     let active_profile = state.active_profile.clone();
     // Per-profile map is the source of truth. The legacy flat radialMenuItems
@@ -3240,12 +3243,29 @@ fn build_radial_menu_data() -> Value {
     // configs). Falling back per-profile would show stale items for profiles
     // the user never configured — the editor shows them an empty wheel, the
     // live overlay must match. The frontend no longer writes the flat field.
-    let radial_items = match cfg.get("radialMenuItemsByProfile") {
-        Some(m) => m.get(&active_profile).cloned().unwrap_or_else(|| serde_json::json!([])),
-        None => cfg
-            .get("radialMenuItems")
+    // Per-device layout (Pro): trigr-local-settings.json names one of the
+    // extra layouts in `radialLayouts`; the layouts themselves live in the
+    // shared config so they sync. Absent / unknown id = the Default layout.
+    let device_layout = device_layout_id.and_then(|id| {
+        cfg.get("radialLayouts")?
+            .as_array()?
+            .iter()
+            .find(|l| l.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
+            .cloned()
+    });
+    let radial_items = match device_layout {
+        Some(layout) => layout
+            .get("itemsByProfile")
+            .and_then(|m| m.get(&active_profile))
             .cloned()
             .unwrap_or_else(|| serde_json::json!([])),
+        None => match cfg.get("radialMenuItemsByProfile") {
+            Some(m) => m.get(&active_profile).cloned().unwrap_or_else(|| serde_json::json!([])),
+            None => cfg
+                .get("radialMenuItems")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!([])),
+        },
     };
     let resolve_item = |item: &Value| -> Option<Value> {
         // Check if this is a folder item (has type: "folder")
@@ -5661,6 +5681,18 @@ fn set_clipboard_capture_enabled(enabled: bool) {
 // telemetry runs by default. The reciprocal command flips the bool for the
 // JS side.
 
+/// Which extra radial layout THIS machine fires (machine-local, Pro). None
+/// = the Default layout. See config::get_radial_layout_id.
+#[tauri::command]
+fn get_radial_layout_id() -> Option<String> {
+    config::get_radial_layout_id()
+}
+
+#[tauri::command]
+fn set_radial_layout_id(id: Option<String>) -> bool {
+    config::set_radial_layout_id(id.as_deref())
+}
+
 #[tauri::command]
 fn get_telemetry_enabled() -> bool {
     !config::get_telemetry_opt_out()
@@ -6912,6 +6944,8 @@ pub fn run() {
             // Telemetry opt-out
             get_telemetry_enabled,
             set_telemetry_enabled,
+            get_radial_layout_id,
+            set_radial_layout_id,
             close_clipboard_overlay,
             show_clipboard_overlay_for_fillin,
             clipboard_overlay_resize,

@@ -134,6 +134,20 @@ function DropConfirmModal({ drop, onConfirm, onCancel }) {
   );
 }
 
+// Extra radial layouts from config: [{ id, name, itemsByProfile }] (Pro,
+// per-device wheels). Drops malformed entries so one bad sync can't take the
+// radial editor down. 'default' is reserved for the legacy map.
+function sanitizeRadialLayouts(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(l => l && typeof l.id === 'string' && l.id && l.id !== 'default')
+    .map(l => ({
+      id: l.id,
+      name: typeof l.name === 'string' && l.name.trim() ? l.name : 'Layout',
+      itemsByProfile: (l.itemsByProfile && typeof l.itemsByProfile === 'object' && !Array.isArray(l.itemsByProfile)) ? l.itemsByProfile : {},
+    }));
+}
+
 function App() {
   const [assignments, setAssignments]       = useState({});
   const [selectedKey, setSelectedKey]       = useState(null);
@@ -305,6 +319,12 @@ function App() {
   const [searchTemplateCategories, setSearchTemplateCategories] = useState([]);
   const [quickActionCategories, setQuickActionCategories] = useState([]);
   const [radialItemsMap, setRadialItemsMap]                 = useState({}); // { profileName: items[] }
+  // Extra radial layouts (Pro, per-device). The Default layout stays in
+  // radialItemsMap / radialMenuItemsByProfile so older builds sharing the
+  // config keep working; these sync too, only the device's choice is local.
+  const [radialLayouts, setRadialLayouts]                   = useState([]); // [{ id, name, itemsByProfile }]
+  const [editingRadialLayoutId, setEditingRadialLayoutId]   = useState('default');
+  const [deviceRadialLayoutId, setDeviceRadialLayoutId]     = useState('default');
   const [radialMenuHotkey, setRadialMenuHotkey]           = useState(null);
   const [radialHoldToSelect, setRadialHoldToSelect]       = useState(false);
   const [selectedRadialSegment, setSelectedRadialSegment] = useState(null); // index or null
@@ -319,8 +339,28 @@ function App() {
   // Show the upgrade modal for a named Pro feature.
   const showUpgrade = useCallback((featureName) => setUpgradePrompt(featureName), []);
 
-  // ── Per-profile radial menu items ──────────────────────────
-  const radialMenuItems = radialItemsMap[activeProfile] || [];
+  // ── Per-profile radial menu items (of the layout being edited) ─────────
+  // Free tier always edits the Default layout; the switcher is a Pro teaser.
+  const effectiveEditingLayoutId = isPro ? editingRadialLayoutId : 'default';
+  const editingRadialLayout = effectiveEditingLayoutId === 'default'
+    ? null
+    : (radialLayouts.find(l => l.id === effectiveEditingLayoutId) || null);
+  const editingRadialMap = editingRadialLayout ? (editingRadialLayout.itemsByProfile || {}) : radialItemsMap;
+  const radialMenuItems = editingRadialMap[activeProfile] || [];
+
+  // Replace the whole per-profile map of the layout being edited and persist
+  // it under the right config key (Default → radialMenuItemsByProfile, extra
+  // layout → its slot in radialLayouts).
+  const persistEditingRadialMap = useCallback((newMap) => {
+    if (editingRadialLayout) {
+      const nextLayouts = radialLayouts.map(l => l.id === editingRadialLayout.id ? { ...l, itemsByProfile: newMap } : l);
+      setRadialLayouts(nextLayouts);
+      window.electronAPI?.saveConfig({ radialLayouts: nextLayouts });
+    } else {
+      setRadialItemsMap(newMap);
+      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap });
+    }
+  }, [editingRadialLayout, radialLayouts]);
 
   // Assignment objects handed to the radial segment / folder-child editors.
   // MacroPanel's reset effect keys on the object's identity, and these used
@@ -353,6 +393,8 @@ function App() {
   // failing on app-specific profiles.
   const activeProfileRef = useRef(activeProfile);
   activeProfileRef.current = activeProfile;
+  const editingRadialLayoutIdRef = useRef('default');
+  editingRadialLayoutIdRef.current = effectiveEditingLayoutId;
 
   // Drop-in wrapper: updates the per-profile map. The legacy flat
   // radialMenuItems key is no longer written — Rust resolves items from
@@ -363,8 +405,25 @@ function App() {
   // the write-storm behind the shared-config clobber hazard.
   // Stable identity (empty deps) — reads activeProfile from ref at call time.
   const setRadialMenuItems = useCallback((updater) => {
+    const profile = activeProfileRef.current;
+    const layoutId = editingRadialLayoutIdRef.current;
+    if (layoutId !== 'default') {
+      // Extra layout (Pro): same per-profile shape, one level down.
+      setRadialLayouts(layouts => {
+        const idx = layouts.findIndex(l => l.id === layoutId);
+        if (idx < 0) return layouts;
+        const byProf = layouts[idx].itemsByProfile || {};
+        const prev = byProf[profile] || [];
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (next === prev) return layouts;
+        const nextLayouts = layouts.slice();
+        nextLayouts[idx] = { ...layouts[idx], itemsByProfile: { ...byProf, [profile]: next } };
+        window.electronAPI?.saveConfig({ radialLayouts: nextLayouts });
+        return nextLayouts;
+      });
+      return;
+    }
     setRadialItemsMap(map => {
-      const profile = activeProfileRef.current;
       const prev = map[profile] || [];
       const next = typeof updater === 'function' ? updater(prev) : updater;
       if (next === prev) return map;
@@ -567,6 +626,7 @@ function App() {
         map = { [globalProfile]: config.radialMenuItems };
       }
       setRadialItemsMap(map);
+      setRadialLayouts(sanitizeRadialLayouts(config.radialLayouts));
     }
     {
       // Same default-on-fresh rule as the startup load path, and re-register
@@ -798,6 +858,17 @@ function App() {
             window.electronAPI?.saveConfig({ radialMenuItemsByProfile: map });
           }
           setRadialItemsMap(map);
+          {
+            const layouts = sanitizeRadialLayouts(config.radialLayouts);
+            setRadialLayouts(layouts);
+            // Which layout THIS machine fires is machine-local. Open the
+            // editor on it so what you see is what the hotkey shows here.
+            window.electronAPI?.getRadialLayoutId?.().then(id => {
+              const found = typeof id === 'string' && layouts.some(l => l.id === id) ? id : 'default';
+              setDeviceRadialLayoutId(found);
+              setEditingRadialLayoutId(found);
+            }).catch(() => {});
+          }
           // One-time cleanup: downscale oversized custom icons (raw photos
           // could be ~1MB each in base64) and blank the legacy flat field
           // once the per-profile map exists (it's never read again, but a
@@ -1137,6 +1208,7 @@ function App() {
         const SECTION_LABELS = {
           radialMenuItemsByProfile: 'radial menu',
           radialMenuItems: 'radial menu',
+          radialLayouts: 'radial layouts',
           radialMenuHotkey: 'radial menu hotkey',
           assignments: 'triggers',
           profiles: 'profiles',
@@ -2022,6 +2094,32 @@ function App() {
 
   // ── Assign macro ──────────────────────────────────────────
   // ── Radial label propagation helper ────────────────────────
+  // Apply `transformMap(itemsByProfile) -> itemsByProfile | same` to the
+  // Default layout AND every extra layout, persisting whichever changed. Every
+  // sweep that rewrites storageKeys or labels must go through here — a wedge
+  // in a layout another device fires would otherwise silently go dead.
+  const transformAllRadialMaps = useCallback((transformMap) => {
+    setRadialItemsMap(prev => {
+      const next = transformMap(prev);
+      if (next === prev) return prev;
+      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: next });
+      return next;
+    });
+    setRadialLayouts(prev => {
+      let changed = false;
+      const nextLayouts = prev.map(l => {
+        const m = l.itemsByProfile || {};
+        const nm = transformMap(m);
+        if (nm === m) return l;
+        changed = true;
+        return { ...l, itemsByProfile: nm };
+      });
+      if (!changed) return prev;
+      window.electronAPI?.saveConfig({ radialLayouts: nextLayouts });
+      return nextLayouts;
+    });
+  }, []);
+
   // Sweeps every profile's radial items + folder children, updating any segment
   // whose storageKey matches AND whose label still equals oldLabel. Segments
   // the user independently renamed in the radial editor are preserved.
@@ -2031,7 +2129,7 @@ function App() {
     const oldLabel = oldLabelRaw || '';
     const newLabel = newLabelRaw || '';
     if (oldLabel === newLabel) return;
-    setRadialItemsMap(prev => {
+    transformAllRadialMaps(prev => {
       let mapChanged = false;
       const nextMap = {};
       for (const [profileName, items] of Object.entries(prev)) {
@@ -2061,10 +2159,9 @@ function App() {
         else nextMap[profileName] = items;
       }
       if (!mapChanged) return prev;
-      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: nextMap });
       return nextMap;
     });
-  }, []);
+  }, [transformAllRadialMaps]);
 
   // Sweeps every profile's radial items + folder children, re-pointing any
   // segment whose storageKey appears in keyMap ({oldKey: newKey}). Radial
@@ -2073,7 +2170,7 @@ function App() {
   // remap here or the wedge silently goes dead at fire time.
   const remapRadialStorageKeys = useCallback((keyMap) => {
     if (!keyMap || Object.keys(keyMap).length === 0) return;
-    setRadialItemsMap(prev => {
+    transformAllRadialMaps(prev => {
       let mapChanged = false;
       const nextMap = {};
       for (const [profileName, items] of Object.entries(prev)) {
@@ -2103,10 +2200,9 @@ function App() {
         else nextMap[profileName] = items;
       }
       if (!mapChanged) return prev;
-      window.electronAPI?.saveConfig({ radialMenuItemsByProfile: nextMap });
       return nextMap;
     });
-  }, []);
+  }, [transformAllRadialMaps]);
 
   // Shared post-move selection: activate the target trigger's layer, select
   // the key, drop any library selection, and land on the right canvas.
@@ -2342,11 +2438,17 @@ function App() {
       }
       return next;
     };
-    const newRadialMap = {};
-    for (const [profileName, items] of Object.entries(radialItemsMap)) {
-      const targetName = profileName === oldName ? newName : profileName;
-      newRadialMap[targetName] = Array.isArray(items) ? items.map(remapItem) : items;
-    }
+    const remapMap = (source) => {
+      const out = {};
+      for (const [profileName, items] of Object.entries(source || {})) {
+        const targetName = profileName === oldName ? newName : profileName;
+        out[targetName] = Array.isArray(items) ? items.map(remapItem) : items;
+      }
+      return out;
+    };
+    const newRadialMap = remapMap(radialItemsMap);
+    // Extra per-device layouts carry the same per-profile shape.
+    const newRadialLayouts = radialLayouts.map(l => ({ ...l, itemsByProfile: remapMap(l.itemsByProfile) }));
     const newProfiles = profiles.map(p => p === oldName ? newName : p);
     const newActive   = activeProfile === oldName ? newName : activeProfile;
     const newGlobal   = activeGlobalProfile === oldName ? newName : activeGlobalProfile;
@@ -2355,6 +2457,7 @@ function App() {
     setActiveProfile(newActive);
     setProfileSettings(newProfileSettings);
     setRadialItemsMap(newRadialMap);
+    if (radialLayouts.length) setRadialLayouts(newRadialLayouts);
     if (newGlobal !== activeGlobalProfile) {
       setActiveGlobalProfile(newGlobal);
       window.electronAPI?.setActiveGlobalProfile(newGlobal);
@@ -2364,10 +2467,10 @@ function App() {
     // and sending theme / expansionCategories / autocorrectEnabled from this
     // closure wrote back STALE copies (they weren't in the dep array), so a
     // category added moments earlier vanished on a profile rename.
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, radialMenuItemsByProfile: newRadialMap, hasSeenWelcome: true });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, radialMenuItemsByProfile: newRadialMap, ...(radialLayouts.length ? { radialLayouts: newRadialLayouts } : {}), hasSeenWelcome: true });
     syncEngine(newAssignments, newActive);
     showNotification(`Renamed to "${newName}"`);
-  }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, radialItemsMap, syncEngine, showNotification]);
+  }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, radialItemsMap, radialLayouts, syncEngine, showNotification]);
 
   // ── Toggle macros ─────────────────────────────────────────
   const handleToggleMacros = useCallback(() => {
@@ -3709,6 +3812,16 @@ function App() {
     const newRadialMap = { ...radialItemsMap };
     const hadRadial = Object.prototype.hasOwnProperty.call(newRadialMap, name);
     delete newRadialMap[name];
+    // Same for the extra per-device layouts.
+    const layoutsHadRadial = radialLayouts.some(l => l.itemsByProfile && Object.prototype.hasOwnProperty.call(l.itemsByProfile, name));
+    const newRadialLayouts = layoutsHadRadial
+      ? radialLayouts.map(l => {
+          if (!l.itemsByProfile || !Object.prototype.hasOwnProperty.call(l.itemsByProfile, name)) return l;
+          const m = { ...l.itemsByProfile };
+          delete m[name];
+          return { ...l, itemsByProfile: m };
+        })
+      : radialLayouts;
     const newActive = activeProfile === name ? 'Default' : activeProfile;
     setAssignments(newAssignments);
     setProfiles(newProfiles);
@@ -3717,6 +3830,7 @@ function App() {
     setSelectedLibraryId(null);
     setProfileSettings(newProfileSettings);
     if (hadRadial) setRadialItemsMap(newRadialMap);
+    if (layoutsHadRadial) setRadialLayouts(newRadialLayouts);
     // If the deleted profile was the active global profile, fall back to Default
     const newGlobal = activeGlobalProfile === name ? 'Default' : activeGlobalProfile;
     if (newGlobal !== activeGlobalProfile) {
@@ -3724,10 +3838,10 @@ function App() {
       window.electronAPI?.setActiveGlobalProfile(newGlobal);
     }
     window.electronAPI?.updateProfileSettings(newProfileSettings);
-    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, ...(hadRadial ? { radialMenuItemsByProfile: newRadialMap } : {}), theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
+    window.electronAPI?.saveConfig({ assignments: newAssignments, profiles: newProfiles, activeProfile: newActive, activeGlobalProfile: newGlobal, profileSettings: newProfileSettings, ...(hadRadial ? { radialMenuItemsByProfile: newRadialMap } : {}), ...(layoutsHadRadial ? { radialLayouts: newRadialLayouts } : {}), theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, hasSeenWelcome: true });
     syncEngine(newAssignments, newActive);
     showNotification(`Profile "${name}" deleted`, 'info');
-  }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, radialItemsMap, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, syncEngine, showNotification]);
+  }, [profiles, assignments, profileSettings, activeProfile, activeGlobalProfile, radialItemsMap, radialLayouts, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, syncEngine, showNotification]);
 
   const handleSetActiveGlobalProfile = useCallback((name) => {
     setActiveGlobalProfile(name);
@@ -4846,10 +4960,10 @@ function App() {
   // Copy a radial segment to another profile's same slot.
   // Returns 'conflict' + existing item label if the slot is occupied, otherwise copies directly.
   const handleCopyRadialSegmentToProfile = useCallback((targetProfile, segmentIndex) => {
-    const sourceItems = radialItemsMap[activeProfile] || [];
+    const sourceItems = editingRadialMap[activeProfile] || [];
     const sourceItem = sourceItems[segmentIndex];
     if (!sourceItem) return null;
-    const targetItems = radialItemsMap[targetProfile] || [];
+    const targetItems = editingRadialMap[targetProfile] || [];
     const existing = targetItems[segmentIndex];
     if (existing) {
       return { conflict: true, existingLabel: existing.label || existing.type || 'item' };
@@ -4861,29 +4975,99 @@ function App() {
     const newTarget = [...targetItems];
     while (newTarget.length <= segmentIndex) newTarget.push(null);
     newTarget[segmentIndex] = copied;
-    const newMap = { ...radialItemsMap, [targetProfile]: newTarget };
-    setRadialItemsMap(newMap);
-    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap });
+    const newMap = { ...editingRadialMap, [targetProfile]: newTarget };
+    persistEditingRadialMap(newMap);
     showNotification(`Copied to "${targetProfile}"`);
     return null;
-  }, [radialItemsMap, activeProfile, showNotification]);
+  }, [editingRadialMap, activeProfile, persistEditingRadialMap, showNotification]);
 
   const handleForceOverwriteRadialSegment = useCallback((targetProfile, segmentIndex) => {
-    const sourceItems = radialItemsMap[activeProfile] || [];
+    const sourceItems = editingRadialMap[activeProfile] || [];
     const sourceItem = sourceItems[segmentIndex];
     if (!sourceItem) return;
     const copied = JSON.parse(JSON.stringify(sourceItem));
     copied.id = crypto.randomUUID();
     if (copied.children) copied.children = copied.children.map(c => c ? { ...c, id: crypto.randomUUID() } : c);
-    const targetItems = radialItemsMap[targetProfile] || [];
+    const targetItems = editingRadialMap[targetProfile] || [];
     const newTarget = [...targetItems];
     while (newTarget.length <= segmentIndex) newTarget.push(null);
     newTarget[segmentIndex] = copied;
-    const newMap = { ...radialItemsMap, [targetProfile]: newTarget };
-    setRadialItemsMap(newMap);
-    window.electronAPI?.saveConfig({ radialMenuItemsByProfile: newMap });
+    const newMap = { ...editingRadialMap, [targetProfile]: newTarget };
+    persistEditingRadialMap(newMap);
     showNotification(`Copied to "${targetProfile}" (overwritten)`);
-  }, [radialItemsMap, activeProfile, showNotification]);
+  }, [editingRadialMap, activeProfile, persistEditingRadialMap, showNotification]);
+
+  // ── Radial layouts (Pro, per-device) ──────────────────────────────────
+  // Layouts are pointers to the shared actions, so creating, renaming or
+  // deleting one never touches assignments. Which layout THIS device fires
+  // lives in trigr-local-settings.json (Rust); the editor opens on it.
+  const handleSelectRadialLayout = useCallback((id) => {
+    setEditingRadialLayoutId(id && id !== 'default' ? id : 'default');
+    setSelectedRadialSegment(null);
+    setSelectedRadialChild(null);
+    setExpandedRadialFolder(null);
+  }, []);
+
+  const handleCreateRadialLayout = useCallback((name, duplicateCurrent) => {
+    const id = crypto.randomUUID();
+    let itemsByProfile = {};
+    if (duplicateCurrent) {
+      // Deep copy with fresh item ids — folder ids key the editor's
+      // expanded / selected state, so two layouts must not share them.
+      itemsByProfile = JSON.parse(JSON.stringify(editingRadialMap));
+      for (const items of Object.values(itemsByProfile)) {
+        if (!Array.isArray(items)) continue;
+        for (const it of items) {
+          if (!it) continue;
+          it.id = crypto.randomUUID();
+          if (Array.isArray(it.children)) it.children = it.children.map(c => c ? { ...c, id: crypto.randomUUID() } : c);
+        }
+      }
+    }
+    const trimmed = (name || '').trim();
+    const layout = { id, name: trimmed || `Layout ${radialLayouts.length + 2}`, itemsByProfile };
+    const next = [...radialLayouts, layout];
+    setRadialLayouts(next);
+    window.electronAPI?.saveConfig({ radialLayouts: next });
+    handleSelectRadialLayout(id);
+    showNotification(`Layout "${layout.name}" created`);
+  }, [editingRadialMap, radialLayouts, handleSelectRadialLayout, showNotification]);
+
+  const handleRenameRadialLayout = useCallback((id, name) => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
+    const next = radialLayouts.map(l => l.id === id ? { ...l, name: trimmed } : l);
+    setRadialLayouts(next);
+    window.electronAPI?.saveConfig({ radialLayouts: next });
+  }, [radialLayouts]);
+
+  const handleDeleteRadialLayout = useCallback((id) => {
+    const next = radialLayouts.filter(l => l.id !== id);
+    setRadialLayouts(next);
+    window.electronAPI?.saveConfig({ radialLayouts: next });
+    if (deviceRadialLayoutId === id) {
+      setDeviceRadialLayoutId('default');
+      window.electronAPI?.setRadialLayoutId?.(null);
+    }
+    if (editingRadialLayoutId === id) handleSelectRadialLayout('default');
+    showNotification('Layout deleted', 'info');
+  }, [radialLayouts, deviceRadialLayoutId, editingRadialLayoutId, handleSelectRadialLayout, showNotification]);
+
+  const handleSetDeviceRadialLayout = useCallback((id) => {
+    const value = id && id !== 'default' ? id : 'default';
+    setDeviceRadialLayoutId(value);
+    window.electronAPI?.setRadialLayoutId?.(value === 'default' ? null : value);
+    const layoutName = value === 'default' ? 'Default' : (radialLayouts.find(l => l.id === value)?.name || 'this layout');
+    showNotification(`This device now fires "${layoutName}"`);
+  }, [radialLayouts, showNotification]);
+
+  // A layout deleted on another device (or dropped by a sync) must not leave
+  // the editor pointing at nothing.
+  useEffect(() => {
+    if (editingRadialLayoutId !== 'default' && !radialLayouts.some(l => l.id === editingRadialLayoutId)) {
+      setEditingRadialLayoutId('default');
+    }
+  }, [editingRadialLayoutId, radialLayouts]);
 
   // ── Radial drag state + handlers (cross-container DndContext) ──
   const [radialActiveDrag, setRadialActiveDrag] = useState(null);
@@ -5803,6 +5987,9 @@ function App() {
       clearSelection: () => { setSelectedKey(null); setSelectedLibraryId(null); setSelectedRadialSegment(null); },
       setModifiers: (mods) => setActiveModifiers(Array.isArray(mods) ? mods : []),
       setProfile: handleProfileChange,
+      setRadialLayout: handleSelectRadialLayout,    // (layoutId | 'default') switch the wheel being edited
+      setDeviceRadialLayout: handleSetDeviceRadialLayout, // (layoutId | 'default') persists like the header button
+      getRadialLayouts: () => radialLayouts.map(l => ({ id: l.id, name: l.name })),
       hideTip: handleHideTip,
       setHiddenTips: (keys) => setHiddenTips(Array.isArray(keys) ? keys : []),
       setPro: (pro) => window.electronAPI?.devSetProOverride(pro),  // true | false | null (clear)
@@ -5814,6 +6001,7 @@ function App() {
       getState: () => ({
         activeArea, activeView, theme, resolvedTheme, listViewActive, selectedKey, selectedLibraryId,
         selectedRadialSegment, activeModifiers, activeProfile, isPro, macrosEnabled, hiddenTips,
+        editingRadialLayoutId, deviceRadialLayoutId, radialLayoutCount: radialLayouts.length,
         physicalKeyboardLayout, resolvedPhysicalLayout, isoKeyDetected, keyboardLayoutHint,
         keyboardLegends,
         width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio,
@@ -6257,6 +6445,16 @@ function App() {
                 activeProfile={activeProfile}
                 onCopyRadialSegmentToProfile={handleCopyRadialSegmentToProfile}
                 onForceOverwriteRadialSegment={handleForceOverwriteRadialSegment}
+                radialLayouts={radialLayouts}
+                editingRadialLayoutId={effectiveEditingLayoutId}
+                deviceRadialLayoutId={deviceRadialLayoutId}
+                onSelectRadialLayout={handleSelectRadialLayout}
+                onCreateRadialLayout={handleCreateRadialLayout}
+                onRenameRadialLayout={handleRenameRadialLayout}
+                onDeleteRadialLayout={handleDeleteRadialLayout}
+                onSetDeviceRadialLayout={handleSetDeviceRadialLayout}
+                isPro={isPro}
+                onShowUpgrade={showUpgrade}
               />
               </Suspense>
             )}
