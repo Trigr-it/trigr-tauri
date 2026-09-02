@@ -5,9 +5,10 @@ import './ProTrialModal.css';
 /**
  * Post-onboarding (or migration) Pro trial announcement.
  *
- * The 14-day trial is auto-activated by the parent (App.jsx) BEFORE this modal
- * is shown, so this is an announcement, not an offer: it tells the user the
- * trial is live and highlights what's now unlocked. There is no accept/decline.
+ * The 14-day trial is started by Rust (`licence::init`) on the first launch,
+ * so this is an announcement, not an offer: it tells the user the trial is
+ * live and highlights what's now unlocked. There is no accept/decline. The
+ * matching end-of-trial summary is TrialEndModal.
  *
  * - `onClose()`: called when the user dismisses (button, close icon, ESC, or
  *   backdrop click). The parent calls markTrialOfferShown so it never re-fires.

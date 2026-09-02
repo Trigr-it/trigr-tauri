@@ -5961,20 +5961,25 @@ fn migrate_shared_to_local_now(app: tauri::AppHandle) -> Value {
 }
 
 #[tauri::command]
-async fn start_trial() -> Value {
-    match licence::start_trial().await {
-        Ok(status) => {
-            // Trial gives Pro — cancel any pending shared-config migration.
-            config::check_and_migrate_if_due();
-            serde_json::json!({ "ok": true, "status": serde_json::to_value(status).unwrap_or(Value::Null) })
-        }
-        Err(e) => serde_json::json!({ "ok": false, "error": e }),
-    }
+async fn mark_trial_offer_shown() -> Value {
+    serde_json::to_value(licence::mark_trial_offer_shown().await).unwrap_or(serde_json::json!({}))
 }
 
 #[tauri::command]
-async fn mark_trial_offer_shown() -> Value {
-    serde_json::to_value(licence::mark_trial_offer_shown().await).unwrap_or(serde_json::json!({}))
+async fn mark_trial_end_shown() -> Value {
+    serde_json::to_value(licence::mark_trial_end_shown().await).unwrap_or(serde_json::json!({}))
+}
+
+/// Per-trigger fire counts since the trial started, for the end-of-trial
+/// modal. `since` must be RFC3339 (validated here; anything else → empty).
+#[tauri::command]
+async fn get_trial_usage(since: String) -> Value {
+    if chrono::DateTime::parse_from_rfc3339(&since).is_err() {
+        return serde_json::json!({ "triggers": [], "autocorrect": 0 });
+    }
+    tauri::async_runtime::spawn_blocking(move || analytics::get_trial_usage(since))
+        .await
+        .unwrap_or_else(|_| serde_json::json!({ "triggers": [], "autocorrect": 0 }))
 }
 
 #[tauri::command]
@@ -7002,8 +7007,9 @@ pub fn run() {
             activate_licence,
             deactivate_licence,
             check_licence_revalidation,
-            start_trial,
             mark_trial_offer_shown,
+            mark_trial_end_shown,
+            get_trial_usage,
             reset_trial,
             dev_set_pro_override,
             is_debug_build,

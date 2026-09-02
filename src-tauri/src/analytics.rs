@@ -94,6 +94,9 @@ enum AnalyticsMsg {
     GetExpansionEfficiency(Window, mpsc::Sender<serde_json::Value>),
     GetExpansionCounts(mpsc::Sender<serde_json::Value>),
     GetStreaks(mpsc::Sender<serde_json::Value>),
+    /// Per-trigger fire counts since an RFC3339 UTC timestamp (the trial
+    /// start), for the end-of-trial modal's "what you used" rows.
+    GetTrialUsage(String, mpsc::Sender<serde_json::Value>),
     ExportXlsx(std::path::PathBuf, Window, mpsc::Sender<Result<(), String>>),
     Reset(mpsc::Sender<bool>),
     /// One-time migration: recalculate time_saved for old entries using current assignments.
@@ -285,6 +288,10 @@ pub fn init(app_data_dir: PathBuf) {
                     }
                     AnalyticsMsg::GetStreaks(reply) => {
                         let data = handle_streaks(&conn);
+                        let _ = reply.send(data);
+                    }
+                    AnalyticsMsg::GetTrialUsage(since, reply) => {
+                        let data = handle_trial_usage(&conn, &since);
                         let _ = reply.send(data);
                     }
                     AnalyticsMsg::ExportXlsx(path, win, reply) => {
@@ -565,6 +572,17 @@ pub fn get_expansion_counts() -> serde_json::Value {
 /// Get current and longest streaks.
 pub fn get_streaks() -> serde_json::Value {
     send_and_recv(|reply| AnalyticsMsg::GetStreaks(reply), serde_json::json!({"current": 0, "longest": 0}))
+}
+
+/// Per-trigger fire counts since `since` (RFC3339 UTC, same shape as the
+/// stored `timestamp` column so a plain string compare works). The frontend
+/// classifies the trigger keys against the live config (app-linked profiles,
+/// `::double` / `::hold` suffixes, expansion triggers with Pro features).
+pub fn get_trial_usage(since: String) -> serde_json::Value {
+    send_and_recv(
+        |reply| AnalyticsMsg::GetTrialUsage(since, reply),
+        serde_json::json!({ "triggers": [], "autocorrect": 0 }),
+    )
 }
 
 /// Export analytics as a multi-sheet XLSX workbook at `path`, scoped to `win`.
@@ -1003,6 +1021,35 @@ pub(crate) fn handle_expansion_efficiency(conn: &Connection, win: &Window) -> se
     }
     // Scoped: one efficiency block for the exact window (period-native report).
     serde_json::json!({ "period": compute_efficiency(conn, &win.and_clause()) })
+}
+
+fn handle_trial_usage(conn: &Connection, since: &str) -> serde_json::Value {
+    let mut triggers = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT trigger_key, action_type, COUNT(*) FROM action_log
+         WHERE timestamp >= ?1 AND trigger_key != '' AND action_type != 'autocorrect'
+         GROUP BY trigger_key, action_type",
+    ) {
+        if let Ok(rows) = stmt.query_map([since], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+        }) {
+            for (trigger_key, action_type, count) in rows.flatten() {
+                triggers.push(serde_json::json!({
+                    "trigger_key": trigger_key,
+                    "action_type": action_type,
+                    "count": count,
+                }));
+            }
+        }
+    }
+    let autocorrect: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM action_log WHERE timestamp >= ?1 AND action_type = 'autocorrect'",
+            [since],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    serde_json::json!({ "triggers": triggers, "autocorrect": autocorrect })
 }
 
 fn handle_expansion_counts(conn: &Connection) -> serde_json::Value {

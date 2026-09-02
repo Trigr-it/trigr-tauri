@@ -176,7 +176,6 @@ export default function SettingsWindow() {
         licenceStatus={bridge.licenceStatus || {}}
         onLicenceStatusChange={act('licenceStatusChange')}
         onShowUpgrade={act('showUpgrade')}
-        onShowProTrial={act('showProTrial')}
         onResetTrial={act('resetTrial')}
         clipboardCaptureEnabled={bridge.clipboardCaptureEnabled}
         onToggleClipboardCapture={act('toggleClipboardCapture')}

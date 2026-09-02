@@ -616,7 +616,8 @@ window.electronAPI = {
   activateLicence:           (key) => invoke('activate_licence', { key }),
   deactivateLicence:         ()    => invoke('deactivate_licence'),
   checkLicenceRevalidation:  ()    => invoke('check_licence_revalidation'),
-  startTrial:                ()    => invoke('start_trial'),
+  // Dev-only: restart the trial (fresh 14 days, both trial modals re-armed).
+  // The trial itself starts in Rust on first launch; there is no start IPC.
   resetTrial:                ()    => invoke('reset_trial'),
   // Dev-only Pro/Free override. `pro` = true|false|null (null clears).
   devSetProOverride:         (pro) => invoke('dev_set_pro_override', { pro }),
@@ -629,6 +630,9 @@ window.electronAPI = {
   relaunchDemoMode:          (enable) => invoke('relaunch_demo_mode', { enable }),
   relaunchProfileMode:       (name) => invoke('relaunch_profile_mode', { name }),
   markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),
+  markTrialEndShown:         ()    => invoke('mark_trial_end_shown'),
+  // { triggers: [{ trigger_key, action_type, count }], autocorrect } since RFC3339.
+  getTrialUsage:             (since) => invoke('get_trial_usage', { since }),
 };
 
 // ── Suppress the WebView2 browser context menu ─────────────────────────────

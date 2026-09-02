@@ -305,7 +305,6 @@ export default function SettingsPanel({
   licenceStatus = {},
   onLicenceStatusChange,
   onShowUpgrade,
-  onShowProTrial,
   onResetTrial,
   clipboardCaptureEnabled = true,
   onToggleClipboardCapture,
@@ -769,7 +768,9 @@ export default function SettingsPanel({
             </div>
           ) : (
             <div className="settings-licence-entry">
-              {/* Trial card — three mutually exclusive states above the key-entry form. */}
+              {/* Trial card above the key-entry form: active countdown, or
+                  the ended notice. The trial starts in Rust on first launch,
+                  so there is no "start trial" state to offer here. */}
               {licenceStatus.trial_active ? (
                 <div className="settings-trial-card settings-trial-card--active">
                   <div className="settings-trial-header">
@@ -808,21 +809,7 @@ export default function SettingsPanel({
                     Request a beta key
                   </button>
                 </div>
-              ) : (
-                <div className="settings-trial-card settings-trial-card--offer">
-                  <h3 className="settings-trial-title">Try Pro free for 14 days</h3>
-                  <p className="settings-toggle-sub">
-                    Unlock app-specific profiles, shared config sync, double-tap actions and global variables. No card needed. Keyfire drops back to Free automatically when the trial ends.
-                  </p>
-                  <button
-                    type="button"
-                    className="settings-action-btn settings-action-btn--primary"
-                    onClick={() => onShowProTrial?.()}
-                  >
-                    Start 14-day Pro trial
-                  </button>
-                </div>
-              )}
+              ) : null}
 
               {import.meta.env.DEV && (
                 <button
@@ -830,7 +817,7 @@ export default function SettingsPanel({
                   className="settings-action-btn"
                   onClick={() => onResetTrial?.()}
                 >
-                  Reset Pro trial (dev)
+                  Restart Pro trial (dev)
                 </button>
               )}
 

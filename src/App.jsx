@@ -21,6 +21,7 @@ import { findReservedShortcut, formatComboDisplay } from './utils/reservedShortc
 import { useModalKeyboard } from './hooks/useModalKeyboard';
 import OnboardingTour from './components/OnboardingTour';
 import ProTrialModal from './components/ProTrialModal';
+import TrialEndModal from './components/TrialEndModal';
 import TemplatesCoachmark from './components/TemplatesCoachmark';
 import QuickTips from './components/QuickTips';
 const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'));
@@ -40,6 +41,16 @@ import { parseEspansoYaml, parseAhkHotstrings, parseTextExpanderCsv, parseTextBl
 // their next launch — used so v0.4.4 → v0.4.5 upgraders see the new Pro
 // callouts, app-profile pitch, and trial offer at the end of the tour.
 const ONBOARDING_VERSION = 3;
+
+// ── Trial modal predicates (module scope, pure) ───────────────────────────
+// The 14-day Pro trial is STARTED by Rust (`licence::init`) on first launch;
+// the frontend only announces it and, later, shows the one-shot end modal.
+// Announcement: trial live, never announced, no real key.
+const trialAnnouncePending = (ls) => !!ls && !ls.key_entered && ls.trial_active && !ls.trial_offer_shown;
+// End modal: trial was started here, has lapsed, no key, not yet shown.
+// `trial_started_at` guards the key-consumed case (activation clears it).
+const trialJustEnded = (ls) => !!ls && !ls.is_pro && !ls.key_entered && ls.trial_used
+  && !ls.trial_active && !!ls.trial_started_at && !ls.trial_end_shown;
 
 // ── Storage-key helpers (module scope, shared by the assignment handlers) ──
 // A key can hold up to three independent trigger variants, each under its own
@@ -288,7 +299,7 @@ function App() {
   // Quick action pack import collision prompt. Shape:
   // { actions: [{id, type, label, data}], categories: [{name, colour}], collisions: [{id, label},...], totalCount }
   const [quickActionImportPrompt, setQuickActionImportPrompt] = useState(null);
-  const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, email: null, key_id: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false });
+  const [licenceStatus, setLicenceStatus]               = useState({ is_pro: false, key_entered: false, status: 'no_key', product_name: '', expires_at: null, email: null, key_id: null, trial_active: false, trial_days_remaining: 0, trial_used: false, trial_offer_shown: false, trial_started_at: null, trial_end_shown: false });
   // Live mirror for the focus-revalidation handler (registered once) so it can
   // detect the Pro → Free transition when a trial ends.
   const licenceStatusRef = useRef(licenceStatus);
@@ -301,6 +312,31 @@ function App() {
   const [postMigrationNotice, setPostMigrationNotice]   = useState(false);
   const [upgradePrompt, setUpgradePrompt]               = useState(null); // feature name string, or null
   const [showProTrialModal, setShowProTrialModal]       = useState(false);
+  const [showTrialEndModal, setShowTrialEndModal]       = useState(false);
+  // `get_trial_usage` result for the end modal ({ triggers, autocorrect });
+  // null while the query is in flight.
+  const [trialUsage, setTrialUsage]                     = useState(null);
+  const trialEndOpenRef = useRef(false); // focus revalidation fires often; open once
+  const openTrialEnd = useCallback((ls) => {
+    if (trialEndOpenRef.current) return;
+    trialEndOpenRef.current = true;
+    setTrialUsage(null);
+    setShowTrialEndModal(true);
+    const empty = { triggers: [], autocorrect: 0 };
+    const since = ls?.trial_started_at;
+    if (since && window.electronAPI?.getTrialUsage) {
+      window.electronAPI.getTrialUsage(since)
+        .then((u) => setTrialUsage(u && Array.isArray(u.triggers) ? u : empty))
+        .catch(() => setTrialUsage(empty));
+    } else {
+      setTrialUsage(empty);
+    }
+  }, []);
+  const closeTrialEnd = useCallback(() => {
+    setShowTrialEndModal(false);
+    trialEndOpenRef.current = false;
+    window.electronAPI?.markTrialEndShown?.().then((s) => { if (s) setLicenceStatus(s); });
+  }, []);
   // Templates coachmark — drops down from the Templates pill once after the
   // onboarding tour + trial offer have settled. Anchored via templatesPillRef
   // (passed into TitleBar). openTemplatesSignal is a nonce: incrementing it
@@ -1047,23 +1083,20 @@ function App() {
         // or cleared the grace timestamp, or completed the auto-migration.
         window.electronAPI.getGracePeriodState?.().then(g => setGracePeriodState(g));
 
-        // Migration popup: only fires for installs where the onboarding tour
-        // has actually been completed. Fresh installs follow the tour-finish
-        // path in handleOnboardingComplete instead and never hit this branch.
-        if (onboardingComplete
-            && !ls.key_entered
-            && !ls.trial_active
-            && !ls.trial_used
-            && !ls.trial_offer_shown) {
-          // Auto-activate the trial for existing installs that predate the
-          // trial mechanism, then announce it (announcement, not an offer).
-          setShowProTrialModal(true);
-          window.electronAPI?.startTrial?.().then((r) => {
-            if (r?.status) setLicenceStatus(r.status);
-          });
+        // Trial modals for installs whose onboarding tour is already done:
+        // the announcement (Rust started the trial at this launch, e.g. an
+        // existing install predating the trial, or a Welcome-skip user on a
+        // later launch) or the one-shot end-of-trial summary. Fresh installs
+        // get the announcement from handleOnboardingComplete instead.
+        if (onboardingComplete) {
+          if (trialAnnouncePending(ls)) {
+            setShowProTrialModal(true);
+          } else if (trialJustEnded(ls)) {
+            openTrialEnd(ls);
+          }
         }
-        // Set this AFTER potentially queuing the migration popup so the
-        // templates coachmark effect can't fire ahead of the trial modal.
+        // Set this AFTER potentially queuing a trial modal so the templates
+        // coachmark effect can't fire ahead of it.
         setLicenceChecked(true);
       }).catch(() => setLicenceChecked(true));
 
@@ -1296,12 +1329,10 @@ function App() {
     const handleFocus = () => {
       window.electronAPI?.checkLicenceRevalidation?.().then(ls => {
         if (!ls) return;
-        // Trial ran out while the app was open or between sessions: say so
-        // once instead of letting double-tap / hold bindings just stop.
-        const prev = licenceStatusRef.current;
-        if (prev?.is_pro && !ls.is_pro && !ls.key_entered && ls.trial_used) {
-          showNotification('Your Pro trial has ended. Pro features are locked until you add a licence key (Settings → Licence).', 'info');
-        }
+        // Trial ran out while the app was open or between sessions: show the
+        // one-shot end-of-trial summary instead of letting double-tap / hold
+        // bindings just stop. `openTrialEnd` de-dupes repeated focus events.
+        if (trialJustEnded(ls)) openTrialEnd(ls);
         licenceStatusRef.current = ls;
         setLicenceStatus(ls);
         // Grace period state may have changed (timer ticked over while
@@ -5499,7 +5530,10 @@ function App() {
       onboarding_complete: true,
       onboarding_version_seen: ONBOARDING_VERSION,
     });
-  }, []);
+    // The trial has been live since launch; skipping the tour must not
+    // also skip the announcement.
+    if (trialAnnouncePending(licenceStatus)) setShowProTrialModal(true);
+  }, [licenceStatus]);
 
   // Dev-only: replay the first-launch experience without uninstalling.
   // Resets the welcome + onboarding flags, snaps to keyboard mapping (so the
@@ -5528,20 +5562,10 @@ function App() {
       hasSeenWelcome: true,
       onboarding_version_seen: ONBOARDING_VERSION,
     });
-    // Auto-activate the 14-day Pro trial right after the tour finishes (also
-    // fires on skip), then announce it. Suppressed if the user already has a
-    // real Pro key entered, their trial is already active, or it was already
-    // started/announced before. The modal is an announcement now, not an offer:
-    // start_trial runs here, not on a button click.
-    if (!licenceStatus?.key_entered
-        && !licenceStatus?.trial_active
-        && !licenceStatus?.trial_used
-        && !licenceStatus?.trial_offer_shown) {
-      setShowProTrialModal(true);
-      window.electronAPI?.startTrial?.().then((r) => {
-        if (r?.status) setLicenceStatus(r.status);
-      });
-    }
+    // Announce the 14-day Pro trial right after the tour finishes (also on
+    // skip). Rust started it at first launch; this modal is an announcement,
+    // not an offer. Suppressed once announced or if a real key is entered.
+    if (trialAnnouncePending(licenceStatus)) setShowProTrialModal(true);
   }, [licenceStatus]);
 
   const handleRestartOnboarding = useCallback(() => {
@@ -5618,7 +5642,7 @@ function App() {
   //   - onboarding_complete must be true (don't fire if user quit mid-tour)
   useEffect(() => {
     if (!licenceChecked) return; // wait until any migration trial popup has had a chance to open
-    if (showOnboarding || showWelcome || showProTrialModal) return;
+    if (showOnboarding || showWelcome || showProTrialModal || showTrialEndModal) return;
     if (templatesNudgeSeen || showTemplatesNudge) return;
     if (activeArea !== 'mapping') return;
     if (!onboardingCompleteRef.current) return;
@@ -5637,7 +5661,7 @@ function App() {
       setShowTemplatesNudge(true);
     }, 350);
     return () => clearTimeout(t);
-  }, [licenceChecked, showOnboarding, showWelcome, showProTrialModal, templatesNudgeSeen, showTemplatesNudge, activeArea]);
+  }, [licenceChecked, showOnboarding, showWelcome, showProTrialModal, showTrialEndModal, templatesNudgeSeen, showTemplatesNudge, activeArea]);
 
   // Keep the coachmark's anchor rect in sync with window resizes while it's open.
   useEffect(() => {
@@ -5919,13 +5943,7 @@ function App() {
       importCadTemplate: handleImportCadTemplate,
       licenceStatusChange: (s) => setLicenceStatus(s),
       showUpgrade: (...a) => { focusMain(); showUpgrade(...a); },
-      showProTrial: () => {
-        focusMain();
-        setShowProTrialModal(true);
-        window.electronAPI?.startTrial?.().then((r) => {
-          if (r?.status) setLicenceStatus(r.status);
-        });
-      },
+      // Dev-only: fresh 14 days, announcement + end modal re-armed (Rust).
       resetTrial: () => {
         window.electronAPI?.resetTrial?.().then((s) => {
           if (s) setLicenceStatus(s);
@@ -5990,6 +6008,13 @@ function App() {
       hideTip: handleHideTip,
       setHiddenTips: (keys) => setHiddenTips(Array.isArray(keys) ? keys : []),
       setPro: (pro) => window.electronAPI?.devSetProOverride(pro),  // true | false | null (clear)
+      // Trial modals for UI testing. showTrialEnd(usage?) opens the end modal
+      // with a mock `get_trial_usage` payload ({ triggers:[{trigger_key,
+      // action_type,count}], autocorrect }); omit for the generic fallback.
+      // Neither touches the persisted trial flags.
+      showTrialAnnounce: () => setShowProTrialModal(true),
+      showTrialEnd: (usage) => { setTrialUsage(usage || { triggers: [], autocorrect: 0 }); setShowTrialEndModal(true); },
+      hideTrialEnd: () => { setShowTrialEndModal(false); trialEndOpenRef.current = false; },
       setPhysicalLayout: handleSetPhysicalKeyboardLayout, // ('auto'|'ansi'|'iso') persists like Settings does
       getAssignments: () => assignments,             // read-only snapshot of the storage map
       friendlyKeyName,                                // live instance (consults Windows-layout legends)
@@ -6077,6 +6102,17 @@ function App() {
               if (s) setLicenceStatus(s);
             });
           }}
+        />
+      )}
+      {showTrialEndModal && (
+        <TrialEndModal
+          usage={trialUsage}
+          assignments={assignments}
+          profileSettings={profileSettings}
+          radialLayouts={radialLayouts}
+          sharedActive={!!gracePeriodState?.shared_active}
+          onKeepPro={() => { closeTrialEnd(); showUpgrade('Keep Keyfire Pro'); }}
+          onClose={closeTrialEnd}
         />
       )}
       {showTemplatesNudge && (

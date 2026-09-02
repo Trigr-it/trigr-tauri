@@ -177,7 +177,8 @@ function macroStepLabel(stepType) {
 // actions.rs arm). Shown with a PRO badge in the step menu; selecting one
 // without a licence opens the upgrade prompt (SortableMacroStep type-change
 // handler). Keep in sync with the backend gates.
-const PRO_MACRO_STEPS = new Set(['Sort Files', 'Wait for Pixel', 'Wait for Text', 'Change Audio Output', 'Wait for Window', 'Run AHK Script']);
+// Exported for TrialEndModal (counts runs of macros that use a Pro step).
+export const PRO_MACRO_STEPS = new Set(['Sort Files', 'Wait for Pixel', 'Wait for Text', 'Change Audio Output', 'Wait for Window', 'Run AHK Script']);
 
 // Sort Files (Pro) — full default config, shared by the type-change seed and
 // the parse block so a fresh step and a legacy/partial value agree. Shape

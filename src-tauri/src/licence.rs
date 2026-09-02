@@ -41,6 +41,11 @@ const PUBLIC_KEY_B64: &str = "SSYMRvcbW18DXRMoBWt4hdI8rOWg0dXJnW1h92cpZ80";
 // 14-day Pro trial available to every install. Independent of any beta key —
 // trial unlocks Pro features locally without contacting any server. Anti-abuse
 // (uninstall to reset) is intentionally not handled during beta.
+//
+// The trial is NOT opt-in: `init()` starts it on the first launch that finds
+// no trial state and no licence key, so Pro is live from the very first hook
+// install (2026-09-02). The frontend only ANNOUNCES it (ProTrialModal after the
+// tour) and later shows the end-of-trial modal; it never starts one.
 const TRIAL_DURATION_DAYS: i64 = 14;
 
 // ── State ───────────────────────────────────────────────────────────────────
@@ -97,6 +102,10 @@ pub struct LicenceState {
     /// the user. Prevents the migration popup from firing on every launch.
     #[serde(default)]
     pub trial_offer_shown: bool,
+    /// True once the end-of-trial modal has been shown (or the trial was
+    /// consumed by a real key, which makes the modal moot). One-shot.
+    #[serde(default)]
+    pub trial_end_shown: bool,
     /// Highest wall-clock time (unix seconds) this install has ever observed.
     /// Every expiry and trial check measures against `max(now, time_anchor)`
     /// (see [`effective_now`]), so winding the system clock backwards cannot
@@ -123,10 +132,16 @@ pub struct LicenceStatus {
     pub trial_active: bool,
     /// Whole days remaining on the trial (0 once expired). Always 0 if trial_active is false.
     pub trial_days_remaining: i64,
-    /// True once start_trial has been called for this install. Stays true after expiry.
+    /// True once the trial has been started on this install (by `init` on first
+    /// launch). Stays true after expiry.
     pub trial_used: bool,
     /// True once the post-onboarding trial offer has been shown.
     pub trial_offer_shown: bool,
+    /// RFC3339 start of the trial (None if never started or consumed by a key).
+    /// The frontend passes it to `get_trial_usage` for the end-of-trial modal.
+    pub trial_started_at: Option<String>,
+    /// True once the end-of-trial modal has been shown.
+    pub trial_end_shown: bool,
 }
 
 /// Legacy TRIGR-PRO JSON payload shape. Kept for backward compatibility only —
@@ -165,6 +180,14 @@ const PAYLOAD_V2_LEN: usize = 10;
 
 pub fn init() {
     let mut state = load_from_local_settings();
+    // First launch (no trial state, no key ever entered): start the 14-day
+    // Pro trial right here so every Pro gate is open from the first hook
+    // install. The frontend announces it after the onboarding tour.
+    let has_key = state.key.as_deref().map_or(false, |k| !k.is_empty());
+    if !state.trial_used && !has_key {
+        begin_trial(&mut state);
+        info!("[Keyfire] Pro trial auto-started on first launch ({} days)", TRIAL_DURATION_DAYS);
+    }
     // Advance the rollback-proof clock anchor, then resync the cached display
     // flag from a fresh signature verification. Entitlement is NEVER taken
     // from the stored `valid` bool — see [`key_grants_pro`].
@@ -232,9 +255,9 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
     // one-time first-install grace period, not a fallback tier — a user who
     // has entered a key must never drop back into trial when they later
     // remove that key (per Rory 2026-08-19). Setting trial_started_at=None
-    // strips any remaining trial time; trial_used=true locks out any future
-    // start_trial call; trial_offer_shown=true prevents the trial modal
-    // ever re-firing after a subsequent deactivation.
+    // strips any remaining trial time; trial_used=true stops `init` ever
+    // arming another one; trial_offer_shown / trial_end_shown=true prevent
+    // either trial modal firing after a subsequent deactivation.
     let state = LicenceState {
         key: Some(cleaned),
         email: decoded.email.clone(),
@@ -246,6 +269,7 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
         trial_started_at: None,
         trial_used: true,
         trial_offer_shown: true,
+        trial_end_shown: true,
         time_anchor: prior.time_anchor,
     };
     update_state(state.clone());
@@ -256,29 +280,29 @@ pub async fn activate_licence(key: String) -> Result<LicenceStatus, String> {
     Ok(build_status(&state))
 }
 
-/// Start the 14-day Pro trial. Idempotent-ish: refuses to start if already used
-/// (whether currently active or expired), so users can't reset by uninstalling
-/// the *frontend* state — though full reinstall does reset everything (acceptable
-/// during beta).
-pub async fn start_trial() -> Result<LicenceStatus, String> {
+/// Arm a fresh 14-day trial on `state` (does not persist — callers do).
+/// Only `init` (first launch) and the dev-only `reset_trial` call this; there
+/// is deliberately no IPC that starts a trial, so a full reinstall is the only
+/// way to get another one (acceptable during beta).
+fn begin_trial(state: &mut LicenceState) {
+    state.trial_started_at = Some(chrono::Utc::now().to_rfc3339());
+    state.trial_used = true;
+    state.trial_offer_shown = false;
+    state.trial_end_shown = false;
+}
+
+/// Mark the one-shot end-of-trial modal as shown so it never re-fires.
+pub async fn mark_trial_end_shown() -> LicenceStatus {
     let mut state = match LICENCE_STATE.get() {
         Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         None => LicenceState::default(),
     };
-
-    if state.trial_used {
-        return Err("Trial has already been used on this install.".to_string());
+    if !state.trial_end_shown {
+        state.trial_end_shown = true;
+        update_state(state.clone());
+        info!("[Keyfire] Trial end modal marked as shown");
     }
-
-    state.trial_started_at = Some(chrono::Utc::now().to_rfc3339());
-    state.trial_used = true;
-    update_state(state.clone());
-    info!(
-        "[Keyfire] Pro trial started at {} ({} days)",
-        state.trial_started_at.as_deref().unwrap_or(""),
-        TRIAL_DURATION_DAYS
-    );
-    Ok(build_status(&state))
+    build_status(&state)
 }
 
 /// Mark the one-time post-onboarding (or migration) trial offer as shown.
@@ -319,9 +343,10 @@ pub async fn dev_set_pro_override(pro: Option<bool>) -> LicenceStatus {
     build_status(&state)
 }
 
-/// DEV/TEST ONLY: clear the local trial state (started / used / offer-shown) so
-/// the 14-day trial and its post-onboarding announcement can be re-triggered.
-/// Preserves any entered licence key. Exposed only via a dev-build button.
+/// DEV/TEST ONLY: restart the trial from scratch — a fresh 14 days with the
+/// announcement and end-of-trial modals both re-armed. (Since the trial is
+/// started by `init`, merely clearing the state would leave Free until the
+/// next launch.) Preserves any entered licence key. Dev-build button only.
 pub async fn reset_trial() -> LicenceStatus {
     // Hard no-op outside dev builds. The command stays registered so the
     // handler list is unchanged, but it can never reset trial state in a
@@ -334,11 +359,9 @@ pub async fn reset_trial() -> LicenceStatus {
         Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         None => LicenceState::default(),
     };
-    state.trial_started_at = None;
-    state.trial_used = false;
-    state.trial_offer_shown = false;
+    begin_trial(&mut state);
     update_state(state.clone());
-    info!("[Keyfire] Trial state reset (dev)");
+    info!("[Keyfire] Trial restarted (dev)");
     build_status(&state)
 }
 
@@ -353,6 +376,7 @@ pub async fn deactivate_licence() -> Result<LicenceStatus, String> {
         trial_started_at: prior.trial_started_at,
         trial_used: prior.trial_used,
         trial_offer_shown: prior.trial_offer_shown,
+        trial_end_shown: prior.trial_end_shown,
         // Preserve the clock anchor across deactivation — dropping it would
         // hand back a fresh rollback window.
         time_anchor: prior.time_anchor,
@@ -402,6 +426,7 @@ pub async fn check_and_revalidate() -> LicenceStatus {
                 trial_started_at: state.trial_started_at,
                 trial_used: state.trial_used,
                 trial_offer_shown: state.trial_offer_shown,
+                trial_end_shown: state.trial_end_shown,
                 time_anchor: state.time_anchor,
             };
             update_state(new_state.clone());
@@ -731,6 +756,8 @@ fn build_status(state: &LicenceState) -> LicenceStatus {
         trial_days_remaining: trial_days,
         trial_used: state.trial_used,
         trial_offer_shown: state.trial_offer_shown,
+        trial_started_at: state.trial_started_at.clone(),
+        trial_end_shown: state.trial_end_shown,
     }
 }
 

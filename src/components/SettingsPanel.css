@@ -1299,11 +1299,6 @@
   gap: var(--space-2);
 }
 
-.settings-trial-card--offer {
-  border-color: var(--accent-dim);
-  background: var(--accent-glow);
-}
-
 .settings-trial-card--active {
   border-color: var(--accent-dim);
   background: var(--accent-glow);
@@ -1325,15 +1320,6 @@
   font-weight: 600;
   color: var(--accent);
   letter-spacing: var(--tracking-tight);
-}
-
-.settings-trial-title {
-  font-family: 'Space Grotesk', var(--font-display), sans-serif;
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: var(--tracking-tighter);
-  margin: 0 0 var(--space-0);
 }
 
 .settings-action-btn--primary {
