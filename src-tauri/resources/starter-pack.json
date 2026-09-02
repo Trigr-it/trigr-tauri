@@ -1,38 +1,19 @@
 {
-  "_": "Starter pack seeded into the config on first install (config file absent + no backups). See config::build_starter_config. Every entry carries \"isStarter\": true so a future 'reset starter' or migration pass can identify seeded rows. Unassigned Library section is auto-expanded on first install via Sidebar.jsx's default-false state (no localStorage key yet). Pack C radial segments are INLINE GLOBAL::RADIAL:: assignments (independent copies of the same actions in Pack A) — the radial editor pane doesn't currently render the linked action from a Default::UNASSIGNED::-pointing segment, so inline keeps the editor UX working. Each Pack C segment carries a distinct lucide icon + colour so users can immediately see icons+colours are customisable. Expansion data.html fields carry the exact editor-DOM shape (rte-token spans + <br> line breaks) so RichTextEditor.innerHTML paint isn't blank; date/time tokens must use the whitelisted literal-string grammar in expansions.rs (e.g. `{date:D MMMM YYYY}`, `{time:HH:MM}` — NOT strftime like `{date:%H:%M}`). Pack F (starterPackVersion 2, 2026-09-02): two app-specific profiles, Excel (linkedApp EXCEL.EXE, Ctrl+Shift+letter) and Chrome (chrome.exe, Alt+letter), each with its own radial wheel whose segments REFERENCE the profile's own hotkey assignments (not inline copies). App profiles are Pro: they run during the first-install trial and go quiet on Free, which is the point (the trial-end modal reports fires inside Excel and Chrome). Match is on the lowercase process stem in foreground.rs, so a bare exe name is enough.",
-  "starterPackVersion": 2,
-  "profiles": [
-    "Default",
-    "Excel",
-    "Chrome"
-  ],
-  "activeProfile": "Default",
-  "profileSettings": {
-    "Excel": {
-      "linkedApp": "EXCEL.EXE"
-    },
-    "Chrome": {
-      "linkedApp": "chrome.exe"
-    }
-  },
+  "_": "Starter pack seeded into the config on first install (config file absent + no backups). See config::build_starter_config. Every entry carries \"isStarter\": true so a future 'reset starter' or migration pass can identify seeded rows. Unassigned Library section is auto-expanded on first install via Sidebar.jsx's default-false state (no localStorage key yet). Pack C radial segments are INLINE GLOBAL::RADIAL:: assignments (independent copies of the same actions in Pack A) — the radial editor pane doesn't currently render the linked action from a Default::UNASSIGNED::-pointing segment, so inline keeps the editor UX working. Each Pack C segment carries a distinct lucide icon + colour so users can immediately see icons+colours are customisable. Expansion data.html fields carry the exact editor-DOM shape (rte-token spans + <br> line breaks) so RichTextEditor.innerHTML paint isn't blank; date/time tokens must use the whitelisted literal-string grammar in expansions.rs (e.g. `{date:D MMMM YYYY}`, `{time:HH:MM}` — NOT strftime like `{date:%H:%M}`).",
+  "starterPackVersion": 1,
+
   "expansionCategories": [
-    {
-      "name": "Starter",
-      "colour": "#e8a020"
-    }
+    { "name": "Starter", "colour": "#e8a020" }
   ],
+
   "searchTemplateCategories": [
-    {
-      "name": "Starter",
-      "colour": "#e8a020"
-    }
+    { "name": "Starter", "colour": "#e8a020" }
   ],
+
   "quickActionCategories": [
-    {
-      "name": "Starter",
-      "colour": "#e8a020"
-    }
+    { "name": "Starter", "colour": "#e8a020" }
   ],
+
   "searchTemplates": [
     {
       "id": "starter-search-google",
@@ -59,101 +40,60 @@
       "isStarter": true
     }
   ],
+
   "assignments": {
     "Default::UNASSIGNED::starter-snip": {
       "type": "hotkey",
       "label": "Snip tool",
-      "data": {
-        "key": "S",
-        "modifiers": [
-          "shift",
-          "win"
-        ]
-      },
+      "data": { "key": "S", "modifiers": ["shift", "win"] },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-show-desktop": {
       "type": "hotkey",
       "label": "Show desktop",
-      "data": {
-        "key": "D",
-        "modifiers": [
-          "win"
-        ]
-      },
+      "data": { "key": "D", "modifiers": ["win"] },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-emoji-picker": {
       "type": "hotkey",
       "label": "Emoji picker",
-      "data": {
-        "key": ".",
-        "modifiers": [
-          "win"
-        ]
-      },
+      "data": { "key": ".", "modifiers": ["win"] },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-reopen-tab": {
       "type": "hotkey",
       "label": "Reopen closed tab",
-      "data": {
-        "key": "T",
-        "modifiers": [
-          "ctrl",
-          "shift"
-        ]
-      },
+      "data": { "key": "T", "modifiers": ["ctrl", "shift"] },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-screenshot": {
       "type": "hotkey",
       "label": "Screenshot to folder",
-      "data": {
-        "key": "PrintScreen",
-        "modifiers": [
-          "win"
-        ]
-      },
+      "data": { "key": "PrintScreen", "modifiers": ["win"] },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-lock-windows": {
       "type": "hotkey",
       "label": "Lock Windows",
-      "data": {
-        "key": "L",
-        "modifiers": [
-          "win"
-        ]
-      },
+      "data": { "key": "L", "modifiers": ["win"] },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-new-tab": {
       "type": "hotkey",
       "label": "New browser tab",
-      "data": {
-        "key": "T",
-        "modifiers": [
-          "ctrl"
-        ]
-      },
+      "data": { "key": "T", "modifiers": ["ctrl"] },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-open-gmail": {
       "type": "url",
       "label": "Open Gmail",
-      "data": {
-        "url": "https://mail.google.com"
-      },
+      "data": { "url": "https://mail.google.com" },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-open-calculator": {
       "type": "app",
       "label": "Open Calculator",
-      "data": {
-        "path": "calc.exe",
-        "args": ""
-      },
+      "data": { "path": "calc.exe", "args": "" },
       "isStarter": true
     },
     "Default::UNASSIGNED::starter-volume-up": {
@@ -161,10 +101,7 @@
       "label": "Volume up",
       "data": {
         "steps": [
-          {
-            "type": "Change Volume",
-            "value": "{\"mode\":\"increase\",\"amount\":5}"
-          }
+          { "type": "Change Volume", "value": "{\"mode\":\"increase\",\"amount\":5}" }
         ]
       },
       "isStarter": true
@@ -174,10 +111,7 @@
       "label": "Volume down",
       "data": {
         "steps": [
-          {
-            "type": "Change Volume",
-            "value": "{\"mode\":\"decrease\",\"amount\":5}"
-          }
+          { "type": "Change Volume", "value": "{\"mode\":\"decrease\",\"amount\":5}" }
         ]
       },
       "isStarter": true
@@ -187,10 +121,7 @@
       "label": "Mute toggle",
       "data": {
         "steps": [
-          {
-            "type": "Change Volume",
-            "value": "{\"mode\":\"mute\",\"amount\":0}"
-          }
+          { "type": "Change Volume", "value": "{\"mode\":\"mute\",\"amount\":0}" }
         ]
       },
       "isStarter": true
@@ -200,10 +131,7 @@
       "label": "Play / Pause media",
       "data": {
         "steps": [
-          {
-            "type": "Media Control",
-            "value": "{\"mode\":\"play_pause\"}"
-          }
+          { "type": "Media Control", "value": "{\"mode\":\"play_pause\"}" }
         ]
       },
       "isStarter": true
@@ -213,10 +141,7 @@
       "label": "Next track",
       "data": {
         "steps": [
-          {
-            "type": "Media Control",
-            "value": "{\"mode\":\"next_track\"}"
-          }
+          { "type": "Media Control", "value": "{\"mode\":\"next_track\"}" }
         ]
       },
       "isStarter": true
@@ -226,10 +151,7 @@
       "label": "Previous track",
       "data": {
         "steps": [
-          {
-            "type": "Media Control",
-            "value": "{\"mode\":\"prev_track\"}"
-          }
+          { "type": "Media Control", "value": "{\"mode\":\"prev_track\"}" }
         ]
       },
       "isStarter": true
@@ -239,14 +161,12 @@
       "label": "Stop media",
       "data": {
         "steps": [
-          {
-            "type": "Media Control",
-            "value": "{\"mode\":\"stop\"}"
-          }
+          { "type": "Media Control", "value": "{\"mode\":\"stop\"}" }
         ]
       },
       "isStarter": true
     },
+
     "GLOBAL::EXPANSION::/sig": {
       "type": "expansion",
       "label": "Expand: /sig",
@@ -367,91 +287,54 @@
       },
       "isStarter": true
     },
+
     "GLOBAL::QUICKACTION::starter-open-notepad": {
       "type": "app",
       "label": "Open Notepad",
-      "data": {
-        "path": "notepad.exe",
-        "args": "",
-        "category": "Starter"
-      },
+      "data": { "path": "notepad.exe", "args": "", "category": "Starter" },
       "isStarter": true
     },
     "GLOBAL::QUICKACTION::starter-open-downloads": {
       "type": "folder",
       "label": "Open Downloads",
-      "data": {
-        "path": "shell:Downloads",
-        "category": "Starter"
-      },
+      "data": { "path": "shell:Downloads", "category": "Starter" },
       "isStarter": true
     },
+
     "GLOBAL::RADIAL::starter-c-snip": {
       "type": "hotkey",
       "label": "Snip tool",
-      "data": {
-        "key": "S",
-        "modifiers": [
-          "shift",
-          "win"
-        ]
-      },
+      "data": { "key": "S", "modifiers": ["shift", "win"] },
       "isStarter": true
     },
     "GLOBAL::RADIAL::starter-c-lock": {
       "type": "hotkey",
       "label": "Lock Windows",
-      "data": {
-        "key": "L",
-        "modifiers": [
-          "win"
-        ]
-      },
+      "data": { "key": "L", "modifiers": ["win"] },
       "isStarter": true
     },
     "GLOBAL::RADIAL::starter-c-show-desktop": {
       "type": "hotkey",
       "label": "Show desktop",
-      "data": {
-        "key": "D",
-        "modifiers": [
-          "win"
-        ]
-      },
+      "data": { "key": "D", "modifiers": ["win"] },
       "isStarter": true
     },
     "GLOBAL::RADIAL::starter-c-emoji": {
       "type": "hotkey",
       "label": "Emoji picker",
-      "data": {
-        "key": ".",
-        "modifiers": [
-          "win"
-        ]
-      },
+      "data": { "key": ".", "modifiers": ["win"] },
       "isStarter": true
     },
     "GLOBAL::RADIAL::starter-c-new-tab": {
       "type": "hotkey",
       "label": "New tab",
-      "data": {
-        "key": "T",
-        "modifiers": [
-          "ctrl"
-        ]
-      },
+      "data": { "key": "T", "modifiers": ["ctrl"] },
       "isStarter": true
     },
     "GLOBAL::RADIAL::starter-c-reopen-tab": {
       "type": "hotkey",
       "label": "Reopen closed tab",
-      "data": {
-        "key": "T",
-        "modifiers": [
-          "ctrl",
-          "shift"
-        ]
-      },
+      "data": { "key": "T", "modifiers": ["ctrl", "shift"] },
       "isStarter": true
     },
     "GLOBAL::RADIAL::starter-c-vol-up": {
@@ -459,10 +342,7 @@
       "label": "Volume up",
       "data": {
         "steps": [
-          {
-            "type": "Change Volume",
-            "value": "{\"mode\":\"increase\",\"amount\":5}"
-          }
+          { "type": "Change Volume", "value": "{\"mode\":\"increase\",\"amount\":5}" }
         ]
       },
       "isStarter": true
@@ -472,10 +352,7 @@
       "label": "Volume down",
       "data": {
         "steps": [
-          {
-            "type": "Change Volume",
-            "value": "{\"mode\":\"decrease\",\"amount\":5}"
-          }
+          { "type": "Change Volume", "value": "{\"mode\":\"decrease\",\"amount\":5}" }
         ]
       },
       "isStarter": true
@@ -485,405 +362,22 @@
       "label": "Mute toggle",
       "data": {
         "steps": [
-          {
-            "type": "Change Volume",
-            "value": "{\"mode\":\"mute\",\"amount\":0}"
-          }
+          { "type": "Change Volume", "value": "{\"mode\":\"mute\",\"amount\":0}" }
         ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyV": {
-      "type": "macro",
-      "label": "Paste values only",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+H"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "V"
-          },
-          {
-            "type": "Press Key",
-            "value": "V"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyR": {
-      "type": "macro",
-      "label": "Insert row above",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Shift+Space"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+Shift+="
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyD": {
-      "type": "macro",
-      "label": "Delete row",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Shift+Space"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+-"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyK": {
-      "type": "macro",
-      "label": "Freeze top row",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+W"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "F"
-          },
-          {
-            "type": "Press Key",
-            "value": "R"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyW": {
-      "type": "macro",
-      "label": "Wrap text",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+H"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "W"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyM": {
-      "type": "macro",
-      "label": "Merge and centre",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+H"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "M"
-          },
-          {
-            "type": "Press Key",
-            "value": "C"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyB": {
-      "type": "macro",
-      "label": "Autofit column width",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+H"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "O"
-          },
-          {
-            "type": "Press Key",
-            "value": "I"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyN": {
-      "type": "macro",
-      "label": "Clear formatting",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+H"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "E"
-          },
-          {
-            "type": "Press Key",
-            "value": "F"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Excel::Ctrl+Shift::KeyT": {
-      "type": "text",
-      "label": "Date and time stamp",
-      "data": {
-        "text": "{date:DD/MM/YYYY} {time:HH:MM}"
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyT": {
-      "type": "macro",
-      "label": "Duplicate tab",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+D"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "60"
-          },
-          {
-            "type": "Press Key",
-            "value": "Alt+Enter"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyL": {
-      "type": "macro",
-      "label": "Copy page URL",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+D"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "60"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+C"
-          },
-          {
-            "type": "Press Key",
-            "value": "Esc"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyG": {
-      "type": "macro",
-      "label": "Search selection in new tab",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Ctrl+C"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+T"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "150"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+V"
-          },
-          {
-            "type": "Press Key",
-            "value": "Enter"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyP": {
-      "type": "macro",
-      "label": "Find selection on page",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Ctrl+C"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+F"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "80"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+V"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyV": {
-      "type": "macro",
-      "label": "Paste URL and go",
-      "data": {
-        "steps": [
-          {
-            "type": "Press Key",
-            "value": "Alt+D"
-          },
-          {
-            "type": "Wait (ms)",
-            "value": "60"
-          },
-          {
-            "type": "Press Key",
-            "value": "Ctrl+V"
-          },
-          {
-            "type": "Press Key",
-            "value": "Enter"
-          }
-        ]
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyY": {
-      "type": "url",
-      "label": "Open YouTube",
-      "data": {
-        "url": "https://www.youtube.com"
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyM": {
-      "type": "url",
-      "label": "Open Gmail",
-      "data": {
-        "url": "https://mail.google.com"
-      },
-      "isStarter": true
-    },
-    "Chrome::Alt::KeyK": {
-      "type": "url",
-      "label": "Open Google Calendar",
-      "data": {
-        "url": "https://calendar.google.com"
       },
       "isStarter": true
     }
   },
+
   "radialMenuItemsByProfile": {
     "Default": [
-      {
-        "id": "starter-seg-snip",
-        "label": "Snip tool",
-        "storageKey": "GLOBAL::RADIAL::starter-c-snip",
-        "icon": "lucide:Scissors",
-        "iconColor": "#ff783c"
-      },
-      {
-        "id": "starter-seg-lock",
-        "label": "Lock Windows",
-        "storageKey": "GLOBAL::RADIAL::starter-c-lock",
-        "icon": "lucide:Lock",
-        "iconColor": "#ffc832"
-      },
-      {
-        "id": "starter-seg-desktop",
-        "label": "Show desktop",
-        "storageKey": "GLOBAL::RADIAL::starter-c-show-desktop",
-        "icon": "lucide:Monitor",
-        "iconColor": "#50c878"
-      },
-      {
-        "id": "starter-seg-emoji",
-        "label": "Emoji picker",
-        "storageKey": "GLOBAL::RADIAL::starter-c-emoji",
-        "icon": "lucide:Smile",
-        "iconColor": "#40c8a0"
-      },
+      { "id": "starter-seg-snip",       "label": "Snip tool",         "storageKey": "GLOBAL::RADIAL::starter-c-snip",         "icon": "lucide:Scissors",  "iconColor": "#ff783c" },
+      { "id": "starter-seg-lock",       "label": "Lock Windows",      "storageKey": "GLOBAL::RADIAL::starter-c-lock",         "icon": "lucide:Lock",      "iconColor": "#ffc832" },
+      { "id": "starter-seg-desktop",    "label": "Show desktop",      "storageKey": "GLOBAL::RADIAL::starter-c-show-desktop", "icon": "lucide:Monitor",   "iconColor": "#50c878" },
+      { "id": "starter-seg-emoji",      "label": "Emoji picker",      "storageKey": "GLOBAL::RADIAL::starter-c-emoji",        "icon": "lucide:Smile",     "iconColor": "#40c8a0" },
       null,
-      {
-        "id": "starter-seg-new-tab",
-        "label": "New tab",
-        "storageKey": "GLOBAL::RADIAL::starter-c-new-tab",
-        "icon": "lucide:Plus",
-        "iconColor": "#64b4ff"
-      },
-      {
-        "id": "starter-seg-reopen-tab",
-        "label": "Reopen closed tab",
-        "storageKey": "GLOBAL::RADIAL::starter-c-reopen-tab",
-        "icon": "lucide:Undo2",
-        "iconColor": "#a070ff"
-      },
+      { "id": "starter-seg-new-tab",    "label": "New tab",           "storageKey": "GLOBAL::RADIAL::starter-c-new-tab",      "icon": "lucide:Plus",      "iconColor": "#64b4ff" },
+      { "id": "starter-seg-reopen-tab", "label": "Reopen closed tab", "storageKey": "GLOBAL::RADIAL::starter-c-reopen-tab",   "icon": "lucide:Undo2",     "iconColor": "#a070ff" },
       {
         "id": "starter-seg-volume",
         "type": "folder",
@@ -891,144 +385,10 @@
         "icon": "lucide:Volume2",
         "iconColor": "#c864ff",
         "children": [
-          {
-            "id": "starter-child-vol-up",
-            "label": "Volume up",
-            "storageKey": "GLOBAL::RADIAL::starter-c-vol-up",
-            "icon": "lucide:Volume2",
-            "iconColor": "#c864ff"
-          },
-          {
-            "id": "starter-child-vol-down",
-            "label": "Volume down",
-            "storageKey": "GLOBAL::RADIAL::starter-c-vol-down",
-            "icon": "lucide:Volume1",
-            "iconColor": "#ff5c5c"
-          },
-          {
-            "id": "starter-child-mute",
-            "label": "Mute toggle",
-            "storageKey": "GLOBAL::RADIAL::starter-c-mute",
-            "icon": "lucide:VolumeX",
-            "iconColor": "#ff8fa3"
-          }
+          { "id": "starter-child-vol-up",   "label": "Volume up",   "storageKey": "GLOBAL::RADIAL::starter-c-vol-up",   "icon": "lucide:Volume2",  "iconColor": "#c864ff" },
+          { "id": "starter-child-vol-down", "label": "Volume down", "storageKey": "GLOBAL::RADIAL::starter-c-vol-down", "icon": "lucide:Volume1",  "iconColor": "#ff5c5c" },
+          { "id": "starter-child-mute",     "label": "Mute toggle", "storageKey": "GLOBAL::RADIAL::starter-c-mute",     "icon": "lucide:VolumeX",  "iconColor": "#ff8fa3" }
         ]
-      }
-    ],
-    "Excel": [
-      {
-        "id": "starter-xl-keyv",
-        "label": "Paste values only",
-        "storageKey": "Excel::Ctrl+Shift::KeyV",
-        "icon": "lucide:ClipboardCheck",
-        "iconColor": "#ff783c"
-      },
-      {
-        "id": "starter-xl-keyr",
-        "label": "Insert row above",
-        "storageKey": "Excel::Ctrl+Shift::KeyR",
-        "icon": "lucide:Plus",
-        "iconColor": "#ffc832"
-      },
-      {
-        "id": "starter-xl-keyd",
-        "label": "Delete row",
-        "storageKey": "Excel::Ctrl+Shift::KeyD",
-        "icon": "lucide:Trash2",
-        "iconColor": "#50c878"
-      },
-      {
-        "id": "starter-xl-keyk",
-        "label": "Freeze top row",
-        "storageKey": "Excel::Ctrl+Shift::KeyK",
-        "icon": "lucide:Snowflake",
-        "iconColor": "#40c8a0"
-      },
-      {
-        "id": "starter-xl-keyw",
-        "label": "Wrap text",
-        "storageKey": "Excel::Ctrl+Shift::KeyW",
-        "icon": "lucide:WrapText",
-        "iconColor": "#64b4ff"
-      },
-      {
-        "id": "starter-xl-keym",
-        "label": "Merge and centre",
-        "storageKey": "Excel::Ctrl+Shift::KeyM",
-        "icon": "lucide:Merge",
-        "iconColor": "#a070ff"
-      },
-      {
-        "id": "starter-xl-keyb",
-        "label": "Autofit column width",
-        "storageKey": "Excel::Ctrl+Shift::KeyB",
-        "icon": "lucide:MoveHorizontal",
-        "iconColor": "#c864ff"
-      },
-      {
-        "id": "starter-xl-keyn",
-        "label": "Clear formatting",
-        "storageKey": "Excel::Ctrl+Shift::KeyN",
-        "icon": "lucide:Eraser",
-        "iconColor": "#ff6b9d"
-      }
-    ],
-    "Chrome": [
-      {
-        "id": "starter-ch-keyt",
-        "label": "Duplicate tab",
-        "storageKey": "Chrome::Alt::KeyT",
-        "icon": "lucide:Copy",
-        "iconColor": "#ff783c"
-      },
-      {
-        "id": "starter-ch-keyl",
-        "label": "Copy page URL",
-        "storageKey": "Chrome::Alt::KeyL",
-        "icon": "lucide:Link",
-        "iconColor": "#ffc832"
-      },
-      {
-        "id": "starter-ch-keyg",
-        "label": "Search selection in new tab",
-        "storageKey": "Chrome::Alt::KeyG",
-        "icon": "lucide:Search",
-        "iconColor": "#50c878"
-      },
-      {
-        "id": "starter-ch-keyp",
-        "label": "Find selection on page",
-        "storageKey": "Chrome::Alt::KeyP",
-        "icon": "lucide:FileSearch",
-        "iconColor": "#40c8a0"
-      },
-      {
-        "id": "starter-ch-keyv",
-        "label": "Paste URL and go",
-        "storageKey": "Chrome::Alt::KeyV",
-        "icon": "lucide:ClipboardPaste",
-        "iconColor": "#64b4ff"
-      },
-      {
-        "id": "starter-ch-keyy",
-        "label": "Open YouTube",
-        "storageKey": "Chrome::Alt::KeyY",
-        "icon": "lucide:Youtube",
-        "iconColor": "#a070ff"
-      },
-      {
-        "id": "starter-ch-keym",
-        "label": "Open Gmail",
-        "storageKey": "Chrome::Alt::KeyM",
-        "icon": "lucide:Mail",
-        "iconColor": "#c864ff"
-      },
-      {
-        "id": "starter-ch-keyk",
-        "label": "Open Google Calendar",
-        "storageKey": "Chrome::Alt::KeyK",
-        "icon": "lucide:Calendar",
-        "iconColor": "#ff6b9d"
       }
     ]
   }

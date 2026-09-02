@@ -29,6 +29,7 @@ export default function TitleBar({
   activeProfile = 'Default',
   onImportTemplate,
   onImportCadTemplate,
+  onImportAppProfile,
   onShowNotification,
   templatesPillRef,
   templatesPillPulse = false,
@@ -294,6 +295,7 @@ export default function TitleBar({
                   activeProfile={activeProfile}
                   onImportTemplate={onImportTemplate}
                   onImportCadTemplate={onImportCadTemplate}
+                  onImportAppProfile={onImportAppProfile}
                 />
               </div>
             )}

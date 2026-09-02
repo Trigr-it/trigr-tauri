@@ -1,0 +1,988 @@
+{
+  "_": "App-specific profile templates offered after the trial announcement (AppProfilesModal) and in the Templates panel, filtered by which exes are installed (lib.rs resolve_exe_path_for_name via get_app_profile_templates). Assignment keys are \"<Modifier>::<KeyId>\" and get the profile name prefixed on import; radial entries reference those keys and become a per-profile wheel on the existing Ctrl+Shift+Space. Rule for every entry: the hotkey must replace something that takes LONGER than the hotkey itself; never alias an equally short native chord. Ribbon KeyTip macros assume the English Office UI. Add a new app by appending to `templates`; the UI and detection pick it up with no code change.",
+  "version": 1,
+  "templates": [
+    {
+      "id": "excel",
+      "name": "Excel",
+      "exe": "EXCEL.EXE",
+      "scheme": "Ctrl+Shift + letter",
+      "blurb": "Paste values, insert or delete a row, freeze the top row, wrap, merge, autofit and clear formatting, each on one chord instead of a ribbon sequence.",
+      "notes": "Ribbon shortcuts assume the English Excel interface.",
+      "assignments": {
+        "Ctrl+Shift::KeyV": {
+          "type": "macro",
+          "label": "Paste values only",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+H"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "V"
+              },
+              {
+                "type": "Press Key",
+                "value": "V"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyR": {
+          "type": "macro",
+          "label": "Insert row above",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Shift+Space"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+Shift+="
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyD": {
+          "type": "macro",
+          "label": "Delete row",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Shift+Space"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+-"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyK": {
+          "type": "macro",
+          "label": "Freeze top row",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+W"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "F"
+              },
+              {
+                "type": "Press Key",
+                "value": "R"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyW": {
+          "type": "macro",
+          "label": "Wrap text",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+H"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "W"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyM": {
+          "type": "macro",
+          "label": "Merge and centre",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+H"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "M"
+              },
+              {
+                "type": "Press Key",
+                "value": "C"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyB": {
+          "type": "macro",
+          "label": "Autofit column width",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+H"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "O"
+              },
+              {
+                "type": "Press Key",
+                "value": "I"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyN": {
+          "type": "macro",
+          "label": "Clear formatting",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+H"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "E"
+              },
+              {
+                "type": "Press Key",
+                "value": "F"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyT": {
+          "type": "text",
+          "label": "Date and time stamp",
+          "data": {
+            "text": "{date:DD/MM/YYYY} {time:HH:MM}"
+          }
+        }
+      },
+      "radial": [
+        {
+          "id": "xl-keyv",
+          "label": "Paste values only",
+          "key": "Ctrl+Shift::KeyV",
+          "icon": "lucide:ClipboardCheck",
+          "iconColor": "#ff783c"
+        },
+        {
+          "id": "xl-keyr",
+          "label": "Insert row above",
+          "key": "Ctrl+Shift::KeyR",
+          "icon": "lucide:Plus",
+          "iconColor": "#ffc832"
+        },
+        {
+          "id": "xl-keyd",
+          "label": "Delete row",
+          "key": "Ctrl+Shift::KeyD",
+          "icon": "lucide:Trash2",
+          "iconColor": "#50c878"
+        },
+        {
+          "id": "xl-keyk",
+          "label": "Freeze top row",
+          "key": "Ctrl+Shift::KeyK",
+          "icon": "lucide:Snowflake",
+          "iconColor": "#40c8a0"
+        },
+        {
+          "id": "xl-keyw",
+          "label": "Wrap text",
+          "key": "Ctrl+Shift::KeyW",
+          "icon": "lucide:WrapText",
+          "iconColor": "#64b4ff"
+        },
+        {
+          "id": "xl-keym",
+          "label": "Merge and centre",
+          "key": "Ctrl+Shift::KeyM",
+          "icon": "lucide:Merge",
+          "iconColor": "#a070ff"
+        },
+        {
+          "id": "xl-keyb",
+          "label": "Autofit column width",
+          "key": "Ctrl+Shift::KeyB",
+          "icon": "lucide:MoveHorizontal",
+          "iconColor": "#c864ff"
+        },
+        {
+          "id": "xl-keyn",
+          "label": "Clear formatting",
+          "key": "Ctrl+Shift::KeyN",
+          "icon": "lucide:Eraser",
+          "iconColor": "#ff6b9d"
+        }
+      ]
+    },
+    {
+      "id": "chrome",
+      "name": "Chrome",
+      "exe": "chrome.exe",
+      "scheme": "Alt + letter",
+      "blurb": "Duplicate a tab, copy the page URL, search or find whatever you have selected, paste a URL and go, and jump to YouTube, Gmail and Calendar.",
+      "notes": "Alt+letter is free in Chrome. A site that uses those letters as accesskeys will not see them.",
+      "assignments": {
+        "Alt::KeyT": {
+          "type": "macro",
+          "label": "Duplicate tab",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Alt+Enter"
+              }
+            ]
+          }
+        },
+        "Alt::KeyL": {
+          "type": "macro",
+          "label": "Copy page URL",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+C"
+              },
+              {
+                "type": "Press Key",
+                "value": "Esc"
+              }
+            ]
+          }
+        },
+        "Alt::KeyG": {
+          "type": "macro",
+          "label": "Search selection in new tab",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Ctrl+C"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+T"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "150"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+V"
+              },
+              {
+                "type": "Press Key",
+                "value": "Enter"
+              }
+            ]
+          }
+        },
+        "Alt::KeyP": {
+          "type": "macro",
+          "label": "Find selection on page",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Ctrl+C"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+F"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+V"
+              }
+            ]
+          }
+        },
+        "Alt::KeyV": {
+          "type": "macro",
+          "label": "Paste URL and go",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+V"
+              },
+              {
+                "type": "Press Key",
+                "value": "Enter"
+              }
+            ]
+          }
+        },
+        "Alt::KeyY": {
+          "type": "url",
+          "label": "Open YouTube",
+          "data": {
+            "url": "https://www.youtube.com"
+          }
+        },
+        "Alt::KeyM": {
+          "type": "url",
+          "label": "Open Gmail",
+          "data": {
+            "url": "https://mail.google.com"
+          }
+        },
+        "Alt::KeyK": {
+          "type": "url",
+          "label": "Open Google Calendar",
+          "data": {
+            "url": "https://calendar.google.com"
+          }
+        }
+      },
+      "radial": [
+        {
+          "id": "ch-keyt",
+          "label": "Duplicate tab",
+          "key": "Alt::KeyT",
+          "icon": "lucide:Copy",
+          "iconColor": "#ff783c"
+        },
+        {
+          "id": "ch-keyl",
+          "label": "Copy page URL",
+          "key": "Alt::KeyL",
+          "icon": "lucide:Link",
+          "iconColor": "#ffc832"
+        },
+        {
+          "id": "ch-keyg",
+          "label": "Search selection in new tab",
+          "key": "Alt::KeyG",
+          "icon": "lucide:Search",
+          "iconColor": "#50c878"
+        },
+        {
+          "id": "ch-keyp",
+          "label": "Find selection on page",
+          "key": "Alt::KeyP",
+          "icon": "lucide:FileSearch",
+          "iconColor": "#40c8a0"
+        },
+        {
+          "id": "ch-keyv",
+          "label": "Paste URL and go",
+          "key": "Alt::KeyV",
+          "icon": "lucide:ClipboardPaste",
+          "iconColor": "#64b4ff"
+        },
+        {
+          "id": "ch-keyy",
+          "label": "Open YouTube",
+          "key": "Alt::KeyY",
+          "icon": "lucide:Youtube",
+          "iconColor": "#a070ff"
+        },
+        {
+          "id": "ch-keym",
+          "label": "Open Gmail",
+          "key": "Alt::KeyM",
+          "icon": "lucide:Mail",
+          "iconColor": "#c864ff"
+        },
+        {
+          "id": "ch-keyk",
+          "label": "Open Google Calendar",
+          "key": "Alt::KeyK",
+          "icon": "lucide:Calendar",
+          "iconColor": "#ff6b9d"
+        }
+      ]
+    },
+    {
+      "id": "edge",
+      "name": "Edge",
+      "exe": "msedge.exe",
+      "scheme": "Alt + letter",
+      "blurb": "The same browser set as the Chrome profile: duplicate tab, copy URL, search or find the selection, paste and go, and quick launchers.",
+      "notes": "Alt+letter is free in Edge apart from Alt+D, Alt+E and Alt+F, which this profile avoids.",
+      "assignments": {
+        "Alt::KeyT": {
+          "type": "macro",
+          "label": "Duplicate tab",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Alt+Enter"
+              }
+            ]
+          }
+        },
+        "Alt::KeyL": {
+          "type": "macro",
+          "label": "Copy page URL",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+C"
+              },
+              {
+                "type": "Press Key",
+                "value": "Esc"
+              }
+            ]
+          }
+        },
+        "Alt::KeyG": {
+          "type": "macro",
+          "label": "Search selection in new tab",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Ctrl+C"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+T"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "150"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+V"
+              },
+              {
+                "type": "Press Key",
+                "value": "Enter"
+              }
+            ]
+          }
+        },
+        "Alt::KeyP": {
+          "type": "macro",
+          "label": "Find selection on page",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Ctrl+C"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+F"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+V"
+              }
+            ]
+          }
+        },
+        "Alt::KeyV": {
+          "type": "macro",
+          "label": "Paste URL and go",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+V"
+              },
+              {
+                "type": "Press Key",
+                "value": "Enter"
+              }
+            ]
+          }
+        },
+        "Alt::KeyY": {
+          "type": "url",
+          "label": "Open YouTube",
+          "data": {
+            "url": "https://www.youtube.com"
+          }
+        },
+        "Alt::KeyM": {
+          "type": "url",
+          "label": "Open Gmail",
+          "data": {
+            "url": "https://mail.google.com"
+          }
+        },
+        "Alt::KeyK": {
+          "type": "url",
+          "label": "Open Google Calendar",
+          "data": {
+            "url": "https://calendar.google.com"
+          }
+        }
+      },
+      "radial": [
+        {
+          "id": "ed-keyt",
+          "label": "Duplicate tab",
+          "key": "Alt::KeyT",
+          "icon": "lucide:Copy",
+          "iconColor": "#ff783c"
+        },
+        {
+          "id": "ed-keyl",
+          "label": "Copy page URL",
+          "key": "Alt::KeyL",
+          "icon": "lucide:Link",
+          "iconColor": "#ffc832"
+        },
+        {
+          "id": "ed-keyg",
+          "label": "Search selection in new tab",
+          "key": "Alt::KeyG",
+          "icon": "lucide:Search",
+          "iconColor": "#50c878"
+        },
+        {
+          "id": "ed-keyp",
+          "label": "Find selection on page",
+          "key": "Alt::KeyP",
+          "icon": "lucide:FileSearch",
+          "iconColor": "#40c8a0"
+        },
+        {
+          "id": "ed-keyv",
+          "label": "Paste URL and go",
+          "key": "Alt::KeyV",
+          "icon": "lucide:ClipboardPaste",
+          "iconColor": "#64b4ff"
+        },
+        {
+          "id": "ed-keyy",
+          "label": "Open YouTube",
+          "key": "Alt::KeyY",
+          "icon": "lucide:Youtube",
+          "iconColor": "#a070ff"
+        },
+        {
+          "id": "ed-keym",
+          "label": "Open Gmail",
+          "key": "Alt::KeyM",
+          "icon": "lucide:Mail",
+          "iconColor": "#c864ff"
+        },
+        {
+          "id": "ed-keyk",
+          "label": "Open Google Calendar",
+          "key": "Alt::KeyK",
+          "icon": "lucide:Calendar",
+          "iconColor": "#ff6b9d"
+        }
+      ]
+    },
+    {
+      "id": "explorer",
+      "name": "Explorer",
+      "exe": "explorer.exe",
+      "scheme": "Ctrl+Shift + letter",
+      "blurb": "A PowerShell window in the current folder, the folder path on your clipboard, and one-chord jumps to Downloads, AppData, the Recycle Bin and the Startup folder.",
+      "notes": "Explorer also owns the desktop, so these fire on the desktop too.",
+      "assignments": {
+        "Ctrl+Shift::KeyT": {
+          "type": "macro",
+          "label": "Open PowerShell here",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Type Text",
+                "value": "powershell"
+              },
+              {
+                "type": "Press Key",
+                "value": "Enter"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyP": {
+          "type": "macro",
+          "label": "Copy folder path",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+D"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+C"
+              },
+              {
+                "type": "Press Key",
+                "value": "Esc"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyD": {
+          "type": "folder",
+          "label": "Open Downloads",
+          "data": {
+            "path": "shell:Downloads"
+          }
+        },
+        "Ctrl+Shift::KeyA": {
+          "type": "folder",
+          "label": "Open AppData",
+          "data": {
+            "path": "shell:AppData"
+          }
+        },
+        "Ctrl+Shift::KeyR": {
+          "type": "folder",
+          "label": "Open Recycle Bin",
+          "data": {
+            "path": "shell:RecycleBinFolder"
+          }
+        },
+        "Ctrl+Shift::KeyS": {
+          "type": "folder",
+          "label": "Open Startup folder",
+          "data": {
+            "path": "shell:Startup"
+          }
+        }
+      },
+      "radial": [
+        {
+          "id": "ex-keyt",
+          "label": "Open PowerShell here",
+          "key": "Ctrl+Shift::KeyT",
+          "icon": "lucide:Terminal",
+          "iconColor": "#ff783c"
+        },
+        {
+          "id": "ex-keyp",
+          "label": "Copy folder path",
+          "key": "Ctrl+Shift::KeyP",
+          "icon": "lucide:Link",
+          "iconColor": "#ffc832"
+        },
+        {
+          "id": "ex-keyd",
+          "label": "Open Downloads",
+          "key": "Ctrl+Shift::KeyD",
+          "icon": "lucide:Download",
+          "iconColor": "#50c878"
+        },
+        {
+          "id": "ex-keya",
+          "label": "Open AppData",
+          "key": "Ctrl+Shift::KeyA",
+          "icon": "lucide:FolderCog",
+          "iconColor": "#40c8a0"
+        },
+        {
+          "id": "ex-keyr",
+          "label": "Open Recycle Bin",
+          "key": "Ctrl+Shift::KeyR",
+          "icon": "lucide:Trash2",
+          "iconColor": "#64b4ff"
+        },
+        {
+          "id": "ex-keys",
+          "label": "Open Startup folder",
+          "key": "Ctrl+Shift::KeyS",
+          "icon": "lucide:Power",
+          "iconColor": "#a070ff"
+        }
+      ]
+    },
+    {
+      "id": "word",
+      "name": "Word",
+      "exe": "WINWORD.EXE",
+      "scheme": "Ctrl+Shift + letter",
+      "blurb": "Paste as plain text, strikethrough, zoom to page width and select the current paragraph without reaching for the ribbon.",
+      "notes": "Ribbon shortcuts assume the English Word interface. Word already binds most Ctrl+Shift letters, so this set is deliberately small.",
+      "assignments": {
+        "Ctrl+Shift::KeyX": {
+          "type": "macro",
+          "label": "Paste as plain text",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+H"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "V"
+              },
+              {
+                "type": "Press Key",
+                "value": "T"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyB": {
+          "type": "macro",
+          "label": "Strikethrough",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+H"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "4"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyZ": {
+          "type": "macro",
+          "label": "Zoom to page width",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Alt+W"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "80"
+              },
+              {
+                "type": "Press Key",
+                "value": "I"
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyU": {
+          "type": "macro",
+          "label": "Select current paragraph",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Ctrl+Up"
+              },
+              {
+                "type": "Press Key",
+                "value": "Ctrl+Shift+Down"
+              }
+            ]
+          }
+        }
+      },
+      "radial": [
+        {
+          "id": "wd-keyx",
+          "label": "Paste as plain text",
+          "key": "Ctrl+Shift::KeyX",
+          "icon": "lucide:ClipboardPaste",
+          "iconColor": "#ff783c"
+        },
+        {
+          "id": "wd-keyb",
+          "label": "Strikethrough",
+          "key": "Ctrl+Shift::KeyB",
+          "icon": "lucide:Strikethrough",
+          "iconColor": "#ffc832"
+        },
+        {
+          "id": "wd-keyz",
+          "label": "Zoom to page width",
+          "key": "Ctrl+Shift::KeyZ",
+          "icon": "lucide:ZoomIn",
+          "iconColor": "#50c878"
+        },
+        {
+          "id": "wd-keyu",
+          "label": "Select current paragraph",
+          "key": "Ctrl+Shift::KeyU",
+          "icon": "lucide:TextSelect",
+          "iconColor": "#40c8a0"
+        }
+      ]
+    },
+    {
+      "id": "outlook",
+      "name": "Outlook",
+      "exe": "OUTLOOK.EXE",
+      "scheme": "Ctrl+Shift + letter",
+      "blurb": "Open a reply with a holding line already typed, ready to send, and mark a message read and archive it in one chord.",
+      "notes": "The reply is left open for you to check and send.",
+      "assignments": {
+        "Ctrl+Shift::KeyW": {
+          "type": "macro",
+          "label": "Reply: received, will come back to you",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Ctrl+R"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "900"
+              },
+              {
+                "type": "Type Text",
+                "value": "Thanks, received. I'll come back to you shortly."
+              }
+            ]
+          }
+        },
+        "Ctrl+Shift::KeyX": {
+          "type": "macro",
+          "label": "Mark read and archive",
+          "data": {
+            "steps": [
+              {
+                "type": "Press Key",
+                "value": "Ctrl+Q"
+              },
+              {
+                "type": "Wait (ms)",
+                "value": "60"
+              },
+              {
+                "type": "Press Key",
+                "value": "Backspace"
+              }
+            ]
+          }
+        }
+      },
+      "radial": []
+    }
+  ]
+}

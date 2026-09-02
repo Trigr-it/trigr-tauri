@@ -84,8 +84,18 @@ const TEMPLATE_PACKS = [
   },
 ];
 
-export default function TemplatesPanel({ activeProfile, onImportTemplate, onImportCadTemplate, onDismiss, showDismiss = false }) {
+export default function TemplatesPanel({ activeProfile, onImportTemplate, onImportCadTemplate, onImportAppProfile, onDismiss, showDismiss = false }) {
   const [templateResult, setTemplateResult] = useState(null);
+  // App-specific profile templates with installed/path resolved by Rust.
+  // null while detecting; [] when the command is unavailable.
+  const [appTemplates, setAppTemplates] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    window.electronAPI?.getAppProfileTemplates?.()
+      .then((t) => { if (alive) setAppTemplates(Array.isArray(t) ? t : []); })
+      .catch(() => { if (alive) setAppTemplates([]); });
+    return () => { alive = false; };
+  }, []);
   const [cadPickState, setCadPickState] = useState(null);
   const [cadWindowList, setCadWindowList] = useState([]);
   const [cadSelectedExe, setCadSelectedExe] = useState(null);
@@ -137,6 +147,42 @@ export default function TemplatesPanel({ activeProfile, onImportTemplate, onImpo
             : `${templateResult.added} added${templateResult.skipped > 0 ? `, ${templateResult.skipped} skipped (already assigned)` : ''}`
           }
         </div>
+      )}
+      {appTemplates && appTemplates.length > 0 && (
+        <>
+          <div className="tpl-section-title">App profiles</div>
+          <p className="tpl-note">One-chord shortcuts for a specific app, switched on only while that app is in front. Apps found on this PC are marked.</p>
+          <div className="tpl-grid tpl-grid--apps">
+            {[...appTemplates].sort((a, b) => (b.installed ? 1 : 0) - (a.installed ? 1 : 0)).map((t) => {
+              const count = Object.keys(t.assignments || {}).length;
+              return (
+                <div key={t.id} className={`tpl-card${t.installed ? '' : ' tpl-card--missing'}`}>
+                  <div className="tpl-card-name">
+                    {t.name}
+                    <span className={`tpl-app-badge${t.installed ? '' : ' tpl-app-badge--missing'}`}>{t.installed ? 'Installed' : 'Not found'}</span>
+                  </div>
+                  <div className="tpl-card-desc">{t.blurb}</div>
+                  <div className="tpl-card-counts">{t.scheme} · {count} action{count !== 1 ? 's' : ''}{t.radial?.length ? ' · radial wheel' : ''}</div>
+                  <button
+                    className="tpl-import-btn"
+                    type="button"
+                    onClick={() => {
+                      const r = onImportAppProfile?.(t);
+                      if (r) {
+                        setTemplateResult(r.added.length
+                          ? `Profile "${r.added[0]}" created with ${r.actions} action${r.actions !== 1 ? 's' : ''}.`
+                          : `Profile "${t.name}" already exists.`);
+                      }
+                    }}
+                  >
+                    Import
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="tpl-section-title">Starter packs</div>
+        </>
       )}
       <div className="tpl-grid">
         {TEMPLATE_PACKS.map(pack => (

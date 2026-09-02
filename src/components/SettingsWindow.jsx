@@ -172,6 +172,7 @@ export default function SettingsWindow() {
         activeProfile={bridge.activeProfile}
         onImportTemplate={act('importTemplate')}
         onImportCadTemplate={act('importCadTemplate')}
+        onImportAppProfile={act('importAppProfile')}
         isPro={bridge.isPro}
         licenceStatus={bridge.licenceStatus || {}}
         onLicenceStatusChange={act('licenceStatusChange')}

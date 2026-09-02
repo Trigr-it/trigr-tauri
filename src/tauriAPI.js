@@ -631,6 +631,8 @@ window.electronAPI = {
   relaunchProfileMode:       (name) => invoke('relaunch_profile_mode', { name }),
   markTrialOfferShown:       ()    => invoke('mark_trial_offer_shown'),
   markTrialEndShown:         ()    => invoke('mark_trial_end_shown'),
+  // [{ id, name, exe, scheme, blurb, notes, assignments, radial, installed, path }]
+  getAppProfileTemplates:    ()    => invoke('get_app_profile_templates'),
   // { triggers: [{ trigger_key, action_type, count }], autocorrect } since RFC3339.
   getTrialUsage:             (since) => invoke('get_trial_usage', { since }),
 };

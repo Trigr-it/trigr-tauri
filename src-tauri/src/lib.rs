@@ -33,6 +33,7 @@ mod actions;
 mod actions;
 mod analytics;
 mod analytics_export;
+mod app_profiles;
 #[cfg(windows)]
 mod clipboard;
 #[cfg(not(windows))]
@@ -1210,7 +1211,7 @@ fn icon_data_url_from_path(path: String) -> Value {
 /// basename compare — Windows filesystems are case-insensitive so "Chrome.exe"
 /// and "chrome.exe" resolve to the same registry key and the same process.
 #[cfg(windows)]
-fn resolve_exe_path_for_name(name: &str) -> Option<String> {
+pub(crate) fn resolve_exe_path_for_name(name: &str) -> Option<String> {
     if name.is_empty() { return None; }
     // 1. Registry App Paths — HKLM 64-bit, HKCU, and HKLM 32-bit WOW6432.
     if let Some(p) = read_app_paths_registry(name) { return Some(p); }
@@ -5965,6 +5966,16 @@ async fn mark_trial_offer_shown() -> Value {
     serde_json::to_value(licence::mark_trial_offer_shown().await).unwrap_or(serde_json::json!({}))
 }
 
+/// App-specific profile templates with `installed` / `path` resolved for this
+/// machine (AppProfilesModal + Templates panel). Detection walks the registry
+/// and process list per exe, so it runs off the main thread.
+#[tauri::command]
+async fn get_app_profile_templates() -> Value {
+    tauri::async_runtime::spawn_blocking(app_profiles::list_with_detection)
+        .await
+        .unwrap_or_else(|_| serde_json::json!([]))
+}
+
 #[tauri::command]
 async fn mark_trial_end_shown() -> Value {
     serde_json::to_value(licence::mark_trial_end_shown().await).unwrap_or(serde_json::json!({}))
@@ -7010,6 +7021,7 @@ pub fn run() {
             mark_trial_offer_shown,
             mark_trial_end_shown,
             get_trial_usage,
+            get_app_profile_templates,
             reset_trial,
             dev_set_pro_override,
             is_debug_build,

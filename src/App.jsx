@@ -22,6 +22,7 @@ import { useModalKeyboard } from './hooks/useModalKeyboard';
 import OnboardingTour from './components/OnboardingTour';
 import ProTrialModal from './components/ProTrialModal';
 import TrialEndModal from './components/TrialEndModal';
+import AppProfilesModal from './components/AppProfilesModal';
 import TemplatesCoachmark from './components/TemplatesCoachmark';
 import QuickTips from './components/QuickTips';
 const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'));
@@ -336,6 +337,24 @@ function App() {
     setShowTrialEndModal(false);
     trialEndOpenRef.current = false;
     window.electronAPI?.markTrialEndShown?.().then((s) => { if (s) setLicenceStatus(s); });
+  }, []);
+  // App-specific profile templates (get_app_profile_templates): null until
+  // fetched. The one-shot offer modal follows the trial announcement; the
+  // Templates panel offers the same list any time. `app_profiles_offer_shown`
+  // in config makes the offer one-shot.
+  const [appProfileTemplates, setAppProfileTemplates] = useState(null);
+  const [showAppProfilesModal, setShowAppProfilesModal] = useState(false);
+  const appProfilesOfferShownRef = useRef(true); // pessimistic until config loads
+  const loadAppProfileTemplates = useCallback(async () => {
+    try {
+      const t = await window.electronAPI?.getAppProfileTemplates?.();
+      const list = Array.isArray(t) ? t : [];
+      setAppProfileTemplates(list);
+      return list;
+    } catch {
+      setAppProfileTemplates([]);
+      return [];
+    }
   }, []);
   // Templates coachmark — drops down from the Templates pill once after the
   // onboarding tour + trial offer have settled. Anchored via templatesPillRef
@@ -1051,6 +1070,7 @@ function App() {
         // flag is undefined) as not-yet-seen so they get the nudge once on
         // their first launch of v0.4.6.
         setTemplatesNudgeSeen(config.templates_nudge_seen === true);
+        appProfilesOfferShownRef.current = config.app_profiles_offer_shown === true;
         onboardingCompleteRef.current = !!onboardingComplete;
 
         needsSave = needsSave || !config.hasSeenWelcome;
@@ -5642,7 +5662,7 @@ function App() {
   //   - onboarding_complete must be true (don't fire if user quit mid-tour)
   useEffect(() => {
     if (!licenceChecked) return; // wait until any migration trial popup has had a chance to open
-    if (showOnboarding || showWelcome || showProTrialModal || showTrialEndModal) return;
+    if (showOnboarding || showWelcome || showProTrialModal || showTrialEndModal || showAppProfilesModal) return;
     if (templatesNudgeSeen || showTemplatesNudge) return;
     if (activeArea !== 'mapping') return;
     if (!onboardingCompleteRef.current) return;
@@ -5661,7 +5681,7 @@ function App() {
       setShowTemplatesNudge(true);
     }, 350);
     return () => clearTimeout(t);
-  }, [licenceChecked, showOnboarding, showWelcome, showProTrialModal, showTrialEndModal, templatesNudgeSeen, showTemplatesNudge, activeArea]);
+  }, [licenceChecked, showOnboarding, showWelcome, showProTrialModal, showTrialEndModal, showAppProfilesModal, templatesNudgeSeen, showTemplatesNudge, activeArea]);
 
   // Keep the coachmark's anchor rect in sync with window resizes while it's open.
   useEffect(() => {
@@ -5727,6 +5747,72 @@ function App() {
     syncEngine(newAssignments, activeProfile);
     return { added, skipped, profileName, bareAdded, expAdded };
   }, [assignments, profiles, profileSettings, activeProfile, activeGlobalProfile, theme, expansionCategories, autocorrectEnabled, macrosEnabledOnStartup, globalVariables, syncEngine]);
+
+  // ── App-specific profile templates import ──────────────────
+  // `ids` are template ids from appProfileTemplates. For each: create the
+  // profile (skipped if a profile of that name exists), link it to the
+  // detected exe path (falls back to the bare exe name, which foreground.rs
+  // matches on the file stem anyway), add the template's assignments under
+  // `${name}::` and, if it has one, its radial wheel in the Default layout
+  // map. Pro feature: on Free this opens the upgrade prompt and returns null.
+  const importAppProfileTemplates = useCallback((wanted) => {
+    if (!isPro) { showUpgrade('App-specific profiles'); return null; }
+    if (!wanted.length) return { added: [], skipped: [], actions: 0 };
+    const newProfiles = [...profiles];
+    const newProfileSettings = { ...profileSettings };
+    const newAssignments = { ...assignments };
+    const newRadialMap = { ...radialItemsMap };
+    const added = [];
+    const skipped = [];
+    let actions = 0;
+    for (const t of wanted) {
+      const name = t.name;
+      if (newProfiles.includes(name)) { skipped.push(name); continue; }
+      newProfiles.push(name);
+      newProfileSettings[name] = { linkedApp: t.path || t.exe };
+      for (const [suffix, action] of Object.entries(t.assignments || {})) {
+        const key = `${name}::${suffix}`;
+        if (newAssignments[key]) continue;
+        newAssignments[key] = { ...action, templateId: t.id };
+        actions++;
+      }
+      if (Array.isArray(t.radial) && t.radial.length && !newRadialMap[name]) {
+        newRadialMap[name] = t.radial.map((r) => ({
+          id: r.id, label: r.label, storageKey: `${name}::${r.key}`, icon: r.icon, iconColor: r.iconColor,
+        }));
+      }
+      added.push(name);
+    }
+    if (!added.length) return { added, skipped, actions };
+    setProfiles(newProfiles);
+    setProfileSettings(newProfileSettings);
+    setAssignments(newAssignments);
+    setRadialItemsMap(newRadialMap);
+    window.electronAPI?.updateProfileSettings(newProfileSettings);
+    window.electronAPI?.saveConfig({
+      assignments: newAssignments, profiles: newProfiles, activeProfile, activeGlobalProfile,
+      profileSettings: newProfileSettings, radialMenuItemsByProfile: newRadialMap, hasSeenWelcome: true,
+    });
+    syncEngine(newAssignments, activeProfile);
+    return { added, skipped, actions };
+  }, [isPro, showUpgrade, profiles, profileSettings, assignments, radialItemsMap, activeProfile, activeGlobalProfile, syncEngine]);
+  // Offer modal: ids against App's fetched catalogue.
+  const handleImportAppProfiles = useCallback((ids) => {
+    const wanted = (appProfileTemplates || []).filter((t) => (ids || []).includes(t.id));
+    return importAppProfileTemplates(wanted);
+  }, [appProfileTemplates, importAppProfileTemplates]);
+  // Templates panel (TitleBar popover or Settings window via the bridge):
+  // passes the template object itself, so it works without App's catalogue.
+  const handleImportAppProfile = useCallback((template) => {
+    return template && typeof template === 'object' ? importAppProfileTemplates([template]) : null;
+  }, [importAppProfileTemplates]);
+  const closeAppProfilesModal = useCallback(() => {
+    setShowAppProfilesModal(false);
+    if (!appProfilesOfferShownRef.current) {
+      appProfilesOfferShownRef.current = true;
+      window.electronAPI?.saveConfig({ app_profiles_offer_shown: true });
+    }
+  }, []);
 
   const handleExportConfig = useCallback(async () => {
     const result = await window.electronAPI?.exportConfig();
@@ -5941,6 +6027,7 @@ function App() {
       resetHiddenTips: handleResetHiddenTips,
       importTemplate: handleImportTemplate,
       importCadTemplate: handleImportCadTemplate,
+      importAppProfile: handleImportAppProfile,
       licenceStatusChange: (s) => setLicenceStatus(s),
       showUpgrade: (...a) => { focusMain(); showUpgrade(...a); },
       // Dev-only: fresh 14 days, announcement + end modal re-armed (Rust).
@@ -6015,6 +6102,10 @@ function App() {
       showTrialAnnounce: () => setShowProTrialModal(true),
       showTrialEnd: (usage) => { setTrialUsage(usage || { triggers: [], autocorrect: 0 }); setShowTrialEndModal(true); },
       hideTrialEnd: () => { setShowTrialEndModal(false); trialEndOpenRef.current = false; },
+      // App-profile offer modal with live detection; does not touch the
+      // one-shot flag unless closed via the modal itself.
+      showAppProfiles: (mock) => { if (Array.isArray(mock)) setAppProfileTemplates(mock); else loadAppProfileTemplates(); setShowAppProfilesModal(true); }, // (mock templates[]) for UI tests
+      hideAppProfiles: () => setShowAppProfilesModal(false),
       setPhysicalLayout: handleSetPhysicalKeyboardLayout, // ('auto'|'ansi'|'iso') persists like Settings does
       getAssignments: () => assignments,             // read-only snapshot of the storage map
       friendlyKeyName,                                // live instance (consults Windows-layout legends)
@@ -6101,7 +6192,25 @@ function App() {
             window.electronAPI?.markTrialOfferShown?.().then((s) => {
               if (s) setLicenceStatus(s);
             });
+            // Follow the announcement with the one-shot app-profiles offer,
+            // but only when at least one supported app is installed and
+            // has no profile yet. Fresh installs land here on Pro (trial).
+            if (!appProfilesOfferShownRef.current) {
+              loadAppProfileTemplates().then((list) => {
+                const useful = list.some((t) => t.installed && !profiles.includes(t.name));
+                if (useful) setShowAppProfilesModal(true);
+                else closeAppProfilesModal();
+              });
+            }
           }}
+        />
+      )}
+      {showAppProfilesModal && (
+        <AppProfilesModal
+          templates={appProfileTemplates}
+          existingProfiles={profiles}
+          onImport={handleImportAppProfiles}
+          onClose={closeAppProfilesModal}
         />
       )}
       {showTrialEndModal && (
@@ -6257,6 +6366,7 @@ function App() {
         activeProfile={activeProfile}
         onImportTemplate={handleImportTemplate}
         onImportCadTemplate={handleImportCadTemplate}
+        onImportAppProfile={handleImportAppProfile}
         onShowNotification={showNotification}
         templatesPillRef={templatesPillRef}
         templatesPillPulse={showTemplatesNudge}

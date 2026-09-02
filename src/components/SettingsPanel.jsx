@@ -301,6 +301,7 @@ export default function SettingsPanel({
   activeProfile = 'Default',
   onImportTemplate,
   onImportCadTemplate,
+  onImportAppProfile,
   isPro = false,
   licenceStatus = {},
   onLicenceStatusChange,
@@ -959,6 +960,7 @@ export default function SettingsPanel({
                 activeProfile={activeProfile}
                 onImportTemplate={onImportTemplate}
                 onImportCadTemplate={onImportCadTemplate}
+                onImportAppProfile={onImportAppProfile}
               />
             </div>
           )}

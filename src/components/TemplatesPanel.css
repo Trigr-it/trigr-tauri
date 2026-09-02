@@ -55,6 +55,46 @@
   margin-bottom: var(--space-5);
 }
 
+.tpl-section-title {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2);
+}
+
+.tpl-grid--apps {
+  margin-bottom: var(--space-6);
+}
+
+.tpl-card--missing {
+  opacity: 0.75;
+}
+
+.tpl-app-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  vertical-align: middle;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-dim);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  line-height: 1.6;
+}
+
+.tpl-app-badge--missing {
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-color: var(--border);
+}
+
 .tpl-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
