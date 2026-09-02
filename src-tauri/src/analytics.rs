@@ -46,12 +46,15 @@ impl Window {
     fn predicate(&self) -> String {
         match self {
             Window::All => String::new(),
+            // `day` is the precomputed local calendar day (see init /
+            // handle_log) — indexed, so windows are range probes instead of a
+            // per-row DATE(timestamp,'localtime') conversion over the table.
             Window::Days(n) => format!(
-                "DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-{} days')",
+                "day >= DATE('now', 'localtime', '-{} days')",
                 n.saturating_sub(1)
             ),
             Window::Range(from, to) => format!(
-                "DATE(timestamp, 'localtime') BETWEEN '{}' AND '{}'",
+                "day BETWEEN '{}' AND '{}'",
                 from, to
             ),
         }
@@ -161,6 +164,31 @@ pub fn init(app_data_dir: PathBuf) {
                  CREATE INDEX IF NOT EXISTS idx_action_log_type_ts ON action_log(action_type, timestamp);
                  CREATE INDEX IF NOT EXISTS idx_action_log_trigger ON action_log(trigger_key);",
             );
+
+            // v0.8.12: precomputed local calendar day + hour per row. Every
+            // panel query used to group / filter on DATE(timestamp,'localtime'),
+            // a per-row conversion no index can serve, so heavy users (100k+
+            // logged fires) paid several full-table scans per panel open and
+            // again every 30 s. Filled at insert (handle_log); the backfill
+            // runs on every start and is a no-op once done (indexed IS NULL
+            // probe), which also repairs rows an older build wrote after a
+            // downgrade. Stored timestamps stay UTC; only the derived columns
+            // are local.
+            let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN day TEXT;");
+            let _ = conn.execute_batch("ALTER TABLE action_log ADD COLUMN hour INTEGER;");
+            let _ = conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_action_log_day ON action_log(day);
+                 CREATE INDEX IF NOT EXISTS idx_action_log_day_type ON action_log(day, action_type);",
+            );
+            match conn.execute(
+                "UPDATE action_log SET day = DATE(timestamp, 'localtime'), \
+                 hour = CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) WHERE day IS NULL",
+                [],
+            ) {
+                Ok(n) if n > 0 => info!("[Keyfire] Analytics: backfilled local day/hour on {} rows", n),
+                Ok(_) => {}
+                Err(e) => warn!("[Keyfire] Analytics day/hour backfill failed: {}", e),
+            }
 
             // Version tracking for one-time migrations
             let _ = conn.execute_batch(
@@ -631,20 +659,26 @@ fn handle_log(conn: &Connection, event: AnalyticsEvent) {
         _ => 0.0,
     });
 
-    let now = chrono::Utc::now().to_rfc3339();
+    let now_utc = chrono::Utc::now();
+    let now = now_utc.to_rfc3339();
+    // Local calendar day + hour, precomputed so the panel never converts per row.
+    let local = now_utc.with_timezone(&chrono::Local);
+    let day = local.format("%Y-%m-%d").to_string();
+    let hour = chrono::Timelike::hour(&local) as i64;
 
     if let Err(e) = conn.execute(
-        "INSERT INTO action_log (timestamp, action_type, char_count, time_saved, trigger_key, label, target_app) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![now, event.action_type, event.char_count, time_saved, event.trigger, event.label, event.target_app],
+        "INSERT INTO action_log (timestamp, action_type, char_count, time_saved, trigger_key, label, target_app, day, hour) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![now, event.action_type, event.char_count, time_saved, event.trigger, event.label, event.target_app, day, hour],
     ) {
         error!("[Keyfire] Failed to log analytics event: {}", e);
     }
 }
 
 pub(crate) fn handle_get_stats(conn: &Connection) -> serde_json::Value {
-    // All windowed queries use SQLite's 'localtime' modifier so "today" and
-    // "last N days" are anchored to the user's local calendar day. Stored
-    // timestamps remain UTC (see handle_log) — only the comparison is local.
+    // Windowed queries compare the precomputed local `day` column against
+    // DATE('now','localtime'), so "today" / "last N days" are anchored to the
+    // user's local calendar day and served by idx_action_log_day. Stored
+    // timestamps remain UTC (see handle_log).
     let (total_actions, total_time_saved) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log",
@@ -656,7 +690,7 @@ pub(crate) fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let (actions_today, time_saved_today) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
-             WHERE DATE(timestamp, 'localtime') = DATE('now', 'localtime')",
+             WHERE day = DATE('now', 'localtime')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
@@ -665,7 +699,7 @@ pub(crate) fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let (actions_last_7_days, time_saved_last_7_days) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
-             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-6 days')",
+             WHERE day >= DATE('now', 'localtime', '-6 days')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
@@ -674,7 +708,7 @@ pub(crate) fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let (actions_last_14_days, time_saved_last_14_days) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
-             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-13 days')",
+             WHERE day >= DATE('now', 'localtime', '-13 days')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
@@ -683,36 +717,50 @@ pub(crate) fn handle_get_stats(conn: &Connection) -> serde_json::Value {
     let (actions_last_30_days, time_saved_last_30_days) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(time_saved), 0.0) FROM action_log \
-             WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-29 days')",
+             WHERE day >= DATE('now', 'localtime', '-29 days')",
             [],
             |row| Ok((row.get::<_, i64>(0).unwrap_or(0), row.get::<_, f64>(1).unwrap_or(0.0))),
         )
         .unwrap_or((0, 0.0));
 
-    let best_day = conn
-        .query_row(
-            "SELECT COALESCE(MAX(day_total), 0.0) FROM (
-                SELECT SUM(time_saved) AS day_total FROM action_log
-                GROUP BY DATE(timestamp, 'localtime')
-            )",
-            [],
-            |row| row.get::<_, f64>(0),
-        )
-        .unwrap_or(0.0);
-
-    let best_7_days = conn
-        .query_row(
-            "SELECT COALESCE(MAX(window_total), 0.0) FROM (
-                SELECT SUM(a2.time_saved) AS window_total
-                FROM (SELECT DISTINCT DATE(timestamp, 'localtime') AS d FROM action_log) days
-                JOIN action_log a2
-                  ON DATE(a2.timestamp, 'localtime') BETWEEN DATE(days.d, '-6 days') AND days.d
-                GROUP BY days.d
-            )",
-            [],
-            |row| row.get::<_, f64>(0),
-        )
-        .unwrap_or(0.0);
+    // Best day and best rolling 7 days from ONE pass of daily sums (one row
+    // per active day, index-ordered). The old best-7 query self-joined the
+    // log against its distinct days — O(days × rows) with a per-row date
+    // conversion, the single worst query on a heavy user's database.
+    let (best_day, best_7_days) = {
+        let mut daily: Vec<(chrono::NaiveDate, f64)> = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT day, COALESCE(SUM(time_saved), 0.0) FROM action_log \
+             WHERE day IS NOT NULL GROUP BY day ORDER BY day ASC",
+        ) {
+            if let Ok(rows) = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0).unwrap_or_default(), row.get::<_, f64>(1).unwrap_or(0.0)))
+            }) {
+                for (d, total) in rows.flatten() {
+                    if let Ok(date) = chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d") {
+                        daily.push((date, total));
+                    }
+                }
+            }
+        }
+        let best_day = daily.iter().map(|(_, t)| *t).fold(0.0_f64, f64::max);
+        // Sliding window: for each end day, sum every active day within the
+        // preceding 6 days (two pointers, O(n)).
+        let mut best_7 = 0.0_f64;
+        let mut start = 0usize;
+        let mut window_sum = 0.0_f64;
+        for end in 0..daily.len() {
+            window_sum += daily[end].1;
+            while (daily[end].0 - daily[start].0).num_days() > 6 {
+                window_sum -= daily[start].1;
+                start += 1;
+            }
+            if window_sum > best_7 {
+                best_7 = window_sum;
+            }
+        }
+        (best_day, best_7)
+    };
 
     let mut stmt = conn
         .prepare("SELECT action_type, COUNT(*) FROM action_log GROUP BY action_type")
@@ -766,7 +814,7 @@ pub(crate) fn handle_daily_chart(conn: &Connection, win: &Window) -> serde_json:
     // Bucket by local calendar day so bar keys match the frontend's local-date
     // fill-in loop. Window predicate is pre-validated (see Window docs).
     let query = format!(
-        "SELECT DATE(timestamp, 'localtime') AS day, COUNT(*) AS actions, COALESCE(SUM(time_saved), 0.0) AS saved
+        "SELECT day, COUNT(*) AS actions, COALESCE(SUM(time_saved), 0.0) AS saved
          FROM action_log{}
          GROUP BY day
          ORDER BY day ASC",
@@ -944,8 +992,8 @@ fn compute_efficiency(conn: &Connection, where_clause: &str) -> serde_json::Valu
 pub(crate) fn handle_expansion_efficiency(conn: &Connection, win: &Window) -> serde_json::Value {
     if let Window::All = win {
         // Week/month windows are local calendar days: today + 6/29 prior days.
-        let week = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-6 days')");
-        let month = compute_efficiency(conn, " AND DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-29 days')");
+        let week = compute_efficiency(conn, " AND day >= DATE('now', 'localtime', '-6 days')");
+        let month = compute_efficiency(conn, " AND day >= DATE('now', 'localtime', '-29 days')");
         let all = compute_efficiency(conn, "");
         return serde_json::json!({
             "week": week,
@@ -982,15 +1030,13 @@ fn handle_expansion_counts(conn: &Connection) -> serde_json::Value {
 
 pub(crate) fn handle_hourly_heatmap(conn: &Connection, win: &Window) -> serde_json::Value {
     // Returns array of { dow (0=Sun..6=Sat), hour (0-23), count, time_saved }.
-    // Both day-of-week and hour are in local time.
+    // Both day-of-week and hour are in local time. SQL groups on the
+    // precomputed (day, hour) columns — at most days×24 rows, no per-row
+    // date function — and the day-of-week fold happens here.
     let query = format!(
-        "SELECT CAST(strftime('%w', timestamp, 'localtime') AS INTEGER) AS dow,
-                CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) AS hour,
-                COUNT(*) AS count,
-                COALESCE(SUM(time_saved), 0.0) AS saved
+        "SELECT day, hour, COUNT(*) AS count, COALESCE(SUM(time_saved), 0.0) AS saved
          FROM action_log{}
-         GROUP BY dow, hour
-         ORDER BY dow, hour",
+         GROUP BY day, hour",
         win.where_clause()
     );
     let mut stmt = match conn.prepare(&query) {
@@ -1001,17 +1047,33 @@ pub(crate) fn handle_hourly_heatmap(conn: &Connection, win: &Window) -> serde_js
         }
     };
 
-    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
-        Ok(serde_json::json!({
-            "dow": row.get::<_, i64>(0).unwrap_or(0),
-            "hour": row.get::<_, i64>(1).unwrap_or(0),
-            "count": row.get::<_, i64>(2).unwrap_or(0),
-            "time_saved": row.get::<_, f64>(3).unwrap_or(0.0),
-        }))
+    // (dow, hour) → (count, saved)
+    let mut cells: std::collections::BTreeMap<(i64, i64), (i64, f64)> = std::collections::BTreeMap::new();
+    if let Ok(rows) = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, Option<String>>(0).unwrap_or(None),
+            row.get::<_, Option<i64>>(1).unwrap_or(None),
+            row.get::<_, i64>(2).unwrap_or(0),
+            row.get::<_, f64>(3).unwrap_or(0.0),
+        ))
     }) {
-        Ok(mapped) => mapped.flatten().collect(),
-        Err(_) => Vec::new(),
-    };
+        for (day, hour, count, saved) in rows.flatten() {
+            let (Some(day), Some(hour)) = (day, hour) else { continue };
+            let Ok(date) = chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d") else { continue };
+            // chrono: Sunday = 0 via num_days_from_sunday, matching strftime('%w').
+            let dow = chrono::Datelike::weekday(&date).num_days_from_sunday() as i64;
+            let cell = cells.entry((dow, hour)).or_insert((0, 0.0));
+            cell.0 += count;
+            cell.1 += saved;
+        }
+    }
+
+    let rows: Vec<serde_json::Value> = cells
+        .into_iter()
+        .map(|((dow, hour), (count, saved))| {
+            serde_json::json!({ "dow": dow, "hour": hour, "count": count, "time_saved": saved })
+        })
+        .collect();
 
     serde_json::json!(rows)
 }
@@ -1019,7 +1081,7 @@ pub(crate) fn handle_hourly_heatmap(conn: &Connection, win: &Window) -> serde_js
 pub(crate) fn handle_streaks(conn: &Connection) -> serde_json::Value {
     // Get all distinct dates with at least one action, sorted ascending
     let mut stmt = match conn.prepare(
-        "SELECT DISTINCT DATE(timestamp, 'localtime') AS d FROM action_log ORDER BY d ASC"
+        "SELECT DISTINCT day AS d FROM action_log WHERE day IS NOT NULL ORDER BY d ASC"
     ) {
         Ok(s) => s,
         Err(e) => {

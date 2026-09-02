@@ -166,15 +166,30 @@ export default function AnalyticsPanel({ isPro = false, onShowUpgrade }) {
   }, [isPro]);
 
   useEffect(() => {
-    fetchStats();
-    fetchChartData();
-    fetchBreakdown();
-    fetchTypeBreakdown();
-    fetchRecordsBreakdown();
-    fetchTopApps();
-    fetchExpEfficiency();
-    const interval = setInterval(() => { fetchStats(); fetchChartData(); fetchBreakdown(); fetchTypeBreakdown(); fetchRecordsBreakdown(); fetchTopApps(); fetchExpEfficiency(); }, 30000);
-    return () => clearInterval(interval);
+    const refreshAll = () => {
+      fetchStats();
+      fetchChartData();
+      fetchBreakdown();
+      fetchTypeBreakdown();
+      fetchRecordsBreakdown();
+      fetchTopApps();
+      fetchExpEfficiency();
+    };
+    refreshAll();
+    // The 30 s tick used to re-run every widget query (~10 aggregates over the
+    // whole log). Heavy users felt that as a periodic hitch, so the tick now
+    // refreshes only the headline counters; the full set refreshes when the
+    // window regains focus, which is when the numbers can actually have moved
+    // by something the user did elsewhere.
+    const interval = setInterval(fetchStats, 30000);
+    let lastFull = Date.now();
+    const onFocus = () => {
+      if (Date.now() - lastFull < 15000) return;
+      lastFull = Date.now();
+      refreshAll();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => { clearInterval(interval); window.removeEventListener('focus', onFocus); };
   }, [fetchStats, fetchChartData, fetchBreakdown, fetchTypeBreakdown, fetchRecordsBreakdown, fetchTopApps, fetchExpEfficiency]);
 
   const [confirmReset, setConfirmReset] = useState(false);

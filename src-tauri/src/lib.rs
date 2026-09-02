@@ -4311,15 +4311,24 @@ fn reset_onboarding() -> bool {
 }
 
 // ── Analytics ───────────────────────────────────────────────────────────────
+// Every analytics command is async + spawn_blocking: each one is a round trip
+// to the analytics writer thread (SQLite aggregates, up to a 5 s wait). As
+// sync commands they ran on the MAIN thread, and the panel fires ~10 of them
+// on open and every 30 s, so heavy users saw the whole UI freeze while the
+// queries queued (see feedback_tauri_sync_commands_main_thread).
 
 #[tauri::command]
-fn get_analytics() -> Value {
-    analytics::get_stats()
+async fn get_analytics() -> Value {
+    tauri::async_runtime::spawn_blocking(analytics::get_stats)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({}))
 }
 
 #[tauri::command]
-fn reset_analytics() -> bool {
-    analytics::reset_stats()
+async fn reset_analytics() -> bool {
+    tauri::async_runtime::spawn_blocking(analytics::reset_stats)
+        .await
+        .unwrap_or(false)
 }
 
 // ── Advanced analytics (Pro) ────────────────────────────────────────────────
@@ -4354,62 +4363,77 @@ fn window_from_params(days: Option<u32>, from: Option<String>, to: Option<String
     }
 }
 
+/// Run one windowed analytics query off the main thread.
+async fn analytics_blocking(
+    win: analytics::Window,
+    f: fn(analytics::Window) -> Value,
+    empty: Value,
+) -> Value {
+    tauri::async_runtime::spawn_blocking(move || f(win))
+        .await
+        .unwrap_or(empty)
+}
+
 #[tauri::command]
-fn get_daily_chart(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+async fn get_daily_chart(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_daily_chart(window_from_params(days, from, to))
+    analytics_blocking(window_from_params(days, from, to), analytics::get_daily_chart, serde_json::json!([])).await
 }
 
 #[tauri::command]
-fn get_assignment_breakdown(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+async fn get_assignment_breakdown(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_assignment_breakdown(window_from_params(days, from, to))
+    analytics_blocking(window_from_params(days, from, to), analytics::get_assignment_breakdown, serde_json::json!([])).await
 }
 
 #[tauri::command]
-fn get_type_breakdown(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
-    analytics::get_type_breakdown(window_from_params(days, from, to))
+async fn get_type_breakdown(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+    analytics_blocking(window_from_params(days, from, to), analytics::get_type_breakdown, serde_json::json!({})).await
 }
 
 #[tauri::command]
-fn get_hourly_heatmap(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+async fn get_hourly_heatmap(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_hourly_heatmap(window_from_params(Some(days.unwrap_or(7)), from, to))
+    analytics_blocking(window_from_params(Some(days.unwrap_or(7)), from, to), analytics::get_hourly_heatmap, serde_json::json!([])).await
 }
 
 #[tauri::command]
-fn get_top_apps(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+async fn get_top_apps(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_top_apps(window_from_params(days, from, to))
+    analytics_blocking(window_from_params(days, from, to), analytics::get_top_apps, serde_json::json!([])).await
 }
 
 #[tauri::command]
-fn get_expansion_efficiency(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
+async fn get_expansion_efficiency(days: Option<u32>, from: Option<String>, to: Option<String>) -> Value {
     if !licence::is_pro() {
         return serde_json::json!([]);
     }
-    analytics::get_expansion_efficiency(window_from_params(days, from, to))
+    analytics_blocking(window_from_params(days, from, to), analytics::get_expansion_efficiency, serde_json::json!({})).await
 }
 
 #[tauri::command]
-fn get_expansion_counts() -> Value {
-    analytics::get_expansion_counts()
+async fn get_expansion_counts() -> Value {
+    tauri::async_runtime::spawn_blocking(analytics::get_expansion_counts)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({}))
 }
 
 #[tauri::command]
-fn get_streaks() -> Value {
+async fn get_streaks() -> Value {
     if !licence::is_pro() {
         return serde_json::json!({});
     }
-    analytics::get_streaks()
+    tauri::async_runtime::spawn_blocking(analytics::get_streaks)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({}))
 }
 
 /// Sanitize a UI-supplied preset period to the values the dropdown offers.
