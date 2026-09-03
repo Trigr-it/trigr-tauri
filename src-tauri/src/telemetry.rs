@@ -9,7 +9,9 @@
 //!   - request_id (one-shot UUID, NOT persisted, lets the backend dedupe
 //!     duplicate retries without us needing a persistent install ID)
 //!   - extra (payload v2, v0.5+): per-type fire counts, double/hold fire
-//!     counts, tier ("free"|"trial"|"pro" — a cohort label, not an
+//!     counts, tier ("free"|"pro" — a cohort label, not an identifier;
+//!     the trial reports as "pro" since 2026-09-03, older clients may still
+//!     send "trial"; it is not an
 //!     identifier), and a library snapshot (counts + booleans of what's
 //!     configured). Still zero content, zero identifiers.
 //!
@@ -215,17 +217,12 @@ pub fn aggregate_for_date(date: &str) -> DayCounts {
 /// what they have CONFIGURED. Configured-but-never-fired is the adoption gap
 /// the dashboard can't see from fire counts alone.
 fn build_extra(c: &DayCounts) -> String {
-    let status = crate::licence::get_licence_status();
-    // Real Pro key beats trial: a beta-key holder who happened to start the
-    // 14-day trial before activating their key should report as `pro`, not
-    // `trial`, for the entire life of the key.
-    let tier = if crate::licence::has_valid_pro_key() {
-        "pro"
-    } else if status.trial_active {
-        "trial"
-    } else {
-        "free"
-    };
+    // Two cohorts only (Rory 2026-09-03): `pro` while Pro is live, whether
+    // from a beta key or the 14-day trial, and `free` once it is not. The
+    // separate `trial` label was dropped: it split the Pro-usage cohort the
+    // dashboard exists to compare against Free. The backend still accepts
+    // `trial` from older clients.
+    let tier = if crate::licence::is_pro() { "pro" } else { "free" };
 
     let mut assignments = 0i64;
     let mut expansion_defs = 0i64;

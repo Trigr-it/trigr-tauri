@@ -207,10 +207,12 @@ pub fn is_pro() -> bool {
 }
 
 /// True only when the user has a signature-valid, non-expired Pro key.
-/// Unlike [`is_pro`], this does NOT return true for the trial fallback —
-/// used by telemetry to keep beta-key holders on `pro` even while their
-/// 14-day trial is still ticking. Re-verifies the signature on the spot; the
-/// stored `valid`/`tier` fields are never trusted.
+/// Unlike [`is_pro`], this does NOT return true for the trial fallback.
+/// Re-verifies the signature on the spot; the stored `valid`/`tier` fields
+/// are never trusted. Telemetry used it to split `pro` from `trial` until
+/// 2026-09-03 (both now report `pro`); kept as the key-only check the
+/// Paddle activation work will need.
+#[allow(dead_code)]
 pub fn has_valid_pro_key() -> bool {
     let state = match LICENCE_STATE.get() {
         Some(m) => m.lock().unwrap_or_else(|e| e.into_inner()).clone(),
