@@ -1986,6 +1986,10 @@
     <p>App-typed segments auto-fetch the target app's own icon by default, including Microsoft Store apps and Steam shortcuts. Existing segments backfill automatically the next time the wheel opens. You can override with any of thousands of lucide icons and Simple Icons brand glyphs (GitHub, Slack, Photoshop, etc.) from the icon picker. Search by name and hit Enter on a result to select it.</p>
   </div>
 
+  <h2>One wheel per device <span class="pro-pill">PRO</span></h2>
+  <p>Every machine that shares your config sees the same <strong>Default</strong> wheel. With Pro you can add extra layouts and choose which one each machine fires. Use the <strong>Active Radial</strong> selector under the wheel in the Radial tab: pick a layout and that is the one this machine opens on the hotkey and the one you are editing. The layouts themselves sync with your config, so you can build a laptop wheel at your desk. Only the choice of active layout stays local to each device.</p>
+  <p>Layouts share the same underlying actions. Rearranging wedges on one layout never changes what the action does, and renaming or deleting a profile updates every layout at once.</p>
+
   <h2>Behaviour over fullscreen apps</h2>
   <p>Radial menus open over borderless fullscreen apps and most games. Firing an action sends input to whichever window had focus before the menu opened. Exclusive fullscreen apps (some DirectX games) may resist focus restoration. Borderless windowed mode is the reliable mode for gaming use.</p>
 
@@ -2333,6 +2337,24 @@
     <div class="accordion-body"><p>Shortcuts for sales and business development workflows. CRM navigation, email response starters, meeting confirmation templates, follow-up boilerplate. Assigned to the Default profile.</p></div>
   </div>
 
+  <h2>App profiles <span class="pro-pill">PRO</span></h2>
+  <p>App profiles are ready-made <a href="#" onclick="show(event,'profiles')">app-specific profiles</a> for common software. Each one is a short set of shortcuts that switch on only while that app is in front, plus a radial wheel of the same actions on <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd>. Every shortcut replaces something that takes longer than the shortcut itself, such as a ribbon sequence or a run of three or four key presses. Nothing here re-binds a chord the app already has.</p>
+  <p>Keyfire checks which of the supported apps are installed on your PC. Right after the Pro trial announcement on a fresh install, a one-time prompt lists the apps it found, pre-ticked, and adds a profile for each with one click. The same list lives permanently under <strong>Templates → App profiles</strong>, with an <strong>Installed</strong> or <strong>Not found</strong> badge on each card.</p>
+  <table>
+    <tr><th>App</th><th>Shortcut scheme</th><th>What you get</th></tr>
+    <tr><td>Excel</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+letter</td><td>Paste values, insert or delete a row, freeze the top row, wrap, merge and centre, autofit, clear formatting, date and time stamp.</td></tr>
+    <tr><td>Chrome, Edge</td><td><kbd>Alt</kbd>+letter</td><td>Duplicate tab, copy the page URL, search or find whatever is selected, paste a URL and go, open YouTube, Gmail or Calendar.</td></tr>
+    <tr><td>Explorer</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+letter</td><td>PowerShell in the current folder, copy the folder path, jump to Downloads, AppData, the Recycle Bin or the Startup folder.</td></tr>
+    <tr><td>Word</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+letter</td><td>Paste as plain text, strikethrough, zoom to page width, select the current paragraph.</td></tr>
+    <tr><td>Outlook</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+letter</td><td>Open a reply with a holding line already typed, mark read and archive.</td></tr>
+  </table>
+  <p>An imported profile is ordinary: every shortcut can be changed, moved or deleted like any other, and the profile is linked to the exe Keyfire found. Import is additive and never overwrites a profile of the same name.</p>
+
+  <div class="callout">
+    <div class="ct">Good to know</div>
+    <p>Excel, Word and Outlook shortcuts drive the ribbon by its key tips, so they assume the English interface. Chrome and Edge use <kbd>Alt</kbd>+letter, which those browsers leave free; a website that uses the same letters as access keys will not see them while the profile is active. The Explorer profile is also active on the desktop, because Explorer owns it. App profiles need Pro, so they run during the trial and pause on Free.</p>
+  </div>
+
   <h2>Search templates</h2>
   <p>Separately from the main packs above, the Quick Search overlay supports <strong>search templates</strong>: prefab snippet packs designed for use from the search bar. Import them in <strong>Settings → Templates</strong>.</p>
 
@@ -2566,7 +2588,12 @@
   <div class="section-title">Licence</div>
   <div class="section-subtitle">Activate Pro features with a licence key.</div>
 
-  <p>Keyfire is free to use with all core features included. A Pro licence unlocks additional capabilities including formulas, hold triggers, multiple variants per expansion, image expansions, global variables, auto-switching app profiles, extended clipboard retention, and detailed analytics.</p>
+  <p>Keyfire is free to use with all core features included. A Pro licence unlocks additional capabilities including formulas, hold triggers, multiple variants per expansion, image expansions, global variables, auto-switching app profiles, per-device radial layouts, extended clipboard retention, and detailed analytics.</p>
+
+  <h2>The 14-day Pro trial</h2>
+  <p>Every new install starts with Pro switched on for 14 days. There is nothing to opt into and no card to enter: the trial begins the first time Keyfire runs, and the announcement you see after the tour is telling you it is already live. <strong>Settings → Licence</strong> shows the days remaining.</p>
+  <p>When the 14 days are up Keyfire drops back to Free on its own and shows a one-time summary of the Pro features you actually used during the trial, with what happens to each. Nothing is deleted. Double-press and hold bindings, app-linked profiles, variants and the rest stay in your config and start working again the moment you add a key. Features you never touched are simply not listed.</p>
+  <p>One trial per install. Activating a key ends the trial, and removing that key later does not restart it.</p>
 
   <h2>Activating a licence</h2>
   <div class="step-row"><div class="step-num">1</div><div class="step-text">Open Settings (cog icon in the title bar).</div></div>
@@ -2588,6 +2615,8 @@
     <tr><td>Profiles (create, manage, link)</td><td>Yes</td><td>Yes</td></tr>
     <tr><td>Quick Search, radial menus, clipboard manager</td><td>Yes</td><td>Yes</td></tr>
     <tr><td>Profile auto-switch on app focus</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
+    <tr><td>Ready-made app profiles (Templates)</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
+    <tr><td>Radial layouts per device</td><td>Default wheel only</td><td>Any number</td></tr>
     <tr><td>Hold trigger</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Formulas (<code>{=expr}</code>, <code>{if}…{endif}</code>)</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Multiple variants per expansion</td><td>First only</td><td>All</td></tr>
