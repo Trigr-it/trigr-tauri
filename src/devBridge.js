@@ -115,7 +115,61 @@ const builtins = {
   scroll: (sel, nth = 0) => { pick(sel, nth).scrollIntoView({ block: 'center' }); return true; },
   // eslint-disable-next-line no-new-func
   eval: (code) => new Function('return (async () => (' + code + '))()')(),
+  // RAM wave 2 measurement: destroy + rebuild a hidden window and time it.
+  // Rust side: dev_probe_window_recreate (lib.rs). Labels: settings,
+  // countdown, snipoverlay. Run from any window, e.g. `probe|settings`.
+  // `probe|settings|false` destroys without rebuilding (RAM-per-window
+  // measurement); `probe|settings` (or `|true`) destroys + rebuilds.
+  probe: async (label, rebuild = true) => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('dev_probe_window_recreate', { label, rebuild: rebuild !== false && rebuild !== 'false' });
+  },
 };
+
+// Cold-create timing beacon: tell Rust when this page's script started and
+// when its React tree first painted. "painted" = #root gained children, two
+// frames later. Pages whose idle tree renders nothing (the countdown returns
+// null until its reset event) never mutate #root, so the fallback is network
+// idle: 150 ms with no new resource loads after the lazy chunk landed, then
+// two frames. Rust ignores the calls unless a probe for this label is armed,
+// so the cost in a normal dev session is two ignored IPCs per window load.
+function reportReady(label) {
+  let done = false;
+  const send = (phase) => {
+    if (phase !== 'script') {
+      if (done) return;
+      done = true;
+    }
+    import('@tauri-apps/api/core').then(({ invoke }) => invoke('dev_window_ready', { label, phase })).catch(() => {});
+  };
+  send('script');
+  const root = document.getElementById('root');
+  if (!root) return;
+  const twoFrames = (phase) => requestAnimationFrame(() => requestAnimationFrame(() => send(phase)));
+  if (root.childElementCount > 0) return twoFrames('painted');
+  const mo = new MutationObserver(() => {
+    if (root.childElementCount > 0) {
+      mo.disconnect();
+      twoFrames('painted');
+    }
+  });
+  mo.observe(root, { childList: true });
+  // Network-idle fallback for empty-DOM pages.
+  let idleTimer = null;
+  const armIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (done) return;
+      mo.disconnect();
+      twoFrames('idle');
+    }, 150);
+  };
+  try {
+    const po = new PerformanceObserver(() => armIdle());
+    po.observe({ type: 'resource', buffered: true });
+  } catch { /* PerformanceObserver unavailable: DOM path only */ }
+  window.addEventListener('load', armIdle, { once: true });
+}
 
 function describe(el) {
   return { tag: el.tagName.toLowerCase(), id: el.id || undefined, className: typeof el.className === 'string' ? el.className : undefined, text: (el.textContent || '').trim().slice(0, 80) };
@@ -136,6 +190,7 @@ function safe(value) {
 
 if (import.meta.hot) {
   const label = windowLabel();
+  reportReady(label);
   import.meta.hot.on('kf:dev', async (msg) => {
     if (!msg || (msg.target !== '*' && msg.target !== label)) {
       if (msg && msg.fn === '__windows') import.meta.hot.send('kf:dev:result', { id: msg.id, ok: true, result: builtins.__ping() });

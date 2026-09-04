@@ -1920,43 +1920,13 @@ pub(crate) fn show_recorder_bar(app: tauri::AppHandle) {
     // recording flow, then hide_recorder_countdown destroys it.
     let win = match app.get_webview_window("countdown") {
         Some(w) => w,
-        None => {
-            let url = tauri::WebviewUrl::App("index.html?countdown=1".into());
-            let builder = tauri::WebviewWindowBuilder::new(&app, "countdown", url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire Recorder")
-                .inner_size(380.0, 320.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .shadow(false);
-            let built = match builder.build() {
-                Ok(w) => w,
-                Err(e) => {
-                    log::error!("[RECORDER] Failed to build countdown window: {}", e);
-                    return;
-                }
-            };
-            #[cfg(target_os = "windows")]
-            {
-                let _ = built.with_webview(|webview| unsafe {
-                    use webview2_com::Microsoft::Web::WebView2::Win32::{
-                        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
-                    };
-                    use windows_core::Interface;
-                    let controller = webview.controller();
-                    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-                        let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                            R: 0, G: 0, B: 0, A: 0,
-                        });
-                    }
-                });
+        None => match build_hidden_window(&app, "countdown") {
+            Ok(w) => w,
+            Err(e) => {
+                log::error!("[RECORDER] Failed to build countdown window: {}", e);
+                return;
             }
-            built
-        }
+        },
     };
     let _ = webview_mem::resume_for_show(&app, "countdown");
 
@@ -6014,6 +5984,254 @@ fn is_debug_build() -> bool {
     cfg!(debug_assertions)
 }
 
+// ── Hidden secondary windows: one builder per label ─────────────────────────
+//
+// The three windows below are the on-demand candidates for the RAM wave 2
+// hybrid (settings, countdown, snip overlay): startup pre-creates them today,
+// `show_recorder_bar` rebuilds the countdown if it is missing, and the dev
+// probe destroys + rebuilds them to time a cold create. Every path MUST go
+// through this one function so the builders can never drift apart again
+// (the v0.6.0 on-demand countdown had a second, diverging copy).
+
+fn build_hidden_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<tauri::WebviewWindow> {
+    let url = tauri::WebviewUrl::App(format!("index.html?{}=1", label).into());
+    let (win, transparent) = match label {
+        "countdown" => (
+            tauri::WebviewWindowBuilder::new(app, "countdown", url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
+                .title("Keyfire Recorder")
+                .inner_size(380.0, 320.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build()?,
+            true,
+        ),
+        "snipoverlay" => (
+            tauri::WebviewWindowBuilder::new(app, "snipoverlay", url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
+                .title("Keyfire Snip Overlay")
+                // Initial size is a placeholder — show_snip_overlay resizes
+                // to full virtual desktop before show. Using 100×100 here
+                // rather than 1×1 because some WebView2 versions refuse to
+                // initialise a sub-pixel window and show "can't reach this
+                // page" until first resize.
+                .inner_size(100.0, 100.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build()?,
+            true,
+        ),
+        "settings" => (
+            // Ordinary opaque window (no transparency, no NOACTIVATE, has a
+            // taskbar entry) — undecorated so SettingsWindow.jsx can draw
+            // the app-style titlebar with a drag region.
+            tauri::WebviewWindowBuilder::new(app, "settings", url)
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
+                .title("Keyfire Settings")
+                .inner_size(900.0, 640.0)
+                .min_inner_size(720.0, 520.0)
+                .decorations(false)
+                .resizable(true)
+                .visible(false)
+                .center()
+                .build()?,
+            false,
+        ),
+        other => {
+            return Err(tauri::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("build_hidden_window: no builder for label '{}'", other),
+            )))
+        }
+    };
+    #[cfg(target_os = "windows")]
+    if transparent {
+        // Transparent WebView2 background — without this the window paints an
+        // opaque white sheet behind the page until the first frame.
+        let _ = win.with_webview(|webview| unsafe {
+            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+            };
+            use windows_core::Interface;
+            let controller = webview.controller();
+            if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                    R: 0, G: 0, B: 0, A: 0,
+                });
+            }
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = transparent;
+    Ok(win)
+}
+
+// ── Dev-only cold-create probe (RAM wave 2 measurement) ─────────────────────
+//
+// `dev_probe_window_recreate(label)` destroys the named hidden window, rebuilds
+// it through `build_hidden_window`, and reports how long each phase took:
+// destroy, builder.build(), the page's first script (devBridge.js runs at
+// module load), and first paint of its React tree (devBridge.js reports it
+// once #root has children, two animation frames later). The page reports via
+// `dev_window_ready`. Dead in release builds: the command refuses unless
+// debug_assertions, and devBridge.js only exists under the Vite dev server.
+
+struct WindowProbe {
+    label: String,
+    started: StdInstant,
+    script_ms: Option<u128>,
+    painted_ms: Option<u128>,
+    /// "painted" (#root gained children) or "idle" (network-idle fallback for
+    /// pages whose idle React tree renders nothing, e.g. the countdown).
+    painted_via: Option<String>,
+}
+
+static WINDOW_PROBE: StdMutex<Option<WindowProbe>> = StdMutex::new(None);
+
+#[tauri::command]
+fn dev_window_ready(label: String, phase: String) {
+    if let Ok(mut guard) = WINDOW_PROBE.lock() {
+        if let Some(p) = guard.as_mut() {
+            if p.label == label {
+                let ms = p.started.elapsed().as_millis();
+                if phase == "script" {
+                    p.script_ms.get_or_insert(ms);
+                } else if p.painted_ms.is_none() {
+                    p.painted_ms = Some(ms);
+                    p.painted_via = Some(phase);
+                }
+            }
+        }
+    }
+}
+
+/// `rebuild: false` destroys the window and stops — used to measure how much
+/// RAM each pre-created page actually costs (snapshot with scripts/kf-mem.ps1
+/// before and after). The next `rebuild: true` probe, or the normal show path
+/// for the countdown, brings it back.
+#[tauri::command]
+async fn dev_probe_window_recreate(app: tauri::AppHandle, label: String, rebuild: Option<bool>) -> Value {
+    if !cfg!(debug_assertions) {
+        return serde_json::json!({ "ok": false, "error": "dev builds only" });
+    }
+    if !matches!(label.as_str(), "countdown" | "snipoverlay" | "settings") {
+        return serde_json::json!({ "ok": false, "error": format!("no builder for '{}'", label) });
+    }
+    let rebuild = rebuild.unwrap_or(true);
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::sync::mpsc;
+        let wait_step = std::time::Duration::from_millis(5);
+
+        // 1. Destroy the existing window (if any) on the main thread and wait
+        //    until the label is really gone — rebuilding while the old window
+        //    is still tearing down is the race that sank the v0.6.0 attempt.
+        let existed = app.get_webview_window(&label).is_some();
+        let t_destroy = StdInstant::now();
+        if existed {
+            let app2 = app.clone();
+            let l2 = label.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(w) = app2.get_webview_window(&l2) {
+                    let _ = w.destroy();
+                }
+            });
+            let deadline = StdInstant::now() + std::time::Duration::from_secs(5);
+            while app.get_webview_window(&label).is_some() {
+                if StdInstant::now() > deadline {
+                    return serde_json::json!({ "ok": false, "error": "window did not go away within 5s" });
+                }
+                std::thread::sleep(wait_step);
+            }
+        }
+        let destroy_ms = if existed { Some(t_destroy.elapsed().as_millis()) } else { None };
+        if !rebuild {
+            log::info!("[MEM-PROBE] {} destroyed (no rebuild): destroy {:?}ms", label, destroy_ms);
+            return serde_json::json!({
+                "ok": true,
+                "label": label,
+                "existed": existed,
+                "destroy_ms": destroy_ms,
+                "rebuilt": false,
+            });
+        }
+
+        // 2. Arm the probe, then build on the main thread and time build().
+        if let Ok(mut g) = WINDOW_PROBE.lock() {
+            *g = Some(WindowProbe {
+                label: label.clone(),
+                started: StdInstant::now(),
+                script_ms: None,
+                painted_ms: None,
+                painted_via: None,
+            });
+        }
+        let (tx, rx) = mpsc::channel::<(Result<(), String>, u128)>();
+        let app2 = app.clone();
+        let l2 = label.clone();
+        let _ = app.run_on_main_thread(move || {
+            let t = StdInstant::now();
+            let r = build_hidden_window(&app2, &l2).map(|_| ()).map_err(|e| e.to_string());
+            let _ = tx.send((r, t.elapsed().as_millis()));
+        });
+        let (build_res, build_ms) = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(v) => v,
+            Err(_) => return serde_json::json!({ "ok": false, "error": "build() did not return within 10s" }),
+        };
+        if let Err(e) = build_res {
+            return serde_json::json!({ "ok": false, "error": format!("build failed: {}", e) });
+        }
+        // Fresh window: reset the memory-manager entry so the ticker parks it
+        // like any other hidden window instead of trusting stale state.
+        webview_mem::resume_for_show(&app, &label);
+
+        // 3. Wait for the page to report script start + first paint. The
+        //    dev bridge gives up after 5 s, so stop at 4 s and report the
+        //    timeout in the payload rather than as a bridge error.
+        let deadline = StdInstant::now() + std::time::Duration::from_secs(4);
+        let (script_ms, painted_ms, painted_via) = loop {
+            let snap = WINDOW_PROBE
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|p| (p.script_ms, p.painted_ms, p.painted_via.clone())));
+            match snap {
+                Some((s, Some(p), via)) => break (s, Some(p), via),
+                _ if StdInstant::now() > deadline => {
+                    break snap.unwrap_or((None, None, None));
+                }
+                _ => std::thread::sleep(wait_step),
+            }
+        };
+        log::info!(
+            "[MEM-PROBE] {} recreate: destroy {:?}ms, build {}ms, script {:?}ms, painted {:?}ms via {:?}",
+            label, destroy_ms, build_ms, script_ms, painted_ms, painted_via
+        );
+        serde_json::json!({
+            "ok": painted_ms.is_some(),
+            "label": label,
+            "existed": existed,
+            "rebuilt": true,
+            "destroy_ms": destroy_ms,
+            "build_ms": build_ms,
+            "script_ms": script_ms,
+            "painted_ms": painted_ms,
+            "painted_via": painted_via,
+            "timed_out": painted_ms.is_none(),
+        })
+    })
+    .await
+    .unwrap_or_else(|e| serde_json::json!({ "ok": false, "error": format!("probe task failed: {}", e) }))
+}
+
 // ── Demo mode ────────────────────────────────────────────────────────────────
 //
 // `--demo` launches Keyfire against a throwaway data dir (AppData\...\demo\):
@@ -6508,99 +6726,27 @@ pub fn run() {
             // 5min idle. On-demand creation was attempted but proved
             // unreliable (destroy/rebuild race made the modal silently fail
             // to appear, leaving main hidden and the flow stuck).
-            let countdown_url = tauri::WebviewUrl::App("index.html?countdown=1".into());
-            let countdown_win = tauri::WebviewWindowBuilder::new(app, "countdown", countdown_url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire Recorder")
-                .inner_size(380.0, 320.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .shadow(false)
-                .build()?;
-
-            #[cfg(target_os = "windows")]
-            {
-                let _ = countdown_win.with_webview(|webview| unsafe {
-                    use webview2_com::Microsoft::Web::WebView2::Win32::{
-                        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
-                    };
-                    use windows_core::Interface;
-                    let controller = webview.controller();
-                    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-                        let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                            R: 0, G: 0, B: 0, A: 0,
-                        });
-                    }
-                });
-            }
-            let _ = &countdown_win;
+            // Builder lives in `build_hidden_window` — shared with the
+            // show_recorder_bar rebuild path and the dev cold-create probe.
+            let _ = build_hidden_window(app.handle(), "countdown")?;
 
             // Pre-create the drag-select snip overlay hidden. Same pattern
             // as fillin / clipboard / radial / countdown — transparent,
-            // decorations off, always-on-top, skip taskbar. Sized 1×1 here;
+            // decorations off, always-on-top, skip taskbar. Placeholder size;
             // show_snip_overlay resizes to full virtual desktop before
             // showing so the drag surface covers every monitor. Reused by
             // any macro step that needs the user to pick a screen rect
             // (Wait for Text today, future Wait for Image / template
             // capture). Reusable across features — do not put step-specific
             // logic in the overlay itself.
-            let snip_url = tauri::WebviewUrl::App("index.html?snipoverlay=1".into());
-            let snip_win = tauri::WebviewWindowBuilder::new(app, "snipoverlay", snip_url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire Snip Overlay")
-                // Initial size is a placeholder — show_snip_overlay resizes
-                // to full virtual desktop before show. Using 100×100 here
-                // rather than 1×1 because some WebView2 versions refuse to
-                // initialise a sub-pixel window and show "can't reach this
-                // page" until first resize.
-                .inner_size(100.0, 100.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .shadow(false)
-                .build()?;
-
-            #[cfg(target_os = "windows")]
-            {
-                let _ = snip_win.with_webview(|webview| unsafe {
-                    use webview2_com::Microsoft::Web::WebView2::Win32::{
-                        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
-                    };
-                    use windows_core::Interface;
-                    let controller = webview.controller();
-                    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-                        let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                            R: 0, G: 0, B: 0, A: 0,
-                        });
-                    }
-                });
-            }
-            let _ = &snip_win;
+            let _ = build_hidden_window(app.handle(), "snipoverlay")?;
 
             // Pre-create the Settings window hidden. Unlike the overlays it is
             // an ordinary opaque window (no transparency, no NOACTIVATE, has a
             // taskbar entry) — undecorated so SettingsWindow.jsx can draw the
             // app-style titlebar with a drag region. Never destroyed: the
             // CloseRequested handler hides it instead.
-            let settings_url = tauri::WebviewUrl::App("index.html?settings=1".into());
-            let settings_win = tauri::WebviewWindowBuilder::new(app, "settings", settings_url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire Settings")
-                .inner_size(900.0, 640.0)
-                .min_inner_size(720.0, 520.0)
-                .decorations(false)
-                .resizable(true)
-                .visible(false)
-                .center()
-                .build()?;
-            let _ = &settings_win;
+            let _ = build_hidden_window(app.handle(), "settings")?;
 
             // Store app handle for fill-in IPC from the expansion engine
             expansions::init_app_handle(app.handle().clone());
@@ -7024,6 +7170,8 @@ pub fn run() {
             get_app_profile_templates,
             reset_trial,
             dev_set_pro_override,
+            dev_probe_window_recreate,
+            dev_window_ready,
             is_debug_build,
             get_grace_period_state,
             migrate_shared_to_local_now,
