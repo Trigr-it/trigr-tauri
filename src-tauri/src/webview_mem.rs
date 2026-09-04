@@ -75,8 +75,10 @@ const RESUME_GRACE: Duration = Duration::from_secs(3);
 /// no 3-2-1 → no recorder::start). The other overlays receive full data
 /// payloads on show and recover cleanly from suspend; the countdown does
 /// not. It is left entirely alone (not parked either): it is 14 DOM nodes.
-const SUSPEND_LABELS: [&str; 6] =
-    ["overlay", "fillin", "clipboardoverlay", "radialmenu", "settings", "snipoverlay"];
+/// "snipoverlay" is not here either: since RAM wave 2 it is built on demand
+/// and destroyed on hide (lib.rs show_snip_overlay), so it never idles hidden.
+const SUSPEND_LABELS: [&str; 5] =
+    ["overlay", "fillin", "clipboardoverlay", "radialmenu", "settings"];
 /// Parked when hidden, never suspended — must keep running JS while hidden
 /// (see module docs).
 const PARK_ONLY_LABELS: [&str; 1] = ["main"];

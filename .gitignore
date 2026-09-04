@@ -50,3 +50,6 @@ test-fixtures/importers/private/
 
 # ── Local release-asset stash (for VT scans + local testing) ───────────────
 .local-releases/
+
+# Dev-only WebView2 experiment flags (read by lib.rs in debug builds)
+src-tauri/dev-browser-args.txt

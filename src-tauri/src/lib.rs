@@ -18,9 +18,21 @@ use tauri::{Emitter, Listener, Manager};
 /// minute after 5 min, and the shared renderer would drop to background CPU
 /// priority whenever every window is hidden, i.e. most of the time.
 ///
+/// `--in-process-gpu` (RAM wave 2, 2026-09-04): runs the Chromium GPU service
+/// on a thread inside the browser process instead of a separate gpu-process.
+/// Measured on the dev build: browser + GPU went from 48 + 108 MB to 102 MB
+/// private (-54 MB) with identical rendering of every window (transparent
+/// overlays included). Same mode Android WebView uses. Trade-off: a GPU
+/// driver crash now takes the browser process down with it instead of a
+/// silently restarted gpu-process; watch `[MEM]`/ProcessFailed reports.
+/// `--enable-features=NetworkServiceInProcess2`: folds the network utility
+/// process into the browser (-10 MB net). Keyfire's own HTTP (telemetry,
+/// updater) is Rust reqwest, so the Chromium network service only serves the
+/// webviews' asset loads.
+///
 /// The `--disable-features` list is wry's default and must be kept.
 pub const WEBVIEW_BROWSER_ARGS: &str =
-    "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+    "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --in-process-gpu --enable-features=NetworkServiceInProcess2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
 // Platform seam: the 10 engine modules below are Win32-bound. On Windows the
 // real modules compile; everywhere else the compiler swaps in no-op twins from
@@ -1732,13 +1744,19 @@ fn hide_settings_window(app: tauri::AppHandle) {
 /// first time). Returns the SAME values `show_snip_overlay` also emits.
 #[cfg(not(windows))]
 #[tauri::command]
-fn get_snip_overlay_config() -> serde_json::Value {
+fn get_snip_overlay_config(_app: tauri::AppHandle) -> serde_json::Value {
     serde_json::json!({ "originX": 0, "originY": 0, "width": 0, "height": 0 })
 }
 
+/// Set by `show_snip_overlay` after it builds the on-demand window; cleared
+/// by whichever comes first: the page's mount-time `get_snip_overlay_config`
+/// call (shows the window with its drag surface already live) or the 2 s
+/// fallback in show_snip_overlay (shows it anyway).
+static SNIP_SHOW_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[cfg(windows)]
 #[tauri::command]
-fn get_snip_overlay_config() -> serde_json::Value {
+fn get_snip_overlay_config(app: tauri::AppHandle) -> serde_json::Value {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
         SM_YVIRTUALSCREEN,
@@ -1751,6 +1769,14 @@ fn get_snip_overlay_config() -> serde_json::Value {
             GetSystemMetrics(SM_CYVIRTUALSCREEN),
         )
     };
+    // The overlay page calls this from its mount effect, so its drag surface
+    // is live: reveal the window the show command built and left hidden.
+    if SNIP_SHOW_PENDING.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        if let Some(win) = app.get_webview_window("snipoverlay") {
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+    }
     serde_json::json!({
         "originX": vsx,
         "originY": vsy,
@@ -1761,16 +1787,27 @@ fn get_snip_overlay_config() -> serde_json::Value {
 
 #[cfg(not(windows))]
 #[tauri::command]
-fn show_snip_overlay(_app: tauri::AppHandle) {}
+async fn show_snip_overlay(_app: tauri::AppHandle) {}
 
+/// On-demand snip overlay (RAM wave 2, 2026-09-04). The window is NOT
+/// pre-created: a hidden full-desktop transparent window costs ~5 MB idle and,
+/// once shown at virtual-desktop size, a further ~40 MB in keyfire.exe plus
+/// ~38 MB of GPU surfaces that stay for the rest of the session unless the
+/// window is destroyed (measured; shrinking it back only freed the GPU half).
+/// So: build here, show when the page is ready, destroy on every hide path.
+/// Cold create to first paint measured at 130-270 ms on the debug build, on an
+/// editor-driven action, which is acceptable; hotkey overlays stay resident.
+///
+/// Async so the destroy-then-build wait runs off the main thread: the v0.6.0
+/// on-demand countdown died of a destroy/rebuild race, so a stale window is
+/// destroyed and confirmed GONE before the new one is built.
 #[cfg(windows)]
 #[tauri::command]
-fn show_snip_overlay(app: tauri::AppHandle) {
+async fn show_snip_overlay(app: tauri::AppHandle) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
         SM_YVIRTUALSCREEN,
     };
-    webview_mem::resume_for_show(&app, "snipoverlay");
     let (vsx, vsy, vsw, vsh) = unsafe {
         (
             GetSystemMetrics(SM_XVIRTUALSCREEN),
@@ -1779,31 +1816,125 @@ fn show_snip_overlay(app: tauri::AppHandle) {
             GetSystemMetrics(SM_CYVIRTUALSCREEN),
         )
     };
+    let built = tauri::async_runtime::spawn_blocking(move || {
+        // 1. A leftover window (hide path still tearing down, or a failed
+        //    earlier destroy) goes first; wait until the label is really free.
+        if app.get_webview_window("snipoverlay").is_some() {
+            let app2 = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(w) = app2.get_webview_window("snipoverlay") {
+                    let _ = w.destroy();
+                }
+            });
+            let deadline = StdInstant::now() + std::time::Duration::from_secs(2);
+            while app.get_webview_window("snipoverlay").is_some() {
+                if StdInstant::now() > deadline {
+                    log::error!("[SNIP] stale overlay window did not go away within 2s");
+                    return Err(app);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        // 2. Build hidden on the main thread, then position + size it across
+        //    the whole virtual desktop while still hidden.
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let r = build_hidden_window(&app2, "snipoverlay").map(|win| {
+                let _ = win.set_position(tauri::PhysicalPosition::new(vsx, vsy));
+                let _ = win.set_size(tauri::PhysicalSize::new(vsw as u32, vsh as u32));
+            });
+            let _ = tx.send(r.map_err(|e| e.to_string()));
+        });
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(Ok(())) => Ok(app),
+            Ok(Err(e)) => {
+                log::error!("[SNIP] failed to build overlay window: {}", e);
+                Err(app)
+            }
+            Err(_) => {
+                log::error!("[SNIP] overlay window build did not return within 5s");
+                Err(app)
+            }
+        }
+    })
+    .await;
+    let app = match built {
+        Ok(Ok(app)) => app,
+        Ok(Err(app)) => {
+            // Tell the editor the pick is over so its state does not stay
+            // stuck on "Selecting region" with the main window hidden.
+            let _ = app.emit("region-snip-cancelled", serde_json::json!({}));
+            return;
+        }
+        Err(_) => return,
+    };
+    webview_mem::resume_for_show(&app, "snipoverlay");
+    // Payload for the page: it pulls the same values on mount via
+    // get_snip_overlay_config (that call is also what reveals the window);
+    // the event covers a page that is already mounted.
+    let _ = app.emit(
+        "snip-overlay-shown",
+        serde_json::json!({
+            "originX": vsx,
+            "originY": vsy,
+            "width": vsw,
+            "height": vsh,
+        }),
+    );
+    SNIP_SHOW_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
+    // 3. Fallback: if the page never calls get_snip_overlay_config (JS
+    //    error, blocked load) show the window anyway after 2 s rather than
+    //    leaving the user with a hidden main window and nothing on screen.
+    let app2 = app.clone();
+    std::thread::Builder::new()
+        .name("keyfire-snip-show-fallback".into())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if SNIP_SHOW_PENDING.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                log::warn!("[SNIP] overlay page did not report ready within 2s; showing anyway");
+                let app3 = app2.clone();
+                let _ = app2.run_on_main_thread(move || {
+                    if let Some(win) = app3.get_webview_window("snipoverlay") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                });
+            }
+        })
+        .ok();
+}
+
+/// Hide AND destroy the snip overlay. The window is on-demand (see
+/// show_snip_overlay): keeping it around after a full-desktop show holds
+/// ~40 MB in keyfire.exe and ~38 MB of GPU surfaces for the rest of the
+/// session; destroying it gives both back within seconds. The destroy is
+/// deferred 50 ms off the main thread because two of the callers are
+/// commands invoked BY the overlay page itself. Every hide path must go
+/// through here.
+fn hide_and_destroy_snip_overlay(app: &tauri::AppHandle) {
+    SNIP_SHOW_PENDING.store(false, std::sync::atomic::Ordering::SeqCst);
     if let Some(win) = app.get_webview_window("snipoverlay") {
-        // Payload FIRST so the mounted component knows the virtual-desktop
-        // origin — its own drag rect is in overlay-local pixels and must
-        // add (vsx, vsy) to produce screen coords the BitBlt path uses.
-        let _ = app.emit(
-            "snip-overlay-shown",
-            serde_json::json!({
-                "originX": vsx,
-                "originY": vsy,
-                "width": vsw,
-                "height": vsh,
-            }),
-        );
-        let _ = win.set_position(tauri::PhysicalPosition::new(vsx, vsy));
-        let _ = win.set_size(tauri::PhysicalSize::new(vsw as u32, vsh as u32));
-        let _ = win.show();
-        let _ = win.set_focus();
+        let _ = win.hide();
     }
+    let app2 = app.clone();
+    std::thread::Builder::new()
+        .name("keyfire-snip-destroy".into())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let app3 = app2.clone();
+            let _ = app2.run_on_main_thread(move || {
+                if let Some(win) = app3.get_webview_window("snipoverlay") {
+                    let _ = win.destroy();
+                }
+            });
+        })
+        .ok();
 }
 
 #[tauri::command]
 fn hide_snip_overlay(app: tauri::AppHandle) {
-    if let Some(win) = app.get_webview_window("snipoverlay") {
-        let _ = win.hide();
-    }
+    hide_and_destroy_snip_overlay(&app);
 }
 
 /// Overlay JS calls this on mouse-up with a completed rect. Rust re-emits
@@ -1811,9 +1942,7 @@ fn hide_snip_overlay(app: tauri::AppHandle) {
 /// the picker was the overlay or (during transition) any fallback.
 #[tauri::command]
 fn emit_snip_result(app: tauri::AppHandle, x: i32, y: i32, w: i32, h: i32) {
-    if let Some(win) = app.get_webview_window("snipoverlay") {
-        let _ = win.hide();
-    }
+    hide_and_destroy_snip_overlay(&app);
     let _ = app.emit(
         "region-snip-result",
         serde_json::json!({ "x": x, "y": y, "w": w, "h": h }),
@@ -1823,9 +1952,7 @@ fn emit_snip_result(app: tauri::AppHandle, x: i32, y: i32, w: i32, h: i32) {
 /// Overlay JS calls this on ESC / right-click / any cancel path.
 #[tauri::command]
 fn emit_snip_cancelled(app: tauri::AppHandle) {
-    if let Some(win) = app.get_webview_window("snipoverlay") {
-        let _ = win.hide();
-    }
+    hide_and_destroy_snip_overlay(&app);
     let _ = app.emit("region-snip-cancelled", serde_json::json!({}));
 }
 
@@ -6076,6 +6203,11 @@ fn build_hidden_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<tau
     Ok(win)
 }
 
+/// Debug builds: the WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS value `run()` set
+/// (remote-debugging port + dev-browser-args.txt experiments), logged once
+/// from setup so a measurement run records which flags were active.
+static DEV_EXTRA_BROWSER_ARGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 // ── Dev-only cold-create probe (RAM wave 2 measurement) ─────────────────────
 //
 // `dev_probe_window_recreate(label)` destroys the named hidden window, rebuilds
@@ -6392,6 +6524,33 @@ pub fn run() {
         };
         log::error!("[PANIC] thread '{}' at {}: {}", std::thread::current().name().unwrap_or("?"), location, msg);
     }));
+    // Dev builds only: expose the WebView2 remote-debugging port so
+    // scripts/cdp-mem.mjs can attribute renderer memory per page, and append
+    // any experiment flags from src-tauri/dev-browser-args.txt (gitignored;
+    // one line of Chromium switches). WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS is
+    // read by WebView2 itself and applied to EVERY webview in the process,
+    // including main (tauri.conf.json), so it cannot cause the mismatched-args
+    // ERROR_INVALID_STATE that per-builder args can. Release builds never
+    // touch the variable.
+    #[cfg(debug_assertions)]
+    {
+        let mut extra = String::from("--remote-debugging-port=9223");
+        let args_file = concat!(env!("CARGO_MANIFEST_DIR"), "/dev-browser-args.txt");
+        if let Ok(s) = std::fs::read_to_string(args_file) {
+            let s = s.trim();
+            if !s.is_empty() {
+                extra.push(' ');
+                extra.push_str(s);
+            }
+        }
+        if let Ok(existing) = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+            if !existing.trim().is_empty() {
+                extra = format!("{} {}", existing.trim(), extra);
+            }
+        }
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", &extra);
+        let _ = DEV_EXTRA_BROWSER_ARGS.set(extra);
+    }
     tauri::Builder::default()
         // Single-instance lock — second launches focus the existing main
         // window and exit immediately. Prevents the WebView2 shared-runtime
@@ -6460,6 +6619,9 @@ pub fn run() {
             std::fs::create_dir_all(&app_data)?;
             config::init(app_data.clone());
             licence::init();
+            if let Some(extra) = DEV_EXTRA_BROWSER_ARGS.get() {
+                log::info!("[MEM] Dev WebView2 extra browser args: {}", extra);
+            }
             analytics::init(app_data.clone());
 
             // One-time migration: recalculate time_saved for old analytics entries
@@ -6730,16 +6892,12 @@ pub fn run() {
             // show_recorder_bar rebuild path and the dev cold-create probe.
             let _ = build_hidden_window(app.handle(), "countdown")?;
 
-            // Pre-create the drag-select snip overlay hidden. Same pattern
-            // as fillin / clipboard / radial / countdown — transparent,
-            // decorations off, always-on-top, skip taskbar. Placeholder size;
-            // show_snip_overlay resizes to full virtual desktop before
-            // showing so the drag surface covers every monitor. Reused by
-            // any macro step that needs the user to pick a screen rect
-            // (Wait for Text today, future Wait for Image / template
-            // capture). Reusable across features — do not put step-specific
-            // logic in the overlay itself.
-            let _ = build_hidden_window(app.handle(), "snipoverlay")?;
+            // The drag-select snip overlay is NOT pre-created: it is built on
+            // demand by show_snip_overlay and destroyed on hide (RAM wave 2,
+            // see that function). Reused by any macro step that needs the
+            // user to pick a screen rect (Wait for Text today, future Wait
+            // for Image / template capture) — do not put step-specific logic
+            // in the overlay itself.
 
             // Pre-create the Settings window hidden. Unlike the overlays it is
             // an ordinary opaque window (no transparency, no NOACTIVATE, has a

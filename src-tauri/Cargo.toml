@@ -118,3 +118,11 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [dev-dependencies]
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+# Release profile (RAM wave 2, 2026-09-04): smaller binary + mapped image,
+# faster engine. Never set panic = "abort": the hotkey processor loop relies
+# on catch_unwind to survive a panic without leaving the LL hook orphaned.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
