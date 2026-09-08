@@ -1,7 +1,7 @@
 use log::{error, info};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, AtomicU8, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -211,6 +211,74 @@ static VOICE_KEY_HELD: AtomicBool = AtomicBool::new(false);
 /// consumed on keyup. Targeted to Menu key only — other keys don't have this
 /// keyup-driven OS behaviour.
 static MENU_KEYDOWN_SUPPRESSED: AtomicBool = AtomicBool::new(false);
+
+// ── Suppressed-while-held bitmap (v0.8.13) ──────────────────────────────────
+//
+// One bit per VK, set by the hook when it SWALLOWS a real keydown through the
+// suppress set, cleared on that VK's real keyup. While the bit is set every
+// further real keydown of the VK is an OS auto-repeat of a press the app never
+// saw, and is swallowed regardless of the CURRENT modifier bits.
+//
+// Why the modifier bits cannot be trusted for repeats: a bare Send Hotkey
+// remap (Space → Ctrl+Shift+S) injects Ctrl+Shift down at keydown and holds
+// them until keyup. Those injected modifier downs update MOD_CTRL / MOD_SHIFT
+// (processor + GetAsyncKeyState sync), so when the OS starts repeating Space
+// ~500 ms later the hook computed bits = Ctrl|Shift, looked up (3, VK_SPACE),
+// found nothing (only (0, VK_SPACE) is bound) and let every repeat through —
+// the app received Ctrl+Shift+Space keydowns at 30 Hz "after about a second"
+// of holding the trigger. Same failure for any bare-mapped key held while the
+// user (or Keyfire) presses a modifier.
+//
+// Hook-safe: four relaxed-free AtomicU64 loads/stores, no locks. Only REAL
+// (non-LLKHF_INJECTED) events touch it; injected re-sends of a suppressed VK
+// (hold-only tap passthrough) must keep flowing. Reset with the other shared
+// atomics in spawn_hook_thread.
+static SUPPRESSED_DOWN_KEYS: [AtomicU64; 4] = [
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+];
+
+#[inline]
+fn suppressed_down_slot(vk: u32) -> Option<(&'static AtomicU64, u64)> {
+    if vk >= 256 {
+        return None;
+    }
+    Some((&SUPPRESSED_DOWN_KEYS[(vk / 64) as usize], 1u64 << (vk % 64)))
+}
+
+/// Record that the hook swallowed this VK's real keydown.
+#[inline]
+fn mark_suppressed_down(vk: u32) {
+    if let Some((slot, bit)) = suppressed_down_slot(vk) {
+        slot.fetch_or(bit, Ordering::SeqCst);
+    }
+}
+
+/// Real keyup seen for this VK — the next keydown is a fresh press again.
+#[inline]
+fn clear_suppressed_down(vk: u32) {
+    if let Some((slot, bit)) = suppressed_down_slot(vk) {
+        slot.fetch_and(!bit, Ordering::SeqCst);
+    }
+}
+
+/// True while a real keydown of this VK has been swallowed and its keyup has
+/// not arrived yet — i.e. this keydown is an OS auto-repeat of a suppressed press.
+#[inline]
+fn is_suppressed_down(vk: u32) -> bool {
+    match suppressed_down_slot(vk) {
+        Some((slot, bit)) => slot.load(Ordering::SeqCst) & bit != 0,
+        None => false,
+    }
+}
+
+fn reset_suppressed_down_keys() {
+    for slot in SUPPRESSED_DOWN_KEYS.iter() {
+        slot.store(0, Ordering::SeqCst);
+    }
+}
 
 /// Tracks whether the radial menu overlay is open (for hold-to-select release detection).
 static RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
@@ -779,6 +847,10 @@ pub(crate) fn clear_held_keys() {
             held.clear();
         }
     }
+    // The hook-side twin of this state (suppressed-while-held bitmap) is
+    // stale for exactly the same reasons — lost keyups across a hook
+    // reinstall or a session lock — and must go with it.
+    reset_suppressed_down_keys();
 }
 
 static HOLD_WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -1761,17 +1833,29 @@ unsafe extern "system" fn keyboard_hook_proc(
                 send_event(HookEvent::KeyUp { vk_code: kb.vkCode, scan_code: kb.scanCode });
             }
         }
+        if is_up && is_real {
+            clear_suppressed_down(kb.vkCode);
+        }
         if is_down
             && is_real
             && !is_modifier_vk(kb.vkCode)
             && engine_active_live()
         {
+            // Auto-repeat of a press this hook already swallowed: keep
+            // swallowing whatever the modifier bits say now (see
+            // SUPPRESSED_DOWN_KEYS). Forwarded so the processor's own
+            // repeat tracking stays in step.
+            if is_suppressed_down(kb.vkCode) {
+                send_event(HookEvent::KeyDown { vk_code: kb.vkCode, scan_code: kb.scanCode });
+                return 1;
+            }
             let bits = modifier_bits();
             if let Ok(set) = suppress_keys().try_read() {
                 if set.contains(&(bits, kb.vkCode)) && !(bits == 0 && is_foreground_dialog()) {
                     if kb.vkCode == 0x5D {
                         MENU_KEYDOWN_SUPPRESSED.store(true, Ordering::SeqCst);
                     }
+                    mark_suppressed_down(kb.vkCode);
                     // Swallowed from the app, but the processor MUST still
                     // hear it: this is a bound combo the user pressed on
                     // purpose. Previously it was eaten silently here, so a
@@ -1938,6 +2022,15 @@ unsafe extern "system" fn keyboard_hook_proc(
                     vk_code: kb.vkCode,
                     scan_code: kb.scanCode,
                 });
+                // OS auto-repeat of a keydown this hook already swallowed via
+                // the suppress set: swallow it too, whatever the modifier bits
+                // are NOW. A bare Send Hotkey remap holds injected modifiers
+                // for the whole press, so re-running the (bits, vk) lookup on
+                // each repeat mis-keyed and leaked the trigger to the app
+                // (Space → Ctrl+Shift+S sent Ctrl+Shift+Space after ~1 s).
+                if (kb.flags & LLKHF_INJECTED) == 0 && is_suppressed_down(kb.vkCode) {
+                    return 1;
+                }
                 // Pixel-pick eyedropper: swallow ESC so the cancel gesture
                 // doesn't also reach the foreground app. MIRROR of the
                 // PIXEL_PICK ESC branch in handle_keydown — keep in sync.
@@ -1982,6 +2075,9 @@ unsafe extern "system" fn keyboard_hook_proc(
                                 if kb.vkCode == 0x5D {
                                     MENU_KEYDOWN_SUPPRESSED.store(true, Ordering::SeqCst);
                                 }
+                                if (kb.flags & LLKHF_INJECTED) == 0 {
+                                    mark_suppressed_down(kb.vkCode);
+                                }
                                 return 1;
                             }
                         }
@@ -1996,6 +2092,12 @@ unsafe extern "system" fn keyboard_hook_proc(
                     vk_code: kb.vkCode,
                     scan_code: kb.scanCode,
                 });
+                // Physical release ends the suppressed-while-held window for
+                // this VK (see SUPPRESSED_DOWN_KEYS). The keyup itself still
+                // passes through — orphan-keyup convention, unchanged.
+                if (kb.flags & LLKHF_INJECTED) == 0 {
+                    clear_suppressed_down(kb.vkCode);
+                }
                 // Menu key (VK_APPS, 0x5D) opens the OS context menu via
                 // DefWindowProc on WM_KEYUP — not WM_KEYDOWN. Consume the
                 // matching-keydown flag so the keyup is suppressed ONLY when
@@ -2767,6 +2869,18 @@ fn handle_keydown(vk: u32, scan: u32, app: &AppHandle) {
     // expansion buffer fall-through still receives auto-repeats so held
     // character keys feed triggers like ":kr" normally. See KEYS_HELD_DOWN.
     let is_auto_repeat = record_keydown_and_check_repeat(vk);
+
+    // ── Bare-key remap repeat (v0.8.13) ─────────────────────────────────
+    // A bare Send Hotkey remap holds its target down from keydown to keyup,
+    // but Windows never auto-repeats an injected key, so holding Space →
+    // Shift+A typed one "A". Mirror the trigger's OS repeats onto the held
+    // target so the app sees the same stream a physical Shift+A hold gives.
+    // The hook already swallows these repeats (SUPPRESSED_DOWN_KEYS) and
+    // forwards them here. Runs before the dialog/profile checks: the remap
+    // is live regardless of what changed since the press.
+    if is_auto_repeat && crate::actions::remap_key_repeat(vk as u16) {
+        return;
+    }
 
     // ── Foreground sync ─────────────────────────────────────────────────
     // On the first press of a new physical gesture, eliminate the 1500ms

@@ -1785,6 +1785,41 @@ pub fn remap_key_press(trigger_vk: u16, data: &Value) -> bool {
     true
 }
 
+/// Auto-repeat phase of a bare-key remap (v0.8.13).
+///
+/// Called by the processor for every OS auto-repeat keydown of a trigger VK.
+/// If a remap (or hold-until-release chord) is active for that trigger, the
+/// held target key(s) get a fresh keydown so the app sees the same repeat
+/// stream a physically held target would produce: Space → Shift+A held now
+/// types "AAAA…" instead of a single "A". Windows only auto-repeats PHYSICAL
+/// keys; an injected keydown that is simply left down never repeats, which is
+/// why the remap alone produced one character. Modifiers are already down
+/// and are not re-sent; mouse buttons do not repeat when held, so a
+/// mouse-only chord just swallows the repeat.
+///
+/// Returns `true` if a remap was active (caller should early-return — the
+/// repeat belongs to the remap, never to the expansion buffer).
+pub fn remap_key_repeat(trigger_vk: u16) -> bool {
+    let targets: Option<Vec<u16>> = ACTIVE_BARE_REMAPS
+        .lock()
+        .unwrap()
+        .get(&trigger_vk)
+        .map(|e| e.target_vks.clone());
+    let Some(targets) = targets else { return false };
+    if !targets.is_empty() {
+        let inputs: Vec<INPUT> = targets.iter().map(|&vk| make_vk_input(vk, false)).collect();
+        let _guard = SuppressionGuard::new();
+        unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            );
+        }
+    }
+    true
+}
+
 /// Release phase of a bare-key remap (called on keyup).
 ///
 /// Sends target_keyup + mod_ups for the remap that was started by `remap_key_press`.
