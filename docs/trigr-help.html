@@ -1098,6 +1098,9 @@
 
   <p>Example: your CAD app uses <kbd>Ctrl</kbd>+<kbd>F</kbd> for a tool, but you have already assigned <kbd>Ctrl</kbd>+<kbd>F</kbd> globally in Keyfire. Bind Keyfire's <kbd>Ctrl</kbd>+<kbd>G</kbd> to Send Hotkey → <kbd>Ctrl</kbd>+<kbd>F</kbd>, and Keyfire sends it directly to the active window.</p>
 
+  <h2>Holding a key that is mapped to a hotkey</h2>
+  <p>When the trigger is a plain key with no modifier (for example <kbd>Space</kbd> or <kbd>F8</kbd> on an app-specific profile), a single-press Send Hotkey behaves like a remap. The output goes down when you press the trigger and comes up when you release it, so holding <kbd>Space</kbd> mapped to <kbd>Shift</kbd>+<kbd>A</kbd> holds Shift and A for as long as your finger stays down, and the app receives repeated capital As at your normal key-repeat rate. The trigger key itself never reaches the app. You do not need Hold Mode for this; Hold Mode is for modified triggers, mouse-button outputs, or when you want the output to stay held after you let go.</p>
+
   <h2>Hold Mode</h2>
   <p>The <strong>Hold Mode</strong> toggle changes Send Hotkey behaviour. Instead of tapping the output, the key stays down. A <strong>Release</strong> dropdown chooses how the hold ends:</p>
   <ul>
@@ -2486,6 +2489,10 @@
     <tr><td>Enable macros on startup</td><td>Whether hotkeys are active immediately on launch or start paused.</td></tr>
     <tr><td>Theme</td><td>Light, Dark, or System. System follows your Windows theme preference.</td></tr>
   </table>
+
+  <h2>Excluded apps</h2>
+  <p>Some programs have their own shortcuts that clash with your Keyfire hotkeys, and the usual answer was to close Keyfire while using them. Instead, add the program to <strong>Excluded apps</strong> under Settings &rarr; General. Type the process name or pick it from your open apps. While an excluded app is in the foreground Keyfire pauses itself completely: no hotkeys, no overlays, no text expansions and no autocorrect. The tray icon dims and its tooltip names the app. The moment you switch to another window everything resumes.</p>
+  <p>This works like the tray Pause button, with one difference: the pause hotkey does nothing while an excluded app is in front, so it cannot be flipped by accident. If you paused Keyfire manually before switching to the excluded app, it stays paused when you leave it. Excluded apps are available on the Free plan. If you want Keyfire to run a different set of hotkeys in a program rather than none at all, use an app-specific profile instead.</p>
 
   <h2>Global Pause Hotkey</h2>
   <p>Click the capture field and press any key combination to set it as the global pause / resume toggle. Must include at least one modifier. Bare keys cannot be used as the pause hotkey.</p>
