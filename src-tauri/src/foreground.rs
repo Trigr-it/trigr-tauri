@@ -1,6 +1,6 @@
 use log::info;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
@@ -50,6 +50,24 @@ fn linked_app_pids() -> &'static RwLock<HashMap<u32, String>> {
 }
 
 static FG_STATE: OnceLock<Mutex<FgState>> = OnceLock::new();
+
+/// Excluded apps (Settings > General): lowercase process basenames without
+/// `.exe`. Pushed from the frontend via `update_engine_excluded_apps` on
+/// config load and on every edit, same as the expansion / clipboard lists.
+fn excluded_apps() -> &'static RwLock<HashSet<String>> {
+    static S: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
+    S.get_or_init(|| RwLock::new(HashSet::new()))
+}
+
+/// PIDs of excluded-app processes the watcher has seen in the foreground.
+/// Lets the hook procs answer "is the CURRENT foreground window excluded?"
+/// with GetWindowThreadProcessId + a set lookup (no OpenProcess), so the
+/// click-out-then-fire and click-in-then-fire races are closed without
+/// waiting for the 1500 ms poll. Pruned with the linked-app PID cache.
+fn excluded_pids() -> &'static RwLock<HashSet<u32>> {
+    static S: OnceLock<RwLock<HashSet<u32>>> = OnceLock::new();
+    S.get_or_init(|| RwLock::new(HashSet::new()))
+}
 
 fn fg_state() -> &'static Mutex<FgState> {
     FG_STATE.get_or_init(|| Mutex::new(FgState::default()))
@@ -143,6 +161,11 @@ fn handle_foreground_change(proc_name: &str, window_title: &str, app: &AppHandle
 
     let mut state = fg_state().lock().unwrap();
     state.current_fg_proc = name.clone();
+    drop(state);
+
+    apply_app_exclusion(&name, app);
+
+    let state = fg_state().lock().unwrap();
 
     // Never auto-switch when Fire itself is focused
     if state.self_proc_names.iter().any(|s| s == &name) {
@@ -463,6 +486,7 @@ fn get_proc_name_by_pid(pid: u32) -> Option<String> {
 /// mouse hook can detect "cursor over linked app" even when the app isn't the
 /// current foreground (click-to-refocus scenario).
 fn cache_linked_pid_if_match(hwnd_val: isize, proc_name: &str) {
+    cache_excluded_pid_if_match(hwnd_val, proc_name);
     let name = proc_name.to_lowercase();
     let state = fg_state().lock().unwrap();
     let matched_profile = state
@@ -490,6 +514,26 @@ fn cache_linked_pid_if_match(hwnd_val: isize, proc_name: &str) {
                 if let Ok(mut cache) = linked_app_pids().write() {
                     cache.insert(pid, profile);
                 }
+            }
+        }
+    }
+}
+
+/// Excluded-apps twin of the linked-app cache: remember the PID of any
+/// excluded process seen in the foreground so `fg_excluded_live` can answer
+/// from the hook thread.
+fn cache_excluded_pid_if_match(hwnd_val: isize, proc_name: &str) {
+    let name = proc_name.to_lowercase().trim_end_matches(".exe").to_string();
+    let hit = excluded_apps().read().map(|s| s.contains(&name)).unwrap_or(false);
+    if !hit {
+        return;
+    }
+    unsafe {
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd_val as _, &mut pid);
+        if pid != 0 {
+            if let Ok(mut cache) = excluded_pids().write() {
+                cache.insert(pid);
             }
         }
     }
@@ -524,12 +568,103 @@ fn prune_stale_pids() {
             }
         });
     }
+
+    // Excluded-app PIDs: keep only live processes still on the list.
+    let excluded: HashSet<String> = excluded_apps().read().map(|s| s.clone()).unwrap_or_default();
+    if let Ok(mut cache) = excluded_pids().write() {
+        cache.retain(|&pid| match get_proc_name_by_pid(pid) {
+            Some(name) => excluded.contains(name.trim_end_matches(".exe")),
+            None => false,
+        });
+    }
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
 pub fn get_current_fg_proc() -> String {
     fg_state().lock().unwrap().current_fg_proc.clone()
+}
+
+/// Flip `hotkeys::APP_EXCLUDED` to match whether `name` (lowercase, no .exe)
+/// is on the exclusion list, and reflect the change in the tray + log. Runs
+/// on the watcher thread on every foreground change; also called by
+/// `set_excluded_apps` so editing the list while an excluded app is up (or
+/// removing the current one) takes effect immediately.
+fn apply_app_exclusion(name: &str, app: &AppHandle) {
+    let excluded = excluded_apps()
+        .read()
+        .map(|s| !s.is_empty() && s.contains(name))
+        .unwrap_or(false);
+    let was = crate::hotkeys::APP_EXCLUDED.swap(excluded, Ordering::SeqCst);
+    if was == excluded {
+        return;
+    }
+    if excluded {
+        // Nothing of ours may keep running inside the excluded app.
+        crate::actions::release_held_key();
+        crate::actions::stop_repeating_key();
+        info!("[Keyfire] Paused: excluded app \"{}\" in foreground", name);
+    } else {
+        info!("[Keyfire] Resumed: left excluded app");
+    }
+    crate::tray::update_tray_icon_normal(app);
+}
+
+/// Replace the exclusion list (frontend push). Re-evaluates the current
+/// foreground app straight away.
+pub fn set_excluded_apps(apps: Vec<String>, app: &AppHandle) {
+    let set: HashSet<String> = apps
+        .into_iter()
+        .map(|a| a.trim().to_lowercase().trim_end_matches(".exe").to_string())
+        .filter(|a| !a.is_empty())
+        .collect();
+    let n = set.len();
+    if let Ok(mut g) = excluded_apps().write() {
+        *g = set;
+    }
+    info!("[Keyfire] Excluded apps: {}", n);
+    if let Ok(mut cache) = excluded_pids().write() {
+        cache.clear();
+    }
+    let hwnd = unsafe { GetForegroundWindow() as isize };
+    if hwnd != 0 {
+        if let Some(name) = get_fg_proc_name(hwnd) {
+            cache_excluded_pid_if_match(hwnd, &name);
+        }
+    }
+    let current = get_current_fg_proc();
+    apply_app_exclusion(&current, app);
+}
+
+/// Hook-thread-safe "is the foreground app excluded RIGHT NOW?". Fast path is
+/// GetForegroundWindow + an atomic compare; when the foreground has moved
+/// since the watcher last synced, resolve the new window's PID against the
+/// excluded-PID cache (no OpenProcess, no allocation, try_read only). A PID
+/// the cache has never seen falls back to "not excluded" and the processor /
+/// poll settle the flag. Callers: hook-proc gates via `hotkeys::engine_active_live`.
+pub fn fg_excluded_live() -> bool {
+    let flag = crate::hotkeys::APP_EXCLUDED.load(Ordering::SeqCst);
+    let fg = unsafe { GetForegroundWindow() as isize };
+    if fg == 0 || fg == LAST_FG_HWND.load(Ordering::SeqCst) {
+        return flag;
+    }
+    let mut pid: u32 = 0;
+    unsafe { GetWindowThreadProcessId(fg as _, &mut pid); }
+    if pid == 0 {
+        return flag;
+    }
+    match excluded_pids().try_read() {
+        Ok(set) => set.contains(&pid),
+        Err(_) => flag,
+    }
+}
+
+/// Name of the excluded app currently in the foreground (for the tray tooltip).
+pub fn excluded_app_in_foreground() -> Option<String> {
+    if !crate::hotkeys::APP_EXCLUDED.load(Ordering::SeqCst) {
+        return None;
+    }
+    Some(format!("{}.exe", get_current_fg_proc()))
 }
 
 /// Live lookup: resolve a window HWND to its lowercase process basename

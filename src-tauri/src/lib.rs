@@ -2477,6 +2477,13 @@ fn update_expansion_excluded_apps(apps: Vec<String>) {
     expansions::set_expansion_excluded_apps(apps);
 }
 
+/// Excluded apps (Settings > General): Keyfire pauses itself while any of
+/// these processes is in the foreground. See `hotkeys::APP_EXCLUDED`.
+#[tauri::command]
+fn update_engine_excluded_apps(apps: Vec<String>, app: tauri::AppHandle) {
+    foreground::set_excluded_apps(apps, &app);
+}
+
 /// Global variables accept two shapes at the IPC boundary:
 ///   - string       → static value: `"Rory Brady"`
 ///   - array of str → random-pick set: `["hi","hello","hey"]`
@@ -7153,6 +7160,7 @@ pub fn run() {
             update_autocorrect_enabled,
             update_autocorrect_settings,
             update_expansion_excluded_apps,
+            update_engine_excluded_apps,
             export_text_file,
             import_text_file,
             get_builtin_autocorrect_entries,

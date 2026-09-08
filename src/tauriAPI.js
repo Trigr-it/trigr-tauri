@@ -173,6 +173,7 @@ window.electronAPI = {
     } }),
   getBuiltinAutocorrectEntries: () => invoke('get_builtin_autocorrect_entries'),
   updateExpansionExcludedApps: (apps) => invoke('update_expansion_excluded_apps', { apps }),
+  updateEngineExcludedApps: (apps) => invoke('update_engine_excluded_apps', { apps }),
 
   // ── Generic text-file dialogs (CSV packs etc.) ──────────────────────────────
   exportTextFile: (filenameHint, content, title, filterName, extensions) =>

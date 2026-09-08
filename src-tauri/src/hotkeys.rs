@@ -58,6 +58,31 @@ pub const WM_KEYFIRE_MOUSE_HOOK_RESUME: u32 = 0x0400 + 2; // WM_USER + 2
 /// the watcher doesn't fire armed entries. Runtime only — never persisted.
 pub static HOLD_DETECTION_PAUSED: AtomicBool = AtomicBool::new(false);
 pub(crate) static MACROS_ENABLED: AtomicBool = AtomicBool::new(true);
+/// Excluded apps (Settings > General): true while the foreground process is
+/// on the user's exclusion list. Set by the foreground watcher, read by both
+/// hook procs and the processor exactly like a tray Pause: no combo is
+/// suppressed or dispatched, no expansion / autocorrect fires, and the pause
+/// hotkey is NOT honoured (an excluded app is excluded from everything). The
+/// manual MACROS_ENABLED state is left untouched so leaving the app restores
+/// whatever the user had. Runtime only, never persisted.
+pub static APP_EXCLUDED: AtomicBool = AtomicBool::new(false);
+
+/// Engine is live: not paused by the user AND the foreground app is not excluded.
+/// Every MACROS_ENABLED gate in the hook procs and the tray icon go through this.
+#[inline]
+pub fn engine_active() -> bool {
+    MACROS_ENABLED.load(Ordering::SeqCst) && !APP_EXCLUDED.load(Ordering::SeqCst)
+}
+
+/// Hook-proc variant: same as `engine_active` but asks the foreground module
+/// whether the window in front RIGHT NOW is excluded, so the first combo
+/// after clicking out of (or into) an excluded app is suppressed / passed
+/// correctly instead of waiting for the 1500 ms poll. Hook-safe: two Win32
+/// calls and a try_read, see `foreground::fg_excluded_live`.
+#[inline]
+pub fn engine_active_live() -> bool {
+    MACROS_ENABLED.load(Ordering::SeqCst) && !crate::foreground::fg_excluded_live()
+}
 static IS_RECORDING_HOTKEY: AtomicBool = AtomicBool::new(false);
 static IS_CAPTURING_KEY: AtomicBool = AtomicBool::new(false);
 /// Set the first time the ISO-only key (scancode 0x56, beside left Shift) is
@@ -1739,7 +1764,7 @@ unsafe extern "system" fn keyboard_hook_proc(
         if is_down
             && is_real
             && !is_modifier_vk(kb.vkCode)
-            && MACROS_ENABLED.load(Ordering::SeqCst)
+            && engine_active_live()
         {
             let bits = modifier_bits();
             if let Ok(set) = suppress_keys().try_read() {
@@ -1807,7 +1832,7 @@ unsafe extern "system" fn keyboard_hook_proc(
             // hotkeys. Both must be suppressed so they don't leak to the
             // underlying app even on subsequent keyup. Only fires when
             // MACROS_ENABLED so a paused engine doesn't trigger record/play.
-            if MACROS_ENABLED.load(Ordering::SeqCst) {
+            if engine_active_live() {
                 let bits = modifier_bits();
                 if !is_modifier_vk(kb.vkCode) && bits != 0 {
                     if crate::recorder::matches_record_hotkey(kb.vkCode, bits) {
@@ -1842,7 +1867,7 @@ unsafe extern "system" fn keyboard_hook_proc(
                     let should_swallow = (crate::expansions::EXPANSION_PENDING_SPACE.load(Ordering::SeqCst)
                         || crate::expansions::AUTOCORRECT_PENDING.load(Ordering::SeqCst))
                         && modifier_bits() == 0
-                        && MACROS_ENABLED.load(Ordering::SeqCst)
+                        && engine_active_live()
                         && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
                         && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst)
                         && !IS_CAPTURING_KEY.load(Ordering::SeqCst)
@@ -1875,7 +1900,7 @@ unsafe extern "system" fn keyboard_hook_proc(
                     && crate::expansions::AC_UNDO_ARMED.load(Ordering::SeqCst)
                 {
                     let should_swallow = modifier_bits() == 0
-                        && MACROS_ENABLED.load(Ordering::SeqCst)
+                        && engine_active_live()
                         && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
                         && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst)
                         && !IS_CAPTURING_KEY.load(Ordering::SeqCst)
@@ -1895,7 +1920,7 @@ unsafe extern "system" fn keyboard_hook_proc(
                 {
                     let should_swallow = crate::expansions::AUTOCORRECT_PENDING.load(Ordering::SeqCst)
                         && modifier_bits() == 0
-                        && MACROS_ENABLED.load(Ordering::SeqCst)
+                        && engine_active_live()
                         && !APP_INPUT_FOCUSED.load(Ordering::SeqCst)
                         && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst)
                         && !IS_CAPTURING_KEY.load(Ordering::SeqCst)
@@ -1944,7 +1969,7 @@ unsafe extern "system" fn keyboard_hook_proc(
                     return 1;
                 }
                 // Suppress matched hotkey combos — prevent keystroke reaching target app
-                if !is_modifier_vk(kb.vkCode) && MACROS_ENABLED.load(Ordering::SeqCst) {
+                if !is_modifier_vk(kb.vkCode) && engine_active_live() {
                     let bits = modifier_bits();
                     if let Ok(set) = suppress_keys().try_read() {
                         if set.contains(&(bits, kb.vkCode)) {
@@ -2198,7 +2223,7 @@ unsafe extern "system" fn mouse_hook_proc(
         // matching DOWN. This prevents mismatched events when the suppress set
         // changes mid-click (e.g., profile switches while a button is held).
         if let Some(btn_id) = suppress_id {
-            if MACROS_ENABLED.load(Ordering::SeqCst) {
+            if engine_active_live() {
                 if let Some(bit) = suppress_btn_bit(btn_id) {
                     // Paired button event
                     if is_button_down {
@@ -2468,6 +2493,30 @@ fn process_events(receiver: mpsc::Receiver<HookEvent>, app: AppHandle) {
                             log::info!("[RECORDER] Quick Loop: no temp macro saved");
                             crate::emit_user_toast(&app, "info", "Nothing recorded yet. Press the Quick Record hotkey first.");
                         }
+                    }
+                    continue;
+                }
+                // Live foreground check BEFORE the excluded / paused gates so a
+                // hotkey fired right after clicking out of an excluded app (or
+                // into one) resolves against the real foreground, not the
+                // watcher's last poll. ~2 us fast path when nothing moved; the
+                // full switch (profile + exclusion flag) runs inline otherwise.
+                // No engine_state is held here (lock order fg_state -> engine_state).
+                let first_press = match &event {
+                    HookEvent::KeyDown { vk_code, .. } => !is_modifier_vk(*vk_code),
+                    HookEvent::MouseDown { .. } | HookEvent::MouseWheel { .. } => true,
+                    _ => false,
+                };
+                if first_press {
+                    crate::foreground::check_and_switch_if_stale(&app);
+                }
+                // Excluded app in the foreground: behave as paused, but do NOT
+                // honour the pause hotkey (it would flip MACROS_ENABLED under
+                // the user while the app stays excluded). Modifiers are still
+                // tracked so the state is right the moment the user Alt+Tabs out.
+                if APP_EXCLUDED.load(Ordering::SeqCst) && !IS_RECORDING_HOTKEY.load(Ordering::SeqCst) && !IS_CAPTURING_KEY.load(Ordering::SeqCst) {
+                    if let HookEvent::KeyDown { vk_code, .. } | HookEvent::KeyUp { vk_code, .. } = &event {
+                        update_modifier_state(*vk_code, matches!(event, HookEvent::KeyDown { .. }));
                     }
                     continue;
                 }

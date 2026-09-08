@@ -271,6 +271,8 @@ export default function SettingsPanel({
   onRestoreBackup,
   expansionExcludedApps = [],
   onUpdateExpansionExcludedApps,
+  engineExcludedApps = [],
+  onUpdateEngineExcludedApps,
   globalInputMethod = 'direct',
   macroSpeed        = 'safe',
   keystrokeDelay    = 10,
@@ -1123,6 +1125,13 @@ export default function SettingsPanel({
           {pauseConflict && (
             <div className="settings-conflict-warn">{pauseConflict}</div>
           )}
+
+          <ClipboardExcludedAppsEditor
+            apps={engineExcludedApps}
+            onChange={onUpdateEngineExcludedApps}
+            label="Excluded apps"
+            sub="Keyfire pauses itself while any of these apps is in the foreground, the same as Pause in the tray. Every key passes straight through to the app and nothing fires. For programs whose own shortcuts clash with yours."
+          />
           </>)}
         </section>
 

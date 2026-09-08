@@ -140,11 +140,17 @@ pub fn update_tray_icon_repeating(app: &AppHandle, label: &str, interval_ms: u64
 
 /// Restore tray to the correct non-held state (active or paused).
 pub fn update_tray_icon_normal(app: &AppHandle) {
-    let enabled = crate::hotkeys::MACROS_ENABLED.load(Ordering::SeqCst);
+    let enabled = crate::hotkeys::engine_active();
     update_tray_icon(app, enabled);
-    let tooltip = if enabled { "Keyfire — Active" } else { "Keyfire — Paused" };
+    let tooltip = if enabled {
+        "Keyfire — Active".to_string()
+    } else if let Some(exe) = crate::foreground::excluded_app_in_foreground() {
+        format!("Keyfire — Paused in {} (excluded app)", exe)
+    } else {
+        "Keyfire — Paused".to_string()
+    };
     if let Some(tray) = app.tray_by_id("trigr-tray") {
-        let _ = tray.set_tooltip(Some(tooltip));
+        let _ = tray.set_tooltip(Some(tooltip.as_str()));
     }
 }
 

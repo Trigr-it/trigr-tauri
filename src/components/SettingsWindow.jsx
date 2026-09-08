@@ -142,6 +142,8 @@ export default function SettingsWindow() {
         onRestoreBackup={act('restoreBackup')}
         expansionExcludedApps={bridge.expansionExcludedApps}
         onUpdateExpansionExcludedApps={act('updateExpansionExcludedApps')}
+        engineExcludedApps={bridge.engineExcludedApps}
+        onUpdateEngineExcludedApps={act('updateEngineExcludedApps')}
         globalInputMethod={bridge.globalInputMethod}
         macroSpeed={bridge.macroSpeed}
         keystrokeDelay={bridge.keystrokeDelay}

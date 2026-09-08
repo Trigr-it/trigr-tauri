@@ -237,6 +237,8 @@ function App() {
   const [autocorrectExcludedApps, setAutocorrectExcludedApps] = useState([]);
   // Apps where text expansions never fire (separate from autocorrect exclusions).
   const [expansionExcludedApps, setExpansionExcludedApps] = useState([]);
+  // Excluded apps (Settings > General): Keyfire pauses itself while one is in the foreground.
+  const [engineExcludedApps, setEngineExcludedApps] = useState([]);
   // Individual bundled-dictionary entries the user switched off (lowercase typo keys).
   const [autocorrectDisabledEntries, setAutocorrectDisabledEntries] = useState([]);
   // Backspace-undo tracking: { [originalLower]: { count, replacement, source } }.
@@ -595,6 +597,7 @@ function App() {
       const cfgAcSymbols = config.autocorrectSymbols ?? false;
       const cfgAcEmojis = config.autocorrectEmojis ?? false;
       const cfgExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
+      const cfgEngineExcluded = Array.isArray(config.engineExcludedApps) ? config.engineExcludedApps : [];
       setAutocorrectEnabled(cfgAcEnabled);
       setAutocorrectBuiltinTypos(cfgAcBuiltin);
       setAutocorrectDoubleCaps(cfgAcDoubleCaps);
@@ -610,6 +613,7 @@ function App() {
       setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
       setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
       setExpansionExcludedApps(cfgExpExcluded);
+      setEngineExcludedApps(cfgEngineExcluded);
       window.electronAPI?.updateAutocorrectSettings({
         enabled: cfgAcEnabled,
         builtinTypos: cfgAcBuiltin,
@@ -625,6 +629,7 @@ function App() {
         disabledEntries: cfgAcDisabled,
       });
       window.electronAPI?.updateExpansionExcludedApps(cfgExpExcluded);
+      window.electronAPI?.updateEngineExcludedApps(cfgEngineExcluded);
     }
     setMacrosEnabledOnStartup(config.macrosEnabledOnStartup ?? true);
     setPhysicalKeyboardLayout(['ansi', 'iso'].includes(config.physicalKeyboardLayout) ? config.physicalKeyboardLayout : 'auto');
@@ -801,6 +806,7 @@ function App() {
         const savedAcSymbols = config.autocorrectSymbols ?? false;
         const savedAcEmojis = config.autocorrectEmojis ?? false;
         const savedExpExcluded = Array.isArray(config.expansionExcludedApps) ? config.expansionExcludedApps : [];
+        const savedEngineExcluded = Array.isArray(config.engineExcludedApps) ? config.engineExcludedApps : [];
         setAutocorrectEnabled(savedAcEnabled);
         setAutocorrectBuiltinTypos(savedAcBuiltin);
         setAutocorrectDoubleCaps(savedAcDoubleCaps);
@@ -816,6 +822,7 @@ function App() {
         setAutocorrectUndoCounts(config.autocorrectUndoCounts && typeof config.autocorrectUndoCounts === 'object' ? config.autocorrectUndoCounts : {});
         setAutocorrectUndoMuted(Array.isArray(config.autocorrectUndoMuted) ? config.autocorrectUndoMuted : []);
         setExpansionExcludedApps(savedExpExcluded);
+        setEngineExcludedApps(savedEngineExcluded);
         window.electronAPI?.updateAutocorrectSettings({
           enabled: savedAcEnabled,
           builtinTypos: savedAcBuiltin,
@@ -831,6 +838,7 @@ function App() {
           disabledEntries: savedAcDisabled,
         });
         window.electronAPI?.updateExpansionExcludedApps(savedExpExcluded);
+        window.electronAPI?.updateEngineExcludedApps(savedEngineExcluded);
         const savedMacrosOnStartup = config.macrosEnabledOnStartup ?? true;
         setMacrosEnabledOnStartup(savedMacrosOnStartup);
         setPhysicalKeyboardLayout(['ansi', 'iso'].includes(config.physicalKeyboardLayout) ? config.physicalKeyboardLayout : 'auto');
@@ -3513,6 +3521,20 @@ function App() {
     window.electronAPI?.saveConfig({ expansionExcludedApps: next });
   }, []);
 
+  // Excluded apps: Keyfire pauses (everything, like the tray Pause) while any
+  // of these processes is in the foreground. Rust re-evaluates the current
+  // foreground app on every push, so edits take effect immediately.
+  const handleUpdateEngineExcludedApps = useCallback((apps) => {
+    const next = Array.from(new Set(
+      (apps || [])
+        .map(a => (a || '').toLowerCase().replace(/.exe$/, '').trim())
+        .filter(Boolean)
+    ));
+    setEngineExcludedApps(next);
+    window.electronAPI?.updateEngineExcludedApps(next);
+    window.electronAPI?.saveConfig({ engineExcludedApps: next });
+  }, []);
+
   // Save one correct word with its full misspelling list. Storage is flat
   // (one GLOBAL::AUTOCORRECT::<typo> key per misspelling); typos dropped from
   // the list since the last save are deleted.
@@ -5979,6 +6001,7 @@ function App() {
       physicalKeyboardLayout,
       resolvedPhysicalLayout,
       expansionExcludedApps,
+      engineExcludedApps,
       globalInputMethod,
       macroSpeed,
       keystrokeDelay,
@@ -6015,6 +6038,7 @@ function App() {
       importConfig: handleImportConfig,
       restoreBackup: handleRestoreBackup,
       updateExpansionExcludedApps: handleUpdateExpansionExcludedApps,
+      updateEngineExcludedApps: handleUpdateEngineExcludedApps,
       updateGlobalSettings: handleUpdateGlobalSettings,
       updateSearchSettings: handleUpdateSearchSettings,
       setPauseKey: handleSetPauseKey,
@@ -6049,7 +6073,7 @@ function App() {
     emitEvent('settings-state', settingsStateRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    macrosEnabledOnStartup, expansionExcludedApps, globalInputMethod,
+    macrosEnabledOnStartup, expansionExcludedApps, engineExcludedApps, globalInputMethod,
     macroSpeed, keystrokeDelay, macroTriggerDelay, doubleTapWindow,
     holdThresholdMs, fireOnPress, defaultDateFormat, searchOverlayHotkey, searchOverlayEnabled,
     overlayShowAll, overlayCloseAfterFiring, overlayIncludeAutocorrect,
