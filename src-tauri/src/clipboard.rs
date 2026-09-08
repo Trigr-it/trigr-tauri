@@ -1370,11 +1370,63 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                 for _dropped in rx { /* reply senders close → callers return defaults */ }
                 return;
             };
-            // Indexes for the list/filter paths (none existed). Idempotent.
-            let _ = conn.execute_batch(
-                "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(timestamp);
-                 CREATE INDEX IF NOT EXISTS idx_history_pinned_ts ON history(pinned, timestamp);",
-            );
+            // Indexes for the list/filter paths. Idempotent.
+            //
+            // v0.8.13: the two indexes added earlier targeted a table called
+            // `history`, which does not exist, so the CREATE failed silently
+            // and `clipboard_history` ran with NO indexes: every popup open
+            // and every panel refresh was a full table scan + temp sort. Worse
+            // than the scan itself, `pinned` / `starred` / `pinned_order` /
+            // `preview` / `thumb_blob` are declared AFTER `image_blob`, so
+            // reading any of them for a filter or sort walks that row's whole
+            // image overflow chain — the popup effectively re-read the entire
+            // database on every open (400 MB history = ~1 s on Rory's PC).
+            //
+            // `idx_ch_list` is a COVERING index for the list / count / bucket /
+            // app-filter / prune predicates: the WHERE + ORDER BY of the id
+            // pass in handle_get_history reference only these columns, so the
+            // planner scans the index (tens of bytes per row) instead of the
+            // table and never touches an image blob until the final page fetch
+            // by id. Leading `timestamp` also serves the retention range in
+            // handle_get_date_buckets and handle_prune.
+            //
+            // Building the index on an existing large history reads every row
+            // once (overflow walk included) — a one-time cost at the first
+            // start after upgrade, on this writer thread, logged with timing.
+            {
+                let started = std::time::Instant::now();
+                let had_index: bool = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_ch_list'",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map(|n| n > 0)
+                    .unwrap_or(false);
+                if let Err(e) = conn.execute_batch(
+                    "CREATE INDEX IF NOT EXISTS idx_ch_list ON clipboard_history(timestamp, pinned, starred, pinned_order, starred_order, source_app, content_tag);",
+                ) {
+                    error!("[Keyfire] Clipboard: index creation failed: {}", e);
+                } else if !had_index {
+                    info!(
+                        "[Keyfire] Clipboard: built list index idx_ch_list in {} ms",
+                        started.elapsed().as_millis()
+                    );
+                }
+                // Legacy pre-v0.1.27 rows stored "YYYY-MM-DD HH:MM:SS" (UTC);
+                // everything since is RFC3339 ("YYYY-MM-DDTHH:MM:SS.fff+00:00").
+                // order_by_clause now sorts on the raw column (no datetime()
+                // per row), which needs one format. Normalise the stragglers
+                // once; the NOT LIKE scan runs on the covering index.
+                match conn.execute(
+                    "UPDATE clipboard_history SET timestamp = strftime('%Y-%m-%dT%H:%M:%S+00:00', timestamp) WHERE timestamp NOT LIKE '%T%'",
+                    [],
+                ) {
+                    Ok(n) if n > 0 => info!("[Keyfire] Clipboard: normalised {} legacy timestamps to RFC3339", n),
+                    Ok(_) => {}
+                    Err(e) => error!("[Keyfire] Clipboard: legacy timestamp normalisation failed: {}", e),
+                }
+            }
 
             // Phase 3b (v0.5): clean up an expired plaintext backup from a prior
             // upgrade, then run the one-time migration of any remaining legacy
@@ -1588,6 +1640,13 @@ pub fn get_history(
             if let Ok(result) = reply_rx.recv_timeout(std::time::Duration::from_secs(5)) {
                 return result;
             }
+            // v0.8.13: a timeout used to come back as a plain empty list,
+            // indistinguishable from a genuinely empty history — the popup's
+            // forced wake pull then OVERWROTE a good pushed list with nothing
+            // (one candidate for the blank-popup report). Flag it so callers
+            // can leave what they have.
+            warn!("[Keyfire] Clipboard: get_history timed out waiting on the writer thread (page {}, {} rows)", page, per_page);
+            return serde_json::json!({ "items": [], "total": 0, "timed_out": true });
         }
     }
     serde_json::json!({ "items": [], "total": 0 })
@@ -2568,24 +2627,58 @@ fn handle_get_history(
     // their tier so unranked items fall back to id DESC ordering within tier.
     let order_clause = order_by_clause(promote_starred);
 
-    // LIST — same WHERE, then LIMIT/OFFSET appended after the toolbar binds.
-    // text_content/preview/ocr_text are bound as BLOB and resolved per-row by
-    // the helpers below: NON-NULL iv_* → decrypt; NULL iv_* → legacy plaintext.
-    let list_sql = format!(
-        "SELECT {} FROM clipboard_history WHERE {} ORDER BY {} LIMIT ? OFFSET ?",
-        HISTORY_LIST_COLUMNS, where_clause, order_clause
+    // LIST — two passes (v0.8.13), same shape as search_history's page fetch.
+    //
+    //   1. ids only: WHERE + ORDER BY + LIMIT/OFFSET reference just the
+    //      columns in idx_ch_list, so SQLite answers this from the covering
+    //      index and never reads a table row. Before this split the single
+    //      query pulled HISTORY_LIST_COLUMNS for EVERY row in the retention
+    //      window before sorting, and because preview / thumb_blob / pinned
+    //      sit after image_blob in the row layout that meant walking every
+    //      image's overflow pages — the whole DB per popup open.
+    //   2. full columns for just the page's ids, re-ordered by the same
+    //      clause. text_content/preview/ocr_text are bound as BLOB and
+    //      resolved per-row by the helpers below: NON-NULL iv_* → decrypt;
+    //      NULL iv_* → legacy plaintext.
+    let ids_sql = format!(
+        "SELECT id FROM clipboard_history WHERE {} ORDER BY {} LIMIT ? OFFSET ?",
+        where_clause, order_clause
     );
-    let mut list_binds: Vec<Box<dyn rusqlite::ToSql>> = where_binds;
-    list_binds.push(Box::new(per_page as i64));
-    list_binds.push(Box::new(offset as i64));
-    let list_refs: Vec<&dyn rusqlite::ToSql> = list_binds.iter().map(|p| p.as_ref()).collect();
-    let mut stmt = conn.prepare(&list_sql).unwrap();
+    let mut ids_binds: Vec<Box<dyn rusqlite::ToSql>> = where_binds;
+    ids_binds.push(Box::new(per_page as i64));
+    ids_binds.push(Box::new(offset as i64));
+    let ids_refs: Vec<&dyn rusqlite::ToSql> = ids_binds.iter().map(|p| p.as_ref()).collect();
+    let page_ids: Vec<i64> = match conn.prepare(&ids_sql) {
+        Ok(mut stmt) => stmt
+            .query_map(rusqlite::params_from_iter(ids_refs.iter()), |row| row.get::<_, i64>(0))
+            .map(|iter| iter.filter_map(|r| r.ok()).collect())
+            .unwrap_or_default(),
+        Err(e) => {
+            error!("[Keyfire] Clipboard: history id query prepare failed: {}", e);
+            Vec::new()
+        }
+    };
 
-    let items: Vec<Value> = stmt
-        .query_map(rusqlite::params_from_iter(list_refs.iter()), |row| history_row_to_json(row))
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect();
+    let items: Vec<Value> = if page_ids.is_empty() {
+        Vec::new()
+    } else {
+        // page_ids are i64s we produced ourselves — safe to inline.
+        let id_list = page_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let list_sql = format!(
+            "SELECT {} FROM clipboard_history WHERE id IN ({}) ORDER BY {}",
+            HISTORY_LIST_COLUMNS, id_list, order_clause
+        );
+        match conn.prepare(&list_sql) {
+            Ok(mut stmt) => stmt
+                .query_map([], |row| history_row_to_json(row))
+                .map(|iter| iter.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default(),
+            Err(e) => {
+                error!("[Keyfire] Clipboard: history page fetch prepare failed: {}", e);
+                Vec::new()
+            }
+        }
+    };
 
     serde_json::json!({ "items": items, "total": total })
 }
@@ -2663,15 +2756,21 @@ fn history_row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 /// pattern via COALESCE so unranked items fall to the bottom of their tier.
 ///   Main UI: saved items above pinned, then by tier-rank, then recency.
 ///   Popup: only pinned promote, by pinned_order, then recency.
-/// Recency = datetime(timestamp) DESC (promote-on-use rewrites timestamp, so
-/// last-used floats to the top like Win+V / Paste / Ditto), id DESC tiebreak.
-/// datetime() normalises the stored string — RFC3339 and any legacy
-/// "YYYY-MM-DD HH:MM:SS" rows compare correctly instead of lexically.
+/// Recency = timestamp DESC (promote-on-use rewrites timestamp, so last-used
+/// floats to the top like Win+V / Paste / Ditto), id DESC tiebreak.
+///
+/// v0.8.13: sorts on the RAW column. Every row is RFC3339 UTC
+/// ("YYYY-MM-DDTHH:MM:SS.fff+00:00", chrono to_rfc3339 since v0.1.27; the
+/// writer start normalises any older "YYYY-MM-DD HH:MM:SS" rows once), and
+/// for that shape lexical order == chronological order — including the
+/// variable-length fraction, because '+' sorts below every digit. The old
+/// `datetime(timestamp)` wrapper cost a parse per row in the window and
+/// stopped the sort key being served from idx_ch_list.
 fn order_by_clause(promote_starred: bool) -> &'static str {
     if promote_starred {
-        "starred DESC, pinned DESC, COALESCE(starred_order, 999999) ASC, COALESCE(pinned_order, 999999) ASC, datetime(timestamp) DESC, id DESC"
+        "starred DESC, pinned DESC, COALESCE(starred_order, 999999) ASC, COALESCE(pinned_order, 999999) ASC, timestamp DESC, id DESC"
     } else {
-        "pinned DESC, COALESCE(pinned_order, 999999) ASC, datetime(timestamp) DESC, id DESC"
+        "pinned DESC, COALESCE(pinned_order, 999999) ASC, timestamp DESC, id DESC"
     }
 }
 
@@ -3291,10 +3390,41 @@ fn handle_prune(conn: &Connection) {
         Ok(deleted) if deleted > 0 => {
             info!("[Keyfire] Pruned {} expired clipboard items", deleted);
             // Reclaim space — VACUUM rebuilds .db, wal_checkpoint(TRUNCATE) shrinks .db-wal.
-            // Both are skipped when nothing was deleted (common case — handle_prune runs
-            // after every new clipboard entry).
-            if let Err(e) = conn.execute("VACUUM", []) {
-                error!("[Keyfire] VACUUM after prune failed: {}", e);
+            // Skipped when nothing was deleted (common case).
+            //
+            // v0.8.13: VACUUM rewrites the WHOLE file and runs on this writer
+            // thread, with every popup / panel query queued behind it. On a
+            // full history the 10-minute prune expires a handful of rows each
+            // time, so users with a few hundred MB of images paid a multi-
+            // second rebuild every 10 minutes to reclaim a few hundred KB.
+            // Only rebuild once the reclaimable space is worth it (>= 10 % of
+            // the file or >= 32 MB); the checkpoint alone is cheap and always
+            // runs. Clear All (an explicit user action) still VACUUMs every
+            // time — see handle_clear_all.
+            let (page_size, page_count, freelist): (i64, i64, i64) = (
+                conn.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap_or(4096),
+                conn.query_row("PRAGMA page_count", [], |r| r.get(0)).unwrap_or(0),
+                conn.query_row("PRAGMA freelist_count", [], |r| r.get(0)).unwrap_or(0),
+            );
+            let free_bytes = freelist.saturating_mul(page_size);
+            let worth_it = page_count > 0
+                && (freelist * 10 >= page_count || free_bytes >= 32 * 1024 * 1024);
+            if worth_it {
+                let started = std::time::Instant::now();
+                if let Err(e) = conn.execute("VACUUM", []) {
+                    error!("[Keyfire] VACUUM after prune failed: {}", e);
+                } else {
+                    info!(
+                        "[Keyfire] Clipboard: VACUUM reclaimed ~{} MB in {} ms",
+                        free_bytes / (1024 * 1024),
+                        started.elapsed().as_millis()
+                    );
+                }
+            } else {
+                debug!(
+                    "[Keyfire] Clipboard: prune skipped VACUUM ({} free pages of {}, {} KB)",
+                    freelist, page_count, free_bytes / 1024
+                );
             }
             if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
                 error!("[Keyfire] WAL truncate after prune failed: {}", e);

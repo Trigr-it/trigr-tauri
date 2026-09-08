@@ -3722,6 +3722,13 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     let win_data = win.clone();
     std::thread::spawn(move || {
         let history = clipboard::get_history(1, 500, None, None, None, None, false);
+        // A writer-thread timeout is not an empty history: keep whatever the
+        // popup already shows rather than pushing a blank list (v0.8.13). The
+        // overlay's deferred wake pull retries on its own.
+        if history.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false) {
+            log::warn!("[Keyfire] clipboard overlay data push skipped: history fetch timed out");
+            return;
+        }
         let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
         let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
         let mut payload = history;
@@ -5452,6 +5459,12 @@ fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
     // Send history + theme BEFORE showing so the payload is ready when the
     // window becomes visible. Same pattern as show_clipboard_overlay.
     let history = clipboard::get_history(1, 500, None, None, None, None, false);
+    // Writer-thread timeout ≠ empty history: keep the popup's current list
+    // and let its deferred wake pull retry (v0.8.13, same as the main path).
+    let history_timed_out = history.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false);
+    if history_timed_out {
+        log::warn!("[Keyfire] clipboard overlay (fill-in) data push skipped: history fetch timed out");
+    }
     let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
     let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
     let mut payload = history;
@@ -5464,7 +5477,9 @@ fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
         // Clear search/selection on every show — the data event no longer
         // resets them (see ClipboardOverlay.jsx 'clipboard-overlay-reset').
         let _ = win.emit("clipboard-overlay-reset", serde_json::Value::Null);
-        let _ = win.emit("clipboard-overlay-data", payload);
+        if !history_timed_out {
+            let _ = win.emit("clipboard-overlay-data", payload);
+        }
 
         // Position like show_clipboard_overlay: center of active monitor,
         // 1/3 from top, clamped to work area. Physical units to dodge the

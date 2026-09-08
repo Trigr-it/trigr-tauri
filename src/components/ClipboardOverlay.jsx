@@ -164,8 +164,19 @@ export default function ClipboardOverlay() {
   // reset search/selection: with the NOACTIVATE hook-routing path the user
   // may already be typing into search while the fetch runs, and wiping the
   // box when the payload lands would eat their input.
+  // The wake handler below arms a deferred self-heal pull on every show; a
+  // push landing first cancels it so a normal open costs ONE history fetch
+  // on the clipboard writer thread instead of two (v0.8.13).
+  const wakePullTimer = useRef(null);
   useEffect(() => {
     window.electronAPI?.onClipboardOverlayData((data) => {
+      // Rust never pushes a timed-out payload, but guard anyway: a timeout is
+      // not an empty history and must not blank the list.
+      if (data?.timed_out) return;
+      if (wakePullTimer.current) {
+        clearTimeout(wakePullTimer.current);
+        wakePullTimer.current = null;
+      }
       const list = data?.items || [];
       setItems(list);
       if (data?.theme) setTheme(data.theme);
@@ -191,6 +202,10 @@ export default function ClipboardOverlay() {
   const selfHealPull = useCallback((force) => {
     window.electronAPI?.getClipboardHistory?.(1, 500)
       .then((data) => {
+        // A writer-thread timeout comes back flagged (v0.8.13). It is not an
+        // empty history: a forced pull used to overwrite a good pushed list
+        // with nothing here — one candidate for the blank-popup report.
+        if (data?.timed_out) return;
         const list = data?.items || [];
         setItems(prev => (force || prev.length === 0 ? list : prev));
       })
@@ -205,16 +220,30 @@ export default function ClipboardOverlay() {
   // Wake / park hook. webview_mem parks every hidden window with
   // SetIsVisible(false), so visibilityState is truthful here and this fires
   // hidden->visible on EVERY show (before v0.8.11 it fired only after a
-  // TrySuspend resume). The forced re-pull is idempotent and still covers the
-  // suspend/IPC-reconnect race that can drop the show path's reset + data
-  // emits. The hidden branch shrinks the mounted list back to one chunk.
+  // TrySuspend resume). The forced re-pull still covers the suspend/IPC-
+  // reconnect race that can drop the show path's reset + data emits, but it
+  // is DEFERRED (v0.8.13): Rust pushes the same 500-row page for every show
+  // and both requests queued on the single clipboard writer thread, each
+  // decrypting 500 previews + thumbnails. The pull now waits WAKE_PULL_MS and
+  // the push handler cancels it, so the pull only runs when the push was
+  // actually lost (or the writer is slow enough that a retry is welcome).
+  // The hidden branch shrinks the mounted list back to one chunk.
+  const WAKE_PULL_MS = 1200;
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== 'visible') {
         setRenderLimit(ROW_CHUNK);
+        if (wakePullTimer.current) {
+          clearTimeout(wakePullTimer.current);
+          wakePullTimer.current = null;
+        }
         return;
       }
-      selfHealPull(true);
+      if (wakePullTimer.current) clearTimeout(wakePullTimer.current);
+      wakePullTimer.current = setTimeout(() => {
+        wakePullTimer.current = null;
+        selfHealPull(true);
+      }, WAKE_PULL_MS);
       setSelectedIndex(0);
       setSearch('');
       setFilterTag('All');
