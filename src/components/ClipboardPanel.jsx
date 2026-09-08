@@ -558,7 +558,9 @@ export default function ClipboardPanel({ previewWidth = 480, onChangePreviewWidt
         promoteStarred: true,
       };
       const result = await window.electronAPI?.getClipboardHistory(p, PER_PAGE, filters);
-      if (result) {
+      // A writer-thread timeout comes back flagged (v0.8.13): not an empty
+      // history, so keep the current list rather than blanking it.
+      if (result && !result.timed_out) {
         setItems(prev => append ? [...prev, ...result.items] : result.items);
         setTotal(result.total);
         setPage(p);

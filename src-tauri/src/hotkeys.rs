@@ -708,6 +708,9 @@ pub fn on_session_locked() {
             w.clear();
         }
     }
+    // Keyups released on the secure desktop never reach the hook: drop the
+    // hook-side suppressed-while-held bits with the processor's held set.
+    reset_suppressed_down_keys();
     sync_modifier_state_from_os();
     info!("[Keyfire] Session locked — released held/repeating input state");
 }
@@ -1800,6 +1803,13 @@ unsafe extern "system" fn keyboard_hook_proc(
             let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
             let is_keydown = matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
             let is_keyup = matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP);
+            // A real keyup buffered here is replayed later WITH LLKHF_INJECTED,
+            // so the suppressed-while-held bit must be cleared now or it
+            // outlives the press (the next plain tap of that key would be
+            // swallowed as a "repeat"). Mirrors the clears in the branches below.
+            if is_keyup && (kb.flags & LLKHF_INJECTED) == 0 {
+                clear_suppressed_down(kb.vkCode);
+            }
             if is_keydown || is_keyup {
                 if let Ok(mut buf) = injection_buffer().try_lock() {
                     buf.push(BufferedKey { vk_code: kb.vkCode, scan_code: kb.scanCode, is_keydown });
