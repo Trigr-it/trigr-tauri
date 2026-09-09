@@ -1878,11 +1878,35 @@
   width: 100%;
 }
 
+/* One row, always: the text buttons (Change Press / Clear Action / Clear
+   Single) share the width, Duplicate + Delete are icon-only squares (also
+   used by the Quick Actions editor in SearchTemplatesPanel). Text buttons
+   never shrink below their label; the ellipsis is a last-resort guard for the
+   450px panel, not the expected state. Clear Action keeps its natural width
+   when it is the only button in the row (new quick action). */
 .footer-assignment-actions .btn-clear,
-.footer-assignment-actions .btn-duplicate,
-.footer-assignment-actions .btn-move {
-  flex: 1;
+.footer-assignment-actions .btn-move,
+.footer-assignment-actions:has(.btn-clear, .btn-move, .btn-duplicate) .btn-clear-action {
+  flex: 1 1 auto;
   min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footer-assignment-actions .btn-duplicate,
+.footer-assignment-actions .btn-delete {
+  flex: 0 0 36px;
+  width: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Delete sits at the far right whatever else is showing. */
+.footer-assignment-actions .btn-delete {
+  margin-left: auto;
 }
 
 .profile-action-group {

@@ -7,7 +7,7 @@ import './SearchTemplatesPanel.css';
 import { MacroSequenceForm, AppForm } from './MacroPanel';
 import MonitorPicker from './MonitorPicker';
 import { SearchBar } from './SearchBar';
-import { Zap } from 'lucide-react';
+import { Zap, Copy, Trash2 } from 'lucide-react';
 import { findPresetIconForUrl } from '../utils/presetIcons';
 import { readVoicePhrases, writeVoicePhrases } from '../voicePhrases';
 import { friendlyKeyName } from './keyboardLayout';
@@ -2493,13 +2493,15 @@ export default function SearchTemplatesPanel({
                         onClick={() => duplicateQuickAction(qaSelectedId)}
                         type="button"
                         title="Create a copy of this quick action"
-                      >Duplicate</button>
+                        aria-label="Duplicate"
+                      ><Copy size={15} strokeWidth={2} aria-hidden="true" /></button>
                       <button
                         className="btn-delete"
                         onClick={() => setQaConfirmAction('delete')}
                         type="button"
                         title="Delete this quick action"
-                      >Delete</button>
+                        aria-label="Delete"
+                      ><Trash2 size={15} strokeWidth={2} aria-hidden="true" /></button>
                     </>
                   )}
                 </div>

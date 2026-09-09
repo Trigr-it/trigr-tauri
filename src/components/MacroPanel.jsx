@@ -4468,9 +4468,18 @@ export default function MacroPanel({
     // labelByType / voicePhrases against whichever press mode the user was on.
     const justClearedMode = justClearedRef.current;
     justClearedRef.current = null;
-    if (justClearedMode) {
-      const activeRecord = justClearedMode === 'double' ? effectiveDouble
-        : justClearedMode === 'hold' ? effectiveHold
+    // Same key, clean form, and the record for the press mode the user is on
+    // still exists (they just hit Update Double-Tap / Update Hold, or a
+    // reload landed): stay on that mode. Without this the auto-switch below
+    // bounced Update Double-Tap back to the single-press editor whenever the
+    // key also had a single-press action.
+    const sameModeRecord = pressMode === 'double' ? effectiveDouble
+      : pressMode === 'hold' ? effectiveHold
+      : effectiveAssignment;
+    const preserveMode = justClearedMode || (sameKey && sameModeRecord ? pressMode : null);
+    if (preserveMode) {
+      const activeRecord = preserveMode === 'double' ? effectiveDouble
+        : preserveMode === 'hold' ? effectiveHold
         : effectiveAssignment;
       if (activeRecord) {
         seedForm(seedDrafts(activeRecord));
@@ -5575,7 +5584,8 @@ export default function MacroPanel({
                   onClick={() => setDuplicating(true)}
                   type="button"
                   title={libraryMode ? 'Duplicate this action onto a hotkey (keeps the unassigned original)' : 'Duplicate this macro to a different hotkey'}
-                >Duplicate</button>
+                  aria-label="Duplicate"
+                ><Copy size={15} strokeWidth={2} aria-hidden="true" /></button>
               )}
               {onDelete && (
                 <button
@@ -5583,7 +5593,8 @@ export default function MacroPanel({
                   onClick={() => setConfirmingAction('delete')}
                   type="button"
                   title={libraryMode ? 'Delete this action from Unassigned' : 'Delete the single, double-press and hold actions on this key'}
-                >Delete</button>
+                  aria-label="Delete"
+                ><Trash2 size={15} strokeWidth={2} aria-hidden="true" /></button>
               )}
             </div>
           );
