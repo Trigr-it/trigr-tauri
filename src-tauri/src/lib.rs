@@ -6583,6 +6583,218 @@ fn relaunch_profile_mode(name: String, app: tauri::AppHandle) {
 // ── App builder ──────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+// ── Startup: engine seed + boot retry (v0.8.14) ─────────────────────────────
+
+/// Seed the engine from the on-disk config BEFORE any WebView2 window exists.
+///
+/// Until v0.8.14 the engine came up empty and waited for the main window's
+/// React app to boot, call `load_config`, and push assignments, hotkeys and
+/// settings back over IPC. At PC logon that chain (WebView2 runtime start,
+/// six windows, bundle parse, config round trip) ran under disk and CPU
+/// contention from every other startup app, so the tray icon sat there for
+/// many seconds with no hotkey or expansion working — and if the main webview
+/// ever failed to load, nothing worked at all despite the process being
+/// alive. This mirrors App.jsx's startup push (same keys, same defaults) so
+/// the engine is live within milliseconds of process start; the frontend
+/// still pushes its canonical view once it loads, which overwrites this seed.
+/// Keep the two in step: a setting added to the App.jsx load path that the
+/// engine needs must be added here too. Voice pre-warm is deliberately left
+/// to the frontend push (WinRT init is slow and not needed for hotkeys).
+fn seed_engine_from_config(app: &tauri::AppHandle, cfg: &Value) {
+    use std::collections::HashMap;
+
+    // `config.key || default` — empty string falls back like JS.
+    let str_or = |key: &str, default: &str| -> String {
+        cfg.get(key)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| default.to_string())
+    };
+    let str_vec = |key: &str| -> Vec<String> {
+        cfg.get(key)
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default()
+    };
+    // A key that is ABSENT means "use the default"; an explicit null (or "")
+    // means the user cleared it. Same distinction App.jsx draws with
+    // `config.key === undefined`.
+    let hotkey_or = |key: &str, default: &str| -> Option<String> {
+        match cfg.get(key) {
+            None => Some(default.to_string()),
+            Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        }
+    };
+    let obj_map = |key: &str| -> HashMap<String, Value> {
+        cfg.get(key)
+            .and_then(|v| v.as_object())
+            .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default()
+    };
+
+    // Assignments, with the same one-time key migration the frontend applies
+    // (Profile::EXPANSION::trigger → GLOBAL::EXPANSION::trigger). The frontend
+    // re-saves the migrated shape; this copy is engine-only.
+    let mut map = obj_map("assignments");
+    let legacy: Vec<String> = map
+        .keys()
+        .filter(|k| !k.starts_with("GLOBAL::") && k.contains("::EXPANSION::"))
+        .cloned()
+        .collect();
+    for key in legacy {
+        if let Some(trigger) = key.splitn(2, "::EXPANSION::").nth(1) {
+            let global_key = format!("GLOBAL::EXPANSION::{}", trigger);
+            if let Some(v) = map.remove(&key) {
+                map.entry(global_key).or_insert(v);
+            }
+        }
+    }
+    let profile = str_or("activeGlobalProfile", "Default");
+    let n_assignments = map.len();
+    hotkeys::update_assignments(map.clone(), profile.clone());
+    expansions::update_assignments(map);
+
+    let profile_settings = obj_map("profileSettings");
+    hotkeys::update_profile_settings(profile_settings.clone());
+    foreground::update_profile_settings(profile_settings);
+    foreground::set_active_global_profile(profile.clone());
+    hotkeys::set_active_profile(profile.clone());
+
+    hotkeys::update_global_settings(&serde_json::json!({
+        "globalInputMethod": str_or("globalInputMethod", "direct"),
+        "macroSpeed":        str_or("macroSpeed", "safe"),
+        "keystrokeDelay":    cfg.get("keystrokeDelay").and_then(|v| v.as_u64()).unwrap_or(10),
+        "macroTriggerDelay": cfg.get("macroTriggerDelay").and_then(|v| v.as_u64()).unwrap_or(10),
+        "doubleTapWindow":   cfg.get("doubleTapWindow").and_then(|v| v.as_u64()).unwrap_or(300),
+        "holdThresholdMs":   cfg.get("holdThresholdMs").and_then(|v| v.as_u64()).unwrap_or(350),
+        "fireOnPress":       cfg.get("fireOnPress").and_then(|v| v.as_bool()).unwrap_or(false),
+        "defaultDateFormat": str_or("defaultDateFormat", "DD/MM/YYYY"),
+    }));
+
+    // Autocorrect: config keys are `autocorrect<Field>`, the settings struct
+    // is camelCase without the prefix and defaults every missing field.
+    {
+        let bools = [
+            ("autocorrectEnabled", "enabled"),
+            ("autocorrectBuiltinTypos", "builtinTypos"),
+            ("autocorrectExtendedTypos", "extendedTypos"),
+            ("autocorrectDays", "days"),
+            ("autocorrectSymbols", "symbols"),
+            ("autocorrectEmojis", "emojis"),
+            ("autocorrectDoubleCaps", "doubleCaps"),
+            ("autocorrectCapsLockFix", "capsLockFix"),
+            ("autocorrectSentenceCaps", "sentenceCaps"),
+        ];
+        let lists = [
+            ("autocorrectDoubleCapsExceptions", "doubleCapsExceptions"),
+            ("autocorrectExcludedApps", "excludedApps"),
+            ("autocorrectDisabledEntries", "disabledEntries"),
+        ];
+        let mut ac = serde_json::Map::new();
+        for (cfg_key, field) in bools {
+            if let Some(b) = cfg.get(cfg_key).and_then(|v| v.as_bool()) {
+                ac.insert(field.to_string(), Value::Bool(b));
+            }
+        }
+        for (cfg_key, field) in lists {
+            if let Some(a) = cfg.get(cfg_key).filter(|v| v.is_array()) {
+                ac.insert(field.to_string(), a.clone());
+            }
+        }
+        match serde_json::from_value::<expansions::AutocorrectSettings>(Value::Object(ac)) {
+            Ok(settings) => expansions::set_autocorrect_settings(settings),
+            Err(e) => log::warn!("[Keyfire] Startup seed: autocorrect settings skipped ({})", e),
+        }
+    }
+
+    expansions::set_expansion_excluded_apps(str_vec("expansionExcludedApps"));
+    foreground::set_excluded_apps(str_vec("engineExcludedApps"), app);
+    clipboard::set_capture_enabled(cfg.get("clipboardCaptureEnabled").and_then(|v| v.as_bool()).unwrap_or(true));
+    clipboard::set_excluded_apps(str_vec("clipboardExcludedApps"));
+
+    update_search_settings(serde_json::json!({
+        "searchOverlayEnabled": cfg.get("searchOverlayEnabled").and_then(|v| v.as_bool()).unwrap_or(true),
+        "searchOverlayHotkey":  str_or("searchOverlayHotkey", "Ctrl+Space"),
+    }));
+    match hotkey_or("clipboardPasteHotkey", "Ctrl+Shift+V") {
+        Some(combo) => hotkeys::set_clipboard_paste_hotkey(&combo),
+        None => hotkeys::clear_clipboard_paste_hotkey(),
+    }
+    if let Some(combo) = hotkey_or("globalPauseToggleKey", "Ctrl+Alt+Q") {
+        hotkeys::set_pause_hotkey(&combo);
+    }
+    let voice_enabled = cfg.get("voiceEnabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    match cfg.get("voiceHotkey").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        Some(combo) if voice_enabled => hotkeys::set_voice_hotkey(combo),
+        _ => hotkeys::clear_voice_hotkey(),
+    }
+    if let Some(combo) = hotkey_or("radialMenuHotkey", "Ctrl+Shift+Space") {
+        hotkeys::set_radial_menu_hotkey(&combo);
+    }
+    if let Some(vars) = cfg.get("globalVariables").and_then(|v| v.as_object()) {
+        update_global_variables(vars.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
+    }
+
+    log::info!(
+        "[Keyfire] Engine seeded from config before UI: {} assignments, profile '{}'",
+        n_assignments,
+        profile
+    );
+}
+
+/// `--startup-retry=N` on the command line: this process is retry N of a boot
+/// that failed (see `startup_failed`).
+fn startup_retry_attempt() -> Option<u64> {
+    std::env::args().find_map(|a| a.strip_prefix("--startup-retry=").and_then(|n| n.parse().ok()))
+}
+
+/// The Tauri app could not be built (main window / WebView2 / plugin / setup
+/// error). Until v0.8.14 this was `.expect(...)`: a silent exit with nothing
+/// in the tray and, for a --autolaunch start, no second chance until the next
+/// reboot. The usual cause at logon is transient (WebView2 runtime mid-update
+/// or not yet responsive, Explorer still building the shell), so an autolaunch
+/// re-execs itself up to three times with a growing delay (the child sleeps
+/// before touching the single-instance mutex, see `run`); a manual launch or
+/// an exhausted retry shows the error instead of vanishing.
+fn startup_failed(err: &str) {
+    log::error!("[Keyfire] Startup failed: {}", err);
+    let attempt = startup_retry_attempt().unwrap_or(0);
+    if tray::is_autolaunch() && attempt < 3 {
+        if let Ok(exe) = std::env::current_exe() {
+            let next = attempt + 1;
+            let args: Vec<String> = std::env::args()
+                .skip(1)
+                .filter(|a| !a.starts_with("--startup-retry="))
+                .collect();
+            match std::process::Command::new(&exe)
+                .args(&args)
+                .arg(format!("--startup-retry={}", next))
+                .spawn()
+            {
+                Ok(_) => {
+                    log::info!("[Keyfire] Startup retry {} of 3 scheduled in {} s", next, 15 * next);
+                    return;
+                }
+                Err(e) => log::error!("[Keyfire] Could not schedule a startup retry: {}", e),
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK};
+        actions::prompt_on_active_monitor(
+            "Keyfire could not start",
+            &format!(
+                "Keyfire could not start.\n\n{}\n\nCheck that the Microsoft Edge WebView2 Runtime is installed and up to date, then start Keyfire again. Details are in the log under AppData\\Local\\com.nodescaffold.trigr\\logs.",
+                err
+            ),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+}
+
 pub fn run() {
     // Panics anywhere (macro thread, expansion thread, processor) used to go
     // to stderr only, which nobody sees in a tray app. Log them so a "hotkeys
@@ -6602,6 +6814,12 @@ pub fn run() {
         };
         log::error!("[PANIC] thread '{}' at {}: {}", std::thread::current().name().unwrap_or("?"), location, msg);
     }));
+    // Boot retry (see startup_failed): a relaunched copy waits before it
+    // touches the single-instance mutex or WebView2, so the failed parent has
+    // exited and whatever was not ready at logon has had time to settle.
+    if let Some(attempt) = startup_retry_attempt().filter(|n| *n > 0) {
+        std::thread::sleep(std::time::Duration::from_secs(15 * attempt.min(3)));
+    }
     // Dev builds only: expose the WebView2 remote-debugging port so
     // scripts/cdp-mem.mjs can attribute renderer memory per page, and append
     // any experiment flags from src-tauri/dev-browser-args.txt (gitignored;
@@ -6629,7 +6847,7 @@ pub fn run() {
         std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", &extra);
         let _ = DEV_EXTRA_BROWSER_ARGS.set(extra);
     }
-    tauri::Builder::default()
+    let built = tauri::Builder::default()
         // Single-instance lock — second launches focus the existing main
         // window and exit immediately. Prevents the WebView2 shared-runtime
         // blank-window bug (one instance killed via Task Manager would tear
@@ -6704,7 +6922,13 @@ pub fn run() {
 
             // One-time migration: recalculate time_saved for old analytics entries
             // using the current assignments to determine actual action types.
-            if let Some(cfg) = config::load_config() {
+            // One read of the config for everything setup needs (analytics
+            // migration, Quick Record hotkeys, engine seed). Same resilient
+            // loader the frontend's load_config command uses (main → LKG →
+            // backups), read-only here: the frontend still owns the rewrite
+            // when a backup was used.
+            let boot_cfg = config::load_config_safe().0;
+            if let Some(cfg) = boot_cfg.as_ref() {
                 if let Some(assignments) = cfg.get("assignments").and_then(|v| v.as_object()) {
                     let map: std::collections::HashMap<String, serde_json::Value> =
                         assignments.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -6794,202 +7018,34 @@ pub fn run() {
                 }
             }
 
-            // Set up system tray
+            // Set up system tray — the first thing the user can see. Cheap now
+            // that Start-with-Windows state is a registry read, not a reg.exe
+            // spawn.
             if let Err(e) = tray::setup_tray(app) {
                 log::error!("[Keyfire] Failed to create tray: {}", e);
             }
 
-            // Pre-create overlay window hidden — prevents frozen first launch
-            let overlay_url = tauri::WebviewUrl::App("index.html?overlay=1".into());
-            let overlay_win = tauri::WebviewWindowBuilder::new(app, "overlay", overlay_url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire Quick Search")
-                .inner_size(620.0, 103.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .shadow(false)
-                .build()?;
-
-            // Set WebView2 default background to transparent via COM interface.
-            // Tauri's transparent(true) + CSS background: transparent is not enough —
-            // WebView2 renders a solid background unless SetDefaultBackgroundColor is called.
-            #[cfg(target_os = "windows")]
-            {
-                let _ = overlay_win.with_webview(|webview| {
-                    unsafe {
-                        use webview2_com::Microsoft::Web::WebView2::Win32::{
-                            ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
-                        };
-                        use windows_core::Interface;
-                        let controller = webview.controller();
-                        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-                            let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                                R: 0, G: 0, B: 0, A: 0,
-                            });
-                        }
-                    }
-                });
+            // Engine before UI (v0.8.14). Seed the engine from the config on
+            // disk and install the LL hooks BEFORE any WebView2 window is
+            // built. The frontend re-pushes its canonical state once the main
+            // window's React app has loaded; until then this seed is what
+            // makes hotkeys, expansions and the popup hotkeys work — at PC
+            // logon that used to be many seconds after the tray appeared.
+            if let Some(cfg) = boot_cfg.as_ref() {
+                seed_engine_from_config(app.handle(), cfg);
             }
-
-            // FILL-IN WINDOW — transparent(true) + WebView2 COM fix required
-            // See FillInWindow.jsx for full sizing documentation
-            // DO NOT remove transparent(true) or the with_webview COM block —
-            // both are required to prevent a visible background box around the panel.
-            let fillin_url = tauri::WebviewUrl::App("index.html?fillin=1".into());
-            let fillin_win = tauri::WebviewWindowBuilder::new(app, "fillin", fillin_url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire — Fill In")
-                .inner_size(420.0, 300.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .shadow(false)
-                .center()
-                .build()?;
-
-            // Set WebView2 transparent background for fill-in window (async — avoid blocking startup)
-            #[cfg(target_os = "windows")]
-            {
-                std::thread::spawn(move || {
-                    let _ = fillin_win.with_webview(|webview| {
-                        unsafe {
-                            use webview2_com::Microsoft::Web::WebView2::Win32::{
-                                ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
-                            };
-                            use windows_core::Interface;
-                            let controller = webview.controller();
-                            if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-                                let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                                    R: 0, G: 0, B: 0, A: 0,
-                                });
-                            }
-                        }
-                    });
-                });
-            }
-
-            // Pre-create clipboard overlay window hidden
-            let clipoverlay_url = tauri::WebviewUrl::App("index.html?clipboardoverlay=1".into());
-            let clipoverlay_win = tauri::WebviewWindowBuilder::new(app, "clipboardoverlay", clipoverlay_url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire Clipboard")
-                .inner_size(400.0, 300.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .shadow(false)
-                .build()?;
-
-            #[cfg(target_os = "windows")]
-            {
-                let _ = clipoverlay_win.with_webview(|webview| {
-                    unsafe {
-                        use webview2_com::Microsoft::Web::WebView2::Win32::{
-                            ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
-                        };
-                        use windows_core::Interface;
-                        let controller = webview.controller();
-                        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-                            let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                                R: 0, G: 0, B: 0, A: 0,
-                            });
-                        }
-                    }
-                });
-            }
-            // Apply WS_EX_NOACTIVATE so the overlay never steals focus from the
-            // active app when shown. Keyboard input is routed via the LL hook instead.
-            #[cfg(target_os = "windows")]
-            if let Ok(hwnd) = clipoverlay_win.hwnd() {
-                unsafe {
-                    use windows_sys::Win32::UI::WindowsAndMessaging::{
-                        GetWindowLongW, SetWindowLongW,
-                    };
-                    const GWL_EXSTYLE: i32 = -20;
-                    const WS_EX_NOACTIVATE: u32 = 0x08000000;
-                    let ex = GetWindowLongW(hwnd.0 as _, GWL_EXSTYLE) as u32;
-                    SetWindowLongW(hwnd.0 as _, GWL_EXSTYLE, (ex | WS_EX_NOACTIVATE) as i32);
-                }
-            }
-
-            // Suppress unused variable warning
-            let _ = &clipoverlay_win;
-
-            // Pre-create radial menu window hidden
-            let radial_url = tauri::WebviewUrl::App("index.html?radialmenu=1".into());
-            let radial_win = tauri::WebviewWindowBuilder::new(app, "radialmenu", radial_url)
-                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
-                .title("Keyfire Radial Menu")
-                .inner_size(525.0, 525.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .shadow(false)
-                .build()?;
-
-            #[cfg(target_os = "windows")]
-            {
-                let _ = radial_win.with_webview(|webview| {
-                    unsafe {
-                        use webview2_com::Microsoft::Web::WebView2::Win32::{
-                            ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
-                        };
-                        use windows_core::Interface;
-                        let controller = webview.controller();
-                        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-                            let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                                R: 0, G: 0, B: 0, A: 0,
-                            });
-                        }
-                    }
-                });
-            }
-            let _ = &radial_win;
-
-            // Pre-create recorder countdown window hidden. Same pattern as
-            // fillin / clipboard / radial overlays. NOTE: every window is its
-            // own renderer process unless WEBVIEW_BROWSER_ARGS folds them (it
-            // does, via --process-per-site); webview_mem also suspends it after
-            // 5min idle. On-demand creation was attempted but proved
-            // unreliable (destroy/rebuild race made the modal silently fail
-            // to appear, leaving main hidden and the flow stuck).
-            // Builder lives in `build_hidden_window` — shared with the
-            // show_recorder_bar rebuild path and the dev cold-create probe.
-            let _ = build_hidden_window(app.handle(), "countdown")?;
-
-            // The drag-select snip overlay is NOT pre-created: it is built on
-            // demand by show_snip_overlay and destroyed on hide (RAM wave 2,
-            // see that function). Reused by any macro step that needs the
-            // user to pick a screen rect (Wait for Text today, future Wait
-            // for Image / template capture) — do not put step-specific logic
-            // in the overlay itself.
-
-            // Pre-create the Settings window hidden. Unlike the overlays it is
-            // an ordinary opaque window (no transparency, no NOACTIVATE, has a
-            // taskbar entry) — undecorated so SettingsWindow.jsx can draw the
-            // app-style titlebar with a drag region. Never destroyed: the
-            // CloseRequested handler hides it instead.
-            let _ = build_hidden_window(app.handle(), "settings")?;
-
             // Store app handle for fill-in IPC from the expansion engine
             expansions::init_app_handle(app.handle().clone());
-
+            // Esc-cancel clock: first use must not be inside the LL hook.
+            actions::init_cancel_clock();
             // Start global input hooks on dedicated high-priority thread
             hotkeys::start_hooks(app.handle().clone());
+            // Start foreground watcher for app-specific profile switching
+            foreground::start_watcher(app.handle().clone());
 
+            // Hotkey → window listeners. Registered before the windows exist
+            // so a press during window creation is not dropped; every show
+            // path looks its window up by label and no-ops until it is built.
             // Listen for overlay toggle from the hotkey system
             let app_handle = app.handle().clone();
             app.listen("toggle-overlay", move |_| {
@@ -7087,15 +7143,199 @@ pub fn run() {
                 }
             });
 
-            // Start foreground watcher for app-specific profile switching
-            foreground::start_watcher(app.handle().clone());
+
+            // Pre-create the secondary windows hidden — prevents a frozen first
+            // show. Each build is logged-and-skipped on failure rather than
+            // aborting startup: every show path looks its window up by label
+            // (`get_webview_window` → None = no-op), so a WebView2 hiccup on
+            // one overlay at logon must not take the tray, hooks and
+            // expansions down with it. The main window (tauri.conf.json) is
+            // the only one whose failure is fatal — see startup_failed().
+            fn log_window_build(
+                label: &str,
+                built: tauri::Result<tauri::WebviewWindow>,
+            ) -> Option<tauri::WebviewWindow> {
+                match built {
+                    Ok(w) => Some(w),
+                    Err(e) => {
+                        log::error!(
+                            "[Keyfire] Could not pre-create the '{}' window: {} — continuing without it",
+                            label,
+                            e
+                        );
+                        None
+                    }
+                }
+            }
+            // Tauri's transparent(true) + CSS background: transparent is not
+            // enough — WebView2 renders a solid background unless
+            // SetDefaultBackgroundColor is called on the controller.
+            #[cfg(target_os = "windows")]
+            fn make_webview_transparent(win: &tauri::WebviewWindow) {
+                let _ = win.with_webview(|webview| unsafe {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::{
+                        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+                    };
+                    use windows_core::Interface;
+                    let controller = webview.controller();
+                    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                        let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                            R: 0, G: 0, B: 0, A: 0,
+                        });
+                    }
+                });
+            }
+
+            // Quick Search overlay
+            let overlay_win = log_window_build(
+                "overlay",
+                tauri::WebviewWindowBuilder::new(
+                    app,
+                    "overlay",
+                    tauri::WebviewUrl::App("index.html?overlay=1".into()),
+                )
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
+                .title("Keyfire Quick Search")
+                .inner_size(620.0, 103.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build(),
+            );
+            let _ = &overlay_win;
+            #[cfg(target_os = "windows")]
+            if let Some(w) = &overlay_win {
+                make_webview_transparent(w);
+            }
+
+            // FILL-IN WINDOW — transparent(true) + WebView2 COM fix required
+            // See FillInWindow.jsx for full sizing documentation
+            // DO NOT remove transparent(true) or the with_webview COM block —
+            // both are required to prevent a visible background box around the panel.
+            let fillin_win = log_window_build(
+                "fillin",
+                tauri::WebviewWindowBuilder::new(
+                    app,
+                    "fillin",
+                    tauri::WebviewUrl::App("index.html?fillin=1".into()),
+                )
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
+                .title("Keyfire — Fill In")
+                .inner_size(420.0, 300.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .center()
+                .build(),
+            );
+            let _ = &fillin_win;
+            // Set WebView2 transparent background for fill-in window (async — avoid blocking startup)
+            #[cfg(target_os = "windows")]
+            if let Some(fillin_win) = fillin_win {
+                std::thread::spawn(move || make_webview_transparent(&fillin_win));
+            }
+
+            // Clipboard popup
+            let clipoverlay_win = log_window_build(
+                "clipboardoverlay",
+                tauri::WebviewWindowBuilder::new(
+                    app,
+                    "clipboardoverlay",
+                    tauri::WebviewUrl::App("index.html?clipboardoverlay=1".into()),
+                )
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
+                .title("Keyfire Clipboard")
+                .inner_size(400.0, 300.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build(),
+            );
+            let _ = &clipoverlay_win;
+            #[cfg(target_os = "windows")]
+            if let Some(w) = &clipoverlay_win {
+                make_webview_transparent(w);
+                // Apply WS_EX_NOACTIVATE so the overlay never steals focus from the
+                // active app when shown. Keyboard input is routed via the LL hook instead.
+                if let Ok(hwnd) = w.hwnd() {
+                    unsafe {
+                        use windows_sys::Win32::UI::WindowsAndMessaging::{
+                            GetWindowLongW, SetWindowLongW,
+                        };
+                        const GWL_EXSTYLE: i32 = -20;
+                        const WS_EX_NOACTIVATE: u32 = 0x08000000;
+                        let ex = GetWindowLongW(hwnd.0 as _, GWL_EXSTYLE) as u32;
+                        SetWindowLongW(hwnd.0 as _, GWL_EXSTYLE, (ex | WS_EX_NOACTIVATE) as i32);
+                    }
+                }
+            }
+
+            // Radial menu
+            let radial_win = log_window_build(
+                "radialmenu",
+                tauri::WebviewWindowBuilder::new(
+                    app,
+                    "radialmenu",
+                    tauri::WebviewUrl::App("index.html?radialmenu=1".into()),
+                )
+                .additional_browser_args(WEBVIEW_BROWSER_ARGS)
+                .title("Keyfire Radial Menu")
+                .inner_size(525.0, 525.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .shadow(false)
+                .build(),
+            );
+            let _ = &radial_win;
+            #[cfg(target_os = "windows")]
+            if let Some(w) = &radial_win {
+                make_webview_transparent(w);
+            }
+
+            // Recorder countdown window. Same pattern as the overlays. NOTE:
+            // every window is its own renderer process unless
+            // WEBVIEW_BROWSER_ARGS folds them (it does, via
+            // --process-per-site); webview_mem also suspends it after 5 min
+            // idle. On-demand creation was attempted but proved unreliable
+            // (destroy/rebuild race made the modal silently fail to appear,
+            // leaving main hidden and the flow stuck). Builder lives in
+            // `build_hidden_window` — shared with the show_recorder_bar
+            // rebuild path and the dev cold-create probe.
+            let _ = log_window_build("countdown", build_hidden_window(app.handle(), "countdown"));
+
+            // The drag-select snip overlay is NOT pre-created: it is built on
+            // demand by show_snip_overlay and destroyed on hide (RAM wave 2,
+            // see that function). Reused by any macro step that needs the
+            // user to pick a screen rect (Wait for Text today, future Wait
+            // for Image / template capture) — do not put step-specific logic
+            // in the overlay itself.
+
+            // Settings window. Unlike the overlays it is an ordinary opaque
+            // window (no transparency, no NOACTIVATE, has a taskbar entry) —
+            // undecorated so SettingsWindow.jsx can draw the app-style
+            // titlebar with a drag region. Never destroyed: the CloseRequested
+            // handler hides it instead.
+            let _ = log_window_build("settings", build_hidden_window(app.handle(), "settings"));
 
             // Park hidden windows (release their rendering resources) and
             // suspend long-idle overlays. See webview_mem.rs.
             webview_mem::start(app.handle().clone());
-
-            // Esc-cancel clock: first use must not be inside the LL hook.
-            actions::init_cancel_clock();
 
             // Autolaunch: if --autolaunch flag, keep window hidden (tray only)
             // Normal launch: show window
@@ -7418,9 +7658,15 @@ pub fn run() {
             relaunch_demo_mode,
             relaunch_profile_mode,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app_handle, event| {
+        .build(tauri::generate_context!());
+    let app = match built {
+        Ok(app) => app,
+        Err(e) => {
+            startup_failed(&e.to_string());
+            return;
+        }
+    };
+    app.run(|app_handle, event| {
             // Best-effort demo-data wipe on any exit path (tray Quit, exit-demo
             // relaunch, app.exit anywhere). The DB writer threads may still
             // hold the demo .db files open at this point — a partial delete is

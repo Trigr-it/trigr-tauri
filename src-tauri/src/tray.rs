@@ -1,6 +1,4 @@
-use log::info;
-use std::os::windows::process::CommandExt;
-use std::process::Command;
+use log::{error, info};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tauri::{
@@ -455,27 +453,186 @@ fn toggle_pause(app: &AppHandle) {
 }
 
 // ── Start with Windows (registry) ───────────────────────────────────────────
+//
+// Direct Win32 registry calls. Until v0.8.14 this shelled out to `reg.exe`
+// three times per boot (tray menu state, the heal, and again per toggle); at
+// logon each process spawn costs hundreds of milliseconds under AV and disk
+// contention and ran on the main thread before the tray icon existed. The
+// Win32 calls take microseconds and cannot fail on a broken PATH.
+//
+// Two per-user keys are involved:
+//   Run             — the autostart entry Explorer launches at logon.
+//   StartupApproved — where Task Manager and Settings > Apps > Startup record
+//                     the user's enable/disable choice for a Run entry (first
+//                     byte 0x02 = enabled, 0x03 = disabled; the Run entry
+//                     stays either way). Reading only Run made Keyfire's
+//                     toggle say ON while Windows had the entry disabled, so
+//                     "Start with Windows" looked on but never started.
+//
+// The machine-local intent (`config::get_start_with_windows`) is the third
+// leg: `heal_startup_registration` restores a Run entry that has gone missing
+// while the intent is still ON, and never adds one the user did not ask for.
 
-const REG_RUN: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const RUN_SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+const APPROVED_SUBKEY: &str =
+    r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 // Registry value name stays "Trigr" across the rebrand to preserve existing
 // users' "Start with Windows" setting (the registry value name is invisible
 // to users; renaming it would orphan their existing entry and make the
 // setting appear OFF after update).
 const REG_NAME: &str = "Trigr";
 
-fn get_startup_enabled_sync() -> bool {
-    let output = Command::new("reg")
-        .args(["query", REG_RUN, "/v", REG_NAME])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output();
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
 
-    match output {
-        Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            stdout.contains(REG_NAME)
+/// Read one HKCU value. `None` = key or value absent (or unreadable).
+fn reg_read(subkey: &str, name: &str) -> Option<(u32, Vec<u8>)> {
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE,
+    };
+    unsafe {
+        let mut hkey: HKEY = std::ptr::null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, wide(subkey).as_ptr(), 0, KEY_QUERY_VALUE, &mut hkey) != 0 {
+            return None;
         }
-        Err(_) => false,
+        let name_w = wide(name);
+        let mut ty: u32 = 0;
+        let mut size: u32 = 0;
+        let s1 = RegQueryValueExW(
+            hkey,
+            name_w.as_ptr(),
+            std::ptr::null_mut(),
+            &mut ty,
+            std::ptr::null_mut(),
+            &mut size,
+        );
+        if s1 != 0 {
+            RegCloseKey(hkey);
+            return None;
+        }
+        let mut buf = vec![0u8; size as usize];
+        let s2 = RegQueryValueExW(
+            hkey,
+            name_w.as_ptr(),
+            std::ptr::null_mut(),
+            &mut ty,
+            buf.as_mut_ptr(),
+            &mut size,
+        );
+        RegCloseKey(hkey);
+        if s2 != 0 {
+            return None;
+        }
+        buf.truncate(size as usize);
+        Some((ty, buf))
     }
+}
+
+/// Write one HKCU value, creating the key if needed.
+fn reg_write(subkey: &str, name: &str, ty: u32, data: &[u8]) -> bool {
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
+        REG_OPTION_NON_VOLATILE,
+    };
+    unsafe {
+        let mut hkey: HKEY = std::ptr::null_mut();
+        let status = RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            wide(subkey).as_ptr(),
+            0,
+            std::ptr::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            std::ptr::null(),
+            &mut hkey,
+            std::ptr::null_mut(),
+        );
+        if status != 0 {
+            return false;
+        }
+        let ok = RegSetValueExW(hkey, wide(name).as_ptr(), 0, ty, data.as_ptr(), data.len() as u32) == 0;
+        RegCloseKey(hkey);
+        ok
+    }
+}
+
+/// Delete one HKCU value. Absent counts as success.
+fn reg_delete(subkey: &str, name: &str) -> bool {
+    use windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegDeleteValueW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
+    };
+    unsafe {
+        let mut hkey: HKEY = std::ptr::null_mut();
+        let open = RegOpenKeyExW(HKEY_CURRENT_USER, wide(subkey).as_ptr(), 0, KEY_SET_VALUE, &mut hkey);
+        if open == ERROR_FILE_NOT_FOUND {
+            return true;
+        }
+        if open != 0 {
+            return false;
+        }
+        let status = RegDeleteValueW(hkey, wide(name).as_ptr());
+        RegCloseKey(hkey);
+        status == 0 || status == ERROR_FILE_NOT_FOUND
+    }
+}
+
+/// Current data of the Run entry, trimmed. `None` = no entry.
+fn read_run_value() -> Option<String> {
+    use windows_sys::Win32::System::Registry::{REG_EXPAND_SZ, REG_SZ};
+    let (ty, data) = reg_read(RUN_SUBKEY, REG_NAME)?;
+    if ty != REG_SZ && ty != REG_EXPAND_SZ {
+        return None;
+    }
+    let units: Vec<u16> = data
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    Some(String::from_utf16_lossy(&units).trim_end_matches('\0').trim().to_string())
+}
+
+/// True when Task Manager / Settings > Apps > Startup has the entry disabled.
+/// Absent value = enabled (Windows only writes it once the user has toggled).
+fn windows_disabled_at_startup() -> bool {
+    use windows_sys::Win32::System::Registry::REG_BINARY;
+    match reg_read(APPROVED_SUBKEY, REG_NAME) {
+        Some((ty, data)) if ty == REG_BINARY && !data.is_empty() => data[0] & 1 == 1,
+        _ => false,
+    }
+}
+
+/// `"C:\...\keyfire.exe" --autolaunch` for the running binary.
+fn expected_run_value() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    Some(format!("\"{}\" --autolaunch", exe.to_string_lossy()))
+}
+
+fn write_run_entry(value: &str) -> bool {
+    use windows_sys::Win32::System::Registry::REG_SZ;
+    let data: Vec<u8> = wide(value).iter().flat_map(|u| u.to_le_bytes()).collect();
+    reg_write(RUN_SUBKEY, REG_NAME, REG_SZ, &data)
+}
+
+/// Mark the entry enabled in StartupApproved so a "Disabled" left over from an
+/// earlier Task Manager toggle cannot silently veto the Run entry just written.
+fn approve_startup_entry() -> bool {
+    use windows_sys::Win32::System::Registry::REG_BINARY;
+    reg_write(APPROVED_SUBKEY, REG_NAME, REG_BINARY, &[0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+}
+
+/// A debug build must never write the target\debug exe path into HKCU Run:
+/// every boot would then launch a stale dev build instead of the installed
+/// app (whichever starts first wins the single-instance mutex). Found live on
+/// the dev machine 2026-06-04. Debug builds also share AppData with the
+/// installed app, so they leave the intent flag alone too: a toggle in a dev
+/// session must not switch the installed app's autostart off.
+fn registry_writes_allowed() -> bool {
+    !cfg!(debug_assertions)
+}
+
+fn get_startup_enabled_sync() -> bool {
+    read_run_value().is_some() && !windows_disabled_at_startup()
 }
 
 pub fn get_startup_enabled() -> bool {
@@ -483,34 +640,31 @@ pub fn get_startup_enabled() -> bool {
 }
 
 fn set_startup_enabled_impl(enable: bool) {
+    if !registry_writes_allowed() {
+        info!(
+            "[Keyfire] Startup registration change ignored (debug build — would pin the dev exe path): enable={}",
+            enable
+        );
+        return;
+    }
     if enable {
-        // Never register a debug build for Windows startup. current_exe()
-        // would be the target\debug binary, and every boot would then launch
-        // a stale dev build instead of the installed app — whichever starts
-        // first wins the single-instance mutex, so the user can unknowingly
-        // run old code all day. Found live on the dev machine 2026-06-04
-        // (the startup bootstrap had pinned the dev exe path in HKCU Run).
-        // Disabling (the else branch) stays allowed in debug builds.
-        if cfg!(debug_assertions) {
-            info!("[Keyfire] Startup registration skipped (debug build — would pin the dev exe path)");
+        let Some(value) = expected_run_value() else {
+            error!("[Keyfire] Startup enable failed: current_exe() unavailable");
             return;
-        }
-        // Get the current exe path
-        if let Ok(exe) = std::env::current_exe() {
-            let exe_str = exe.to_string_lossy();
-            let value = format!("\"{}\" --autolaunch", exe_str);
-            let _ = Command::new("reg")
-                .args(["add", REG_RUN, "/v", REG_NAME, "/d", &value, "/f"])
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .output();
-            info!("[Keyfire] Startup enabled: {}", value);
+        };
+        let wrote = write_run_entry(&value);
+        let approved = approve_startup_entry();
+        crate::config::set_start_with_windows(true);
+        if wrote {
+            info!("[Keyfire] Startup enabled: {} (approved={})", value, approved);
+        } else {
+            error!("[Keyfire] Startup enable failed: could not write the Run entry");
         }
     } else {
-        let _ = Command::new("reg")
-            .args(["delete", REG_RUN, "/v", REG_NAME, "/f"])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output();
-        info!("[Keyfire] Startup disabled");
+        let removed = reg_delete(RUN_SUBKEY, REG_NAME);
+        let _ = reg_delete(APPROVED_SUBKEY, REG_NAME);
+        crate::config::set_start_with_windows(false);
+        info!("[Keyfire] Startup disabled (removed={})", removed);
     }
 }
 
@@ -518,50 +672,57 @@ pub fn set_startup_enabled(enable: bool) {
     set_startup_enabled_impl(enable);
 }
 
-/// Re-point a stale "Start with Windows" Run value at the current exe.
+/// Make the "Start with Windows" registration match reality on every boot.
 ///
-/// The Run value data is the absolute exe path captured when the user last
-/// toggled the setting. Installs that enabled startup before the v0.6.0
-/// rebrand still point at the old trigr.exe, which the Keyfire NSIS installer
-/// never removes (different product name = different install), so every boot
-/// launches stale Trigr v0.5.x and re-prompts the update forever. If the value
-/// exists but its data doesn't match the current exe, rewrite it. Idempotent,
-/// runs once per startup, no-ops when startup was never enabled.
+/// 1. Entry present but pointing at another exe (pre-rebrand trigr.exe, a
+///    moved install): rewrite it. Installs that enabled startup before v0.6.0
+///    still pointed at trigr.exe, which the Keyfire installer never removes,
+///    so every boot launched stale Trigr and re-prompted the update forever.
+/// 2. Entry present and no intent recorded yet: learn ON, so a later loss of
+///    the entry can be repaired.
+/// 3. Entry missing while the intent is ON and Windows has not disabled it:
+///    put it back. This is the "sometimes it just doesn't start" case where
+///    an uninstaller, registry cleaner or a dev-session toggle removed the
+///    value; the user never asked for it to go.
+/// Idempotent; never touches the registry in a debug build or in demo /
+/// profile mode (whose local settings are not the real machine's).
 pub fn heal_startup_registration() {
-    // Same guard as set_startup_enabled_impl — a debug build must never pin
-    // the target\debug exe path into HKCU Run.
-    if cfg!(debug_assertions) {
+    if !registry_writes_allowed() || crate::is_demo_mode() || crate::profile_mode().is_some() {
         return;
     }
-    let output = match Command::new("reg")
-        .args(["query", REG_RUN, "/v", REG_NAME])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-    {
-        Ok(o) if o.status.success() => o,
-        _ => return, // value absent — startup not enabled, nothing to heal
-    };
-    let Ok(exe) = std::env::current_exe() else {
+    let Some(expected) = expected_run_value() else {
         return;
     };
-    let expected = format!("\"{}\" --autolaunch", exe.to_string_lossy());
-    // reg query output line: `    Trigr    REG_SZ    "C:\...\keyfire.exe" --autolaunch`
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let current = stdout
-        .lines()
-        .find(|l| l.contains("REG_SZ"))
-        .and_then(|l| l.splitn(2, "REG_SZ").nth(1))
-        .map(|v| v.trim());
-    if let Some(v) = current {
-        // Windows paths are case-insensitive; don't churn the value over case.
-        if v.eq_ignore_ascii_case(&expected) {
-            return;
+    let intent = crate::config::get_start_with_windows();
+    match read_run_value() {
+        Some(current) => {
+            // Windows paths are case-insensitive; don't churn the value over case.
+            if !current.eq_ignore_ascii_case(&expected) {
+                if write_run_entry(&expected) {
+                    info!("[Keyfire] Startup Run entry re-pointed from stale path: {} -> {}", current, expected);
+                } else {
+                    error!("[Keyfire] Startup Run entry is stale ({}) and could not be rewritten", current);
+                }
+            }
+            if intent.is_none() {
+                crate::config::set_start_with_windows(true);
+            }
         }
-        let _ = Command::new("reg")
-            .args(["add", REG_RUN, "/v", REG_NAME, "/d", &expected, "/f"])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output();
-        info!("[Keyfire] Startup Run entry re-pointed from stale path: {} -> {}", v, expected);
+        None => {
+            if intent != Some(true) {
+                return; // never enabled here, or the user switched it off
+            }
+            if windows_disabled_at_startup() {
+                info!("[Keyfire] Startup Run entry missing and disabled in Windows Startup apps — leaving it off");
+                return;
+            }
+            if write_run_entry(&expected) {
+                approve_startup_entry();
+                info!("[Keyfire] Startup Run entry restored (was missing): {}", expected);
+            } else {
+                error!("[Keyfire] Startup Run entry missing and could not be restored");
+            }
+        }
     }
 }
 

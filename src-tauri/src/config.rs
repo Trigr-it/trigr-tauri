@@ -323,6 +323,34 @@ pub fn set_radial_layout_id(id: Option<&str>) -> bool {
     save_local_settings_json(&val)
 }
 
+// ── Start with Windows intent (machine-local) ───────────────────────────────
+// Whether THIS machine should have the HKCU Run entry. Written by every
+// toggle (tray menu, Settings, first-run bootstrap) and learned once from an
+// existing Run entry, so `tray::heal_startup_registration` can put the entry
+// back when something removed it (an old uninstaller, a registry cleaner, a
+// dev-session toggle) without ever adding one the user never asked for. Lives
+// here and not in the shared config because autostart is per machine.
+
+pub fn get_start_with_windows() -> Option<bool> {
+    load_local_settings_json()
+        .get("start_with_windows")
+        .and_then(|v| v.as_bool())
+}
+
+pub fn set_start_with_windows(enabled: bool) -> bool {
+    let Some(mut val) = load_local_settings_json_strict() else {
+        return false;
+    };
+    if val.get("start_with_windows").and_then(|v| v.as_bool()) == Some(enabled) {
+        return true; // no churn: the heal calls this on every boot
+    }
+    let Some(obj) = val.as_object_mut() else {
+        return false;
+    };
+    obj.insert("start_with_windows".to_string(), Value::Bool(enabled));
+    save_local_settings_json(&val)
+}
+
 /// Days remaining in the grace period, or None if no grace period is active.
 /// Returns 0 if grace period has expired and migration is pending.
 pub fn grace_period_days_remaining() -> Option<i64> {
