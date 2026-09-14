@@ -140,6 +140,9 @@ const PRESETS = [
   { label: 'Phind',                trigger: 'phind', urlTemplate: 'https://www.phind.com/search?q={query}',                                         category: 'AI',          icon: null,                  description: 'AI search for developers' },
   { label: 'You.com',              trigger: 'you',   urlTemplate: 'https://you.com/search?q={query}',                                               category: 'AI',          icon: 'you.png',             description: 'AI-assisted search' },
   { label: 'Microsoft Copilot',    trigger: 'cop',   urlTemplate: 'https://copilot.microsoft.com/?q={query}',                                       category: 'AI',          icon: 'copilot.png',         description: 'Microsoft AI assistant' },
+  { label: 'Claude',               trigger: 'cl',    urlTemplate: 'https://claude.ai/new?q={query}',                                                category: 'AI',          icon: 'claude.png',          description: 'Anthropic AI assistant' },
+  { label: 'Grok',                 trigger: 'grok',  urlTemplate: 'https://grok.com/?q={query}',                                                    category: 'AI',          icon: 'grok.png',            description: 'xAI assistant' },
+  { label: 'Mistral Le Chat',      trigger: 'mis',   urlTemplate: 'https://chat.mistral.ai/chat?q={query}',                                         category: 'AI',          icon: 'mistral.png',         description: 'Mistral AI assistant' },
 
   // ── Development ──
   { label: 'GitHub',               trigger: 'gh',    urlTemplate: 'https://github.com/search?q={query}&type=repositories',                          category: 'Development', icon: 'github.png',          description: 'Code & repositories' },
