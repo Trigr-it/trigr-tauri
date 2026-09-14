@@ -8,7 +8,10 @@ default-run = "keyfire"
 
 [lib]
 name = "keyfire_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# staticlib is only needed for iOS. On Windows it archived a ~1.4 GB .lib on every
+# debug build and left 100s of GB of .rcgu.o / .temp-archive litter in target/debug/deps
+# whenever a rebuild was interrupted (cleaned up 2026-09-09, 280 GB).
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "keyfire"
