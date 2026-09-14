@@ -32,6 +32,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     MB_SETFOREGROUND, MB_TOPMOST, MB_YESNOCANCEL,
     SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOZORDER, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE,
+    CallNextHookEx, GetCursorPos, GetWindowRect, SetWindowsHookExW, UnhookWindowsHookEx,
+    HCBT_ACTIVATE, HHOOK, SWP_NOSIZE, WH_CBT,
 };
 use windows_sys::Win32::System::Shutdown::{
     ExitWindowsEx, LockWorkStation, EWX_FORCEIFHUNG, EWX_LOGOFF, EWX_SHUTDOWN,
@@ -2853,56 +2855,114 @@ fn anchor_transform_axis(rec: i32, rec_size: i32, cur_size: i32, _axis: &str) ->
 
 // ── Macro sequence step executor ────────────────────────────────────────────
 
+// ── Native prompts on the active monitor ────────────────────────────────────
+//
+// Every macro-step prompt below is a plain MessageBoxW with no owner window.
+// Windows centres an ownerless message box on the PRIMARY monitor, so a Sort
+// Files confirmation fired from Explorer on a side monitor appeared on the
+// main screen (Rory, 2026-09-10). Keyfire's own windows (fill-in, overlays)
+// already follow the cursor's monitor; these prompts now do the same.
+//
+// Mechanism: a THREAD-LOCAL WH_CBT hook (SetWindowsHookExW with our own
+// thread id — not a global hook, nothing else on the system sees it) is
+// installed for the duration of the MessageBoxW call. Windows sends
+// HCBT_ACTIVATE for the dialog before it is shown; the hook centres it on the
+// work area of the monitor under the cursor and then removes itself, so a
+// user who drags the box and re-activates it is left alone. Owning the box
+// to the foreground app's HWND would also place it there, but that disables
+// a foreign process's window for the life of the dialog; the hook does not.
+// Physical pixels throughout (MessageBox is a system dialog, per-monitor DPI
+// is the system's problem).
+
+thread_local! {
+    static PROMPT_CBT_HOOK: Cell<HHOOK> = Cell::new(std::ptr::null_mut());
+}
+
+unsafe extern "system" fn prompt_cbt_proc(code: i32, w_param: usize, l_param: isize) -> isize {
+    if code == HCBT_ACTIVATE as i32 {
+        use windows_sys::Win32::Foundation::{POINT, RECT};
+        use windows_sys::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        };
+        let hwnd = w_param as windows_sys::Win32::Foundation::HWND;
+        let mut pt = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut pt);
+        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let mut rc: RECT = std::mem::zeroed();
+        if GetMonitorInfoW(hmon, &mut mi) != 0 && GetWindowRect(hwnd, &mut rc) != 0 {
+            let w = rc.right - rc.left;
+            let h = rc.bottom - rc.top;
+            let wa = mi.rcWork;
+            let x = wa.left + (wa.right - wa.left - w) / 2;
+            let y = wa.top + (wa.bottom - wa.top - h) / 2;
+            SetWindowPos(hwnd, std::ptr::null_mut(), x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        // One placement per prompt; let later activations (user clicked back
+        // onto a box they had moved) pass untouched.
+        PROMPT_CBT_HOOK.with(|h| {
+            let hook = h.replace(std::ptr::null_mut());
+            if !hook.is_null() {
+                UnhookWindowsHookEx(hook);
+            }
+        });
+    }
+    CallNextHookEx(std::ptr::null_mut(), code, w_param, l_param)
+}
+
+/// MessageBoxW (no owner, TopMost + SetForeground so it surfaces over the
+/// target app) centred on the monitor under the cursor. Blocks the calling
+/// macro thread until answered. Returns the MessageBoxW result (IDOK etc).
+pub(crate) fn prompt_on_active_monitor(title: &str, message: &str, flags: u32) -> i32 {
+    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let hook = SetWindowsHookExW(
+            WH_CBT,
+            Some(prompt_cbt_proc),
+            std::ptr::null_mut(),
+            windows_sys::Win32::System::Threading::GetCurrentThreadId(),
+        );
+        PROMPT_CBT_HOOK.with(|h| h.set(hook));
+        let result = MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            flags | MB_TOPMOST | MB_SETFOREGROUND,
+        );
+        // Normally already unhooked by the first HCBT_ACTIVATE; this covers a
+        // box that never activated (hook install failed returns null → no-op).
+        PROMPT_CBT_HOOK.with(|h| {
+            let hook = h.replace(std::ptr::null_mut());
+            if !hook.is_null() {
+                UnhookWindowsHookEx(hook);
+            }
+        });
+        result
+    }
+}
+
 /// Blocking OK/Cancel confirmation dialog for destructive System macro steps
 /// (Sleep, Log Off, Shut Down). Runs on the macro thread — MessageBoxW is
 /// synchronous and blocks that thread until the user answers, which is what we
-/// want. Returns true if the user confirmed. TopMost + SetForeground so the
-/// dialog surfaces even if the target app has focus.
+/// want. Returns true if the user confirmed.
 fn confirm_destructive_step(title: &str, message: &str) -> bool {
-    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-    let result = unsafe {
-        MessageBoxW(
-            std::ptr::null_mut(),
-            text.as_ptr(),
-            caption.as_ptr(),
-            MB_OKCANCEL | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND,
-        )
-    };
-    result == IDOK as i32
+    prompt_on_active_monitor(title, message, MB_OKCANCEL | MB_ICONWARNING) == IDOK as i32
 }
 
 // OK/Cancel plan-preview dialog for the Sort Files step — informational icon
-// rather than the warning triangle, otherwise the same topmost/foreground
-// treatment as confirm_destructive_step.
+// rather than the warning triangle, otherwise the same treatment as
+// confirm_destructive_step.
 fn confirm_plan_dialog(title: &str, message: &str) -> bool {
-    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-    let result = unsafe {
-        MessageBoxW(
-            std::ptr::null_mut(),
-            text.as_ptr(),
-            caption.as_ptr(),
-            MB_OKCANCEL | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
-        )
-    };
-    result == IDOK as i32
+    prompt_on_active_monitor(title, message, MB_OKCANCEL | MB_ICONINFORMATION) == IDOK as i32
 }
 
 // Fire-and-forget information dialog (Sort Files completion report / Pro
 // gate notice). Blocks the macro thread until dismissed, which is fine —
 // it's the last thing the step does.
 fn info_dialog(title: &str, message: &str) {
-    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-    unsafe {
-        MessageBoxW(
-            std::ptr::null_mut(),
-            text.as_ptr(),
-            caption.as_ptr(),
-            MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
-        );
-    }
+    prompt_on_active_monitor(title, message, MB_OK | MB_ICONINFORMATION);
 }
 
 // Three-way clash dialog for the Sort Files step: Yes = overwrite the
@@ -2916,16 +2976,7 @@ enum ClashChoice {
 }
 
 fn clash_choice_dialog(title: &str, message: &str) -> ClashChoice {
-    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-    let caption: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-    let result = unsafe {
-        MessageBoxW(
-            std::ptr::null_mut(),
-            text.as_ptr(),
-            caption.as_ptr(),
-            MB_YESNOCANCEL | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
-        )
-    };
+    let result = prompt_on_active_monitor(title, message, MB_YESNOCANCEL | MB_ICONINFORMATION);
     if result == IDYES as i32 {
         ClashChoice::Overwrite
     } else if result == IDNO as i32 {
