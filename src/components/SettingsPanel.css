@@ -149,7 +149,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-5);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
   height: 32px;
@@ -936,7 +936,7 @@
   padding: 0 var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   color: var(--text);
   font-family: inherit;
   font-size: var(--text-lg);
@@ -1110,7 +1110,7 @@
   min-width: 160px;
   height: 28px;
   padding: 0 var(--space-3);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   outline: none;

@@ -42,7 +42,7 @@
 .fillin-input {
   height: 34px;
   padding: 0 var(--space-5);
-  background: var(--bg-surface);
+  background: var(--bg-input);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   color: var(--text-primary);

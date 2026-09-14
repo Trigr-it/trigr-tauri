@@ -229,7 +229,7 @@
   flex: 1;
   height: 24px;
   padding: 0 var(--space-2);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -748,7 +748,7 @@
   width: 100%;
   height: 32px;
   padding: 0 28px 0 var(--space-4);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
@@ -1433,7 +1433,7 @@
   width: 100%;
   height: 22px;
   padding: 0 var(--space-2);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-sm);
   color: var(--text-primary);

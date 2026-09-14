@@ -626,7 +626,7 @@
   padding: var(--space-1) var(--space-4);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   outline: none;
 }
 
@@ -779,7 +779,7 @@
   border: none !important;
   border-bottom: 1px solid var(--border-bright) !important;
   border-radius: 0 !important;
-  background: var(--bg-elevated) !important;
+  background: var(--bg-input) !important;
   caret-color: var(--accent) !important;
 }
 

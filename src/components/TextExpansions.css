@@ -894,7 +894,7 @@
 .te-cat-add-input {
   height: 28px;
   padding: 0 var(--space-3);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -942,7 +942,7 @@
   margin-left: var(--space-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--bg-surface);
+  background: var(--bg-input);
   color: var(--text-primary);
   font-size: var(--text-md);
   font-family: var(--font-body);
@@ -1647,7 +1647,7 @@ button.te-col-header:hover {
   gap: var(--space-1);
   align-items: center;
   padding: var(--space-1) var(--space-2);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
   min-height: 36px;
@@ -1708,7 +1708,7 @@ button.te-col-header:hover {
 .te-cat-select {
   height: 36px;
   padding: 0 var(--space-5);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -1728,7 +1728,7 @@ button.te-col-header:hover {
 }
 
 .te-cat-select option {
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   color: var(--text-primary);
 }
 
@@ -2180,7 +2180,7 @@ button.te-col-header:hover {
   flex: 1;
   height: 28px;
   padding: 0 7px;
-  background: var(--bg-surface);
+  background: var(--bg-input);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -2428,7 +2428,7 @@ button.te-col-header:hover {
   height: 26px;
   padding: 0 5px;
   text-align: center;
-  background: var(--bg-surface);
+  background: var(--bg-input);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -2525,7 +2525,7 @@ button.te-col-header:hover {
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   transition: border-color 0.15s;
 }
 
@@ -3082,7 +3082,7 @@ button.te-col-header:hover {
   padding: 3px var(--space-2);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
-  background: var(--bg-primary);
+  background: var(--bg-input);
 }
 
 .ac-chip {

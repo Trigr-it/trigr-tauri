@@ -157,6 +157,11 @@
   --bg-elevated: var(--ink-700);
   --bg-hover: var(--ink-600);
   --bg-active: var(--ink-500);
+  /* Editable fields (inputs, textareas, selects, the rich-text well). Sits
+     one step BELOW the surface it is placed on so a field reads as a well
+     you can type into, never the same colour as its panel. Light mode is
+     plain white for the same reason. */
+  --bg-input: var(--ink-900);
 
   --accent: var(--gold-500);
   --accent-hover: var(--gold-400);
@@ -282,6 +287,7 @@
   --bg-elevated: var(--paper-100);
   --bg-hover:    var(--paper-300);
   --bg-active:   var(--paper-400);
+  --bg-input:    var(--white);
 
   --text-primary:   var(--navy-900);
   --text-secondary: var(--navy-700);

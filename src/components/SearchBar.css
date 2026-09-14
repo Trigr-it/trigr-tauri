@@ -8,7 +8,7 @@
   gap: var(--space-3);
   padding: 0 var(--space-5);
   height: 32px;
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;

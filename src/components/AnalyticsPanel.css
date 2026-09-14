@@ -479,7 +479,7 @@
   font-family: inherit;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  background: var(--bg-input);
   color: var(--text-primary);
   color-scheme: dark;
 }
@@ -1075,7 +1075,7 @@
   height: 22px;
   padding: 0 20px 0 7px;
   margin-left: var(--space-3);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
@@ -1272,7 +1272,7 @@
 .analytics-roi-input-wrap {
   display: flex;
   align-items: center;
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0 var(--space-3);

@@ -223,7 +223,7 @@
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-bright);
-  background: var(--bg-primary);
+  background: var(--bg-input);
   color: var(--text-primary);
   font-family: var(--font-body-mono, monospace);
   font-size: var(--text-md);
@@ -252,7 +252,7 @@
   height: 28px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-bright);
-  background: var(--bg-primary);
+  background: var(--bg-active);
   color: var(--text-secondary);
   font-family: var(--font-display);
   font-size: var(--text-sm);

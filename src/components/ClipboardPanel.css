@@ -332,7 +332,7 @@
   padding: 0 var(--space-5);
   border: 1px solid var(--border-accent, rgba(var(--accent-rgb), 0.4));
   border-radius: var(--radius-md);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--text-sm);
@@ -841,7 +841,7 @@
 .cbg-folder-add-input {
   height: 28px;
   padding: 0 var(--space-3);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -1308,7 +1308,7 @@
   padding: 0;
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  background: var(--bg-input);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--text-md);
