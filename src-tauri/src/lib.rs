@@ -5725,26 +5725,75 @@ fn update_clipboard_item(id: i64, new_text: String) -> Option<String> {
 
 #[tauri::command]
 fn get_clipboard_settings() -> Value {
-    serde_json::json!({
-        "retention_days": clipboard::get_retention(),
-        "enabled": true,
-        "auto_ocr": clipboard::auto_ocr_enabled(),
-        "search_inside_images": clipboard::search_inside_images_enabled(),
-    })
+    let mut v = clipboard::retention_for_ui();
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert("enabled".to_string(), serde_json::json!(true));
+        obj.insert("auto_ocr".to_string(), serde_json::json!(clipboard::auto_ocr_enabled()));
+        obj.insert(
+            "search_inside_images".to_string(),
+            serde_json::json!(clipboard::search_inside_images_enabled()),
+        );
+    }
+    v
 }
 
+/// Clipboard retention (v0.8.14: text and image windows, each days + keep
+/// forever). Every field is optional so the UI can send just the row it
+/// changed; anything omitted keeps its current value. Tier clamp happens
+/// HERE, on the server side: Free is 1..=7 days and never forever, Pro is
+/// 1..=3650 or forever. Persists the four config keys through the same
+/// SAVE_LOCK + strict read as save_config — never merge onto `{}`.
 #[tauri::command]
-fn set_clipboard_settings(retention_days: u32) {
-    let max_days = if licence::is_pro() { 30 } else { 7 };
-    let clamped = retention_days.min(max_days).clamp(1, 30);
-    clipboard::set_retention_days(clamped);
+fn set_clipboard_settings(
+    retention_days: Option<u32>,
+    retention_unlimited: Option<bool>,
+    image_retention_days: Option<u32>,
+    image_retention_unlimited: Option<bool>,
+) {
+    let pro = licence::is_pro();
+    let max_days = if pro {
+        clipboard::PRO_MAX_RETENTION_DAYS
+    } else {
+        clipboard::FREE_MAX_RETENTION_DAYS
+    };
+    let mut r = clipboard::current_retention();
+    if let Some(d) = retention_days {
+        r.text_days = d.clamp(1, max_days);
+    }
+    if let Some(d) = image_retention_days {
+        r.image_days = d.clamp(1, max_days);
+    }
+    if let Some(f) = retention_unlimited {
+        r.text_forever = f && pro;
+    }
+    if let Some(f) = image_retention_unlimited {
+        r.image_forever = f && pro;
+    }
+    if !pro {
+        // A Free install can never write a Pro-only window into the config.
+        r.text_days = r.text_days.min(max_days);
+        r.image_days = r.image_days.min(max_days);
+        r.text_forever = false;
+        r.image_forever = false;
+    }
+    clipboard::set_retention(r);
 
-    // Persist to config so the setting survives restart. Without this the
-    // value lived only in the RETENTION_DAYS static and every relaunch fell
-    // back to DEFAULT_RETENTION_DAYS (7), silently undoing the user's choice.
-    let mut cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let _save_guard = SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cfg = match config::load_config_for_save() {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("[Keyfire] Clipboard retention not persisted: {}", e);
+            return;
+        }
+    };
     if let Some(obj) = cfg.as_object_mut() {
-        obj.insert("clipboardRetentionDays".to_string(), serde_json::json!(clamped));
+        obj.insert("clipboardRetentionDays".to_string(), serde_json::json!(r.text_days));
+        obj.insert("clipboardRetentionUnlimited".to_string(), serde_json::json!(r.text_forever));
+        obj.insert("clipboardImageRetentionDays".to_string(), serde_json::json!(r.image_days));
+        obj.insert(
+            "clipboardImageRetentionUnlimited".to_string(),
+            serde_json::json!(r.image_forever),
+        );
         config::save_config(&cfg);
     }
 }
@@ -5757,7 +5806,14 @@ fn set_clipboard_ocr_settings(auto_ocr: bool, search_inside_images: bool) {
     clipboard::set_auto_ocr_enabled(auto_ocr);
     clipboard::set_search_inside_images_enabled(search_inside_images);
 
-    let mut cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
+    let _save_guard = SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cfg = match config::load_config_for_save() {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("[Keyfire] Clipboard OCR settings not persisted: {}", e);
+            return;
+        }
+    };
     if let Some(obj) = cfg.as_object_mut() {
         obj.insert("clipboardAutoOcr".to_string(), serde_json::json!(auto_ocr));
         obj.insert(

@@ -368,11 +368,30 @@ export default function SettingsPanel({
     };
     return merged[stored] || stored;
   });
+  // Clipboard retention (v0.8.14): text and image windows, each days + keep
+  // forever. The backend returns tier-adjusted values (Free sees its 7-day
+  // clamp and never a forever tick) plus the Pro day-field ceiling.
   const [clipboardRetention, setClipboardRetention] = useState(7);
+  const [clipboardRetentionForever, setClipboardRetentionForever] = useState(false);
+  const [imageRetention, setImageRetention] = useState(7);
+  const [imageRetentionForever, setImageRetentionForever] = useState(false);
+  const [maxRetentionDays, setMaxRetentionDays] = useState(7);
   // OCR (Pro) — auto-extract on capture + include image text in search results.
   // Both default true; backend enforces Pro at use-time.
   const [autoOcr, setAutoOcr] = useState(true);
   const [searchInsideImages, setSearchInsideImages] = useState(true);
+  const applyClipboardSettings = (s) => {
+    if (s?.retention_days) setClipboardRetention(s.retention_days);
+    if (typeof s?.retention_unlimited === 'boolean') setClipboardRetentionForever(s.retention_unlimited);
+    if (s?.image_retention_days) setImageRetention(s.image_retention_days);
+    if (typeof s?.image_retention_unlimited === 'boolean') setImageRetentionForever(s.image_retention_unlimited);
+    if (s?.max_retention_days) setMaxRetentionDays(s.max_retention_days);
+  };
+  // Tier changes (trial lapse, key entered, dev override) change the values
+  // the backend reports, so re-pull the retention rows when isPro flips.
+  useEffect(() => {
+    window.electronAPI?.getClipboardSettings?.().then(applyClipboardSettings).catch(() => {});
+  }, [isPro]);
   const [licenceKey, setLicenceKey]             = useState('');
   const [licenceActivating, setLicenceActivating] = useState(false);
   const [licenceError, setLicenceError]         = useState(null);
@@ -394,7 +413,7 @@ export default function SettingsPanel({
     window.electronAPI?.getAppVersion().then(v => setAppVersion(v || ''));
     window.electronAPI?.getSharedConfigPath?.().then(p => setSharedConfigPath(p || null));
     window.electronAPI?.getClipboardSettings?.().then(s => {
-      if (s?.retention_days) setClipboardRetention(s.retention_days);
+      applyClipboardSettings(s);
       if (typeof s?.auto_ocr === 'boolean') setAutoOcr(s.auto_ocr);
       if (typeof s?.search_inside_images === 'boolean') setSearchInsideImages(s.search_inside_images);
     });
@@ -1854,37 +1873,71 @@ export default function SettingsPanel({
               </div>
 
               <div className="settings-subheader settings-subsection">History</div>
-              <div className="settings-toggle-row">
-                <div className="settings-toggle-info">
-                  <span className="settings-toggle-label">History retention {!isPro && <span className="pro-badge">PRO</span>}</span>
-                  <span className="settings-toggle-sub">
-                    Days to keep history. Free: 7. Pro: 30.
-                  </span>
+              {[
+                {
+                  kind: 'text',
+                  label: 'Keep text history for',
+                  sub: 'Copied text, links and code. Pinned and starred items are never removed.',
+                  days: clipboardRetention, forever: clipboardRetentionForever,
+                  setDays: setClipboardRetention, setForever: setClipboardRetentionForever,
+                  daysKey: 'retentionDays', foreverKey: 'retentionUnlimited',
+                },
+                {
+                  kind: 'image',
+                  label: 'Keep image history for',
+                  sub: 'Screenshots and copied images take the most disk space, so they get their own window.',
+                  days: imageRetention, forever: imageRetentionForever,
+                  setDays: setImageRetention, setForever: setImageRetentionForever,
+                  daysKey: 'imageRetentionDays', foreverKey: 'imageRetentionUnlimited',
+                },
+              ].map(row => (
+                <div className="settings-toggle-row" key={row.kind}>
+                  <div className="settings-toggle-info">
+                    <span className="settings-toggle-label">{row.label} {!isPro && <span className="pro-badge">PRO</span>}</span>
+                    <span className="settings-toggle-sub">
+                      {row.sub}{isPro ? '' : ' Free keeps 7 days. Pro sets any number of days, or keeps them forever.'}
+                    </span>
+                  </div>
+                  <div className="settings-retention-input">
+                    <NumberField
+                      className="form-input settings-retention-num"
+                      min={1}
+                      // Free: allow typing past 7 so the commit can explain the
+                      // clamp with the upgrade modal instead of silently snapping.
+                      max={isPro ? maxRetentionDays : 30}
+                      defaultOnEmpty={7}
+                      value={row.days}
+                      disabled={row.forever}
+                      onCommit={v => {
+                        let final = v;
+                        if (!isPro && final > 7) {
+                          onShowUpgrade?.('Unlimited clipboard history');
+                          final = 7;
+                        }
+                        row.setDays(final);
+                        window.electronAPI?.setClipboardSettings({ [row.daysKey]: final });
+                      }}
+                    />
+                    <span className="settings-retention-unit">days</span>
+                    <label
+                      className={`settings-retention-forever${row.forever ? ' on' : ''}`}
+                      title={row.forever ? `Untick to prune ${row.kind} history again` : `Never remove ${row.kind} history`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={row.forever}
+                        onChange={e => {
+                          if (!isPro) { onShowUpgrade?.('Unlimited clipboard history'); return; }
+                          const next = e.target.checked;
+                          row.setForever(next);
+                          window.electronAPI?.setClipboardSettings({ [row.foreverKey]: next });
+                        }}
+                      />
+                      <span>Keep forever</span>
+                    </label>
+                  </div>
                 </div>
-                <div className="settings-retention-input">
-                  <NumberField
-                    className="form-input settings-retention-num"
-                    min={1}
-                    max={30}
-                    defaultOnEmpty={7}
-                    value={clipboardRetention}
-                    onCommit={v => {
-                      // Pro gate: Free users can request up to 30 but it clamps
-                      // to 7 and the upgrade modal explains why. Runs on commit
-                      // (blur / Enter), not per keystroke — user can type past
-                      // 7 while editing without triggering the modal early.
-                      let final = v;
-                      if (!isPro && final > 7) {
-                        onShowUpgrade?.('Extended clipboard history (up to 30 days)');
-                        final = 7;
-                      }
-                      setClipboardRetention(final);
-                      window.electronAPI?.setClipboardSettings(final);
-                    }}
-                  />
-                  <span className="settings-retention-unit">days</span>
-                </div>
-              </div>
+              ))}
 
               <div className="settings-subheader settings-subsection">Text from Images (OCR)</div>
               <div className="settings-toggle-row">

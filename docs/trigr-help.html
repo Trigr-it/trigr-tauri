@@ -2152,7 +2152,7 @@
   <p>The clipboard overlay includes a slide-out scratchpad on the right side. Toggle it with the arrow button on the panel edge. Use it to jot notes, stage text, or keep references handy. Content auto-saves and persists across app restarts.</p>
 
   <h2>Retention</h2>
-  <p>Clipboard history is retained for <strong>7 days</strong> on the Free plan and up to <strong>30 days</strong> on Pro. Pinned and saved items are never automatically deleted. Adjust the retention period in <strong>Settings → Clipboard</strong>. Clear all history manually from the panel toolbar.</p>
+  <p>Clipboard history is retained for <strong>7 days</strong> on the Free plan. Pro chooses its own window: any number of days, or tick <strong>Keep forever</strong> and nothing is ever pruned. Text and images have separate settings, because screenshots take far more disk space than text. Pinned and saved items are never automatically deleted on either plan. Adjust both windows in <strong>Settings → Clipboard</strong>. Clear all history manually from the panel toolbar.</p>
 
   <h2>Encryption at rest</h2>
   <p>All clipboard content (text, OCR, image bytes, previews) is encrypted with AES-256-GCM, and so are your Saved folder names. The encryption key is wrapped via Windows DPAPI and tied to your user account. Metadata (timestamps, app names, tags) stays plain so search filters work without decryption.</p>
@@ -2477,7 +2477,7 @@
   <h2>Clipboard</h2>
   <table>
     <tr><th>Setting</th><th>Description</th></tr>
-    <tr><td>History retention</td><td>Days to keep clipboard history. Free: up to 7. Pro: up to 30.</td></tr>
+    <tr><td>Keep text history / Keep image history</td><td>Days to keep each kind of clipboard item, each with a Keep forever tick box. Free: 7 days. Pro: any number of days, or forever.</td></tr>
     <tr><td>Exclusions</td><td>Process names to skip clipboard capture from. Useful for password managers.</td></tr>
     <tr><td>Clear Clipboard History</td><td>Deletes all stored clipboard items. Cannot be undone.</td></tr>
   </table>
@@ -2629,7 +2629,7 @@
     <tr><td>Multiple variants per expansion</td><td>First only</td><td>All</td></tr>
     <tr><td>Image expansions</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Global variables</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
-    <tr><td>Clipboard retention</td><td>Up to 7 days</td><td>Up to 30 days</td></tr>
+    <tr><td>Clipboard retention</td><td>7 days</td><td>Unlimited (text and images set separately)</td></tr>
     <tr><td>Analytics</td><td>Basic</td><td>Full dashboard + CSV export</td></tr>
   </table>
 

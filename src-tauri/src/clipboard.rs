@@ -829,28 +829,138 @@ pub struct FullClipItem {
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
-// ── Retention days ───────────────────────────────────────────────────────────
+// ── Retention ────────────────────────────────────────────────────────────────
+//
+// v0.8.14: text and image rows have INDEPENDENT windows, each a day count plus
+// a "keep forever" flag (Pro). Config keys:
+//   clipboardRetentionDays            text days   (legacy key, kept — older
+//                                                  builds clamp it to 1..30)
+//   clipboardRetentionUnlimited       text forever
+//   clipboardImageRetentionDays       image days  (absent = same as text, so
+//                                                  existing configs keep one
+//                                                  window until the user
+//                                                  splits them)
+//   clipboardImageRetentionUnlimited  image forever
+// "Forever" is NEVER encoded as 0 or a sentinel in the days keys: an older
+// build sharing the config would clamp 0 to 1 day and prune the history.
+//
+// Two windows per kind, both tier-aware and both read live so a licence
+// transition (trial lapse while running) takes effect on the next prune /
+// query without a restart:
+//   visibility (what the UI lists)  Free: min(days, 7)   Pro: days | forever
+//   prune (what stays on disk)      Free: min(days, 30)  Pro: days | forever
+// The Free prune floor is what keeps a lapsed Pro install from becoming an
+// unbounded disk leak while still preserving 30 days for re-upgrade (the
+// exact pre-v0.8.14 behaviour, when raw could never exceed 30). An
+// always-Free install has days = 7, so it prunes at 7 as before.
 
-static RETENTION_DAYS: OnceLock<Mutex<u32>> = OnceLock::new();
+pub const FREE_MAX_RETENTION_DAYS: u32 = 7;
+/// Pro day-field ceiling (10 years); "forever" is the flag, not a big number.
+pub const PRO_MAX_RETENTION_DAYS: u32 = 3650;
+/// Disk bound for rows a Free-tier install cannot see (see module comment).
+const FREE_PRUNE_FLOOR_DAYS: u32 = 30;
 
-fn retention_days() -> u32 {
-    RETENTION_DAYS
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Retention {
+    pub text_days: u32,
+    pub text_forever: bool,
+    pub image_days: u32,
+    pub image_forever: bool,
+}
+
+impl Default for Retention {
+    fn default() -> Self {
+        Retention {
+            text_days: DEFAULT_RETENTION_DAYS,
+            text_forever: false,
+            image_days: DEFAULT_RETENTION_DAYS,
+            image_forever: false,
+        }
+    }
+}
+
+impl Retention {
+    /// Parse the four config keys (see module comment for defaults).
+    pub fn from_config(cfg: &Value) -> Retention {
+        let days = |key: &str| {
+            cfg.get(key)
+                .and_then(|v| v.as_u64())
+                .map(|d| (d as u32).clamp(1, PRO_MAX_RETENTION_DAYS))
+        };
+        let flag = |key: &str| cfg.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
+        let text_days = days("clipboardRetentionDays").unwrap_or(DEFAULT_RETENTION_DAYS);
+        Retention {
+            text_days,
+            text_forever: flag("clipboardRetentionUnlimited"),
+            image_days: days("clipboardImageRetentionDays").unwrap_or(text_days),
+            image_forever: flag("clipboardImageRetentionUnlimited"),
+        }
+    }
+
+    fn clamped(self) -> Retention {
+        Retention {
+            text_days: self.text_days.clamp(1, PRO_MAX_RETENTION_DAYS),
+            image_days: self.image_days.clamp(1, PRO_MAX_RETENTION_DAYS),
+            ..self
+        }
+    }
+}
+
+static RETENTION: OnceLock<Mutex<Retention>> = OnceLock::new();
+
+fn retention() -> Retention {
+    RETENTION
         .get()
         .and_then(|m| m.lock().ok())
         .map(|g| *g)
-        .unwrap_or(DEFAULT_RETENTION_DAYS)
+        .unwrap_or_default()
 }
 
-/// Pro-gated retention: raw stored value clamped by current licence tier.
-/// Free max is 7 days, Pro max is 30. The stored preference (from config)
-/// is preserved as-is so a Pro user who downgrades and then re-upgrades
-/// gets their original setting back automatically. Prune + UI both read
-/// through here, so a runtime licence transition (e.g. trial expiry while
-/// the app is running) takes effect on the next prune cycle without restart.
-fn effective_retention_days() -> u32 {
-    let raw = retention_days();
-    let max = if crate::licence::is_pro() { 30 } else { 7 };
-    raw.min(max)
+/// Age limit in days for rows the current tier may LIST; `None` = no limit.
+fn visibility_window(days: u32, forever: bool) -> Option<u32> {
+    if crate::licence::is_pro() {
+        if forever { None } else { Some(days) }
+    } else {
+        Some(days.min(FREE_MAX_RETENTION_DAYS))
+    }
+}
+
+/// Age limit in days for rows that stay ON DISK; `None` = never prune.
+fn prune_window(days: u32, forever: bool) -> Option<u32> {
+    if crate::licence::is_pro() {
+        if forever { None } else { Some(days) }
+    } else if forever {
+        Some(FREE_PRUNE_FLOOR_DAYS)
+    } else {
+        Some(days.min(FREE_PRUNE_FLOOR_DAYS))
+    }
+}
+
+fn age_predicate(window: Option<u32>) -> String {
+    match window {
+        None => "1".to_string(),
+        Some(d) => format!("timestamp >= datetime('now', '-{} days')", d),
+    }
+}
+
+/// SQL predicate (parenthesised, no leading AND) that is true for every row
+/// inside its kind's visibility window. Collapses to the single legacy
+/// `timestamp >= …` when both kinds share a window (every Free install and
+/// any Pro install that has not split them), so the common case still runs
+/// purely off `idx_ch_list`'s leading column. `content_type` is in that
+/// index too, so the split form stays covering.
+fn visibility_clause() -> String {
+    let r = retention();
+    let text = visibility_window(r.text_days, r.text_forever);
+    let image = visibility_window(r.image_days, r.image_forever);
+    if text == image {
+        return format!("({})", age_predicate(text));
+    }
+    format!(
+        "((content_type = 'image' AND {}) OR (content_type != 'image' AND {}))",
+        age_predicate(image),
+        age_predicate(text)
+    )
 }
 
 // ── Capture-enabled gate + per-app exclusion list ───────────────────────────
@@ -1290,12 +1400,12 @@ fn handle_reset_storage(conn: Connection, db_path: &Path) -> (Option<Connection>
 
 pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
     let _ = APP_HANDLE.set(app_handle);
-    let _ = RETENTION_DAYS.set(Mutex::new(DEFAULT_RETENTION_DAYS));
+    let _ = RETENTION.set(Mutex::new(Retention::default()));
 
     if let Some(cfg) = crate::config::load_config() {
-        if let Some(days) = cfg.get("clipboardRetentionDays").and_then(|v| v.as_u64()) {
-            if let Ok(mut g) = RETENTION_DAYS.get().unwrap().lock() {
-                *g = (days as u32).clamp(1, 30);
+        if let Some(m) = RETENTION.get() {
+            if let Ok(mut g) = m.lock() {
+                *g = Retention::from_config(&cfg);
             }
         }
         if let Some(enabled) = cfg.get("clipboardCaptureEnabled").and_then(|v| v.as_bool()) {
@@ -1388,23 +1498,36 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             // planner scans the index (tens of bytes per row) instead of the
             // table and never touches an image blob until the final page fetch
             // by id. Leading `timestamp` also serves the retention range in
-            // handle_get_date_buckets and handle_prune.
+            // handle_get_date_buckets and handle_prune. `content_type` was
+            // appended in v0.8.14 for the per-kind (text / image) retention
+            // predicates; an index built by v0.8.13 lacks it and is rebuilt
+            // once (detected via pragma_index_info column count).
             //
             // Building the index on an existing large history reads every row
             // once (overflow walk included) — a one-time cost at the first
             // start after upgrade, on this writer thread, logged with timing.
             {
                 let started = std::time::Instant::now();
-                let had_index: bool = conn
+                const IDX_COLUMNS: i64 = 8;
+                let index_cols: i64 = conn
                     .query_row(
-                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_ch_list'",
+                        "SELECT COUNT(*) FROM pragma_index_info('idx_ch_list')",
                         [],
                         |row| row.get::<_, i64>(0),
                     )
-                    .map(|n| n > 0)
-                    .unwrap_or(false);
+                    .unwrap_or(0);
+                let had_index = index_cols == IDX_COLUMNS;
+                if index_cols > 0 && index_cols != IDX_COLUMNS {
+                    info!(
+                        "[Keyfire] Clipboard: rebuilding idx_ch_list ({} -> {} columns)",
+                        index_cols, IDX_COLUMNS
+                    );
+                    if let Err(e) = conn.execute_batch("DROP INDEX IF EXISTS idx_ch_list;") {
+                        error!("[Keyfire] Clipboard: dropping stale idx_ch_list failed: {}", e);
+                    }
+                }
                 if let Err(e) = conn.execute_batch(
-                    "CREATE INDEX IF NOT EXISTS idx_ch_list ON clipboard_history(timestamp, pinned, starred, pinned_order, starred_order, source_app, content_tag);",
+                    "CREATE INDEX IF NOT EXISTS idx_ch_list ON clipboard_history(timestamp, pinned, starred, pinned_order, starred_order, source_app, content_tag, content_type);",
                 ) {
                     error!("[Keyfire] Clipboard: index creation failed: {}", e);
                 } else if !had_index {
@@ -2243,11 +2366,15 @@ fn emit_thumb_backfill_done(total: usize) {
     }
 }
 
-pub fn set_retention_days(days: u32) {
-    let clamped = days.clamp(1, 30);
-    if let Some(m) = RETENTION_DAYS.get() {
+/// Replace the in-memory retention and prune straight away so a shorter
+/// window takes effect without waiting for the 10-minute cycle. The caller
+/// (lib.rs `set_clipboard_settings`) has already applied the tier clamp and
+/// persists the four config keys.
+pub fn set_retention(r: Retention) {
+    let r = r.clamped();
+    if let Some(m) = RETENTION.get() {
         if let Ok(mut g) = m.lock() {
-            *g = clamped;
+            *g = r;
         }
     }
     if let Some(tx) = CLIPBOARD_TX.get() {
@@ -2255,6 +2382,29 @@ pub fn set_retention_days(days: u32) {
             let _ = tx.send(ClipboardMsg::Prune);
         }
     }
+}
+
+/// Raw stored retention (pre tier clamp). lib.rs merges it with the payload
+/// so a partial update from the UI cannot reset the other kind.
+pub fn current_retention() -> Retention {
+    retention()
+}
+
+/// Tier-adjusted view for the Settings UI: Free sees its 7-day clamp and
+/// never a "forever" tick, Pro sees the raw preference. Also carries the
+/// day-field ceiling so the UI does not hard-code either tier's max.
+pub fn retention_for_ui() -> Value {
+    let r = retention();
+    let pro = crate::licence::is_pro();
+    let text = visibility_window(r.text_days, r.text_forever);
+    let image = visibility_window(r.image_days, r.image_forever);
+    serde_json::json!({
+        "retention_days": text.unwrap_or(r.text_days),
+        "retention_unlimited": text.is_none(),
+        "image_retention_days": image.unwrap_or(r.image_days),
+        "image_retention_unlimited": image.is_none(),
+        "max_retention_days": if pro { PRO_MAX_RETENTION_DAYS } else { FREE_MAX_RETENTION_DAYS },
+    })
 }
 
 pub fn is_capture_enabled() -> bool {
@@ -2279,10 +2429,6 @@ pub fn set_excluded_apps(apps: Vec<String>) {
     if let Ok(mut g) = excluded_apps().write() {
         *g = normalized;
     }
-}
-
-pub fn get_retention() -> u32 {
-    effective_retention_days()
 }
 
 /// Extracts up to `n` dominant RGB colours from PNG bytes via the color-thief
@@ -2571,7 +2717,7 @@ fn handle_get_history(
     // Pro-gated visibility window (used by the default + per-date views).
     // Pinned + starred rows always bypass age. Per [[feedback_sqlite_localtime_pattern]]
     // we compare local-time dates via DATE(timestamp, 'localtime').
-    let days = effective_retention_days();
+    let age_clause = visibility_clause();
     let date_clause = match date_filter {
         // Sidebar "Pinned" bucket — every pinned row, ignoring age.
         Some("pinned") => "pinned = 1".to_string(),
@@ -2587,7 +2733,7 @@ fn handle_get_history(
             format!("DATE(timestamp, 'localtime') = '{}'", safe)
         }
         // Default / unrecognised filter — Pro-gated default view.
-        _ => format!("(starred = 1 OR pinned = 1 OR timestamp >= datetime('now', '-{} days'))", days),
+        _ => format!("(starred = 1 OR pinned = 1 OR {})", age_clause),
     };
 
     // Toolbar filters (app, tag) layer on top of the date clause via
@@ -3244,12 +3390,11 @@ fn handle_get_distinct_source_apps(conn: &Connection) -> Vec<String> {
     // Mirror the Pro-gated visibility from handle_get_history: only return
     // source apps that appear in rows the Free user can actually see. Without
     // this filter, the source-filter dropdown would list apps from hidden rows.
-    let days = effective_retention_days();
     let sql = format!(
         "SELECT DISTINCT source_app FROM clipboard_history
-         WHERE source_app != '' AND (starred = 1 OR pinned = 1 OR timestamp >= datetime('now', '-{} days'))
+         WHERE source_app != '' AND (starred = 1 OR pinned = 1 OR {})
          ORDER BY source_app ASC",
-        days
+        visibility_clause()
     );
     let mut stmt = conn.prepare(&sql).unwrap();
     stmt.query_map([], |row| row.get::<_, String>(0))
@@ -3270,8 +3415,6 @@ fn handle_get_date_buckets(
     app_filter: Option<&str>,
     tag_filter: Option<&str>,
 ) -> Value {
-    let days = effective_retention_days();
-
     // Toolbar filters (app, tag) layer on top via positional `?` binds, same
     // pattern as handle_get_history. Search is intentionally NOT applied here —
     // it would force a decrypt-and-scan per refresh and the buckets are meant
@@ -3280,7 +3423,7 @@ fn handle_get_date_buckets(
     let mut clauses: Vec<String> = vec![
         "pinned = 0".to_string(),
         "starred = 0".to_string(),
-        format!("timestamp >= datetime('now', '-{} days')", days),
+        visibility_clause(),
     ];
     let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     if let Some(app) = app_filter.filter(|s| !s.is_empty()) {
@@ -3376,18 +3519,30 @@ fn handle_update_item(conn: &Connection, id: i64, new_text: &str) -> Option<Stri
 }
 
 fn handle_prune(conn: &Connection) {
-    // Prune uses the RAW stored preference, not the Pro-gated effective value.
-    // This preserves a downgraded Pro user's data on disk so it reappears on
-    // re-upgrade. The Free user's UI is gated separately at query time below,
-    // so they only see the most recent 7 days even when more rows exist.
-    // Always-Free users still naturally cap at 7 because raw = 7 default.
-    let days = retention_days();
-    let query = format!(
-        "DELETE FROM clipboard_history WHERE pinned = 0 AND starred = 0 AND timestamp < datetime('now', '-{} days')",
-        days
-    );
-    match conn.execute(&query, []) {
-        Ok(deleted) if deleted > 0 => {
+    // One DELETE per kind against its prune window (see the Retention module
+    // comment): Pro prunes at the stored days or never; Free prunes at
+    // min(days, 30) so a lapsed Pro install keeps 30 days on disk for
+    // re-upgrade but can never grow without bound. Pinned + starred rows are
+    // exempt in every tier. Both predicates run off idx_ch_list.
+    let r = retention();
+    let kinds = [
+        ("content_type != 'image'", prune_window(r.text_days, r.text_forever)),
+        ("content_type = 'image'", prune_window(r.image_days, r.image_forever)),
+    ];
+    let mut deleted: usize = 0;
+    for (kind, window) in kinds {
+        let Some(days) = window else { continue };
+        let query = format!(
+            "DELETE FROM clipboard_history WHERE pinned = 0 AND starred = 0 AND {} AND timestamp < datetime('now', '-{} days')",
+            kind, days
+        );
+        match conn.execute(&query, []) {
+            Ok(n) => deleted += n,
+            Err(e) => error!("[Keyfire] Prune query failed ({}): {}", kind, e),
+        }
+    }
+    match deleted {
+        deleted if deleted > 0 => {
             info!("[Keyfire] Pruned {} expired clipboard items", deleted);
             // Reclaim space — VACUUM rebuilds .db, wal_checkpoint(TRUNCATE) shrinks .db-wal.
             // Skipped when nothing was deleted (common case).
@@ -3430,8 +3585,7 @@ fn handle_prune(conn: &Connection) {
                 error!("[Keyfire] WAL truncate after prune failed: {}", e);
             }
         }
-        Ok(_) => {} // nothing pruned — no space to reclaim
-        Err(e) => error!("[Keyfire] Prune query failed: {}", e),
+        _ => {} // nothing pruned — no space to reclaim
     }
 }
 

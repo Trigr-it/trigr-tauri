@@ -441,7 +441,9 @@ window.electronAPI = {
   }),
   updateClipboardItem:    (id, newText)   => invoke('update_clipboard_item', { id, newText }),
   getClipboardSettings:   ()              => invoke('get_clipboard_settings'),
-  setClipboardSettings:   (retentionDays) => invoke('set_clipboard_settings', { retentionDays }),
+  // v0.8.14: partial update, pass only the rows that changed. Keys:
+  // retentionDays, retentionUnlimited, imageRetentionDays, imageRetentionUnlimited.
+  setClipboardSettings:   (settings)      => invoke('set_clipboard_settings', { ...settings }),
   // Auto-OCR + search-inside-images (Pro). Backfill runs once after upgrade,
   // guarded by a localStorage flag in App.jsx.
   setClipboardOcrSettings: (autoOcr, searchInsideImages) =>

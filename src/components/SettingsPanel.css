@@ -1215,6 +1215,30 @@
   color: var(--text-secondary);
 }
 
+.settings-retention-num:disabled {
+  opacity: 0.5;
+}
+
+.settings-retention-forever {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-retention-forever input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-retention-forever.on {
+  color: var(--text-primary);
+}
+
 /* ── Licence section ─────────────────────────────────────────────────────── */
 .settings-licence-status-row {
   display: flex;
