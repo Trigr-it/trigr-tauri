@@ -3522,8 +3522,22 @@ pub(crate) fn settle_paste(target_hwnd: isize, max_ms: u64) {
     let cap = if office { max_ms.max(OFFICE_MAX_MS) } else { max_ms };
     let min_wait = if office { OFFICE_MIN_WAIT_MS } else { DEFAULT_MIN_WAIT_MS };
 
+    // Only a clipboard open by the TARGET's own process counts as "the paste
+    // is being read". Cloud Clipboard, clipboard managers and other bystanders
+    // open the clipboard briefly right after our write; trusting them tripped
+    // seen_reader at ~50ms in Excel (2026-09-10) and Word/Outlook (2026-08-20)
+    // and the restore then clobbered the payload before the app's real read.
+    // When the opener cannot be attributed (target unknown, or the reader
+    // called OpenClipboard(NULL) so no window is reported) we fall back to the
+    // old any-open behaviour; an unattributable open never shortens the wait
+    // below what the caller asked for. A target whose foreground window lives
+    // in a different process from its reader (UWP behind ApplicationFrameHost)
+    // simply waits out the cap — later, never earlier, so still safe.
+    let target_pid = window_pid(target_hwnd);
+
     let start = std::time::Instant::now();
     let mut seen_reader = false;
+    let mut foreign_opens: u32 = 0;
     loop {
         let elapsed = start.elapsed().as_millis() as u64;
         if elapsed >= cap {
@@ -3533,7 +3547,11 @@ pub(crate) fn settle_paste(target_hwnd: isize, max_ms: u64) {
             windows_sys::Win32::System::DataExchange::GetOpenClipboardWindow() as isize
         };
         if open_wnd != 0 {
-            seen_reader = true;
+            if target_pid == 0 || window_pid(open_wnd) == target_pid {
+                seen_reader = true;
+            } else {
+                foreign_opens += 1;
+            }
         } else if seen_reader && elapsed >= min_wait {
             thread::sleep(Duration::from_millis(POST_READ_GRACE_MS));
             let reopened = unsafe {
@@ -3550,12 +3568,28 @@ pub(crate) fn settle_paste(target_hwnd: isize, max_ms: u64) {
     // the reader was caught in the act and we exited early; false means we
     // waited out the cap.
     log::info!(
-        "[Keyfire] settle_paste: observed={} elapsed={}ms cap={}ms office={}",
+        "[Keyfire] settle_paste: observed={} elapsed={}ms cap={}ms office={} foreign_opens={}",
         seen_reader,
         start.elapsed().as_millis(),
         cap,
         office,
+        foreign_opens,
     );
+}
+
+/// Owning process id of a window, 0 when unknown.
+fn window_pid(hwnd: isize) -> u32 {
+    if hwnd == 0 {
+        return 0;
+    }
+    let mut pid: u32 = 0;
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+            hwnd as _,
+            &mut pid,
+        );
+    }
+    pid
 }
 
 /// Restore a snapshot by clearing the clipboard and re-writing every captured
@@ -3694,20 +3728,33 @@ pub(crate) fn target_needs_shift_insert(target_hwnd: isize) -> bool {
 }
 
 /// True for Office desktop apps whose paste is dispatched through the ribbon
-/// (Word, Outlook confirmed 2026-08-20). The OS clipboard read fires ~60-150ms
-/// after Ctrl+V — well after the fast paths (Notepad, Chromium, eM Client)
-/// have completed. `settle_paste` uses this to extend its min-wait floor and
-/// its cap so the clipboard restore never races Office's delayed paste read.
+/// (Word + Outlook confirmed 2026-08-20, Excel confirmed 2026-09-10: every
+/// fire logged `office=false observed=true elapsed=50-100ms` and Excel then
+/// pasted the RESTORED pre-fire clipboard, or nothing when it had been empty).
+/// The OS clipboard read fires ~60-150ms after Ctrl+V — well after the fast
+/// paths (Notepad, Chromium, eM Client) have completed. `settle_paste` uses
+/// this to extend its min-wait floor and its cap so the clipboard restore
+/// never races Office's delayed paste read.
 ///
-/// If a user reports the same stale-paste symptom in PowerPoint or Excel, add
-/// their process name here (`powerpnt`, `excel`).
+/// The whole classic Office family is listed up front (same ribbon dispatch,
+/// same race) rather than waiting for each app to be reported. New Outlook
+/// (`olk`) and Teams are WebView2/Electron hosts and read synchronously; they
+/// are deliberately absent.
 pub(crate) fn target_is_office(target_hwnd: isize) -> bool {
     if target_hwnd == 0 {
         return false;
     }
     matches!(
         crate::foreground::proc_name_for_hwnd(target_hwnd).as_deref(),
-        Some("winword") | Some("outlook"),
+        Some("winword")
+            | Some("outlook")
+            | Some("excel")
+            | Some("powerpnt")
+            | Some("onenote")
+            | Some("msaccess")
+            | Some("visio")
+            | Some("mspub")
+            | Some("winproj"),
     )
 }
 
