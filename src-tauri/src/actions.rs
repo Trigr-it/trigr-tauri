@@ -5722,11 +5722,6 @@ const ALL_MODIFIER_VKS: &[(u16, &str)] = &[
     (0x5C, "RWin"),
 ];
 
-/// Check if a key is physically held using GetAsyncKeyState.
-fn is_key_down(vk: u16) -> bool {
-    unsafe { GetAsyncKeyState(vk as i32) < 0 }
-}
-
 /// Read which modifiers are physically held, release them via SendInput,
 /// and return the list of VKs that were held (for later re-press).
 ///
@@ -5750,9 +5745,19 @@ pub fn release_held_modifiers() -> Vec<u16> {
 /// while Shift is held, we release it for the injection, and by the time we
 /// reach restore the user has typically lifted their finger — re-pressing
 /// then sends Shift-down to the app with no matching physical release.
+///
+/// "Physically holding" is answered by the hook's real-event bitmap
+/// (`hotkeys::physical_modifier_down`), NOT GetAsyncKeyState: our own
+/// `release_held_modifiers` keyup has just flipped the OS state to "up", so
+/// the async check was always false here and a held modifier was never
+/// re-pressed. The app, the OS and Keyfire's MOD_* then all believed Ctrl was
+/// up while the finger stayed on it, and every further tap under that Ctrl
+/// reached the app as a bare key (v0.8.14, Ctrl held + W tapped). A finger
+/// lifted mid-injection still clears the bit in the hook proc before the
+/// keyup reaches the app, so the stuck-modifier guard above still holds.
 pub fn restore_modifiers(held: &[u16]) {
     for &vk in held {
-        if is_key_down(vk) {
+        if crate::hotkeys::physical_modifier_down(vk) {
             send_vk_key(vk, false);
         }
     }

@@ -233,6 +233,86 @@ static MENU_KEYDOWN_SUPPRESSED: AtomicBool = AtomicBool::new(false);
 // (non-LLKHF_INJECTED) events touch it; injected re-sends of a suppressed VK
 // (hold-only tap passthrough) must keep flowing. Reset with the other shared
 // atomics in spawn_hook_thread.
+// ── Physically-held modifiers (v0.8.14) ─────────────────────────────────────
+//
+// One bit per modifier VK (LShift, RShift, LCtrl, RCtrl, LAlt, RAlt, LWin,
+// RWin), set / cleared in keyboard_hook_proc on REAL (non-LLKHF_INJECTED)
+// keydown / keyup only, before any branch that could swallow or buffer the
+// event. This is the only record of what the user's FINGERS are doing that
+// Keyfire's own SendInput cannot disturb:
+//
+//   * GetAsyncKeyState is the OS's logical state — our injected modifier
+//     keyup (release_held_modifiers, before every Send Hotkey / expansion /
+//     paste) flips it to "up" while the finger is still on the key, and
+//     Windows stops auto-repeating that key, so nothing flips it back.
+//   * MOD_* (below) are fed by every hook event the processor sees, injected
+//     ones included, and are re-synced from GetAsyncKeyState on each keydown.
+//
+// restore_modifiers (actions.rs) re-presses a released modifier only while
+// its bit is set. Before this it asked GetAsyncKeyState, which its own
+// release had just cleared, so a held Ctrl was never re-pressed: user report
+// 2026-09-10, Ctrl held + W tapped fired once and then every W reached the
+// app as a bare key until Ctrl was physically released and pressed again.
+// The stuck-modifier protection this replaces (fire-on-press, 2026-08-03)
+// is preserved: a real keyup clears the bit in the hook proc before the
+// event even reaches the target app, so a finger lifted mid-injection is
+// still never re-pressed.
+//
+// Hook-safe: one AtomicU8 fetch_or / fetch_and. Resynced from the OS (no
+// injection in flight there) on hook reinstall and session lock.
+static PHYSICAL_MODS_DOWN: AtomicU8 = AtomicU8::new(0);
+
+#[inline]
+fn physical_mod_bit(vk: u32) -> u8 {
+    match vk {
+        0xA0 => 1 << 0, // LShift
+        0xA1 => 1 << 1, // RShift
+        0xA2 => 1 << 2, // LCtrl
+        0xA3 => 1 << 3, // RCtrl
+        0xA4 => 1 << 4, // LAlt
+        0xA5 => 1 << 5, // RAlt
+        0x5B => 1 << 6, // LWin
+        0x5C => 1 << 7, // RWin
+        _ => 0,
+    }
+}
+
+/// Hook proc: record a REAL modifier transition. Caller has already checked
+/// `LLKHF_INJECTED == 0`.
+#[inline]
+fn note_physical_modifier(vk: u32, down: bool) {
+    let bit = physical_mod_bit(vk);
+    if bit == 0 {
+        return;
+    }
+    if down {
+        PHYSICAL_MODS_DOWN.fetch_or(bit, Ordering::SeqCst);
+    } else {
+        PHYSICAL_MODS_DOWN.fetch_and(!bit, Ordering::SeqCst);
+    }
+}
+
+/// True while the user is physically holding this modifier VK, regardless of
+/// what Keyfire has injected since. See PHYSICAL_MODS_DOWN.
+pub fn physical_modifier_down(vk: u16) -> bool {
+    let bit = physical_mod_bit(vk as u32);
+    bit != 0 && PHYSICAL_MODS_DOWN.load(Ordering::SeqCst) & bit != 0
+}
+
+/// Rebuild PHYSICAL_MODS_DOWN from GetAsyncKeyState. Only valid where no
+/// Keyfire injection can be in flight: hook (re)install and session lock,
+/// where real keyups may have been lost and the bitmap could be stale.
+pub fn resync_physical_modifiers_from_os() {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+    let mut bits = 0u8;
+    for vk in [0xA0u32, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C] {
+        if unsafe { GetAsyncKeyState(vk as i32) } < 0 {
+            bits |= physical_mod_bit(vk);
+        }
+    }
+    PHYSICAL_MODS_DOWN.store(bits, Ordering::SeqCst);
+}
+
 static SUPPRESSED_DOWN_KEYS: [AtomicU64; 4] = [
     AtomicU64::new(0),
     AtomicU64::new(0),
@@ -712,6 +792,7 @@ pub fn on_session_locked() {
     // hook-side suppressed-while-held bits with the processor's held set.
     reset_suppressed_down_keys();
     sync_modifier_state_from_os();
+    resync_physical_modifiers_from_os();
     info!("[Keyfire] Session locked — released held/repeating input state");
 }
 
@@ -1789,6 +1870,20 @@ unsafe extern "system" fn keyboard_hook_proc(
         let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
         if kb.vkCode == 0x1B /* VK_ESCAPE */ && (kb.flags & LLKHF_INJECTED) == 0 {
             crate::actions::esc_stamp();
+        }
+    }
+    // Physically-held modifier bitmap — FIRST, before the injection buffer or
+    // the suppression branch can swallow / defer the event (a buffered real
+    // keyup is replayed later WITH LLKHF_INJECTED and would never be seen
+    // here again). See PHYSICAL_MODS_DOWN.
+    if n_code >= 0 {
+        let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+        if (kb.flags & LLKHF_INJECTED) == 0 && is_modifier_vk(kb.vkCode) {
+            if matches!(w_param as u32, WM_KEYDOWN | WM_SYSKEYDOWN) {
+                note_physical_modifier(kb.vkCode, true);
+            } else if matches!(w_param as u32, WM_KEYUP | WM_SYSKEYUP) {
+                note_physical_modifier(kb.vkCode, false);
+            }
         }
     }
     // Buffer real user keystrokes during injection — swallow them so they don't land in the target app.
@@ -4806,6 +4901,9 @@ fn spawn_hook_thread() {
                 MOD_ALT.store(false, Ordering::SeqCst);
                 MOD_SHIFT.store(false, Ordering::SeqCst);
                 MOD_META.store(false, Ordering::SeqCst);
+                // Real modifier keyups may have been lost with the old hook;
+                // nothing of ours is in flight here, so the OS view is truth.
+                resync_physical_modifiers_from_os();
                 MOUSE_DOWN_SUPPRESSED.store(0, Ordering::SeqCst);
                 RADIAL_MENU_OPEN.store(false, Ordering::SeqCst);
                 RADIAL_ACTION_VK.store(0, Ordering::SeqCst);
