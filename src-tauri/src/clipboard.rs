@@ -706,6 +706,9 @@ enum ClipboardMsg {
         /// Main UI sorts starred items above pinned; popup ignores starred
         /// (only pinned promotes). True = Main UI ordering, false = popup ordering.
         promote_starred: bool,
+        /// When the request was queued: the writer logs the queue wait so a
+        /// slow popup can be told apart from a slow query (perf review 2026-09-15).
+        sent_at: std::time::Instant,
         reply: mpsc::Sender<Value>,
     },
     GetItemFull {
@@ -1568,7 +1571,13 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
             for msg in rx {
                 match msg {
                     ClipboardMsg::NewEntry(entry) => handle_new_entry(&conn, entry),
-                    ClipboardMsg::GetHistory { page, per_page, date_filter, app_filter, tag_filter, search, promote_starred, reply } => {
+                    ClipboardMsg::GetHistory { page, per_page, date_filter, app_filter, tag_filter, search, promote_starred, sent_at, reply } => {
+                        // Queue wait = time this request sat behind other
+                        // writer work (image inserts, prune, thumb/OCR
+                        // updates). Logged with the query phases inside
+                        // handle_get_history when the total is slow.
+                        let queue_wait_ms = sent_at.elapsed().as_millis();
+                        let started = std::time::Instant::now();
                         let result = handle_get_history(
                             &conn, page, per_page,
                             date_filter.as_deref(),
@@ -1577,6 +1586,20 @@ pub fn init(app_data_dir: PathBuf, app_handle: AppHandle) {
                             search.as_deref(),
                             promote_starred,
                         );
+                        let handle_ms = started.elapsed().as_millis();
+                        let rows = result.get("items").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+                        if queue_wait_ms + handle_ms >= 100 {
+                            info!(
+                                "[PERF] clipboard get_history page {} x{}: queue wait {}ms, handler {}ms, {} rows{}",
+                                page, per_page, queue_wait_ms, handle_ms, rows,
+                                if search.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) { " (search)" } else { "" }
+                            );
+                        } else {
+                            debug!(
+                                "[PERF] clipboard get_history page {} x{}: queue wait {}ms, handler {}ms, {} rows",
+                                page, per_page, queue_wait_ms, handle_ms, rows
+                            );
+                        }
                         let _ = reply.send(result);
                     }
                     ClipboardMsg::GetItemFull { id, reply } => {
@@ -1754,6 +1777,7 @@ pub fn get_history(
             .map(|tx| {
                 tx.send(ClipboardMsg::GetHistory {
                     page, per_page, date_filter, app_filter, tag_filter, search, promote_starred,
+                    sent_at: std::time::Instant::now(),
                     reply: reply_tx,
                 })
                 .is_ok()
@@ -2761,12 +2785,19 @@ fn handle_get_history(
         return search_history(conn, &where_clause, &where_binds, &needle.to_lowercase(), per_page, offset, promote_starred);
     }
 
+    // Phase timers (perf review 2026-09-15): count / id pass / page pass.
+    // Reported at info only when the whole handler is slow, so the shipped
+    // log says WHICH pass is paying for a slow popup (the page pass walks
+    // every image row's overflow chain; the id pass is index-only).
+    let phase_started = std::time::Instant::now();
+
     // COUNT — same WHERE, just the toolbar binds.
     let count_sql = format!("SELECT COUNT(*) FROM clipboard_history WHERE {}", where_clause);
     let count_refs: Vec<&dyn rusqlite::ToSql> = where_binds.iter().map(|p| p.as_ref()).collect();
     let total: i64 = conn
         .query_row(&count_sql, rusqlite::params_from_iter(count_refs.iter()), |row| row.get(0))
         .unwrap_or(0);
+    let count_ms = phase_started.elapsed().as_millis();
 
     // ORDER BY: Main UI promotes starred above pinned; popup ignores starred
     // (only pinned promotes). COALESCE pushes NULL ranks to the bottom of
@@ -2804,6 +2835,7 @@ fn handle_get_history(
             Vec::new()
         }
     };
+    let ids_ms = phase_started.elapsed().as_millis().saturating_sub(count_ms);
 
     let items: Vec<Value> = if page_ids.is_empty() {
         Vec::new()
@@ -2825,6 +2857,14 @@ fn handle_get_history(
             }
         }
     };
+    let total_ms = phase_started.elapsed().as_millis();
+    let page_ms = total_ms.saturating_sub(count_ms + ids_ms);
+    if total_ms >= 100 {
+        info!(
+            "[PERF] clipboard history query: count {}ms, ids {}ms, page {}ms ({} rows of {})",
+            count_ms, ids_ms, page_ms, items.len(), total
+        );
+    }
 
     serde_json::json!({ "items": items, "total": total })
 }

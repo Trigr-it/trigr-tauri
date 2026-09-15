@@ -497,9 +497,20 @@ export default function SearchOverlay() {
     setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
+  // Stamp every push so the visibilitychange handler below can tell "the
+  // payload for this show already landed" from "it was lost".
+  const lastPushAtRef = useRef(0);
+  const wakePullTimer = useRef(null);
   useEffect(() => {
     if (!window.electronAPI?.onOverlaySearchData) return;
-    window.electronAPI.onOverlaySearchData(applySearchData);
+    window.electronAPI.onOverlaySearchData((data) => {
+      lastPushAtRef.current = performance.now();
+      if (wakePullTimer.current) {
+        clearTimeout(wakePullTimer.current);
+        wakePullTimer.current = null;
+      }
+      applySearchData(data);
+    });
   }, [applySearchData]);
 
   // ── Self-heal pull ────────────────────────────────────────────────────────
@@ -530,11 +541,33 @@ export default function SearchOverlay() {
 
   useEffect(() => { selfHealPull(false); }, [selfHealPull]);
 
+  // The forced pull is now CONDITIONAL (perf review 2026-09-15). Rust emits
+  // the payload before it shows the window, so on a normal open the push has
+  // already landed by the time this fires; re-pulling repeated the whole
+  // config read + serialise + buildItems on every open, wiped a fast first
+  // keystroke via setQuery(''), and threw away the haystack cache. If no
+  // push arrived in the last PUSH_FRESH_MS the payload for this show is
+  // presumed lost (cold start, suspend/IPC race) and a short deferred pull
+  // runs instead; a late push cancels it.
+  const PUSH_FRESH_MS = 1500;
+  const WAKE_PULL_MS = 250;
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') {
+        if (wakePullTimer.current) {
+          clearTimeout(wakePullTimer.current);
+          wakePullTimer.current = null;
+        }
+        return;
+      }
       applyCachedTheme();
-      selfHealPull(true);
+      if (performance.now() - lastPushAtRef.current < PUSH_FRESH_MS) return;
+      if (wakePullTimer.current) clearTimeout(wakePullTimer.current);
+      wakePullTimer.current = setTimeout(() => {
+        wakePullTimer.current = null;
+        window.electronAPI?.logPerf?.('quick search: no pushed payload for this show, self-heal pull filled it');
+        selfHealPull(true);
+      }, WAKE_PULL_MS);
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);

@@ -160,6 +160,16 @@ pub fn resume_for_show(app: &tauri::AppHandle, label: &str) {
         return;
     };
     let was_suspended = matches!(prev, State::Suspending | State::Suspended);
+    queue_restore(&win, label, was_suspended, false);
+}
+
+/// Queue the COM restore (Resume when suspended, memory target NORMAL,
+/// controller visible) to the main thread. Shared by `resume_for_show` and
+/// the ticker's repair path: a window found VISIBLE while its controller is
+/// still parked has to get `SetIsVisible(true)` re-issued or it paints
+/// nothing for that show (the HWND is up, Chromium is not compositing).
+/// `repair` only changes the log line.
+fn queue_restore(win: &tauri::WebviewWindow, label: &str, was_suspended: bool, repair: bool) {
     let label_owned = label.to_string();
     let started = Instant::now();
     let _ = win.with_webview(move |webview| {
@@ -183,7 +193,14 @@ pub fn resume_for_show(app: &tauri::AppHandle, label: &str) {
             }
             // Restore controller visibility taken away by the park path.
             let _ = controller.SetIsVisible(true);
-            if was_suspended {
+            if repair {
+                log::warn!(
+                    "[MEM] {} was shown while {} — re-issued SetIsVisible(true) ({}ms)",
+                    label_owned,
+                    if was_suspended { "suspended" } else { "parked" },
+                    started.elapsed().as_millis()
+                );
+            } else if was_suspended {
                 log::info!(
                     "[MEM] {} resumed from suspend in {}ms",
                     label_owned,
@@ -207,14 +224,28 @@ fn tick_window(app: &tauri::AppHandle, label: &str, may_suspend: bool) {
         None,
         Park,
         Suspend,
+        /// Visible HWND, controller still parked/suspended: restore it.
+        Repair { was_suspended: bool },
     }
     let action = {
         let mut reg = registry().lock().unwrap();
         let entry = reg.entry(label.to_string()).or_insert_with(WinMem::fresh);
         if visible {
+            // A show path that ran longer than RESUME_GRACE between its
+            // resume_for_show and the actual show (the fill-in clipboard
+            // popup used to fetch history synchronously in that gap) could
+            // be parked again before the HWND appeared. resume_for_show
+            // early-returns once the state reads Active, so without this
+            // repair the window stayed blank until the next hide/show.
+            let action = match entry.state {
+                State::Active => Action::None,
+                State::Parking | State::Parked => Action::Repair { was_suspended: false },
+                State::Suspending | State::Suspended => Action::Repair { was_suspended: true },
+            };
             entry.state = State::Active;
             entry.hidden_since = None;
-            Action::None
+            entry.last_resume = Some(Instant::now());
+            action
         } else {
             match entry.state {
                 State::Active => {
@@ -252,6 +283,7 @@ fn tick_window(app: &tauri::AppHandle, label: &str, may_suspend: bool) {
         Action::None => {}
         Action::Park => queue_park(&win, label),
         Action::Suspend => queue_suspend(&win, label),
+        Action::Repair { was_suspended } => queue_restore(&win, label, was_suspended, true),
     }
 }
 

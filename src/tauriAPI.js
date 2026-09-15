@@ -547,6 +547,8 @@ window.electronAPI = {
 
   // ── Radial Menu ────────────────────────────────────────────────────────────
   getAppIcon:             (path) => invoke('get_app_icon', { path }),
+  // INFO-level perf breadcrumb (log_debug is dropped in release builds).
+  logPerf:                (message) => invoke('log_perf', { message }).catch(() => {}),
   // v0.8.4: legacy source_app rows carry only a basename (e.g. "chrome.exe").
   // This resolves the exe path via App Paths registry → running process →
   // System32, then returns the icon data URL. Null if unresolvable.

@@ -55,8 +55,18 @@ export default function RadialMenu() {
     holdKeyRef.current = data.holdKey || '';
   }, []);
 
+  // Push stamp + deferred-pull timer: see the visibilitychange handler below.
+  const lastPushAtRef = useRef(0);
+  const wakePullTimer = useRef(null);
   useEffect(() => {
-    window.electronAPI?.onRadialMenuData(applyRadialData);
+    window.electronAPI?.onRadialMenuData((data) => {
+      lastPushAtRef.current = performance.now();
+      if (wakePullTimer.current) {
+        clearTimeout(wakePullTimer.current);
+        wakePullTimer.current = null;
+      }
+      applyRadialData(data);
+    });
 
     // Close on window blur (clicking outside the window entirely)
     const onBlur = () => window.electronAPI?.closeRadialMenu();
@@ -87,11 +97,32 @@ export default function RadialMenu() {
 
   useEffect(() => { selfHealPull(false); }, [selfHealPull]);
 
+  // Conditional forced pull (perf review 2026-09-15). Rust pushes the wheel
+  // data before showing the window, so on a normal open the push has landed
+  // by the time this fires; the unconditional re-pull re-read the config
+  // and REMOUNTED the wheel (setAnimKey) mid wedge-expand, a visible double
+  // pop on every open. Only when no push arrived recently is the payload
+  // presumed lost, and then a short deferred pull runs (a late push cancels
+  // it).
+  const PUSH_FRESH_MS = 1500;
+  const WAKE_PULL_MS = 250;
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') {
+        if (wakePullTimer.current) {
+          clearTimeout(wakePullTimer.current);
+          wakePullTimer.current = null;
+        }
+        return;
+      }
       applyCachedTheme();
-      selfHealPull(true);
+      if (performance.now() - lastPushAtRef.current < PUSH_FRESH_MS) return;
+      if (wakePullTimer.current) clearTimeout(wakePullTimer.current);
+      wakePullTimer.current = setTimeout(() => {
+        wakePullTimer.current = null;
+        window.electronAPI?.logPerf?.('radial menu: no pushed payload for this show, self-heal pull filled it');
+        selfHealPull(true);
+      }, WAKE_PULL_MS);
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);

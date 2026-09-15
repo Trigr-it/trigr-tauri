@@ -37,6 +37,16 @@ function highlightMatches(text, needle) {
 // so a hidden popup holds ~60 rows, not the whole history.
 const ROW_CHUNK = 60;
 
+// Rows per backend page (2026-09-15). The popup used to receive 500 rows on
+// every open and filter them in memory; on a long-retention history that was
+// a ~600 ms page pass plus a multi-megabyte payload per open. Now an open
+// costs ONE 50-row page, search + tag filters run on the writer thread (the
+// same decrypt-and-scan the main panel uses, which also matches full body
+// text past the preview boundary), and scrolling or arrowing past the end
+// appends the next page. Must match CLIPBOARD_POPUP_PAGE_ROWS in lib.rs.
+const PAGE_ROWS = 50;
+const SEARCH_DEBOUNCE_MS = 150;
+
 // ── Lazy image thumbnail loader ─────────────────────────────────────────────
 
 function ImageThumb({ id, thumbB64, className, fallbackClass, zoomable }) {
@@ -143,6 +153,21 @@ export default function ClipboardOverlay() {
     return next;
   });
   const [items, setItems] = useState([]);
+  // Backend paging state for the current query (search + tag): `total` is the
+  // writer's match count, `page` the last page appended.
+  const [total, setTotal] = useState(0);
+  const pageRef = useRef(1);
+  const loadingRef = useRef(false);
+  // Request sequence: a response older than the latest request is dropped
+  // (fast typing, or a search superseding an in-flight page append).
+  const reqSeqRef = useRef(0);
+  // Set when a show is under way and the Rust push is expected to supply
+  // page 1; the query effect skips its own fetch for the default query while
+  // this is true so an open costs one writer round trip, not two.
+  const awaitingPushRef = useRef(false);
+  // True for the render right after a page APPEND, so the "list changed →
+  // selection back to the top" effect leaves the user's place alone.
+  const appendPendingRef = useRef(false);
   const [renderLimit, setRenderLimit] = useState(ROW_CHUNK);
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Theme is painted by src/theme/runtime.js (cached snapshot before React
@@ -150,6 +175,13 @@ export default function ClipboardOverlay() {
   // wake handler below). The payload's `theme` field is no longer read.
   const [search, setSearch] = useState('');
   const [filterTag, setFilterTag] = useState('All');
+  // Live mirrors so the push handler / pager read the current query without
+  // re-subscribing.
+  const searchRef = useRef('');
+  const filterTagRef = useRef('All');
+  useEffect(() => { searchRef.current = search; }, [search]);
+  useEffect(() => { filterTagRef.current = filterTag; }, [filterTag]);
+  const isDefaultQuery = () => !searchRef.current.trim() && filterTagRef.current === 'All';
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
   const rowRefs = useRef([]);
@@ -166,6 +198,9 @@ export default function ClipboardOverlay() {
   // push landing first cancels it so a normal open costs ONE history fetch
   // on the clipboard writer thread instead of two (v0.8.13).
   const wakePullTimer = useRef(null);
+  // performance.now() of the last hidden->visible transition; lets the push
+  // handler report how long the visible popup waited for its list.
+  const shownAtRef = useRef(0);
   useEffect(() => {
     window.electronAPI?.onClipboardOverlayData((data) => {
       // Rust never pushes a timed-out payload, but guard anyway: a timeout is
@@ -175,8 +210,25 @@ export default function ClipboardOverlay() {
         clearTimeout(wakePullTimer.current);
         wakePullTimer.current = null;
       }
+      awaitingPushRef.current = false;
+      // The push is always the DEFAULT page 1. If the user has already typed
+      // a search (keys are routed from the first moment after the hotkey)
+      // the query effect owns the list and this payload is stale for it.
+      if (!isDefaultQuery()) return;
       const list = data?.items || [];
+      // Perf breadcrumb (2026-09-15): only the slow case reaches the log. A
+      // list that lands more than 300 ms after the popup became visible is
+      // exactly the "takes a second to show the items" report.
+      if (shownAtRef.current) {
+        const waited = Math.round(performance.now() - shownAtRef.current);
+        if (waited > 300) {
+          window.electronAPI?.logPerf?.(`clipboard popup: pushed list landed ${waited}ms after visible (${list.length} rows, had ${itemsLenRef.current})`);
+        }
+      }
+      reqSeqRef.current += 1; // supersede any in-flight default-page pull
+      pageRef.current = 1;
       setItems(list);
+      setTotal(typeof data?.total === 'number' ? data.total : list.length);
     });
     return () => window.electronAPI?.removeAllListeners('clipboard-overlay-data');
   }, []);
@@ -196,20 +248,65 @@ export default function ClipboardOverlay() {
   // the pushed payload for that show may be the thing that got lost.
   const itemsLenRef = useRef(0);
   useEffect(() => { itemsLenRef.current = items.length; }, [items]);
-  const selfHealPull = useCallback((force) => {
-    window.electronAPI?.getClipboardHistory?.(1, 500)
+
+  // Backend page loader for the CURRENT query. page 1 replaces the list,
+  // later pages append. Filters mirror the main panel's vocabulary: tag
+  // 'All' = no tag filter; empty search = default timeline. promoteStarred
+  // stays off so starred rows keep their place in the timeline (popup rule).
+  const loadHistory = useCallback((page, append) => {
+    const seq = ++reqSeqRef.current;
+    loadingRef.current = true;
+    const filters = {
+      tagFilter: filterTagRef.current !== 'All' ? filterTagRef.current : null,
+      search: searchRef.current.trim() || null,
+    };
+    return window.electronAPI?.getClipboardHistory?.(page, PAGE_ROWS, filters)
       .then((data) => {
+        if (seq !== reqSeqRef.current) return; // superseded by a newer request
         // A writer-thread timeout comes back flagged (v0.8.13). It is not an
         // empty history: a forced pull used to overwrite a good pushed list
         // with nothing here — one candidate for the blank-popup report.
         if (data?.timed_out) return;
         const list = data?.items || [];
-        setItems(prev => (force || prev.length === 0 ? list : prev));
+        pageRef.current = page;
+        if (append) appendPendingRef.current = true;
+        setItems(prev => (append ? [...prev, ...list] : list));
+        setTotal(typeof data?.total === 'number' ? data.total : list.length);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (seq === reqSeqRef.current) loadingRef.current = false; });
   }, []);
 
-  useEffect(() => { selfHealPull(false); }, [selfHealPull]);
+  // Self-heal: a non-forced pull only fills an empty popup; a forced one
+  // reloads page 1 of the current query.
+  const selfHealPull = useCallback((force) => {
+    if (!force && itemsLenRef.current > 0) return;
+    awaitingPushRef.current = false;
+    loadHistory(1, false);
+  }, [loadHistory]);
+
+  // (No separate mount pull: the query effect below fires once at mount for
+  // the default query, which fills the hidden popup ahead of its first show.)
+
+  // Query changes (typed search, tag pill, cleared search) reload page 1
+  // from the writer. Search is debounced so a fast typist fires one scan,
+  // not one per keystroke; tag changes are immediate. The default query
+  // right after a show is skipped while the Rust push is expected: the
+  // reset event clears search/tag on every open, and without this guard
+  // that clear would race the push with a second identical fetch.
+  useEffect(() => {
+    const defaultQuery = !search.trim() && filterTag === 'All';
+    if (defaultQuery && awaitingPushRef.current) return;
+    const timer = setTimeout(() => loadHistory(1, false), search.trim() ? SEARCH_DEBOUNCE_MS : 0);
+    return () => clearTimeout(timer);
+  }, [search, filterTag, loadHistory]);
+
+  // Append the next page when the user scrolls or arrows past what is loaded.
+  const hasMore = items.length < total;
+  const loadNextPage = useCallback(() => {
+    if (loadingRef.current || itemsLenRef.current >= total) return;
+    loadHistory(pageRef.current + 1, true);
+  }, [loadHistory, total]);
 
   // Wake / park hook. webview_mem parks every hidden window with
   // SetIsVisible(false), so visibilityState is truthful here and this fires
@@ -234,9 +331,15 @@ export default function ClipboardOverlay() {
         return;
       }
       applyCachedTheme();
+      shownAtRef.current = performance.now();
+      awaitingPushRef.current = true;
       if (wakePullTimer.current) clearTimeout(wakePullTimer.current);
       wakePullTimer.current = setTimeout(() => {
         wakePullTimer.current = null;
+        // The push did not arrive within WAKE_PULL_MS: this is the case the
+        // perf review wants counted. If the popup was empty the user saw a
+        // blank list until this pull returns.
+        window.electronAPI?.logPerf?.(`clipboard popup: no pushed list within ${WAKE_PULL_MS}ms of visible, self-heal pull running (had ${itemsLenRef.current} rows)`);
         selfHealPull(true);
       }, WAKE_PULL_MS);
       setSelectedIndex(0);
@@ -256,6 +359,8 @@ export default function ClipboardOverlay() {
   // arrives.
   useEffect(() => {
     const unlistenPromise = listen('clipboard-overlay-reset', () => {
+      // Rust pushes page 1 right after this; let it own the default query.
+      awaitingPushRef.current = true;
       setSelectedIndex(0);
       setSearch('');
       setFilterTag('All');
@@ -272,25 +377,12 @@ export default function ClipboardOverlay() {
 
   // ── Filtering ─────────────────────────────────────────────────────────────
 
-  const filtered = useMemo(() => {
-    return items.filter(i => {
-      if (search.trim()) {
-        const needle = search.toLowerCase();
-        const inPreview = (i.preview || '').toLowerCase().includes(needle);
-        // Search-inside-images (Pro): image rows with cached OCR text match
-        // the popup search too. Backend enforces the Pro + setting gate; if
-        // ocr_text is populated it means the row was OCR'd successfully.
-        const inOcr = (i.ocr_text || '').toLowerCase().includes(needle);
-        // Backend-side full-text match past the 200-char preview boundary
-        // carries `search_source: "text"` (or `"ocr"` for image matches);
-        // honour it so those rows aren't dropped by this local check.
-        const backendTagged = i.search_source === 'text' || i.search_source === 'ocr';
-        if (!inPreview && !inOcr && !backendTagged) return false;
-      }
-      if (filterTag !== 'All' && i.content_tag !== filterTag) return false;
-      return true;
-    });
-  }, [items, search, filterTag]);
+  // Search + tag filtering moved to the writer (2026-09-15): `items` already
+  // IS the filtered page set for the current query, so no client-side pass.
+  // Kept under the old name so the render / key-routing code below is
+  // unchanged. Search-inside-images (Pro + setting) and full-body text hits
+  // are decided by search_history in clipboard.rs, same as the main panel.
+  const filtered = items;
 
   const groupedFlat = useMemo(() => {
     const groups = groupByTimeline(filtered);
@@ -305,21 +397,30 @@ export default function ClipboardOverlay() {
     return result;
   }, [filtered]);
 
-  useEffect(() => { setSelectedIndex(0); setEditing(false); setRenderLimit(ROW_CHUNK); }, [filtered.length]);
+  useEffect(() => {
+    // A page append grows the list under the user's selection: keep it.
+    // Every other change (new query result, delete) restarts at the top.
+    if (appendPendingRef.current) { appendPendingRef.current = false; return; }
+    setSelectedIndex(0); setEditing(false); setRenderLimit(ROW_CHUNK);
+  }, [filtered.length]);
 
-  // Keep the selected row mounted when arrowing past the rendered range.
+  // Keep the selected row mounted when arrowing past the rendered range, and
+  // fetch the next backend page when the selection nears the loaded end.
   useEffect(() => {
     const pos = groupedFlat.findIndex(e => e.type === 'item' && e.flatIndex === selectedIndex);
     if (pos >= 0) setRenderLimit(l => (pos + 8 > l ? pos + ROW_CHUNK : l));
-  }, [selectedIndex, groupedFlat]);
+    if (hasMore && selectedIndex >= items.length - 8) loadNextPage();
+  }, [selectedIndex, groupedFlat, hasMore, items.length, loadNextPage]);
 
-  // Append the next chunk as the list nears its rendered end.
+  // Append the next chunk as the list nears its rendered end; once every
+  // loaded row is rendered, ask the writer for the next page.
   const onListScroll = useCallback((e) => {
     const el = e.currentTarget;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
       setRenderLimit(l => (l < groupedFlat.length ? l + ROW_CHUNK : l));
+      if (renderLimit >= groupedFlat.length && hasMore) loadNextPage();
     }
-  }, [groupedFlat.length]);
+  }, [groupedFlat.length, renderLimit, hasMore, loadNextPage]);
 
   // Cancel edit when selection changes
   useEffect(() => { setEditing(false); setEditText(''); }, [selectedIndex]);
@@ -579,7 +680,7 @@ export default function ClipboardOverlay() {
           </div>
           <div className="co-left-list" onScroll={onListScroll}>
             {filtered.length === 0 ? (
-              <div className="co-empty">{items.length === 0 ? 'No history' : 'No matches'}</div>
+              <div className="co-empty">{search.trim() || filterTag !== 'All' ? 'No matches' : 'No history'}</div>
             ) : (
               groupedFlat.slice(0, renderLimit).map((entry) => {
                 if (entry.type === 'header') {

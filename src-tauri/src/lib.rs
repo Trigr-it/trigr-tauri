@@ -952,7 +952,7 @@ $starts | ForEach-Object {
 
 #[cfg(not(windows))]
 #[tauri::command]
-fn get_app_icon(path: String) -> Value {
+async fn get_app_icon(path: String) -> Value {
     let _ = path;
     Value::Null
 }
@@ -964,10 +964,43 @@ fn get_app_icon_by_name(name: String) -> Value {
     Value::Null
 }
 
+/// Icon for an exe path / .lnk / AUMID. Session-cached (hits AND misses) and
+/// run on the blocking pool like get_app_icon_by_name: it was a sync command
+/// doing SHGetFileInfoW / SHParseDisplayName on the Tauri main thread, and
+/// the App.jsx icon backfill effects re-request every target that has no
+/// icon yet on EVERY assignments change, so one unresolvable target (Slack's
+/// AUMID on a machine where the shell returns no icon) cost a main-thread
+/// shell call per edit for the whole session (129 in one afternoon).
 #[cfg(windows)]
 #[tauri::command]
-fn get_app_icon(path: String) -> Value {
-    icon_data_url_from_path(path)
+async fn get_app_icon(path: String) -> Value {
+    {
+        let cache = app_icon_by_path_cache().lock().unwrap();
+        if let Some(entry) = cache.get(&path) {
+            return match entry {
+                Some(url) => Value::String(url.clone()),
+                None => Value::Null,
+            };
+        }
+    }
+    let path_for_task = path.clone();
+    let icon = tauri::async_runtime::spawn_blocking(move || icon_data_url_from_path(path_for_task))
+        .await
+        .ok();
+    let (result, cached_val): (Value, Option<String>) = match icon {
+        Some(Value::String(url)) => (Value::String(url.clone()), Some(url)),
+        _ => (Value::Null, None),
+    };
+    let mut cache = app_icon_by_path_cache().lock().unwrap();
+    cache.insert(path, cached_val);
+    result
+}
+
+#[cfg(windows)]
+static APP_ICON_BY_PATH_CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<String>>>> = std::sync::OnceLock::new();
+#[cfg(windows)]
+fn app_icon_by_path_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<String>>> {
+    APP_ICON_BY_PATH_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
 /// v0.8.4 legacy source_app icon resolver. The list payload only carries a
@@ -3083,6 +3116,21 @@ fn log_debug(message: String) {
     log::debug!("{}", message);
 }
 
+/// Frontend perf breadcrumbs at INFO so they survive into the shipped log
+/// (log_debug is dropped at the release filter). Used sparingly: the popups
+/// report only the abnormal case, e.g. "the pushed list never arrived and
+/// the self-heal pull filled the popup instead".
+#[tauri::command]
+fn log_perf(message: String) {
+    log::info!("[PERF] {}", message);
+}
+
+/// Show-in-flight guards for the popup toggle listeners (see setup): a
+/// second hotkey press while the spawned show thread is still running is
+/// treated as the toggle-off it would have been when the show ran inline.
+static CLIPBOARD_SHOW_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static RADIAL_SHOW_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 // ── Overlay / Quick Search (Phase 9) ────────────────────────────────────────
 
 use std::sync::atomic::{AtomicIsize, Ordering as AtomicOrdering};
@@ -3630,8 +3678,74 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     log::warn!("[stub] clipboard popup is not available on this platform yet");
 }
 
+/// Rows per page for the clipboard popup. The popup used to receive 500 rows
+/// per open and filter them client-side; since 2026-09-15 it pages 50 at a
+/// time (scroll / arrow past the end appends the next page) and sends search
+/// + tag filters to the writer, so an open costs one 50-row page whatever
+/// the retention window. Must match PAGE_ROWS in ClipboardOverlay.jsx.
+const CLIPBOARD_POPUP_PAGE_ROWS: u32 = 50;
+
+/// Fetch the popup's first page on a throwaway thread and push it as
+/// `clipboard-overlay-data`. Shared by the hotkey show path
+/// and the fill-in variant so neither ever blocks its caller on the
+/// clipboard writer. `show_started` is the caller's show timestamp: the
+/// `[PERF]` line it produces is the reference for "how long after the popup
+/// appeared did its list land" (see the instrumentation notes in
+/// docs/private/keyfire-perf-review-2026-09-15.md).
+///
+/// The payload used to carry a `theme` field read from a full
+/// `config::load_config()` (disk read + JSON parse per open); the overlay
+/// stopped reading it when the theme runtime landed, so it is gone.
+#[cfg(windows)]
+fn push_clipboard_overlay_history(
+    win: tauri::WebviewWindow,
+    show_started: std::time::Instant,
+    origin: &'static str,
+) {
+    use tauri::Emitter;
+    std::thread::Builder::new()
+        .name("keyfire-clipboard-popup-data".into())
+        .spawn(move || {
+            let fetch_started = std::time::Instant::now();
+            let history = clipboard::get_history(1, CLIPBOARD_POPUP_PAGE_ROWS, None, None, None, None, false);
+            let fetch_ms = fetch_started.elapsed().as_millis();
+            // A writer-thread timeout is not an empty history: keep whatever
+            // the popup already shows rather than pushing a blank list
+            // (v0.8.13). The overlay's deferred wake pull retries on its own.
+            if history.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false) {
+                log::warn!(
+                    "[Keyfire] clipboard overlay ({}) data push skipped: history fetch timed out",
+                    origin
+                );
+                return;
+            }
+            let rows = history.get("items").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+            match win.emit("clipboard-overlay-data", history) {
+                Ok(()) => {
+                    let since_show = show_started.elapsed().as_millis();
+                    // Info above 100 ms so a slow open leaves a trace in the
+                    // shipped log; the common fast case stays at debug.
+                    if since_show >= 100 {
+                        log::info!(
+                            "[PERF] clipboard popup ({}) list pushed {}ms after show start (fetch {}ms, {} rows)",
+                            origin, since_show, fetch_ms, rows
+                        );
+                    } else {
+                        log::debug!(
+                            "[PERF] clipboard popup ({}) list pushed {}ms after show start (fetch {}ms, {} rows)",
+                            origin, since_show, fetch_ms, rows
+                        );
+                    }
+                }
+                Err(e) => log::warn!("[Keyfire] clipboard overlay data emit failed: {}", e),
+            }
+        })
+        .ok();
+}
+
 #[cfg(windows)]
 fn show_clipboard_overlay(app: &tauri::AppHandle) {
+    let show_started = std::time::Instant::now();
     // Wake a suspended webview BEFORE any emit/show — see webview_mem.rs invariant.
     webview_mem::resume_for_show(app, "clipboardoverlay");
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
@@ -3726,26 +3840,7 @@ fn show_clipboard_overlay(app: &tauri::AppHandle) {
     // safe: the frontend resets on 'clipboard-overlay-reset' (already sent
     // above), NOT on the data event, so keys typed while the fetch runs are
     // kept.
-    let win_data = win.clone();
-    std::thread::spawn(move || {
-        let history = clipboard::get_history(1, 500, None, None, None, None, false);
-        // A writer-thread timeout is not an empty history: keep whatever the
-        // popup already shows rather than pushing a blank list (v0.8.13). The
-        // overlay's deferred wake pull retries on its own.
-        if history.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false) {
-            log::warn!("[Keyfire] clipboard overlay data push skipped: history fetch timed out");
-            return;
-        }
-        let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
-        let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
-        let mut payload = history;
-        if let Some(obj) = payload.as_object_mut() {
-            obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
-        }
-        if let Err(e) = win_data.emit("clipboard-overlay-data", payload) {
-            log::warn!("[Keyfire] clipboard overlay data emit failed: {}", e);
-        }
-    });
+    push_clipboard_overlay_history(win.clone(), show_started, "hotkey");
 
     // Raw Win32 show — bypass Tauri's win.show() which calls ShowWindow(SW_SHOW)
     // and *tries* to activate. WS_EX_NOACTIVATE *should* prevent activation but
@@ -5461,32 +5556,22 @@ fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
 #[cfg(windows)]
 fn show_clipboard_overlay_for_fillin_impl(app: &tauri::AppHandle) {
     crate::hotkeys::CLIPBOARD_OVERLAY_FOR_FILLIN.store(true, std::sync::atomic::Ordering::SeqCst);
+    let show_started = std::time::Instant::now();
     webview_mem::resume_for_show(app, "clipboardoverlay");
-
-    // Send history + theme BEFORE showing so the payload is ready when the
-    // window becomes visible. Same pattern as show_clipboard_overlay.
-    let history = clipboard::get_history(1, 500, None, None, None, None, false);
-    // Writer-thread timeout ≠ empty history: keep the popup's current list
-    // and let its deferred wake pull retry (v0.8.13, same as the main path).
-    let history_timed_out = history.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false);
-    if history_timed_out {
-        log::warn!("[Keyfire] clipboard overlay (fill-in) data push skipped: history fetch timed out");
-    }
-    let cfg = config::load_config().unwrap_or_else(|| serde_json::json!({}));
-    let theme = cfg.get("theme").and_then(|v| v.as_str()).unwrap_or("dark");
-    let mut payload = history;
-    if let Some(obj) = payload.as_object_mut() {
-        obj.insert("theme".to_string(), serde_json::Value::String(theme.to_string()));
-    }
 
     if let Some(win) = app.get_webview_window("clipboardoverlay") {
         use tauri::Emitter;
         // Clear search/selection on every show — the data event no longer
         // resets them (see ClipboardOverlay.jsx 'clipboard-overlay-reset').
         let _ = win.emit("clipboard-overlay-reset", serde_json::Value::Null);
-        if !history_timed_out {
-            let _ = win.emit("clipboard-overlay-data", payload);
-        }
+        // History is fetched OFF this thread, exactly like show_clipboard_overlay.
+        // It used to run synchronously here between resume_for_show and the
+        // SetWindowPos below: a writer round trip slower than webview_mem's
+        // 3 s RESUME_GRACE let the ticker park the controller again before the
+        // HWND appeared, and the popup showed as a blank rectangle. The
+        // window now shows immediately with its previous list and refreshes
+        // when the payload lands (the overlay keeps its list across hides).
+        push_clipboard_overlay_history(win.clone(), show_started, "fill-in");
 
         // Position like show_clipboard_overlay: center of active monitor,
         // 1/3 from top, clamped to work area. Physical units to dodge the
@@ -7124,11 +7209,34 @@ pub fn run() {
             // decides the toggle: it flips true at the TOP of the show path,
             // so a rapid second press during the show latency hides instead
             // of double-showing, and there's no main-thread round-trip.
+            //
+            // Both clipboard listeners and the radial one below run the show
+            // OFF the processor thread (same pattern as toggle-overlay). Each
+            // show does two blocking main-thread round trips (hwnd() /
+            // is_visible()), synchronous cross-thread SetWindowPos calls, a
+            // local-settings disk read and, for the radial, a full config
+            // parse; inline, every hotkey and expansion system-wide queued
+            // behind the popup open. SHOW_PENDING keeps the toggle semantics
+            // the atomic gave us: a second press while the show is still in
+            // flight hides instead of double-showing.
             let app_handle_clip = app.handle().clone();
             app.listen("toggle-clipboard-overlay", move |_| {
-                if hotkeys::CLIPBOARD_OVERLAY_VISIBLE.load(AtomicOrdering::SeqCst) {
+                if hotkeys::CLIPBOARD_OVERLAY_VISIBLE.load(AtomicOrdering::SeqCst)
+                    || CLIPBOARD_SHOW_PENDING.swap(true, AtomicOrdering::SeqCst)
+                {
+                    CLIPBOARD_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
                     hide_clipboard_overlay(&app_handle_clip);
-                } else {
+                    return;
+                }
+                let handle = app_handle_clip.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("keyfire-clipboard-toggle".into())
+                    .spawn(move || {
+                        show_clipboard_overlay(&handle);
+                        CLIPBOARD_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
+                    });
+                if spawned.is_err() {
+                    CLIPBOARD_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
                     show_clipboard_overlay(&app_handle_clip);
                 }
             });
@@ -7140,9 +7248,22 @@ pub fn run() {
             // Ctrl+V injection into the wrong window.
             let app_handle_clip_fill = app.handle().clone();
             app.listen("toggle-clipboard-overlay-for-fillin", move |_| {
-                if hotkeys::CLIPBOARD_OVERLAY_VISIBLE.load(AtomicOrdering::SeqCst) {
+                if hotkeys::CLIPBOARD_OVERLAY_VISIBLE.load(AtomicOrdering::SeqCst)
+                    || CLIPBOARD_SHOW_PENDING.swap(true, AtomicOrdering::SeqCst)
+                {
+                    CLIPBOARD_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
                     hide_clipboard_overlay(&app_handle_clip_fill);
-                } else {
+                    return;
+                }
+                let handle = app_handle_clip_fill.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("keyfire-clipboard-toggle".into())
+                    .spawn(move || {
+                        show_clipboard_overlay_for_fillin_impl(&handle);
+                        CLIPBOARD_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
+                    });
+                if spawned.is_err() {
+                    CLIPBOARD_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
                     show_clipboard_overlay_for_fillin_impl(&app_handle_clip_fill);
                 }
             });
@@ -7164,14 +7285,35 @@ pub fn run() {
             // Listen for radial menu toggle from hotkey system
             let app_handle_radial = app.handle().clone();
             app.listen("toggle-radial-menu", move |_| {
-                let visible = app_handle_radial
-                    .get_webview_window("radialmenu")
-                    .and_then(|w| w.is_visible().ok())
-                    .unwrap_or(false);
-                if visible {
+                // is_visible() is a main-thread round trip and show_radial_menu
+                // reads + parses the config: both belong off the processor
+                // thread (see the clipboard listener above).
+                if RADIAL_SHOW_PENDING.swap(true, AtomicOrdering::SeqCst) {
+                    // Show still in flight from the previous press: treat this
+                    // press as the toggle-off it would have been.
+                    RADIAL_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
                     hide_radial_menu(&app_handle_radial);
                     restore_radial_menu_target();
-                } else {
+                    return;
+                }
+                let handle = app_handle_radial.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("keyfire-radial-toggle".into())
+                    .spawn(move || {
+                        let visible = handle
+                            .get_webview_window("radialmenu")
+                            .and_then(|w| w.is_visible().ok())
+                            .unwrap_or(false);
+                        if visible {
+                            hide_radial_menu(&handle);
+                            restore_radial_menu_target();
+                        } else {
+                            show_radial_menu(&handle);
+                        }
+                        RADIAL_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
+                    });
+                if spawned.is_err() {
+                    RADIAL_SHOW_PENDING.store(false, AtomicOrdering::SeqCst);
                     show_radial_menu(&app_handle_radial);
                 }
             });
@@ -7416,7 +7558,17 @@ pub fn run() {
                 }
             } else if label == "clipboardoverlay" {
                 if let tauri::WindowEvent::Focused(false) = event {
-                    let _ = window.hide();
+                    // Only fill-in mode ever gives the popup focus (the hotkey
+                    // path shows NOACTIVATE), so this is the fill-in blur. It
+                    // used to call window.hide() directly, which (a) no-ops
+                    // because the raw SetWindowPos show bypassed Tauri's
+                    // cached visibility and (b) left CLIPBOARD_OVERLAY_VISIBLE
+                    // and the HWND atomic set, so the NEXT hotkey press took
+                    // the hide branch and nothing appeared. Go through the
+                    // real hide so every flag stays in step with the window.
+                    if hotkeys::CLIPBOARD_OVERLAY_VISIBLE.load(std::sync::atomic::Ordering::SeqCst) {
+                        hide_clipboard_overlay(window.app_handle());
+                    }
                     let hwnd = CLIPBOARD_OVERLAY_TARGET.load(std::sync::atomic::Ordering::SeqCst);
                     if hwnd != 0 {
                         actions::set_foreground_robust(hwnd);
@@ -7553,6 +7705,7 @@ pub fn run() {
             browse_for_video,
             get_app_icon,
             get_app_icon_by_name,
+            log_perf,
             list_installed_apps,
             browse_for_folder,
             read_image_base64,

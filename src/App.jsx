@@ -9,6 +9,7 @@ import MouseCanvas from './components/MouseCanvas';
 import MacroPanel from './components/MacroPanel';
 import StatusBar from './components/StatusBar';
 import Toaster from './components/Toaster';
+import { isKnownIconMiss, noteIconMiss } from './components/appIconCache';
 // Main-window inner-tab panels are code-split so an autostart-into-tray user
 // who never opens the window (or only lives in Triggers) never loads them.
 // Once opened they stay resident for the session — instant on later switches.
@@ -1864,10 +1865,10 @@ function App() {
     const assignment = assignmentOverride || assignments[key];
     if (!assignment || assignment.type !== 'app') return;
     const target = assignment.data?.iconSource || assignment.data?.path || assignment.data?.appId;
-    if (!target) return;
+    if (!target || isKnownIconMiss(target)) return;
     try {
       const dataUrl = await window.electronAPI?.getAppIcon(target);
-      if (!dataUrl) return;
+      if (!dataUrl) { noteIconMiss(target); return; }
       setAssignments(prev => {
         const cur = prev[key];
         if (!cur || cur.type !== 'app') return prev;
@@ -4689,7 +4690,7 @@ function App() {
     const assignment = assignmentOverride || assignments[storageKey];
     if (!assignment || assignment.type !== 'app') return;
     const target = assignment.data?.iconSource || assignment.data?.path || assignment.data?.appId;
-    if (!target) return;
+    if (!target || isKnownIconMiss(target)) return;
     try {
       const dataUrl = await window.electronAPI?.getAppIcon(target);
       if (dataUrl) {
@@ -4697,6 +4698,8 @@ function App() {
           if (!item || item.id !== itemId) return item;
           return { ...item, appIcon: dataUrl };
         }));
+      } else {
+        noteIconMiss(target);
       }
     } catch (e) {
       // Silent fail — icon extraction is best-effort
@@ -4708,7 +4711,7 @@ function App() {
     const assignment = assignments[storageKey];
     if (!assignment || assignment.type !== 'app') return;
     const target = assignment.data?.iconSource || assignment.data?.path || assignment.data?.appId;
-    if (!target) return;
+    if (!target || isKnownIconMiss(target)) return;
     try {
       const dataUrl = await window.electronAPI?.getAppIcon(target);
       if (dataUrl) {
@@ -4716,6 +4719,8 @@ function App() {
           if (!item || item.id !== folderId || item.type !== 'folder') return item;
           return { ...item, children: item.children.map(c => c.id === childId ? { ...c, appIcon: dataUrl } : c) };
         }));
+      } else {
+        noteIconMiss(target);
       }
     } catch (e) {}
   }, [assignments]);

@@ -9,6 +9,16 @@ import React, { useEffect, useState } from 'react';
 // The `iconVersion` counter is bumped whenever a new icon lands so any
 // AppIconBadge subscribing via useAppIcon re-renders once its icon is ready.
 
+// Targets (exe path / .lnk / AUMID) that returned no icon this session. The
+// App.jsx radial + Quick Action backfill effects re-run on every assignments
+// change and re-request every app item that still has no appIcon; a target
+// the shell can never resolve (Slack's AUMID on some machines) was fetched
+// again on every edit for the whole session. Rust memoises misses too, but
+// skipping the IPC here keeps the effects free.
+const missedTargets = new Set();
+export function isKnownIconMiss(target) { return !!target && missedTargets.has(target); }
+export function noteIconMiss(target) { if (target) missedTargets.add(target); }
+
 const iconByName = new Map();     // name → dataUrl | null (null = fetch failed)
 const inflight = new Map();       // name → Promise<dataUrl|null>
 const listeners = new Set();
