@@ -881,14 +881,8 @@ export default function SearchOverlay() {
     const value = e.target.value;
 
     if (mode === 'query') {
-      // Backspace-to-Main: if user clears the entire query, restore trigger in main mode
-      if (value === '') {
-        setMode('main');
-        setQuery(triggerToken);
-        setActiveTemplate(null);
-        setTriggerToken('');
-        return;
-      }
+      // Stay in template mode even when the query is emptied: Backspace never
+      // leaves the template, only Escape does (handleInputKeyDown).
       setQuery(value);
       return;
     }
