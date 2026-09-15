@@ -19,7 +19,9 @@
   --font-display: 'Rajdhani', sans-serif;
   --font-body:    'DM Sans', sans-serif;
   --accent-rgb:   232, 160, 32;
-  --shadow-overlay: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(232,160,32,0.08);
+  --shadow-overlay: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(var(--accent-rgb),0.08);
+  /* Popup transparency (Settings > Appearance); overridden by the theme runtime. */
+  --overlay-alpha: 100%;
   --backdrop-blur: blur(20px) saturate(150%);
   --transition-expand: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   --radius-xl: 12px;
@@ -118,11 +120,20 @@ html, body {
 
 /* ── Floating panel ───────────────────────────────────────────────────────── */
 
+/* The theme runtime stamps data-translucent while popup transparency is
+   below 100%, so the blur (a compositor cost) only runs when it shows. */
+[data-translucent] .search-panel {
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+}
+
 .search-panel {
   width: 100%;
   max-width: 596px;
   margin: var(--space-5) auto 0;
-  background: var(--bg-elevated);
+  /* Popup transparency: 100% = the plain surface; lower values mix it with
+     transparent and (below) blur what is behind. */
+  background: color-mix(in srgb, var(--bg-elevated) var(--overlay-alpha), transparent);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-xl);
   overflow: hidden;

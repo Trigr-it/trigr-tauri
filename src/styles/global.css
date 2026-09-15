@@ -169,6 +169,22 @@
   --accent-rgb: var(--gold-500-rgb);
   --accent-glow: rgba(var(--accent-rgb), 0.15);
   --accent-glow-strong: rgba(var(--accent-rgb), 0.3);
+  /* Accent used AS TEXT. Dark theme reads the brand gold directly; the light
+     block darkens it so labels hold contrast on paper. Theme presets derive
+     both from their own accent (src/theme/engine.js), so components must use
+     these rather than --gold-600 / --gold-800. */
+  --accent-text: var(--accent);
+  --accent-text-strong: var(--accent);
+  /* Lighter accent steps: gradient tops of the primary-button hover recipe
+     (linear-gradient(180deg, var(--accent-bright), var(--accent-hover))) and
+     the radial hover wedge's top stop. */
+  --accent-bright: var(--gold-300);
+  --accent-highlight: #ffd87a;
+  /* Popup transparency (Settings > Appearance): the Quick Search and
+     clipboard-popup panels mix their surface with transparent by this
+     percentage. 100% = opaque. Set by the theme runtime, mirrored in the
+     two overlay stylesheets. */
+  --overlay-alpha: 100%;
 
   --text-primary: var(--slate-100);
   --text-secondary: var(--slate-300);
@@ -213,8 +229,8 @@
   --shadow-panel: 0 8px 32px rgba(0,0,0,0.5);
 
   /* ── Overlay & popup tokens ── */
-  --shadow-overlay: 0 8px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(232,160,32,0.08);
-  --shadow-overlay-lg: 0 16px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(232,160,32,0.1);
+  --shadow-overlay: 0 8px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--accent-rgb),0.08);
+  --shadow-overlay-lg: 0 16px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--accent-rgb),0.1);
   --backdrop-blur: blur(20px) saturate(150%);
 
   /* ── Transition tokens ── */
@@ -239,7 +255,7 @@
 
   /* ── Modal tokens ────────────────────────────────────────────────────── */
   --backdrop-modal: rgba(0, 0, 0, 0.55);
-  --shadow-modal: 0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(232,160,32,0.10);
+  --shadow-modal: 0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--accent-rgb),0.10);
 
   /* ── Status colours (semantic, theme-aware) ───────────────────────────── */
   --status-success: var(--green-400);
@@ -300,6 +316,10 @@
      dark (brand over WCAG). --accent-rgb kept explicit so the shared
      rgba(var(--accent-rgb)…) patterns resolve correctly. */
   --accent-rgb: var(--gold-500-rgb);
+  /* Gold as text on paper: the two darker steps the light-only component
+     rules used to reach for directly. */
+  --accent-text: var(--gold-600);
+  --accent-text-strong: var(--gold-800);
 
   /* Darkened to hold ≥4.5:1 on light surfaces (originals: #e05050 3.9-4.4,
      old values matched the dark palette and were never re-audited). */
@@ -330,7 +350,7 @@
      default dark ink from :root (high-contrast dark text on gold). */
   --btn-primary-text: var(--white);
   --backdrop-modal: rgba(0, 0, 0, 0.35);
-  --shadow-modal: 0 16px 48px rgba(0,0,0,0.20), 0 0 0 1px rgba(232, 160, 32, 0.10);
+  --shadow-modal: 0 16px 48px rgba(0,0,0,0.20), 0 0 0 1px rgba(var(--accent-rgb), 0.10);
 
   /* Darkened for ≥4.5:1 as text on light surfaces (were #16a34a / #ca8a04,
      3.3:1 and 2.9:1 on white). */
@@ -343,6 +363,14 @@
   --accent-surface-hover: var(--gold-200);
 
   --radial-wedge: var(--white);
+}
+
+/* Windows high-contrast mode: opt out of Chromium's forced palette (it paints
+   system colours over tokens and breaks the drawn keyboard) and rely on the
+   High Contrast theme preset, which App.jsx selects automatically while
+   Windows reports prefers-contrast: more. */
+html {
+  forced-color-adjust: none;
 }
 
 html, body, #root {

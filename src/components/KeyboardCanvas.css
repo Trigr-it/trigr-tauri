@@ -686,7 +686,7 @@
 }
 
 .new-shortcut-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
   color: var(--btn-primary-text);
   border-color: var(--accent);
   box-shadow:
@@ -788,7 +788,7 @@
 }
 
 [data-theme="light"] .keyboard-empty-icon {
-  color: var(--gold-600);
+  color: var(--accent-text);
 }
 
 .keyboard-empty-heading {

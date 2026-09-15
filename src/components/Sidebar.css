@@ -221,7 +221,7 @@
 }
 
 [data-theme="light"] .profile-row-link {
-  color: var(--gold-600);
+  color: var(--accent-text);
   filter: drop-shadow(0 0 3px rgba(var(--accent-rgb), 0.25));
 }
 
@@ -290,7 +290,7 @@
 }
 
 .profile-action-btn--primary:hover {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -321,15 +321,15 @@
 }
 
 [data-theme="light"] .profile-action-btn--secondary {
-  color: var(--gold-600);
+  color: var(--accent-text);
   background: rgba(var(--accent-rgb), 0.1);
   border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 [data-theme="light"] .profile-action-btn--secondary:hover {
-  color: var(--gold-800);
+  color: var(--accent-text-strong);
   background: rgba(var(--accent-rgb), 0.18);
-  border-color: var(--gold-600);
+  border-color: var(--accent-text);
 }
 .profile-import-prompt {
   padding: var(--space-3) var(--space-5);

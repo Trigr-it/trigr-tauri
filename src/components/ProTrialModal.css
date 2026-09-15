@@ -56,7 +56,7 @@
 }
 
 [data-theme="light"] .protrial-pill {
-  color: var(--gold-600);
+  color: var(--accent-text);
   background: rgba(var(--accent-rgb), 0.1);
   border-color: rgba(var(--accent-rgb), 0.3);
 }
@@ -193,7 +193,7 @@
 }
 
 .protrial-cta-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
   transform: translateY(-1px);
   box-shadow:
     0 6px 26px rgba(var(--accent-rgb), 0.5),

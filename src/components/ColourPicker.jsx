@@ -171,15 +171,17 @@ export default function ColourPicker({
           );
         })}
         {allowCustom && (
+          // Always the rainbow "+" so the manual picker is recognisable at a
+          // glance (Rory 2026-09-15); the selection ring marks it active when
+          // the current colour is not one of the palette swatches.
           <button
             type="button"
             className={`cf-swatch cf-swatch-custom${isCustomActive ? ' selected' : ''}${expanded ? ' expanded' : ''}`}
-            style={isCustomActive ? { background: value } : undefined}
             onMouseDown={e => e.preventDefault()}
             onClick={() => setExpanded(!expanded)}
             title="Custom colour"
           >
-            {!isCustomActive && <span className="cf-swatch-custom-plus">+</span>}
+            <span className="cf-swatch-custom-plus">+</span>
           </button>
         )}
       </div>

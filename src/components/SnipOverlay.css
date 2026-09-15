@@ -6,6 +6,7 @@
 :root {
   /* Mirrored from global.css (token sweep 2026-08-26) */
   --text-primary: #f0ede8;
+  --accent: #e8a020;
   --accent-rgb: 232, 160, 32;
   /* Scale tokens mirrored from global.css (token sweep Phase C) */
   --radius-md: 6px;

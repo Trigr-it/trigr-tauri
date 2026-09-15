@@ -2393,7 +2393,7 @@
 
   <div class="callout warn">
     <div class="ct">Local config when sharing</div>
-    <p>Some settings remain machine-specific (linked app paths, telemetry opt-out, theme preference). Keyfire keeps those in a small <code>trigr-local-settings.json</code> on each machine, separate from the shared config.</p>
+    <p>Some settings remain machine-specific (linked app paths, telemetry opt-out, the active radial layout). Keyfire keeps those in a small <code>trigr-local-settings.json</code> on each machine, separate from the shared config. The theme, including a custom Pro theme, travels with the shared config, so a team on one config sees the same colours everywhere.</p>
   </div>
 
   <div class="section-footer">Keyfire · User Guide · keyfire.app</div>
@@ -2487,8 +2487,40 @@
     <tr><th>Setting</th><th>Description</th></tr>
     <tr><td>Start with Windows</td><td>Start Keyfire automatically when Windows starts. Launches to the system tray. This follows the Windows Startup apps setting too: if Keyfire is turned off in Task Manager or Settings &gt; Apps &gt; Startup, this switch shows off, and turning it on here re-enables it in both places.</td></tr>
     <tr><td>Enable macros on startup</td><td>Whether hotkeys are active immediately on launch or start paused.</td></tr>
-    <tr><td>Theme</td><td>Light, Dark, or System. System follows your Windows theme preference.</td></tr>
   </table>
+
+  <h2>Appearance</h2>
+  <p>Settings &rarr; Appearance holds the light and dark mode switch and the theme picker. The mode switch is the same one as the sun and moon button in the top-right corner of the main window: <strong>Follow System</strong> tracks your Windows setting, or pick Light or Dark outright.</p>
+  <p>Every theme is a pair. Each preset ships with a light half and a dark half, so choosing Ocean and leaving the mode on Follow System gives you a blue Keyfire that still flips with Windows. The theme applies to every Keyfire window: the main window, Settings, Quick Search, the clipboard popup, the radial wheel and fill-in prompts.</p>
+  <table>
+    <tr><th>Theme</th><th>Look</th></tr>
+    <tr><td>Keyfire</td><td>Gold on ink, the original.</td></tr>
+    <tr><td>Graphite</td><td>Neutral greys with a steel-blue accent.</td></tr>
+    <tr><td>Ocean</td><td>Deep navy with a clear blue accent.</td></tr>
+    <tr><td>Forest</td><td>Dark moss with a leaf-green accent.</td></tr>
+    <tr><td>Plum</td><td>Aubergine surfaces, violet accent.</td></tr>
+    <tr><td>Rose</td><td>Warm charcoal with a rose accent.</td></tr>
+    <tr><td>Sand</td><td>Warm paper and copper.</td></tr>
+    <tr><td>Arctic</td><td>Cool slate blues with a frost accent.</td></tr>
+    <tr><td>Solar</td><td>Teal-black and cream with a blue accent.</td></tr>
+    <tr><td>High Contrast</td><td>Near-black and white with strong borders.</td></tr>
+  </table>
+  <p>Status colours never change with the theme. The green running dot, red recording states, warnings, the action-type badges and the modifier colours keep their meaning in every theme.</p>
+
+  <table>
+    <tr><th>Option</th><th>What it does</th></tr>
+    <tr><td>Use Windows accent colour</td><td>Keyfire's accent follows the colour set in Windows Settings &rarr; Personalisation &rarr; Colours, on top of whichever theme you use. Change it in Windows and Keyfire follows within a few seconds.</td></tr>
+    <tr><td>Follow Windows high contrast</td><td>On by default. While a Windows high-contrast theme is active, Keyfire shows its High Contrast theme and returns to your choice when you turn it off.</td></tr>
+    <tr><td>Popup transparency</td><td>Lets Quick Search and the clipboard popup show a blurred hint of what is behind them, from fully opaque down to 60 percent. Text stays solid.</td></tr>
+    <tr><td>Interface size</td><td>Scales the main window and Settings between 90 and 125 percent on this PC only. Popups keep their own size so nothing is clipped.</td></tr>
+  </table>
+
+  <h3>Custom colours <span class="pro-pill">PRO</span></h3>
+  <p>Pick the <strong>Custom</strong> card to build your own theme, for example to match a company portal. It starts from whichever preset you were using. Eight colours define each half: accent, background, panels, fields, text, muted text, borders and key caps. Keyfire derives every hover, border and glow shade from those eight, so a coherent result takes a minute rather than an afternoon.</p>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text">Choose <strong>Editing Dark</strong> or <strong>Editing Light</strong>. While this section is open, Keyfire previews the half you are editing without changing your mode setting.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text">Click a colour swatch, pick from the palette or open the custom picker, then press <strong>OK</strong>. The change applies to every window straight away.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text">Use <strong>Start from</strong> to copy any preset into both halves, and the <strong>&#8635;</strong> button next to a colour to return it to that preset's value.</div></div>
+  <p>A small warning appears under a colour when text would fall below 4.5:1 contrast against its panel. It is advice, not a block. To share a theme, click <strong>Copy theme code</strong> and send the text; a colleague pastes it into the field next to it and presses <strong>Apply</strong>. If your Pro plan lapses, the custom card stays in place and Keyfire shows the Keyfire theme until Pro is restored. Your colours are kept.</p>
 
   <h2>Excluded apps</h2>
   <p>Some programs have their own shortcuts that clash with your Keyfire hotkeys, and the usual answer was to close Keyfire while using them. Instead, add the program to <strong>Excluded apps</strong> under Settings &rarr; General. Type the process name or pick it from your open apps. While an excluded app is in the foreground Keyfire pauses itself completely: no hotkeys, no overlays, no text expansions and no autocorrect. The tray icon dims and its tooltip names the app. The moment you switch to another window everything resumes.</p>
@@ -2630,6 +2662,7 @@
     <tr><td>Image expansions</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Global variables</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Clipboard retention</td><td>7 days</td><td>Unlimited (text and images set separately)</td></tr>
+    <tr><td>Themes</td><td>10 presets, each with a light and dark half</td><td>Presets plus your own colours, shareable as a theme code</td></tr>
     <tr><td>Analytics</td><td>Basic</td><td>Full dashboard + CSV export</td></tr>
   </table>
 

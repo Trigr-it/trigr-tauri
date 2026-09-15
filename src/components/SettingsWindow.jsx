@@ -20,6 +20,7 @@ import { listen, emit } from '@tauri-apps/api/event';
 import '../styles/global.css';
 import SettingsPanel from './SettingsPanel';
 import './SettingsWindow.css';
+import { applyCached as applyCachedTheme } from '../theme/runtime';
 
 export default function SettingsWindow() {
   const [bridge, setBridge] = useState(null);
@@ -28,10 +29,10 @@ export default function SettingsWindow() {
 
   useEffect(() => {
     let unState, unShown;
+    // Theme is painted by src/theme/runtime.js (cached snapshot + live
+    // 'theme-changed' broadcasts), not from this payload.
     listen('settings-state', (e) => {
-      const s = e.payload || {};
-      if (s.theme) document.documentElement.setAttribute('data-theme', s.theme);
-      setBridge(s);
+      setBridge(e.payload || {});
     }).then(u => { unState = u; });
     // Rust show path broadcasts "settings-shown" (with an optional deep-link
     // section) before .show() — re-request state as belt-and-braces in case
@@ -43,6 +44,17 @@ export default function SettingsWindow() {
     }).then(u => { unShown = u; });
     emit('settings-request-state');
     return () => { unState?.(); unShown?.(); };
+  }, []);
+
+  // This window is TrySuspended after 5 idle minutes and misses broadcasts
+  // while frozen; webview_mem parks it while hidden so visibilitychange fires
+  // on every show. Re-apply the cached theme snapshot then.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') applyCachedTheme();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
   // APP_INPUT_FOCUSED parity with App.jsx — typing in this window's inputs
@@ -189,6 +201,23 @@ export default function SettingsWindow() {
         onClearClipboardPasteKey={act('clearClipboardPasteKey')}
         telemetryEnabled={bridge.telemetryEnabled}
         onToggleTelemetry={act('toggleTelemetry')}
+        theme={bridge.themeRaw}
+        onSetTheme={act('setTheme')}
+        themePreset={bridge.themePreset}
+        onSetThemePreset={act('setThemePreset')}
+        customTheme={bridge.customTheme}
+        onSetCustomTheme={act('setCustomTheme')}
+        onSetPreviewHalf={act('setPreviewHalf')}
+        themeAccentFollowsWindows={bridge.themeAccentFollowsWindows}
+        onSetAccentFollowsWindows={act('setAccentFollowsWindows')}
+        windowsAccent={bridge.windowsAccent}
+        themeFollowHighContrast={bridge.themeFollowHighContrast}
+        onSetFollowHighContrast={act('setFollowHighContrast')}
+        systemHighContrast={bridge.systemHighContrast}
+        overlayOpacity={bridge.overlayOpacity}
+        onSetOverlayOpacity={act('setOverlayOpacity')}
+        uiScale={bridge.uiScale}
+        onSetUiScale={act('setUiScale')}
       />
     </div>
   );

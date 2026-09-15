@@ -81,6 +81,7 @@ mod distill;
 #[path = "stubs/distill.rs"]
 mod distill;
 mod telemetry;
+mod appearance;
 #[cfg(windows)]
 mod tray;
 #[cfg(not(windows))]
@@ -1711,6 +1712,12 @@ fn input_focus_changed(focused: bool) {
 fn show_settings_window_impl(app: &tauri::AppHandle, section: Option<String>) {
     webview_mem::resume_for_show(app, "settings");
     if let Some(win) = app.get_webview_window("settings") {
+        // Re-assert the interface scale: cheap, and a resumed WebView2 has
+        // been seen to come back at 100 %.
+        let ui_scale = appearance::get_ui_scale();
+        if (ui_scale - 1.0).abs() > 0.001 {
+            let _ = win.set_zoom(ui_scale);
+        }
         let _ = app.emit("settings-shown", serde_json::json!({ "section": section }));
         let _ = win.show();
         let _ = win.set_focus();
@@ -5906,6 +5913,32 @@ fn set_radial_layout_id(id: Option<String>) -> bool {
     config::set_radial_layout_id(id.as_deref())
 }
 
+// ── Appearance (themes are frontend-only; these are the two OS facts) ────
+
+/// Windows accent colour as "#rrggbb" for the "Use Windows accent" theme
+/// option. None when the registry value is missing (the UI keeps its knob).
+#[tauri::command]
+fn get_windows_accent() -> Option<String> {
+    appearance::windows_accent_hex()
+}
+
+/// Per-machine interface scale (WebView2 zoom on main + Settings only).
+#[tauri::command]
+fn get_ui_scale() -> f64 {
+    appearance::get_ui_scale()
+}
+
+/// Persist + apply the interface scale. Returns the clamped value in effect.
+#[tauri::command]
+fn set_ui_scale(app: tauri::AppHandle, scale: f64) -> f64 {
+    if !appearance::set_ui_scale(scale) {
+        crate::emit_user_toast(&app, "warning", "Could not save the interface size (local settings file unreadable).");
+    }
+    let effective = appearance::get_ui_scale();
+    appearance::apply_ui_scale(&app, effective);
+    effective
+}
+
 #[tauri::command]
 fn get_telemetry_enabled() -> bool {
     !config::get_telemetry_opt_out()
@@ -7333,6 +7366,13 @@ pub fn run() {
             // handler hides it instead.
             let _ = log_window_build("settings", build_hidden_window(app.handle(), "settings"));
 
+            // Interface scale (Settings > Appearance): WebView2 zoom on the
+            // main + Settings windows from trigr-local-settings.json.
+            let ui_scale = appearance::get_ui_scale();
+            if (ui_scale - 1.0).abs() > 0.001 {
+                appearance::apply_ui_scale(app.handle(), ui_scale);
+            }
+
             // Park hidden windows (release their rendering resources) and
             // suspend long-idle overlays. See webview_mem.rs.
             webview_mem::start(app.handle().clone());
@@ -7624,6 +7664,9 @@ pub fn run() {
             set_telemetry_enabled,
             get_radial_layout_id,
             set_radial_layout_id,
+            get_windows_accent,
+            get_ui_scale,
+            set_ui_scale,
             close_clipboard_overlay,
             show_clipboard_overlay_for_fillin,
             clipboard_overlay_resize,

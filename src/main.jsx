@@ -2,6 +2,18 @@ import './tauriAPI'; // Initialize window.electronAPI bridge before anything els
 import './devBridge'; // Dev-only UI test bridge — no-op outside the Vite dev server
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { applyCached as applyCachedTheme, startListening as listenForThemeChanges } from './theme/runtime';
+
+const params = new URLSearchParams(window.location.search);
+
+// Theme: paint the last published snapshot (mode half + preset/custom tokens)
+// on <html> BEFORE React mounts so the first frame is already the right
+// theme, then subscribe to live changes. The countdown and analytics-report
+// windows keep their fixed palettes by design and are skipped.
+if (params.get('countdown') !== '1' && params.get('report') !== '1') {
+  applyCachedTheme();
+  listenForThemeChanges();
+}
 
 // Keyboard-modality flag: focus rings stay hidden until the user presses Tab.
 // First Tab adds .using-keyboard on <html>; first mousedown removes it. CSS
@@ -26,7 +38,6 @@ import ReactDOM from 'react-dom/client';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
-const params = new URLSearchParams(window.location.search);
 if (params.get('overlay') === '1') {
   // Lazy import — avoids loading App.jsx and its global.css/app.css
   // which set html/body background to --bg-base (dark), breaking transparency

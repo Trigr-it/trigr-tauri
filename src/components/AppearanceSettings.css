@@ -1,0 +1,357 @@
+/* Settings > Appearance: mode segment, theme preset cards, custom theme. */
+
+/* Mode segment: neutral keycap chips (sub-section switcher rule), the
+   active one accent-tinted like .settings-method-opt.active. */
+.appear-mode-seg {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.appear-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-4);
+  background: var(--key-bg);
+  border: 1px solid var(--key-border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.appear-seg-btn:hover {
+  background: var(--key-bg-hover);
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+
+.appear-seg-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.appear-sub {
+  max-width: 560px;
+  margin: 0 0 var(--space-2);
+}
+
+/* Preset cards */
+.appear-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.appear-theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.appear-theme-card:hover {
+  border-color: var(--border-bright);
+  background: var(--bg-hover);
+}
+
+.appear-theme-card.active {
+  border-color: var(--border-accent);
+  background: var(--accent-glow);
+  box-shadow: 0 0 0 1px var(--border-accent);
+}
+
+.appear-theme-card.locked {
+  opacity: 0.72;
+}
+
+.appear-theme-card.locked:hover {
+  opacity: 1;
+}
+
+.appear-theme-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.appear-theme-card.active .appear-theme-name {
+  color: var(--accent);
+}
+
+.appear-lock {
+  color: var(--text-muted);
+}
+
+.appear-theme-tagline {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Two-tone miniature: dark half over light half. Colours arrive as --pv-*
+   inline custom properties from the preset knobs. */
+.appear-preview {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.appear-preview-half {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 30px;
+  padding: 0 var(--space-2);
+  background: var(--pv-bg);
+}
+
+.appear-preview-key {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-xs);
+  background: var(--pv-keycap);
+  border: 1px solid var(--pv-border);
+}
+
+.appear-preview-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 16px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--pv-panel);
+  border: 1px solid var(--pv-border);
+}
+
+.appear-preview-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pv-accent);
+}
+
+/* Custom card with nothing saved yet: the accent dot becomes a hue wheel
+   built from the fixed action-type tokens (no hex, stays lint-clean). */
+.appear-preview-dot--rainbow {
+  background: conic-gradient(var(--type-text), var(--type-app), var(--type-url), var(--type-macro), var(--type-hotkey), var(--type-text));
+}
+
+.appear-preview-line {
+  flex: 1;
+  height: 3px;
+  border-radius: var(--radius-xs);
+  background: var(--pv-text);
+  opacity: 0.7;
+}
+
+/* ── Pro custom-colour editor ────────────────────────────────────────── */
+.appear-editor {
+  margin-top: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.appear-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.appear-editor-head .settings-subheader {
+  margin: 0;
+}
+
+.appear-start-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.appear-inline-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.appear-start-select {
+  max-width: 300px;
+  margin-bottom: 0;
+}
+
+.appear-knobs {
+  display: flex;
+  flex-direction: column;
+}
+
+.appear-knob-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.appear-knob-row:first-child {
+  border-top: none;
+}
+
+.appear-knob-info {
+  flex: 1;
+}
+
+/* The swatch: a round well showing the knob's current colour. */
+.appear-knob-swatch {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border-bright);
+  background: var(--knob-hex);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.12s;
+}
+
+.appear-knob-swatch:hover,
+.appear-knob-swatch.open {
+  border-color: var(--accent);
+  transform: scale(1.08);
+}
+
+.appear-knob-hex {
+  flex-shrink: 0;
+  min-width: 64px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-normal);
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.appear-knob-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-0);
+  font-size: var(--text-xs);
+  color: var(--status-warning);
+}
+
+/* Share row */
+.appear-share-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.appear-code-input {
+  flex: 1;
+  min-width: 200px;
+  height: 28px;
+  padding: 0 var(--space-4);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+}
+
+.appear-code-input:focus {
+  outline: none;
+  border-color: var(--border-accent);
+}
+
+.appear-code-input::placeholder {
+  color: var(--text-muted);
+}
+
+.settings-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.appear-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--status-success);
+}
+
+.appear-knob-row.followed .appear-knob-swatch {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.appear-knob-row.followed .appear-knob-swatch:hover {
+  border-color: var(--border-bright);
+  transform: none;
+}
+
+/* Live Windows accent swatch next to the toggle label. */
+.appear-accent-chip {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: var(--space-2);
+  vertical-align: -1px;
+  border-radius: 50%;
+  background: var(--knob-hex);
+  border: 1px solid var(--border-bright);
+}
+
+/* Display: interface size segment sits at the row's trailing edge and the
+   row keeps its top rule after the slider row above it. */
+.appear-scale-row {
+  border-top: 1px solid var(--border);
+}
+
+.appear-scale-seg {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+/* Colour picker popover (portal to <body>). Mirrors .cat-colour-popover in
+   TextExpansions.css, which the Settings window never loads. */
+.appear-colour-popover {
+  position: fixed;
+  z-index: 9000;
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+}

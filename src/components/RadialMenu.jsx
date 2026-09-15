@@ -2,13 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Aperture } from 'lucide-react';
 import RadialWheel from './RadialWheel';
 import './RadialMenu.css';
+import { applyCached as applyCachedTheme } from '../theme/runtime';
 
-// Seed the theme from the last session before first paint (shared cache key
-// with the clipboard popup + Quick Search) so a lost payload can't leave a
-// light-theme user with a dark wheel.
-try {
-  document.documentElement.setAttribute('data-theme', localStorage.getItem('trigr_overlay_theme') || 'dark');
-} catch { /* storage unavailable — CSS :root default applies */ }
+// Theme: painted by src/theme/runtime.js (applied before React mounts, live
+// via 'theme-changed'); re-applied on every show below in case a suspended
+// window missed the broadcast.
 
 export default function RadialMenu() {
   const [items, setItems] = useState([]);
@@ -46,9 +44,6 @@ export default function RadialMenu() {
   // pull below, so both paths start the wheel in the same fresh state.
   const applyRadialData = useCallback((data) => {
     if (!data) return;
-    const theme = data.theme || 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
-    try { localStorage.setItem('trigr_overlay_theme', theme); } catch { /* ignore */ }
     setItems(data.items || []);
     setHoveredIndex(-1);
     setHoveredOuterIndex(-1);
@@ -95,6 +90,7 @@ export default function RadialMenu() {
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
+      applyCachedTheme();
       selfHealPull(true);
     };
     document.addEventListener('visibilitychange', onVis);

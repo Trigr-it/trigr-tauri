@@ -509,20 +509,18 @@ export default function RadialWheel({
       className={`rw-svg${isEditor ? ' rw-svg--editor' : ''}`}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Vertical gold gradient used for the hovered wedge fill. Top→bottom
-          (--accent-hover lighter at top, --accent base at bottom) mirrors the
-          gold-button recipe from feedback_gold_button_pattern. CSS classes
-          drive the stops so the colours track the active theme. */}
+      {/* Vertical accent gradient used for the hovered wedge fill. Top→bottom
+          (--accent-highlight sheen, --accent-bright, --accent base) mirrors the
+          primary-button hover recipe. The stops read CSS custom properties via
+          the style attribute (stop-color / flood-color are presentation
+          properties, so var() resolves) — that is what lets theme presets
+          recolour the wheel: the overlay's RadialMenu.css mirror provides the
+          Keyfire defaults and src/theme/runtime.js overrides them inline. */}
       <defs>
-        {/* Hovered-wedge gold gradient mirrors the "+ New Trigger" button
-            hover recipe (Sidebar.css .profile-action-btn--primary:hover):
-            linear-gradient(180deg, #ffbb44, #f0b030). Adding a near-white
-            top stop gives the "inset 0 1px 0 rgba(255,255,255,0.18)" sheen
-            from the button's box-shadow translated into the SVG fill. */}
         <linearGradient id="rw-hover-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"  stopColor="#ffd87a" stopOpacity="1" />
-          <stop offset="8%"  stopColor="#ffbb44" stopOpacity="1" />
-          <stop offset="100%" stopColor="#e8a020" stopOpacity="1" />
+          <stop offset="0%"  style={{ stopColor: 'var(--accent-highlight)' }} stopOpacity="1" />
+          <stop offset="8%"  style={{ stopColor: 'var(--accent-bright)' }} stopOpacity="1" />
+          <stop offset="100%" style={{ stopColor: 'var(--accent)' }} stopOpacity="1" />
         </linearGradient>
         <filter id="rw-ring-shadow" x="-25%" y="-25%" width="150%" height="150%">
           <feDropShadow dx="0" dy="6" stdDeviation="8" floodOpacity="0.35" />
@@ -530,7 +528,7 @@ export default function RadialWheel({
         {/* Per-wedge glow used on hover — matches the button's outer drop
             shadow (0 2px 10px rgba(--accent-rgb, 0.5)). */}
         <filter id="rw-wedge-glow" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="2" stdDeviation="5" floodColor="#e8a020" floodOpacity="0.55" />
+          <feDropShadow dx="0" dy="2" stdDeviation="5" style={{ floodColor: 'var(--accent)' }} floodOpacity="0.55" />
         </filter>
       </defs>
 

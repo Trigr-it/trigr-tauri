@@ -131,7 +131,7 @@
 }
 
 [data-theme="light"] .trialend-row-stat {
-  color: var(--gold-600);
+  color: var(--accent-text);
 }
 
 .trialend-row-loss {
@@ -175,7 +175,7 @@
 }
 
 .trialend-cta-btn:hover {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
   transform: translateY(-1px);
   box-shadow:
     0 6px 26px rgba(var(--accent-rgb), 0.5),

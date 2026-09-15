@@ -232,7 +232,7 @@
 }
 
 .te-add-btn:hover {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -587,7 +587,7 @@
 }
 
 .te-cat-new-btn:hover {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
   box-shadow:
     0 2px 10px rgba(var(--accent-rgb), 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
@@ -623,15 +623,15 @@
 }
 
 [data-theme="light"] .te-cat-pack-btn {
-  color: var(--gold-600);
+  color: var(--accent-text);
   background: rgba(var(--accent-rgb), 0.1);
   border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 [data-theme="light"] .te-cat-pack-btn:hover {
-  color: var(--gold-800);
+  color: var(--accent-text-strong);
   background: rgba(var(--accent-rgb), 0.18);
-  border-color: var(--gold-600);
+  border-color: var(--accent-text);
 }
 
 /* ── Import From ▾ menu (third-party migration) ─────────────────────────── */
@@ -1082,7 +1082,7 @@ button.te-col-header:hover {
 }
 
 [data-theme="light"] .te-empty-icon {
-  color: var(--gold-600);
+  color: var(--accent-text);
 }
 
 .te-empty-heading {
@@ -1763,7 +1763,7 @@ button.te-col-header:hover {
 }
 
 .te-cat-inline-confirm:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
 }
 
 .te-cat-inline-confirm:disabled {

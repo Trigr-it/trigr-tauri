@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare, Megaphone, Sun, Moon, Monitor, Check } from 'lucide-react';
+import { Sparkles, LayoutGrid, Keyboard as KeyboardIcon, MessageSquare, Megaphone, Sun, Moon, Monitor, Check, Palette } from 'lucide-react';
 import './TitleBar.css';
 import TemplatesPanel from './TemplatesPanel';
 import { openFeedback } from '../utils/feedback';
@@ -20,6 +20,8 @@ export default function TitleBar({
   theme = 'auto',
   resolvedTheme = 'dark',
   onSetTheme,
+  // Deep-links Settings > Appearance (theme presets + Pro custom colours).
+  onOpenAppearance,
   onOpenSettings,
   settingsOpen = false,
   activeArea = 'mapping',
@@ -388,6 +390,21 @@ export default function TitleBar({
                   </button>
                 );
               })}
+              {onOpenAppearance && (
+                <>
+                  <div className="theme-picker-divider" role="separator" />
+                  <button
+                    className="theme-picker-option"
+                    onClick={() => { setThemePickerOpen(false); onOpenAppearance(); }}
+                    role="menuitem"
+                    type="button"
+                    title="Theme presets and custom colours"
+                  >
+                    <Palette size={13} strokeWidth={2} className="theme-picker-icon" />
+                    <span className="theme-picker-label">More themes</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

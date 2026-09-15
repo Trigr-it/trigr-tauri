@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   Search, SearchX, ShieldCheck, Sliders, Package, HelpCircle, Gauge,
-  CircleDot, Type, Clipboard, Mic, FileCog, Key,
+  CircleDot, Type, Clipboard, Mic, FileCog, Key, Palette,
 } from 'lucide-react';
 import './SettingsPanel.css';
 import TemplatesPanel from './TemplatesPanel';
+import AppearanceSettings from './AppearanceSettings';
 import NumberField from './NumberField';
 import { friendlyKeyName } from './keyboardLayout';
 import { openFeedback } from '../utils/feedback';
@@ -318,6 +319,25 @@ export default function SettingsPanel({
   onClearClipboardPasteKey,
   telemetryEnabled = true,
   onToggleTelemetry,
+  // Appearance: mode ('auto'|'light'|'dark'), preset id | 'custom', custom
+  // knobs, and the transient editor half override. All bridged from App.jsx.
+  theme = 'auto',
+  onSetTheme,
+  themePreset = 'keyfire',
+  onSetThemePreset,
+  customTheme = null,
+  onSetCustomTheme,
+  onSetPreviewHalf,
+  themeAccentFollowsWindows = false,
+  onSetAccentFollowsWindows,
+  windowsAccent = null,
+  themeFollowHighContrast = true,
+  onSetFollowHighContrast,
+  systemHighContrast = false,
+  overlayOpacity = 1,
+  onSetOverlayOpacity,
+  uiScale = 1,
+  onSetUiScale,
 }) {
   const [configPath, setConfigPath]           = useState('');
   const [startWithWindows, setStartWithWindows] = useState(false);
@@ -402,6 +422,9 @@ export default function SettingsPanel({
   const [confirmClearShared, setConfirmClearShared] = useState(false);
   const [sharedExistsPrompt, setSharedExistsPrompt] = useState(null); // { path } when needs_choice
   const [searchQuery, setSearchQuery] = useState('');
+  // AppearanceSettings sets this to a function that returns true when it
+  // swallowed an Esc (open colour picker); read by the Esc chain below.
+  const appearanceEscRef = useRef(null);
   // Clipboard encryption (v0.5): { encrypted, backup_exists, backup_expires }
   const [encStatus, setEncStatus] = useState(null);
   const [confirmResetClipboard, setConfirmResetClipboard] = useState(false);
@@ -450,6 +473,12 @@ export default function SettingsPanel({
         return;
       }
       if (e.key !== 'Escape') return;
+      // An open Appearance colour picker closes first (it lives in a portal
+      // outside the section, so it registers here rather than in the chain).
+      if (appearanceEscRef.current?.()) {
+        e.preventDefault(); e.stopPropagation();
+        return;
+      }
       if (confirmResetClipboard) {
         e.preventDefault(); e.stopPropagation();
         setConfirmResetClipboard(false);
@@ -485,6 +514,7 @@ export default function SettingsPanel({
     'help-documentation',
     'starter-templates',
     'general',
+    'appearance',
     'privacy-security',
     'config-file',
     'quick-search',
@@ -501,6 +531,7 @@ export default function SettingsPanel({
     ]},
     { label: 'General', items: [
       ['general', 'General', Sliders],
+      ['appearance', 'Appearance', Palette],
       ['starter-templates', 'Starter Templates', Package],
       ['help-documentation', 'Help & About', HelpCircle],
     ]},
@@ -1152,6 +1183,37 @@ export default function SettingsPanel({
             sub="Keyfire pauses itself while any of these apps is in the foreground, the same as Pause in the tray. Every key passes straight through to the app and nothing fires. For programs whose own shortcuts clash with yours."
           />
           </>)}
+        </section>
+
+        {/* ── APPEARANCE ─────────────────────────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">
+            APPEARANCE
+          </div>
+          {isExpanded('appearance') && (
+            <AppearanceSettings
+              theme={theme}
+              onSetTheme={onSetTheme}
+              themePreset={themePreset}
+              onSetThemePreset={onSetThemePreset}
+              customTheme={customTheme}
+              onSetCustomTheme={onSetCustomTheme}
+              onSetPreviewHalf={onSetPreviewHalf}
+              isPro={isPro}
+              onShowUpgrade={onShowUpgrade}
+              escInterceptRef={appearanceEscRef}
+              themeAccentFollowsWindows={themeAccentFollowsWindows}
+              onSetAccentFollowsWindows={onSetAccentFollowsWindows}
+              windowsAccent={windowsAccent}
+              themeFollowHighContrast={themeFollowHighContrast}
+              onSetFollowHighContrast={onSetFollowHighContrast}
+              systemHighContrast={systemHighContrast}
+              overlayOpacity={overlayOpacity}
+              onSetOverlayOpacity={onSetOverlayOpacity}
+              uiScale={uiScale}
+              onSetUiScale={onSetUiScale}
+            />
+          )}
         </section>
 
         {/* ── PRIVACY & SECURITY ─────────────────────────── */}

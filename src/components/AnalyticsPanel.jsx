@@ -787,7 +787,7 @@ export default function AnalyticsPanel({ isPro = false, onShowUpgrade }) {
                           <div
                             key={`${dow}-${h}`}
                             className="analytics-teaser-cell"
-                            style={{ opacity: v > 0.05 ? 1 : 0.3, background: v > 0.05 ? `rgba(232, 160, 32, ${v})` : 'var(--bg-elevated)' }}
+                            style={{ opacity: v > 0.05 ? 1 : 0.3, background: v > 0.05 ? `rgba(var(--accent-rgb), ${v})` : 'var(--bg-elevated)' }}
                           />
                         ))
                       )}
@@ -913,7 +913,7 @@ export default function AnalyticsPanel({ isPro = false, onShowUpgrade }) {
                         <div
                           key={h}
                           className="analytics-heatmap-cell"
-                          style={{ opacity: intensity > 0 ? 1 : 0.3, background: intensity > 0 ? `rgba(232, 160, 32, ${intensity})` : 'var(--bg-elevated)' }}
+                          style={{ opacity: intensity > 0 ? 1 : 0.3, background: intensity > 0 ? `rgba(var(--accent-rgb), ${intensity})` : 'var(--bg-elevated)' }}
                           onMouseEnter={cell.count > 0 ? e => showTooltip(e, [
                             { label: `${label} ${h}:00–${h + 1}:00` },
                             { label: 'Actions', value: String(cell.count) },

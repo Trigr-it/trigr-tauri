@@ -557,6 +557,11 @@ window.electronAPI = {
   // Per-device radial layout (machine-local, Pro). null = the Default layout.
   getRadialLayoutId:      ()      => invoke('get_radial_layout_id'),
   setRadialLayoutId:      (id)    => invoke('set_radial_layout_id', { id }),
+  // Appearance: Windows accent colour ("#rrggbb" | null) and the per-machine
+  // interface scale (0.9..1.25, WebView2 zoom on main + Settings only).
+  getWindowsAccent:       ()      => invoke('get_windows_accent'),
+  getUiScale:             ()      => invoke('get_ui_scale'),
+  setUiScale:             (scale) => invoke('set_ui_scale', { scale }),
   closeRadialMenu:        ()      => invoke('close_radial_menu'),
   resizeRadialMenu:       (width, height) => invoke('radial_menu_resize', { width, height }),
   executeRadialMenuItem:  (result) => invoke('execute_radial_menu_item', { result }),

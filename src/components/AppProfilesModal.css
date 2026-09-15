@@ -55,7 +55,7 @@
 }
 
 [data-theme="light"] .appprof-pill {
-  color: var(--gold-600);
+  color: var(--accent-text);
   background: rgba(var(--accent-rgb), 0.1);
   border-color: rgba(var(--accent-rgb), 0.3);
 }
@@ -183,7 +183,7 @@
 }
 
 [data-theme="light"] .appprof-badge {
-  color: var(--gold-600);
+  color: var(--accent-text);
 }
 
 .appprof-badge--added {
@@ -241,7 +241,7 @@
 }
 
 .appprof-cta-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--gold-300), var(--accent-hover));
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-hover));
   transform: translateY(-1px);
 }
 

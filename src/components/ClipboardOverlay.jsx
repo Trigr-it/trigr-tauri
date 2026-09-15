@@ -7,6 +7,7 @@ import './ZoomableImage.css';
 import { SearchBar } from './SearchBar';
 import useOverlayDrag from './useOverlayDrag';
 import { useAppIcon } from './appIconCache';
+import { applyCached as applyCachedTheme } from '../theme/runtime';
 
 // Wraps every case-insensitive occurrence of `needle` in <mark> so search
 // results show WHY they matched. Returns the plain string when no search is
@@ -144,12 +145,9 @@ export default function ClipboardOverlay() {
   const [items, setItems] = useState([]);
   const [renderLimit, setRenderLimit] = useState(ROW_CHUNK);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  // Seeded from the last session's theme so a fresh boot paints the right
-  // palette immediately instead of flashing the dark default until the first
-  // data payload (or self-heal pull) lands.
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem('trigr_overlay_theme') || 'dark'
-  );
+  // Theme is painted by src/theme/runtime.js (cached snapshot before React
+  // mounts, live 'theme-changed' broadcasts, re-applied on every show in the
+  // wake handler below). The payload's `theme` field is no longer read.
   const [search, setSearch] = useState('');
   const [filterTag, setFilterTag] = useState('All');
   const [editing, setEditing] = useState(false);
@@ -179,7 +177,6 @@ export default function ClipboardOverlay() {
       }
       const list = data?.items || [];
       setItems(list);
-      if (data?.theme) setTheme(data.theme);
     });
     return () => window.electronAPI?.removeAllListeners('clipboard-overlay-data');
   }, []);
@@ -210,9 +207,6 @@ export default function ClipboardOverlay() {
         setItems(prev => (force || prev.length === 0 ? list : prev));
       })
       .catch(() => {});
-    window.electronAPI?.getTheme?.()
-      .then((t) => { if (t) setTheme(t); })
-      .catch(() => {});
   }, []);
 
   useEffect(() => { selfHealPull(false); }, [selfHealPull]);
@@ -239,6 +233,7 @@ export default function ClipboardOverlay() {
         }
         return;
       }
+      applyCachedTheme();
       if (wakePullTimer.current) clearTimeout(wakePullTimer.current);
       wakePullTimer.current = setTimeout(() => {
         wakePullTimer.current = null;
@@ -274,11 +269,6 @@ export default function ClipboardOverlay() {
     });
     return () => { unlistenPromise.then(fn => fn()); };
   }, [selfHealPull]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('trigr_overlay_theme', theme);
-  }, [theme]);
 
   // ── Filtering ─────────────────────────────────────────────────────────────
 

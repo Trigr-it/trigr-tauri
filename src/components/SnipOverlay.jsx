@@ -227,7 +227,7 @@ export default function SnipOverlay() {
             width={rect.w}
             height={rect.h}
             fill="none"
-            stroke="#e8a020"
+            stroke="var(--accent)"
             strokeWidth="1.5"
             shapeRendering="crispEdges"
           />

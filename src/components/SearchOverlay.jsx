@@ -7,13 +7,12 @@ import './SearchOverlay.css';
 import { friendlyKeyName } from './keyboardLayout';
 import { readVoicePhrases } from '../voicePhrases';
 import useOverlayDrag from './useOverlayDrag';
+import { applyCached as applyCachedTheme } from '../theme/runtime';
 
-// Seed the theme from the last session before first paint so a cold boot or a
-// lost data payload doesn't flash (or stay) dark for a light-theme user. Same
-// key the clipboard popup writes — one theme cache for all overlays.
-try {
-  document.documentElement.setAttribute('data-theme', localStorage.getItem('trigr_overlay_theme') || 'dark');
-} catch { /* storage unavailable — CSS :root default applies */ }
+// Theme: painted by src/theme/runtime.js (main.jsx applies the cached
+// snapshot before React mounts and listens for live changes). The wake
+// handler below re-applies it on every show in case a TrySuspended window
+// missed the broadcast.
 
 // Per-item search haystack cache (see the scoring loop).
 const HAYSTACK_CACHE = new WeakMap();
@@ -476,10 +475,6 @@ export default function SearchOverlay() {
   // pull below, so both paths reset exactly the same state.
   const applySearchData = useCallback((data) => {
     if (!data) return;
-    // Apply theme before rendering so colours are correct on first paint
-    const theme = data.theme || 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
-    try { localStorage.setItem('trigr_overlay_theme', theme); } catch { /* ignore */ }
     const { settings: newSettings } = data;
     setSettings(newSettings || { showAll: false, closeAfterFiring: true, includeAutocorrect: false });
     // flipUp is show-time geometry; the pull payload omits it so the bar keeps
@@ -538,6 +533,7 @@ export default function SearchOverlay() {
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
+      applyCachedTheme();
       selfHealPull(true);
     };
     document.addEventListener('visibilitychange', onVis);
@@ -596,7 +592,6 @@ export default function SearchOverlay() {
   useEffect(() => {
     if (!window.electronAPI?.onOverlayVoiceData) return;
     window.electronAPI.onOverlayVoiceData((data) => {
-      document.documentElement.setAttribute('data-theme', data.theme || 'dark');
       const items = buildItems(data);
       setAllItems(items);
       setQuery('');

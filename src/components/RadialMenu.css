@@ -12,6 +12,9 @@
   --accent:        #e8a020;
   --accent-glow:   rgba(232, 160, 32, 0.15);
   --accent-rgb:    232, 160, 32;
+  /* Hover-wedge gradient stops (RadialWheel.jsx). Mirrored from global.css. */
+  --accent-bright:    #ffbb44;
+  --accent-highlight: #ffd87a;
   --text-primary:  #f0ede8;
   --text-secondary:#8a8799;
   --text-muted:    #9794b3;

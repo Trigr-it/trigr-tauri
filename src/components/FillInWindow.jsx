@@ -24,6 +24,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Grid2X2, Edit3 } from 'lucide-react';
 import './FillInWindow.css';
+import { applyCached as applyCachedTheme } from '../theme/runtime';
 
 // Normalise an incoming field payload into a canonical typed shape. Backend
 // emits objects (typed fields) but variant-mode legacy payloads or older Rust
@@ -124,7 +125,10 @@ export default function FillInWindow() {
 
     if (!window.electronAPI?.onFillInShow) return;
     window.electronAPI.onFillInShow((data) => {
-      document.documentElement.setAttribute('data-theme', data.theme || 'dark');
+      // Theme comes from src/theme/runtime.js, not the payload; re-apply the
+      // cached snapshot here too so a suspended window that missed the
+      // 'theme-changed' broadcast paints correctly on this show.
+      applyCachedTheme();
 
       if (data.mode === 'variant') {
         // Variant selection mode
@@ -155,6 +159,16 @@ export default function FillInWindow() {
       // where WebView2/HMR swallows the emit and the picker never renders.
       window.electronAPI?.fillInShownAck?.();
     });
+  }, []);
+
+  // webview_mem parks this window while hidden, so visibilitychange fires on
+  // every show: the belt-and-braces theme re-apply for a lost broadcast.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') applyCachedTheme();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
   // Auto-resize window to match panel content height.

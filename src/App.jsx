@@ -32,6 +32,8 @@ const RadialEditorView = lazy(() => import('./components/RadialEditorView'));
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, pointerWithin } from '@dnd-kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen as listenEvent, emit as emitEvent } from '@tauri-apps/api/event';
+import { resolveTheme, normaliseCustomTheme, isPresetId, KEYFIRE_ID, CUSTOM_ID } from './theme/engine';
+import * as themeRuntime from './theme/runtime';
 import { MAX_SLOTS } from './components/RadialWheel';
 import { downscaleIconDataUrl, ICON_DOWNSCALE_THRESHOLD } from './components/iconUtils';
 import { friendlyKeyName, setLiveKeyLegends, STATIC_BARE_ALLOWED } from './components/keyboardLayout';
@@ -202,6 +204,31 @@ function App() {
   // data-theme attribute and any UI that needs to know what's currently shown.
   const [theme, setTheme]                   = useState('auto');
   const [resolvedTheme, setResolvedTheme]   = useState('dark');
+  // Theme preset (Free) + custom colours (Pro). themePreset is a preset id or
+  // 'custom'; customTheme is { v:1, light:Knobs, dark:Knobs } | null. Both
+  // live in the shared config. previewHalf is a transient editor override
+  // (never saved) so an Auto user can edit the dark half without being
+  // flipped to explicit Dark. themeLoaded gates the resolver until the boot
+  // config has been read, so overlays never receive a default snapshot.
+  const [themePreset, setThemePreset]       = useState(KEYFIRE_ID);
+  const [customTheme, setCustomTheme]       = useState(null);
+  const [previewHalf, setPreviewHalf]       = useState(null);
+  const [themeLoaded, setThemeLoaded]       = useState(false);
+  // Appearance extras. The three config keys are shared (look preferences);
+  // uiScale is machine-local (WebView2 zoom on main + Settings, held by
+  // Rust in trigr-local-settings.json). windowsAccent / systemHighContrast
+  // are live OS facts, never saved.
+  const [themeAccentFollowsWindows, setThemeAccentFollowsWindows] = useState(false);
+  const [themeFollowHighContrast, setThemeFollowHighContrast]     = useState(true);
+  const [overlayOpacity, setOverlayOpacity]                       = useState(1);
+  const [uiScale, setUiScale]                                     = useState(1);
+  const [windowsAccent, setWindowsAccent]                         = useState(null);
+  const [systemHighContrast, setSystemHighContrast]               = useState(() => {
+    try {
+      return window.matchMedia('(prefers-contrast: more)').matches
+        || window.matchMedia('(forced-colors: active)').matches;
+    } catch { return false; }
+  });
   const [expansionCategories, setExpansionCategories] = useState([]);
   const [globalVariables, setGlobalVariables]         = useState({});   // { 'my.name': 'Jane Smith', … }
   const [activeView, setActiveView]                 = useState('keyboard'); // 'keyboard' | 'mouse'
@@ -580,6 +607,12 @@ function App() {
       : savedTheme;
     setResolvedTheme(resolvedInitial);
     document.documentElement.setAttribute('data-theme', resolvedInitial);
+    setThemePreset(isPresetId(config.themePreset) || config.themePreset === CUSTOM_ID ? config.themePreset : KEYFIRE_ID);
+    setCustomTheme(normaliseCustomTheme(config.customTheme));
+    setThemeAccentFollowsWindows(config.themeAccentFollowsWindows === true);
+    setThemeFollowHighContrast(config.themeFollowHighContrast !== false);
+    setOverlayOpacity(typeof config.overlayOpacity === 'number' ? config.overlayOpacity : 1);
+    setThemeLoaded(true);
     const rawCats = config.expansionCategories || [];
     setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
     setGlobalVariables(config.globalVariables || {});
@@ -789,6 +822,12 @@ function App() {
           : savedTheme;
         setResolvedTheme(resolvedInitial);
         document.documentElement.setAttribute('data-theme', resolvedInitial);
+        setThemePreset(isPresetId(config.themePreset) || config.themePreset === CUSTOM_ID ? config.themePreset : KEYFIRE_ID);
+        setCustomTheme(normaliseCustomTheme(config.customTheme));
+        setThemeAccentFollowsWindows(config.themeAccentFollowsWindows === true);
+        setThemeFollowHighContrast(config.themeFollowHighContrast !== false);
+        setOverlayOpacity(typeof config.overlayOpacity === 'number' ? config.overlayOpacity : 1);
+        setThemeLoaded(true);
         // Migrate old string[] format to object[] format — treat missing colour as null
         const rawCats = config.expansionCategories || [];
         setExpansionCategories(rawCats.map(c => typeof c === 'string' ? { name: c, colour: null } : c));
@@ -2570,6 +2609,109 @@ function App() {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, [theme]);
+
+  // ── Theme presets + custom colours ────────────────────────────
+  // This window is the single resolver. Whenever the half, the preset, the
+  // custom knobs, the tier or the editor's preview half changes, compute the
+  // snapshot and publish it: paints <html> here, caches it in localStorage
+  // for every other window's first paint, and broadcasts 'theme-changed' so
+  // parked windows update live (src/theme/runtime.js). Keyfire publishes
+  // tokens === null, which removes every inline override. A lapsed Pro with
+  // themePreset 'custom' resolves to Keyfire WITHOUT touching config, so the
+  // saved colours come back the moment Pro is restored.
+  useEffect(() => {
+    if (!themeLoaded) return;
+    themeRuntime.publish(resolveTheme({
+      half: resolvedTheme, themePreset, customTheme, isPro: licenceStatus.is_pro, previewHalf,
+      highContrast: themeFollowHighContrast && systemHighContrast,
+      accentOverride: themeAccentFollowsWindows ? windowsAccent : null,
+      overlayOpacity,
+    }));
+  }, [
+    themeLoaded, resolvedTheme, themePreset, customTheme, licenceStatus.is_pro, previewHalf,
+    themeFollowHighContrast, systemHighContrast, themeAccentFollowsWindows, windowsAccent, overlayOpacity,
+  ]);
+
+  // Windows accent colour: pulled while the option is on (mount, every
+  // focus, and a slow poll for changes made while Keyfire stays focused).
+  useEffect(() => {
+    if (!themeAccentFollowsWindows) { setWindowsAccent(null); return undefined; }
+    let cancelled = false;
+    const pull = () => {
+      window.electronAPI?.getWindowsAccent?.()
+        .then(hex => { if (!cancelled) setWindowsAccent(typeof hex === 'string' ? hex : null); })
+        .catch(() => {});
+    };
+    pull();
+    window.addEventListener('focus', pull);
+    const timer = setInterval(pull, 30000);
+    return () => { cancelled = true; window.removeEventListener('focus', pull); clearInterval(timer); };
+  }, [themeAccentFollowsWindows]);
+
+  // Windows high-contrast tracking (Chromium reports it through both queries
+  // depending on the HC theme in use).
+  useEffect(() => {
+    let mqs = [];
+    try { mqs = [window.matchMedia('(prefers-contrast: more)'), window.matchMedia('(forced-colors: active)')]; } catch { return undefined; }
+    const apply = () => setSystemHighContrast(mqs.some(m => m.matches));
+    apply();
+    mqs.forEach(m => m.addEventListener('change', apply));
+    return () => mqs.forEach(m => m.removeEventListener('change', apply));
+  }, []);
+
+  // Interface scale is machine-local and applied by Rust; read it for the UI.
+  useEffect(() => {
+    window.electronAPI?.getUiScale?.()
+      .then(v => { if (typeof v === 'number') setUiScale(v); })
+      .catch(() => {});
+  }, []);
+
+  const handleSetAccentFollowsWindows = useCallback((on) => {
+    const next = !!on;
+    setThemeAccentFollowsWindows(next);
+    window.electronAPI?.saveConfig({ themeAccentFollowsWindows: next });
+  }, []);
+
+  const handleSetFollowHighContrast = useCallback((on) => {
+    const next = !!on;
+    setThemeFollowHighContrast(next);
+    window.electronAPI?.saveConfig({ themeFollowHighContrast: next });
+  }, []);
+
+  const handleSetOverlayOpacity = useCallback((value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return;
+    const next = Math.round(Math.min(1, Math.max(0.6, n)) * 100) / 100;
+    setOverlayOpacity(next);
+    window.electronAPI?.saveConfig({ overlayOpacity: next });
+  }, []);
+
+  const handleSetUiScale = useCallback((value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return;
+    setUiScale(n);
+    window.electronAPI?.setUiScale?.(n)
+      .then(effective => { if (typeof effective === 'number') setUiScale(effective); })
+      .catch(() => {});
+  }, []);
+
+  const handleSetThemePreset = useCallback((id) => {
+    const next = (isPresetId(id) || id === CUSTOM_ID) ? id : KEYFIRE_ID;
+    setThemePreset(next);
+    // Narrow patch: only the changed key. The legacy big-object saves re-send
+    // stale closure copies of other keys and have lost edits before.
+    window.electronAPI?.saveConfig({ themePreset: next });
+  }, []);
+
+  const handleSetCustomTheme = useCallback((obj) => {
+    const clean = normaliseCustomTheme(obj);
+    setCustomTheme(clean);
+    window.electronAPI?.saveConfig({ customTheme: clean });
+  }, []);
+
+  const handleSetPreviewHalf = useCallback((half) => {
+    setPreviewHalf(half === 'light' || half === 'dark' ? half : null);
+  }, []);
 
   // ── Text expansions (global — shared across all profiles) ─
   // Alias entries (data.isAlias === true) are shadow copies of a primary
@@ -6027,6 +6169,17 @@ function App() {
       clipboardPasteHotkey,
       telemetryEnabled,
       theme: resolvedTheme,
+      // Appearance section: the raw mode ('auto'|'light'|'dark'), the preset
+      // id and the custom knobs. `theme` above stays the resolved half.
+      themeRaw: theme,
+      themePreset,
+      customTheme,
+      themeAccentFollowsWindows,
+      windowsAccent,
+      themeFollowHighContrast,
+      systemHighContrast,
+      overlayOpacity,
+      uiScale,
     };
     // Modal-opening actions pull the main window forward first — the modal
     // renders here, and the user is looking at the settings window.
@@ -6065,6 +6218,14 @@ function App() {
       setClipboardPasteKey: handleSetClipboardPasteKey,
       clearClipboardPasteKey: handleClearClipboardPasteKey,
       toggleTelemetry: handleToggleTelemetry,
+      setTheme: handleSetTheme,
+      setThemePreset: handleSetThemePreset,
+      setCustomTheme: handleSetCustomTheme,
+      setPreviewHalf: handleSetPreviewHalf,
+      setAccentFollowsWindows: handleSetAccentFollowsWindows,
+      setFollowHighContrast: handleSetFollowHighContrast,
+      setOverlayOpacity: handleSetOverlayOpacity,
+      setUiScale: handleSetUiScale,
     };
   });
   // Live-sync: broadcast whenever any bridged value changes (the ref-refresh
@@ -6080,7 +6241,9 @@ function App() {
     globalPauseToggleKey, voiceEnabled, voiceHotkey, hiddenTips, tipsHidden,
     activeProfile, isPro, licenceStatus, clipboardCaptureEnabled,
     clipboardExcludedApps, clipboardPasteHotkey, telemetryEnabled,
-    resolvedTheme,
+    resolvedTheme, theme, themePreset, customTheme,
+    themeAccentFollowsWindows, windowsAccent, themeFollowHighContrast, systemHighContrast,
+    overlayOpacity, uiScale,
   ]);
   useEffect(() => {
     const unlisteners = [];
@@ -6108,6 +6271,9 @@ function App() {
       setArea: handleSetArea,                       // ('mapping'|'expansions'|'templates'|'clipboard'|'analytics', view?)
       setView: handleSetView,                       // ('keyboard'|'mouse'|'radial')
       setTheme: handleSetTheme,                     // ('auto'|'light'|'dark') — persists like the menu does
+      setThemePreset: handleSetThemePreset,         // (presetId | 'custom') persists like Settings does
+      setCustomTheme: handleSetCustomTheme,         // ({ v:1, light:Knobs, dark:Knobs } | null) persists
+      setPreviewHalf: handleSetPreviewHalf,         // ('light'|'dark'|null) transient editor override
       setListView: (on) => setListViewActive(!!on),
       toggleListView: handleToggleListView,
       selectKey: handleKeySelect,                   // (keyId) as the canvas would
@@ -6136,7 +6302,9 @@ function App() {
       assign: (keyId, macro, mode = 'single') => (mode === 'double' ? handleAssignDouble : mode === 'hold' ? handleAssignHold : handleAssign)(keyId, macro),
       deleteKey: handleDeleteKey,                   // (keyId) all variants on the active combo
       getState: () => ({
-        activeArea, activeView, theme, resolvedTheme, listViewActive, selectedKey, selectedLibraryId,
+        activeArea, activeView, theme, resolvedTheme, themePreset, previewHalf, hasCustomTheme: !!customTheme,
+        themeAccentFollowsWindows, windowsAccent, themeFollowHighContrast, systemHighContrast, overlayOpacity, uiScale,
+        listViewActive, selectedKey, selectedLibraryId,
         selectedRadialSegment, activeModifiers, activeProfile, isPro, macrosEnabled, hiddenTips,
         editingRadialLayoutId, deviceRadialLayoutId, radialLayoutCount: radialLayouts.length,
         physicalKeyboardLayout, resolvedPhysicalLayout, isoKeyDetected, keyboardLayoutHint,
@@ -6382,6 +6550,7 @@ function App() {
         theme={theme}
         resolvedTheme={resolvedTheme}
         onSetTheme={handleSetTheme}
+        onOpenAppearance={() => window.electronAPI?.showSettingsWindow?.('appearance')}
         onOpenSettings={() => window.electronAPI?.toggleSettingsWindow()}
         activeArea={activeArea}
         onAreaChange={handleSetArea}
