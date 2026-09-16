@@ -4425,7 +4425,12 @@ export default function MacroPanel({
     && (m !== 'hold' || (onAssignHold && !selectedKey?.startsWith('MOUSE_SCROLL')))
   );
 
-  useEffect(() => {
+  // Layout effect, not a plain effect: activeType starts as 'macro' and this
+  // seeds the real type, so on a fresh mount (radial editors remount per
+  // wedge) a plain effect painted one Macro frame before the saved action.
+  // Layout effects also run before the plain effects declared below, so
+  // their "declared AFTER the reset" ordering still holds.
+  useLayoutEffect(() => {
     setReassigning(false);
     setDuplicating(false);
     setPendingMouseSave(null);
