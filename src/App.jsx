@@ -447,6 +447,31 @@ function App() {
     }
   }, [editingRadialLayout, radialLayouts]);
 
+  // Radial-only actions (GLOBAL::RADIAL:: keys) are deleted with the wedge
+  // that owns them, but copy-to-profile keeps the storage key, so ONE such
+  // assignment can back wedges on several wheels (and in several layouts).
+  // Given the wedges being removed, return only the keys that no OTHER wedge
+  // anywhere still references. 2026-09-16: removing a copied Screenshot
+  // folder from one app profile deleted the Snip / SnagIt actions under the
+  // same folder on six other wheels ("source was renamed or deleted").
+  const radialOnlyKeysToDelete = useCallback((removedItems) => {
+    const inner = new Map(); // key -> refs inside the removed wedges
+    const tally = (map, item) => {
+      if (!item) return;
+      if (item.storageKey?.startsWith('GLOBAL::RADIAL::')) map.set(item.storageKey, (map.get(item.storageKey) || 0) + 1);
+      if (item.type === 'folder' && Array.isArray(item.children)) item.children.forEach(c => tally(map, c));
+    };
+    (Array.isArray(removedItems) ? removedItems : [removedItems]).forEach(it => tally(inner, it));
+    if (inner.size === 0) return [];
+    const total = new Map(); // key -> refs across every wheel of every layout
+    const visitWheel = (items) => (items || []).forEach(it => tally(total, it));
+    Object.values(radialItemsMap).forEach(visitWheel);
+    radialLayouts.forEach(l => Object.values(l.itemsByProfile || {}).forEach(visitWheel));
+    return [...inner.entries()]
+      .filter(([key, n]) => (total.get(key) || 0) <= n)
+      .map(([key]) => key);
+  }, [radialItemsMap, radialLayouts]);
+
   // Assignment objects handed to the radial segment / folder-child editors.
   // MacroPanel's reset effect keys on the object's identity, and these used
   // to be rebuilt inline (`{ ...base, label }`) on every App render — so a
@@ -4790,18 +4815,14 @@ function App() {
     // Radial-only actions (GLOBAL::RADIAL:: keys) exist solely for their
     // wedge. Removing the wedge used to leave them as invisible, unreachable
     // assignments forever; delete them (and a folder's children's) along with
-    // the slot. Library-linked / key-linked segments are references and are
-    // left alone. handleRadialClear does the same and stays idempotent.
-    const radialOnlyKeys = [];
-    const collect = (item) => {
-      if (!item) return;
-      if (item.storageKey?.startsWith('GLOBAL::RADIAL::')) radialOnlyKeys.push(item.storageKey);
-      if (item.type === 'folder' && Array.isArray(item.children)) item.children.forEach(collect);
-    };
-    setRadialMenuItems(prev => {
-      prev.forEach(item => { if (item && item.id === id) collect(item); });
-      return prev.map(item => (item && item.id === id) ? null : item);
-    });
+    // the slot, but ONLY when no other wheel still references them (see
+    // radialOnlyKeysToDelete). Library-linked / key-linked segments are
+    // references and are left alone. The removed wedge is read from the
+    // rendered items, not inside the state updater, so the key list is known
+    // synchronously. handleRadialClear routes through here.
+    const removed = radialMenuItems.find(item => item && item.id === id) || null;
+    setRadialMenuItems(prev => prev.map(item => (item && item.id === id) ? null : item));
+    const radialOnlyKeys = radialOnlyKeysToDelete(removed);
     if (radialOnlyKeys.length) {
       setAssignments(prev => {
         if (!radialOnlyKeys.some(k => prev[k])) return prev;
@@ -4812,7 +4833,7 @@ function App() {
         return next;
       });
     }
-  }, [activeProfile]);
+  }, [activeProfile, radialMenuItems, radialOnlyKeysToDelete]);
 
   const handleReorderRadialMenuItems = useCallback((items) => {
     setRadialMenuItems(items);
@@ -4851,6 +4872,8 @@ function App() {
   }, [assignments, fetchAndSetChildAppIcon]);
 
   const handleRemoveChildFromFolder = useCallback((folderId, childId) => {
+    const folder = radialMenuItems.find(item => item && item.id === folderId && item.type === 'folder');
+    const removed = folder?.children?.find(c => c && c.id === childId) || null;
     setRadialMenuItems(prev => {
       const next = prev.map(item => {
         if (!item || item.id !== folderId || item.type !== 'folder') return item;
@@ -4858,7 +4881,20 @@ function App() {
       });
       return next;
     });
-  }, []);
+    // Same ownership rule as a main wedge: a radial-only child action goes
+    // with its child unless another wheel still references it.
+    const radialOnlyKeys = radialOnlyKeysToDelete(removed);
+    if (radialOnlyKeys.length) {
+      setAssignments(prev => {
+        if (!radialOnlyKeys.some(k => prev[k])) return prev;
+        const next = { ...prev };
+        radialOnlyKeys.forEach(k => { delete next[k]; });
+        window.electronAPI?.saveConfig({ assignments: next });
+        window.electronAPI?.updateAssignments(next, activeProfile);
+        return next;
+      });
+    }
+  }, [activeProfile, radialMenuItems, radialOnlyKeysToDelete]);
 
   // Move a main segment into a folder, preserving icon/iconColor/appIcon
   const handleMoveItemToFolder = useCallback((sourceIndex, folderId) => {
@@ -5043,19 +5079,13 @@ function App() {
     const idx = selectedRadialSegment;
     const existingItem = idx < radialMenuItems.length ? radialMenuItems[idx] : null;
     if (existingItem) {
-      // Remove from wheel
+      // Remove from wheel; the radial-only assignment goes with it only when
+      // no other wheel references it (handleRemoveRadialMenuItem decides).
       handleRemoveRadialMenuItem(existingItem.id);
-      // If it's a GLOBAL::RADIAL:: key, also delete the assignment
-      if (existingItem.storageKey?.startsWith('GLOBAL::RADIAL::')) {
-        const newAssignments = { ...assignments };
-        delete newAssignments[existingItem.storageKey];
-        setAssignments(newAssignments);
-        saveConfig(newAssignments, profiles, activeProfile);
-      }
     }
     setSelectedRadialSegment(null);
     showNotification('Radial segment cleared', 'info');
-  }, [selectedRadialSegment, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleRemoveRadialMenuItem, showNotification]);
+  }, [selectedRadialSegment, radialMenuItems, handleRemoveRadialMenuItem, showNotification]);
 
   // Assign action to a folder child (from MacroPanel save)
   const handleRadialChildAssign = useCallback((_keyId, macro) => {
@@ -5124,17 +5154,12 @@ function App() {
     const folder = radialMenuItems.find(i => i && i.id === folderId);
     const existingChild = folder?.children?.[childIndex];
     if (existingChild) {
+      // Reference-aware delete lives in handleRemoveChildFromFolder.
       handleRemoveChildFromFolder(folderId, existingChild.id);
-      if (existingChild.storageKey?.startsWith('GLOBAL::RADIAL::')) {
-        const newAssignments = { ...assignments };
-        delete newAssignments[existingChild.storageKey];
-        setAssignments(newAssignments);
-        saveConfig(newAssignments, profiles, activeProfile);
-      }
     }
     setSelectedRadialChild(null);
     showNotification('Folder child cleared', 'info');
-  }, [selectedRadialChild, radialMenuItems, assignments, profiles, activeProfile, saveConfig, handleRemoveChildFromFolder, showNotification]);
+  }, [selectedRadialChild, radialMenuItems, handleRemoveChildFromFolder, showNotification]);
 
   // Select a radial segment — route to normal MacroPanel for sidebar items,
   // radial MacroPanel for radial-only / new items
