@@ -6825,8 +6825,14 @@ function App() {
             )}
           </main>
         {/* Right panel: MacroPanel (Settings lives in its own window) */}
+        {/* Radial editors are keyed on the wedge: MacroPanel keeps an unsaved
+            draft while selectedKey is unchanged, and every wedge mounts it
+            under the same constant name, so switching wedges mid-edit showed
+            the previous wedge's draft. A new key remounts it fresh from the
+            selected wedge's own action. */}
         {activeView === 'radial' && selectedRadialChild != null ? (
           <MacroPanel
+            key={`radial-child-${selectedRadialChild.folderId}-${selectedRadialChild.childIndex}`}
             selectedKey={'Folder Child'}
             activeModifiers={[]}
             currentCombo=""
@@ -6848,6 +6854,7 @@ function App() {
           />
         ) : activeView === 'radial' && selectedRadialSegment != null ? (
           <MacroPanel
+            key={`radial-seg-${selectedRadialSegment}`}
             selectedKey={'Radial Segment'}
             activeModifiers={[]}
             currentCombo=""
