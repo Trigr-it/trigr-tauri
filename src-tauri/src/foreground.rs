@@ -744,6 +744,17 @@ pub fn set_active_global_profile(profile: String) {
     state.active_global_profile = profile;
 }
 
+/// The profile the watcher snaps back to when no linked app is in the
+/// foreground (the user's chosen global profile, "Default" until changed).
+/// Lock order: callers must NOT hold the engine lock (the watcher takes
+/// fg_state first, then the engine lock).
+pub fn get_active_global_profile() -> String {
+    fg_state()
+        .lock()
+        .map(|s| s.active_global_profile.clone())
+        .unwrap_or_else(|_| "Default".to_string())
+}
+
 /// Toggle the editing-active gate. While true, the foreground watcher suppresses
 /// auto-switching so the user can test profile assignments against another app
 /// without snapping away. Frontend pushes this from App.jsx when any action

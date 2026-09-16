@@ -291,6 +291,18 @@
   z-index: 1;
 }
 
+/* Row for the empty-wheel fallback note, between the hold-to-select row and
+   the wheel. Sits in normal flow (not inside the centred wheel zone) and
+   above the wheel's upward overflow like the control rows above it. */
+.rev-fallback-row {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3) var(--space-6) 0;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
 .rev-holdselect-text {
   display: flex;
   flex-direction: column;

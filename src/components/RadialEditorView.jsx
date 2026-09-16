@@ -204,6 +204,9 @@ export default function RadialEditorView({
   usedKeys,
   profiles              = [],
   activeProfile         = '',
+  // Name of the global profile whose wheel the live overlay shows while
+  // THIS (app-specific) profile's wheel is empty; null when not applicable.
+  wheelFallbackProfile  = null,
   onCopyRadialSegmentToProfile,
   onForceOverwriteRadialSegment,
   hiddenTips            = [],
@@ -638,6 +641,18 @@ export default function RadialEditorView({
             onClick={() => onSetRadialHoldToSelect?.(!radialHoldToSelect)}
             title="Toggle hold-to-select mode"
           />
+        </div>
+      )}
+
+      {/* Empty app-profile wheel: its own row between the hold-to-select row
+          and the wheel. Inside .rev-wheel-zone (a centred column) a second
+          tip pushed the fixed-size wheel up over the toggle row. */}
+      {radialMenuHotkey && wheelFallbackProfile && radialMenuItems.every((item) => !item) && (
+        <div className="rev-fallback-row">
+          <div className="rev-tip">
+            <Info size={14} strokeWidth={2} aria-hidden="true" />
+            <span>This wheel is empty, so the {wheelFallbackProfile} wheel shows in this app. Add an action here to use a wheel of its own.</span>
+          </div>
         </div>
       )}
 

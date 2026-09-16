@@ -6784,6 +6784,7 @@ function App() {
                 onExpandedFolderChange={setExpandedRadialFolder}
                 profiles={profiles}
                 activeProfile={activeProfile}
+                wheelFallbackProfile={profileSettings[activeProfile]?.linkedApp && activeProfile !== activeGlobalProfile ? activeGlobalProfile : null}
                 onCopyRadialSegmentToProfile={handleCopyRadialSegmentToProfile}
                 onForceOverwriteRadialSegment={handleForceOverwriteRadialSegment}
                 radialLayouts={radialLayouts}

@@ -3396,6 +3396,9 @@ fn build_radial_menu_data() -> Value {
     // Read the machine-local layout choice BEFORE taking the engine lock: it
     // is a small file read and the processor thread must not wait on it.
     let device_layout_id = if crate::licence::is_pro() { config::get_radial_layout_id() } else { None };
+    // Also before the engine lock: the foreground watcher locks fg_state and
+    // THEN the engine, so taking them the other way round here could deadlock.
+    let global_profile = foreground::get_active_global_profile();
     let state = hotkeys::engine_state_lock();
     let active_profile = state.active_profile.clone();
     // Per-profile map is the source of truth. The legacy flat radialMenuItems
@@ -3413,20 +3416,47 @@ fn build_radial_menu_data() -> Value {
             .find(|l| l.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
             .cloned()
     });
-    let radial_items = match device_layout {
-        Some(layout) => layout
-            .get("itemsByProfile")
-            .and_then(|m| m.get(&active_profile))
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!([])),
-        None => match cfg.get("radialMenuItemsByProfile") {
-            Some(m) => m.get(&active_profile).cloned().unwrap_or_else(|| serde_json::json!([])),
-            None => cfg
-                .get("radialMenuItems")
+    let items_for_profile = |profile: &str| -> Value {
+        match &device_layout {
+            Some(layout) => layout
+                .get("itemsByProfile")
+                .and_then(|m| m.get(profile))
                 .cloned()
                 .unwrap_or_else(|| serde_json::json!([])),
-        },
+            None => match cfg.get("radialMenuItemsByProfile") {
+                Some(m) => m.get(profile).cloned().unwrap_or_else(|| serde_json::json!([])),
+                None => cfg
+                    .get("radialMenuItems")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!([])),
+            },
+        }
     };
+    // Wheel arrays are slot-indexed (null = empty wedge), so "no actions"
+    // means no non-null entry, not a zero-length array.
+    let wheel_is_empty = |items: &Value| -> bool {
+        items
+            .as_array()
+            .map(|a| a.iter().all(|i| i.is_null()))
+            .unwrap_or(true)
+    };
+    let mut radial_items = items_for_profile(&active_profile);
+    // App-specific profile with nothing on its wheel: show the global
+    // profile's wheel instead of an empty one (user ask, 2026-09-16). Firing
+    // is by storage key against the full assignment map, so the global
+    // profile's wedges fire normally while the app profile is active. Same
+    // layout on both lookups; a wheel with wedges (even dead ones) is never
+    // replaced, the editor stays the place to change what it shows.
+    if active_profile != global_profile && wheel_is_empty(&radial_items) {
+        let fallback = items_for_profile(&global_profile);
+        if !wheel_is_empty(&fallback) {
+            log::info!(
+                "[Keyfire] Radial: profile \"{}\" has an empty wheel, showing \"{}\" wheel instead",
+                active_profile, global_profile
+            );
+            radial_items = fallback;
+        }
+    }
     let resolve_item = |item: &Value| -> Option<Value> {
         // Check if this is a folder item (has type: "folder")
         let is_folder = item
